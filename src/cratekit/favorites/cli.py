@@ -285,7 +285,7 @@ def run_heart_item(
     never wants one is not to pass it.
     """
     library = source.read_library(Path(str(payload[EXPORT])))
-    candidates = source.heart_candidates(library, (row_id,))
+    candidates = source.heart_candidates(library, (row_id,), cfg=cfg)
     if not candidates:
         raise refuse(
             "outbound-item-absent",

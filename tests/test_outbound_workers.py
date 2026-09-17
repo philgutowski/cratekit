@@ -29,14 +29,16 @@ from pathlib import Path
 import pytest
 
 from cratekit.cli import handlers, registry
-from cratekit.core import config, jobs
+from cratekit.core import config, jobs, locations, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.export import cli as export_cli
 from cratekit.favorites import cli as favorites_cli
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import artifacts, ledger, source
+from cratekit.modules.reports import export as library_export
 from tests import outbound_fakes
+from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue, drive
 from tests.test_config import valid_data
 
@@ -864,17 +866,121 @@ def test_the_export_document_is_parsed_once_per_process(installed, monkeypatch):
 
 
 def test_the_two_engines_receive_the_same_rows_for_one_playlist(installed, exported):
-    del installed
     library = source.read_library(exported)
     resolved = source.resolve(library, outbound_fakes.CRATE)
-    tracks = source.local_tracks(library, resolved.track_ids)
-    candidates = source.heart_candidates(library, resolved.track_ids)
+    tracks = source.local_tracks(library, resolved.track_ids, cfg=installed)
+    candidates = source.heart_candidates(library, resolved.track_ids, cfg=installed)
     assert [track.identity for track in tracks] == [c.row_id for c in candidates]
+    assert [track.isrc for track in tracks] == [c.isrc for c in candidates]
     assert all(track.isrc == "" for track in tracks), (
-        "a collection export carries no ISRC; inventing one would hand the "
-        "provider seam a fabricated identity"
+        "these rows name no audio file, so there is no ISRC to read, and "
+        "inventing one would hand the provider seam a fabricated identity"
     )
     assert all(track.title and track.artist for track in tracks)
+
+
+def _entry(location: str) -> library_export.CollectionEntry:
+    return library_export.CollectionEntry(
+        track_id="1", name="08A - 124 - Track 1", artist="Artist 1", location=location
+    )
+
+
+def _tagged(tmp_path: Path, where: Path, isrc: str) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    made = synth_container(tmp_path, ".flac")
+    where.parent.mkdir(parents=True, exist_ok=True)
+    made.replace(where)
+    assert tags.write_tags(where, {"isrc": isrc}) is True
+    return where
+
+
+def test_the_isrc_is_read_through_the_prefix_map_and_folded(installed, tmp_path):
+    """R-355 and R-372 together: a renamed drive's row still reaches its file."""
+    root = Path(installed.library.root)
+    _tagged(tmp_path / "synth", root / "Music" / "a.flac", " zz-x9a-26-00042 ")
+    old = tmp_path / "renamed-drive"
+    recorded = locations.location_url(old / "Music" / "a.flac")
+    rules = [locations.PrefixRule(str(old), str(root))]
+
+    found = source.isrc_for(_entry(recorded), root=root, prefix_map=rules)
+
+    assert found == "ZZX9A2600042"
+    assert source.isrc_for(_entry(recorded), root=root, prefix_map=[]) == "", (
+        "an unmapped prefix is not guessed onto the current root"
+    )
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "",
+        "file://elsewhere/Music/a.flac",
+        "tidal:tracks:123",
+        "file://localhost/nowhere/a.flac",
+    ],
+    ids=["no-location", "remote-host", "streaming", "unmapped"],
+)
+def test_a_location_with_no_local_file_reads_as_no_isrc(installed, location):
+    root = Path(installed.library.root)
+    assert source.isrc_for(_entry(location), root=root, prefix_map=[]) == ""
+
+
+def test_a_missing_file_or_a_value_that_is_not_an_isrc_reads_as_none(
+    installed, tmp_path
+):
+    """Empty is the honest route: the account reports the row unmatched."""
+    root = Path(installed.library.root)
+    gone = locations.location_url(root / "Music" / "gone.flac")
+    assert source.isrc_for(_entry(gone), root=root, prefix_map=[]) == ""
+
+    for index, value in enumerate(("CAT-0042", "ZZX9A260004", "ZZX9A26000421", "1ZX9A2600042")):
+        path = _tagged(tmp_path / str(index), root / "Music" / f"bad{index}.flac", value)
+        assert source.isrc_for(
+            _entry(locations.location_url(path)), root=root, prefix_map=[]
+        ) == "", value
+
+
+def test_the_row_builders_use_the_configured_prefix_map(tmp_path, monkeypatch):
+    """The builders must hand the resolver the config's map, not an empty one."""
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    (root / "db").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    data = valid_data(root)
+    old = tmp_path / "renamed-drive"
+    data["library"]["location_prefix_map"] = [
+        {"from": str(old), "to": "{library.root}"}
+    ]
+    cfg = config.from_dict(data)
+    _tagged(tmp_path / "synth", root / "Music" / "1.flac", "ZZX9A2600042")
+    exported = outbound_fakes.write_export(
+        root / "outbound",
+        locations={1: locations.location_url(old / "Music" / "1.flac")},
+    )
+    source.forget_libraries()
+    library = source.read_library(exported)
+
+    assert [t.isrc for t in source.local_tracks(library, ("1", "2"), cfg=cfg)] == [
+        "ZZX9A2600042",
+        "",
+    ]
+    assert [c.isrc for c in source.heart_candidates(library, ("1",), cfg=cfg)] == [
+        "ZZX9A2600042"
+    ]
+    source.forget_libraries()
+
+
+def test_an_absent_library_root_refuses_rather_than_reading_every_row_untagged(
+    installed, exported, monkeypatch
+):
+    """The review's finding: an unmounted volume is not a library of untagged files."""
+    library = source.read_library(exported)
+    gone = replace(installed, library=replace(installed.library, root=installed.library.root / "unplugged"))
+
+    for build in (source.local_tracks, source.heart_candidates):
+        with pytest.raises(CratekitError) as raised:
+            build(library, ("1",), cfg=gone)
+        assert raised.value.cause.reason == "library-volume-unmounted"
 
 
 def test_the_default_favourites_playlist_is_the_one_the_fixture_carries():

@@ -25,12 +25,13 @@ from pathlib import Path
 import pytest
 
 from cratekit.acquire import listing, provider_session
-from cratekit.core import config, jobs, secrets
+from cratekit.core import config, jobs, locations, secrets, tags
 from cratekit.core.cause import CratekitError, Scope
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import account, artifacts, ledger, source, tidal_account
 from cratekit.modules.outbound.service import RemoteAccount
 from tests import outbound_fakes
+from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue, drive
 from tests.test_config import valid_data
 
@@ -589,16 +590,16 @@ def give_rows_an_isrc(monkeypatch) -> None:
     real_tracks = source.local_tracks
     real_candidates = source.heart_candidates
 
-    def tracks(library, track_ids):
+    def tracks(library, track_ids, *, cfg):
         return tuple(
             replace(track, isrc=isrc_for(track.identity))
-            for track in real_tracks(library, track_ids)
+            for track in real_tracks(library, track_ids, cfg=cfg)
         )
 
-    def candidates(library, track_ids):
+    def candidates(library, track_ids, *, cfg):
         return tuple(
             replace(item, isrc=isrc_for(item.row_id))
-            for item in real_candidates(library, track_ids)
+            for item in real_candidates(library, track_ids, cfg=cfg)
         )
 
     monkeypatch.setattr(source, "local_tracks", tracks)
@@ -710,10 +711,13 @@ def test_a_provider_failure_on_one_heart_fails_that_item_and_no_other(
     assert ledger.recorded_hearts(installed) == frozenset({"501", "503"})
 
 
-def test_the_shipped_rows_carry_no_isrc_so_a_sweep_matches_nothing(
-    installed, monkeypatch
-):
-    """The residual, driven rather than argued: no substitution of the rows."""
+def test_a_row_whose_file_carries_no_isrc_matches_nothing(installed, monkeypatch):
+    """No substitution of the rows, and no file behind them.
+
+    Before R-355 closed this was every row, because nothing read an ISRC at all.
+    It is now the row whose location names no audio file, and the answer is still
+    an honest unmatched row with no call made to the provider.
+    """
     exported = outbound_fakes.write_export(
         installed.library.root / "outbound", favorites=(1, 2)
     )
@@ -732,6 +736,48 @@ def test_the_shipped_rows_carry_no_isrc_so_a_sweep_matches_nothing(
     assert client.isrc_asked == [] and client.track_asked == []
     reports = artifacts.committed(installed, job_id)
     assert [report["unmatched"] for report in reports] == [["1"], ["2"]]
+
+
+def _tagged_flac(installed, tmp_path, index: int, isrc: str) -> str:
+    """A real FLAC under the library root carrying ``isrc``, as an export location."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    made = synth_container(tmp_path, ".flac")
+    target = Path(installed.library.root) / "Music" / f"{index}.flac"
+    made.replace(target)
+    assert tags.write_tags(target, {"isrc": isrc}) is True
+    return locations.location_url(target)
+
+
+def test_a_sweep_matches_through_the_isrc_the_file_carries(
+    installed, monkeypatch, tmp_path
+):
+    """R-355 closed, driven with no substitution: the ISRC comes off the file.
+
+    Row 1's file carries a hyphenated ISRC and row 2's file carries none, so one
+    drive shows the read, the fold, and the untagged row staying unmatched.
+    """
+    exported = outbound_fakes.write_export(
+        installed.library.root / "outbound",
+        favorites=(1, 2),
+        locations={
+            1: _tagged_flac(installed, tmp_path / "one", 1, "aa-000-00-00001"),
+            2: _tagged_flac(installed, tmp_path / "two", 2, ""),
+        },
+    )
+    client = use_client(
+        monkeypatch,
+        FakeClient(isrcs={isrc_for("1"): ["501"], isrc_for("2"): ["502"]}),
+    )
+    record_session()
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    assert client.isrc_asked == [isrc_for("1")]
+    assert client.user.favorites.added == ["501"]
+    reports = artifacts.committed(installed, job_id)
+    assert [report["unmatched"] for report in reports] == [[], ["2"]]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

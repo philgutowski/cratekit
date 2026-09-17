@@ -79,6 +79,7 @@ ALL_FIELDS = {
     "voxlevel": 55,
     "voxgender": "F",
     "voxgenderconf": 80,
+    "isrc": "ZZ0000000001",
 }
 
 
