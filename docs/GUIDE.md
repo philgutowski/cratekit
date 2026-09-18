@@ -281,6 +281,7 @@ crate backup run --dry-run
 crate backup run
 crate restore list
 crate restore run SESSION_ID --dry-run
+crate restore run --from-backup --target /path/to/empty/dir
 ```
 
 Backup copies the library to the rclone remote named under `[backup]` in the
@@ -296,6 +297,13 @@ written by an adoption are not undone. It needs its own confirmation, and if it
 reaches back past a later session that committed work, you have to name each of
 those sessions with `--discard`. `crate restore list` is free and opens no
 session.
+
+`--target` rehearses the database half somewhere the live library is not, which
+is how you find out a restore works before you need one. It takes the database
+from the off-machine snapshot, needs `--from-backup`, rolls no session back, and
+refuses a directory that is the library, holds it, sits inside it, or would land
+the database on the live file. The gates are the live restore's: the backup
+acknowledgment, the library lock, and rekordbox closed.
 
 ## Answering a gate
 

@@ -1247,6 +1247,27 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "restore-not-confirmed": ExitCode.DECISION_REQUIRED,
         "restore-target-absent": ExitCode.LIBRARY_UNAVAILABLE,
         "no-snapshot-available": ExitCode.PRECONDITION,
+        # ── R-368's two, the rehearsal target the restore verb now takes ───────
+        #
+        # PRECONDITION rather than USAGE for the reason every block above gives:
+        # status 2 belongs to the argument parser and to nothing else, and the
+        # parser accepted both of these invocations, because any string is a
+        # valid argument to a flag that takes one and a flag combination is not
+        # something it is asked about.
+        #
+        # ``restore-target-is-live-root`` is a fact about a PATH: the directory
+        # named is the library, holds it, sits inside it, or would land the
+        # restored database on the live one. Not LIBRARY_UNAVAILABLE, which is
+        # what the absent target reserves: nothing is unreachable here, and the
+        # library being exactly where it should be is the problem.
+        "restore-target-is-live-root": ExitCode.PRECONDITION,
+        # ``restore-target-invalid`` is a fact about the INVOCATION: a target
+        # without the off-machine pull that fills it, or a target beside a
+        # capture rollback that cannot be pointed anywhere but the live library.
+        # Its own slug rather than a second use of the one above, because a
+        # person told their directory is the live library will go looking at the
+        # directory, which in these two is not where the mistake is.
+        "restore-target-invalid": ExitCode.PRECONDITION,
         # Appended in U27's second fix round rather than with the eight above,
         # because it did not exist when they landed: the review found that
         # ``run_restore`` never read a return code, so this is the slug the

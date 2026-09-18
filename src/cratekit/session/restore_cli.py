@@ -278,7 +278,175 @@ def build_run(parser, entry) -> None:
             "database; hundreds of gigabytes, so it is off by default"
         ),
     )
+    parser.add_argument(
+        "--target",
+        default=None,
+        metavar="DIRECTORY",
+        help=(
+            "restore the database into this directory instead of the live "
+            "library, which is how a restore is rehearsed; needs the off-machine "
+            "pull, and rolls no session back"
+        ),
+    )
     parser.set_defaults(_handler=perform_restore)
+
+
+def _target_invalid(message: str, **detail: Any) -> CratekitError:
+    """The invocation, not the directory, is what this refuses.
+
+    ONE SLUG OVER TWO SHAPES, which is the shape ``cli.review`` already settled
+    for its own selection refusals: a target without the off-machine pull and a
+    target beside a capture rollback are two spellings of one misunderstanding,
+    that ``--target`` names somewhere to REHEARSE a database restore rather than
+    a second place to perform the live one. The remedy is the same act in both,
+    so a second slug would only make a consumer branch on the message text.
+
+    NOT ``restore-target-absent`` AND NOT ``restore-target-is-live-root``, and
+    the distance is worth keeping: those two are facts about a PATH, and a
+    person who is told their directory is wrong will go looking at the directory,
+    which here is not where the mistake is.
+
+    THE REMEDIATION IS WRITTEN HERE RATHER THAN LOOKED UP, which is the opposite
+    of what ``_refused`` does one function up, and the difference is not a style.
+    ``cratekit.cli.exit_codes`` reserves the slugs a MODULE's refusal enum
+    raises, and ``tests/test_reserved_causes.py`` fails a reservation nothing in
+    that population produces, on the ground that a reservation with no producer
+    reads as a contract and is not one. This refusal is the verb's own, so its
+    registration is the closed reason registry in ``cratekit.core.cause``, and
+    its sentence lives beside the condition that raises it.
+    """
+    return CratekitError(
+        Cause(
+            reason="restore-target-invalid",
+            message=message,
+            remediation=Remediation(
+                steps=(
+                    "a restore target takes the database from the off-machine "
+                    "snapshot and rolls no write session back; ask for the "
+                    "off-machine pull, and name either a session to roll back or "
+                    "a target, never both",
+                )
+            ),
+            origin=("session.restore_cli",),
+            detail=detail,
+        )
+    )
+
+
+def _target_is_live(message: str, **detail: Any) -> CratekitError:
+    """A destination that is the live library, by either of the two ways it can be.
+
+    ONE SLUG OVER BOTH CHECKS, because the step is one act: name a directory
+    that is not this library. Naming the root and landing the database on the
+    live file are different mistakes to make and the same mistake to fix, and
+    ``detail`` carries which of the two fired for anything that wants to tell
+    them apart without reading English.
+
+    ITS SENTENCE IS WRITTEN HERE for the reason the function above gives at
+    length: the reservation table belongs to the refusal enums a module raises,
+    and this is the verb's own refusal.
+    """
+    return CratekitError(
+        Cause(
+            reason="restore-target-is-live-root",
+            message=message,
+            remediation=Remediation(
+                steps=(
+                    "name a directory the live library is not inside and does "
+                    "not contain, and check where the database itself would land "
+                    "when the database sits outside the library root; restoring "
+                    "onto the live library is this verb with no target named",
+                )
+            ),
+            origin=("session.restore_cli",),
+            detail=detail,
+        )
+    )
+
+
+def _restore_target(cfg: config.Config, args) -> Path | None:
+    """The directory ``--target`` names, resolved and refused, or ``None``.
+
+    ``None`` IS TODAY'S VERB UNCHANGED. Omitting the flag restores onto
+    ``cfg.library.root`` exactly as it did before this function existed, so the
+    live restore keeps every one of its gates and none of these checks apply to
+    it. Everything below is about the flag.
+
+    IT REFUSES BEFORE THE GATE IS ASKED AND BEFORE ANY SESSION OPENS. A person
+    who is going to be told their target is the live library should not first be
+    asked to confirm a destructive restore, and a target that would land on the
+    live database must not reach a code path that has already taken the library
+    lock and started resolving paths against it.
+
+    THE RESOLUTION IS THE GUARD'S FIRST STEP AND NOT A CONVENIENCE. Both
+    comparisons below are between paths, and a relative path compares equal to
+    nothing: ``Path("library")`` is neither the configured root nor inside it,
+    whatever directory the person is standing in when they type it. Both sides
+    are resolved so the comparison is about the two places on the disk rather
+    than about two spellings.
+
+    TWO DESTINATION CHECKS, AND THE SECOND IS NOT IMPLIED BY THE FIRST. The
+    containment check refuses the library root and anything above or below it.
+    That is the whole answer only while the database sits inside the root. In the
+    layout ``library.db_outside_root_acknowledged_on`` exists for, which is
+    rekordbox's own default, the database lives somewhere else entirely and
+    :func:`cratekit.modules.tools.backup.database_target_for` rebases it as
+    ``target / database.name``. So a person can name the parent directory of
+    their live database, pass the containment check honestly, and have the
+    restore write ``master.db`` straight over the live one. The second check asks
+    the question that actually matters, which is where the DATABASE lands, and it
+    asks it through the same function the plan will use rather than through a
+    second opinion about vendor layout.
+
+    EXISTENCE IS NOT CHECKED HERE. ``backup.plan_restore`` already refuses a
+    target that is not a directory, with ``restore-target-absent`` and its own
+    reserved remediation, and a second check here would be a guard covered by
+    another guard, which is a guard nothing covers.
+    """
+    raw = getattr(args, "target", None)
+    if raw is None:
+        return None
+    if not args.from_backup:
+        raise _target_invalid(
+            "a restore target is a place to put a database pulled from the "
+            "off-machine snapshot, so it needs the off-machine pull; ask for it, "
+            "or drop the target and restore the live library",
+            target=str(raw),
+        )
+    if args.session_id is not None or args.discard:
+        raise _target_invalid(
+            "a restore into a directory that is not the library restores the "
+            "database and nothing else; rolling a write session back moves state "
+            "coupled to the live library and cannot be pointed elsewhere, so name "
+            "a session or a target and not both",
+            target=str(raw),
+            session_id=args.session_id,
+            discard=list(args.discard),
+        )
+    resolved = Path(raw).expanduser().resolve()
+    root = Path(cfg.library.root).resolve()
+    if resolved == root or resolved.is_relative_to(root) or root.is_relative_to(resolved):
+        raise _target_is_live(
+            f"{resolved} is the live library at {root}, or holds it, or sits "
+            f"inside it; a rehearsal restores somewhere the live library is not, "
+            f"and restoring onto the live library is this verb without a target",
+            target=str(resolved),
+            library_root=str(root),
+            check="containment",
+        )
+    landing = backup.database_target_for(cfg, resolved).resolve()
+    live = config.state_path("rekordbox_db", cfg).resolve()
+    if landing == live:
+        raise _target_is_live(
+            f"the database would land on {landing}, which is this library's live "
+            f"database; the target is outside the library root and the database "
+            f"is too, so naming its directory restores over it in place",
+            target=str(resolved),
+            database_target=str(landing),
+            live_database=str(live),
+            check="destination",
+        )
+    return resolved
 
 
 def _newest_restorable(cfg: config.Config) -> restore.Restorable | None:
@@ -367,6 +535,7 @@ def _offer(
     from_backup: bool,
     snapshot: str | None,
     include_mirror: bool,
+    target: Path | None = None,
 ) -> dict[str, Any]:
     """What the person is being asked to approve, as a ``plan/1`` payload.
 
@@ -380,6 +549,14 @@ def _offer(
     work. A later session committing between the offer and the answer changes it,
     so the digest moves and the recorded decision is refused as stale rather than
     honoured against a library that is no longer the one it described.
+
+    THE TARGET IS IN THE DIGEST for the same reason the discard set is. Where the
+    database lands is most of what a person is approving, and a decision that
+    could not tell a rehearsal into a scratch directory from a restore over the
+    live library would let an answer given to the harmless one be honoured
+    against the destructive one. ``"library"`` names the absent flag rather than
+    ``None``, so the two are different values under the digest and neither is the
+    empty one.
     """
     items: list[dict[str, Any]] = []
     if from_backup:
@@ -388,6 +565,7 @@ def _offer(
                 "half": "off-machine",
                 "snapshot": snapshot or "newest",
                 "include_mirror": include_mirror,
+                "target": str(target) if target is not None else "library",
             }
         )
     if chosen is not None:
@@ -502,16 +680,25 @@ def restore_under_one_session(
     that a named decision exists, and R33 is why that module refuses to prompt
     for one itself.
 
-    ``target`` IS A SEAM AND NOT A FLAG, and the verb never passes one. The
-    capture half resolves every path it writes from ``cfg.library.root``, and
+    ``target`` IS NOW REACHABLE FROM THE COMMAND LINE, and the hazard that kept
+    it off one is answered at the verb rather than here. The capture half
+    resolves every path it writes from ``cfg.library.root``, and
     :func:`cratekit.core.restore.plan` refuses a session that does not authorise
-    that root, so a command line that pointed the mirror half somewhere else
-    would put the two halves of one restore on two volumes: the database from the
-    remote on a replacement disk, and the coupled state rolled back on the
-    configured one. Recovering onto a different volume is a real thing to want
-    and it is a different verb, with a different set of gates, which is what
-    ``core.restore.bare_metal_session`` exists for. The parameter stays because a
-    test needs somewhere to restore that is not this machine's real library.
+    that root, so a target pointing the mirror half somewhere else while a
+    session rolled back would put the two halves of one restore on two volumes:
+    the database from the remote on a replacement disk, and the coupled state
+    rolled back on the configured one. ``_restore_target`` refuses that
+    combination outright, so the flag can only ever produce the off-machine half
+    alone, which is a database restored into a named directory and nothing else
+    (R-368). Recovering a whole volume is still a different verb with a different
+    set of gates, which is what ``core.restore.bare_metal_session`` exists for.
+
+    THIS FUNCTION STILL TAKES BOTH, and that is deliberate rather than an
+    oversight. The parameter remains a seam, and the composition test drives both
+    halves at once against a scratch directory to prove one acquisition of the
+    lock. The refusal lives where the two halves are CHOSEN, which is the verb,
+    and putting it here as well would break the measurement that proves the
+    engine composes at all.
 
     ``analysis_roots`` NAMES THE LIBRARY ROOT rather than being left empty. A
     restore replaces the database and everything coupled to it, so anything under
@@ -682,11 +869,23 @@ def perform_restore(ctx) -> Envelope:
     declared gate to firing, and "nothing to restore" is an answer a person can
     still abort; skipping the question on an empty library would also make the
     one library that most needs asking the one that is never asked.
+
+    A TARGET SELECTS NO CAPTURE AT ALL, and the line that does it is the second
+    half of ``_restore_target``'s refusal rather than a separate policy. That
+    function refuses a target beside a NAMED session; this is the other way a
+    capture gets into a run, which is the default, where a bare invocation means
+    the newest restorable one. Leaving the default in place would take a person
+    who asked to rehearse a database restore into a scratch directory and roll
+    the live library back to a session as well, which is the destructive act the
+    flag exists to avoid, chosen by nobody.
     """
     cfg = _load()
+    target = _restore_target(cfg, ctx.args)
     requested = ctx.args.session_id
     chosen: restore.Restorable | None = None
-    if requested is None:
+    if target is not None:
+        chosen = None
+    elif requested is None:
         chosen = _newest_restorable(cfg)
     else:
         chosen = _named(cfg, requested)
@@ -697,6 +896,7 @@ def perform_restore(ctx) -> Envelope:
         from_backup=ctx.args.from_backup,
         snapshot=ctx.args.snapshot,
         include_mirror=ctx.args.include_mirror,
+        target=target,
     )
     spec = _confirm_gate(ctx.entry)
     option = ctx.gate.require(spec, digest=offered["digest"])
@@ -713,6 +913,7 @@ def perform_restore(ctx) -> Envelope:
         from_backup=ctx.args.from_backup,
         snapshot=ctx.args.snapshot,
         include_mirror=ctx.args.include_mirror,
+        target=target,
     )
     return ctx.envelope(data=_performed(report, offered))
 
