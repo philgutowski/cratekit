@@ -963,6 +963,25 @@ def test_discovery_enqueues_collaborators_from_listed_matching_releases():
     assert roster.artists == [lead, guest]
 
 
+def test_a_discovered_artist_already_on_the_roster_is_not_added_twice():
+    own = ProviderArtist(
+        "Harbour Lights",
+        [Release("own1", copyright="(P) 2026 Harbour Lights")],
+        artist_id="1",
+    )
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Harbour Lights",
+        artists=[Named("Harbour Lights", identity="1")],
+    )
+    client = FakeClient(artists=[own], albums=[compilation])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert roster.artists == [own]
+
+
 def test_discovery_runs_when_the_label_already_has_an_artist_page():
     own = ProviderArtist(
         "Harbour Lights",
