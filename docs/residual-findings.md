@@ -16463,6 +16463,16 @@ invocation in another output mode. Nothing is wrong in what it computed.
 **Closes when:** the human rendering of `review_set/1` names the harvested
 labels and the unresolved count, and a test drives the rendered text.
 
+**Closed 2026-09-18 on `unit/issue91-the-harvest-prints-nothing-a-person-can-`.**
+`cli.render.render_review_set` is gated on the schema the way the diagnostic
+table is. A harvest item's `name` is its own indented line. Other review_set
+items keep their own fields. Tests drive the real dispatcher in the default
+human mode, because `tests.cli_drive.drive` always requests json and that is
+why every harvest test stayed green over a blank answer. Mutation table
+`docs/mutation/r378.md`, 6 of 6 killing, null control 0 of 7603, no collect
+drift, every restore verified against `git show HEAD`. The learning is
+`docs/solutions/workflow-issues/a-json-only-driver-cannot-see-a-blank-human-renderer.md`.
+
 ---
 
 ## R-379. Every offered release records its artist as a Python object address
