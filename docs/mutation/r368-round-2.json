@@ -1,0 +1,185 @@
+{
+  "name": "r368-round-2",
+  "pass_kind": "light",
+  "branch": "relay/101",
+  "head": "6dd3302",
+  "when": "2026-09-18 17:42 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7651,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/session/restore_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/session/restore_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "75425845a3c9423d",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7651,
+    "baseline_collected": 7651,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G6_ancestors_not_walked",
+      "description": "re-measured: ask samefile of the candidate alone, so a differently cased ancestor is missed",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d9e5ed6b8df95f66",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_differently_cased_ancestor_still_puts_the_target_inside_the_library"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return any(_same_place(ancestor, root) for ancestor in (place, *place.parents))\n",
+      "new": "    return _same_place(place, root)\n"
+    },
+    {
+      "id": "G14_the_destination_check_is_equality_only",
+      "description": "re-measured: drop the name-plus-parent half, so a landing path that is not on disk yet passes",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5e014efb480fbd2c",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_database_that_is_not_on_disk_yet_is_still_the_live_database"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _same_place(landing, live) or (\n        landing.name == live.name and _same_place(landing.parent, live.parent)\n    ):\n",
+      "new": "    if _same_place(landing, live):\n"
+    },
+    {
+      "id": "R1_the_live_root_refusal_is_reworded",
+      "description": "re-measured: reword the destination refusal rather than appending to it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e16971f726eb0631",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_whose_database_lands_on_the_live_one_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"the database would land on {landing}, which is this library's live \"\n            f\"database; the target is outside the library root and the database \"\n            f\"is too, so naming its directory restores over it in place\",\n",
+      "new": "            f\"the chosen folder resolves to somewhere this installation already \"\n            f\"reads from, so the copy would replace what is there\",\n"
+    },
+    {
+      "id": "G7_target_not_resolved",
+      "description": "re-measured: compare the raw argument, leaving samefile to answer for a relative spelling",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f082f411a4e8b6c4",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_relative_target_is_compared_as_the_place_it_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    resolved = Path(raw).expanduser().resolve()\n",
+      "new": "    resolved = Path(raw).expanduser()\n"
+    },
+    {
+      "id": "G7_composite",
+      "description": "what the resolution does hold now that samefile answers the comparison: report the word somebody typed rather than the directory it named",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": "G7_target_not_resolved",
+      "fingerprint": "b79f0cec620da577",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_relative_target_is_compared_as_the_place_it_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            target=str(resolved),\n            library_root=str(root),\n",
+      "new": "            target=str(raw),\n            library_root=str(root),\n"
+    }
+  ],
+  "dropped": []
+}
