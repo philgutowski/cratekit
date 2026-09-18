@@ -1045,7 +1045,11 @@ def reconcile(store: JobStore, job_id: str, *, root: Path | None = None) -> Job:
 
 
 def evidence_or_raise(
-    *, attempted: int, succeeded: int, failed_cause: Cause | None = None
+    *,
+    attempted: int,
+    succeeded: int,
+    failed_cause: Cause | None = None,
+    retryable: bool = True,
 ) -> None:
     """Refuse to report an empty success when everything actually failed.
 
@@ -1057,20 +1061,32 @@ def evidence_or_raise(
     Attempting nothing is NOT this case and does not raise. A job with no items is
     a genuine no-op, and treating it as a failure would make an up-to-date source
     look broken.
+
+    ``retryable`` FOLLOWS THE ITEMS. The slug stays ``no-evidence`` because the
+    evidence rule is still true. Hardcoding it true, which this function did,
+    wrapped a permanent item failure as something to retry later (R-380, and the
+    remaining engine half of R-266).
     """
     if attempted == 0 or succeeded > 0:
         return
+    extra: dict[str, Any] = {}
+    if retryable:
+        extra["remedy"] = Remedy.RETRY_LATER
+    else:
+        extra["steps"] = (
+            "the failed items cannot succeed on resume; inspect each item's cause",
+        )
     raise refuse(
         "no-evidence",
         f"all {attempted} items failed, so there is no evidence of success; an "
         f"empty result from a total failure is indistinguishable from having found "
         f"nothing, and only one of those may advance anything downstream",
-        remedy=Remedy.RETRY_LATER,
         scope=Scope.SOURCE,
-        retryable=True,
+        retryable=retryable,
         origin=("jobs",),
         detail={"attempted": attempted},
         inner=failed_cause,
+        **extra,
     )
 
 
@@ -1150,19 +1166,66 @@ class DriveResult:
     drifted: tuple[str, ...] = field(default_factory=tuple)
 
 
-def _partial_failure_cause(job_id: str, result: DriveResult, inner: Cause | None) -> Cause:
-    return Cause(
-        reason="unavailable-transient",
-        message=(
-            f"job {job_id} finished {result.processed} items and failed "
-            f"{result.failed}; the failures keep the job from succeeding and the "
-            f"successes are already durable"
+def _failure_verdict(
+    failed: Sequence[Cause],
+) -> tuple[str, bool, Remediation]:
+    """Reason, retryable, and remediation for a job whose items failed.
+
+    The item rows already carry the honest causes. The job cause a person is
+    told to act on has to read them: a wrapper that always says the failure is
+    transient tells someone to resume work that cannot succeed (R-380).
+    """
+    if not failed or any(cause.retryable for cause in failed):
+        return (
+            "unavailable-transient",
+            True,
+            Remediation(remedy=Remedy.RESUME_JOB),
+        )
+    reasons = {cause.reason for cause in failed}
+    reason = failed[0].reason if len(reasons) == 1 else failed[-1].reason
+    return (
+        reason,
+        False,
+        Remediation(
+            steps=(
+                "the failed items cannot succeed on resume; inspect each item's cause",
+            )
         ),
-        remediation=Remediation(remedy=Remedy.RESUME_JOB),
+    )
+
+
+def _partial_failure_cause(
+    job_id: str,
+    result: DriveResult,
+    inner: Cause | None,
+    failed: Sequence[Cause],
+) -> Cause:
+    reason, retryable, remediation = _failure_verdict(failed)
+    transient = sum(1 for cause in failed if cause.retryable)
+    permanent = sum(1 for cause in failed if not cause.retryable)
+    message = (
+        f"job {job_id} finished {result.processed} items and failed "
+        f"{result.failed}; the failures keep the job from succeeding and the "
+        f"successes are already durable"
+    )
+    if not retryable:
+        message += "; every failure is permanent so resuming this job cannot succeed"
+    elif transient and permanent:
+        message += f" ({transient} retryable, {permanent} permanent)"
+    return Cause(
+        reason=reason,
+        message=message,
+        remediation=remediation,
         scope=Scope.SOURCE,
-        retryable=True,
+        retryable=retryable,
         origin=("jobs",),
-        detail={"job_id": job_id, "processed": result.processed, "failed": result.failed},
+        detail={
+            "job_id": job_id,
+            "processed": result.processed,
+            "failed": result.failed,
+            "retryable_failed": transient,
+            "permanent_failed": permanent,
+        },
         inner=inner,
     )
 
@@ -1254,6 +1317,7 @@ def drive(
         driver = f"{os.getpid()}@{lock.name}"
         result = DriveResult(job=job, drifted=drifted)
         last_cause: Cause | None = None
+        failed_causes: list[Cause] = []
 
         with interruptible(stage=stage) as interrupt:
             while True:
@@ -1278,11 +1342,13 @@ def drive(
                     last_cause = exc.cause.at("jobs.drive")
                     fail_item(store, job_id, item.item_id, last_cause)
                     result.failed += 1
+                    failed_causes.append(last_cause)
                     continue
                 except Exception as exc:  # noqa: BLE001 - the item boundary converts
                     last_cause = _internal_item_cause(item, exc)
                     fail_item(store, job_id, item.item_id, last_cause)
                     result.failed += 1
+                    failed_causes.append(last_cause)
                     continue
 
                 if interrupt.signalled:
@@ -1313,6 +1379,7 @@ def drive(
             return result
 
         attempted = result.processed + result.failed
+        items_retryable = any(cause.retryable for cause in failed_causes)
         if attempted and not result.processed:
             # Recorded BEFORE raising. A raise that leaves the row saying running
             # is the unpersisted-decision half of the same incident: whatever
@@ -1322,10 +1389,15 @@ def drive(
                 job_id,
                 JobState.FAILED,
                 stage=stage,
-                cause=_partial_failure_cause(job_id, result, last_cause),
+                cause=_partial_failure_cause(
+                    job_id, result, last_cause, failed_causes
+                ),
             )
             evidence_or_raise(
-                attempted=attempted, succeeded=0, failed_cause=last_cause
+                attempted=attempted,
+                succeeded=0,
+                failed_cause=last_cause,
+                retryable=items_retryable,
             )
         if result.failed:
             result.job = transition(
@@ -1333,7 +1405,9 @@ def drive(
                 job_id,
                 JobState.FAILED,
                 stage=stage,
-                cause=_partial_failure_cause(job_id, result, last_cause),
+                cause=_partial_failure_cause(
+                    job_id, result, last_cause, failed_causes
+                ),
             )
         else:
             result.job = transition(store, job_id, JobState.SUCCEEDED, stage=stage)

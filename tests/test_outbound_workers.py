@@ -432,7 +432,11 @@ def test_the_resume_of_a_half_failed_export_does_not_exit_ok(
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK)
     assert resumed["cause"] is not None
-    assert resumed["cause"]["reason"] != "internal-error"
+    # The fake raises RuntimeError, which the item records as internal-error.
+    # The job used to wrap that as unavailable-transient. It now reports the
+    # item's own cause, which is not retryable (R-380).
+    assert resumed["cause"]["reason"] == "internal-error"
+    assert resumed["cause"]["retryable"] is False
     assert resumed["data"] is None or resumed["data"].get("state") != str(
         jobs.JobState.SUCCEEDED
     )
