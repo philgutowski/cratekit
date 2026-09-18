@@ -155,10 +155,11 @@ not exist.
 ### List document
 The one file format `acquire download` reads: a versioned, closed document of
 provider track identifiers, read by `match_cli.read_list` and nothing else. Until
-Phase G nothing in the product wrote one, which is R-400. One shared emitter
-writes it, and what each identifier came from, a playlist, a label and year, a
-sync run, rides a sidecar manifest beside it because the document's own keys are
-closed.
+Phase G nothing in the product wrote one, which is R-400. One shared emitter,
+`acquire/listdoc.py` since U68, writes it, and what each identifier came from, a
+playlist, a label and year, a sync run, rides a sidecar manifest beside it
+because the document's own keys are closed. A row with no provider identifier
+is never written into it and comes back as unlisted.
 
 ## Verification
 

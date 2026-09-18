@@ -17227,6 +17227,22 @@ playlists source and is on the board as issue #104.
 **Closes when:** a verb in this product writes a document `acquire download`
 accepts, from work the product itself resolved.
 
+**Narrowed 2026-09-18 on `relay/113`, U68. The engine half is closed and the
+verb half is open.** The product decision is made: ONE shared emitter, not a
+document per source. `src/cratekit/acquire/listdoc.py` turns rows the product
+resolved, `Wanted` tracks or `frozen_tracks` items, into `<name>.list.json`,
+which `match_cli.read_list` and `acquire.cli.frozen_tracks` read back to the
+same ids in the same order. It also writes a `<name>.manifest.json` provenance
+sidecar, since the list's keys are closed. Every listed row is read back through
+`match.read_row` before anything is written. A row without a provider id, or
+from another service, comes back `unlisted`. A different existing file refuses,
+an identical one is a no-op, and no listable row writes nothing. Driven in
+`tests/test_listdoc.py`. Mutation table `docs/mutation/u68.md`, 20 of 23
+killing, with the zeros read in `docs/mutation/u68-notes.md`. The author's
+table, not an independent one. **Still open:** no verb calls `listdoc.write`
+yet, so a person still cannot get from a resolved entrance to a download.
+That is the entrances' units, R-401 to R-403, R-359 and issue #110.
+
 ---
 
 ## R-401. An identified set cannot be handed to acquisition
@@ -17942,5 +17958,32 @@ outside the unit's files.
 waits for a decision that is never asked.
 
 **Closes when:** the paragraph is removed or corrected.
+
+---
+
+## R-428. A list written from frozen download items re-reads as the plain record
+
+**Found:** 2026-09-18, U68, by the unit's `/code-review`, driven.
+
+`listdoc.rows_of` accepts `acquire.cli.frozen_tracks` output as well as `Wanted`
+tracks. The freeze keeps only the split title, the artist and the ISRC. It drops
+the version, the key and the source's own spelling. A list written from a
+frozen mapping therefore freezes back identically, which is all `acquire
+download` reads, and re-reads to the PLAIN record for anything that matches or
+tombstones by title. A provider row for `Sun Path (feat. Mira)`, version
+`Extended Mix`, key 8A, is written as `Sun Path` with no version and no key.
+`test_a_frozen_mapping_carries_no_version_so_none_is_written` pins the
+behaviour and the `rows_of` docstring says so.
+
+**Measured cost:** none today, since no caller writes from frozen items. A
+future caller that did, and then handed that list to `match run`, would ask
+about a different recording from the one the provider listed.
+
+**Why not fixed here.** The emitter cannot write fields the freeze discarded,
+and the brief asks for the frozen input. Widening the freeze changes what
+`acquire download` queues, which is outside this unit.
+
+**Closes when:** the frozen input is removed from `rows_of`, or the freeze
+carries the version, key and spelling through.
 
 ---
