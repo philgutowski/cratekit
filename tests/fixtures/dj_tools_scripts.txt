@@ -7,7 +7,11 @@
 # must either be claimed by a registry entry's `source_scripts` or be listed in
 # CUT.md with a one-line reason.
 #
-# The first block is the [project.scripts] table, thirty entries.
+# The first block is the [project.scripts] table, thirty-three entries.
+# It was thirty until 2026-09-18, when a parity audit found dj-staging-repair,
+# dj-anlz-probe and dj-relocate-db in the source system's scripts table and in
+# neither this file nor CUT.md, so the contract test could not see them at all.
+# All three are now cut, with reasons, in CUT.md.
 
 dj-pipeline
 dj-setid
@@ -24,6 +28,9 @@ dj-resort-energy
 dj-resort-genre
 dj-split-genre-folders
 dj-genre-research
+dj-staging-repair
+dj-anlz-probe
+dj-relocate-db
 dj-create-vox-playlists
 dj-vox-backfill
 dj-analyze-validate

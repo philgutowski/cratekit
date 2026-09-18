@@ -17068,3 +17068,451 @@ gates and the session record is written somewhere it cannot be read as a
 recovery of this library.
 
 ---
+
+## R-397. `crate tag folder` writes genre and no album art, and nothing else in the product writes any
+
+**Found:** 2026-09-18, by a parity audit run against DJ_tools after a user asked
+whether Cratekit could replace it for bringing favourites in.
+
+The source system's tagger fetches artwork, re-encodes it to a CDJ compatible
+800x800 baseline JPEG, embeds it across FLAC, MP3, AIFF, WAV and M4A, and
+repairs already broken picture blocks in place without re-downloading:
+`DJ_tagging/tag_new_tracks.py:147-164` builds the JPEG, `:178-214` embeds it,
+`:317` and `:329` repair existing art, `:378-395` fetches when art is absent.
+
+`tagging/tag.py:122-148` writes the genre tag and stops. `SearchHit.art` is
+declared at `tag.py:50` and no code reads it. `tagging/searchers.py` never
+returns art bytes. `core/tags.py` has no picture writer, and a search for
+`APIC` or `Picture` over `src/cratekit` outside `_vendor` returns nothing.
+
+**The declaration is live.** `cli/registry.py:907` summarises the verb as "tag a
+folder of audio with genre and album art". That is the same shape as R-144's
+colour write, a declared half with no implementation behind it.
+
+**It is worse than absent, because the shipped downloader emits the defect the
+source system repaired.** `_vendor/tidal_dl_ng/metadata.py:102-109` sets the
+picture mime type and never sets width, height or depth, which is the zeroed
+PICTURE block Pioneer players render blank. The source system carried a repair
+pass for exactly this. Cratekit ships the producer and not the repair.
+
+**Measured cost:** every track acquired through Cratekit reaches the CDJs with
+no artwork, and a FLAC acquired through the vendored downloader carries a
+malformed picture block that no pass in this product will ever correct. Not
+measured on a live library, because no acquisition workflow completes today.
+
+**Why not fixed here.** Found by an audit, not by a unit, and art is a module
+sized piece of work: a source, a re-encoder, a per container writer and a
+repair pass over already acquired files.
+
+**Closes when:** `tag folder` embeds art on the containers the source system
+covered, and a repair pass exists for files already carrying a zeroed block, or
+the registry summary stops claiming art.
+
+---
+
+## R-398. Nothing in the product can produce the list document `acquire download` reads
+
+**Found:** 2026-09-18, by the same parity audit, as the common cause under four
+separate workflow gaps.
+
+`acquire download` takes a provider list document or a hand typed text list.
+`acquire/match_cli.py:226-266` and `:312-354` read that format. A search for a
+producer finds only readers. `docs/cutover.md:111-112` recorded the consequence
+for one workflow on 2026-09-16, that the download smoke test used a hand written
+document. The audit found it is not one workflow's problem: it is the seam every
+acquisition entrance stops at.
+
+The entrances, each of which resolves work and then has nowhere to put it:
+`intake set` (R-399), the label sweep and label import (R-400), `sync all`
+(R-401), the playlists source (R-359), and the favourites source (issue #110).
+
+**Measured cost:** Cratekit cannot complete any acquisition workflow end to end.
+A person can identify, match, resolve, verify and review, and then has to retype
+what they want into a text list by hand before a single file downloads. This is
+the reason the source system is still the live system, stated more precisely
+than `docs/cutover.md` states it.
+
+**Why not fixed here.** Found by an audit. Which surface owns the producer is a
+product decision: a shared emitter every source calls, or a document each source
+writes. R-359 already carries the narrower version of the same decision for the
+playlists source and is on the board as issue #104.
+
+**Closes when:** a verb in this product writes a document `acquire download`
+accepts, from work the product itself resolved.
+
+---
+
+## R-399. An identified set cannot be handed to acquisition
+
+**Found:** 2026-09-18, parity audit.
+
+`dj-pipeline full <url>` ran ingest, identify, diff, playlist creation, download
+and tag, then spliced the set into the library as its own playlist in play
+order: `DJ_setid/setid.py:554-562`, `:248-277`, and
+`DJ_setid/setid_lib.py:401-570`.
+
+`crate intake set` identifies and resolves and stops at a per track report of
+OWNED, OFFERED and MISSING. `intake/cli.py:21-32` states it: "It does not
+acquire ... no intake file is written from an offer", and `:714-756` hardcodes
+`"acquired": False`. The collection splice that builds a per batch intake
+playlist exists at `intake/ingest.py:207-226` and is reached only by
+`pipeline.ingest_file`, whose only caller is `intake_file` under `--export`.
+
+**Measured cost:** a person who identifies a set in Cratekit has a list on
+screen and no way to act on it inside the product. The missing tracks are
+retyped by hand into a text list. Not measured live; `intake set` has had no
+attended sitting.
+
+**Why not fixed here.** Found by an audit. It is R-398's seam reached from the
+set door, and composing acquisition spends real downloads, so it is attended.
+
+**Closes when:** a resolved set produces something `acquire download` reads.
+
+---
+
+## R-400. A label is discovered, verified and reviewed, and never enters the library
+
+**Found:** 2026-09-18, parity audit.
+
+The source system's label workflows ended with the label's releases downloaded,
+tagged, spliced into the collection and filed under
+`Record Labels / <Label> / <Label> <year>` as one importable file:
+`DJ_label/label_batch.py:154-183` downloads, `:185-232` runs the tail,
+`:233-249` and `:324-332` produce it, and `DJ_label/label_library.py:1136-1151`
+writes the tree.
+
+Both claiming Cratekit verbs stop at the review queue. `label/cli.py:827-830`
+says it plainly: "NOTHING IS PRODUCED. The sweep writes no file: it OFFERS into
+the review queue ... `LabelSource.acquires` is False, so the increment writes no
+intake file." Answering the review changes nothing, because `cli/review.py:426-470`
+records a verdict and produces no acquirable output. The tree writer
+`write/trees.py:542-597` `insert_record_labels_tree` exists and its only
+references in the repository are its definition, its `__all__` entry and three
+test files.
+
+**Both scripts, one gap.** `label/cli.py:786-833` serves `sync.labels` and
+`label.import` from the same worker.
+
+**Not covered by R-140, which is closed.** R-140 explicitly took the other arm,
+recording that "an acquisition recorded only after a review decision ... is not
+what landed and is not owed by this entry". `CUT.md` defers only the Tidal
+playlist folder script and says of the library import that it "is Feature 22 and
+does ship".
+
+**Measured cost:** the label sweep is the workflow with the most live evidence
+behind it, 15 of 47 labels swept on 2026-09-17, and none of that work can reach
+the library. The review answers a person gives are currently discarded.
+
+**Why not fixed here.** Found by an audit, and it is R-398's seam plus a tree
+write, which is two units rather than one.
+
+**Closes when:** an approved label release is acquired and filed under the
+record labels tree.
+
+---
+
+## R-401. `crate sync all` lands nothing, and its combined intake file is unreachable
+
+**Found:** 2026-09-18, parity audit.
+
+The source system's sync produced one importable file and closed with rekordbox
+import instructions: `DJ_sync/finalize.py:1-5` and `:41-49`.
+
+Cratekit's composer plans and queues all three sources correctly and each source
+stops short: labels offer without acquiring (R-400), playlists resolve without
+acquiring (R-359, issue #104), favourites is outbound only (issue #110). The
+combined writer is unreachable rather than merely unused: in `sync/run.py:183-199`
+`_append_intake` and the watermark sit below an early return taken when a source
+declares `acquires` False, and the only caller of `run.increment` in the package
+is the labels worker at `label/cli.py:775-783`, which declares exactly that.
+
+**R-130 is stale on this point.** It recorded that the engine's file "is a
+`TRACK Name` listing, not a Fresh Export splice" and that U37 owned the real
+emitter. U37's emitter landed on the `intake file` path at
+`intake/ingest.py:193-226`. `sync/run.py:107-122` still writes the stub, and
+that the writer is now unreachable entirely is not recorded anywhere.
+
+**Measured cost:** the orchestrator's product is one file to import, and it
+cannot produce one. Live on 2026-09-17 it queued 18 playlists and one labels
+job and landed nothing, which was read at the time as the sources being
+incomplete rather than the writer being unreachable.
+
+**Why not fixed here.** Found by an audit, and it closes only when its sources
+do.
+
+**Closes when:** a sync pass in which at least one source acquires writes a
+combined intake file.
+
+---
+
+## R-402. No acquisition path exists for a track the configured provider does not carry
+
+**Found:** 2026-09-18, parity audit.
+
+`dj-pipeline fetch-others` searched SoundCloud and then YouTube with `yt-dlp`,
+ranked the candidates, wrote a review file for a person to judge, and on
+`--apply` downloaded the picks into the same tail as everything else. It was the
+one sanctioned lossy exception, marked downstream:
+`DJ_setid/fetch_others.py:1-20` and `:33`, registered at `DJ_setid/setid.py:902-909`.
+
+Cratekit has the downstream half and not the act. The lossy marker exists at
+`core/naming.py:141` and `:285`. `core/review.py:320-328` declares the
+`other_platforms.csv` work queue and states that "the fallback pass reads it and
+produces candidates", and no such pass exists. `core/binaries.py:102-104` knows
+the `yt-dlp` install hint and nothing invokes it. `acquire/cli.py:548` builds
+exactly one adapter from configuration and `:577-578` refuses a track the
+adapter did not return.
+
+**Measured cost:** every set holding a bootleg, a white label, an unreleased
+promo or anything else absent from the configured provider ends permanently
+short, with no route inside the product to close it. Feature 7 is dispositioned
+a policy row rather than a module, so nothing about this is deferred by design.
+
+**Why not fixed here.** Found by an audit. Note before taking it that the source
+system's queue had no writer either, so a person hand authored the CSV there
+too; the gap is the acquisition pass, not the queue.
+
+**Closes when:** a track the configured adapter cannot supply has a route to a
+second source that respects the lossless policy's marking rules.
+
+---
+
+## R-403. No verb writes a star rating, so a sorted library is an unrated one
+
+**Found:** 2026-09-18, parity audit.
+
+Every source system sort run set a 1, 3 or 5 star rating from the energy value,
+on tracks whose rating was still zero, in the same pass as the filing:
+`DJ_maintenance/sort_inbox.py:214-218` plans it, `:387-389` and `:448-449` apply
+it, and `sort_unplaced.py:173-177` with `:207-208` does the same.
+
+Cratekit holds both halves and calls neither. The planner
+`write/metadata.py:413` `plan_rating_backfill` and the byte writer
+`write/rbxml.py:1301` `apply_rating_changes` are reached only from
+`tests/test_rbxml.py:295` and `tests/test_xml_splice_golden.py:303`. The
+claiming verbs write membership and nothing else: `write/routing_cli.py:250-269`
+for the inbox and `:362-369` for unplaced.
+
+**R-275 is adjacent and not the same finding.** R-275 records the energy to
+rating write having a planner and no worker in the `analyze restamp` context.
+Nothing ties the missing rating write to `route.inbox` and `route.unplaced`,
+which are the verbs claiming the scripts that performed it. R-275 also does not
+record that `plan_rating_backfill` is fill-if-empty by construction, so it
+cannot re-spread ratings after a recalibration even once wired, which is the
+other half of what the source system's re-rate did.
+
+**Measured cost:** a person who files their library with Cratekit gets every
+track placed correctly and every one of them unrated. Not measured live.
+
+**Why not fixed here.** Found by an audit, and a rating write is a guarded
+database write behind a gate rather than a wiring change.
+
+**Closes when:** a filing pass writes ratings, and a recalibration can re-spread
+ratings it did not originally set.
+
+---
+
+## R-404. The "Sets and Long Tracks" playlist is never built
+
+**Found:** 2026-09-18, parity audit.
+
+`dj-sort-unplaced` collected every collection track longer than 20 minutes and
+created a root playlist for them on every run: `sort_unplaced.py:38` sets the
+threshold, `:179` collects, `:210-211` writes, and `:76-82` inserts the root
+playlist.
+
+Cratekit ported the writer, `write/rbxml.py:1331`, and calls it nowhere outside
+`tests/test_rbxml.py:313`. `write/routing_cli.py:362-369` emits identifier and
+path items only, and no code under `src/cratekit` reads a track's duration for
+any tree.
+
+**Measured cost:** the standing separation between sets and tracks is gone, and
+a person mixing from the library meets full length sets in genre playlists with
+nothing marking them. Not measured live.
+
+**Why not fixed here.** Found by an audit. It needs a duration read the tree
+path does not currently perform.
+
+**Closes when:** a filing pass builds the long track playlist, or the taxonomy
+declares it and the tree writers fill it.
+
+---
+
+## R-405. `crate name apply` renames library files without consulting the collection
+
+**Found:** 2026-09-18, parity audit. **This is a hazard rather than a missing
+capability, and it is the only finding in this block that can lose data.**
+
+`dj-path-repair` refused to rename any file the collection already referenced,
+and said so per file: `DJ_maintenance/path_repair.py:225-227` tests the location
+attribute against the export's bytes and prints `imported-do-not-touch`.
+
+`name.apply` has no such check. `write/naming_cli.py:144` defaults its root to
+`cfg.library.root` when `--root` is omitted, `:102-109` walks that root with
+`rglob`, and `:152-171` renames every file whose rendered name differs and then
+writes tags. The module opens no database: a search for database, collection or
+splice access in `write/naming_cli.py` returns nothing.
+
+**The guard and the rename ended up in different verbs.** `repair paths`, which
+claims `dj-path-repair`, only queues proposals at `intake/repair_cli.py:44-58`.
+The verb that renames is the one without the guard.
+
+**Measured cost:** unmeasured, and the exposure is the whole library. Run
+against a library whose files rekordbox has imported, this renames them and
+leaves every affected collection row pointing at a path that no longer exists.
+The author's library carries 9937 collection rows. A gate does stand in front of
+the write and the plan lists each rename, so a person who reads the plan can
+abort, but the plan states old and new filenames and says nothing about which
+files the collection references, which is the fact that decides whether the
+operation is safe.
+
+**Why not fixed here.** Found by an audit rather than a unit. The fix is a read
+of the collection on the rename path plus a refusal, which is a guarded surface
+change, and the alternative fix of re-pointing rows after a rename is a larger
+product decision.
+
+**Closes when:** `name apply` refuses to rename a file the collection
+references, or re-points the row in the same guarded session.
+
+---
+
+## R-406. The size guard that kept live sets out of vocal scoring is gone
+
+**Found:** 2026-09-18, parity audit. Not driven, so the claim is that the guard
+is absent, not that a crash was observed.
+
+The source system stat'ed every file, tagged anything over 250 MB as `voxlevel`
+zero and never handed it to the model, because loading one hung or exhausted the
+worker: `DJ_analysis/vocal_restamp.py:92-101` with `DJ_analysis/vocal_detect.py:39-48`.
+
+Cratekit has no size check on either path. `analysis/vocal.py:66-72` decodes the
+whole file at 32 kHz float32 in a pool whose worker budget is 1 GiB
+(`analysis/vocals.py:35-36`), and `vocals/cli.py:286-300` skips nothing. Chunked
+inference bounds the forward pass and not the decode.
+
+**Measured cost:** unmeasured. It bites only folders holding full length sets or
+mixes, and the author's library holds both.
+
+**Why not fixed here.** Found by an audit, and reproducing it costs a real
+scoring run over a large file.
+
+**Closes when:** a file too large to decode is refused or short circuited rather
+than handed to the decoder.
+
+---
+
+## R-407. `analyze restamp` and `analyze calibrate` read one folder, so no library-wide pass exists
+
+**Found:** 2026-09-18, parity audit.
+
+The source system walked the whole library in one command:
+`DJ_analysis/energy_calibrate.py:44-47` recurses under the processed tracks
+directory, and `energy_restamp.py:99` and `vocal_restamp.py:82` use it.
+
+Cratekit's item set is one level of one folder, `analysis/cli.py:126-144`, used
+by calibrate at `:916` and restamp at `:629`.
+
+**R-376 records this for the vocals verb only.** The same shape on restamp and
+calibrate is not recorded. Calibrate is the worse half: a threshold or a decile
+fit taken over one genre folder is not the library's distribution, so the
+numbers it writes are wrong in a way a person cannot see, where restamp is
+merely laborious. The author's library holds 343 leaf folders.
+
+**Measured cost:** a back catalogue restamp is 343 invocations, and a
+calibration run the honest way is the same. A calibration run the convenient
+way, over one folder, silently fits the wrong population.
+
+**Why not fixed here.** Found by an audit. Whether a recursive mode belongs on
+the verb or in the job engine is a design question, and R-376 covers the third
+verb, so the three should move together.
+
+**Closes when:** a library-wide analysis pass exists, or calibrate refuses a
+sample it cannot treat as representative.
+
+---
+
+## R-408. `crate setbuild` cannot anchor on a track the library does not own
+
+**Found:** 2026-09-18, parity audit.
+
+The source system took a provider identifier or URL as the anchor and accepted a
+hand supplied Camelot key, which is the "should I buy this" workflow the
+operator skill documents: `DJ_setbuilder/cli.py:86` and `:89`.
+
+Cratekit accepts only a path under the library, `setbuilder/cli.py:117-120`, and
+refuses anything absent from the index at `:321-332`. The engine still supports
+both, `modules/tools/setbuilder.py:725` `resolve_anchor`, and nothing reaches
+it. The verb's docstring at `setbuilder/cli.py:17-23` states the cost, so this
+is a known decision rather than an oversight, and the capability exists in no
+other shape.
+
+**R-187 and R-188 are not this.** They cover the fuzzy lookup and the missing
+cache.
+
+**Measured cost:** the workflow that decides a purchase is unavailable. Lowest
+impact of this block, because the set building it blocks is speculative rather
+than something the library already contains.
+
+**Why not fixed here.** Found by an audit, and the refusal is deliberate, so
+reversing it is a product decision rather than a repair.
+
+**Closes when:** an anchor outside the library is accepted with a supplied key,
+or the decision to require ownership is recorded as final.
+
+---
+
+## R-409. Doctor's remedy for a missing provider credential names a verb that cannot supply one
+
+**Found:** 2026-09-18, parity audit.
+
+`cli/doctor.py:1362` with `cli/render.py:56` renders the remedy for a missing
+provider credential as `crate login`. That verb cannot mint a session from
+nothing: `cli/verbs/login.py:24-29` takes an already minted credential and
+`:117-125` refuses otherwise. The real procedure is three deliberate steps in
+`docs/adapters.md:138-175`, mint through the vendored CLI, record with
+`crate login provider-session --from-file`, erase the file.
+
+**Measured cost:** a first run person who follows the product's own remedy
+reaches a refusal. Low, because the documented procedure exists and the author
+already holds a session. It is a first impression defect rather than a blocked
+workflow.
+
+**Why not fixed here.** Found by an audit, and the fix is a remedy string that
+points at the procedure.
+
+**Closes when:** the remedy names the procedure rather than a verb that cannot
+perform it.
+
+---
+
+## R-410. R-8 records the bare metal restore closed, and its session has no caller
+
+**Found:** 2026-09-18, parity audit. **This entry corrects a closed one.**
+
+`docs/residual-findings.md:448` records R-8 item 3 as "Closed by
+`restore.bare_metal_session`". The function exists at `core/restore.py:2466` and
+has no caller anywhere in `src`; the only reference outside its definition is a
+docstring mention at `session/restore_cli.py:755`. R-396 records the no caller
+fact and frames it as a rehearsal problem, which is the narrower reading.
+
+The capability it was closed against is recovery onto a replacement drive after
+the library's disk died. The source system's `backup.sh restore [dest]` took any
+destination root and pulled the mirror and the database into it,
+`DJ_backup/backup.sh:308-330`. Cratekit's `restore run` is gated on the live
+library being mounted and identity matching, `cli/registry.py:711`, and
+`--target` is database only and refuses to carry the mirror or roll a session
+back, `session/restore_cli.py:456-472`.
+
+**Measured cost:** unmeasured, and it is the one finding here whose cost lands
+entirely on a day that has not happened. Backups run and are current. The
+restore that uses them on a new drive has no shipped command, and the ledger
+says otherwise, so a person reading the ledger would not know to check.
+
+**Why not fixed here.** Found by an audit. Binding `bare_metal_session` means
+owning its unreviewed failure paths, which METHOD's seventh failure shape names
+directly.
+
+**Closes when:** a restore onto a volume that is not the recorded library runs
+from a shipped verb, or R-8 item 3 is reopened to say it did not close.
+
+---
