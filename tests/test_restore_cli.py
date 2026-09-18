@@ -1501,6 +1501,13 @@ def test_a_target_whose_database_lands_on_the_live_one_is_refused(
     assert envelope["cause"]["reason"] == "restore-target-is-live-root"
     assert envelope["cause"]["detail"]["check"] == "destination"
     assert not log.exists(), "the remote was reached by a run that is refused"
+    # THE SENTENCE, not only the slug. Measured on the author's own table, row
+    # R1_the_live_root_refusal_is_reworded: rewriting this message killed
+    # nothing. A person who named their database's own directory sees the
+    # message and not the slug, and what it has to tell them is WHERE the file
+    # would go, because the directory they typed is not the path that moves.
+    assert str(home / "master.db") in envelope["cause"]["message"], envelope
+    assert "live database" in envelope["cause"]["message"], envelope
 
 
 def test_a_target_with_no_off_machine_pull_is_refused(installed):
@@ -1682,6 +1689,15 @@ def test_a_relative_target_is_compared_as_the_place_it_names(installed, monkeypa
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+    # WHAT THE RESOLUTION ITSELF IS FOR, now that the filesystem answers the
+    # comparison. Measured on the author's own table, row G7_target_not_resolved:
+    # dropping the resolution killed nothing, because ``samefile`` stats a
+    # relative path against the working directory and answers correctly without
+    # it. What is left is the REPORT, and it is not nothing: a refusal that
+    # echoes back the word somebody typed tells them their target is the library
+    # without saying which directory that resolved to, which is the one fact
+    # they do not already have.
+    assert envelope["cause"]["detail"]["target"] == str(root), envelope
 
 
 def _case_folds(where: Path) -> bool:
@@ -1808,3 +1824,84 @@ def test_the_digest_moves_when_the_rehearsal_flag_does(installed):
         "the rehearsal flag did not move the digest, so a decision made about a "
         "preview is honoured against a restore that performs every step"
     )
+
+
+def test_a_differently_cased_ancestor_still_puts_the_target_inside_the_library(
+    installed, tmp_path
+):
+    """The ancestor WALK, measured where the candidate itself is not the root.
+
+    Measured on the author's own table, row G6_ancestors_not_walked: asking
+    ``samefile`` of the candidate alone killed nothing, because every case folded
+    drive above named the root itself, where one question is enough. A directory
+    three levels inside a library whose ROOT was typed in another case is the
+    shape that needs the walk, and it is the one a person produces by pasting a
+    path from somewhere that shouted it.
+    """
+    acknowledge(installed)
+    root = Path(installed.library.root)
+    (root / "beneath").mkdir()
+    inside = root.parent / root.name.upper() / "beneath"
+    assert not inside.is_relative_to(root), (
+        "the two spellings share a prefix here, so the string test alone answers "
+        "this and the walk is not what is being measured"
+    )
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(inside)])
+
+    if _case_folds(tmp_path):
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        assert envelope["cause"]["detail"]["check"] == "containment"
+    else:
+        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
+            f"this filesystem holds the two spellings as two directories, so "
+            f"{inside} is not inside the library"
+        )
+
+
+def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(
+    installed, tmp_path
+):
+    """The half of the destination check that ``samefile`` alone cannot make.
+
+    Measured on the author's own table, row
+    G14_the_destination_check_is_equality_only: dropping the name and parent
+    half killed nothing, because every drive of it had the live database sitting
+    on disk, where one stat answers the question. A database the configuration
+    names and the disk does not hold is not an exotic state, it is the state a
+    person is restoring FROM: the file is gone, which is why they are here. With
+    the file absent there is nothing to stat, so a case folded spelling of its
+    own directory passes the first half and lands ``master.db`` exactly where the
+    live one belongs.
+    """
+    acknowledge(installed)
+    home = tmp_path / "home" / "rekordbox"
+    home.mkdir(parents=True)
+    outside = replace(
+        installed,
+        library=replace(
+            installed.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-18",
+        ),
+    )
+    config.save(outside)
+    config.reset_cache()
+    assert not (home / "master.db").exists(), (
+        "the database is on disk here, so the first half of the check answers "
+        "this and the half under measurement is not reached"
+    )
+    shouted = home.with_name(home.name.upper())
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
+
+    if _case_folds(tmp_path):
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        assert envelope["cause"]["detail"]["check"] == "destination"
+    else:
+        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
+            f"this filesystem holds the two spellings as two directories, so the "
+            f"database would land in {shouted} and not where the live one belongs"
+        )
