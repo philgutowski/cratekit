@@ -31,7 +31,11 @@ every restore verified against `git show HEAD`. The two surviving zeros mutate
 test code and are recorded as such. The live mark stays attended and is
 Phillip's. New residuals R-397 and R-398. The learning is
 `docs/solutions/integration-issues/a-set-shaped-cursor-that-commits-before-a-side-effect-makes-the-next-increment-will-see-it-again-false.md`.
-Main's highest residual number is R-398.
+**Main's highest residual number is R-412**, not R-398. A docs merge landed after
+this unit: the parity audit against DJ_tools, fourteen findings, R-399 through
+R-412. They were numbered 397 through 410 on their branch and each moved up by
+two at the merge, because this unit already held 397 and 398. R-400 is their
+common cause, the list document `acquire download` reads and nothing produces.
 
 **The session before: R-368, issue #101, `relay/101`.**
 `crate restore run` takes `--target DIRECTORY`, a database restore into a

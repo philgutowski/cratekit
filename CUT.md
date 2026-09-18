@@ -15,6 +15,9 @@ noticed this existed" look identical in a diff six months later.
 | `dj-split-genre-folders` | A one-time migration between two specific genre folders in one person's library. Its own docstring says so. The declared taxonomy plus the tree writers do this generically. |
 | `dj-genre-research` | The other half of that same one-time migration. The lookup engine inside it is kept and folds into tagging; the verb is not. Still cut after Feature Inventory row 18 flipped from Cut to Module on 2026-08-26: `crate tag retag` claims that row and neither of these two scripts. Row 18 was "Electronica retag passes", one person's cleanup, and what U40 built is the general capability, correcting any value the user's own taxonomy declares too coarse to be a final tag. These two scripts stay cut because each is a migration between two named folders in one library, which is a different thing from a capability. |
 | `dj-create-vox-playlists` | The sub-playlists it creates are declared by the taxonomy and written by the tree writers, so creating them is no longer a separate act. |
+| `dj-staging-repair` | Added 2026-09-18, having been absent from both this file and the parity fixture since the fixture was written. One-incident tooling for the 2026-06-29 staging repair, `DJ_maintenance/staging_repair.py:1-10`, which re-pointed 1357 collection rows that entered rekordbox naming a laptop staging directory. It measures, reconciles and moves for that one incident and deliberately does not re-point rows itself. |
+| `dj-anlz-probe` | The same incident. It observes the analysis sidecars across a relocate, which an export cannot see, in order to prove a beat grid survived. It exists to justify that one plan's central claim, not to serve a workflow. |
+| `dj-relocate-db` | The same incident, and its fallback arm: it writes `FolderPath` directly when rekordbox's own relocate cannot be driven at 1313 rows. Re-pointing a moved row is `crate repair paths`, `cli/registry.py:588-592`. A bulk path rewrite outside a guarded session is the thing this product refuses on purpose. |
 
 ## Deferred
 
@@ -31,9 +34,18 @@ the claim needs a paragraph because the script's convention lives on more
 surfaces than the verb touches. The padded Camelot form sits on four: the
 filename, the title tag, the `initialkey` tag, and the rekordbox Name field.
 As of U39 the naming engine writes the padded form at write time and
-`name.apply` repairs existing filenames and title tags to it, which is the
-workflow the script was run for. The rekordbox Name half is
-`write/metadata.plan_title_padding`, a finished and tested planner that no
+`name.apply` repairs existing filenames and title tags to it. **Corrected
+2026-09-18:** this paragraph used to add "which is the workflow the script was
+run for", and that credited the wrong half. The script renames nothing. Its two
+written surfaces are the audio title tag (`pad_camelot_keys.py:45-73`) and the
+rekordbox Name, the latter either byte patched into an export (`:76-103`) or
+written straight onto the live database's Title in the `--db` mode this
+paragraph never mentioned (`:242-286`). So of the two surfaces the script
+actually wrote, the title tag landed and the rekordbox Name did not, and the
+rekordbox Name is the reason a person ran it, because it is what stops rekordbox
+sorting 1A after 10A. The filename this paragraph credited is Cratekit's own
+convention and was never a surface the script touched. The rekordbox Name half
+is `write/metadata.plan_title_padding`, a finished and tested planner that no
 verb calls; wiring it was offered and declined on 2026-08-24 and the decision
 is recorded as residual R-165. The `initialkey` tag is stamped at acquisition,
 read at five sites, rewritten by no padding pass in either system, and every
