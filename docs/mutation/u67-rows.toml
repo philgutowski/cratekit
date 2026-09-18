@@ -1,0 +1,227 @@
+name = "u67"
+pass_kind = "light"
+
+# U67 puts a read of the rekordbox collection in front of name apply's rename
+# and tag write. The verb WRITES FILES, so the table covers every new guard,
+# each removed alone, plus one existing guard on the same loop as a fixed
+# sample. Subset: tests/test_naming_apply_cli.py; a zero is promoted to the
+# full suite before it is reported.
+
+# ---------------------------------------------------------------------------
+# The two layers: the plan's check and the apply pass's re-check
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "L1_plan_check"
+description = "Drop the plan's check, so every candidate is planned as a rename"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    for path, filename in candidates:
+        if _is_referenced(path, referenced):'''
+new = '''    for path, filename in candidates:
+        if False:'''
+
+[[rows]]
+id = "L2_apply_recheck"
+description = "Drop the re-check before the rename, so the apply pass trusts the plan alone"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        if not path.is_file() or _is_referenced(path, referenced):
+            continue'''
+new = '''        if not path.is_file():
+            continue'''
+
+[[rows]]
+id = "L3_apply_reread"
+description = "Reuse no fresh read after the gate: the apply pass checks against an empty set"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    referenced = _referenced(_recorded(cfg), cfg=cfg) if renames else frozenset()'''
+new = '''    referenced = frozenset()'''
+
+[[rows]]
+id = "L4_apply_action_filter"
+description = "Apply every plan item, referenced ones included, leaving only the re-check to hold them"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    renames = [item for item in plan["items"] if item["action"] == RENAME]'''
+new = '''    renames = list(plan["items"])'''
+
+[[rows]]
+id = "L5_lazy_read"
+description = "Read the collection even when nothing would be renamed"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    referenced = _referenced(_recorded(cfg), cfg=cfg) if candidates else frozenset()'''
+new = '''    referenced = _referenced(_recorded(cfg), cfg=cfg)'''
+
+[[rows]]
+id = "L6_totals_referenced"
+description = "Report zero referenced files in the totals"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        "totals": {"count": len(items) - held, "referenced": held},'''
+new = '''        "totals": {"count": len(items) - held, "referenced": 0},'''
+
+# ---------------------------------------------------------------------------
+# The read: absence is never evidence
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "R1_refusal_to_empty"
+description = "A classified open failure reads as an empty collection instead of refusing"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    except CratekitError as exc:
+        inner = exc.cause'''
+new = '''    except CratekitError as exc:
+        return ()
+        inner = exc.cause'''
+
+[[rows]]
+id = "R2_generic_to_empty"
+description = "A read that fails after the open reads as an empty collection instead of refusing"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    except Exception as exc:  # noqa: BLE001 - every failed read is one refusal
+        raise refuse('''
+new = '''    except Exception as exc:  # noqa: BLE001 - every failed read is one refusal
+        return ()
+        raise refuse('''
+
+[[rows]]
+id = "R3_remedy_passthrough"
+description = "Drop the inner remedy, so the refusal defaults to restore-from-snapshot"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            remedy=inner.remediation.remedy or (None if steps else Remedy.REPORT_DEFECT),
+            steps=steps,'''
+new = '''            remedy=None,
+            steps=(),'''
+
+[[rows]]
+id = "R4_tombstones_dropped"
+description = "Skip tombstoned rows when reading the collection"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            return tuple(str(row.FolderPath or "") for row in handle.get_content())'''
+new = '''            return tuple(
+                str(row.FolderPath or "")
+                for row in handle.get_content()
+                if not row.rb_local_deleted
+            )'''
+
+[[rows]]
+id = "R5_exit_code"
+description = "Map collection-unreadable to PRECONDITION rather than LIBRARY_UNREADABLE"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        "collection-unreadable": ExitCode.LIBRARY_UNREADABLE,'''
+new = '''        "collection-unreadable": ExitCode.PRECONDITION,'''
+
+# ---------------------------------------------------------------------------
+# The match: every spelling a row can name its file by
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "M1_casefold"
+description = "Compare paths case sensitively"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    return locations.norm_for_compare(path).casefold()'''
+new = '''    return locations.norm_for_compare(path)'''
+
+[[rows]]
+id = "M2_nfc"
+description = "Skip NFC normalisation of the compared path"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    return locations.norm_for_compare(path).casefold()'''
+new = '''    return path.casefold()'''
+
+[[rows]]
+id = "M3_prefix_resolution"
+description = "Drop the prefix mapped spelling of a row"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        if resolved.path is not None:
+            keys.add(_key(resolved.path))'''
+new = '''        if False:
+            keys.add(_key(resolved.path))'''
+
+[[rows]]
+id = "M4_raw_spelling"
+description = "Drop the as-recorded spelling of a row, keeping only the resolved one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        keys.add(_key(decoded))
+        resolved = locations.resolve_recorded_path('''
+new = '''        resolved = locations.resolve_recorded_path('''
+
+[[rows]]
+id = "M5_location_decode"
+description = "Take the recorded value as a path without decoding a location URL"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            decoded = locations.location_to_path(value)'''
+new = '''            decoded = locations.norm_for_compare(value)'''
+
+[[rows]]
+id = "M6_remote_host_skip"
+description = "Let a row naming another host raise instead of being skipped"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        except locations.LocationDecodeError:
+            continue'''
+new = '''        except ZeroDivisionError:
+            continue'''
+
+[[rows]]
+id = "M7_absolute_spelling"
+description = "Ask only the resolved spelling of a candidate"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced'''
+new = '''    return _key(str(path.resolve())) in referenced'''
+
+[[rows]]
+id = "M8_resolved_spelling"
+description = "Ask only the absolute spelling of a candidate"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced'''
+new = '''    return _key(str(path.absolute())) in referenced'''
+
+# ---------------------------------------------------------------------------
+# A fixed sample of the loop's existing guards
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "E1_claim_target"
+description = "Existing: rename over a target another file already holds"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            if not naming.claim_target(target):
+                continue'''
+new = '''            if False:
+                continue'''

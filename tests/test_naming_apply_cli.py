@@ -741,3 +741,17 @@ def test_a_read_that_fails_after_the_open_refuses_and_renames_nothing(
     assert envelope["cause"]["reason"] == "collection-unreadable"
     assert envelope["cause"]["remediation"]["remedy"] == "report-defect"
     assert held.is_file() and free.is_file()
+
+
+def test_a_rename_onto_a_name_another_file_holds_overwrites_nothing(configured):
+    """Two files that render to one name. The padded one is already in
+    convention, and the unpadded one would be renamed onto it, which on this
+    platform replaces the file silently. The claim on the target is what
+    stops that, and nothing drove it until the U67 mutation table asked."""
+    folder = _folder(configured)
+    kept = _track(folder, "01A - 124 - Cola.flac", title="01A - 124 - Cola", key="01A")
+    other = _track(folder, "1A - 124 - Cola.flac", title="1A - 124 - Cola", key="1A")
+    tags.write_tags(kept, {"artist": "the one already in place"})
+    _apply(folder)
+    assert other.is_file()
+    assert tags.read_tag(kept, "artist") == "the one already in place"
