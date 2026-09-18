@@ -151,11 +151,16 @@ vendored downloader already owns that conversation. So authorising is two
 commands rather than one.
 
 Step 1 mints a PKCE session. This opens a browser and writes the tool's own token
-file, by default `~/.config/tidal-dl-ng/token.json`:
+file, by default `~/.config/tidal-dl-ng/token.json`. It has to run with the Python
+inside Cratekit's own environment, which pipx keeps out of sight, so the command
+asks pipx where that is:
 
 ```bash
-python -c "from cratekit._vendor.tidal_dl_ng.cli import app; app()" login
+"$(pipx environment --value PIPX_LOCAL_VENVS)/cratekit/bin/python" -c "from cratekit._vendor.tidal_dl_ng.cli import app; app()" login
 ```
+
+From a development checkout with `.venv` active, plain `python` in place of the
+long path does the same job.
 
 Step 2 moves it into the keychain, which is where the adapter reads it from:
 
