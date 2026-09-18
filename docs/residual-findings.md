@@ -16253,6 +16253,33 @@ database only by default, under gates that fit a target that is not the
 library, or the decision is recorded that rehearsal is out of scope and R-9's
 second gate is read as satisfied by this sitting's script.
 
+**Closed 2026-09-18 on `relay/101`, against the RESTATED close and not the
+one above.** `crate restore run` takes `--target DIRECTORY`, valid only with
+`--from-backup`, database only, rolling no session back: a named session
+refuses, `--discard` refuses, and the default that means the newest spendable
+capture is suppressed, so the run is the off-machine half alone. Omitting the
+flag is the live restore unchanged. Two destination refusals share
+`restore-target-is-live-root`: the target is the library root, holds it or
+sits inside it; or `database_target_for` lands the database on the live one,
+which is the acknowledged outside-root layout where containment cannot see it.
+The invocation refusals share `restore-target-invalid`. Both slugs are
+registered in `core.cause.REASONS` rather than in the reservation table, which
+reserves what a module's refusal enum raises, and the brief's key-files line
+naming `cli/exit_codes.py` is wrong about this repository: a reservation with
+no producer in that population fails `tests/test_reserved_causes.py`. A target
+that is not a directory still raises `restore-target-absent` from
+`plan_restore` and is deliberately not asked a second time. The target and,
+after this branch's review, `dry_run` are both in the digested offer. Mutation
+tables `docs/mutation/r368.md` and `docs/mutation/r368-round-2.md`, 16 rows
+then 5, ending 21 of 21 killing, null control 0 of 7649 and 0 of 7651, no
+collect drift, every restore verified against `git show HEAD`. The learning is
+`docs/solutions/integration-issues/a-resolved-path-compared-with-equals-is-not-a-same-directory-test.md`.
+
+**NOT fully closed, and the close above says which part.** The gates are
+still the live restore's: a rehearsal into a scratch directory takes the live
+library lock, refuses while rekordbox is running, and writes a session record
+on the live volume for a run that touches nothing on it. That is R-395.
+
 ---
 
 ## R-369. An acknowledgment run can be answered from a shell that can never continue it
@@ -16991,5 +17018,46 @@ is read from the code, not observed.
 running from, for a pipx install and for a plain virtual environment, or the
 message points at the README instead of naming a command. The three tests that
 assert the literal `pip install 'cratekit[analysis]'` change with it.
+
+---
+
+## R-395. A restore into a scratch directory still takes the live library's lock and still needs rekordbox closed
+
+**Found:** 2026-09-18, landing the restore rehearsal target, and named in that
+unit's brief as the leftover it would file.
+
+`crate restore run --from-backup --target SCRATCH` restores the database into
+a directory the live library is not in and does not contain. It reaches that
+work through `restore.recovery_session`, which is the live restore's gate set
+unchanged: the backup acknowledgment, the volume identity check, the library
+lock, an analysis-files watch over the library root, and a session record
+written on the live volume. `backup.plan_restore` then refuses while rekordbox
+or its agent is running. None of those describes anything the rehearsal
+touches. The run writes only under the target.
+
+Driven: the suite's `test_a_rehearsal_is_still_refused_while_rekordbox_is_running`
+refuses a scratch restore with `rekordbox-running` and exit 21, and the
+session log gains a recovery record for a run whose every write landed in a
+temporary directory.
+
+**Measured cost:** a person cannot rehearse a restore while they are using
+rekordbox, which is the moment a rehearsal costs them least, and every
+rehearsal leaves a recovery session in the log of a library it did not touch.
+The conservative direction: nothing is lost, the gates are the ones the live
+restore passes, and no state is at risk. Unmeasured how often a person would
+want to rehearse with the application open.
+
+**Why not fixed here.** Loosening the gates for a target is its own unit with
+its own blast radius. The lock is not obviously wrong even here: the target is
+not the library, and the SNAPSHOT the restore is planned against is the live
+library's, so a write session committing mid-rehearsal changes what the
+rehearsal is evidence about. `core.restore.bare_metal_session` already exists
+for recovery onto a volume that is not this one, has no caller in `src`, and
+is the place a gate set that fits a target belongs.
+
+**Closes when:** a rehearsal runs under gates chosen for a target that is not
+the library, or the decision is recorded that a rehearsal keeps the live
+gates and the session record is written somewhere it cannot be read as a
+recovery of this library.
 
 ---
