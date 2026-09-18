@@ -24,7 +24,7 @@ SOURCE = Provenance(source="playlists", source_ref="pl-9", year=2024)
 #: Three provider rows, the second embedding its version in the title and the
 #: third declaring it in its own field.
 ROWS = (
-    Row(ref="101", artist="Aurora Bloom", title="Sun Path", isrc="GBAAA2400001"),
+    Row(ref="101", artist="Aurora Bloom", title="Sun Path", isrc="GBAAA2400001", key="8A"),
     Row(ref="202", artist="Nova Reef", title="Tide Line - Nightwave Remix"),
     Row(ref="303", artist="Mira Vale", title="Low Orbit", version="Extended Mix"),
 )
@@ -45,6 +45,8 @@ def test_the_list_round_trips_through_the_real_reader_and_the_download_freeze(tm
         ("Nova Reef", "Tide Line"),
         ("Mira Vale", "Low Orbit"),
     ]
+    assert [w.key for w in wanted] == ["8A", None, None]
+    assert [w.version_key for w in wanted] == ["", "nightwave remix", "extended mix"]
     assert frozen_tracks(wanted) == {
         "101": {"artist": "Aurora Bloom", "title": "Sun Path", "isrc": "GBAAA2400001"},
         "202": {"artist": "Nova Reef", "title": "Tide Line", "isrc": None},
