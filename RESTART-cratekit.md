@@ -4,7 +4,36 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: the battery speed chore and the Phase G plan, `chore/battery-speed`, 2026-09-18.**
+**Last merged: U67, issue #112, `relay/112`, 2026-09-18.**
+`name apply` never renames or retags a file the rekordbox collection references,
+which closes R-407, the one open finding that could lose data library wide.
+`write/naming_cli._recorded` reads every row's `FolderPath`, tombstones
+included, through `rb_writer.open_db` with `require_closed` False, the
+`metadata_cli` pattern, because `tests/test_layering.py` forbids `write` from
+importing `adopt.collection`. `_referenced` keys each row as recorded and as
+prefix mapped, NFC normalised and casefolded; `_is_referenced` asks a
+candidate's absolute and resolved spellings. `_plan_for` marks each item
+`"action": "rename"` or `"referenced"`, both in the digest, `totals.count`
+stays the rename count and `totals.referenced` is new. `name_apply` reads the
+collection AGAIN after the gate and re-checks each item before the rename. Any
+failed read refuses as the new slug `collection-unreadable`, exit 25, carrying
+the inner cause and its remedy; there is no force flag. **The read is skipped
+when nothing would be renamed**, because the conformance suite drives this
+verb over a library with no database and the collection cannot change an
+empty outcome. Every other test in `tests/test_naming_apply_cli.py` stubs
+`_recorded` as a read, empty collection; the U67 tests use a disposable
+database. **A library with cloud sync ON now refuses `name apply`**, since the
+read open's canary refuses it; kept, recorded as R-425. The at-risk population
+re-pin moved 156 to 157 causes and 411 to 412 literals. Mutation tables
+`docs/mutation/u67.md` and `docs/mutation/u67-round-2.md`, 21 rows, all killed
+after round two added a collision test for the existing target claim, which
+had none. New residuals R-425 to R-427. **R-426 meets the board bar**, a row
+recorded through a link is unprotected, and its issue is owed after this
+merge. **Main's highest residual number is R-427.** Owed to an attended
+sitting: one plan only run against the live library to read `referenced`.
+Battery at the branch head: ruff clean, 7,698 passed and 1 skipped, scan clean.
+
+**The session before: the battery speed chore and the Phase G plan, `chore/battery-speed`, 2026-09-18.**
 Attended, not a board unit. Four things landed together.
 **The suite is parallel.** `addopts` carries `-n auto` and the dev extra carries
 `pytest-xdist`. Measured on 11 cores at 7,678 tests: 532 seconds serial, 86 at
@@ -28,7 +57,7 @@ run over this change, it is two lines behind two new tests.
 Phase G: the landing gap R-413, the rating scale hazard R-414, a correction to
 R-400's wording R-415, the uncalled export routing writers R-416, six smaller
 parity gaps, and the two entries issues 110 and 111 said they were owed, R-423
-and R-424. **Main's highest residual number is R-424.**
+and R-424.
 **METHOD changed.** Native Relay is in the loop and has a section. The
 serialized order list is gone, spent. A board bar says which residuals earn an
 issue, and a session now files that issue itself. The battery section says the
@@ -39,7 +68,7 @@ The two analysis tests near 30 seconds each spin a real process pool and were
 left alone. Battery at the merge: ruff clean, 7,678 passed and 1 skipped, scan
 clean.
 
-**The session before: R-358 code half, issue #105, `relay/105`.**
+**Two sessions before: R-358 code half, issue #105, `relay/105`.**
 `modules.outbound.service.RemoteAccount` declares a seventh member,
 `rename_playlist(playlist_id, name)`, and `TidalAccount` implements it over the
 playlist object `add_to_playlist` already edits. A retitle is not a removal, so
@@ -72,7 +101,7 @@ R-412. They were numbered 397 through 410 on their branch and each moved up by
 two at the merge, because this unit already held 397 and 398. R-400 is their
 common cause, the list document `acquire download` reads and nothing produces.
 
-**Two sessions before: R-368, issue #101, `relay/101`.**
+**Three sessions before: R-368, issue #101, `relay/101`.**
 `crate restore run` takes `--target DIRECTORY`, a database restore into a
 directory that is not the live library, which is how a restore is rehearsed.
 Valid only with `--from-backup`. It rolls no session back: a named session
