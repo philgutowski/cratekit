@@ -4,6 +4,11 @@ The naming engine owns mechanism. This shell owns the plan, the gate, and
 the filesystem rename. Absent key and BPM fields are omitted (R20). A
 lossy file is marked on filename, title tag, and library name together
 (R21), or the engine refuses.
+
+A file the rekordbox collection references is never renamed or retagged here
+(U67). rekordbox records a path once, at import, so a rename leaves the row
+pointing at nothing. The verb reads the collection, holds those files back and
+lists them in the plan, and refuses outright when the collection cannot be read.
 """
 
 from __future__ import annotations
@@ -11,10 +16,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, naming, tags
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
+from cratekit.core import config, locations, naming, rb_writer, tags
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import AUDIO_EXTS, MarkerRule, NameBudget, NameSpec, NameTemplate
+
+RENAME = "rename"
+REFERENCED = "referenced"
 
 
 def _load() -> config.Config:
@@ -99,10 +107,125 @@ def _spec_for(path: Path, *, template: NameTemplate, cfg: config.Config) -> Name
     )
 
 
+def _recorded(cfg: config.Config) -> tuple[str, ...]:
+    """Every path the collection records, tombstones included, or a refusal.
+
+    A READ, and the open says so: ``require_closed`` is the write-intent flag and
+    it stays False, the same open ``write/metadata_cli._open`` makes for its plan.
+    ``adopt.collection.read_collection`` is the same read one layer up, and the
+    layering test forbids this layer from importing it.
+
+    A TOMBSTONED ROW STILL COUNTS. rekordbox keeps the row, and a restore or a
+    re-import brings it back pointing at whatever path it recorded, so renaming
+    the file strands it exactly as it would strand a live one.
+
+    A DATABASE THAT WOULD NOT OPEN IS A REFUSAL, NEVER AN EMPTY COLLECTION. An
+    empty tuple from here means the database opened and holds no row, and that is
+    the only way to get one. Folding the two would rename every imported file in
+    the library on the day the volume holding the database is not mounted.
+    """
+    try:
+        target = rb_writer.live_db_path(cfg)
+        handle = rb_writer.open_db(
+            target,
+            require_closed=False,
+            unlock=rb_writer.unlock_needed(target),
+            cfg=cfg,
+        )
+        try:
+            return tuple(str(row.FolderPath or "") for row in handle.get_content())
+        finally:
+            rb_writer.close_db(handle)
+    except CratekitError as exc:
+        inner = exc.cause
+        steps = inner.remediation.steps
+        raise refuse(
+            "collection-unreadable",
+            f"the rekordbox collection could not be read, so nothing is renamed: "
+            f"{inner.message}",
+            remedy=inner.remediation.remedy or (None if steps else Remedy.REPORT_DEFECT),
+            steps=steps,
+            origin=("write.naming_cli",),
+            detail={"declared_reason": inner.reason},
+            inner=inner,
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 - every failed read is one refusal
+        raise refuse(
+            "collection-unreadable",
+            f"the rekordbox collection could not be read, so nothing is renamed: {exc}",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("write.naming_cli",),
+            detail={"kind": type(exc).__name__},
+        ) from exc
+
+
+def _key(path: str) -> str:
+    """One path as the referenced set compares it.
+
+    NFC for the reason ``core.locations`` gives, and casefolded because the
+    volume a library normally sits on ignores case. A recorded path that differs
+    from the file on disk only in case still names that file there, and a
+    rename would strand its row. On a volume that respects case the cost is a
+    file left unrenamed, which is the direction to be wrong in.
+    """
+    return locations.norm_for_compare(path).casefold()
+
+
+def _referenced(recorded: tuple[str, ...], *, cfg: config.Config) -> frozenset[str]:
+    """The keys of every file the collection references.
+
+    Each row contributes its path as recorded AND its path after the configured
+    volume rewrites, because most rows in a real library still carry a volume
+    name the drive stopped using long ago, and either spelling can be the one
+    that is on disk today. A row naming another host has no local path and
+    contributes nothing, since no local file can be the one it names.
+    """
+    rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
+    keys: set[str] = set()
+    for value in recorded:
+        if not value:
+            continue
+        try:
+            decoded = locations.location_to_path(value)
+        except locations.LocationDecodeError:
+            continue
+        keys.add(_key(decoded))
+        resolved = locations.resolve_recorded_path(
+            decoded, root=cfg.library.root, prefix_map=rules
+        )
+        if resolved.path is not None:
+            keys.add(_key(resolved.path))
+    return frozenset(keys)
+
+
+def _is_referenced(path: Path, referenced: frozenset[str]) -> bool:
+    """True when the collection records ``path``, by either spelling of it.
+
+    Both the absolute and the resolved spelling are asked, so a ``--root`` given
+    through a link or as a relative path is still recognised.
+    """
+    return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced
+
+
 def _plan_for(root: Path, *, cfg: config.Config) -> dict:
+    """The plan, with every file the collection references held back.
+
+    THE CHECK IS HERE, ON THE CHECKING PATH, so the digest the gate is answered
+    against covers it: a row that starts referencing a file changes the plan a
+    person approved. It runs for every root, inside the library or not, because a
+    collection can record paths anywhere on the machine.
+
+    The collection is read only when something would be renamed. With no rename
+    candidate its contents cannot change the outcome, and an empty folder is a
+    plan a person can still abort on a machine with no database yet.
+
+    ``totals.count`` stays the number of renames, and ``items`` carries the
+    referenced files too, each marked, so the plan says which files were held
+    back rather than leaving them out silently.
+    """
     template = _template(cfg)
     budget = _budget(cfg)
-    items: list[dict[str, str]] = []
+    candidates: list[tuple[Path, str]] = []
     if root.is_dir():
         for path in sorted(root.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in AUDIO_EXTS:
@@ -114,17 +237,22 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
                 parent_dir=str(path.parent),
             )
             if rendered.filename != path.name:
-                items.append(
-                    {
-                        "from": path.name,
-                        "to": rendered.filename,
-                        "path": str(path),
-                    }
-                )
+                candidates.append((path, rendered.filename))
+    referenced = _referenced(_recorded(cfg), cfg=cfg) if candidates else frozenset()
+    items: list[dict[str, str]] = []
+    held = 0
+    for path, filename in candidates:
+        if _is_referenced(path, referenced):
+            held += 1
+            items.append({"action": REFERENCED, "from": path.name, "path": str(path)})
+        else:
+            items.append(
+                {"action": RENAME, "from": path.name, "to": filename, "path": str(path)}
+            )
     return {
         "digest": digest_of({"kind": "rename", "items": items}),
         "items": items,
-        "totals": {"count": len(items)},
+        "totals": {"count": len(items) - held, "referenced": held},
         "chunk": None,
     }
 
@@ -149,9 +277,14 @@ def name_apply(ctx) -> Envelope:
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
     template = _template(cfg)
     budget = _budget(cfg)
-    for item in plan["items"]:
+    renames = [item for item in plan["items"] if item["action"] == RENAME]
+    # READ AGAIN AFTER THE GATE, because the gate can wait on a person for as
+    # long as they like and rekordbox can import a file in that time. The plan's
+    # check decides what a person was shown; this one decides what is touched.
+    referenced = _referenced(_recorded(cfg), cfg=cfg) if renames else frozenset()
+    for item in renames:
         path = Path(item["path"])
-        if not path.is_file():
+        if not path.is_file() or _is_referenced(path, referenced):
             continue
         rendered = naming.build(
             _spec_for(path, template=template, cfg=cfg),

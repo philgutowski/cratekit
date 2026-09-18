@@ -4887,7 +4887,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # reuses restore-target-absent, which backup.Refusal already declares and
     # the reserved table already carries, and the verb deliberately does not ask
     # that question a second time.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (156, 132, 24)
+    #
+    # Re-pinned on U67, 2026-09-18. ONE slug, named rather than counted:
+    # collection-unreadable, which name apply raises when the collection it must
+    # consult before renaming could not be read, so an unreadable database is
+    # never taken for an empty one. It is not in the reserved table, because
+    # that table reserves what a module's refusal ENUM raises and this is the
+    # verb's own. Population 156 to 157, non-reserved 132 to 133, reserved half
+    # UNCHANGED at 24.
+    #
+    # WHY THE SPECIFIC OPEN FAILURES ARE NOT REUSED. A missing database already
+    # has library-database-missing and a broken one database-open-failed, and
+    # the refusal carries whichever one happened as its inner cause and its
+    # remedy. The outer slug says what the verb could not do, which is the same
+    # sentence whichever way the open failed.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (157, 133, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5179,7 +5193,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # restore-target-invalid, which is why the non-key half does not move: they
     # are the verb's own refusals when a target names the live library or the
     # invocation cannot produce a rehearsal at all.
-    assert (len(literals), len(literals - set(causes))) == (411, 256), (
+    # Re-pinned on U67, 2026-09-18: 411 to 412 distinct, 256 non-keys
+    # UNCHANGED. ONE literal joined and NOTHING left, and it IS a cause,
+    # collection-unreadable, name apply's refusal over a collection it could
+    # not read. The plan's two action values, rename and referenced, are not
+    # kebab shaped and do not enter this population.
+    assert (len(literals), len(literals - set(causes))) == (412, 256), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

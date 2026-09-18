@@ -1487,6 +1487,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # about the set or the account is decided by it, and the chunk that
         # met it is retried on the next run rather than read as silence.
         "intake-recognition-failed": ExitCode.UPSTREAM_UNAVAILABLE,
+        # ── U67's refusal, appended for the reason every block above gives ────
+        #
+        # ``name apply`` could not read the collection it must consult before a
+        # rename, so which files rekordbox references was not established. A
+        # REFUSAL and never an empty collection, because reading absence as
+        # evidence here renames every imported file and strands its row. The
+        # raise site carries the inner cause's remedy rather than this code's
+        # default, since ``restore-from-snapshot`` is the wrong act for a
+        # database that is merely on an unmounted volume.
+        "collection-unreadable": ExitCode.LIBRARY_UNREADABLE,
     }
 )
 

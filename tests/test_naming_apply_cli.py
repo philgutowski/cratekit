@@ -19,16 +19,19 @@ from __future__ import annotations
 
 import io
 import json
+import unicodedata
 from pathlib import Path
 
 import pytest
 
 from cratekit import cli
-from cratekit.core import config, naming, tags
+from cratekit.core import config, locations, naming, rb_writer, tags
 from cratekit.core.exit_codes import ExitCode
+from cratekit.write import naming_cli
 from cratekit.write.naming_cli import _template
 from tests._containers import synth_container
 from tests.test_config import valid_data
+from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
 
 @pytest.fixture
@@ -42,9 +45,15 @@ def library(tmp_path, monkeypatch):
 
 @pytest.fixture
 def configured(library, monkeypatch):
-    """A machine set up far enough that the verb reaches its own logic."""
+    """A machine set up far enough that the verb reaches its own logic.
+
+    The collection is stubbed as READ AND EMPTY, which is a real state and not a
+    missing database: these tests are about the rename, and the collection guard
+    is driven against a disposable database further down.
+    """
     resolved = config.from_dict(valid_data(library))
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
+    monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: ())
     return resolved
 
 
@@ -433,3 +442,220 @@ def test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt(configured):
     assert after.startswith("Artist Name - "), "the leading artist was lost"
     assert "~" in after, "an over ceiling name should carry the truncation hash"
     assert len(after) < len(before), "nothing was truncated"
+
+
+# ---------------------------------------------------------------------------
+# U67: a file the collection references is never renamed or retagged.
+#
+# Driven against a DISPOSABLE database in the temporary library, never the
+# configured one, through the same seams ``tests/test_adopt_collection.py``
+# neutralises. The open is a read, so none of those seams weakens the guard
+# under test.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def prefix_map() -> list[dict[str, str]]:
+    """No volume rewrites, unless a test parametrizes this name."""
+    return []
+
+
+@pytest.fixture
+def collected(library, monkeypatch, prefix_map):
+    """A configured machine whose collection is a real, readable database.
+
+    The rows are added per test through :func:`_record`.
+    """
+    from pyrekordbox.db6 import database as binding
+
+    data = valid_data(
+        library,
+        rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
+    )
+    if prefix_map:
+        data["library"]["location_prefix_map"] = prefix_map
+    resolved = config.from_dict(data)
+    monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
+    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(
+        rb_writer,
+        "read_rekordbox_settings",
+        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
+    )
+    _build_disposable_database(Path(resolved.library.db_path), with_tag_category=False)
+    return resolved
+
+
+def _record(cfg, recorded: str, *, identifier: str, deleted: int = 0) -> None:
+    """Add one collection row recording ``recorded`` as its path."""
+    from pyrekordbox.db6 import tables
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    engine = create_engine(f"sqlite:///{cfg.library.db_path}")
+    with Session(engine) as db_session:
+        db_session.add(
+            _row(
+                tables.DjmdContent,
+                ID=identifier,
+                Title=Path(recorded).name,
+                rb_local_deleted=deleted,
+                FolderPath=recorded,
+            )
+        )
+        db_session.commit()
+    engine.dispose()
+
+
+def _pair(folder: Path) -> tuple[Path, Path]:
+    """Two unpadded files, each of which the pass would rename."""
+    held = _track(folder, "1A - 124 - Held.flac", title="1A - 124 - Held", key="1A")
+    free = _track(folder, "2A - 124 - Free.flac", title="2A - 124 - Free", key="2A")
+    return held, free
+
+
+def _refusal(folder: Path) -> tuple[int, dict]:
+    code, out, _ = drive([
+        "--output", "json", "-d", "name.apply.confirm=apply",
+        "name", "apply", "--root", str(folder),
+    ])
+    return code, json.loads(out)
+
+
+def test_a_referenced_file_is_untouched_and_its_sibling_is_renamed(collected):
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, str(held), identifier="10")
+    before = held.read_bytes()
+    plan = _plan(folder)
+    assert {item["from"]: item["action"] for item in plan["items"]} == {
+        held.name: "referenced",
+        free.name: "rename",
+    }
+    assert plan["totals"] == {"count": 1, "referenced": 1}
+    _apply(folder)
+    assert held.is_file() and held.read_bytes() == before
+    assert not free.exists() and (folder / "02A - 124 - Free.flac").is_file()
+
+
+def test_a_row_recorded_as_a_location_url_protects_its_file(collected):
+    folder = _folder(collected)
+    held, _free = _pair(folder)
+    _record(collected, locations.location_url(held), identifier="10")
+    _apply(folder)
+    assert held.is_file()
+
+
+@pytest.mark.parametrize(
+    "prefix_map", [[{"from": "/mnt/volume", "to": "{library.root}"}]]
+)
+def test_a_row_under_a_remapped_volume_still_protects_its_file(collected):
+    folder = _folder(collected)
+    held, _free = _pair(folder)
+    relative = held.relative_to(collected.library.root)
+    _record(collected, f"/mnt/volume/{relative}", identifier="10")
+    assert _plan(folder)["totals"]["referenced"] == 1
+    _apply(folder)
+    assert held.is_file()
+
+
+@pytest.mark.parametrize("form", ["NFD", "NFC"])
+def test_a_composition_variant_of_the_name_still_protects_its_file(collected, form):
+    folder = _folder(collected)
+    other = "NFC" if form == "NFD" else "NFD"
+    name = unicodedata.normalize(form, "1A - 124 - Café.flac")
+    held = _track(folder, name, key="1A")
+    recorded = str(folder / unicodedata.normalize(other, "1A - 124 - Café.flac"))
+    assert recorded != str(held)
+    _record(collected, recorded, identifier="10")
+    _apply(folder)
+    assert held.is_file()
+
+
+def test_a_case_variant_of_the_name_still_protects_its_file(collected):
+    folder = _folder(collected)
+    held, _free = _pair(folder)
+    _record(collected, str(held).replace("Held", "HELD"), identifier="10")
+    _apply(folder)
+    assert held.is_file()
+
+
+def test_a_tombstoned_row_still_protects_its_file(collected):
+    folder = _folder(collected)
+    held, _free = _pair(folder)
+    _record(collected, str(held), identifier="10", deleted=1)
+    _apply(folder)
+    assert held.is_file()
+
+
+def test_a_root_outside_the_library_is_still_checked(collected, tmp_path):
+    folder = tmp_path / "laptop" / "Downloads"
+    folder.mkdir(parents=True)
+    held, free = _pair(folder)
+    _record(collected, str(held), identifier="10")
+    _apply(folder)
+    assert held.is_file()
+    assert not free.exists()
+
+
+def test_a_database_with_no_matching_row_proceeds(collected):
+    """Zero referencing rows from a database that OPENED is a fact, not a
+    failure, so the pass renames. The disposable database holds two rows with
+    no path at all."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _apply(folder)
+    assert not held.exists() and not free.exists()
+
+
+def test_the_digest_changes_when_a_row_starts_referencing_a_file(collected):
+    folder = _folder(collected)
+    held, _free = _pair(folder)
+    before = _plan(folder)["digest"]
+    _record(collected, str(held), identifier="10")
+    assert _plan(folder)["digest"] != before
+
+
+def test_a_missing_database_refuses_and_renames_nothing(collected):
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    Path(collected.library.db_path).unlink()
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    assert envelope["cause"]["reason"] == "collection-unreadable"
+    assert envelope["cause"]["remediation"]["remedy"] != "restore-from-snapshot"
+    assert held.is_file() and free.is_file()
+
+
+def test_an_unopenable_database_refuses_and_renames_nothing(collected):
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    Path(collected.library.db_path).write_bytes(b"not a database at all")
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    assert envelope["cause"]["reason"] == "collection-unreadable"
+    assert held.is_file() and free.is_file()
+
+
+def test_an_empty_folder_needs_no_database(collected):
+    """With nothing to rename the collection cannot change the outcome, so a
+    machine with no database can still read an empty plan."""
+    folder = _folder(collected)
+    Path(collected.library.db_path).unlink()
+    assert _plan(folder)["items"] == []
+
+
+def test_a_row_that_appears_after_the_gate_still_protects_its_file(collected, monkeypatch):
+    """The re-check before the rename, on its own. The plan is built over an
+    empty collection and the apply pass reads one that references the file,
+    which is rekordbox importing while the gate waits on a person."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    reads = iter([(), (str(held),)])
+    monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
+    _apply(folder)
+    assert held.is_file()
+    assert not free.exists()
