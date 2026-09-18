@@ -400,6 +400,54 @@ def test_a_transient_failure_is_still_slept_on_the_full_ladder():
     assert slept == [1.0, 2.0, 4.0, 8.0, 16.0]
 
 
+def test_a_refusal_that_says_waiting_cannot_help_is_not_slept_on():
+    """A non retryable refusal passes through on the first attempt.
+
+    An adapter that finds the stored session expired mid page refuses
+    ``credential-missing``, and that refusal declares ``retryable=False``: the
+    person has to log in, and no amount of waiting does that for them. Before
+    this test the ladder slept 31 seconds on it and then re-raised the answer it
+    already had, per listing, which is the ``ListingNotPaginated`` cost over
+    again one exception type along. It was found as the slowest test in the
+    suite rather than by reading the ladder.
+    """
+    from cratekit.core.cause import CratekitError, refuse
+
+    slept: list[float] = []
+    attempts = {"n": 0}
+
+    def expired(limit: int, offset: int) -> list:
+        attempts["n"] += 1
+        raise refuse("credential-missing", "the session expired mid page", origin=("tests",))
+
+    with pytest.raises(CratekitError) as excinfo:
+        listing.fetch_with_retry(expired, limit=10, offset=0, sleep=slept.append)
+    assert excinfo.value.cause.reason == "credential-missing"
+    assert attempts["n"] == 1
+    assert slept == []
+
+
+def test_a_refusal_that_declares_itself_retryable_still_climbs_the_ladder():
+    """The exclusion reads the refusal's own flag, never its type.
+
+    Paired with the test above for the same reason the two before it are paired:
+    excluding every ``CratekitError`` would swallow a rate limit an adapter chose
+    to spell as a retryable refusal.
+    """
+    from cratekit.core.cause import CratekitError, refuse
+
+    slept: list[float] = []
+
+    def walled(limit: int, offset: int) -> list:
+        raise refuse(
+            "credential-missing", "try again shortly", retryable=True, origin=("tests",)
+        )
+
+    with pytest.raises(CratekitError):
+        listing.fetch_with_retry(walled, limit=10, offset=0, sleep=slept.append)
+    assert slept == [1.0, 2.0, 4.0, 8.0, 16.0]
+
+
 def test_a_listing_method_that_does_not_exist_refuses_by_name():
     class Renamed:
         pass
