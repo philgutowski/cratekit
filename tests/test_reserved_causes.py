@@ -4241,6 +4241,11 @@ CITED_RESIDUALS = (
     # tests/modules/test_tools.py, the test that restores from a snapshot holding
     # the database alone.
     "A restore from a snapshot taken with rekordbox closed always reports failure",
+    # Declared on the outbound rename, 2026-09-18, by the unit that discharged
+    # its code half. Cited from the population re-pin below, which moved because
+    # that unit's new rename member is the first refusal the provider adapter
+    # spells itself.
+    "A swept playlist is never marked on the account",
 )
 
 #: WHAT A CITATION LOOKS LIKE, as a form rather than as a convention: the word
@@ -5559,7 +5564,23 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # not be read, and label-playlist-unreadable and intake-list-unusable in
     # the set of refusals it reports per playlist rather than raises. It holds
     # no in-range integer, so the also-holds-an-integer half stays 19.
-    assert (len(literal_holders), len(literal_both)) == (93, 19), (
+    # Re-pinned 2026-09-18 by the unit discharging the code half of the residual
+    # "A swept playlist is never marked on the account": 93 to 94 holders.
+    # ONE module joined and none left, and it is the FIRST re-pin here whose new
+    # holder is not a new
+    # file. modules/outbound/tidal_account.py existed on main and named no cause
+    # literal, because every refusal it raised went through account.provider_
+    # failure, which spells the slugs one module over. Its new rename member
+    # raises internal-error itself, for an empty title, deliberately NOT through
+    # provider_failure: the provider did not fail, and that helper's remedy is to
+    # resume the job, which cannot work when the same empty title fails the same
+    # way. Differenced as SETS by re-deriving this module's own predicate over
+    # the working tree and over main's src extracted into a scratch directory,
+    # rather than inferred from the total moving by one. The also-holds-an-integer
+    # half stays 19, measured: the module's bare integers are a retry count and
+    # two paging offsets, none in the reserved range. The named halves did NOT
+    # move, staying at 23 and 9, measured on the same differencing.
+    assert (len(literal_holders), len(literal_both)) == (94, 19), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
