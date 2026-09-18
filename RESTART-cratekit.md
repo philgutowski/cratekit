@@ -4,7 +4,20 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-378, issue #91, `unit/issue91-the-harvest-prints-nothing-a-person-can-`.**
+**Last merged: R-380, issue #92, `unit/issue92-a-job-whose-failures-are-permanent-repor`.**
+A job whose every item failure is non retryable reports itself non retryable
+and does not offer resume-job. When those failures share a reason, that
+reason is the job's reason. A mixed job that still has a retryable failure
+stays retryable and names both counts. `no-evidence` stays the all failed
+slug; its retryable flag follows the items. `jobs.retry` is unchanged, DONE
+items stay done. R-266's remaining engine half closed with this. Mutation
+table `docs/mutation/r380.md`, 6 of 6 killing, null control 0 of 7608, no
+collect drift, every restore verified against `git show HEAD`. R-380 is
+closed in place. R-390 and R-391 filed. The learning is
+`docs/solutions/workflow-issues/a-job-cause-that-ignores-item-retryable-tells-a-person-to-resume.md`.
+Main's highest residual number is R-391.
+
+**The session before, 2026-09-18, R-378, issue #91, `unit/issue91-the-harvest-prints-nothing-a-person-can-`.**
 The default human rendering of a harvest names the harvested labels and the
 unresolved count. `cli.render.render_review_set` is gated on `review_set/`
 the way the diagnostic table is gated on `diagnostic/`. A harvest item's

@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import config, jobs
-from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -375,9 +375,15 @@ def test_a_job_whose_every_item_fails_raises_rather_than_reporting_success(queue
     with pytest.raises(CratekitError) as excinfo:
         jobs.drive(store, job.job_id, always_fails, root=root)
     assert excinfo.value.cause.reason == "no-evidence"
+    # The items failed as internal-error, which is not retryable. The envelope
+    # used to claim unavailable-transient anyway, which is R-380.
+    assert excinfo.value.cause.retryable is False
     # Recorded BEFORE the raise: a raise that left the row saying running would
     # be the unpersisted-decision half of the same incident.
-    assert jobs.get(store, job.job_id).state is jobs.JobState.FAILED
+    recorded = jobs.get(store, job.job_id)
+    assert recorded.state is jobs.JobState.FAILED
+    assert recorded.cause is not None
+    assert recorded.cause.retryable is False
 
 
 def test_attempting_nothing_is_a_no_op_and_not_a_failure(queue, cfg):
@@ -406,6 +412,148 @@ def test_a_partial_failure_fails_the_job_and_keeps_the_successes(queue, cfg):
     assert result.job.state is jobs.JobState.FAILED
     states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
     assert states == {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.FAILED}
+
+
+def _permanent_lookup() -> CratekitError:
+    """The sitting's inner cause: the provider has no artist for this label."""
+    return refuse(
+        "sync-source-lookups-failed",
+        "the provider has no artist named for this label",
+        steps=("retry this source when the provider is reachable",),
+        origin=("test",),
+    )
+
+
+def _transient_outage() -> CratekitError:
+    return refuse(
+        "unavailable-transient",
+        "the provider asked us to slow down",
+        remedy=Remedy.RETRY_LATER,
+        retryable=True,
+        origin=("test",),
+    )
+
+
+def test_a_job_whose_every_item_failed_permanently_reports_itself_non_retryable(
+    queue, cfg
+):
+    """R-380, the all failed half, which is also R-266's remaining engine half.
+
+    The item rows already carry a non retryable cause. The job used to wrap them
+    as unavailable-transient, retryable, resume-job, which is the instruction a
+    person acts on.
+    """
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b"]
+    )
+
+    def always_permanent(_job, _item):
+        raise _permanent_lookup()
+
+    with pytest.raises(CratekitError) as excinfo:
+        jobs.drive(store, job.job_id, always_permanent, root=root)
+    envelope = excinfo.value.cause
+    assert envelope.reason == "no-evidence"
+    assert envelope.retryable is False
+    assert envelope.remediation.remedy is not Remedy.RESUME_JOB
+    assert envelope.inner is not None
+    assert envelope.inner.reason == "sync-source-lookups-failed"
+    recorded = jobs.get(store, job.job_id)
+    assert recorded.cause is not None
+    assert recorded.cause.reason == "sync-source-lookups-failed"
+    assert recorded.cause.retryable is False
+    assert recorded.cause.remediation.remedy is not Remedy.RESUME_JOB
+    assert recorded.cause.inner is not None
+    assert recorded.cause.inner.reason == "sync-source-lookups-failed"
+
+
+def test_a_partial_failure_whose_failures_are_permanent_is_not_resumable(queue, cfg):
+    """The sitting's mixed job: some items done, every failure permanent.
+
+    A resume re-arms only the failed items, so the cost is crawling those again,
+    not the successes. The lie is telling the person that resume can help.
+    """
+    store, root = queue
+    job = jobs.enqueue(
+        store,
+        handler_key="job.resume",
+        payload={},
+        cfg=cfg,
+        item_ids=["good", "bad"],
+    )
+
+    def sometimes(_job, item):
+        if item.item_id == "bad":
+            raise _permanent_lookup()
+        return None
+
+    result = jobs.drive(store, job.job_id, sometimes, root=root)
+    assert (result.processed, result.failed) == (1, 1)
+    assert result.job.state is jobs.JobState.FAILED
+    cause = result.job.cause
+    assert cause is not None
+    assert cause.reason == "sync-source-lookups-failed"
+    assert cause.retryable is False
+    assert cause.remediation.remedy is not Remedy.RESUME_JOB
+    assert "finished 1 items and failed 1" in cause.message
+    assert "permanent" in cause.message
+    assert cause.inner is not None
+    assert cause.inner.reason == "sync-source-lookups-failed"
+    states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
+    assert states == {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.FAILED}
+
+    retried = jobs.retry(store, job.job_id)
+    assert retried.state is jobs.JobState.QUEUED
+    after = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
+    assert after == {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.PENDING}
+
+
+def test_a_job_whose_failures_include_a_retryable_cause_stays_retryable(queue, cfg):
+    """A resume can still help the items that failed transiently."""
+    store, root = queue
+    job = jobs.enqueue(
+        store,
+        handler_key="job.resume",
+        payload={},
+        cfg=cfg,
+        item_ids=["good", "perm", "temp"],
+    )
+
+    def mixed(_job, item):
+        if item.item_id == "perm":
+            raise _permanent_lookup()
+        if item.item_id == "temp":
+            raise _transient_outage()
+        return None
+
+    result = jobs.drive(store, job.job_id, mixed, root=root)
+    assert (result.processed, result.failed) == (1, 2)
+    cause = result.job.cause
+    assert cause is not None
+    assert cause.retryable is True
+    assert cause.reason == "unavailable-transient"
+    assert cause.remediation.remedy is Remedy.RESUME_JOB
+    assert "1 retryable" in cause.message
+    assert "1 permanent" in cause.message
+
+
+def test_an_all_failed_job_that_includes_a_retryable_cause_stays_retryable(queue, cfg):
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["perm", "temp"]
+    )
+
+    def mixed(_job, item):
+        if item.item_id == "perm":
+            raise _permanent_lookup()
+        raise _transient_outage()
+
+    with pytest.raises(CratekitError) as excinfo:
+        jobs.drive(store, job.job_id, mixed, root=root)
+    assert excinfo.value.cause.reason == "no-evidence"
+    assert excinfo.value.cause.retryable is True
+    assert excinfo.value.cause.remediation.remedy is Remedy.RETRY_LATER
 
 
 # ═══════════════════════════════════════════════════════════════════════════

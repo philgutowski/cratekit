@@ -339,10 +339,11 @@ def backup_library(ctx) -> Envelope:
             # SUCCEEDED carries no cause, so it is not reached by this at all.
             #
             # THE ENGINE'S OWN CAUSE IS RE-RAISED rather than a new one built
-            # here. It already carries the counts, the retryable flag, the
-            # ``resume-job`` remedy and the failing item's cause nested inside it,
-            # and a second wording for one condition is how the two come to
-            # disagree about which one a run met.
+            # here. It already carries the counts, the retryable flag (which
+            # follows the items, R-380), the remedy those items earned, and the
+            # failing item's cause nested inside it, and a second wording for one
+            # condition is how the two come to disagree about which one a run
+            # met.
             if not job.is_open() and job.cause is not None:
                 raise CratekitError(job.cause)
             reported = _reported(store, job)

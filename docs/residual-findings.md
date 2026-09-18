@@ -13359,6 +13359,14 @@ the top is a change to the one function every queued verb runs through.
 reports that cause at the top, or an adapter lands and the case stops being
 every run.
 
+**Closed 2026-09-18 on `unit/issue92-a-job-whose-failures-are-permanent-repor`.**
+The adapter landed, so it is no longer every run. The remaining engine half,
+`retryable` true over a non retryable inner, closed with R-380.
+`evidence_or_raise` still names `no-evidence` when every item failed, because
+the evidence rule is still true; its `retryable` flag now follows the items.
+The stored job cause, raised on a later resume of that closed job, uses the
+items' shared reason when they share one.
+
 ---
 
 ## R-267. `bound()` and `resolve()` answer one question from two constants, and the suite already shows them disagreeing
@@ -16524,6 +16532,19 @@ is in the inner cause, which is only visible in JSON.
 **Closes when:** a job whose every item failure is non retryable reports itself
 non retryable, and a mixed job says which half is which.
 
+**Closed 2026-09-18 on `unit/issue92-a-job-whose-failures-are-permanent-repor`.**
+`_failure_verdict` reads the failed items' causes. If every failure is
+non retryable, the job is non retryable and does not offer resume-job. When
+those failures share a reason, that reason is the job's reason. A mixed job
+that still has a retryable failure stays retryable and names both counts.
+`no-evidence` stays the all failed slug. `jobs.retry` is unchanged, DONE items
+stay done, so a resume of the sitting's job would have re-armed the 32 failures
+rather than recrawling the 15 successes. Mutation table `docs/mutation/r380.md`,
+6 of 6 killing, null control 0 of 7608, no collect drift, every restore
+verified against `git show HEAD`. The learning is
+`docs/solutions/workflow-issues/a-job-cause-that-ignores-item-retryable-tells-a-person-to-resume.md`.
+R-390 and R-391 filed beside it.
+
 ---
 
 ## R-381. An accented label name yields a mangled identifier
@@ -16804,5 +16825,45 @@ are clean. The person reviewing the existing queue still sees addresses.
 
 **Closes when:** those rows are discarded or rewritten with the artist name,
 on the live store, and a later offer of the same releases records the name.
+
+---
+
+## R-390. `crate job resume` re-arms failed items without reading retryable
+
+**Found:** at the R-380 review, 2026-09-18, one file over from the engine
+verdict.
+
+`jobs.retry` re-opens a FAILED job and flips every failed item back to pending.
+`cli.jobs.resume` calls it whenever the named job is not open. Neither looks at
+the job cause's `retryable` flag. R-380 stopped the job from *telling* a person
+to resume permanent failures. Typing the resume verb still does the work.
+
+**Measured cost:** unmeasured on a live run. The sitting's person followed the
+printed remedy, which is what R-380 closed. This is the remaining hole if
+someone types the verb anyway.
+
+**Why not fixed here.** The issue brief said do not change `jobs.retry`. The
+resume verb is that function's only shipped caller.
+
+**Closes when:** a resume of a job whose every failure is non retryable refuses
+rather than re-arming those items, or the verb's help says it will retry them
+regardless.
+
+---
+
+## R-391. Permanent failures that do not share a reason take the last item's reason
+
+**Found:** at the R-380 review, 2026-09-18, reading `_failure_verdict`.
+
+When every failed item is non retryable and they do not share one reason, the
+job cause uses `failed[-1].reason`. The message still names the counts. The
+sitting's 32 failures were one reason, so this path was not driven live.
+
+**Measured cost:** none on the sitting. A job that failed as both
+`internal-error` and `sync-source-lookups-failed` would name whichever item
+the driver claimed last.
+
+**Closes when:** the job cause names every distinct permanent reason, or a
+driven mixed permanent job shows that one reason is enough.
 
 ---

@@ -615,6 +615,39 @@ def test_a_catalogue_that_cannot_be_listed_fails_the_item_and_the_job(
     assert item_causes(job_id) == {SLUGS[0]: "sync-source-lookups-failed"}
     assert job_state(job_id) == str(jobs.JobState.FAILED)
     assert failed["cause"]["reason"] == "no-evidence"
+    assert failed["cause"]["retryable"] is False
+    assert failed["cause"]["remediation"]["remedy"] != "resume-job"
+    inner = failed["cause"]["inner"]
+    assert inner is not None
+    assert inner["reason"] == "sync-source-lookups-failed"
+
+
+def test_a_sweep_whose_failures_are_permanent_does_not_tell_the_person_to_resume(
+    installed, monkeypatch
+):
+    """R-380 through the dispatcher: the sitting's mixed job, one item each way.
+
+    One label lists, one does not, because the provider has no artist named for
+    it. The job used to report unavailable-transient and resume-job over that.
+    """
+    del installed
+    register(*LABELS[:2])
+    bind(monkeypatch, readable(SLUGS[0]))
+    job_id = queued_job(["sync", "labels"])
+    code, failed = drive(["sync", "labels", "--job", job_id])
+    assert code != int(ExitCode.OK), failed
+    assert item_causes(job_id) == {
+        SLUGS[0]: None,
+        SLUGS[1]: "sync-source-lookups-failed",
+    }
+    assert job_state(job_id) == str(jobs.JobState.FAILED)
+    cause = failed["cause"]
+    assert cause["reason"] == "sync-source-lookups-failed"
+    assert cause["retryable"] is False
+    assert cause["remediation"]["remedy"] != "resume-job"
+    assert "finished 1 items and failed 1" in cause["message"]
+    assert cause["inner"] is not None
+    assert cause["inner"]["reason"] == "sync-source-lookups-failed"
 
 
 def test_an_increment_that_could_not_offer_every_release_fails_the_item(
@@ -1068,7 +1101,12 @@ def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(
 
     code, again = drive(["sync", "labels", "--job", job_id])
     assert code != int(ExitCode.OK), again
-    assert again["cause"]["reason"] == "unavailable-transient"
+    # The stored job cause, raised on a closed job. It used to be the wrapper's
+    # unavailable-transient. The items failed as sync-source-lookups-failed, which
+    # is not retryable, so that is now the job's reason too.
+    assert again["cause"]["reason"] == "sync-source-lookups-failed"
+    assert again["cause"]["retryable"] is False
+    assert again["cause"]["remediation"]["remedy"] != "resume-job"
     assert job_state(job_id) == str(jobs.JobState.FAILED)
 
 
