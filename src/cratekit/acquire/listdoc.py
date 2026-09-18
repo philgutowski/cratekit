@@ -49,8 +49,9 @@ from cratekit.core import config
 LIST_SUFFIX = ".list.json"
 MANIFEST_SUFFIX = ".manifest.json"
 
-#: The version of the provenance sidecar, refused-at by any later reader the way
-#: the list's own version is.
+#: The version of the provenance sidecar. Nothing reads the sidecar yet, so
+#: nothing refuses an unknown version of it; a reader, when one lands, should
+#: refuse the way ``read_list`` refuses the list's own.
 MANIFEST_VERSION = 1
 
 
@@ -118,11 +119,17 @@ class Written:
 
 
 def _reads_back(title: str, version: str, wanted: match.Wanted) -> bool:
-    """Whether a row spelled this way re-reads to ``wanted`` as it is addressed.
+    """Whether a row spelled this way re-reads to ``wanted``'s version.
 
-    Title, version token AND the addressed title, because the tombstone identity
-    is a hash of the addressed title and a spelling that kept the version but
-    lost a bracketed part or a featured credit is a different identity.
+    THE VERSION TOKEN IS THE ONLY THING COMPARED, and that is measured rather
+    than assumed. Both spellings :func:`_spellings` offers re-read to the same
+    matching title and the same addressed title by construction: the source's
+    own spelling read with no declared version is its own address, and the raw
+    title read with the declared version recomposes to exactly ``spelled``.
+    Mutation rows W3 and W5 removed a title and an address comparison here and
+    neither killed a test in the full suite, see ``docs/mutation/u68-notes.md``.
+    What CAN differ is the version: a raw title that carried its own bracketed
+    version beside a declared one re-reads, spelled together, as both.
     """
     try:
         again = match.read_row(
@@ -132,11 +139,7 @@ def _reads_back(title: str, version: str, wanted: match.Wanted) -> bool:
         )
     except match.UnreadableList:
         return False
-    return (
-        again.title == wanted.title
-        and again.version_key == wanted.version_key
-        and again.listed == wanted.listed
-    )
+    return again.version_key == wanted.version_key
 
 
 def _spellings(wanted: match.Wanted) -> list[tuple[str, str]]:
