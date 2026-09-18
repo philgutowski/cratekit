@@ -419,15 +419,50 @@ ends by running doctor.
 The `[profile]` name decides which verbs exist. `crate profile show` lists what
 is on, and `crate profile set slim|full|custom` changes only that.
 
-## Operator skills
+## Working with an AI assistant
 
-Twelve short guides ship with the package, covering the workflow areas above.
-They are optional, since every workflow runs from the command line without them.
-They exist so an AI coding agent working beside you knows the order and the traps.
+Twelve short guides ship with the package, one per workflow area, covering the
+recipes above. They are optional, since every workflow runs from the command line
+without them. They exist so an agent working beside you knows the order and the
+traps.
+
+The workspace is a folder of your own, outside the Cratekit clone, because that
+clone's instructions are about building the product rather than running it. The
+repository ships the template. From inside the clone:
+
+```bash
+mkdir -p ~/cratekit-work
+cp operator/AGENTS.md operator/CLAUDE.md ~/cratekit-work/
+crate skills install --into ~/cratekit-work/.claude/skills
+```
+
+Start the agent in that folder. `AGENTS.md` points at `CLAUDE.md`, which is the
+operator contract, and the split it draws is the one this guide already
+describes:
+
+| The agent may | You do |
+|---|---|
+| run `doctor`, `status`, reports and audits | run anything that writes |
+| read a refusal and name the remedy | answer a gate by name |
+| propose the verbs and the order | record the backup acknowledgment |
+| read back what a run reports it did | quit rekordbox and its agent |
+
+The right column is not a convention anybody agreed to be polite about.
+`crate session ack` refuses an acknowledgment from a session working on your
+behalf, and every writing verb refuses while rekordbox or its background agent is
+running, so neither is a thing an agent can do for you even when asked.
+
+Installing to the default location instead puts the guides where an agent finds
+them for every project on the machine, which is worth avoiding if you keep other
+skills there:
 
 ```bash
 crate skills install
 ```
+
+Run whichever form you chose again after updating Cratekit. Each copy carries the
+version that wrote it, so the verb reports which guides were stale and refreshes
+them in the same run.
 
 ## Going deeper
 
@@ -439,4 +474,5 @@ crate skills install
 | A term that means something specific here | `CONCEPTS.md` |
 | Known problems, recorded and not yet fixed | [`residual-findings.md`](residual-findings.md) |
 | Past problems and their causes | `solutions/` |
+| Setting up to work on Cratekit | [`DEVELOPING.md`](DEVELOPING.md) |
 | Working on Cratekit itself | [`METHOD.md`](METHOD.md) and [`BOARD.md`](BOARD.md) |

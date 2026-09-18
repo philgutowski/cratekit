@@ -134,8 +134,37 @@ streaming account takes two commands, described in
 [`docs/GUIDE.md`](docs/GUIDE.md) is the user guide. It explains how the pieces
 fit, what to check before a session, how to answer a confirmation, how to record
 the backup acknowledgment every write needs, and gives a recipe for each
-workflow. `crate --help` lists every verb, and `crate skills install` copies a
-set of short operator guides where an AI coding agent can find them.
+workflow. `crate --help` lists every verb.
+
+## Working with an AI assistant
+
+Cratekit is built to be run with a coding agent beside you, and it ships what one
+needs: twelve short guides, one per workflow area, and a workspace that tells the
+agent what it may do on its own and what waits for you.
+
+The workspace goes outside this clone, because this clone's own instructions are
+about building Cratekit rather than running it. Copy the shipped template once,
+then install the guides into it:
+
+```bash
+mkdir -p ~/cratekit-work
+cp operator/AGENTS.md operator/CLAUDE.md ~/cratekit-work/
+crate skills install --into ~/cratekit-work/.claude/skills
+```
+
+Start the agent in `~/cratekit-work`. It reads `AGENTS.md`, which points at
+`CLAUDE.md`, which is the operator contract: reporting verbs run freely, every
+writing verb waits for you, a gate is answered by you, and the backup
+acknowledgment is yours alone because the product will not accept one from a
+session working on your behalf. `AGENTS.md` is there so the folder is not
+specific to one tool, and the guides are plain markdown that any agent can read.
+
+Run the install command again after updating Cratekit. Each copy carries the
+version that wrote it, so the verb reports which guides were stale and refreshes
+them in the same run.
+
+None of this is required. Every workflow runs from the command line without an
+agent, and the guides exist so the order is not something you have to work out.
 
 ## Safety posture
 
@@ -161,64 +190,10 @@ Every write session is restorable by a documented verb.
 Code authored here is MIT (see `LICENSE`). A vendored third-party component
 keeps its own license, shipped intact alongside its source.
 
-## Development
+## Developing Cratekit
 
-Development uses its own editable environment inside the checkout rather than
-pipx. Because it is editable, `crate doctor` checks that the commit hooks under
-Guards are installed, and fails until they are. Set it up once, and activate it
-in each terminal window you work in:
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-```
-
-Then:
-
-```bash
-ruff check src tests scripts
-pytest -q
-```
-
-CI runs both on Python 3.12 and 3.13, plus a cold-install job that proves a
-clean checkout installs and imports with nothing preinstalled.
-
-### Guards
-
-Set up the commit hooks once per clone. Both hook types matter. A bare
-`pre-commit install` writes only the first, and the closing check on commit
-messages then silently never runs.
-
-```bash
-pip install pre-commit && pre-commit install --hook-type pre-commit --hook-type commit-msg
-cp .scan-identity.example .scan-identity
-```
-
-Then open `.scan-identity` and list your own drive and account names.
-`scripts/scan_repo.py` runs on every commit and again in CI. It scans **every**
-tracked path, vendored trees included, for two things: personal literals (a home
-directory, a volume, an account, a machine name) and credential-shaped content
-(OAuth tokens, API keys, private keys, and filenames that are credential stores
-regardless of what is inside them). Nothing here should name a person or carry a
-secret, and the hook is what stops one reaching the history, where removing it
-becomes a rewrite everybody has to follow.
-
-`.scan-identity` is gitignored and optional. It tells the scan which bare names
-are yours, so "the X drive must be mounted" is caught even when X is not
-currently plugged in. Path-shaped literals are caught without it.
-
-### Deferred guards
-
-A guard can be written before the module it governs. Such a guard keeps its full
-assertion, is never stubbed, and is skipped with a reason naming the unit that
-arms it. This prints every skip with the unit that unblocks it:
-
-```bash
-pytest -q -rs
-```
-
-`tests/_pending.py` is the register and `tests/test_pending_units.py` holds it
-accountable: adding a skip without recording it fails the build, and so does
-keeping one after its module lands. A skip is a countdown, not a hiding place.
-The register is empty today, because every guard has been armed.
+Working on the product itself is a separate setup with its own rules, and none of
+it is needed to run Cratekit. [`docs/DEVELOPING.md`](docs/DEVELOPING.md) has the
+editable environment, the test battery and the commit guards. `CLAUDE.md` and
+`AGENTS.md` at the root of this repository are the session contract for an agent
+working on the code, and [`docs/METHOD.md`](docs/METHOD.md) is the pipeline.
