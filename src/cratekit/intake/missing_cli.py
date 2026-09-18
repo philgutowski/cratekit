@@ -18,7 +18,9 @@ when every one of its items has exactly one readable report, compared by item
 identifier and not by count, because ``artifacts.committed`` skips a report it
 cannot parse and a count that happened to match would hide which one it
 skipped. A missing row the provider cannot be asked for comes back unlisted and
-the report says how many, as a failing check rather than a quiet omission.
+the report says how many, as a failing check rather than a quiet omission, and a
+job whose missing rows are ALL like that is refused, because a no-op there reads
+exactly like a job where everything was owned.
 
 Not gated and not destructive: it writes two new files, and
 :func:`listdoc.write` refuses rather than replaces a file that holds anything
@@ -114,8 +116,19 @@ def _reports_or_refuse(store, job: jobs.Job) -> tuple[dict[str, Any], ...]:
     for an item the job never had would leave the count right and the list
     wrong.
     """
-    reports = artifacts.committed(intake_cli.ARTIFACTS, jobs.frozen_config(job), job.job_id)
     wanted = [item.item_id for item in jobs.items(store, job.job_id)]
+    if not wanted:
+        # A JOB WITH NO ITEMS IS NOT A JOB WITH NOTHING MISSING. A build before
+        # U57 queued intake jobs with no items, and one that was driven reads
+        # succeeded over a listing nothing resolved; zero reports against zero
+        # items would pass the comparison below and report a clean empty list.
+        raise _unusable(
+            f"job {job.job_id} has no items, so it never resolved a track; it was "
+            f"queued by a build that did not record what its tracks were",
+            "queue the playlist again and list the new job",
+            job_id=job.job_id,
+        )
+    reports = artifacts.committed(intake_cli.ARTIFACTS, jobs.frozen_config(job), job.job_id)
     reported = [str(report.get("item_id")) for report in reports]
     if sorted(reported) != sorted(wanted):
         absent = sorted(set(wanted) - set(reported))
@@ -193,6 +206,21 @@ def intake_missing(ctx) -> Envelope:
             ) from exc
     listed = len(written.listed)
     unlisted = len(written.unlisted)
+    if missing and not listed:
+        # MISSING TRACKS AND NOTHING TO LIST IS NOT NOTHING TO DO. Reported as a
+        # no-op it would read, to a person and to a script, exactly like a job
+        # where everything was owned, and the tracks would be dropped.
+        raise _unusable(
+            f"{unlisted} missing track(s) and none carries a provider identifier, so "
+            f"there is nothing acquire download could be asked for; nothing was written",
+            "acquire download refuses a row with no provider id, so find these "
+            "tracks on the provider, add them to a playlist, and run intake "
+            "playlist on it",
+            job_id=job.job_id,
+            unlisted_tracks=[
+                {"artist": row.artist, "title": row.title} for row in written.unlisted
+            ],
+        )
     command = (
         shlex.join(["crate", "acquire", "download", str(written.list_path)])
         if written.list_path is not None
@@ -204,7 +232,7 @@ def intake_missing(ctx) -> Envelope:
             "ok" if listed else "info",
             f"{listed} missing track(s) written to {written.list_path}; next: {command}"
             if listed
-            else "nothing listed: no missing track the provider can be asked for",
+            else "nothing listed: no track in this job is missing",
         ),
         _check("owned", "info", f"{counts['owned']} already in the library, not listed"),
         _check(

@@ -406,6 +406,45 @@ def test_a_missing_row_from_no_provider_is_reported_unlisted_as_a_failing_check(
     ]
 
 
+def test_a_succeeded_job_with_no_items_is_refused_not_listed_empty(cfg, library):
+    """The review's first finding, driven: a pre U57 build queued intake jobs with
+    no items, and zero reports against zero items passes a comparison by id."""
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store, handler_key="intake.playlist", payload={"source": "pl-1"}, cfg=cfg, item_ids=()
+        )
+        jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+
+    code, envelope = missing(job.job_id)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "has no items" in envelope["cause"]["message"]
+
+
+def test_missing_tracks_none_of_which_can_be_listed_refuse_rather_than_no_op(
+    cfg, library, monkeypatch
+):
+    """The review's second finding, driven: a no-op here reads, to a person and
+    to a script, exactly like a job where everything was owned."""
+    job_id = finished(monkeypatch, [Track("205", "Kite Harbor", "Low Tide Signal")])
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        item = jobs.items(store, job_id)[0]
+    path = artifacts.final_path(intake_cli.ARTIFACTS, jobs.frozen_config(job), job_id, item.ordinal)
+    report = json.loads(path.read_text())
+    report["track"] = {**report["track"], "origin": "text", "ref": ""}
+    path.write_text(json.dumps(report))
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["message"].startswith("1 missing track(s) and none carries")
+    assert envelope["cause"]["detail"]["unlisted_tracks"] == [
+        {"artist": "Kite Harbor", "title": "Low Tide Signal"}
+    ]
+    assert not lists_dir(library).exists()
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Tombstones: a deliberately deleted track and the download it would cost
 # ═══════════════════════════════════════════════════════════════════════════
