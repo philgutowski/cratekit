@@ -51,6 +51,8 @@ from collections.abc import Callable, Iterable
 from enum import Enum
 from typing import Any
 
+from cratekit.core.cause import CratekitError
+
 
 class StopRule(Enum):
     """How a walk decides it has reached the end of a listing.
@@ -197,6 +199,14 @@ def fetch_with_retry(
     the first attempt. That cost is per listing, and ``artist_releases`` reads one
     per release method per artist, so a label crawl over 200 artists would have
     slept for over three hours before reporting a fault it knew about immediately.
+
+    **A refusal that declares ``retryable=False`` is excluded on the same
+    argument.** An adapter that finds the stored session expired mid page refuses
+    ``credential-missing``, and the person has to log in before any attempt can
+    differ from the first. The ladder slept the same 31 seconds on it until
+    2026-09-18, when it surfaced as the slowest test in the suite. The exclusion
+    reads the refusal's own flag rather than its type, so a rate limit an adapter
+    spells as a retryable refusal still climbs the ladder.
     """
     attempt = 0
     while True:
@@ -204,7 +214,9 @@ def fetch_with_retry(
             return fetch_page(limit, offset)
         except ListingNotPaginated:
             raise
-        except Exception:  # noqa: BLE001 - see docstring: bounded, then re-raised
+        except Exception as exc:  # noqa: BLE001 - see docstring: bounded, then re-raised
+            if isinstance(exc, CratekitError) and not exc.cause.retryable:
+                raise
             attempt += 1
             if attempt > max_retries:
                 raise

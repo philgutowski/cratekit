@@ -116,7 +116,7 @@ desktop = ["pywebview>=5.0"]
 # by default on every fresh clone, which was observed: a planted personal path
 # committed cleanly on a machine where pre-commit was not on PATH. Shipping the
 # tool with the dev install makes the documented setup actually executable.
-dev = ["pre-commit>=3.7", "pytest>=8.0", "ruff>=0.6"]
+dev = ["pre-commit>=3.7", "pytest>=8.0", "pytest-xdist>=3.6", "ruff>=0.6"]
 # Convenience aggregate. Not a module; it exists so a maintainer can install
 # every extra in one command without hand-listing them.
 all = ["cratekit[analysis,vocals,web,desktop]"]
@@ -180,7 +180,16 @@ pythonpath = ["src"]
 # Every test runs against redirected state roots (tests/conftest.py autouse
 # fixtures). A test that reaches real config, a real library, or a real keychain
 # is a bug, not a slow test.
-addopts = "-q"
+#
+# `-n auto` runs the suite across every core through pytest-xdist, which ships
+# in the dev extra. Measured 2026-09-18 on an 11 core machine at 7,678 tests:
+# 532 seconds serial, 86 at eight workers, 61 at auto, green each time. It is
+# safe here because of the sentence above: every test already owns its state
+# roots, so no two workers share a directory, a keychain or a library. Pass
+# `-n 0` to run in this process, which a debugger and a profiler both need.
+# `scripts/mutate.py` inherits this line, so the driver's full suite baselines
+# run parallel too, and its reporting plugin writes from the controller only.
+addopts = "-q -n auto"
 
 [tool.coverage.run]
 source = ["cratekit"]

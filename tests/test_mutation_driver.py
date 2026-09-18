@@ -447,6 +447,76 @@ def test_a_row_that_breaks_collection_is_flagged_not_reported_as_a_zero(repo, ba
     assert result.promoted is False
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Under parallel workers the driver measures the same things
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def parallel_repo(repo) -> Path:
+    """The green fixture with the real repository's parallel ``addopts``.
+
+    The driver inherits ``addopts``, so the day the battery went parallel every
+    driver run did too. ``-p`` loads the reporting plugin in each worker as well
+    as the controller, and a worker sees only its own share of the tests, so a
+    plugin that let every process write the report would record whichever
+    partial count flushed last. Committed, because the driver refuses a dirty
+    target and should meet this fixture the way it meets the real tree.
+    """
+    pyproject = repo / "pyproject.toml"
+    pyproject.write_text(
+        PYPROJECT.replace('addopts = "-q"', 'addopts = "-q -n 2"'), encoding="utf-8"
+    )
+    _git(repo, "commit", "-am", "run the fixture suite across two workers")
+    return repo
+
+
+def test_the_collected_count_survives_parallel_workers(parallel_repo):
+    assert mutate.pytest_addopts(parallel_repo) == "-n 2"
+    result = mutate.run_pytest(parallel_repo, None)
+    assert result.is_green
+    assert result.collected == 5
+
+
+def test_a_kill_under_parallel_workers_names_the_same_tests_as_a_serial_run(
+    repo, baselines, tmp_path
+):
+    """Both runs mutate the same line, so the two death lists must be equal."""
+    full, subset = baselines
+    row = _row("K1", "if value > limit:", "if value > 10000:")
+    serial = mutate.measure_row(repo, row, ["tests/test_guards.py"], "importers", subset, full)
+    assert serial.deaths > 0, "the fixture row must kill, or this test compares nothing"
+
+    pyproject = repo / "pyproject.toml"
+    pyproject.write_text(
+        PYPROJECT.replace('addopts = "-q"', 'addopts = "-q -n 2"'), encoding="utf-8"
+    )
+    _git(repo, "commit", "-am", "run the fixture suite across two workers")
+    parallel_full = mutate.run_pytest(repo, None)
+    parallel_subset = mutate.run_pytest(repo, ["tests/test_guards.py"])
+    parallel = mutate.measure_row(
+        repo, row, ["tests/test_guards.py"], "importers", parallel_subset, parallel_full
+    )
+    assert sorted(parallel.killed) == sorted(serial.killed)
+    assert parallel.collected == serial.collected
+
+
+def test_a_broken_collection_is_still_flagged_under_parallel_workers(parallel_repo):
+    full = mutate.run_pytest(parallel_repo, None)
+    subset = mutate.run_pytest(parallel_repo, ["tests/test_guards.py"])
+    result = mutate.measure_row(
+        parallel_repo,
+        _row("C2", "def describe(value):", "def describe(value:"),
+        ["tests/test_guards.py"],
+        "importers",
+        subset,
+        full,
+    )
+    assert result.status == "collect-error"
+    assert result.collect_drift is True
+    assert result.collected < result.baseline_collected
+
+
 def test_a_run_that_measured_nothing_is_not_a_refusal(repo):
     """An unmeasurable run and a rejected row are different states.
 
