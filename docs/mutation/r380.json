@@ -1,0 +1,242 @@
+{
+  "name": "r380",
+  "pass_kind": "light",
+  "branch": "unit/issue92-a-job-whose-failures-are-permanent-repor",
+  "head": "1b30600",
+  "when": "2026-09-18 11:26 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7608,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/jobs.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/jobs.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "96373c40e6137ffc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7608,
+    "baseline_collected": 7608,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_the_wrapper_is_always_transient",
+      "description": "the original defect: every job failure is unavailable-transient, retryable, resume-job",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ba5a6f2cd9b618c2",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 116,
+      "baseline_collected": 116,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_job_whose_every_item_failed_permanently_reports_itself_non_retryable",
+        "tests/test_jobs.py::test_a_job_whose_every_item_fails_raises_rather_than_reporting_success",
+        "tests/test_jobs.py::test_a_partial_failure_whose_failures_are_permanent_is_not_resumable",
+        "tests/test_label_workers.py::test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok",
+        "tests/test_label_workers.py::test_a_sweep_whose_failures_are_permanent_does_not_tell_the_person_to_resume"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not failed or any(cause.retryable for cause in failed):\n        return (\n            \"unavailable-transient\",\n            True,\n            Remediation(remedy=Remedy.RESUME_JOB),\n        )\n    reasons = {cause.reason for cause in failed}\n    reason = failed[0].reason if len(reasons) == 1 else failed[-1].reason\n    return (\n        reason,\n        False,\n        Remediation(\n            steps=(\n                \"the failed items cannot succeed on resume; inspect each item's cause\",\n            )\n        ),\n    )\n",
+      "new": "    return (\n        \"unavailable-transient\",\n        True,\n        Remediation(remedy=Remedy.RESUME_JOB),\n    )\n"
+    },
+    {
+      "id": "G2_no_evidence_is_always_retryable",
+      "description": "the all failed envelope hardcodes retryable true",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "90f467b6a5388e0d",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 116,
+      "baseline_collected": 116,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_job_whose_every_item_failed_permanently_reports_itself_non_retryable",
+        "tests/test_jobs.py::test_a_job_whose_every_item_fails_raises_rather_than_reporting_success",
+        "tests/test_label_workers.py::test_a_catalogue_that_cannot_be_listed_fails_the_item_and_the_job"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"empty result from a total failure is indistinguishable from having found \"\n        f\"nothing, and only one of those may advance anything downstream\",\n        scope=Scope.SOURCE,\n        retryable=retryable,\n        origin=(\"jobs\",),\n        detail={\"attempted\": attempted},\n",
+      "new": "        f\"empty result from a total failure is indistinguishable from having found \"\n        f\"nothing, and only one of those may advance anything downstream\",\n        scope=Scope.SOURCE,\n        retryable=True,\n        origin=(\"jobs\",),\n        detail={\"attempted\": attempted},\n"
+    },
+    {
+      "id": "G3_retryable_requires_every_item",
+      "description": "a mixed job is non retryable unless every failure is retryable",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "24d5be980719e077",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 49,
+      "baseline_collected": 49,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_job_whose_failures_include_a_retryable_cause_stays_retryable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not failed or any(cause.retryable for cause in failed):\n",
+      "new": "    if not failed or all(cause.retryable for cause in failed):\n"
+    },
+    {
+      "id": "G4_the_reason_stays_unavailable_transient",
+      "description": "a permanent job still names itself unavailable-transient",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4c99e60a99a0078c",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 116,
+      "baseline_collected": 116,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_job_whose_every_item_failed_permanently_reports_itself_non_retryable",
+        "tests/test_jobs.py::test_a_partial_failure_whose_failures_are_permanent_is_not_resumable",
+        "tests/test_label_workers.py::test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok",
+        "tests/test_label_workers.py::test_a_sweep_whose_failures_are_permanent_does_not_tell_the_person_to_resume"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    reason = failed[0].reason if len(reasons) == 1 else failed[-1].reason\n",
+      "new": "    reason = \"unavailable-transient\"\n"
+    },
+    {
+      "id": "G5_permanent_failures_still_offer_resume",
+      "description": "the permanent branch still carries the resume-job remedy",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "59861333d3cc64de",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 116,
+      "baseline_collected": 116,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_job_whose_every_item_failed_permanently_reports_itself_non_retryable",
+        "tests/test_jobs.py::test_a_partial_failure_whose_failures_are_permanent_is_not_resumable",
+        "tests/test_label_workers.py::test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok",
+        "tests/test_label_workers.py::test_a_sweep_whose_failures_are_permanent_does_not_tell_the_person_to_resume"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        Remediation(\n            steps=(\n                \"the failed items cannot succeed on resume; inspect each item's cause\",\n            )\n        ),\n",
+      "new": "        Remediation(remedy=Remedy.RESUME_JOB),\n"
+    },
+    {
+      "id": "G6_the_permanent_sentence_is_dropped",
+      "description": "the job message no longer says the failures are permanent",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "51323e33c976daf2",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 116,
+      "baseline_collected": 116,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_partial_failure_whose_failures_are_permanent_is_not_resumable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not retryable:\n        message += \"; every failure is permanent so resuming this job cannot succeed\"\n    elif transient and permanent:\n",
+      "new": "    if transient and permanent:\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "G7_failed_causes_are_not_collected",
+      "description": "drive stops appending item causes, so the verdict sees an empty list",
+      "reason": "ranked below the cap: G1 already restores the empty-list fallback, which is the same lie"
+    },
+    {
+      "id": "G8_evidence_or_raise_ignores_the_computed_flag",
+      "description": "drive passes retryable True into evidence_or_raise instead of the items",
+      "reason": "ranked below the cap: same surface as G2"
+    }
+  ]
+}
