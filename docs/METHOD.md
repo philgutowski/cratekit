@@ -102,6 +102,12 @@ Create the issue AFTER the merge that carries the ledger entry, because a
 number is not the finding's until it is on `main`. The Relay feeder picks up
 any open issue labelled `residual` or `unit` that the board derives as ready.
 
+**Never write a literal dot claude path in a card**, title, body or comment, not
+even to forbid one. Relay reads every card it is about to launch and SKIPS any
+whose text names that directory, silently, because an edit there needs an
+attended session. One Phase G brief cited the source system's skill file by its
+path and would have sat unlaunched. Describe the location in words instead.
+
 ## Verification is the author's, and says so
 
 **No independent verifier, decided 2026-09-07.** The author runs the mutation
