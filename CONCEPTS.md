@@ -161,6 +161,17 @@ playlist, a label and year, a sync run, rides a sidecar manifest beside it
 because the document's own keys are closed. A row with no provider identifier
 is never written into it and comes back as unlisted.
 
+### Hearts reference
+The reserved word `favorites` in place of a playlist reference, since U70:
+`crate intake playlist favorites` lists every track hearted on the account and
+resolves each against the library as owned, offered or missing, exactly as a
+playlist's tracks are. It cannot shadow a real playlist, because a playlist
+reference is only ever an identifier or a URL. It is the inbound direction of
+favourites. The outbound direction, hearting local favourites on the account, is
+`crate sync favorites`. Unlike the source system, it parks nothing in a
+placeholder playlist: a heart the library lacks is a missing item carrying its
+provider identifier.
+
 ## Verification
 
 ### Guard
