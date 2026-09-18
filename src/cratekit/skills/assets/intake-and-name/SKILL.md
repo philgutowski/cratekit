@@ -133,6 +133,13 @@ only supported way to rename is to let the verb render it. A field the track doe
 not carry is left out of the rendered name rather than written as an empty
 segment.
 
+A file the rekordbox collection already references is never renamed or
+retagged, whatever folder you point the verb at, because rekordbox records a
+path once and a rename leaves its row pointing at nothing. Those files appear in
+the plan marked `referenced` and are counted under `totals.referenced`. If the
+collection cannot be read at all, the verb refuses with `collection-unreadable`
+and renames nothing. There is no flag that overrides either.
+
 `name apply` builds the full plan, then stops at its confirm gate and exits
 asking for a decision. Answer it on the invocation, or later from anywhere:
 

@@ -1,0 +1,28 @@
+name = "u67-round-2"
+pass_kind = "light"
+
+# Round two of U67's table. E1 is re-run after the collision test landed. C1 is
+# the composite the round one zero on L4 owes: L4 applies every plan item and
+# L2 drops the re-check, and removed together the apply pass has nothing
+# holding a referenced file back.
+
+[[rows]]
+id = "E1_claim_target"
+description = "Existing: rename over a target another file already holds"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            if not naming.claim_target(target):
+                continue'''
+new = '''            if False:
+                continue'''
+
+[[rows]]
+id = "C1_action_filter_and_recheck"
+description = "Composite: apply every plan item AND drop the re-check before the rename"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    renames = [item for item in plan["items"] if item["action"] == RENAME]'''
+new = '''    renames = list(plan["items"])
+    _is_referenced = lambda path, referenced: False  # noqa: E731'''
