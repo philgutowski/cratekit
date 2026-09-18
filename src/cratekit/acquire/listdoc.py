@@ -118,7 +118,12 @@ class Written:
 
 
 def _reads_back(title: str, version: str, wanted: match.Wanted) -> bool:
-    """Whether a row spelled this way re-reads to ``wanted``'s title and version."""
+    """Whether a row spelled this way re-reads to ``wanted`` as it is addressed.
+
+    Title, version token AND the addressed title, because the tombstone identity
+    is a hash of the addressed title and a spelling that kept the version but
+    lost a bracketed part or a featured credit is a different identity.
+    """
     try:
         again = match.read_row(
             {"title": title, "version": version, "artist": wanted.artist},
@@ -127,7 +132,30 @@ def _reads_back(title: str, version: str, wanted: match.Wanted) -> bool:
         )
     except match.UnreadableList:
         return False
-    return again.title == wanted.title and again.version_key == wanted.version_key
+    return (
+        again.title == wanted.title
+        and again.version_key == wanted.version_key
+        and again.listed == wanted.listed
+    )
+
+
+def _spellings(wanted: match.Wanted) -> list[tuple[str, str]]:
+    """The (title, version) pairs that might re-read to ``wanted``, best first.
+
+    The source's own spelling, version embedded. Then, for a row that declared
+    its version in its own field, the row's raw title and that version: the
+    reader composed ``spelled`` as ``<raw> (<version>)``, so the suffix comes
+    off and the pair re-reads to the same composition. Writing the ALREADY
+    SPLIT title instead drops every other bracketed part and every featured
+    credit the raw title carried, which is what this module did first.
+    """
+    found: list[tuple[str, str]] = []
+    if wanted.spelled:
+        found.append((wanted.spelled, ""))
+        suffix = f" ({wanted.version})"
+        if wanted.version and wanted.spelled.endswith(suffix):
+            found.append((wanted.spelled[: -len(suffix)], wanted.version))
+    return found
 
 
 def _row_of_wanted(wanted: match.Wanted) -> Row:
@@ -136,15 +164,13 @@ def _row_of_wanted(wanted: match.Wanted) -> Row:
     # provider document it would ask the provider for a different track, or for
     # none. Such a row is returned with no ref, so it lands in ``unlisted``.
     ref = wanted.ref if wanted.origin == match.TIDAL else ""
-    # The source's own spelling first, because it keeps a featured credit the
-    # matching title has had taken off. It is used only when it re-reads to the
-    # same title and version: a row that declared a version beside a title that
-    # already carried one was composed into a spelling that splits differently,
-    # and then the title and the declared version are written as they were read.
-    if wanted.spelled and _reads_back(wanted.spelled, "", wanted):
-        title, version = wanted.spelled, ""
-    else:
-        title, version = wanted.title, wanted.version
+    # The first spelling that re-reads to the same addressed track. A ``Wanted``
+    # built by hand carries no spelling, and then its title and version are all
+    # there is to write.
+    title, version = next(
+        (pair for pair in _spellings(wanted) if _reads_back(*pair, wanted)),
+        (wanted.title, wanted.version),
+    )
     return Row(
         ref=ref,
         artist=wanted.artist,
@@ -163,6 +189,12 @@ def rows_of(
     A MAPPING is :func:`cratekit.acquire.cli.frozen_tracks`'s output, keyed by
     the provider identifier and carrying artist, title and isrc. Anything else
     is read as ``Wanted`` tracks, in order.
+
+    A FROZEN MAPPING IS A DOWNLOAD LIST AND NOTHING MORE. The freeze kept the
+    split title and dropped the version, the key and the source's spelling, so a
+    list written from it freezes back identically and re-reads to the PLAIN
+    record for anything that matches or tombstones by title. Write from the
+    ``Wanted`` tracks whenever they are still held.
     """
     if isinstance(source, Mapping):
         return tuple(

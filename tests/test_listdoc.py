@@ -250,14 +250,34 @@ def test_a_read_track_keeps_its_featured_credit_through_the_round_trip(tmp_path)
     assert again.version_key == "extended mix"
 
 
-def test_a_declared_version_beside_an_embedded_one_keeps_the_declared_token(tmp_path):
-    # Spelled together, this re-reads as "extended dub". The declared field wins
-    # in the source row, so the emitter falls back to writing title and version.
-    wanted = _tidal(id="606", title="Sun Path (Extended)", version="Dub", artist="Aurora Bloom")
+@pytest.mark.parametrize(
+    "raw",
+    ["Sun Path (Extended)", "Sun Path (feat. Mira) (Extended)"],
+)
+def test_a_declared_version_beside_an_embedded_one_round_trips_whole(tmp_path, raw):
+    # Spelled together, this re-reads as "extended dub", so the source's own
+    # spelling is not written. The split title is not written either, because it
+    # has lost "(Extended)" and the credit: the raw title and the declared
+    # version are, which re-read to the same addressed title.
+    wanted = _tidal(id="606", title=raw, version="Dub", artist="Aurora Bloom")
     (row,) = listdoc.rows_of([wanted])
-    assert (row.title, row.version) == ("Sun Path", "Dub")
+    assert (row.title, row.version) == (raw, "Dub")
     (again,) = read_list(_write(tmp_path, rows=(row,)).list_path)
     assert again.version_key == "dub"
+    assert again.listed == f"{raw} (Dub)"
+
+
+def test_a_hand_built_track_with_no_spelling_writes_its_title_and_version(tmp_path):
+    wanted = match.Wanted(artist="Aurora Bloom", title="Sun Path", version="Dub", origin=match.TIDAL, ref="707")
+    (row,) = listdoc.rows_of([wanted])
+    assert (row.title, row.version) == ("Sun Path", "Dub")
+
+
+def test_a_frozen_mapping_carries_no_version_so_none_is_written(tmp_path):
+    # Recorded, not endorsed: the freeze dropped it. See rows_of's docstring.
+    (row,) = listdoc.rows_of({"808": {"artist": "Aurora Bloom", "title": "Sun Path", "isrc": None}})
+    (again,) = read_list(_write(tmp_path, rows=(row,)).list_path)
+    assert again.version == ""
 
 
 def test_a_track_from_another_service_is_unlisted_not_written_as_a_provider_id(tmp_path):
