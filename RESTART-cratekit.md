@@ -4,7 +4,33 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-352, issue #94, `unit/issue94-the-adapter-s-roster-is-narrower-than-th`.**
+**Last merged: R-368, issue #101, `relay/101`.**
+`crate restore run` takes `--target DIRECTORY`, a database restore into a
+directory that is not the live library, which is how a restore is rehearsed.
+Valid only with `--from-backup`. It rolls no session back: a named session
+refuses, `--discard` refuses, and the default that means the newest spendable
+capture is suppressed. Omitting the flag is the live restore unchanged. Two
+destination refusals share `restore-target-is-live-root`, the target being the
+library root or holding it or sitting inside it, and the database landing on
+the live one, which is the acknowledged outside-root layout that containment
+cannot see. The two invocation refusals share `restore-target-invalid`. Both
+slugs live in `core.cause.REASONS` and not in the reservation table, which
+reserves what a module's refusal enum raises. A target that is not a directory
+still raises `restore-target-absent` from `plan_restore`. The target and
+`dry_run` are both digested into the offer, the second being a hole this
+branch's review found one flag over. The branch's review also found the
+guard comparing resolved paths as strings, which accepted a case folded
+spelling of the live library on the filesystems this product runs on; both
+checks ask `samefile` now. Mutation tables `docs/mutation/r368.md` and
+`docs/mutation/r368-round-2.md`, 16 rows then 5, ending 21 of 21 killing, null
+control 0 of 7649 and 0 of 7651, no collect drift, every restore verified
+against `git show HEAD`. R-368 is closed against its RESTATED close and is not
+fully closed: a rehearsal still takes the live library lock and still needs
+rekordbox gone, which is R-396. The learning is
+`docs/solutions/integration-issues/a-resolved-path-compared-with-equals-is-not-a-same-directory-test.md`.
+Main's highest residual number is R-396.
+
+**The session before, 2026-09-18, R-352, issue #94, `unit/issue94-the-adapter-s-roster-is-narrower-than-th`.**
 After own page and seeds, `TidalCatalogue.artist_for` searches the label
 name and numbered compilations `001` through `079`, keeps copyright matches
 via Cratekit `labels_from_copyright` and `labels_match`, and walks credited

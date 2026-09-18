@@ -1327,3 +1327,581 @@ def test_a_capture_that_exists_but_is_unverified_is_not_spendable(cfg):
         "an unverified capture was offered as the default restore target"
     )
 
+
+
+# ── R-368: a restore into a directory that is not the live library ────────────
+#
+# The verb could restore to exactly one place, the live library root, so the
+# rehearsal a person runs BEFORE they need a restore was a session's script
+# calling the engine with its ``target`` seam set. The flag below is that seam
+# made reachable, and every property here is about the two things that made it
+# unsafe to expose: a target that is the live library by another name, and a
+# target beside a capture rollback, which can only ever be performed on the live
+# library and would put the two halves of one restore on two volumes.
+
+
+def _sidecars_beside(path: Path) -> tuple[Path, ...]:
+    """The live companion files, written so a run that clears them can be seen.
+
+    The suffixes come from the state inventory rather than from a literal here,
+    which is the same declaration ``plan_restore`` reads to decide what a restore
+    clears. A literal pair would keep passing on the day the inventory grows a
+    third.
+    """
+    written = []
+    for sidecar in config.state_file("rekordbox_db").sidecars:
+        beside = path.with_name(path.name + sidecar.suffix)
+        beside.write_bytes(b"live companion, not this restore's business")
+        written.append(beside)
+    assert written, "the inventory declares no companion, so this pins nothing"
+    return tuple(written)
+
+
+def _copy_destinations(log: Path) -> list[str]:
+    """Where the program was asked to put each file, read off its own invocations."""
+    lines = log.read_text().splitlines() if log.exists() else []
+    return [line.split()[-1] for line in lines if " copy " in f" {line} "]
+
+
+def test_a_target_restores_the_database_into_the_directory_it_names(
+    installed, tmp_path, monkeypatch
+):
+    """The close condition, driven through the dispatcher onto a scratch directory.
+
+    TWO MEASUREMENTS, because either alone passes over a flag that is read and
+    then dropped. The first is where the transfer was pointed, taken off the
+    program's own invocation log. The second is the live companion files, which
+    are the cost of getting this wrong: ``run_restore`` clears the companions
+    beside the database it is about to replace, so a rehearsal whose target was
+    ignored deletes the live write-ahead log, and that log holds transactions
+    committed since the last checkpoint, which are in no capture by construction.
+    A rehearsal that destroys the one thing no backup holds is worse than no
+    rehearsal.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+    scratch = tmp_path / "rehearsal"
+    scratch.mkdir()
+    live = config.state_path("rekordbox_db", installed)
+    companions = _sidecars_beside(live)
+
+    _code, refused = _drive(["restore", "run", "--from-backup", "--target", str(scratch)])
+    _answer(refused["run_id"], "restore")
+    code, envelope = _drive(
+        ["--run", refused["run_id"], "restore", "run", "--from-backup", "--target", str(scratch)]
+    )
+
+    assert code == int(ExitCode.OK), envelope
+    destinations = _copy_destinations(log)
+    assert destinations, "the flag was accepted and no transfer was ever attempted"
+    assert all(place.startswith(str(scratch.resolve())) for place in destinations), (
+        f"a restore asked for {scratch} was pointed at {destinations}"
+    )
+    assert all(beside.exists() for beside in companions), (
+        "the rehearsal cleared the LIVE companion files beside the live database, "
+        "which is the work no capture holds"
+    )
+    assert live.read_bytes() == b"database, generation one"
+
+
+def test_a_target_that_is_the_library_root_is_refused(installed, monkeypatch):
+    """The first destination check, over the spelling a person reaches for first.
+
+    ``--target`` pointed at the library is not a rehearsal, it is the live
+    restore with extra typing, and the two have different gates ahead of them in
+    every direction this unit could grow. Refused rather than quietly accepted as
+    a synonym, because a synonym is what makes the next check, the one below
+    about where the database lands, look redundant.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+
+    code, envelope = _drive(
+        ["restore", "run", "--from-backup", "--target", str(installed.library.root)]
+    )
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+    assert not log.exists(), "the remote was reached by a run that is refused"
+
+
+@pytest.mark.parametrize(
+    "where, why",
+    [
+        ("inside", "a directory underneath the library root"),
+        ("above", "the directory the library root sits in"),
+    ],
+)
+def test_a_target_that_holds_the_library_or_sits_in_it_is_refused(
+    installed, where, why
+):
+    """The rest of the containment check, which equality alone does not cover.
+
+    A target INSIDE the library restores a database onto the volume the whole
+    rehearsal exists to leave alone, and one ABOVE it is the library's own parent,
+    where ``--include-mirror`` would copy the mirror back over the live tree. Both
+    are the live library under a different name, which is why they share the
+    slug the exact root gets.
+    """
+    acknowledge(installed)
+    root = Path(installed.library.root)
+    named = root / "beneath" if where == "inside" else root.parent
+    if where == "inside":
+        named.mkdir()
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(named)])
+
+    assert code == int(ExitCode.PRECONDITION), f"{why}: {envelope}"
+    assert envelope["cause"]["reason"] == "restore-target-is-live-root", why
+    assert envelope["cause"]["detail"]["check"] == "containment", why
+
+
+def test_a_target_whose_database_lands_on_the_live_one_is_refused(
+    installed, tmp_path, monkeypatch
+):
+    """The check the containment one cannot make, in the layout rekordbox ships.
+
+    ``database_target_for`` rebases the CONFIGURED database onto the target, and
+    a database that sits outside the library root has no position relative to it,
+    so the honest answer is its own name at the top of the target. That makes the
+    parent directory of a live database a target which is not the library root,
+    is neither above nor below it, and still restores ``master.db`` over the live
+    file in place.
+
+    THE LAYOUT IS THE ACKNOWLEDGED ONE, not an invented configuration. It is what
+    ``library.db_outside_root_acknowledged_on`` exists for and it is rekordbox's
+    own default, so this is the common installation rather than the exotic one.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+    home = tmp_path / "home" / "rekordbox"
+    home.mkdir(parents=True)
+    outside = replace(
+        installed,
+        library=replace(
+            installed.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-18",
+        ),
+    )
+    config.save(outside)
+    config.reset_cache()
+    (home / "master.db").write_bytes(b"database, generation one")
+    assert backup.database_target_for(outside, home) == config.state_path(
+        "rekordbox_db", outside
+    ), "the fixture does not reproduce the layout, so this pins nothing"
+    assert not home.is_relative_to(outside.library.root), (
+        "the database's directory is inside the library root here, so the "
+        "containment check would refuse it and this measures that instead"
+    )
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(home)])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+    assert envelope["cause"]["detail"]["check"] == "destination"
+    assert not log.exists(), "the remote was reached by a run that is refused"
+    # THE SENTENCE, not only the slug. Measured on the author's own table, row
+    # R1_the_live_root_refusal_is_reworded: rewriting this message killed
+    # nothing. A person who named their database's own directory sees the
+    # message and not the slug, and what it has to tell them is WHERE the file
+    # would go, because the directory they typed is not the path that moves.
+    assert str(home / "master.db") in envelope["cause"]["message"], envelope
+    assert "live database" in envelope["cause"]["message"], envelope
+
+
+def test_a_target_with_no_off_machine_pull_is_refused(installed):
+    """The flag names where a PULLED database goes, so it needs the pull.
+
+    Accepted silently it would be inert, which is the shape ``--snapshot`` and
+    ``--include-mirror`` still have one line up: a flag a person typed, that the
+    verb read, and that changed nothing about what it did. Here that inertness
+    is dangerous rather than merely untidy, because the run it silently becomes
+    is a rollback of the live library.
+    """
+    acknowledge(installed)
+
+    code, envelope = _drive(["restore", "run", "--target", "/somewhere/else"])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "restore-target-invalid"
+
+
+@pytest.mark.parametrize("extra", [["--discard", "s-1"], []])
+def test_a_target_beside_a_capture_rollback_is_refused(installed, extra):
+    """Both halves on two volumes is the composition this refuses outright.
+
+    The capture half resolves every path it writes from ``cfg.library.root`` and
+    the plan refuses a session that does not authorise that root, so a run that
+    took a target AND a session would put the database from the remote in the
+    scratch directory and roll the live library's coupled state back at the same
+    time. Nobody would ask for that, and before this refusal existed it was the
+    natural spelling of "rehearse the restore of this session".
+
+    ``--discard`` IS THE SAME REFUSAL, because it is a capture-half argument as
+    well: it names sessions whose committed work a rollback destroys, and there
+    is no rollback here to destroy them.
+    """
+    acknowledge(installed)
+    record, _captured = completed_session(installed)
+    named = [record.session_id] if not extra else []
+
+    code, envelope = _drive(
+        ["restore", "run", *named, "--from-backup", "--target", "/somewhere/else", *extra]
+    )
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "restore-target-invalid"
+
+
+def test_a_target_run_rolls_no_session_back_even_by_default(installed, tmp_path, monkeypatch):
+    """The OTHER way a capture reaches a run, which the refusal above cannot see.
+
+    A bare ``restore run`` means the newest spendable capture, so a library with
+    a restorable session and a person asking only for a rehearsal would have
+    rolled that session back on the live library without naming it. The refusal
+    above covers the session somebody TYPED. This covers the one the verb would
+    have chosen for them.
+    """
+    acknowledge(installed)
+    _fake_rclone(installed, monkeypatch)
+    record, _captured = completed_session(installed)
+    assert restore_cli._newest_restorable(installed) is not None, (
+        "no capture is spendable here, so a default nobody suppressed would be "
+        "None anyway and this pins nothing"
+    )
+    scratch = tmp_path / "rehearsal"
+    scratch.mkdir()
+
+    _code, refused = _drive(["restore", "run", "--from-backup", "--target", str(scratch)])
+    _answer(refused["run_id"], "restore")
+    code, envelope = _drive(
+        ["--run", refused["run_id"], "restore", "run", "--from-backup", "--target", str(scratch)]
+    )
+
+    assert code == int(ExitCode.OK), envelope
+    assert all(item["half"] == "off-machine" for item in envelope["data"]["items"])
+    assert "converged" not in envelope["data"]["totals"], (
+        f"a rehearsal reported on the capture restore's own question, so a "
+        f"session was spent: {envelope['data']['totals']}"
+    )
+    assert record.session_id in {
+        entry.session_id for entry in restore.list_sessions(installed)
+    }
+
+
+def test_the_digest_moves_when_the_restore_is_pointed_somewhere_else(
+    installed, tmp_path
+):
+    """A decision about a rehearsal must not be honoured against the live restore.
+
+    The digest is the identity of what a person approved, and where the database
+    lands is most of what they are approving. Without the target in it, an
+    answer recorded against ``--from-backup --target /some/scratch`` matches a
+    later ``--from-backup`` exactly, and the recorded decision authorises a
+    restore over the live library that nobody agreed to.
+    """
+    acknowledge(installed)
+    scratch = tmp_path / "rehearsal"
+    scratch.mkdir()
+
+    _code, live = _drive(["restore", "run", "--from-backup"])
+    _code, rehearsal = _drive(
+        ["restore", "run", "--from-backup", "--target", str(scratch)]
+    )
+
+    assert _offered_digest(live) != _offered_digest(rehearsal), (
+        "pointing the restore at a scratch directory did not move the digest, so "
+        "a decision made about the rehearsal is honoured against the live library"
+    )
+
+
+def test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal(
+    installed, tmp_path, monkeypatch
+):
+    """The existing refusal, reached through the new flag rather than restated.
+
+    ``plan_restore`` already refuses a target that is not a directory, with its
+    own reserved slug and its own remediation, so the verb deliberately does not
+    ask the question a second time: a guard covered by another guard is a guard
+    nothing covers. What this measures is that the flag reaches that refusal
+    rather than inventing a second sentence for the same fact.
+    """
+    acknowledge(installed)
+    _fake_rclone(installed, monkeypatch)
+    missing = tmp_path / "not-mounted"
+
+    _code, refused = _drive(["restore", "run", "--from-backup", "--target", str(missing)])
+    _answer(refused["run_id"], "restore")
+    code, envelope = _drive(
+        ["--run", refused["run_id"], "restore", "run", "--from-backup", "--target", str(missing)]
+    )
+
+    assert code == int(ExitCode.LIBRARY_UNAVAILABLE), envelope
+    assert envelope["cause"]["reason"] == str(backup.Refusal.RESTORE_TARGET_ABSENT)
+
+
+def test_a_rehearsal_is_still_refused_while_rekordbox_is_running(
+    installed, tmp_path, monkeypatch
+):
+    """Today's live gates stay, which is half of what this unit promised.
+
+    A restore into a scratch directory touches nothing rekordbox holds open, so
+    this refusal is conservative rather than necessary, and it is kept on purpose:
+    the gates are the ones the live restore passes, unchanged, and loosening them
+    for a target is a decision with its own blast radius. That the rehearsal still
+    takes the library lock and still needs rekordbox closed is recorded as a
+    finding rather than claimed as the finished shape.
+    """
+    acknowledge(installed)
+    _fake_rclone(installed, monkeypatch)
+    scratch = tmp_path / "rehearsal"
+    scratch.mkdir()
+
+    _code, refused = _drive(["restore", "run", "--from-backup", "--target", str(scratch)])
+    _answer(refused["run_id"], "restore")
+    monkeypatch.setattr(
+        "cratekit.core.processes.running_process_names", lambda: ("rekordbox",)
+    )
+    code, envelope = _drive(
+        ["--run", refused["run_id"], "restore", "run", "--from-backup", "--target", str(scratch)]
+    )
+
+    assert code == int(ExitCode.REKORDBOX_OPEN), envelope
+    assert envelope["cause"]["reason"] == "rekordbox-running"
+
+
+def test_a_relative_target_is_compared_as_the_place_it_names(installed, monkeypatch):
+    """The resolution, measured where leaving it out actually costs something.
+
+    A relative path compares equal to nothing: ``Path("library")`` is neither the
+    configured root nor inside it, whatever directory the person is standing in.
+    So a guard over the raw argument passes a target that IS the library root,
+    typed from the directory above it, and the restore lands on the live
+    database. The comparison is between two places on the disk, not two
+    spellings.
+    """
+    acknowledge(installed)
+    root = Path(installed.library.root)
+    monkeypatch.chdir(root.parent)
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", root.name])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+    # WHAT THE RESOLUTION ITSELF IS FOR, now that the filesystem answers the
+    # comparison. Measured on the author's own table, row G7_target_not_resolved:
+    # dropping the resolution killed nothing, because ``samefile`` stats a
+    # relative path against the working directory and answers correctly without
+    # it. What is left is the REPORT, and it is not nothing: a refusal that
+    # echoes back the word somebody typed tells them their target is the library
+    # without saying which directory that resolved to, which is the one fact
+    # they do not already have.
+    assert envelope["cause"]["detail"]["target"] == str(root), envelope
+
+
+def _case_folds(where: Path) -> bool:
+    """Whether this filesystem reads two spellings of one name as one directory.
+
+    ASKED OF THE DIRECTORY THE TEST WILL USE, not of the platform. macOS ships
+    APFS case insensitive and can be formatted case sensitive, and an external
+    drive holding a library is frequently exFAT, so a check keyed on
+    ``sys.platform`` would answer for the wrong volume on the machine it most
+    matters on.
+    """
+    probe = where / "Case_Probe"
+    probe.mkdir()
+    try:
+        return (where / "case_probe").is_dir()
+    finally:
+        probe.rmdir()
+
+
+def test_a_differently_cased_library_root_is_still_the_library(
+    installed, tmp_path, monkeypatch
+):
+    """The guard's own defect, found by this unit's review and driven here.
+
+    ``Path.resolve`` followed by ``==`` or ``is_relative_to`` compares STRINGS.
+    On a case insensitive filesystem, which is APFS as macOS ships it and exFAT
+    on the external drive a DJ library normally lives on, the library root typed
+    in another case is the same directory and both of those answer that the two
+    paths are unrelated. Measured before the fix, through the real dispatcher:
+    exit 0, the transfer pointed at the live database's own directory, and the
+    live write-ahead log unlinked. The rehearsal destroyed the one thing no
+    capture holds.
+
+    BOTH FILESYSTEMS ARE ASSERTED rather than one being skipped, and neither is
+    faked. Whether two spellings are one directory is a fact about the volume the
+    test is running on, so a monkeypatched ``samefile`` would measure the stub;
+    and a skip would make this whole property invisible on a machine where it
+    happens not to hold, which is how a guard rots. Where the names are two
+    places the refusal would be WRONG, so the expectation flips with the
+    filesystem and the run says which branch it took.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+    root = Path(installed.library.root)
+    shouted = root.with_name(root.name.upper())
+    assert str(shouted) != str(root), "the fixture's root is already upper case"
+    live = config.state_path("rekordbox_db", installed)
+    companions = _sidecars_beside(live)
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
+
+    if _case_folds(tmp_path):
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        assert all(beside.exists() for beside in companions), (
+            "a target spelled in another case was accepted and cleared the live "
+            "companion files"
+        )
+        assert not log.exists(), "the remote was reached by a run that is refused"
+    else:
+        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
+            f"this filesystem holds the two spellings as two directories, so "
+            f"{shouted} is not the library and refusing it names the wrong fact"
+        )
+
+
+def test_a_differently_cased_database_directory_is_still_the_live_database(
+    installed, tmp_path, monkeypatch
+):
+    """The same fold, on the destination check rather than on containment.
+
+    The two checks compare different pairs of paths, so a fix on one of them is
+    not a fix on the other. This is the acknowledged layout again, where the
+    target is the live database's own directory and only the spelling differs.
+
+    BOTH FILESYSTEMS AGAIN, for the reason the test above gives at length.
+    """
+    acknowledge(installed)
+    home = tmp_path / "home" / "Rekordbox"
+    home.mkdir(parents=True)
+    outside = replace(
+        installed,
+        library=replace(
+            installed.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-18",
+        ),
+    )
+    config.save(outside)
+    config.reset_cache()
+    (home / "master.db").write_bytes(b"database, generation one")
+    shouted = home.with_name(home.name.upper())
+    assert str(shouted) != str(home)
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
+
+    if _case_folds(tmp_path):
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        assert envelope["cause"]["detail"]["check"] == "destination"
+    else:
+        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
+            f"this filesystem holds the two spellings as two directories, so the "
+            f"database would land in {shouted} and not on the live one"
+        )
+
+
+def test_the_digest_moves_when_the_rehearsal_flag_does(installed):
+    """The hole one flag over, found by this unit's review of the target.
+
+    ``--dry-run`` walks every step and performs none, so it is the cheapest thing
+    a person can be asked to approve. With it outside the digest, the decision
+    recorded against a preview matched a later invocation without the flag
+    exactly, and authorised a real restore over the live database. Driven before
+    the fix: the answer given to the rehearsal was honoured, the run exited OK,
+    one real copy landed on the live database and the live log was gone.
+    """
+    record, _captured = completed_session(installed)
+
+    _code, preview = _drive(["restore", "run", record.session_id, "--dry-run"])
+    _code, real = _drive(["restore", "run", record.session_id])
+
+    assert _offered_digest(preview) != _offered_digest(real), (
+        "the rehearsal flag did not move the digest, so a decision made about a "
+        "preview is honoured against a restore that performs every step"
+    )
+
+
+def test_a_differently_cased_ancestor_still_puts_the_target_inside_the_library(
+    installed, tmp_path
+):
+    """The ancestor WALK, measured where the candidate itself is not the root.
+
+    Measured on the author's own table, row G6_ancestors_not_walked: asking
+    ``samefile`` of the candidate alone killed nothing, because every case folded
+    drive above named the root itself, where one question is enough. A directory
+    three levels inside a library whose ROOT was typed in another case is the
+    shape that needs the walk, and it is the one a person produces by pasting a
+    path from somewhere that shouted it.
+    """
+    acknowledge(installed)
+    root = Path(installed.library.root)
+    (root / "beneath").mkdir()
+    inside = root.parent / root.name.upper() / "beneath"
+    assert not inside.is_relative_to(root), (
+        "the two spellings share a prefix here, so the string test alone answers "
+        "this and the walk is not what is being measured"
+    )
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(inside)])
+
+    if _case_folds(tmp_path):
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        assert envelope["cause"]["detail"]["check"] == "containment"
+    else:
+        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
+            f"this filesystem holds the two spellings as two directories, so "
+            f"{inside} is not inside the library"
+        )
+
+
+def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(
+    installed, tmp_path
+):
+    """The half of the destination check that ``samefile`` alone cannot make.
+
+    Measured on the author's own table, row
+    G14_the_destination_check_is_equality_only: dropping the name and parent
+    half killed nothing, because every drive of it had the live database sitting
+    on disk, where one stat answers the question. A database the configuration
+    names and the disk does not hold is not an exotic state, it is the state a
+    person is restoring FROM: the file is gone, which is why they are here. With
+    the file absent there is nothing to stat, so a case folded spelling of its
+    own directory passes the first half and lands ``master.db`` exactly where the
+    live one belongs.
+    """
+    acknowledge(installed)
+    home = tmp_path / "home" / "rekordbox"
+    home.mkdir(parents=True)
+    outside = replace(
+        installed,
+        library=replace(
+            installed.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-18",
+        ),
+    )
+    config.save(outside)
+    config.reset_cache()
+    assert not (home / "master.db").exists(), (
+        "the database is on disk here, so the first half of the check answers "
+        "this and the half under measurement is not reached"
+    )
+    shouted = home.with_name(home.name.upper())
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
+
+    if _case_folds(tmp_path):
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        assert envelope["cause"]["detail"]["check"] == "destination"
+    else:
+        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
+            f"this filesystem holds the two spellings as two directories, so the "
+            f"database would land in {shouted} and not where the live one belongs"
+        )

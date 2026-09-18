@@ -4860,7 +4860,29 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # WHY THE REJECTED CREDENTIAL IS NOT A THIRD. The service answering that
     # the key or the signing key is wrong reuses auth-failed, which this
     # vocabulary already declares with the exit code that means exactly that.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (154, 130, 24)
+    #
+    # Re-pinned on the restore rehearsal target, 2026-09-18. The number this
+    # unit is filed under is deliberately absent: the number ban below covers
+    # this file, and a citation here would have to be a title.
+    #
+    # TWO slugs, named rather than counted, both
+    # raised by the restore verb for its new rehearsal target.
+    # restore-target-is-live-root is a destination that IS the live library,
+    # either by naming its root or by landing the database on the live file in
+    # the layout where the database sits outside that root.
+    # restore-target-invalid is the invocation instead of the path: a target
+    # with no off-machine pull to fill it, or a target beside a capture rollback
+    # that can only ever be performed on the live library. Neither is in the
+    # reserved table, exactly as review-selection-invalid beside them is not,
+    # because that table reserves what a module's refusal ENUM raises and these
+    # are the verb's own. Population 154 to 156, non-reserved 130 to 132,
+    # reserved half UNCHANGED at 24.
+    #
+    # WHY THE MISSING DIRECTORY IS NOT A THIRD. A target that is not a directory
+    # reuses restore-target-absent, which backup.Refusal already declares and
+    # the reserved table already carries, and the verb deliberately does not ask
+    # that question a second time.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (156, 132, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5145,7 +5167,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # literal as list-snapshots which this population has carried since the
     # backup module landed. The refusal a failed listing raises is
     # no-snapshot-available, already reserved.
-    assert (len(literals), len(literals - set(causes))) == (409, 256), (
+    # Re-pinned on the restore rehearsal target, 2026-09-18: 409 to 411
+    # distinct, 256 non-keys UNCHANGED. TWO literals joined and NOTHING left,
+    # differenced over the branch's diff of `src` against `main`, which removes
+    # no kebab literal. Both ARE causes, restore-target-is-live-root and
+    # restore-target-invalid, which is why the non-key half does not move: they
+    # are the verb's own refusals when a target names the live library or the
+    # invocation cannot produce a rehearsal at all.
+    assert (len(literals), len(literals - set(causes))) == (411, 256), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
