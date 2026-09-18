@@ -684,6 +684,33 @@ def test_an_id_lookup_that_returns_none_is_an_unresolved_seed():
     assert "id:99" in str(excinfo.value)
 
 
+def test_a_seed_that_is_not_digits_after_the_prefix_is_still_a_name():
+    named = ProviderArtist("id:abc", [Release("r1")], artist_id="1")
+    client = FakeClient(artists=[named])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("id:abc",)
+    )
+
+    roster = adapter.artist_for(entry)
+
+    assert roster.artists == [named]
+    assert client.artist_lookups == []
+    assert "id:abc" in client.searches
+
+
+def test_an_uppercase_id_prefix_is_still_a_name_seed():
+    pinned = ProviderArtist("Quiet Act", [Release("r1")], artist_id="99")
+    client = FakeClient(artists=[pinned])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("ID:99",)
+    )
+    with pytest.raises(tidal_catalogue.LabelUnresolvable):
+        adapter.artist_for(entry)
+    assert client.artist_lookups == []
+
+
 def test_the_roster_lists_once_when_it_is_built_and_the_crawl_reads_memory():
     """Review finding: a lazy listing ran a retry ladder inside the crawl's own."""
     artist = ProviderArtist("Harbour Lights", [Release("r1")], [Release("s1")])
