@@ -215,7 +215,7 @@ def _credited_ids(release: Any) -> tuple[str, ...]:
 
 
 class TidalCatalogue:
-    """The five provider reads the ``Catalogue`` seam declares, over one logged in client."""
+    """The six provider reads the ``Catalogue`` seam declares, over one logged in client."""
 
     def __init__(self, session: Any) -> None:
         self._session = session
@@ -461,6 +461,23 @@ class TidalCatalogue:
                 )
             )
         return tuple(own)
+
+    def favourite_tracks(self) -> tuple[Any, ...]:
+        """The account's hearted tracks, through the one favourites listing.
+
+        ``listing.favorite_tracks`` ends on the provider's declared count and
+        raises ``ListingTruncated`` rather than returning what it collected, so
+        this read is complete or it raises. A client that cannot say who is
+        logged in is REFUSED rather than read as an account with no hearts, for
+        the reason :meth:`account_playlists` gives.
+        """
+        user = getattr(self._session, "user", None)
+        if getattr(user, "favorites", None) is None:
+            raise LookupError(
+                "the provider client did not expose the logged in account's "
+                "favourites, so its hearts cannot be listed"
+            )
+        return tuple(listing.favorite_tracks(self._session))
 
 
 def open_catalogue() -> TidalCatalogue:

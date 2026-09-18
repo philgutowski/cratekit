@@ -592,6 +592,35 @@ def playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> lis
         ) from exc
 
 
+def favourite_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> list:
+    """List the account's hearts, translating a provider failure at the same boundary.
+
+    THE SAME TRANSLATION AS :func:`playlist_tracks_or_refuse`, and for the same
+    reasons: a ``CratekitError`` passes through so an adapter's own refusal keeps
+    the act it names, and anything else is ``label-playlist-unreadable``, because
+    the hearts are one more provider listing a bound catalogue could not answer.
+    ``listing.ListingTruncated`` is the shape that matters most here. It arrives
+    as a plain ``RuntimeError`` and is refused whole, since a short hearts listing
+    would read every heart past the cut as one the account does not hold.
+
+    ``reference`` is what the person typed, carried into the detail so the
+    refusal names the input the way the playlist refusal does.
+    """
+    try:
+        return list(found.favourite_tracks())
+    except CratekitError:
+        raise
+    except Exception as exc:
+        raise refuse(
+            "label-playlist-unreadable",
+            f"the account's favourites could not be listed by the provider "
+            f"({exc}); a partial listing would miss hearts, so none is used",
+            steps=("retry once the provider can list this account's favourites",),
+            origin=("label.cli",),
+            detail={"playlist": reference, "kind": type(exc).__name__},
+        ) from exc
+
+
 def _label_verifier(
     found: catalogue.Catalogue, reference: str
 ) -> Callable[[str], dict]:
@@ -954,6 +983,7 @@ __all__ = [
     "build_import",
     "build_registry",
     "build_sync",
+    "favourite_tracks_or_refuse",
     "handle",
     "harvest_playlist",
     "playlist_tracks_or_refuse",

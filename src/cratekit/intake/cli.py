@@ -170,7 +170,9 @@ def build_identify(parser, entry) -> None:
 
 
 def build_playlist(parser, entry) -> None:
-    parser.add_argument("source", help="streaming playlist URL")
+    parser.add_argument(
+        "source", help="streaming playlist URL, or favorites for the account's hearts"
+    )
     parser.add_argument(
         "--job",
         default=None,
@@ -535,6 +537,22 @@ def intake_identify(ctx) -> Envelope:
 # ---------------------------------------------------------------------------
 
 
+#: The reserved reference that lists the account's hearts instead of a
+#: playlist. It cannot collide with a real playlist, because
+#: ``tidal_catalogue.playlist_id`` accepts only an identifier or a URL, and a
+#: playlist TITLED favorites is still referenced by its identifier.
+FAVORITES = "favorites"
+
+#: The ``source_id`` a hearts job carries, so a later reader can tell the job
+#: that listed the account's hearts from one that listed a playlist.
+FAVORITES_SOURCE_ID = "favorites"
+
+
+def is_favorites(reference: str) -> bool:
+    """Whether ``reference`` is the reserved hearts reference, as a person types it."""
+    return str(reference or "").strip().casefold() == FAVORITES
+
+
 def _playlist_rows(found: catalogue.Catalogue, reference: str) -> tuple[Wanted, ...]:
     """List one playlist through a BOUND catalogue, as ``Wanted`` rows.
 
@@ -542,8 +560,19 @@ def _playlist_rows(found: catalogue.Catalogue, reference: str) -> tuple[Wanted, 
     rather than copied, so ``label-playlist-unreadable`` means one thing and
     carries one shape wherever a bound provider was asked about a playlist
     and could not answer. What is this verb's is the reading of the rows.
+
+    THE RESERVED REFERENCE IS ASKED FIRST, before ``playlist_for`` could see
+    it. The hearts are read through the catalogue's own favourites listing and
+    then read, frozen and resolved exactly as a playlist's rows are, so owned,
+    offered and missing mean what they mean for any playlist. Ownership is the
+    match engine's one rule, not the source system's ISRC first rule, and a
+    heart the library lacks is not parked in a provider playlist: it is a
+    missing item, queued with its provider identifier.
     """
-    rows = label_cli.playlist_tracks_or_refuse(found, reference)
+    if is_favorites(reference):
+        rows = label_cli.favourite_tracks_or_refuse(found, reference)
+    else:
+        rows = label_cli.playlist_tracks_or_refuse(found, reference)
     try:
         return match.read_tidal_tracks(rows)
     except match.UnreadableList as exc:
@@ -599,18 +628,31 @@ def intake_playlist(ctx) -> Envelope:
     seam. In a shipped build ``resolve`` refuses with ``credential-missing`` or
     ``label-catalogue-unbound`` before the playlist is touched, and both of
     those are honest: nothing was contacted, and the refusal says so.
+
+    ``favorites`` queues the account's hearts as one job under the same key and
+    the same worker, recorded under the canonical spelling so the resume argv
+    names the reserved reference however it was typed. A re-run needs no
+    cursor: a heart acquired since the last run resolves owned.
     """
     cfg = _load()
     with jobs.open_store() as store:
         if ctx.args.job:
             return _resume(ctx, store, ctx.args.job)
         reference = str(ctx.args.source)
+        hearts = is_favorites(reference)
+        if hearts:
+            reference = FAVORITES
         found = catalogue.resolve(cfg)
         tracks = list_playlist(found, reference)
         if not tracks:
             return ctx.envelope(data=_no_op("no-tracks", source=reference), outcome=Outcome.NO_OP)
         job = queue_playlist(
-            store, cfg, handler_key=ctx.entry.handler_key, reference=reference, tracks=tracks
+            store,
+            cfg,
+            handler_key=ctx.entry.handler_key,
+            reference=reference,
+            tracks=tracks,
+            source_id=FAVORITES_SOURCE_ID if hearts else None,
         )
         return ctx.envelope(data=_reported(store, job))
 
@@ -759,6 +801,8 @@ def handle(job, item, cfg) -> jobs.Produced:
 __all__ = [
     "ARTIFACTS",
     "CALLS",
+    "FAVORITES",
+    "FAVORITES_SOURCE_ID",
     "INTAKE_KEYS",
     "SOURCE",
     "TRACKS",
@@ -773,6 +817,7 @@ __all__ = [
     "intake_identify",
     "intake_playlist",
     "intake_set",
+    "is_favorites",
     "item_key",
     "list_playlist",
     "playlist_argv",

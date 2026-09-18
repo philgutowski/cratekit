@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.acquire import match
+from cratekit.acquire import listing, match
 from cratekit.cli import handlers
 from cratekit.cli import jobs as cli_jobs
 from cratekit.core import artifacts, config, jobs, review, secrets
@@ -34,7 +34,14 @@ from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 from tests.cli_drive import drive
 from tests.intake.test_recognition import FakeCarver, FakeTransport, hit, miss
-from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, catalogue_factory
+from tests.label_fakes import (
+    PROTOCOL_METHODS,
+    FakeCatalogue,
+    FakePagedPlaylist,
+    StrictCatalogue,
+    UnreadableCatalogue,
+    catalogue_factory,
+)
 from tests.test_config import valid_data
 
 SET_KEY = "intake.set"
@@ -671,6 +678,192 @@ def test_a_row_naming_no_artist_is_the_readers_own_refusal(cfg, monkeypatch):
     code, envelope = drive(["intake", "playlist", "pl-1"])
     assert envelope["cause"]["reason"] == "intake-list-unusable", envelope
     assert "names no artist" in envelope["cause"]["message"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U70: the reserved reference ``favorites`` lists the account's hearts
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def bind_hearts(monkeypatch, hearts: list[Track]) -> StrictCatalogue:
+    """The account's hearts on a catalogue that refuses anything undeclared."""
+    fake = StrictCatalogue(hearts=hearts)
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    return fake
+
+
+def five_hearts() -> list[Track]:
+    return [
+        Track("201", "Aurora Bloom", "Sun Path"),
+        Track("202", "Nova Reef", "Tide"),
+        Track("203", "Mira Vale", "Glass Hour"),
+        Track("204", "Lumen Drift", "Salt Road"),
+        Track("205", "Kite Harbor", "Low Tide Signal"),
+    ]
+
+
+def queued_hearts(cfg, library, monkeypatch, spelled: str = "favorites") -> tuple[str, StrictCatalogue]:
+    fake = bind_hearts(monkeypatch, five_hearts())
+    owned(library, "Aurora Bloom - Sun Path.flac")
+    owned(library, "Mira Vale - Glass Hour.flac")
+    owned(library, "Nova Reef - Tide (Someone Remix).flac")
+    code, envelope = drive(["intake", "playlist", spelled])
+    assert code == int(ExitCode.OK), envelope
+    return envelope["data"]["job_id"], fake
+
+
+def test_favorites_lists_the_hearts_and_never_asks_for_a_playlist(cfg, library, monkeypatch):
+    job_id, fake = queued_hearts(cfg, library, monkeypatch)
+
+    assert fake.heart_listings == 1
+    assert fake.playlists_asked_for == [], "the reserved reference reached playlist_for"
+    assert [item.item_id for item in items_of(job_id)] == ["201", "202", "203", "204", "205"]
+    job = job_of(job_id)
+    assert job.handler_key == PLAYLIST_KEY
+    assert job.payload[intake_cli.SOURCE] == "favorites"
+    assert job.payload["source_id"] == "favorites"
+    assert resume_argv(job_id) == ["intake", "playlist", "favorites", "--job", job_id]
+
+
+def test_favorites_resolves_each_heart_owned_offered_or_missing(cfg, library, monkeypatch):
+    job_id, _ = queued_hearts(cfg, library, monkeypatch)
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["state"] == "succeeded"
+    progress = envelope["data"]["progress"]
+    assert (progress["owned"], progress["offered"], progress["missing"]) == (2, 1, 2)
+    assert progress["acquired"] == 0
+    found = by_title(cfg, job_id)
+    assert {title for title, report in found.items() if report["state"] == "owned"} == {
+        "Sun Path", "Glass Hour",
+    }
+    assert found["Tide"]["state"] == "offered"
+
+
+def test_the_missing_hearts_carry_the_provider_id_acquisition_reads(cfg, library, monkeypatch):
+    """What ``intake missing --job`` will list: the missing reports, by provider id.
+
+    That verb is U69's and does not exist on this tree, so the drive through it
+    is owed there. This pins the half U70 owns, that a finished hearts job holds
+    exactly two missing reports and each names the provider identifier a
+    download is asked for.
+    """
+    job_id, _ = queued_hearts(cfg, library, monkeypatch)
+    drive(resume_argv(job_id))
+
+    missing = [report for report in reports(cfg, job_id) if report["state"] == "missing"]
+    assert sorted(report["track"]["ref"] for report in missing) == ["204", "205"]
+    assert all(report["item_id"] == report["track"]["ref"] for report in missing)
+
+
+def test_a_rerun_after_acquiring_reports_the_heart_owned_with_no_cursor(cfg, library, monkeypatch):
+    first, _ = queued_hearts(cfg, library, monkeypatch)
+    drive(resume_argv(first))
+    owned(library, "Lumen Drift - Salt Road.flac")
+
+    code, envelope = drive(["intake", "playlist", "favorites"])
+    second = envelope["data"]["job_id"]
+    drive(resume_argv(second))
+
+    assert second != first
+    assert by_title(cfg, second)["Salt Road"]["state"] == "owned"
+    assert by_title(cfg, second)["Low Tide Signal"]["state"] == "missing"
+
+
+@pytest.mark.parametrize("spelled", ["Favorites", " FAVORITES "])
+def test_the_reserved_reference_is_read_however_it_is_cased(cfg, library, monkeypatch, spelled):
+    job_id, fake = queued_hearts(cfg, library, monkeypatch, spelled)
+    assert fake.playlists_asked_for == []
+    assert job_of(job_id).payload[intake_cli.SOURCE] == "favorites"
+
+
+def test_a_truncated_hearts_listing_refuses_whole_and_queues_nothing(cfg, monkeypatch):
+    class Truncated(StrictCatalogue):
+        def favourite_tracks(self):
+            raise listing.ListingTruncated("favorite_tracks spent its whole budget")
+
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Truncated(hearts=five_hearts())))
+    code, envelope = drive(["intake", "playlist", "favorites"])
+
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["reason"] == "label-playlist-unreadable", envelope
+    assert envelope["cause"]["detail"]["kind"] == "ListingTruncated"
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_an_unreadable_hearts_listing_is_unreadable_not_empty(cfg, monkeypatch):
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(UnreadableCatalogue()))
+    code, envelope = drive(["intake", "playlist", "favorites"])
+    assert envelope["cause"]["reason"] == "label-playlist-unreadable", envelope
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_an_adapter_refusal_under_the_hearts_listing_passes_through(cfg, monkeypatch):
+    class Expired(StrictCatalogue):
+        def favourite_tracks(self):
+            raise refuse(
+                "credential-missing",
+                "the stored session expired mid listing",
+                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+                origin=("test",),
+            )
+
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Expired()))
+    code, envelope = drive(["intake", "playlist", "favorites"])
+    assert envelope["cause"]["reason"] == "credential-missing", envelope
+
+
+def test_a_heart_without_an_identifier_is_refused_by_position(cfg, monkeypatch):
+    hearts = five_hearts()
+    hearts[2] = Track("", "Mira Vale", "Glass Hour")
+    bind_hearts(monkeypatch, hearts)
+    code, envelope = drive(["intake", "playlist", "favorites"])
+    assert envelope["cause"]["reason"] == "intake-list-unusable", envelope
+    assert envelope["cause"]["detail"]["positions"] == [3]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_an_account_with_no_hearts_queues_nothing_and_says_so(cfg, monkeypatch):
+    bind_hearts(monkeypatch, [])
+    code, envelope = drive(["intake", "playlist", "favorites"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.NO_OP)
+    assert envelope["data"]["state"] == "no-tracks"
+    assert envelope["data"]["progress"]["source"] == "favorites"
+
+
+def test_a_playlist_reference_still_reaches_the_playlist_and_not_the_hearts(cfg, monkeypatch):
+    fake = StrictCatalogue(
+        playlists={"pl-1": FakePagedPlaylist([Track("101", "Aurora Bloom", "Sun Path")])},
+        hearts=five_hearts(),
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    code, envelope = drive(["intake", "playlist", "pl-1"])
+    assert code == int(ExitCode.OK), envelope
+    assert fake.heart_listings == 0
+    assert "source_id" not in job_of(envelope["data"]["job_id"]).payload
+
+
+def test_the_strict_catalogue_answers_the_hearts_and_still_refuses_the_undeclared():
+    strict = StrictCatalogue(hearts=five_hearts())
+    assert "favourite_tracks" in PROTOCOL_METHODS
+    assert [track.id for track in strict.favourite_tracks()] == ["201", "202", "203", "204", "205"]
+    with pytest.raises(AssertionError):
+        strict.add_heart
+
+
+def test_the_fake_declares_exactly_the_protocol_the_seam_declares():
+    declared = {
+        name
+        for name, value in vars(catalogue.Catalogue).items()
+        if callable(value) and not name.startswith("_")
+    }
+    assert declared == PROTOCOL_METHODS
 
 
 # ═══════════════════════════════════════════════════════════════════════════
