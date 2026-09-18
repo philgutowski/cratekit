@@ -40,8 +40,12 @@ care about, and keep a current backup either way.
 
 ## Install
 
+The repository is private, so your GitHub account needs an invitation first. If
+git asks for a password, give it a personal access token, since GitHub no longer
+accepts account passwords for git.
+
 ```bash
-git clone <your private remote> cratekit
+git clone https://github.com/philgutowski/cratekit.git
 cd cratekit
 python3.12 -m venv .venv
 .venv/bin/pip install -e .
