@@ -17461,6 +17461,24 @@ product decision.
 **Closes when:** `name apply` refuses to rename a file the collection
 references, or re-points the row in the same guarded session.
 
+**Closed 2026-09-18 on `relay/112`, U67.** The first branch of the closing
+condition, refuse. `_plan_for` reads the collection through a read only open
+and splits the candidates into `rename` items and `referenced` items, both in
+the digest, with `totals.referenced`. `name_apply` reads the collection again
+after the gate and re-checks each item just before `path.rename`, so a row
+rekordbox adds while the gate waits still protects its file. A row counts by
+its path as recorded and by its prefix mapped path, NFC normalised and
+casefolded, and a tombstoned row counts. A candidate matches by its absolute
+or its resolved spelling. The check runs for every `--root`. A collection that
+cannot be read refuses as `collection-unreadable` carrying the inner cause and
+its remedy; there is no force flag. The read is skipped when nothing would be
+renamed, because the collection cannot change that outcome and the
+conformance suite drives this verb over a library with no database. Mutation
+tables `docs/mutation/u67.md` and `docs/mutation/u67-round-2.md`, 21 rows,
+every row killed once the round two collision test and composite landed. The
+author's table, not an independent one. **Owed to an attended sitting:** one
+plan only run against the live library to read the `referenced` count.
+
 ---
 
 ## R-408. The size guard that kept live sets out of vocal scoring is gone
@@ -17860,5 +17878,69 @@ declaration and a guide that say otherwise.
 
 **Closes when:** the verb declares only the remote heart it performs, or the
 local write is built.
+
+---
+
+## R-425. `name apply` over a library with cloud sync on exits as unreadable rather than as an external writer
+
+**Found:** 2026-09-18, U67's review, driven by
+`tests/test_naming_apply_cli.py::test_a_library_with_cloud_sync_on_refuses_and_names_the_real_cause`.
+
+The collection read goes through `rb_writer.open_db` with `require_closed`
+False, and its canary still refuses a library whose cloud sync is ON as
+`cloud-sync-active`. `write/naming_cli._recorded` wraps every failed read as
+`collection-unreadable`, so the process exits 25, `LIBRARY_UNREADABLE`, where
+the inner cause alone would have exited as `EXTERNAL_WRITER`. The message
+carries the inner cause's words and the remedy is `disable-cloud-sync`, so a
+person is told the right act; a script branching on the exit code is not.
+
+**The decision taken here, conservatively.** Sync on still refuses, the same
+refusal every other collection reader makes. Whether a read with sync on
+should block renames at all, and whether the outer slug should yield to a
+more specific inner one, is a person's call.
+
+**Measured cost:** exit code only. Nothing is renamed and the words are true.
+
+**Closes when:** the refusal's exit code agrees with its inner cause for the
+cloud sync case, or a person decides the folded code is the contract.
+
+---
+
+## R-426. A row recorded through a link is not matched when the root is given by its real path
+
+**Found:** 2026-09-18, U67, by reading rather than driving.
+
+`write/naming_cli._is_referenced` asks the candidate's absolute and resolved
+spellings, and `_referenced` keys each row as recorded and as prefix mapped.
+Neither side resolves a RECORDED path's links. A row recorded through a
+directory link, with `--root` naming the real directory, therefore matches
+neither spelling, and the file is planned as a rename. The two directions U67
+does cover are driven in `tests/test_naming_apply_cli.py`.
+
+**Measured cost:** unmeasured. rekordbox records the path it was handed at
+import, and no library was read to learn whether any row passes through a
+link. Resolving 9937 recorded paths per run is the cost of closing it; resolving
+each distinct parent directory once would be cheaper.
+
+**Closes when:** a recorded path's parent is resolved before it is keyed, or a
+live read shows no row passes through a link.
+
+---
+
+## R-427. The intake and naming skill describes a second gate `name apply` does not have
+
+**Found:** 2026-09-18, U67, by reading.
+
+`src/cratekit/skills/assets/intake-and-name/SKILL.md` says `name apply` has a
+second gate that asks whether to proceed when the cloud sync state cannot be
+read. `cli/registry.py` declares one gate on the entry, `name.apply.confirm`,
+and the verb's only database open is a read, which never reaches that
+decision. U67 added a paragraph beside it and did not change it, since it is
+outside the unit's files.
+
+**Measured cost:** a false sentence in shipped guidance. An agent following it
+waits for a decision that is never asked.
+
+**Closes when:** the paragraph is removed or corrected.
 
 ---
