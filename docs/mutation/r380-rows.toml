@@ -1,0 +1,118 @@
+# R-380, author's table. A job of permanent failures is not resumable.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r380-rows.toml
+
+name = "r380"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_the_wrapper_is_always_transient"
+description = "the original defect: every job failure is unavailable-transient, retryable, resume-job"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_label_workers.py"]
+old = '''    if not failed or any(cause.retryable for cause in failed):
+        return (
+            "unavailable-transient",
+            True,
+            Remediation(remedy=Remedy.RESUME_JOB),
+        )
+    reasons = {cause.reason for cause in failed}
+    reason = failed[0].reason if len(reasons) == 1 else failed[-1].reason
+    return (
+        reason,
+        False,
+        Remediation(
+            steps=(
+                "the failed items cannot succeed on resume; inspect each item's cause",
+            )
+        ),
+    )
+'''
+new = '''    return (
+        "unavailable-transient",
+        True,
+        Remediation(remedy=Remedy.RESUME_JOB),
+    )
+'''
+
+[[rows]]
+id = "G2_no_evidence_is_always_retryable"
+description = "the all failed envelope hardcodes retryable true"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_label_workers.py"]
+old = '''        f"empty result from a total failure is indistinguishable from having found "
+        f"nothing, and only one of those may advance anything downstream",
+        scope=Scope.SOURCE,
+        retryable=retryable,
+        origin=("jobs",),
+        detail={"attempted": attempted},
+'''
+new = '''        f"empty result from a total failure is indistinguishable from having found "
+        f"nothing, and only one of those may advance anything downstream",
+        scope=Scope.SOURCE,
+        retryable=True,
+        origin=("jobs",),
+        detail={"attempted": attempted},
+'''
+
+[[rows]]
+id = "G3_retryable_requires_every_item"
+description = "a mixed job is non retryable unless every failure is retryable"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    if not failed or any(cause.retryable for cause in failed):
+'''
+new = '''    if not failed or all(cause.retryable for cause in failed):
+'''
+
+[[rows]]
+id = "G4_the_reason_stays_unavailable_transient"
+description = "a permanent job still names itself unavailable-transient"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_label_workers.py"]
+old = '''    reason = failed[0].reason if len(reasons) == 1 else failed[-1].reason
+'''
+new = '''    reason = "unavailable-transient"
+'''
+
+[[rows]]
+id = "G5_permanent_failures_still_offer_resume"
+description = "the permanent branch still carries the resume-job remedy"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_label_workers.py"]
+old = '''        Remediation(
+            steps=(
+                "the failed items cannot succeed on resume; inspect each item's cause",
+            )
+        ),
+'''
+new = '''        Remediation(remedy=Remedy.RESUME_JOB),
+'''
+
+[[rows]]
+id = "G6_the_permanent_sentence_is_dropped"
+description = "the job message no longer says the failures are permanent"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_label_workers.py"]
+old = '''    if not retryable:
+        message += "; every failure is permanent so resuming this job cannot succeed"
+    elif transient and permanent:
+'''
+new = '''    if transient and permanent:
+'''
+
+[[dropped]]
+id = "G7_failed_causes_are_not_collected"
+description = "drive stops appending item causes, so the verdict sees an empty list"
+reason = "ranked below the cap: G1 already restores the empty-list fallback, which is the same lie"
+
+[[dropped]]
+id = "G8_evidence_or_raise_ignores_the_computed_flag"
+description = "drive passes retryable True into evidence_or_raise instead of the items"
+reason = "ranked below the cap: same surface as G2"
