@@ -14,8 +14,16 @@ for sale.
 
 ## Status
 
-Early. The package foundation is landing; most feature modules have not been
-ported yet. Nothing here is ready to point at a library you care about.
+Built, and being cut over from the system it replaces one workflow at a time.
+Every planned verb exists and the test suite covers them. Setup and the health
+check have run on a real library, and four attended sittings have run backup,
+download, vocal scoring, playlist export and a favourites sweep on one.
+
+Some workflows have not had a live sitting yet, and some that have carry known
+problems. [`docs/cutover.md`](docs/cutover.md) is the per workflow record of
+which is which, and [`docs/GUIDE.md`](docs/GUIDE.md) summarises it. Read the
+guide's "Where it stands" table before pointing a writing verb at a library you
+care about, and keep a current backup either way.
 
 ## Requirements
 
@@ -23,6 +31,12 @@ ported yet. Nothing here is ready to point at a library you care about.
 - rekordbox 7.x
 - macOS today. The code carries no macOS-only assumptions, so a Windows adapter
   is an addition rather than a rewrite, but it has not been written.
+- Some command line programs, depending on which modules you use: `ffmpeg` and
+  `ffprobe`, `yt-dlp`, `rclone` for backup, and `keyfinder-cli` for key
+  detection. `crate doctor` reports each one that is missing and names the
+  package to install.
+- A keychain the operating system provides, where credentials are stored. Nothing
+  secret is written to the configuration file.
 
 ## Install
 
@@ -32,6 +46,10 @@ cd cratekit
 python3.12 -m venv .venv
 .venv/bin/pip install -e .
 ```
+
+That installs the `crate` command into `.venv/bin/`. Either activate the
+environment with `source .venv/bin/activate` or call `.venv/bin/crate`. Every
+example in these docs writes it as plain `crate`.
 
 That is the slim install: no audio DSP, no web framework, no machine-learning
 stack. Feature modules that need heavy dependencies declare them as extras named
@@ -49,11 +67,32 @@ keeps working on a slim machine.
 ## First run
 
 ```bash
-crate setup     # library location, credentials, taxonomy, profile
+crate setup     # library location, taxonomy, profile, rekordbox version pin
 crate doctor    # verify the environment before anything writes
 ```
 
-Neither exists yet; they land with the setup wizard.
+`crate setup` asks only what it cannot work out, and every answer is also a flag,
+so it can be scripted. It is safe to re-run. It keeps answers you already gave,
+refuses to overwrite a configuration it cannot read, and refuses to record a
+library volume that is not actually mounted. It ends by running the health check
+and exits on that check's verdict.
+
+`crate doctor` reads the machine and writes nothing to your library. Every line
+is `ok`, `fail` or `note`. A `fail` blocks a verb and names the fix, and a `note`
+is worth knowing and needs no action.
+
+Credentials are recorded separately, and only for the modules that need them.
+`crate login NAME --from-file PATH` stores one in the keychain. Signing in to the
+streaming account takes two commands, described in
+[`docs/adapters.md`](docs/adapters.md).
+
+## Using it
+
+[`docs/GUIDE.md`](docs/GUIDE.md) is the user guide. It explains how the pieces
+fit, what to check before a session, how to answer a confirmation, how to record
+the backup acknowledgment every write needs, and gives a recipe for each
+workflow. `crate --help` lists every verb, and `crate skills install` copies a
+set of short operator guides where an AI coding agent can find them.
 
 ## Safety posture
 
@@ -91,10 +130,12 @@ clean checkout installs and imports with nothing preinstalled.
 
 ### Guards
 
-Set up the commit hooks once per clone:
+Set up the commit hooks once per clone. Both hook types matter. A bare
+`pre-commit install` writes only the first, and the closing check on commit
+messages then silently never runs.
 
 ```bash
-pip install pre-commit && pre-commit install
+pip install pre-commit && pre-commit install --hook-type pre-commit --hook-type commit-msg
 cp .scan-identity.example .scan-identity   # then list your own drive and account names
 ```
 
@@ -112,9 +153,9 @@ currently plugged in. Path-shaped literals are caught without it.
 
 ### Deferred guards
 
-Some test suites carry guards for modules that have not been written yet. Those
-are ported complete, never stubbed, and skipped with a reason naming the unit
-that arms them:
+A guard can be written before the module it governs. Such a guard keeps its full
+assertion, is never stubbed, and is skipped with a reason naming the unit that
+arms it:
 
 ```bash
 pytest -q -rs        # every skip prints the unit that unblocks it
@@ -123,3 +164,4 @@ pytest -q -rs        # every skip prints the unit that unblocks it
 `tests/_pending.py` is the register and `tests/test_pending_units.py` holds it
 accountable: adding a skip without recording it fails the build, and so does
 keeping one after its module lands. A skip is a countdown, not a hiding place.
+The register is empty today, because every guard has been armed.
