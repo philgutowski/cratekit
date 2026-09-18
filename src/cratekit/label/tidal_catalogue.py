@@ -60,6 +60,11 @@ SHORT_LINK_HOST = "link.tidal.com"
 #: and ranks exact names first, so the first page is where an exact match is.
 SEARCH_LIMIT = 50
 
+#: A seed recorded as a provider identifier rather than a name. The digits
+#: after the prefix are what ``session.artist`` is called with. Anything else
+#: is still a name, resolved by exact fold.
+_ID_SEED = re.compile(r"^id:(\d+)$")
+
 #: What every verdict this adapter returns names as its source.
 SOURCE = "catalogue"
 
@@ -167,6 +172,12 @@ def _copyright_label(release: Any) -> str:
     return names[0] if names else ""
 
 
+def seed_identifier(seed: str) -> str | None:
+    """The provider artist id inside an ``id:<digits>`` seed, else ``None``."""
+    matched = _ID_SEED.fullmatch(str(seed or "").strip())
+    return matched.group(1) if matched else None
+
+
 class TidalCatalogue:
     """The five provider reads the ``Catalogue`` seam declares, over one logged in client."""
 
@@ -183,9 +194,9 @@ class TidalCatalogue:
 
         TWO EXACT MATCHES RAISE rather than take the first. The provider carries
         unrelated acts under one name, and crawling the wrong one verifies no
-        release and reports a label with nothing new, which is R-135 again. The
-        registry names seeds by name and cannot pin one by identifier, so a
-        refusal naming the collision is the honest answer.
+        release and reports a label with nothing new, which is R-135 again. A
+        name seed still refuses on that collision. An ``id:<digits>`` seed pins
+        one of them by identifier and does not search.
         """
         wanted = label_verify.fold_label(name)
         if not wanted:
@@ -206,6 +217,32 @@ class TidalCatalogue:
             )
         return exact[0] if exact else None
 
+    def _artist_identified(self, artist_id: str) -> Any | None:
+        """The artist ``session.artist`` returns for ``artist_id``, or ``None``.
+
+        ``None`` is private, the same contract as ``_artist_named``. A missing
+        identifier is an unresolved seed. A provider outage is not, and
+        propagates rather than being read as absence.
+        """
+        try:
+            artist = self._session.artist(artist_id)
+        except tidalapi.exceptions.ObjectNotFound:
+            return None
+        except LookupError as exc:
+            # Bare LookupError is the fake's not found. KeyError and IndexError
+            # are subclasses, and those are parse failures, not a missing id.
+            if type(exc) is not LookupError:
+                raise
+            return None
+        return artist or None
+
+    def _artist_from_seed(self, seed: str) -> Any | None:
+        """Resolve one registry seed, by identifier when it is one, else by name."""
+        identifier = seed_identifier(seed)
+        if identifier is not None:
+            return self._artist_identified(identifier)
+        return self._artist_named(seed)
+
     def artist_for(self, entry: registry.LabelEntry) -> LabelRoster:
         """The label's roster: its own artist page if one exists, and every seed.
 
@@ -221,16 +258,21 @@ class TidalCatalogue:
             artists.append(own)
         unresolved: list[str] = []
         for seed in entry.seed_artists:
-            artist = self._artist_named(seed)
+            artist = self._artist_from_seed(seed)
             if artist is None:
                 unresolved.append(seed)
             else:
                 artists.append(artist)
         if unresolved:
+            bits = []
+            for seed in unresolved:
+                if seed_identifier(seed) is not None:
+                    bits.append(f"no artist with identifier {seed!r}")
+                else:
+                    bits.append(f"no artist named exactly {seed!r}")
             raise LabelUnresolvable(
-                f"the provider has no artist named exactly "
-                f"{', '.join(repr(name) for name in unresolved)}, a seed of the "
-                f"label {entry.name!r}"
+                f"the provider has {', '.join(bits)}, a seed of the label "
+                f"{entry.name!r}"
             )
         if not artists:
             raise LabelUnresolvable(

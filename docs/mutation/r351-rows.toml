@@ -1,0 +1,189 @@
+# R-351, author's table. A seed can be pinned by provider identifier.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r351-rows.toml
+
+name = "r351"
+pass_kind = "light"
+
+# ---------------------------------------------------------------------------
+# This round's own guards
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "G1_name_only_seed_lookup"
+description = "the original defect: every seed is resolved by folded name, never by identifier"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            artist = self._artist_from_seed(seed)
+'''
+new = '''            artist = self._artist_named(seed)
+'''
+
+[[rows]]
+id = "G2_id_seed_still_searches"
+description = "an id: seed is handed to name search instead of session.artist"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if identifier is not None:
+            return self._artist_identified(identifier)
+        return self._artist_named(seed)
+'''
+new = '''        if identifier is not None:
+            return self._artist_named(seed)
+        return self._artist_named(seed)
+'''
+
+[[rows]]
+id = "G3_unresolved_id_skipped"
+description = "a seed that does not resolve is skipped rather than refusing the label"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            if artist is None:
+                unresolved.append(seed)
+'''
+new = '''            if artist is None:
+                continue
+'''
+
+[[rows]]
+id = "G4_any_remainder_is_an_id"
+description = "treat anything after id: as an identifier, including a name"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''_ID_SEED = re.compile(r"^id:(\d+)$")
+'''
+new = '''_ID_SEED = re.compile(r"^id:(.+)$")
+'''
+
+[[rows]]
+id = "G5_except_everything"
+description = "a provider outage looking up an identifier is read as a missing seed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        except tidalapi.exceptions.ObjectNotFound:
+            return None
+        except LookupError as exc:
+            # Bare LookupError is the fake's not found. KeyError and IndexError
+            # are subclasses, and those are parse failures, not a missing id.
+            if type(exc) is not LookupError:
+                raise
+            return None
+'''
+new = '''        except Exception:
+            return None
+'''
+
+[[rows]]
+id = "G6_pass_the_whole_seed"
+description = "session.artist is called with id:99 rather than the remainder 99"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            return self._artist_identified(identifier)
+'''
+new = '''            return self._artist_identified(seed)
+'''
+
+[[rows]]
+id = "G7_drop_object_not_found"
+description = "the live client's ObjectNotFound is no longer treated as a missing seed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        except tidalapi.exceptions.ObjectNotFound:
+            return None
+        except LookupError as exc:
+'''
+new = '''        except LookupError as exc:
+'''
+
+[[rows]]
+id = "G9_all_lookuperror_is_absence"
+description = "KeyError and IndexError from the identifier lookup are read as a missing seed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            if type(exc) is not LookupError:
+                raise
+            return None
+'''
+new = '''            return None
+'''
+
+[[rows]]
+id = "G8_id_prefix_case_insensitive"
+description = "ID:99 is treated as an identifier, against the locked id:<digits> shape"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''_ID_SEED = re.compile(r"^id:(\d+)$")
+'''
+new = '''_ID_SEED = re.compile(r"^id:(\d+)$", re.IGNORECASE)
+'''
+
+# ---------------------------------------------------------------------------
+# Sample of the existing absence contract this unit still owes
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A2_unresolved_seed_skipped"
+description = "crawl the seeds that resolved and skip the one that did not"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if unresolved:
+            bits = []
+'''
+new = '''        if unresolved and not artists:
+            bits = []
+'''
+
+[[rows]]
+id = "A5_ambiguity_takes_first"
+description = "take the first of two artists named exactly the same"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if len(distinct) > 1:'''
+new = '''        if len(distinct) > 2:'''
+
+[[rows]]
+id = "A3_empty_roster_returned"
+description = "return an empty roster for a label nothing resolved"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if not artists:
+            raise LabelUnresolvable('''
+new = '''        if not artists:
+            return LabelRoster([])
+            raise LabelUnresolvable('''
+
+[[rows]]
+id = "G10_identifier_message_says_named"
+description = "an unresolved identifier is reported as a name the provider does not carry"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''                if seed_identifier(seed) is not None:
+                    bits.append(f"no artist with identifier {seed!r}")
+                else:
+                    bits.append(f"no artist named exactly {seed!r}")
+'''
+new = '''                bits.append(f"no artist named exactly {seed!r}")
+'''
+
+[[dropped]]
+id = "G11_return_artist_unchecked"
+description = "return artist instead of artist or None"
+reason = "ranked below the cap: None is already falsy, so the two forms agree on the None-return pin"
+
+[[dropped]]
+id = "G12_drop_strip"
+description = "parse the seed without stripping surrounding space"
+reason = "ranked below the cap: the locked shape has no surrounding space, and no test drives a padded seed"
