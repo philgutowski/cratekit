@@ -190,8 +190,8 @@ def album_search_queries(name: str) -> tuple[str, ...]:
     """The album searches discovery issues for one label.
 
     The bare name, then each numbered compilation in :data:`COMPILATION_RANGE`.
-    Single shot each, not a page loop. The test derives this set from the range
-    rather than listing queries by hand.
+    Single shot each, not a page loop. The range is the source system's numbered
+    compilation titles, ``001`` through ``079``.
     """
     return (name, *(f"{name} {number:03d}" for number in COMPILATION_RANGE))
 
@@ -297,9 +297,16 @@ class TidalCatalogue:
                 queue.append(artist_id)
 
         for query in album_search_queries(entry.name):
-            found = self._session.search(
-                query, models=[tidalapi.album.Album], limit=SEARCH_LIMIT
-            )
+            try:
+                found = self._session.search(
+                    query, models=[tidalapi.album.Album], limit=SEARCH_LIMIT
+                )
+            except CratekitError:
+                raise
+            except tidalapi.exceptions.AuthenticationError:
+                raise
+            except Exception:  # noqa: BLE001 - one query, not the session
+                continue
             for album in _results(found, "albums"):
                 if _credits_label(album, needle):
                     for identity in _credited_ids(album):

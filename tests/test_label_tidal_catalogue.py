@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 import tidalapi
-from tidalapi.exceptions import ObjectNotFound
+from tidalapi.exceptions import ObjectNotFound, TooManyRequests
 
 from cratekit.acquire import listing, match, provider_session
 from cratekit.core import config, jobs, review, secrets
@@ -161,12 +161,14 @@ class FakeClient:
         playlists: dict[str, ProviderPlaylist] | None = None,
         artists: list[ProviderArtist] | None = None,
         albums: list[Release] | None = None,
+        albums_by_query: dict[str, list[Release]] | None = None,
     ) -> None:
         self.accept = accept
         self.raises = raises
         self.playlists = dict(playlists or {})
         self.artists = list(artists or [])
         self.albums = list(albums or [])
+        self.albums_by_query = albums_by_query
         self.logins: list[dict] = []
         self.searches: list[str] = []
         self.search_calls: list[tuple[str, tuple[Any, ...]]] = []
@@ -208,9 +210,13 @@ class FakeClient:
         recorded = tuple(models or ())
         self.search_calls.append((query, recorded))
         self.searches.append(query)
+        if self.albums_by_query is not None and tidalapi.album.Album in recorded:
+            albums = list(self.albums_by_query.get(query, []))
+        else:
+            albums = list(self.albums)
         return {
             "artists": [artist for artist in self.artists if query.casefold() in artist.name.casefold()],
-            "albums": list(self.albums),
+            "albums": albums,
         }
 
     def album(self, album_id: str) -> Release:
@@ -883,13 +889,91 @@ def test_numbered_compilation_queries_are_the_production_range():
         adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
 
     assert list(tidal_catalogue.COMPILATION_RANGE) == list(range(1, 80))
-    expected = tidal_catalogue.album_search_queries("Harbour Lights")
-    assert expected == (
+    assert album_queries_of(client) == [
         "Harbour Lights",
-        *(f"Harbour Lights {number:03d}" for number in tidal_catalogue.COMPILATION_RANGE),
+        *(f"Harbour Lights {number:03d}" for number in range(1, 80)),
+    ]
+
+
+def test_a_compilation_returned_only_for_a_numbered_query_is_consumed():
+    act = ProviderArtist(
+        "Act A", [Release("a1", copyright="(P) 2026 Harbour Lights")], artist_id="10"
     )
-    assert "Harbour Lights 001" in expected
-    assert album_queries_of(client) == list(expected)
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Harbour Lights",
+        artists=[Named("Act A", identity="10")],
+    )
+    compilation.name = "Harbour Lights 042"
+    client = FakeClient(
+        artists=[act],
+        albums_by_query={"Harbour Lights 042": [compilation]},
+    )
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert roster.artists == [act]
+
+
+def test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page():
+    own = ProviderArtist(
+        "Harbour Lights",
+        [Release("own1", copyright="(P) 2026 Harbour Lights")],
+        artist_id="1",
+    )
+
+    class FlakySearch(FakeClient):
+        def search(self, query: str, models=None, limit: int = 50, offset: int = 0) -> dict:
+            recorded = tuple(models or ())
+            self.search_calls.append((query, recorded))
+            self.searches.append(query)
+            if recorded == (tidalapi.album.Album,) and query.endswith("042"):
+                raise TooManyRequests("slow down")
+            return {
+                "artists": [
+                    artist
+                    for artist in self.artists
+                    if query.casefold() in artist.name.casefold()
+                ],
+                "albums": list(self.albums),
+            }
+
+    client = FlakySearch(artists=[own])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert roster.artists == [own]
+    assert "Harbour Lights 042" in album_queries_of(client)
+    assert "Harbour Lights 043" in album_queries_of(client)
+
+
+def test_an_authentication_error_on_album_search_still_refuses_the_label():
+    own = ProviderArtist(
+        "Harbour Lights",
+        [Release("own1", copyright="(P) 2026 Harbour Lights")],
+        artist_id="1",
+    )
+
+    class DeadSearch(FakeClient):
+        def search(self, query: str, models=None, limit: int = 50, offset: int = 0) -> dict:
+            recorded = tuple(models or ())
+            self.search_calls.append((query, recorded))
+            self.searches.append(query)
+            if recorded == (tidalapi.album.Album,):
+                raise tidalapi.exceptions.AuthenticationError("expired")
+            return {
+                "artists": [
+                    artist
+                    for artist in self.artists
+                    if query.casefold() in artist.name.casefold()
+                ],
+                "albums": list(self.albums),
+            }
+
+    adapter = tidal_catalogue.TidalCatalogue(DeadSearch(artists=[own]))
+    with pytest.raises(tidalapi.exceptions.AuthenticationError):
+        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
 
 
 def test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered(
