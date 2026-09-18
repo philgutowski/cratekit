@@ -15792,6 +15792,20 @@ unmeasured.
 **Closes when:** a seed can be recorded by provider identifier and the adapter
 reads it without searching.
 
+**Closed 2026-09-18 on `unit/issue93-a-seed-artist-cannot-be-pinned-by-identi`.**
+A seed of the form `id:<digits>` is looked up via `session.artist` with no
+search. A name seed stays exact fold and still refuses when two provider
+artists carry that name. An identifier seed plus a colliding same name
+artist succeeds. A missing identifier is an unresolved seed and still
+refuses the label. A provider outage, and a KeyError or IndexError, is
+not read as absence. `ObjectNotFound` is the live client's missing
+shape. Bare `LookupError` is the fake's. Registry `add` stores `id:`
+seeds. Mutation table `docs/mutation/r351.md`, 13 of 13 killing, null
+control 0 of 7619, no collect drift, every restore verified against
+`git show HEAD`. The learning is
+`docs/solutions/workflow-issues/a-lookuperror-stand-in-cannot-catch-the-clients-object-not-found.md`.
+R-352 remains the discovery unit and depends on this one.
+
 ---
 
 ## R-352. The adapter's roster is narrower than the source system's discovery
