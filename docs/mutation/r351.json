@@ -1,0 +1,446 @@
+{
+  "name": "r351",
+  "pass_kind": "light",
+  "branch": "unit/issue93-a-seed-artist-cannot-be-pinned-by-identi",
+  "head": "adcf9cd",
+  "when": "2026-09-18 13:49 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7619,
+  "baseline_exit": 0,
+  "pytest_runs": 16,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/tidal_catalogue.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/tidal_catalogue.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2c74cee1745734b6",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7619,
+    "baseline_collected": 7619,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_name_only_seed_lookup",
+      "description": "the original defect: every seed is resolved by folded name, never by identifier",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "728874b1bbba94d9",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_key_error_looking_up_an_id_seed_is_not_an_unresolved_seed",
+        "tests/test_label_tidal_catalogue.py::test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed",
+        "tests/test_label_tidal_catalogue.py::test_an_id_seed_resolves_via_session_artist_and_does_not_search",
+        "tests/test_label_tidal_catalogue.py::test_an_id_seed_succeeds_when_the_same_name_has_two_artists",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            artist = self._artist_from_seed(seed)\n",
+      "new": "            artist = self._artist_named(seed)\n"
+    },
+    {
+      "id": "G2_id_seed_still_searches",
+      "description": "an id: seed is handed to name search instead of session.artist",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "44d7d7fc196557bc",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_key_error_looking_up_an_id_seed_is_not_an_unresolved_seed",
+        "tests/test_label_tidal_catalogue.py::test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed",
+        "tests/test_label_tidal_catalogue.py::test_an_id_seed_resolves_via_session_artist_and_does_not_search",
+        "tests/test_label_tidal_catalogue.py::test_an_id_seed_succeeds_when_the_same_name_has_two_artists",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if identifier is not None:\n            return self._artist_identified(identifier)\n        return self._artist_named(seed)\n",
+      "new": "        if identifier is not None:\n            return self._artist_named(seed)\n        return self._artist_named(seed)\n"
+    },
+    {
+      "id": "G3_unresolved_id_skipped",
+      "description": "a seed that does not resolve is skipped rather than refusing the label",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f2c413609f05b071",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_seed_that_does_not_resolve_refuses_the_label_rather_than_narrowing_it",
+        "tests/test_label_tidal_catalogue.py::test_an_id_lookup_that_returns_none_is_an_unresolved_seed",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label",
+        "tests/test_label_tidal_catalogue.py::test_the_client_object_not_found_is_an_unresolved_id_seed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if artist is None:\n                unresolved.append(seed)\n",
+      "new": "            if artist is None:\n                continue\n"
+    },
+    {
+      "id": "G4_any_remainder_is_an_id",
+      "description": "treat anything after id: as an identifier, including a name",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ea03e261ee7e43fa",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_seed_that_is_not_digits_after_the_prefix_is_still_a_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_ID_SEED = re.compile(r\"^id:(\\d+)$\")\n",
+      "new": "_ID_SEED = re.compile(r\"^id:(.+)$\")\n"
+    },
+    {
+      "id": "G5_except_everything",
+      "description": "a provider outage looking up an identifier is read as a missing seed",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4b5ffe31a0bb32eb",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_key_error_looking_up_an_id_seed_is_not_an_unresolved_seed",
+        "tests/test_label_tidal_catalogue.py::test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except tidalapi.exceptions.ObjectNotFound:\n            return None\n        except LookupError as exc:\n            # Bare LookupError is the fake's not found. KeyError and IndexError\n            # are subclasses, and those are parse failures, not a missing id.\n            if type(exc) is not LookupError:\n                raise\n            return None\n",
+      "new": "        except Exception:\n            return None\n"
+    },
+    {
+      "id": "G6_pass_the_whole_seed",
+      "description": "session.artist is called with id:99 rather than the remainder 99",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e47fbaf62fb2a975",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_id_seed_resolves_via_session_artist_and_does_not_search",
+        "tests/test_label_tidal_catalogue.py::test_an_id_seed_succeeds_when_the_same_name_has_two_artists",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            return self._artist_identified(identifier)\n",
+      "new": "            return self._artist_identified(seed)\n"
+    },
+    {
+      "id": "G7_drop_object_not_found",
+      "description": "the live client's ObjectNotFound is no longer treated as a missing seed",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8b4681dd172444c8",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_the_client_object_not_found_is_an_unresolved_id_seed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except tidalapi.exceptions.ObjectNotFound:\n            return None\n        except LookupError as exc:\n",
+      "new": "        except LookupError as exc:\n"
+    },
+    {
+      "id": "G9_all_lookuperror_is_absence",
+      "description": "KeyError and IndexError from the identifier lookup are read as a missing seed",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "23ae8eb7ca9e61ce",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_key_error_looking_up_an_id_seed_is_not_an_unresolved_seed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if type(exc) is not LookupError:\n                raise\n            return None\n",
+      "new": "            return None\n"
+    },
+    {
+      "id": "G8_id_prefix_case_insensitive",
+      "description": "ID:99 is treated as an identifier, against the locked id:<digits> shape",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0cad6bca51eca001",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_uppercase_id_prefix_is_still_a_name_seed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_ID_SEED = re.compile(r\"^id:(\\d+)$\")\n",
+      "new": "_ID_SEED = re.compile(r\"^id:(\\d+)$\", re.IGNORECASE)\n"
+    },
+    {
+      "id": "A2_unresolved_seed_skipped",
+      "description": "crawl the seeds that resolved and skip the one that did not",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "abb0adfbbc403ee5",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_seed_that_does_not_resolve_refuses_the_label_rather_than_narrowing_it",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if unresolved:\n            bits = []\n",
+      "new": "        if unresolved and not artists:\n            bits = []\n"
+    },
+    {
+      "id": "A5_ambiguity_takes_first",
+      "description": "take the first of two artists named exactly the same",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b278f763ebd20bcb",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_colliding_name_seed_still_refuses",
+        "tests/test_label_tidal_catalogue.py::test_two_artists_named_exactly_the_label_refuse_rather_than_guess"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if len(distinct) > 1:",
+      "new": "        if len(distinct) > 2:"
+    },
+    {
+      "id": "A3_empty_roster_returned",
+      "description": "return an empty roster for a label nothing resolved",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "38b6380d7c73a5fe",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_near_name_is_not_the_label",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolvable_label_raises_and_never_returns_none",
+        "tests/test_label_tidal_catalogue.py::test_the_absence_contract_holds_through_the_sweep"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not artists:\n            raise LabelUnresolvable(",
+      "new": "        if not artists:\n            return LabelRoster([])\n            raise LabelUnresolvable("
+    },
+    {
+      "id": "G10_identifier_message_says_named",
+      "description": "an unresolved identifier is reported as a name the provider does not carry",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "484c7b29876d6343",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if seed_identifier(seed) is not None:\n                    bits.append(f\"no artist with identifier {seed!r}\")\n                else:\n                    bits.append(f\"no artist named exactly {seed!r}\")\n",
+      "new": "                bits.append(f\"no artist named exactly {seed!r}\")\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "G11_return_artist_unchecked",
+      "description": "return artist instead of artist or None",
+      "reason": "ranked below the cap: None is already falsy, so the two forms agree on the None-return pin"
+    },
+    {
+      "id": "G12_drop_strip",
+      "description": "parse the seed without stripping surrounding space",
+      "reason": "ranked below the cap: the locked shape has no surrounding space, and no test drives a padded seed"
+    }
+  ]
+}
