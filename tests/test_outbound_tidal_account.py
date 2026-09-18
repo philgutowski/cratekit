@@ -501,13 +501,40 @@ def test_a_rename_the_client_answers_false_is_the_items_cause_not_a_quiet_return
 
 
 def test_a_playlist_the_account_cannot_edit_refuses_rather_than_reporting_a_rename():
-    client = FakeClient(playlists={"pl-1": ForeignPlaylist("pl-1", name="Somebody Else")})
+    """THE MESSAGE IS THE ASSERTION, because without the guard this still raises.
+
+    A missing editor called anyway is a ``TypeError`` inside ``_call``, which
+    ``provider_failure`` translates into the same slug at the same scope with the
+    same doing string. Only the sentence naming the editor separates a refusal
+    that diagnosed the playlist from one that tripped over it and was retried.
+    """
+    foreign = ForeignPlaylist("pl-1", name="Somebody Else")
+    client = FakeClient(playlists={"pl-1": foreign})
 
     with pytest.raises(CratekitError) as excinfo:
         adapter(client).rename_playlist("pl-1", "DOWNLOADED Somebody Else")
 
     assert excinfo.value.cause.scope is Scope.ITEM
-    assert "rename the playlist pl-1" in str(excinfo.value.cause.message)
+    assert "cannot be retitled by this account" in excinfo.value.cause.message
+    assert foreign.name == "Somebody Else"
+
+
+def test_a_playlist_deleted_between_the_open_and_the_edit_is_the_items_cause():
+    """The client answers an explicit not found rather than raising through, and
+    a rename that returned here would be a mark nothing carries."""
+
+    class Vanishing(Playlist):
+        def edit(self, title=None, description=None):
+            raise ObjectNotFound(self.id)
+
+    playlist = Vanishing("pl-1", name="Warmup")
+    client = FakeClient(playlists={"pl-1": playlist})
+
+    with pytest.raises(CratekitError) as excinfo:
+        adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup")
+
+    assert excinfo.value.cause.scope is Scope.ITEM
+    assert playlist.name == "Warmup"
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\n"])
@@ -525,6 +552,9 @@ def test_a_rename_with_no_title_is_refused_before_the_client_sees_it(blank):
     assert playlist.name == "Warmup"
     assert excinfo.value.cause.reason == "internal-error"
     assert excinfo.value.cause.scope is Scope.SOURCE
+    # The MESSAGE, not only the slug. A refusal that says the right thing about
+    # the wrong mechanism is the shape this file's other tests already watch for.
+    assert "reads a falsy title as keep the current one" in excinfo.value.cause.message
 
 
 def test_a_title_the_caller_padded_is_written_as_the_caller_asked():

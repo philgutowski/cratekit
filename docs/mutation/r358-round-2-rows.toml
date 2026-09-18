@@ -1,0 +1,61 @@
+name = "r358-round-2"
+pass_kind = "light"
+
+# Round one left five zeros. Four were closeable and are re-run here VERBATIM,
+# including their test subsets, so the second half of the verification is proved
+# by the row rather than asserted about it. A row rewritten for the occasion
+# proves something about the rewrite.
+#
+# The fifth and sixth, T1 and T2, are not here. Both mutate TEST code, so the
+# thing they revert is a guard over a guard, and nothing in a suite this shape
+# can kill them: no test asserts the breadth of another test's AST walk. They
+# stay zeros and get a line each in the record rather than a composite, which is
+# what METHOD says a maintainer facing zero owes.
+
+[[rows]]
+id = "A3_editor_check"
+description = "Drop the editor check, so a playlist the account cannot edit is renamed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        if not callable(retitle):
+            raise account.provider_failure(
+                LookupError(
+                    f"the provider's playlist {playlist_id!r} cannot be retitled by "
+                    f"this account"
+                ),
+                doing,
+            )
+'''
+new = ""
+
+[[rows]]
+id = "A5_absent_answer"
+description = "Accept an explicit not found as a rename that landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        accepted = self._call(doing, lambda: retitle(title=wanted))
+        if accepted is False or accepted is _ABSENT:'''
+new = '''        accepted = self._call(doing, lambda: retitle(title=wanted))
+        if accepted is False:'''
+
+[[rows]]
+id = "A7_empty_title_message"
+description = "Reword the empty-title refusal, never append to it"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''                f"a rename of the playlist {playlist_id} was asked for with no "
+                f"title; the client reads a falsy title as keep the current one "
+                f"and answers that it succeeded, so nothing was sent",'''
+new = '''                f"the playlist {playlist_id} was given a blank title, which the "
+                f"client would read as an instruction to keep the current one",'''
+
+[[rows]]
+id = "S3_gone_from_the_listing"
+description = "Drop the listed check, so a playlist the account no longer lists is pending"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        if listed.get(identity) and not is_swept_name(listed[identity])'''
+new = '''        if not is_swept_name(listed.get(identity) or "")'''

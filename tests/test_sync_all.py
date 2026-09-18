@@ -696,6 +696,26 @@ def test_a_playlist_gone_from_the_account_since_the_plan_is_not_marked(
     assert account.renamed == []
 
 
+def test_a_recorded_playlist_the_pass_never_listed_is_not_pending_at_all(
+    slim, monkeypatch
+):
+    """ASSERTED ON ``pending_marks`` AND NOT THROUGH ``mark_swept``, because the
+    recheck would hide it. A playlist in the cursor that this pass did not list
+    has no name to prefix, and a mark with no name reaches the recheck, fails it
+    for the wrong reason, and reports the same nothing. Two guards over one case
+    is one guard nothing covers."""
+    cfg = slim
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    _recording_pass(cfg, fake)
+
+    fake.account = []
+    with jobs.open_store() as store:
+        later = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
+    assert later.listed == ()
+    assert later.recorded == frozenset({"pl-a"})
+    assert playlists.pending_marks(later) == ()
+
+
 def test_a_playlist_the_source_system_already_prefixed_is_not_prefixed_twice(
     slim, monkeypatch, tmp_path
 ):
