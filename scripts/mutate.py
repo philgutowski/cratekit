@@ -225,6 +225,14 @@ PLUGIN_MODULE = "mutate_report_plugin"
 #: smaller.
 SCRUBBED_ENV = {
     "PYTEST_ADDOPTS": "an inherited value would edit the command after the driver built it",
+    "PYTEST_XDIST_WORKER": (
+        "the reporting plugin reads it to tell a worker from the controller, so a driver "
+        "started from inside a parallel worker would hand its child a controller that "
+        "believes it is a worker and writes no report; xdist sets it afresh in each "
+        "worker the child starts"
+    ),
+    "PYTEST_XDIST_WORKER_COUNT": "the same inherited worker identity, scrubbed with it",
+    "PYTEST_XDIST_TESTRUNUID": "the same inherited worker identity, scrubbed with it",
 }
 
 #: Added on top of the inherited environment, never as a fresh dict.
@@ -237,21 +245,42 @@ ADDED_ENV = (
 #: The in-subprocess plugin. It exists so death counts come off report OBJECTS.
 #: It rewrites its JSON file on every event rather than at the end, so a run that
 #: dies partway still leaves readable evidence of how far it got.
+#:
+#: **Under pytest-xdist only the controller writes.** ``-p`` loads this module in
+#: every worker as well, and each worker holds its own ``_STATE``, so eight
+#: processes rewriting one file would leave whichever partial count flushed last.
+#: The controller is the one process that sees everything: xdist forwards each
+#: worker's test reports and failed collect reports to the ordinary hooks there.
+#: It collects nothing itself, so its ``session.items`` is empty and the count
+#: comes off the hook xdist fires when a worker finishes collecting. Every worker
+#: collects the same ids or xdist aborts the run, so any one of them is the count.
 PLUGIN_SOURCE = '''
 import json
 import os
 
+import pytest
+
 _OUT = os.environ["MUTATE_REPORT_PATH"]
+_IS_WORKER = bool(os.environ.get("PYTEST_XDIST_WORKER"))
 _STATE = {"collected": 0, "failed": [], "errored": [], "collect_errors": []}
 
 
 def _flush():
+    if _IS_WORKER:
+        return
     with open(_OUT, "w", encoding="utf-8") as handle:
         json.dump(_STATE, handle)
 
 
 def pytest_collection_finish(session):
-    _STATE["collected"] = len(session.items)
+    if session.items:
+        _STATE["collected"] = len(session.items)
+    _flush()
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_node_collection_finished(node, ids):
+    _STATE["collected"] = len(ids)
     _flush()
 
 
