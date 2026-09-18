@@ -1,0 +1,306 @@
+{
+  "name": "u69",
+  "pass_kind": "light",
+  "branch": "relay/114",
+  "head": "ec07a56",
+  "when": "2026-09-18 23:41 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7778,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/missing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/missing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2362b860db919a83",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7778,
+    "baseline_collected": 7778,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_handler_key",
+      "description": "Drop the refusal of a job queued under another verb's handler key",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6982b95c491a60d1",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 21,
+      "baseline_collected": 21,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_job_of_another_verb_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if job.handler_key not in intake_cli.INTAKE_KEYS:",
+      "new": "    if False:"
+    },
+    {
+      "id": "M2_succeeded_only",
+      "description": "Drop the refusal of a job that is not succeeded (open, failed, cancelled)",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "596f966f0e9420e6",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 21,
+      "baseline_collected": 21,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_failed_job_is_refused_carrying_its_own_cause",
+        "tests/test_intake_missing.py::test_an_open_job_is_refused_and_nothing_is_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if job.state is not jobs.JobState.SUCCEEDED:",
+      "new": "    if False:"
+    },
+    {
+      "id": "M3_zero_items",
+      "description": "Drop the refusal of a succeeded job with no items",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8557e9aacb7df266",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 21,
+      "baseline_collected": 21,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_succeeded_job_with_no_items_is_refused_not_listed_empty"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not wanted:",
+      "new": "    if False:"
+    },
+    {
+      "id": "M4_report_coverage",
+      "description": "Drop the refusal when the reports do not cover the items one for one",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a6db74816f9d4259",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 21,
+      "baseline_collected": 21,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_report_for_the_wrong_item_refuses_even_when_the_count_matches",
+        "tests/test_intake_missing.py::test_fewer_readable_reports_than_items_refuses_rather_than_listing_a_subset"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sorted(reported) != sorted(wanted):",
+      "new": "    if False:"
+    },
+    {
+      "id": "M5_by_count",
+      "description": "Compare reports to items by count instead of by identifier",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f316e52e1fd47215",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 21,
+      "baseline_collected": 21,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_report_for_the_wrong_item_refuses_even_when_the_count_matches"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sorted(reported) != sorted(wanted):",
+      "new": "    if len(reported) != len(wanted):"
+    },
+    {
+      "id": "M6_state_word",
+      "description": "Drop the refusal of a report whose state word this verb cannot read",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3e676556413562bb",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 21,
+      "baseline_collected": 21,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_report_with_a_state_this_verb_cannot_read_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if report.get(\"state\") not in _WORDS or not isinstance(report.get(\"track\"), Mapping):",
+      "new": "        if not isinstance(report.get(\"track\"), Mapping):"
+    },
+    {
+      "id": "M7_offered_listed",
+      "description": "List offered rows beside missing ones",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d29d85e5b996515a",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 21,
+      "baseline_collected": 21,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_mixed_job_writes_only_the_missing_rows",
+        "tests/test_intake_missing.py::test_a_track_deleted_on_purpose_is_suppressed_and_not_listed",
+        "tests/test_intake_missing.py::test_the_default_human_output_names_the_list_and_the_next_command",
+        "tests/test_intake_missing.py::test_the_written_list_is_accepted_and_downloaded_by_acquire"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "for report in reports if report[\"state\"] == \"missing\"",
+      "new": "for report in reports if report[\"state\"] in (\"missing\", \"offered\")"
+    },
+    {
+      "id": "M8_suppressed_listed",
+      "description": "List suppressed (deleted on purpose) rows beside missing ones",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5d6e91240b62de24",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 21,
+      "baseline_collected": 21,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_track_deleted_on_purpose_is_suppressed_and_not_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "for report in reports if report[\"state\"] == \"missing\"",
+      "new": "for report in reports if report[\"state\"] in (\"missing\", \"suppressed\")"
+    },
+    {
+      "id": "M9_nothing_listable",
+      "description": "Drop the refusal when missing tracks exist and none can be listed",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e61f5914526091a6",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 21,
+      "baseline_collected": 21,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_missing_tracks_none_of_which_can_be_listed_refuse_rather_than_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if missing and not listed:",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": []
+}

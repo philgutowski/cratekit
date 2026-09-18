@@ -743,10 +743,11 @@ def test_favorites_resolves_each_heart_owned_offered_or_missing(cfg, library, mo
 
 
 def test_the_missing_hearts_carry_the_provider_id_acquisition_reads(cfg, library, monkeypatch):
-    """What ``intake missing --job`` will list: the missing reports, by provider id.
+    """What ``intake missing --job`` lists: the missing reports, by provider id.
 
-    That verb is U69's and does not exist on this tree, so the drive through it
-    is owed there. This pins the half U70 owns, that a finished hearts job holds
+    U69 landed that verb, and the drive through it, down to a download against
+    the fake adapter, is in ``tests/test_intake_missing.py``. This pins the half
+    U70 owns, that a finished hearts job holds
     exactly two missing reports and each names the provider identifier a
     download is asked for.
     """

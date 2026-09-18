@@ -1,0 +1,97 @@
+name = "u69-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M10_out_not_a_folder"
+description = "Drop the refusal of an --out that exists and is not a folder"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if out.exists() and not out.is_dir():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M11_emitter_refusal"
+description = "Stop converting the emitter's refusal into a structured cause"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        except listdoc.ListDocRefused as exc:'''
+new = '''        except KeyError as exc:'''
+
+[[rows]]
+id = "M12_unlisted_status"
+description = "Report unlisted missing tracks as a note instead of a failing check"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''"fail" if unlisted else "ok",'''
+new = '''"info" if unlisted else "ok",'''
+
+[[rows]]
+id = "M13_outcome"
+description = "Report OK even when nothing was listed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''outcome=Outcome.OK if listed else Outcome.NO_OP,'''
+new = '''outcome=Outcome.OK,'''
+
+[[rows]]
+id = "M14_frozen_config"
+description = "Read the reports with the live configuration instead of the job's frozen one"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''artifacts.committed(intake_cli.ARTIFACTS, jobs.frozen_config(job), job.job_id)'''
+new = '''artifacts.committed(intake_cli.ARTIFACTS, intake_cli._load(), job.job_id)'''
+
+[[rows]]
+id = "M15_provenance_source"
+description = "Record every listed row's provenance as a set rather than by the job's key"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "maintainer"
+old = '''source=PROVENANCE_SOURCE[job.handler_key], source_ref=source_ref'''
+new = '''source="set", source_ref=source_ref'''
+
+[[rows]]
+id = "M16_next_command"
+description = "Drop the literal next command from the written check a person reads"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''written to {written.list_path}; next: {command}"'''
+new = '''written to {written.list_path}"'''
+
+[[rows]]
+id = "M17_lists_folder"
+description = "Write into download staging itself rather than its lists folder"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''out = intake_cli._load().paths.download_staging / LISTS_DIR'''
+new = '''out = intake_cli._load().paths.download_staging'''
+
+[[rows]]
+id = "M18_inner_cause"
+description = "Drop the failed job's own cause from the refusal"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            inner=job.cause,'''
+new = '''            inner=None,'''
+
+[[rows]]
+id = "M19_resume_step"
+description = "Drop the resume command from an open job's refusal"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            f"finish it with: crate {argv}" if job.is_open() else'''
+new = '''            "finish it first" if job.is_open() else'''
+
+[[rows]]
+id = "M20_registry_schema"
+description = "Declare the verb plan/1 in the registry, which the human renderer does not show"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py", "tests/test_cli_contract.py"]
+old = '''        # nothing else, and the one thing a person needs from this verb is the
+        # list's path and the command that downloads it (R-400).
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",'''
+new = '''        # nothing else, and the one thing a person needs from this verb is the
+        # list's path and the command that downloads it (R-400).
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",'''

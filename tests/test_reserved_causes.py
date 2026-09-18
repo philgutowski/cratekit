@@ -5599,7 +5599,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # half stays 19, measured: the module's bare integers are a retry count and
     # two paging offsets, none in the reserved range. The named halves did NOT
     # move, staying at 23 and 9, measured on the same differencing.
-    assert (len(literal_holders), len(literal_both)) == (94, 19), (
+    # Re-pinned on U69, 2026-09-18: 94 to 95 holders. ONE module joined and
+    # none left, and it is a new file. intake/missing_cli.py names
+    # intake-list-unusable for an intake job it will not list and job-unknown
+    # for a job of another verb, each through cause.refuse. Differenced as SETS
+    # by re-deriving this module's own predicate over the working tree and over
+    # main's src extracted into a scratch directory. It holds no in-range
+    # integer, so the also-holds-an-integer half stays 19; a slice bound of
+    # twenty on the unreported identifiers was removed rather than argued.
+    assert (len(literal_holders), len(literal_both)) == (95, 19), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
