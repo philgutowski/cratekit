@@ -148,17 +148,24 @@ installation meets first.
 records a value in the keychain. Obtaining a session is an attended act at a
 browser, exactly one verb in this product may read standard input, and the
 vendored downloader already owns that conversation. So authorising is two
-commands rather than one:
+commands rather than one.
+
+Step 1 mints a PKCE session. This opens a browser and writes the tool's own token
+file, by default `~/.config/tidal-dl-ng/token.json`:
 
 ```bash
-# 1. Mint a PKCE session. This opens a browser and writes the tool's own
-#    token file, by default ~/.config/tidal-dl-ng/token.json.
 python -c "from cratekit._vendor.tidal_dl_ng.cli import app; app()" login
+```
 
-# 2. Move it into the keychain, which is where the adapter reads it from.
+Step 2 moves it into the keychain, which is where the adapter reads it from:
+
+```bash
 crate login provider-session --from-file ~/.config/tidal-dl-ng/token.json
+```
 
-# 3. Erase the plaintext original. Step 2 copies it; it does not consume it.
+Step 3 erases the plaintext original. Step 2 copies it and does not consume it:
+
+```bash
 rm ~/.config/tidal-dl-ng/token.json
 ```
 

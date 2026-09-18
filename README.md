@@ -49,19 +49,25 @@ git clone https://github.com/philgutowski/cratekit.git
 cd cratekit
 python3.12 -m venv .venv
 .venv/bin/pip install -e .
+source .venv/bin/activate
 ```
 
-That installs the `crate` command into `.venv/bin/`. Either activate the
-environment with `source .venv/bin/activate` or call `.venv/bin/crate`. Every
-example in these docs writes it as plain `crate`.
+That installs the `crate` command into `.venv/bin/`, and the last line switches
+this terminal window over to that environment so a bare `crate` finds it.
+Activation lasts only for that window. In a new one, run
+`source .venv/bin/activate` from the cratekit folder again, or call
+`.venv/bin/crate` directly. Every example in these docs writes it as plain
+`crate`. If a command answers `command not found: crate`, the environment is not
+active in that window.
 
 That is the slim install: no audio DSP, no web framework, no machine-learning
 stack. Feature modules that need heavy dependencies declare them as extras named
-after the module:
+after the module. `analysis` adds key, BPM and energy detection, and `vocals`
+adds vocal presence and singer gender. Install only the ones you will use:
 
 ```bash
-.venv/bin/pip install -e '.[analysis]'   # key, BPM, energy detection
-.venv/bin/pip install -e '.[vocals]'     # vocal presence and singer gender
+.venv/bin/pip install -e '.[analysis]'
+.venv/bin/pip install -e '.[vocals]'
 ```
 
 Turning on a module without its extra is not a crash. The CLI attaches a stub
@@ -71,9 +77,12 @@ keeps working on a slim machine.
 ## First run
 
 ```bash
-crate setup     # library location, taxonomy, profile, rekordbox version pin
-crate doctor    # verify the environment before anything writes
+crate setup
+crate doctor
 ```
+
+`crate setup` records your library location, taxonomy, profile and rekordbox
+version pin. `crate doctor` verifies the environment before anything writes.
 
 `crate setup` asks only what it cannot work out, and every answer is also a flag,
 so it can be scripted. It is safe to re-run. It keeps answers you already gave,
@@ -140,9 +149,10 @@ messages then silently never runs.
 
 ```bash
 pip install pre-commit && pre-commit install --hook-type pre-commit --hook-type commit-msg
-cp .scan-identity.example .scan-identity   # then list your own drive and account names
+cp .scan-identity.example .scan-identity
 ```
 
+Then open `.scan-identity` and list your own drive and account names.
 `scripts/scan_repo.py` runs on every commit and again in CI. It scans **every**
 tracked path, vendored trees included, for two things: personal literals (a home
 directory, a volume, an account, a machine name) and credential-shaped content
@@ -159,10 +169,10 @@ currently plugged in. Path-shaped literals are caught without it.
 
 A guard can be written before the module it governs. Such a guard keeps its full
 assertion, is never stubbed, and is skipped with a reason naming the unit that
-arms it:
+arms it. This prints every skip with the unit that unblocks it:
 
 ```bash
-pytest -q -rs        # every skip prints the unit that unblocks it
+pytest -q -rs
 ```
 
 `tests/_pending.py` is the register and `tests/test_pending_units.py` holds it
