@@ -28,6 +28,7 @@ care about, and keep a current backup either way.
 ## Requirements
 
 - Python 3.12 or 3.13
+- pipx, which the install below sets up with Homebrew
 - rekordbox 7.x
 - macOS today. The code carries no macOS-only assumptions, so a Windows adapter
   is an addition rather than a rewrite, but it has not been written.
@@ -44,35 +45,59 @@ The repository is private, so your GitHub account needs an invitation first. If
 git asks for a password, give it a personal access token, since GitHub no longer
 accepts account passwords for git.
 
+Cratekit installs with pipx, which gives a command line tool its own private
+Python environment and puts the command where every terminal window can find it,
+so there is nothing to activate afterwards. Set pipx up once per machine:
+
+```bash
+brew install pipx
+pipx ensurepath
+```
+
+`pipx ensurepath` adds pipx's folder to your PATH by editing your shell startup
+files. Open a new terminal window afterwards so it takes effect. Then install
+Cratekit:
+
 ```bash
 git clone https://github.com/philgutowski/cratekit.git
 cd cratekit
-python3.12 -m venv .venv
-.venv/bin/pip install -e .
-source .venv/bin/activate
+pipx install --python python3.12 --editable .
 ```
 
-That installs the `crate` command into `.venv/bin/`, and the last line switches
-this terminal window over to that environment so a bare `crate` finds it.
-Activation lasts only for that window. In a new one, run
-`source .venv/bin/activate` from the cratekit folder again, or call
-`.venv/bin/crate` directly. Every example in these docs writes it as plain
-`crate`. If a command answers `command not found: crate`, the environment is not
-active in that window.
+That installs the `crate` command. `--python python3.12` pins the Python version,
+because Cratekit needs 3.12 or 3.13 and pipx otherwise uses whichever Python
+Homebrew currently ships, which can be newer and is refused. If you only have
+3.13, write `python3.13`. `--editable` links the command to this folder instead
+of copying it, so a `git pull` updates it. Keep the folder where it is, since
+moving or deleting it breaks the command. Every example in these docs writes the
+command as plain `crate`. If a command answers `command not found: crate`, open a
+new terminal window, because `pipx ensurepath` only affects windows opened after
+it ran.
 
 That is the slim install: no audio DSP, no web framework, no machine-learning
 stack. Feature modules that need heavy dependencies declare them as extras named
 after the module. `analysis` adds key, BPM and energy detection, and `vocals`
-adds vocal presence and singer gender. Install only the ones you will use:
+adds vocal presence and singer gender. Add the ones you will use, from inside the
+cratekit folder, and list every extra you want in one command:
 
 ```bash
-.venv/bin/pip install -e '.[analysis]'
-.venv/bin/pip install -e '.[vocals]'
+pipx install --force --python python3.12 --editable '.[analysis,vocals]'
 ```
 
-Turning on a module without its extra is not a crash. The CLI attaches a stub
-that prints the exact install command and exits non-zero, so `crate --help`
-keeps working on a slim machine.
+The quotes matter, since zsh reads square brackets as a pattern and refuses the
+command without them. Turning on a module without its extra is not a crash. The
+CLI attaches a stub that prints an install command and exits non-zero, so
+`crate --help` keeps working on a slim machine. That printed command starts with
+`pip`, which is written for a plain virtual environment and installs into the
+wrong place for a pipx install. Use the pipx command above instead.
+
+To update, pull and reinstall from inside the cratekit folder. A reinstall keeps
+the extras you chose:
+
+```bash
+git pull
+pipx reinstall --python python3.12 cratekit
+```
 
 ## First run
 
@@ -132,6 +157,17 @@ Code authored here is MIT (see `LICENSE`). A vendored third-party component
 keeps its own license, shipped intact alongside its source.
 
 ## Development
+
+Development uses its own environment inside the checkout rather than pipx. Set
+it up once, and activate it in each terminal window you work in:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+```
+
+Then:
 
 ```bash
 ruff check src tests scripts
