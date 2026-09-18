@@ -162,6 +162,17 @@ def test_adding_the_same_label_again_keeps_its_identifier(cfg):
     assert entry.match == "colorize"
 
 
+def test_the_registry_records_an_id_seed(cfg):
+    del cfg
+    from cratekit.label import registry as labels
+
+    store = labels.RegistryStore()
+    label_id = store.add("Harbour Lights", seed_artists=["id:99"])
+    entry = store.load().by_id(label_id)
+    assert entry is not None
+    assert entry.seed_artists == ("id:99",)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. Date floor is not scope
 # ═══════════════════════════════════════════════════════════════════════════

@@ -42,6 +42,28 @@ PROTOCOL_METHODS = frozenset(
 )
 
 
+class FakeArtistLookup:
+    """A session that answers ``artist(id)`` from memory.
+
+    ``TidalCatalogue`` did not call ``session.artist`` until a seed could be
+    recorded as ``id:<digits>``. The live client raises ``ObjectNotFound`` for
+    an unknown identifier. This raises ``LookupError`` so a suite can drive
+    that path without importing the client library.
+    """
+
+    def __init__(self, artists: dict[str, Any] | None = None) -> None:
+        self.by_id = dict(artists or {})
+        self.artist_lookups: list[str] = []
+
+    def artist(self, artist_id: str | None = None) -> Any:
+        key = str(artist_id or "")
+        self.artist_lookups.append(key)
+        try:
+            return self.by_id[key]
+        except KeyError as exc:
+            raise LookupError(f"no provider artist {key!r}") from exc
+
+
 class FakeRelease:
     """A provider release the listing wrappers can page.
 
@@ -337,6 +359,7 @@ def catalogue_factory(fake: FakeCatalogue) -> Callable[[object], FakeCatalogue]:
 
 __all__ = [
     "PROTOCOL_METHODS",
+    "FakeArtistLookup",
     "FakeCatalogue",
     "FakePagedArtist",
     "FakePagedPlaylist",

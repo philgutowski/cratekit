@@ -30,6 +30,7 @@ from cratekit.label import registry as labels
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.sync import run
 from tests.cli_drive import drive
+from tests.label_fakes import FakeArtistLookup
 from tests.test_config import valid_data
 
 PLAYLIST = "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0"
@@ -90,8 +91,16 @@ class Release:
 class ProviderArtist:
     """An artist page whose listings truncate to one page without arguments."""
 
-    def __init__(self, name: str, albums: list[Release], singles: list[Release] = ()) -> None:
+    def __init__(
+        self,
+        name: str,
+        albums: list[Release],
+        singles: list[Release] = (),
+        *,
+        artist_id: str | None = None,
+    ) -> None:
         self.name = name
+        self.id = artist_id
         self._albums = list(albums)
         self._singles = list(singles)
         self.asked: list[tuple[str, int, int]] = []
@@ -130,6 +139,8 @@ class FakeClient:
         self.albums = list(albums or [])
         self.logins: list[dict] = []
         self.searches: list[str] = []
+        self._artists_by_id = FakeArtistLookup()
+        self.artist_lookups = self._artists_by_id.artist_lookups
         self.token_type = None
         self.access_token = None
         self.refresh_token = None
@@ -174,6 +185,14 @@ class FakeClient:
             if album.id == album_id:
                 return album
         raise MissingObject(album_id)
+
+    def artist(self, artist_id: str | None = None) -> ProviderArtist:
+        self._artists_by_id.by_id = {
+            str(getattr(held, "id", "") or ""): held
+            for held in self.artists
+            if str(getattr(held, "id", "") or "")
+        }
+        return self._artists_by_id.artist(artist_id)
 
 
 def use_client(monkeypatch, client: FakeClient) -> FakeClient:
@@ -560,6 +579,78 @@ def test_two_artists_named_exactly_the_label_refuse_rather_than_guess():
     with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
         adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
     assert "2 provider artists" in str(excinfo.value)
+
+
+def test_an_id_seed_resolves_via_session_artist_and_does_not_search():
+    pinned = ProviderArtist("Quiet Act", [Release("r1")], artist_id="99")
+    other = ProviderArtist("Quiet Act", [Release("r2")], artist_id="100")
+    client = FakeClient(artists=[pinned, other])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
+    )
+
+    roster = adapter.artist_for(entry)
+
+    assert roster.artists == [pinned]
+    assert client.artist_lookups == ["99"]
+    assert "id:99" not in client.searches
+    assert "Quiet Act" not in client.searches
+
+
+def test_a_colliding_name_seed_still_refuses():
+    first = ProviderArtist("Quiet Act", [Release("r1")], artist_id="99")
+    twin = ProviderArtist("Quiet Act", [Release("r2")], artist_id="100")
+    adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[first, twin]))
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("Quiet Act",)
+    )
+    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
+        adapter.artist_for(entry)
+    assert "2 provider artists" in str(excinfo.value)
+
+
+def test_an_id_seed_succeeds_when_the_same_name_has_two_artists():
+    pinned = ProviderArtist("Quiet Act", [Release("r1")], artist_id="99")
+    twin = ProviderArtist("Quiet Act", [Release("r2")], artist_id="100")
+    client = FakeClient(artists=[pinned, twin])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
+    )
+
+    roster = adapter.artist_for(entry)
+
+    assert roster.artists == [pinned]
+    assert client.artist_lookups == ["99"]
+
+
+def test_an_unresolved_id_seed_refuses_the_label():
+    own = ProviderArtist("Harbour Lights", [Release("r1")], artist_id="1")
+    client = FakeClient(artists=[own])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
+    )
+    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
+        adapter.artist_for(entry)
+    assert "id:99" in str(excinfo.value)
+    assert client.artist_lookups == ["99"]
+    assert "id:99" not in client.searches
+
+
+def test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed():
+    class OutageClient(FakeClient):
+        def artist(self, artist_id: str | None = None) -> ProviderArtist:
+            self.artist_lookups.append(str(artist_id))
+            raise ConnectionError("refused")
+
+    adapter = tidal_catalogue.TidalCatalogue(OutageClient())
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
+    )
+    with pytest.raises(ConnectionError):
+        adapter.artist_for(entry)
 
 
 def test_the_roster_lists_once_when_it_is_built_and_the_crawl_reads_memory():
