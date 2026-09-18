@@ -16019,6 +16019,24 @@ by type. Adding one is a change to the outbound seam the brief placed out of sco
 **Closes when:** the account seam can rename a playlist it did not create, and a
 sweep that produced an importable file marks through `marks.apply_deferred`.
 
+**THE CODE HALF IS DISCHARGED, 2026-09-18.** `RemoteAccount` declares a seventh
+member, `rename_playlist`, and `TidalAccount` implements it over the playlist
+object `add_to_playlist` already edits. `sync.playlists.mark_swept` is the
+application: it builds one `PendingMark` per recorded playlist the account still
+lists under an unprefixed name and hands `marks.apply_deferred` a recheck taken
+from a second, fresh listing rather than from the plan's own read. The set is
+the WHOLE cursor and not what the pass added to it, because `reconcile` writes
+the cursor before anything is marked and moves it whether the mark then lands,
+so a set taken from the newly recorded is a set no later pass can offer again.
+What ends the retrying is the prefix itself, read back off the account.
+
+**THE LIVE HALF IS UNCHANGED AND STILL ATTENDED.** Nothing on the production
+path calls `mark_swept`, because the intake worker a sweep composes resolves
+tracks and acquires none, so no importable file exists to hand it. `sync.cli`
+therefore still reports `"mark": "unbound"`, a guard in `tests/test_sync_all.py`
+holds that, and the first live rename is Phillip's to make. The two findings the
+code half left behind are R-397 and R-398.
+
 ---
 
 ## R-359. A playlist is recorded as swept once its tracks are resolved, not once they are acquired
@@ -17066,5 +17084,76 @@ is the place a gate set that fits a target belongs.
 the library, or the decision is recorded that a rehearsal keeps the live
 gates and the session record is written somewhere it cannot be read as a
 recovery of this library.
+
+---
+
+## R-397. The unwired guard is a name ban, so a mark wired through another name walks past it
+
+**Found:** during the code half of R-358, 2026-09-18, writing the guard that
+holds the production path unwired.
+
+`tests/test_sync_all.py::test_the_pass_composes_no_mark_step_while_no_sweep_writes_an_importable_file`
+parses `src/cratekit/sync/cli.py` and asserts that neither `mark_swept` nor
+`rename_playlist` appears as an attribute, a name, or an imported name. That is
+this file's own recorded shape "a test that forbids a feature by naming the last
+implementation's symbols". It forbids those two names, not the act. A session
+wiring the mark step through a helper called anything else, or through
+`getattr`, passes it.
+
+**Driven:** row `T1_unwired_guard_reads_names` in `docs/mutation/r358.md` killed
+zero on the full suite, 0 of 7672, which is the same fact from the other side:
+nothing asserts the guard's own breadth, so nothing can tell a narrow version
+from a wide one.
+
+**Measured cost.** Bounded and small today, because the thing on the other side
+of the guard is one function with one caller and the guard is one of two things
+holding the line, the other being that no sweep writes an importable file at
+all, which `marks.apply_deferred` refuses on independently of any name. An
+unattended session that wired a differently named mark step would still be
+refused `sync-marks-blocked` before it reached a real account. Not observed.
+
+**The conservative call made here.** Keep the name ban and say what it is. The
+alternative, asserting a property rather than a name, needs a definition of "the
+mark step" the code does not carry, and inventing one to be guarded is how a
+guard starts describing its own fixture.
+
+**Closes when:** the live half of R-358 is done and the guard is deleted, which
+is the same moment, or the production path gains a declared mark step the guard
+can ask about by role instead of by name.
+
+---
+
+## R-398. The deferred mark's file check can raise a bare OSError between two syscalls
+
+**Found:** during the code half of R-358, 2026-09-18, reading the failure paths
+of the engine this unit became the first caller of.
+
+`sync/marks.py::apply_deferred` opens with
+`if not local_output.is_file() or local_output.stat().st_size == 0`. Two
+syscalls over one path, with a window between them. A file that exists at the
+first and is gone at the second raises `FileNotFoundError` out of `stat`, which
+is a bare `OSError` reaching the caller rather than the `sync-marks-blocked`
+refusal three lines below that describes exactly that situation.
+
+**Driven:** not driven. `git grep -n apply_deferred -- src` had one hit before
+this unit, the definition itself, so this unit is the engine's first caller and
+owns its unreviewed failure paths under METHOD's own rule. The window was read
+rather than raced, and the report says so.
+
+**Measured cost.** Unmeasured, and reachable only by something this repository
+does not have yet. Nothing on the production path calls `mark_swept`, and the
+importable file a future caller would hand it is one the same run just wrote, so
+the window needs a second writer removing it mid pass. The cost if it happened is
+a traceback instead of a refusal, at the one step whose whole design is that it
+refuses rather than marking.
+
+**Why not fixed here.** `sync/marks.py` is out of this unit's brief, which names
+it as a key file for wiring and not for change, and the fix belongs with whoever
+gives the engine its first production caller, who will also know whether the
+answer is a `try` around the `stat` or a single `os.stat` read.
+
+**Closes when:** the file check reads the path once, or a caller exists that can
+reach the window and the decision is recorded that a raw `OSError` is the right
+answer there.
 
 ---

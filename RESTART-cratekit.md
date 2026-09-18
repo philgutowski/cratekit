@@ -4,7 +4,36 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-368, issue #101, `relay/101`.**
+**Last merged: R-358 code half, issue #105, `relay/105`.**
+`modules.outbound.service.RemoteAccount` declares a seventh member,
+`rename_playlist(playlist_id, name)`, and `TidalAccount` implements it over the
+playlist object `add_to_playlist` already edits. A retitle is not a removal, so
+the add-only scans still pass. Three refusals: a playlist the session does not
+own comes back without an editor, the client answering `False` is a refused
+write rather than a raise, and a blank title is `internal-error` at source
+scope, spelled here rather than through `provider_failure`, because the client
+reads a falsy title as keep the current one and answers True. The retry is kept,
+unlike a create's, since a retitle asks for one fixed title.
+`sync.playlists.pending_marks` and `mark_swept` are the application.
+**The mark set is the WHOLE cursor, `Sweep.recorded`, not `recorded_now`**, and
+the recheck is a second fresh listing, not the plan's own read. Both were review
+findings; the first is the learning below. `mark_swept` takes an optional
+`applied` list appended to as each rename lands, on `queue`'s pattern.
+**Production is deliberately unwired.** No sweep writes an importable file, so
+nothing calls `mark_swept`, `sync.cli` still reports `"mark": "unbound"`, and a
+guard over `sync/cli.py` holds that until the live half is done. The report
+block gained a `marked` list, and `"mark"` now separates a step that never ran
+from one that ran and marked nothing. The at-risk population re-pin moved 93 to
+94: `tidal_account.py` names a cause literal for the first time. Mutation tables
+`docs/mutation/r358.md` and `docs/mutation/r358-round-2.md`, 20 rows then 4,
+ending 18 of 20 killing, null control 0 of 7672 and 0 of 7674, no collect drift,
+every restore verified against `git show HEAD`. The two surviving zeros mutate
+test code and are recorded as such. The live mark stays attended and is
+Phillip's. New residuals R-397 and R-398. The learning is
+`docs/solutions/integration-issues/a-set-shaped-cursor-that-commits-before-a-side-effect-makes-the-next-increment-will-see-it-again-false.md`.
+Main's highest residual number is R-398.
+
+**The session before: R-368, issue #101, `relay/101`.**
 `crate restore run` takes `--target DIRECTORY`, a database restore into a
 directory that is not the live library, which is how a restore is rehearsed.
 Valid only with `--from-backup`. It rolls no session back: a named session
@@ -28,9 +57,8 @@ against `git show HEAD`. R-368 is closed against its RESTATED close and is not
 fully closed: a rehearsal still takes the live library lock and still needs
 rekordbox gone, which is R-396. The learning is
 `docs/solutions/integration-issues/a-resolved-path-compared-with-equals-is-not-a-same-directory-test.md`.
-Main's highest residual number is R-396.
 
-**The session before, 2026-09-18, R-352, issue #94, `unit/issue94-the-adapter-s-roster-is-narrower-than-th`.**
+**Two sessions before, 2026-09-18, R-352, issue #94, `unit/issue94-the-adapter-s-roster-is-narrower-than-th`.**
 After own page and seeds, `TidalCatalogue.artist_for` searches the label
 name and numbered compilations `001` through `079`, keeps copyright matches
 via Cratekit `labels_from_copyright` and `labels_match`, and walks credited

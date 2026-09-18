@@ -781,6 +781,10 @@ def test_a_mark_that_landed_is_not_owed_a_second_time(slim, monkeypatch, tmp_pat
     output.write_text("<COLLECTION/>", encoding="utf-8")
     assert playlists.mark_swept(sweep, fake, account, local_output=output) == ("pl-a",)
 
+    # PINNED BEFORE IT IS FED BACK. Handing the account's own title straight to
+    # the next listing without asserting it first would make the whole test an
+    # expected value taken from the code under test.
+    assert account.titles["pl-a"] == playlists.SWEPT_PREFIX + "Warmup"
     fake.account = [_playlist("pl-a", account.titles["pl-a"])]
     with jobs.open_store() as store:
         later = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
