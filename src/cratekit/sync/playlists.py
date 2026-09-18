@@ -44,6 +44,11 @@ internally consistent, which it always is, and the thing it is supposed to catch
 is a playlist that changed between the plan and the mark. That second read is
 taken once and shared by every mark in the batch.
 
+**THE MARK SET IS THE CURSOR, NOT WHAT THIS PASS ADDED TO IT.** The cursor is
+written before anything is marked and moves whether or not the mark lands, so a
+set taken from the newly recorded is a set nothing can offer a second time. See
+:func:`pending_marks`, which is where the reasoning lives.
+
 Layer: modules.
 """
 
@@ -175,15 +180,18 @@ def open_playlists(found: Iterable[jobs.Job]) -> frozenset[str]:
 
 def reconcile(store, cfg: config.Config, *, handler_key: str) -> tuple[str, ...]:
     """Record every playlist whose job completed cleanly. Returns the newly recorded."""
-    marks = WatermarkStore(cfg)
-    existing = marks.read(SOURCE_ID)
+    # NOT ``marks``, which is this module's deferred mark engine. The local name
+    # used to be ``marks`` and shadowed nothing, because nothing here imported
+    # the engine until R-358 did.
+    cursor = WatermarkStore(cfg)
+    existing = cursor.read(SOURCE_ID)
     known = set(existing.swept) if existing is not None else set()
     fresh = [
         identity
         for identity in completed(source_jobs(store, cfg, handler_key=handler_key))
         if identity not in known
     ]
-    marks.record_swept(SOURCE_ID, fresh, library_id=cfg.library.volume_id)
+    cursor.record_swept(SOURCE_ID, fresh, library_id=cfg.library.volume_id)
     return tuple(fresh)
 
 
@@ -197,6 +205,11 @@ class Sweep:
     excluded: dict[str, Excluded] = field(default_factory=dict)
     unreadable: dict[str, str] = field(default_factory=dict)
     recorded_now: tuple[str, ...] = ()
+    #: THE WHOLE CURSOR after this pass reconciled, not only what it added. It
+    #: is what :func:`mark_swept` marks from, for the reason that function
+    #: gives: the cursor moves whether or not the mark lands, so a mark set
+    #: taken from :attr:`recorded_now` is a set nothing can offer a second time.
+    recorded: frozenset[str] = frozenset()
 
     def names(self) -> dict[str, str]:
         return {playlist.playlist_id: playlist.name for playlist in self.listed}
@@ -236,7 +249,11 @@ def plan(
     recorded = frozenset(existing.swept) if existing is not None else frozenset()
     in_flight = open_playlists(source_jobs(store, cfg, handler_key=handler_key))
 
-    sweep = Sweep(listed=_listed_or_refuse(found), recorded_now=recorded_now)
+    sweep = Sweep(
+        listed=_listed_or_refuse(found),
+        recorded_now=recorded_now,
+        recorded=recorded,
+    )
     for playlist in sweep.listed:
         reason = exclusion(playlist, recorded=recorded, in_flight=in_flight)
         if reason is not None:
@@ -287,20 +304,44 @@ def queue(
         )
 
 
+def pending_marks(sweep: Sweep) -> tuple[marks.PendingMark, ...]:
+    """Every recorded playlist the account still lists under an unprefixed name.
+
+    **THE SET IS THE WHOLE CURSOR AND NOT** :attr:`Sweep.recorded_now`. The
+    cursor is written by :func:`reconcile` at the top of :func:`plan`, before
+    anything could have marked anything, and it moves whether the mark then
+    lands, refuses or finds a stale recheck. So a set taken from what this pass
+    ADDED is a set no later pass can offer again: the playlist is recorded, it
+    is excluded as :attr:`Excluded.RECORDED` forever after, and it never carries
+    the prefix. Taking the set from what the cursor HOLDS makes a mark that did
+    not land this pass an ordinary candidate on the next one.
+
+    What ends the retrying is the mark itself. A playlist the prefix reached is
+    listed under a swept name, and a swept name is skipped here, so the set
+    shrinks by exactly what landed. That is also why a name already carrying the
+    prefix is skipped rather than marked again: the prefix goes on the title, so
+    a second pass over one would build ``DOWNLOADED DOWNLOADED Warmup``.
+
+    A recorded playlist the account no longer lists has no name to prefix and is
+    not pending. Nothing is owed to a playlist that is gone.
+    """
+    listed = sweep.names()
+    return tuple(
+        marks.PendingMark(target_id=identity, kind=MARK_KIND)
+        for identity in sorted(sweep.recorded)
+        if listed.get(identity) and not is_swept_name(listed[identity])
+    )
+
+
 def mark_swept(
     sweep: Sweep,
     found: Catalogue,
     account: RemoteAccount,
     *,
     local_output: Path,
+    applied: list[str] | None = None,
 ) -> tuple[str, ...]:
-    """Prefix on the account every playlist this pass recorded. Returns the marked.
-
-    **THE SET IS** :attr:`Sweep.recorded_now`, the playlists whose intake job
-    SUCCEEDED since the last pass, which is exactly the set the cursor took in
-    the same pass. The mark is that cursor fact restated where the source system
-    can read it, so a wider set would tell that system a sweep finished which
-    this product does not consider finished.
+    """Prefix the recorded playlists on the account. Returns the marked ids.
 
     **THE FILE IS CHECKED FIRST AND BY** :func:`marks.apply_deferred`, which
     refuses ``sync-marks-blocked`` when the importable file is missing or empty.
@@ -308,21 +349,21 @@ def mark_swept(
     pending and no file still refuses, because a caller that has no file is
     wrong about the run whether or not this pass happened to record anything.
 
+    ``applied`` is APPENDED TO AS EACH RENAME LANDS, on :func:`queue`'s pattern
+    and for its reason. Each rename is its own remote write, a failure on the
+    third playlist leaves the first two renamed on the account, and the return
+    value is gone when this raises. A caller that wants to name what landed
+    passes a list; a caller that does not is relying on the next pass to see the
+    prefix, which :func:`pending_marks` makes true.
+
     **NOTHING ON THE PRODUCTION PATH CALLS THIS YET.** The intake worker a sweep
     composes resolves tracks and acquires none, so it writes no importable file
     and there is nothing to hand ``local_output``. ``sync.cli`` therefore reports
     :data:`MARK_UNBOUND`. That half of R-358 is attended, since a first live
     rename is a write to a real account.
     """
-    planned = sweep.names()
-    pending = [
-        marks.PendingMark(target_id=identity, kind=MARK_KIND)
-        for identity in sweep.recorded_now
-        # A NAME ALREADY CARRYING THE PREFIX IS SKIPPED, not marked again. The
-        # prefix is applied to the title, so a second pass over one would build
-        # ``DOWNLOADED DOWNLOADED Warmup``.
-        if planned.get(identity) and not is_swept_name(planned[identity])
-    ]
+    listed = sweep.names()
+    landed = applied if applied is not None else []
     held: list[dict[str, str]] = []
 
     def current() -> dict[str, str]:
@@ -337,14 +378,15 @@ def mark_swept(
         return held[0]
 
     def recheck(mark: marks.PendingMark) -> bool:
-        name = planned.get(mark.target_id) or ""
+        name = listed.get(mark.target_id) or ""
         return bool(name) and current().get(mark.target_id) == name
 
     def apply(mark: marks.PendingMark) -> None:
-        account.rename_playlist(mark.target_id, SWEPT_PREFIX + planned[mark.target_id])
+        account.rename_playlist(mark.target_id, SWEPT_PREFIX + listed[mark.target_id])
+        landed.append(mark.target_id)
 
     return marks.apply_deferred(
-        pending, local_output=local_output, recheck=recheck, apply=apply
+        pending_marks(sweep), local_output=local_output, recheck=recheck, apply=apply
     )
 
 
@@ -396,6 +438,7 @@ __all__ = [
     "is_swept_name",
     "mark_swept",
     "open_playlists",
+    "pending_marks",
     "plan",
     "queue",
     "reconcile",

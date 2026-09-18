@@ -510,6 +510,33 @@ def test_a_playlist_the_account_cannot_edit_refuses_rather_than_reporting_a_rena
     assert "rename the playlist pl-1" in str(excinfo.value.cause.message)
 
 
+@pytest.mark.parametrize("blank", ["", "   ", "\n"])
+def test_a_rename_with_no_title_is_refused_before_the_client_sees_it(blank):
+    """The client reads a falsy title as keep the current one and answers True,
+    so an empty title would be a write that changed nothing, reported as a
+    rename that succeeded."""
+    playlist = Playlist("pl-1", name="Warmup")
+    client = FakeClient(playlists={"pl-1": playlist})
+
+    with pytest.raises(CratekitError) as excinfo:
+        adapter(client).rename_playlist("pl-1", blank)
+
+    assert playlist.edits == [], "the empty title reached the client"
+    assert playlist.name == "Warmup"
+    assert excinfo.value.cause.reason == "internal-error"
+    assert excinfo.value.cause.scope is Scope.SOURCE
+
+
+def test_a_title_the_caller_padded_is_written_as_the_caller_asked():
+    """The emptiness test strips. The write does not."""
+    playlist = Playlist("pl-1", name="Warmup")
+    client = FakeClient(playlists={"pl-1": playlist})
+
+    adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup ")
+
+    assert playlist.name == "DOWNLOADED Warmup "
+
+
 def test_a_rename_of_a_playlist_the_provider_lacks_is_the_items_cause():
     with pytest.raises(CratekitError) as excinfo:
         adapter(FakeClient()).rename_playlist("pl-9", "DOWNLOADED Gone")

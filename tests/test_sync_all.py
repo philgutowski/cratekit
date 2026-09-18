@@ -723,6 +723,92 @@ def test_a_playlist_the_source_system_already_prefixed_is_not_prefixed_twice(
     assert account.renamed == []
 
 
+def test_a_mark_that_did_not_land_is_offered_again_by_the_next_pass(
+    slim, monkeypatch, tmp_path
+):
+    """The cursor moves before anything is marked, so the mark set cannot be what
+    the cursor ADDED. A refused mark here would otherwise leave a playlist
+    recorded, excluded as recorded for life, and never prefixed."""
+    cfg = slim
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    sweep = _recording_pass(cfg, fake)
+    account = outbound_fakes.FakeAccount()
+    output = tmp_path / "run-1_synced.xml"
+
+    with pytest.raises(CratekitError):
+        playlists.mark_swept(sweep, fake, account, local_output=output)
+    assert account.renamed == []
+
+    # The next pass records nothing new and still owes the mark.
+    with jobs.open_store() as store:
+        later = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
+    assert later.recorded_now == ()
+    assert later.excluded["pl-a"] == playlists.Excluded.RECORDED
+    assert [mark.target_id for mark in playlists.pending_marks(later)] == ["pl-a"]
+
+    output.write_text("<COLLECTION/>", encoding="utf-8")
+    assert playlists.mark_swept(later, fake, account, local_output=output) == ("pl-a",)
+    assert account.renamed == [("pl-a", playlists.SWEPT_PREFIX + "Warmup")]
+
+
+def test_a_mark_that_landed_is_not_owed_a_second_time(slim, monkeypatch, tmp_path):
+    """What ends the retrying is the prefix itself, read back off the account."""
+    cfg = slim
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    sweep = _recording_pass(cfg, fake)
+    account = outbound_fakes.FakeAccount()
+    output = tmp_path / "run-1_synced.xml"
+    output.write_text("<COLLECTION/>", encoding="utf-8")
+    assert playlists.mark_swept(sweep, fake, account, local_output=output) == ("pl-a",)
+
+    fake.account = [_playlist("pl-a", account.titles["pl-a"])]
+    with jobs.open_store() as store:
+        later = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
+    assert playlists.pending_marks(later) == ()
+    assert playlists.mark_swept(later, fake, account, local_output=output) == ()
+    assert len(account.renamed) == 1
+
+
+def test_a_rename_that_fails_mid_batch_still_names_the_ones_that_landed(
+    slim, monkeypatch, tmp_path
+):
+    """Each rename is its own remote write. The return value is gone when this
+    raises, so a caller that has to name what reached the account passes a list,
+    on ``queue``'s pattern."""
+    cfg = slim
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), _tracks("101")),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    code, first = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), first
+    for job in _playlist_jobs():
+        code, resumed = drive(cli_jobs.argv_for(job))
+        assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+    fake = bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), _tracks("101")),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    with jobs.open_store() as store:
+        sweep = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
+    assert sorted(sweep.recorded) == ["pl-a", "pl-b"]
+
+    account = outbound_fakes.FakeAccount(fail_on={"pl-b"})
+    output = tmp_path / "run-1_synced.xml"
+    output.write_text("<COLLECTION/>", encoding="utf-8")
+    landed: list[str] = []
+
+    with pytest.raises(RuntimeError):
+        playlists.mark_swept(
+            sweep, fake, account, local_output=output, applied=landed
+        )
+
+    assert landed == ["pl-a"]
+    assert account.renamed == [("pl-a", playlists.SWEPT_PREFIX + "Warmup")]
+
+
 def test_the_current_intake_path_marks_nothing_and_still_reports_unbound(slim, monkeypatch):
     """The brief's second scenario. A pass that RECORDED a playlist still reports
     the mark unbound, because the intake worker resolves tracks and acquires
@@ -751,13 +837,21 @@ def test_the_pass_composes_no_mark_step_while_no_sweep_writes_an_importable_file
     attended act, so a session that wires the mark step into the production pass
     unattended trips this rather than renaming somebody's playlists.
     """
-    called = {
-        node.func.attr
-        for node in ast.walk(ast.parse(SRC.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-    }
-    assert "mark_swept" not in called
-    assert "rename_playlist" not in called
+    banned = {"mark_swept", "rename_playlist"}
+    named: set[str] = set()
+    for node in ast.walk(ast.parse(SRC.read_text(encoding="utf-8"))):
+        # EVERY WAY THE NAME CAN ARRIVE, not only ``playlists.mark_swept(...)``.
+        # An attribute scan alone is walked straight past by a plain
+        # ``from cratekit.sync.playlists import mark_swept`` and a bare call,
+        # which is the shape a session wiring this up is most likely to write.
+        if isinstance(node, ast.Attribute):
+            named.add(node.attr)
+        elif isinstance(node, ast.Name):
+            named.add(node.id)
+        elif isinstance(node, ast.ImportFrom):
+            named.update(alias.asname or alias.name for alias in node.names)
+    assert named, "the scan read no names at all"
+    assert sorted(named & banned) == []
 
 
 def test_the_block_tells_a_mark_that_ran_apart_from_a_mark_that_never_ran():
@@ -775,28 +869,20 @@ def test_the_sync_package_defines_no_remove_write():
 
     ``tests/modules/test_outbound.py`` makes this assertion over the outbound,
     export and favourites roots. R-358 gave ``sync`` its first reason to name an
-    account write, so the same names are banned here too.
+    account write, so the same names are banned here too. The SET is imported
+    from there rather than copied: a copy means extending one arms three roots
+    and leaves this one unarmed, which is the drift ``outbound_fakes`` exists to
+    stop one layer down.
     """
-    forbidden = {
-        "remove_heart",
-        "unheart",
-        "unlike",
-        "uncolor",
-        "clear_heart",
-        "clear_color",
-        "delete_playlist",
-        "remove_from_playlist",
-        "remove_track",
-        "un_heart",
-        "un_color",
-    }
+    from tests.modules.test_outbound import FORBIDDEN_WRITE_NAMES
+
     defined: set[str] = set()
     for path in SRC.parent.rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 defined.add(node.name)
     assert defined, "the scan read no functions at all"
-    assert sorted(defined & forbidden) == []
+    assert sorted(defined & FORBIDDEN_WRITE_NAMES) == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════

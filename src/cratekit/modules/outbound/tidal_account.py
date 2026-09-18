@@ -56,6 +56,7 @@ import tidalapi  # noqa: F401
 
 from cratekit.acquire import listing, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
+from cratekit.core.cause import Scope, refuse
 from cratekit.modules.outbound import account
 
 #: How many times a write or a single lookup is retried after its first attempt.
@@ -313,9 +314,30 @@ class TidalAccount:
         That is refused rather than passed over, because a rename reported as
         done over a playlist that still carries its old title is how the source
         system is told a sweep finished that it will offer again.
+
+        AN EMPTY TITLE IS REFUSED HERE AND NOT AT THE PROVIDER. The client's own
+        edit reads a falsy title as "keep the current one" and answers True, so
+        an empty string would be a write that changed nothing, reported as a
+        rename that succeeded. That is the same wrong answer the two refusals
+        above exist to prevent, arriving through the one door neither watches.
         """
+        # The title is NOT stripped for the write, only for the emptiness test.
+        # A caller that asked for a title with a trailing space asked for it.
         wanted = str(name)
         doing = f"rename the playlist {playlist_id} to {wanted!r}"
+        if not wanted.strip():
+            # NOT ``provider_failure``. The provider did not fail, and its
+            # remedy is "resume the job to retry this item", which is advice
+            # that cannot work: the same empty title fails the same way.
+            raise refuse(
+                "internal-error",
+                f"a rename of the playlist {playlist_id} was asked for with no "
+                f"title; the client reads a falsy title as keep the current one "
+                f"and answers that it succeeded, so nothing was sent",
+                scope=Scope.SOURCE,
+                origin=("outbound", "account"),
+                detail={"playlist_id": str(playlist_id)},
+            )
         playlist = self._playlist(playlist_id)
         retitle = getattr(playlist, "edit", None)
         if not callable(retitle):

@@ -49,4 +49,9 @@ class RemoteAccount(Protocol):
         The playlist is named by identifier and never by title, so a retitle
         applied twice lands on the same playlist rather than on whatever now
         carries the old name. It changes no membership and deletes nothing.
+
+        An empty ``name`` is a refusal and never a no-op. An implementation
+        whose client reads a blank title as "keep the current one" would
+        otherwise report a rename over a playlist that never changed, which is
+        the one wrong answer this member exists to make impossible.
         """
