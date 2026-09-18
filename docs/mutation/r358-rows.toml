@@ -1,0 +1,289 @@
+name = "r358"
+pass_kind = "light"
+
+# The unit adds one member to the outbound account seam and one caller for it in
+# the playlists source. NOTHING ON THE PRODUCTION PATH REACHES EITHER, which is
+# the whole shape of the code half, so the blast radius today is zero live
+# writes and the table is scoped to the round's own diff rather than run at full
+# depth.
+#
+# The row the brief names by hand is P1, dropping rename_playlist from the frozen
+# protocol set. Six rows come from the review's own findings, restored one at a
+# time, because a fix whose guard kills nothing is a fix nobody can tell from the
+# defect: A1 and A2 are the review's finding 3, S1 is finding 1, S6 is finding 2,
+# T1 is finding 5 and T2 is finding 6.
+
+# ---------------------------------------------------------------------------
+# The adapter's rename, modules/outbound/tidal_account.py
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A1_empty_title_refusal"
+description = "Drop the empty-title refusal, so a blank title reaches the client"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        if not wanted.strip():
+            # NOT ``provider_failure``. The provider did not fail, and its
+            # remedy is "resume the job to retry this item", which is advice
+            # that cannot work: the same empty title fails the same way.
+            raise refuse(
+                "internal-error",
+                f"a rename of the playlist {playlist_id} was asked for with no "
+                f"title; the client reads a falsy title as keep the current one "
+                f"and answers that it succeeded, so nothing was sent",
+                scope=Scope.SOURCE,
+                origin=("outbound", "account"),
+                detail={"playlist_id": str(playlist_id)},
+            )
+'''
+new = ""
+
+[[rows]]
+id = "A2_title_stripped_for_the_write"
+description = "Strip the title for the write as well as for the emptiness test"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        wanted = str(name)
+        doing = f"rename the playlist {playlist_id} to {wanted!r}"'''
+new = '''        wanted = str(name).strip()
+        doing = f"rename the playlist {playlist_id} to {wanted!r}"'''
+
+[[rows]]
+id = "A3_editor_check"
+description = "Drop the editor check, so a playlist the account cannot edit is renamed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        if not callable(retitle):
+            raise account.provider_failure(
+                LookupError(
+                    f"the provider's playlist {playlist_id!r} cannot be retitled by "
+                    f"this account"
+                ),
+                doing,
+            )
+'''
+new = ""
+
+[[rows]]
+id = "A4_false_answer"
+description = "Accept a False answer as a rename that landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        if accepted is False or accepted is _ABSENT:
+            raise account.provider_failure(
+                RuntimeError("the provider did not accept the new playlist title"),
+                doing,
+            )'''
+new = '''        if accepted is _ABSENT:
+            raise account.provider_failure(
+                RuntimeError("the provider did not accept the new playlist title"),
+                doing,
+            )'''
+
+[[rows]]
+id = "A5_absent_answer"
+description = "Accept an explicit not found as a rename that landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        accepted = self._call(doing, lambda: retitle(title=wanted))
+        if accepted is False or accepted is _ABSENT:'''
+new = '''        accepted = self._call(doing, lambda: retitle(title=wanted))
+        if accepted is False:'''
+
+[[rows]]
+id = "A6_retry_coefficient"
+description = "Take the rename's retry to zero, the way a create takes it"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        accepted = self._call(doing, lambda: retitle(title=wanted))'''
+new = '''        accepted = self._call(doing, lambda: retitle(title=wanted), retries=0)'''
+
+[[rows]]
+id = "A7_empty_title_message"
+description = "Reword the empty-title refusal, never append to it"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''                f"a rename of the playlist {playlist_id} was asked for with no "
+                f"title; the client reads a falsy title as keep the current one "
+                f"and answers that it succeeded, so nothing was sent",'''
+new = '''                f"the playlist {playlist_id} was given a blank title, which the "
+                f"client would read as an instruction to keep the current one",'''
+
+# ---------------------------------------------------------------------------
+# The mark set, sync/playlists.py pending_marks
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "S1_set_is_the_cursor"
+description = "Take the mark set from recorded_now again, the review's finding 1"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        for identity in sorted(sweep.recorded)'''
+new = '''        for identity in sorted(sweep.recorded_now)'''
+
+[[rows]]
+id = "S2_already_prefixed"
+description = "Drop the swept-name filter, so a marked playlist is prefixed twice"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        if listed.get(identity) and not is_swept_name(listed[identity])'''
+new = '''        if listed.get(identity)'''
+
+[[rows]]
+id = "S3_gone_from_the_listing"
+description = "Drop the listed check, so a playlist the account no longer lists is pending"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        if listed.get(identity) and not is_swept_name(listed[identity])'''
+new = '''        if not is_swept_name(listed.get(identity) or "")'''
+
+[[rows]]
+id = "S4_cursor_on_the_sweep"
+description = "Stop carrying the cursor on the sweep, so pending_marks sees nothing"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        recorded_now=recorded_now,
+        recorded=recorded,
+    )'''
+new = '''        recorded_now=recorded_now,
+    )'''
+
+# ---------------------------------------------------------------------------
+# The recheck and the applied list, sync/playlists.py mark_swept
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "S5_recheck_is_a_second_read"
+description = "Serve the recheck from the plan's own listing instead of a fresh read"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        name = listed.get(mark.target_id) or ""
+        return bool(name) and current().get(mark.target_id) == name'''
+new = '''        name = listed.get(mark.target_id) or ""
+        return bool(name) and listed.get(mark.target_id) == name'''
+
+[[rows]]
+id = "S6_applied_list"
+description = "Stop naming each rename as it lands, the review's finding 2"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        account.rename_playlist(mark.target_id, SWEPT_PREFIX + listed[mark.target_id])
+        landed.append(mark.target_id)'''
+new = '''        account.rename_playlist(mark.target_id, SWEPT_PREFIX + listed[mark.target_id])'''
+
+[[rows]]
+id = "S7_lazy_listing"
+description = "Read the account eagerly, so a call with no file still spends a listing"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''    held: list[dict[str, str]] = []
+
+    def current() -> dict[str, str]:'''
+new = '''    held: list[dict[str, str]] = [
+        {playlist.playlist_id: playlist.name for playlist in _listed_or_refuse(found)}
+    ]
+
+    def current() -> dict[str, str]:'''
+
+[[rows]]
+id = "S8_prefix_applied"
+description = "Write the recorded name without the swept prefix"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        account.rename_playlist(mark.target_id, SWEPT_PREFIX + listed[mark.target_id])'''
+new = '''        account.rename_playlist(mark.target_id, listed[mark.target_id])'''
+
+# ---------------------------------------------------------------------------
+# What the block says, sync/playlists.py report
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "S9_mark_always_applied"
+description = "Report the mark applied whether or not the step ran"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        "mark": MARK_UNBOUND if marked is None else MARK_APPLIED,'''
+new = '''        "mark": MARK_APPLIED,'''
+
+[[rows]]
+id = "S10_mark_always_unbound"
+description = "Report the mark unbound whether or not the step ran"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        "mark": MARK_UNBOUND if marked is None else MARK_APPLIED,'''
+new = '''        "mark": MARK_UNBOUND,'''
+
+# ---------------------------------------------------------------------------
+# The test-side guards the brief names
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "P1_protocol_set"
+description = "Drop rename_playlist from the frozen protocol set, the brief's named row"
+file = "tests/outbound_fakes.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        "playlist_tracks",
+        "rename_playlist",
+    }'''
+new = '''        "playlist_tracks",
+    }'''
+
+[[rows]]
+id = "T1_unwired_guard_reads_names"
+description = "Read only attribute calls again, so a bare import walks past the guard"
+file = "tests/test_sync_all.py"
+surface = "maintainer"
+tests = ["tests/test_sync_all.py"]
+old = '''        if isinstance(node, ast.Attribute):
+            named.add(node.attr)
+        elif isinstance(node, ast.Name):
+            named.add(node.id)
+        elif isinstance(node, ast.ImportFrom):
+            named.update(alias.asname or alias.name for alias in node.names)'''
+new = '''        if isinstance(node, ast.Attribute):
+            named.add(node.attr)'''
+
+[[rows]]
+id = "T2_forbidden_names_imported"
+description = "Copy the forbidden write names back instead of importing the one set"
+file = "tests/test_sync_all.py"
+surface = "maintainer"
+tests = ["tests/test_sync_all.py"]
+old = '''    from tests.modules.test_outbound import FORBIDDEN_WRITE_NAMES'''
+new = '''    FORBIDDEN_WRITE_NAMES = {"remove_heart", "unheart"}'''
+
+# ---------------------------------------------------------------------------
+# Considered and not run
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "S11_sorted_order"
+description = "Drop the sort on the pending set, so the mark order follows the cursor"
+reason = "maintainer facing and ranked below the cap: the order changes which playlist a partial batch renames first, and nothing downstream depends on it. S6 already measures what a partial batch reports"
+
+[[dropped]]
+id = "A8_doing_string"
+description = "Reword the doing string the three rename refusals share"
+reason = "ranked below the cap: A7 already measures a message mutation on this member, and the doing string is asserted by the same test A3 is measured against"
+
+[[dropped]]
+id = "P2_strict_account_getattr"
+description = "Remove StrictAccount.__getattr__ so anything outside the protocol answers"
+reason = "ranked below the cap: it predates this unit and P1 measures the set it reports from, which is the half this unit widened"
