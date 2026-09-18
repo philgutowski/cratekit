@@ -1,0 +1,74 @@
+name = "u69"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_handler_key"
+description = "Drop the refusal of a job queued under another verb's handler key"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if job.handler_key not in intake_cli.INTAKE_KEYS:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M2_succeeded_only"
+description = "Drop the refusal of a job that is not succeeded (open, failed, cancelled)"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if job.state is not jobs.JobState.SUCCEEDED:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M3_zero_items"
+description = "Drop the refusal of a succeeded job with no items"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if not wanted:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M4_report_coverage"
+description = "Drop the refusal when the reports do not cover the items one for one"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if sorted(reported) != sorted(wanted):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M5_by_count"
+description = "Compare reports to items by count instead of by identifier"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if sorted(reported) != sorted(wanted):'''
+new = '''    if len(reported) != len(wanted):'''
+
+[[rows]]
+id = "M6_state_word"
+description = "Drop the refusal of a report whose state word this verb cannot read"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if report.get("state") not in _WORDS or not isinstance(report.get("track"), Mapping):'''
+new = '''        if not isinstance(report.get("track"), Mapping):'''
+
+[[rows]]
+id = "M7_offered_listed"
+description = "List offered rows beside missing ones"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''for report in reports if report["state"] == "missing"'''
+new = '''for report in reports if report["state"] in ("missing", "offered")'''
+
+[[rows]]
+id = "M8_suppressed_listed"
+description = "List suppressed (deleted on purpose) rows beside missing ones"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''for report in reports if report["state"] == "missing"'''
+new = '''for report in reports if report["state"] in ("missing", "suppressed")'''
+
+[[rows]]
+id = "M9_nothing_listable"
+description = "Drop the refusal when missing tracks exist and none can be listed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if missing and not listed:'''
+new = '''    if False:'''

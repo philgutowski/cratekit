@@ -17243,6 +17243,26 @@ table, not an independent one. **Still open:** no verb calls `listdoc.write`
 yet, so a person still cannot get from a resolved entrance to a download.
 That is the entrances' units, R-401 to R-403, R-359 and issue #110.
 
+**Narrowed again 2026-09-18 on `relay/114`, U69. The intake entrance is
+closed.** `crate intake missing --job JOB` reads a succeeded intake job's
+committed reports with the frozen config and hands only the missing rows to
+`listdoc.write`. It writes `intake-JOB.list.json` under
+`<download_staging>/lists/`, or under `--out`. It refuses a job of another
+verb, a job that is not succeeded, a job with no items, and reports that do
+not cover the items one for one by identifier. It also refuses a job whose
+missing rows none carry a provider id. The default human output names the
+path and the literal `crate acquire download` command. Driven in
+`tests/test_intake_missing.py`, including the written list queued and
+downloaded by the real download verb against `FakeAdapter`. That covers the
+playlist source and the account's hearts, since from U70 both go through
+`intake playlist`. Mutation table `docs/mutation/u69.md` and `u69-b.md`, 19 of
+20 killing, and the zero is read in `docs/mutation/u69-notes.md`. **Still
+open:** a verb that lists from the label sweep, the label import and `sync
+all`, which is R-402 and R-403, and from an identified set, R-401, whose
+tracks carry no provider id. The one real run, `intake playlist`, then `intake
+missing`, then `acquire download` on a small playlist, is owed to an attended
+sitting.
+
 ---
 
 ## R-401. An identified set cannot be handed to acquisition
@@ -17901,6 +17921,19 @@ not exist on this tree, so the brief's drive through it is owed there, and
 will read. `crate sync all` queueing the hearts is U74. The live read, with the
 heart count compared against the account's 197, is owed to an attended sitting.
 
+**Narrowed again 2026-09-18 on `relay/114`, U69. The acquisition half is
+driven against fakes.** `crate intake missing --job` writes the missing hearts
+of a finished `intake playlist favorites` job into a list document, and
+`test_the_written_list_is_accepted_and_downloaded_by_acquire` in
+`tests/test_intake_missing.py` queues that file with `acquire download` and
+drives it to succeeded against `FakeAdapter`, fetching exactly the two missing
+hearts. So a hearted track the library does not own now becomes an acquirable
+item, which is this entry's closing condition, on fakes. **Still open:** the
+live read and one real `intake playlist favorites`, `intake missing`,
+`acquire download` on the account, both owed to an attended sitting, and
+`sync all` queueing the hearts, U74. Board issue 110 is left open for that
+sitting to close.
+
 ---
 
 ## R-424. `crate sync favorites` declares a local colour and tag write it never performs
@@ -18050,5 +18083,47 @@ producer driven.
 
 **Closes when:** the favourites key falls back to object identity for a blank
 id, or the refusal counts from the unfolded listing.
+
+---
+
+## R-431. A deleted track the tombstone consult cannot reach is listed for download
+
+**Found:** 2026-09-18, U69, driven. The brief named the class: R-69, R-71 and
+R-72 each record a shape where the match engine reports a track plain missing
+when it should not. That was minor while missing led nowhere. `crate intake
+missing` makes missing lead to `acquire download`.
+
+**Driven.** A tombstone recorded by the real recorder,
+`deletion.stores.record_tombstone`, for `Aurora Bloom - Sun Path (feat. Mira)
+(Nightwave Remix)`, and one heart the provider spells as title `Sun Path` and
+version `Nightwave Remix`. `intake playlist favorites` resolves the heart
+missing, not suppressed, and `intake missing` writes it to the list.
+`test_a_deleted_track_the_tombstone_consult_cannot_reach_is_listed_as_recorded`
+in `tests/test_intake_missing.py` pins exactly that, so the test fails on the
+day this closes. The shape is the one entry in `UNRECONCILED` in
+`tests/test_match_states.py`. A deletion the consult does reach, a plain
+`Lumen Drift - Salt Road`, resolves suppressed and is not listed, driven in
+`test_a_track_deleted_on_purpose_is_suppressed_and_not_listed`.
+
+**Measured cost:** a track a person deleted on purpose is written into a list
+whose next command downloads it, and the report counts it as missing, not as
+deleted. That is board bar (b), the product saying something false. It is
+(a) as well, since a later run re-acquires a file the person removed. Only
+the R-69 shape was driven. R-72's unenumerated dash shapes and R-71's
+index side miss, where an owned file is reported missing and would be
+downloaded twice, are the same cost by the same path, argued from their
+entries and not driven here.
+
+**Why not fixed here.** Excluding it at this verb would need a second
+tombstone consult wider than the engine's, and `tombstone_fold` rejects
+widening by name, since an over eager suppression silently withholds music
+somebody wants. The fix belongs to whoever owns the tombstone identity, as
+R-69 and R-72 already say.
+
+**Closes when:** the deletion pass records a normalized identity the provider
+side can reach, R-72's closing condition, which also retires R-69's
+`UNRECONCILED` entry. Or `intake missing` gains a review step that offers
+each missing row sharing an artist and recording with a tombstone rather
+than listing it.
 
 ---

@@ -4,7 +4,34 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U70, issue #115, `relay/115`, 2026-09-18.**
+**Last merged: U69, issue #114, `relay/114`, 2026-09-18.**
+`crate intake missing --job JOB` writes the list document `acquire download`
+reads, from a finished intake job, the first verb to call `listdoc.write`. It
+is `src/cratekit/intake/missing_cli.py`, registry entry `intake.missing`,
+`diagnostic/1`, no write surface, not destructive, no gate. It reads the
+job's committed reports with the frozen config and lists only `missing` rows,
+so owned, offered and suppressed are counted and left out. The list goes to
+`<download_staging>/lists/intake-JOB.list.json` with its manifest, provenance
+`playlist` and the job's source, or under `--out`. It refuses, as
+`intake-list-unusable`, a job that is not succeeded, a job with no items,
+reports that do not cover the items one for one by identifier, a report with
+an unreadable state, an `--out` that is a file, and a job whose missing rows
+none carry a provider id. A job of another verb is `job-unknown`. A mixed job
+with some unlisted rows writes the rest and shows a FAIL check. The human
+output names the path and the literal next command, and it is driven through
+`cli.run` in the default mode. The written list is queued and downloaded by
+the real download verb against `FakeAdapter`. R-400 and R-423 narrowed,
+neither closed. **R-431 filed and on the board.** A deleted track whose
+tombstone the consult cannot reach, R-69's `UNRECONCILED` shape, is now
+listed for download. It is pinned by a test that fails when it closes. Mutation tables
+`docs/mutation/u69.md` and `u69-b.md`, 19 of 20 killing. The zero is inert,
+because the job queue is installation scoped, and is read in
+`docs/mutation/u69-notes.md`. `tests/test_reserved_causes.py` re-pinned to 95
+literal holders, measured as a set difference. **Main's highest residual number
+is R-431.** Owed to an attended sitting: one real `intake playlist`, `intake
+missing`, `acquire download` on a small playlist.
+
+**The session before: U70, issue #115, `relay/115`, 2026-09-18.**
 `crate intake playlist favorites` answers "is every heart in my library". The
 reserved reference `favorites` is checked in `intake.cli._playlist_rows` before
 `playlist_for` could see it, and lists the account's hearts through a sixth
@@ -20,8 +47,8 @@ with `source_id` favorites. The listing crosses
 own refusal passes through. No placeholder playlist, no account write, no
 cursor: a re-run is idempotent through ownership. `tests/label_fakes.py`
 declares six methods and `FakeCatalogue(hearts=...)` answers the sixth; a test
-holds the fake's set equal to the protocol's. **`intake missing` does not exist
-yet** (U69, issue #114), so the brief's drive through it is owed there;
+holds the fake's set equal to the protocol's. `intake missing` landed in the
+unit after, U69, which drove the hearts through to a download on fakes;
 R-423 is narrowed, not closed. R-429 and R-430 filed, neither meeting the board
 bar. Mutation table `docs/mutation/u70.md`, 14 of 14 killing, null control 0 of
 7751. **Main's highest residual number is R-430.** Owed to an attended sitting:
