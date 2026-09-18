@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+from tidalapi.exceptions import ObjectNotFound
 
 from cratekit.acquire import listing, match, provider_session
 from cratekit.core import config, jobs, review, secrets
@@ -651,6 +652,36 @@ def test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed():
     )
     with pytest.raises(ConnectionError):
         adapter.artist_for(entry)
+
+
+def test_the_client_object_not_found_is_an_unresolved_id_seed():
+    class MissingClient(FakeClient):
+        def artist(self, artist_id: str | None = None) -> ProviderArtist:
+            self.artist_lookups.append(str(artist_id))
+            raise ObjectNotFound("gone")
+
+    adapter = tidal_catalogue.TidalCatalogue(MissingClient())
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
+    )
+    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
+        adapter.artist_for(entry)
+    assert "id:99" in str(excinfo.value)
+
+
+def test_an_id_lookup_that_returns_none_is_an_unresolved_seed():
+    class EmptyClient(FakeClient):
+        def artist(self, artist_id: str | None = None) -> ProviderArtist | None:
+            self.artist_lookups.append(str(artist_id))
+            return None
+
+    adapter = tidal_catalogue.TidalCatalogue(EmptyClient())
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
+    )
+    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
+        adapter.artist_for(entry)
+    assert "id:99" in str(excinfo.value)
 
 
 def test_the_roster_lists_once_when_it_is_built_and_the_crawl_reads_memory():
