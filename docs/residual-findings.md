@@ -16965,3 +16965,31 @@ credited artist then fails.
 that every credited artist failed to list, when search had kept hits.
 
 ---
+
+## R-395. The missing extra message prints a bare pip command that is wrong for a pipx install
+
+**Found:** while rewriting the README install around pipx, 2026-09-18.
+
+When a module is switched on without its extra, both the parser stub and the
+worker refusal tell the reader to run `pip install 'cratekit[analysis]'` (or
+`vocals`). The text comes from `install_command` in `cli/render.py` and from two
+literals in `analysis/cli.py` and `analysis/vocals.py`. The README now installs
+with pipx, which keeps Cratekit in its own private environment. A bare `pip` runs
+against whichever Python the shell finds first, not the environment `crate` runs
+in. The command that works for a pipx install is `pipx install --force --python python3.12 --editable '.[analysis]'`
+from inside the clone, and it is in the README. The developer hint in
+`cli/doctor.py`, `pip install -e '.[dev]'`, is correct for the virtual
+environment used in development and is not part of this finding.
+
+**Measured cost:** a pipx user who follows the printed command gets an error, or
+an extra installed where `crate` never reads it, and the same refusal appears
+again. The pipx install and update commands were run against a clean clone in a
+scratch folder. The printed message was not run under pipx, so the failure above
+is read from the code, not observed.
+
+**Closes when:** the printed command installs into the environment `crate` is
+running from, for a pipx install and for a plain virtual environment, or the
+message points at the README instead of naming a command. The three tests that
+assert the literal `pip install 'cratekit[analysis]'` change with it.
+
+---
