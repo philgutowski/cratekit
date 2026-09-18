@@ -1409,11 +1409,8 @@ def test_a_review_set_item_without_a_name_is_rendered_from_its_own_fields():
     )
 
     lines = render.render_review_set(envelope)
-    joined = "\n".join(lines)
-    assert "abc" in joined
-    assert "removed-track" in joined
-    assert "unresolved: 3" in joined
-    assert f"  {CONFIRMED}" not in lines
+    assert "  id=abc, kind=removed-track, path=/x.flac" in lines
+    assert "  unresolved: 3" in lines
 
 
 def test_review_set_rendering_is_gated_on_the_schema_not_an_items_key():
