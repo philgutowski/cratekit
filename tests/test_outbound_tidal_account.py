@@ -71,13 +71,17 @@ class Track:
 
 
 class Playlist:
-    """An owned playlist that pages its tracks and records every add."""
+    """An owned playlist that pages its tracks and records every add and retitle."""
 
-    def __init__(self, playlist_id: str, members: list[str] = ()) -> None:
+    def __init__(self, playlist_id: str, members: list[str] = (), name: str = "") -> None:
         self.id = playlist_id
         self.members = list(members)
+        self.name = name
         self.adds: list[list[str]] = []
         self.pages: list[tuple[int, int]] = []
+        self.edits: list[tuple[str | None, str | None]] = []
+        self.edit_fail: list[Exception] = []
+        self.edit_answer = True
 
     def tracks(self, limit: int | None = None, offset: int = 0) -> list[Track]:
         size = 100 if limit is None else limit
@@ -89,6 +93,35 @@ class Playlist:
         self.adds.append(list(media_ids))
         self.members.extend(media_ids)
         return list(media_ids)
+
+    def edit(self, title: str | None = None, description: str | None = None) -> bool:
+        """The client's own shape: a bool answer, and a falsy title keeps the old one."""
+        self.edits.append((title, description))
+        if self.edit_fail:
+            raise self.edit_fail.pop(0)
+        if not self.edit_answer:
+            return False
+        if title:
+            self.name = title
+        return True
+
+
+class ForeignPlaylist:
+    """A playlist the session does not own, which the client hands out unedited.
+
+    The client returns a read only object for somebody else's playlist and an
+    editable one for the account's own, so the absence of ``edit`` is the shape
+    a rename meets rather than a raise.
+    """
+
+    def __init__(self, playlist_id: str, name: str = "") -> None:
+        self.id = playlist_id
+        self.name = name
+        self.members: list[str] = []
+
+    def tracks(self, limit: int | None = None, offset: int = 0) -> list[Track]:
+        del limit, offset
+        return []
 
 
 class Favorites:
@@ -435,6 +468,65 @@ def test_a_created_playlist_returns_the_identifier_the_provider_assigned():
     assert created == "00000000-0000-4000-8000-000000000001"
     assert client.user.created == ["Crate"]
     assert remote.playlist_tracks(created) == ()
+
+
+# ── the retitle, R-358 ──────────────────────────────────────────────────────
+
+
+def test_a_rename_retitles_the_playlist_and_leaves_its_membership_alone():
+    playlist = Playlist("pl-1", ["101", "102"], name="Warmup")
+    client = FakeClient(playlists={"pl-1": playlist})
+    remote = adapter(client)
+
+    remote.rename_playlist("pl-1", "DOWNLOADED Warmup")
+
+    assert playlist.name == "DOWNLOADED Warmup"
+    assert playlist.edits == [("DOWNLOADED Warmup", None)]
+    assert playlist.members == ["101", "102"]
+    assert playlist.adds == []
+
+
+def test_a_rename_the_client_answers_false_is_the_items_cause_not_a_quiet_return():
+    """A mark reported as applied over a title that never changed is the whole defect."""
+    playlist = Playlist("pl-1", name="Warmup")
+    playlist.edit_answer = False
+    client = FakeClient(playlists={"pl-1": playlist})
+
+    with pytest.raises(CratekitError) as excinfo:
+        adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup")
+
+    assert playlist.name == "Warmup"
+    assert excinfo.value.cause.scope is Scope.ITEM
+    assert excinfo.value.cause.reason == "unavailable-transient"
+
+
+def test_a_playlist_the_account_cannot_edit_refuses_rather_than_reporting_a_rename():
+    client = FakeClient(playlists={"pl-1": ForeignPlaylist("pl-1", name="Somebody Else")})
+
+    with pytest.raises(CratekitError) as excinfo:
+        adapter(client).rename_playlist("pl-1", "DOWNLOADED Somebody Else")
+
+    assert excinfo.value.cause.scope is Scope.ITEM
+    assert "rename the playlist pl-1" in str(excinfo.value.cause.message)
+
+
+def test_a_rename_of_a_playlist_the_provider_lacks_is_the_items_cause():
+    with pytest.raises(CratekitError) as excinfo:
+        adapter(FakeClient()).rename_playlist("pl-9", "DOWNLOADED Gone")
+
+    assert excinfo.value.cause.scope is Scope.ITEM
+
+
+def test_a_rename_the_provider_refuses_once_is_retried_once_into_the_same_title():
+    """Unlike a create, a retry asks for the state the first attempt asked for."""
+    playlist = Playlist("pl-1", name="Warmup")
+    playlist.edit_fail = [HTTPFailure(429)]
+    client = FakeClient(playlists={"pl-1": playlist})
+
+    adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup")
+
+    assert playlist.edits == [("DOWNLOADED Warmup", None), ("DOWNLOADED Warmup", None)]
+    assert playlist.name == "DOWNLOADED Warmup"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

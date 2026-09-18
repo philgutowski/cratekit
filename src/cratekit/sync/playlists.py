@@ -26,14 +26,23 @@ job is not recorded and its playlist is offered again. Nothing is ever filtered
 by title except the two naming conventions above, which are conventions spelled
 in the name by the systems that apply them, and neither is stored (D5).
 
-**THE MARK IS UNBOUND.** ``sync/marks.py`` states the rule: a remote playlist is
-renamed only after the importable file exists and a recheck holds. Two things
-are missing for that here, and both are reported rather than worked around. The
-account seam, ``modules.outbound.service.RemoteAccount``, declares no rename, so
-there is nothing to apply the mark through; and the intake worker writes no
-importable file, since it resolves tracks and does not acquire them. So every
-pass reports the mark as :data:`MARK_UNBOUND`, on R-203's pattern, and the cursor
-is the only record a sweep leaves.
+**THE MARK IS HALF BOUND, AND THE PASS SAYS WHICH HALF.** ``sync/marks.py``
+states the rule: a remote playlist is renamed only after the importable file
+exists and a recheck holds. Two things were missing for that, and R-358 closes
+one of them. The account seam, ``modules.outbound.service.RemoteAccount``, now
+declares ``rename_playlist``, so there is something to apply the mark through,
+and :func:`mark_swept` is that application. What is still missing is the file:
+the intake worker a sweep composes writes no importable file, since it resolves
+tracks and does not acquire them. So nothing calls :func:`mark_swept` on the
+production path, every pass still reports the mark as :data:`MARK_UNBOUND`, on
+R-203's pattern, and the cursor is still the only record a sweep leaves.
+
+**THE RECHECK IS A SECOND READ, NOT THE PLAN'S OWN.** :func:`mark_swept` reads
+the account listing again rather than trusting the one :func:`plan` already took.
+A recheck served from the planning read confirms only that the plan was
+internally consistent, which it always is, and the thing it is supposed to catch
+is a playlist that changed between the plan and the mark. That second read is
+taken once and shared by every mark in the batch.
 
 Layer: modules.
 """
@@ -43,14 +52,22 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from cratekit.core import config, jobs
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
 from cratekit.label.catalogue import AccountPlaylist, Catalogue
+from cratekit.sync import marks
 from cratekit.sync.watermarks import WatermarkStore
+
+if TYPE_CHECKING:  # pragma: no cover - the seam's type, never imported at runtime
+    # Behind the guard because this source is CORE, the slim profile runs it
+    # alone, and the outbound package is a feature module. The annotation is the
+    # honest one, and a slim install still imports nothing extra to read it.
+    from cratekit.modules.outbound.service import RemoteAccount
 
 #: This source's identifier, as ``sync.sources`` declares it and as the jobs it
 #: queues carry it.
@@ -61,9 +78,16 @@ SOURCE_ID = "playlists"
 #: reinvented, because the live account already carries it.
 SWEPT_PREFIX = "DOWNLOADED "
 
-#: What the pass says about the mark step, every time, until the account seam
-#: can rename a playlist.
+#: What the pass says about the mark step when nothing marked the account,
+#: which is every production pass until a sweep writes an importable file.
 MARK_UNBOUND = "unbound"
+
+#: What the pass says when :func:`mark_swept` ran against the account seam.
+MARK_APPLIED = "applied"
+
+#: The kind every mark this source defers carries. One kind, because the only
+#: remote side effect a sweep leaves is the swept prefix on a title.
+MARK_KIND = "prefix"
 
 #: The two refusals one playlist's listing may end in that are about THAT
 #: playlist. Any other refusal, a credential or an unbound adapter, is about the
@@ -263,8 +287,78 @@ def queue(
         )
 
 
-def report(sweep: Sweep, filed: Sequence[jobs.Job]) -> dict[str, Any]:
-    """The playlists block of the pass summary. Identifiers first, names to read."""
+def mark_swept(
+    sweep: Sweep,
+    found: Catalogue,
+    account: RemoteAccount,
+    *,
+    local_output: Path,
+) -> tuple[str, ...]:
+    """Prefix on the account every playlist this pass recorded. Returns the marked.
+
+    **THE SET IS** :attr:`Sweep.recorded_now`, the playlists whose intake job
+    SUCCEEDED since the last pass, which is exactly the set the cursor took in
+    the same pass. The mark is that cursor fact restated where the source system
+    can read it, so a wider set would tell that system a sweep finished which
+    this product does not consider finished.
+
+    **THE FILE IS CHECKED FIRST AND BY** :func:`marks.apply_deferred`, which
+    refuses ``sync-marks-blocked`` when the importable file is missing or empty.
+    There is deliberately no early return in front of it: a call with nothing
+    pending and no file still refuses, because a caller that has no file is
+    wrong about the run whether or not this pass happened to record anything.
+
+    **NOTHING ON THE PRODUCTION PATH CALLS THIS YET.** The intake worker a sweep
+    composes resolves tracks and acquires none, so it writes no importable file
+    and there is nothing to hand ``local_output``. ``sync.cli`` therefore reports
+    :data:`MARK_UNBOUND`. That half of R-358 is attended, since a first live
+    rename is a write to a real account.
+    """
+    planned = sweep.names()
+    pending = [
+        marks.PendingMark(target_id=identity, kind=MARK_KIND)
+        for identity in sweep.recorded_now
+        # A NAME ALREADY CARRYING THE PREFIX IS SKIPPED, not marked again. The
+        # prefix is applied to the title, so a second pass over one would build
+        # ``DOWNLOADED DOWNLOADED Warmup``.
+        if planned.get(identity) and not is_swept_name(planned[identity])
+    ]
+    held: list[dict[str, str]] = []
+
+    def current() -> dict[str, str]:
+        """The account's names now, read ONCE and only when a mark asks."""
+        if not held:
+            held.append(
+                {
+                    playlist.playlist_id: playlist.name
+                    for playlist in _listed_or_refuse(found)
+                }
+            )
+        return held[0]
+
+    def recheck(mark: marks.PendingMark) -> bool:
+        name = planned.get(mark.target_id) or ""
+        return bool(name) and current().get(mark.target_id) == name
+
+    def apply(mark: marks.PendingMark) -> None:
+        account.rename_playlist(mark.target_id, SWEPT_PREFIX + planned[mark.target_id])
+
+    return marks.apply_deferred(
+        pending, local_output=local_output, recheck=recheck, apply=apply
+    )
+
+
+def report(
+    sweep: Sweep, filed: Sequence[jobs.Job], *, marked: Sequence[str] | None = None
+) -> dict[str, Any]:
+    """The playlists block of the pass summary. Identifiers first, names to read.
+
+    ``marked`` is what :func:`mark_swept` returned, or ``None`` when the pass
+    never reached the mark step. The two are different facts and the block says
+    which: ``None`` reports :data:`MARK_UNBOUND`, and an empty result reports
+    :data:`MARK_APPLIED` with nothing under ``marked``, which is a mark step that
+    ran and found every recheck stale.
+    """
     names = sweep.names()
     return {
         "listed": len(sweep.listed),
@@ -283,11 +377,14 @@ def report(sweep: Sweep, filed: Sequence[jobs.Job]) -> dict[str, Any]:
         },
         "unreadable": dict(sweep.unreadable),
         "recorded_now": list(sweep.recorded_now),
-        "mark": MARK_UNBOUND,
+        "mark": MARK_UNBOUND if marked is None else MARK_APPLIED,
+        "marked": list(marked or ()),
     }
 
 
 __all__ = [
+    "MARK_APPLIED",
+    "MARK_KIND",
     "MARK_UNBOUND",
     "PER_PLAYLIST_REASONS",
     "SOURCE_ID",
@@ -297,6 +394,7 @@ __all__ = [
     "completed",
     "exclusion",
     "is_swept_name",
+    "mark_swept",
     "open_playlists",
     "plan",
     "queue",

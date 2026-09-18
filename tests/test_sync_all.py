@@ -593,6 +593,213 @@ def test_a_refusal_part_way_through_the_playlists_keeps_the_filed_ones_named(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# 3b. The deferred mark, R-358 code half
+#
+# THE PRODUCER IS THE PASS AND NOT A HAND BUILT DATACLASS. ``recorded_now`` is
+# only ever non empty because a pass queued a playlist and that playlist's
+# intake job then SUCCEEDED, so every mark test below drives that sequence for
+# real before it asks anything about a rename.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _recording_pass(cfg, fake) -> playlists.Sweep:
+    """Queue ``pl-a``, finish its job, and return the pass that records it.
+
+    :func:`playlists.plan` reconciles, so it is called EXACTLY ONCE here: a
+    second call records nothing fresh and would hand back a sweep whose
+    ``recorded_now`` is empty for a reason that has nothing to do with marks.
+    """
+    code, first = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), first
+    (job,) = _playlist_jobs()
+    code, resumed = drive(cli_jobs.argv_for(job))
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+    with jobs.open_store() as store:
+        sweep = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
+    assert sweep.recorded_now == ("pl-a",), sweep.recorded_now
+    return sweep
+
+
+def test_a_mark_without_a_real_importable_file_renames_nothing(slim, monkeypatch, tmp_path):
+    """Both halves of the file rule, and neither reaches the account at all.
+
+    The listing count is asserted because the ORDER is the property: the file is
+    checked before the recheck's second read, so a caller with no file spends no
+    provider call finding that out.
+    """
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    sweep = _recording_pass(slim, fake)
+    account = outbound_fakes.FakeAccount()
+    output = tmp_path / "run-1_synced.xml"
+    listings = fake.account_listings
+
+    with pytest.raises(CratekitError) as absent:
+        playlists.mark_swept(sweep, fake, account, local_output=output)
+    assert absent.value.cause.reason == "sync-marks-blocked"
+
+    output.write_text("", encoding="utf-8")
+    with pytest.raises(CratekitError) as empty:
+        playlists.mark_swept(sweep, fake, account, local_output=output)
+    assert empty.value.cause.reason == "sync-marks-blocked"
+
+    assert account.renamed == []
+    assert fake.account_listings == listings, "the recheck read ran before the file check"
+
+
+def test_a_mark_after_a_real_importable_file_prefixes_the_recorded_playlist(
+    slim, monkeypatch, tmp_path
+):
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    sweep = _recording_pass(slim, fake)
+    account = outbound_fakes.FakeAccount()
+    output = tmp_path / "run-1_synced.xml"
+    output.write_text("<COLLECTION/>", encoding="utf-8")
+    listings = fake.account_listings
+
+    marked = playlists.mark_swept(sweep, fake, account, local_output=output)
+
+    assert marked == ("pl-a",)
+    assert account.renamed == [("pl-a", playlists.SWEPT_PREFIX + "Warmup")]
+    assert playlists.is_swept_name(account.titles["pl-a"])
+    assert fake.account_listings == listings + 1, "the recheck was not a second read"
+
+
+def test_a_playlist_renamed_on_the_account_since_the_plan_is_left_alone(
+    slim, monkeypatch, tmp_path
+):
+    """What the recheck is for. The prefix would land on a playlist that is no
+    longer the thing the pass swept, and the title it would build names a
+    playlist that no longer exists under that name."""
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    sweep = _recording_pass(slim, fake)
+    fake.account = [_playlist("pl-a", "Warmup Rework")]
+    account = outbound_fakes.FakeAccount()
+    output = tmp_path / "run-1_synced.xml"
+    output.write_text("<COLLECTION/>", encoding="utf-8")
+
+    assert playlists.mark_swept(sweep, fake, account, local_output=output) == ()
+    assert account.renamed == []
+
+
+def test_a_playlist_gone_from_the_account_since_the_plan_is_not_marked(
+    slim, monkeypatch, tmp_path
+):
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    sweep = _recording_pass(slim, fake)
+    fake.account = []
+    account = outbound_fakes.FakeAccount()
+    output = tmp_path / "run-1_synced.xml"
+    output.write_text("<COLLECTION/>", encoding="utf-8")
+
+    assert playlists.mark_swept(sweep, fake, account, local_output=output) == ()
+    assert account.renamed == []
+
+
+def test_a_playlist_the_source_system_already_prefixed_is_not_prefixed_twice(
+    slim, monkeypatch, tmp_path
+):
+    """Reachable while both systems run, which is the state R-358 is about: the
+    job finishes here and DJ_tools sweeps the same playlist before this pass
+    records it. Marking again would build ``DOWNLOADED DOWNLOADED Warmup``."""
+    cfg = slim
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    code, first = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), first
+    (job,) = _playlist_jobs()
+    code, resumed = drive(cli_jobs.argv_for(job))
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+
+    fake.account = [_playlist("pl-a", playlists.SWEPT_PREFIX + "Warmup")]
+    with jobs.open_store() as store:
+        sweep = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
+    assert sweep.recorded_now == ("pl-a",)
+
+    account = outbound_fakes.FakeAccount()
+    output = tmp_path / "run-1_synced.xml"
+    output.write_text("<COLLECTION/>", encoding="utf-8")
+
+    assert playlists.mark_swept(sweep, fake, account, local_output=output) == ()
+    assert account.renamed == []
+
+
+def test_the_current_intake_path_marks_nothing_and_still_reports_unbound(slim, monkeypatch):
+    """The brief's second scenario. A pass that RECORDED a playlist still reports
+    the mark unbound, because the intake worker resolves tracks and acquires
+    none, so no importable file exists for the mark step to wait on."""
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    drive(["sync", "all"])
+    (job,) = _playlist_jobs()
+    code, resumed = drive(cli_jobs.argv_for(job))
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+
+    code, third = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), third
+    block = third["data"]["summary"]["playlists"]
+    assert block["recorded_now"] == ["pl-a"]
+    assert block["mark"] == playlists.MARK_UNBOUND
+    assert block["marked"] == []
+    assert _swept(cfg) == ("pl-a",)
+
+
+def test_the_pass_composes_no_mark_step_while_no_sweep_writes_an_importable_file():
+    """DELETE THIS GUARD WHEN THE LIVE HALF OF R-358 IS DONE, and not before.
+
+    ``mark_swept`` exists and ``sync.cli`` deliberately does not call it. That is
+    the whole of the code half: the seam is built and the first live rename is an
+    attended act, so a session that wires the mark step into the production pass
+    unattended trips this rather than renaming somebody's playlists.
+    """
+    called = {
+        node.func.attr
+        for node in ast.walk(ast.parse(SRC.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert "mark_swept" not in called
+    assert "rename_playlist" not in called
+
+
+def test_the_block_tells_a_mark_that_ran_apart_from_a_mark_that_never_ran():
+    """Two different facts, and an empty list is not what separates them."""
+    sweep = playlists.Sweep()
+    never = playlists.report(sweep, [])
+    ran = playlists.report(sweep, [], marked=())
+    assert (never["mark"], never["marked"]) == (playlists.MARK_UNBOUND, [])
+    assert (ran["mark"], ran["marked"]) == (playlists.MARK_APPLIED, [])
+    assert playlists.report(sweep, [], marked=("pl-a",))["marked"] == ["pl-a"]
+
+
+def test_the_sync_package_defines_no_remove_write():
+    """The brief's fourth scenario, over the package that gained the mark caller.
+
+    ``tests/modules/test_outbound.py`` makes this assertion over the outbound,
+    export and favourites roots. R-358 gave ``sync`` its first reason to name an
+    account write, so the same names are banned here too.
+    """
+    forbidden = {
+        "remove_heart",
+        "unheart",
+        "unlike",
+        "uncolor",
+        "clear_heart",
+        "clear_color",
+        "delete_playlist",
+        "remove_from_playlist",
+        "remove_track",
+        "un_heart",
+        "un_color",
+    }
+    defined: set[str] = set()
+    for path in SRC.parent.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                defined.add(node.name)
+    assert defined, "the scan read no functions at all"
+    assert sorted(defined & forbidden) == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # 4. What the pass queued, run by the workers that already exist
 # ═══════════════════════════════════════════════════════════════════════════
 

@@ -35,6 +35,7 @@ PROTOCOL_METHODS = frozenset(
         "create_playlist",
         "add_to_playlist",
         "playlist_tracks",
+        "rename_playlist",
     }
 )
 
@@ -64,6 +65,11 @@ class FakeAccount:
         self.added: list[tuple[str, str]] = []
         self.hearted: list[str] = []
         self.removed: list[str] = []
+        #: Every retitle, in order, as ``(playlist_id, new_name)``. A list rather
+        #: than a mapping so a second rename of one playlist is visible.
+        self.renamed: list[tuple[str, str]] = []
+        #: What each playlist is called now, for the retitle to change.
+        self.titles: dict[str, str] = {}
         self.fail_after = fail_after
         self.fail_on = frozenset(fail_on or ())
         self._writes = 0
@@ -84,6 +90,7 @@ class FakeAccount:
         self._bump(name)
         remote_id = f"pl-{len(self.created) + 1}"
         self.playlists[remote_id] = []
+        self.titles[remote_id] = name
         self.created.append(name)
         return remote_id
 
@@ -94,6 +101,17 @@ class FakeAccount:
 
     def playlist_tracks(self, playlist_id: str) -> tuple[str, ...]:
         return tuple(self.playlists.get(playlist_id, ()))
+
+    def rename_playlist(self, playlist_id: str, name: str) -> None:
+        """Retitle, keyed by identifier. Counts as a write, so ``fail_on`` bites.
+
+        The subject handed to :meth:`_bump` is the PLAYLIST identifier and not
+        the new title, because a caller asking to fail one rename knows which
+        playlist it means and not what the run decided to call it.
+        """
+        self._bump(playlist_id)
+        self.titles[playlist_id] = name
+        self.renamed.append((playlist_id, name))
 
     def _bump(self, subject: str = "") -> None:
         self._writes += 1
@@ -110,6 +128,12 @@ class StrictAccount(FakeAccount):
     happens: an absence proves nothing about the mechanism, only about this
     input. This raises instead, so the assertion is that no code path in the
     shell or the engine can even NAME a remove.
+
+    ``rename_playlist`` is admitted and that is deliberate (R-358). It is
+    inherited from :class:`FakeAccount` as a real method, so ``__getattr__``
+    never fires for it, and the protocol declares it. Widening the guard is one
+    line in :data:`PROTOCOL_METHODS`, and the line is what makes the widening
+    visible in the diff rather than silent in a fake permissive enough to answer.
     """
 
     def __getattr__(self, name: str):
