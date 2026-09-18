@@ -22,8 +22,9 @@ one. Both are relevant when starting work in an area either one covers, and
 ## How a session runs, decided 2026-09-07
 
 **The compound engineering plugin is not used here.** No `ce-plan`, `ce-work`,
-`ce-code-review`, `ce-compound`, and no Relay until it has a native mode. A
-session does the whole of one unit itself: plan mode against the issue brief,
+`ce-code-review`, `ce-compound`. Native Relay, which runs METHOD's pipeline and
+none of those skills, drives unattended runs, and METHOD's Relay section says
+how. A session does the whole of one unit itself: plan mode against the issue brief,
 build, the built in `/code-review`, an author's mutation table capped at 25
 rows, the record, the merge. METHOD's pipeline section is the exact sequence.
 
@@ -125,6 +126,10 @@ Nothing merges until all three are clean:
     .venv/bin/ruff check src tests scripts
     .venv/bin/python -m pytest
     .venv/bin/python scripts/scan_repo.py
+
+The suite runs across every core and takes about a minute. It is the merge
+gate, not the edit loop: while building, run the test files for what you
+touched. METHOD's battery section has the numbers.
 
 An author's own battery is not a review. Every defect the adversarial reviews
 found in this repository passed a green suite written by the person who wrote the

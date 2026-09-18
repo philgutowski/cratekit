@@ -6,11 +6,12 @@ the session contract and points at this file. `RESTART-cratekit.md` is verified
 state and nothing else.
 
 **The compound engineering plugin is out of the loop, decided 2026-09-07.** No
-`ce-plan`, no `ce-work`, no `ce-code-review`, no `ce-compound`, no Relay. Each
-of those spent a multi agent pass on work a single session can do against the
-issue brief, and the largest of them, the independent verifier, was measured at
-258k tokens for one round trip. The rules they enforced that were actually
-paid for are kept below as rules. The ceremony is not.
+`ce-plan`, no `ce-work`, no `ce-code-review`, no `ce-compound`. Each of those
+spent a multi agent pass on work a single session can do against the issue
+brief, and the largest of them, the independent verifier, was measured at 258k
+tokens for one round trip. The rules they enforced that were actually paid for
+are kept below as rules. The ceremony is not. Native Relay, which runs this
+file's pipeline and none of those skills, is in the loop. See Relay below.
 
 `docs/history/` is HISTORY. It holds the wave state files, the independent
 reviews and the long narrative handoff. Read one when you need the reasoning
@@ -44,7 +45,9 @@ one.
    green suite cannot see. At most two fix rounds; when they are spent, what is
    still open becomes a residual and the unit merges.
 5. **Record.** Residuals appended to `docs/residual-findings.md` with fresh
-   numbers above main's highest. A `docs/solutions/` entry only if the unit
+   numbers above main's highest. **A residual that meets the board bar below
+   also gets an issue, in the same session**, because the board is the queue
+   and a finding nobody queued is a finding nobody does. A `docs/solutions/` entry only if the unit
    found something a future session would get wrong without it, written
    directly in the existing frontmatter form. `RESTART-cratekit.md` rewritten to
    the verified state. No explainer, see below.
@@ -79,6 +82,25 @@ that is a property of large test suites rather than of any branch.
 
 **And a hard cap: each unit has at most two fix rounds.** The floor is meant to
 end the loop on merit. The cap is what guarantees an end date if it does not.
+
+## The board bar, decided 2026-09-18
+
+Most residuals stay in the ledger and earn no issue. A residual earns one, the
+moment it is filed, only when it is open and a person using the shipped verbs
+pays for it in one of four ways: **(a)** files or database rows can be lost or
+damaged, **(b)** the product says something false, a clean report over state it
+could not read or a declared write it never performs, **(c)** a workflow a DJ
+needs cannot finish, **(d)** a guard on a path that writes or deletes is absent
+or kills nothing. A maintainer facing finding, a wording fix, a count in a
+document, or anything that closes only at an attended sitting does not.
+
+File it with `gh issue create --repo philgutowski/cratekit --label residual`,
+titled `R-N: ` followed by the ledger heading EXACTLY, since `board.py audit`
+compares the two, with a body opening `**Depends on:** none` and carrying goal,
+key files, approach, test scenarios and out of scope. Add it to project 2.
+Create the issue AFTER the merge that carries the ledger entry, because a
+number is not the finding's until it is on `main`. The Relay feeder picks up
+any open issue labelled `residual` or `unit` that the board derives as ready.
 
 ## Verification is the author's, and says so
 
@@ -153,7 +175,10 @@ bill is tool calls times context size. Thinking is cheap here. Reading is not.
   backgrounded driver outlived its parent twice and contaminated later rows. That
   is still the failure to defeat and the foreground is no longer how. Corrected by
   U65, 2026-09-17: `mutate.py`'s fixed overhead on this suite is over 600 seconds,
-  which is the harness tool ceiling, so a foreground run is KILLED mid row. Three
+  which is the harness tool ceiling, so a foreground run is KILLED mid row. (That
+  600 was measured on the serial suite. The driver inherits `-n auto` since
+  2026-09-18, so its baseline is now about a minute, and a 25 row table can
+  still pass the ceiling, so the rule stands.) Three
   were, and two left a partial mutation in the source that had to be restored from
   `git show HEAD:`. Foreground is now the contaminating option. Run it as a
   tracked background job, start nothing else against the tree until it reports,
@@ -213,6 +238,23 @@ holds the branch, with that checkout's own venv:
     ./.venv/bin/ruff check src tests scripts
     ./.venv/bin/python -m pytest --tb=no
     ./.venv/bin/python scripts/scan_repo.py
+
+**The suite is parallel and takes about a minute, measured 2026-09-18.**
+`addopts` carries `-n auto`, so the command above already uses every core:
+7,678 tests, 532 seconds serial, 61 to 67 parallel on 11 cores. A venv made
+before that date needs `pip install -e '.[dev]'` once for `pytest-xdist`. Pass
+`-n 0` for a debugger or a profiler.
+
+**The full battery is the MERGE gate, not the edit loop.** While building, run
+the test files for the modules you touched, `pytest tests/test_x.py`, which is
+seconds. Run the full suite before the review, after each fix round and at the
+merge, not after every edit. A session that ran the old nine minute suite a
+dozen times spent two hours proving what four runs prove.
+
+**A new slow test is a finding.** `pytest --durations=10` at the merge. A test
+over ten seconds is either real work, a process pool or a disk image, or a
+real sleep nobody faked. The second kind hid a product defect once: a
+`credential-missing` refusal retried and slept on for 31 seconds per listing.
 
 **Run the battery on a COMMITTED tree.** `tests/modules/test_reports.py` reads
 every uncommitted and untracked file as one of U34's own and bans that unit's
@@ -309,56 +351,43 @@ in an interview is met per phase, not per unit. Units land with commit messages
 and the record. When a phase merges, Phillip runs the `code-explainer` skill
 over the merged range once. A session does not run it.
 
-## The order, serialized 2026-09-07
+## The order
 
-`board.py next` ranks by reach, and every unit still open has a reach of zero,
-so the board no longer orders the queue. This list does. A session takes the
-first numbered line whose issue is still open, and nothing else. One line is
-one session. The lines without an issue number are Phillip's, not a session's.
+`board.py next` orders the queue. The list serialized here on 2026-09-07 is
+spent, every line of it landed or was closed back to the ledger by 2026-09-18,
+and its text is in git history. On 2026-09-18 a parity audit against DJ_tools
+found the product could not finish an acquisition workflow, and the board
+gained Phase G, units U67 onward, plus the residuals that meet the board bar.
+`docs/ideation/2026-09-18-parity-to-feature-complete.md` is the design those
+units were cut from, read for reasoning, never for instruction. The issue is
+the brief.
 
-1. **#74, U56.** In flight on `relay/74`. That branch's uncommitted work is the
-   only copy, so committing it is the first act of the session, before reading
-   anything else.
-2. **#70, U52.** In flight on `relay/70`. Both in flight branches were built
-   under the old method and both rewrite `RESTART-cratekit.md`. Take the
-   incoming branch's RESTART and rewrite it against the merged tree. Take
-   `main`'s `docs/METHOD.md` and `CLAUDE.md` without exception.
-3. **#76, U58.** First of the ready units because its two engine defects make
-   every analysis silently wrong today, and a wrong answer outranks a missing
-   one.
-4. **#72, U54.** Download is where material enters the product, and the
-   adapter it constructs has never been instantiated, so it is the ready unit
-   most likely to find a defect the suite cannot see.
-5. **#75, U57.** Intake, which follows acquisition in the workflow order.
-6. **#71, U53.** Routing and rebuild, the last of the R-203 workers.
-7. Phase E explanation. Phillip runs the explainer once over the Phase E
-   merges, the range from `46d5a4c` to the U53 merge commit.
-8. **#77, U59.** Last of the units on purpose. Its conformance guards arm
-   against the finished tree rather than against one that four more merges
-   will change, and its brief already takes `main`'s pending register rather
-   than merging it. The soft delete defect has been live for 377 commits, and
-   five more sessions do not change what it costs.
-9. Residual issues, thirteen, grouped so that one session can close several.
-   Each is either done or closed back to the ledger with a comment saying why,
-   and `gh issue list --repo philgutowski/cratekit --label residual --state open`
-   is the live list. The queue was worked 2026-09-10 to 2026-09-11. What remains
-   is not a session's: **#46, R-9** stays on the do not touch list, close it
-   back to the ledger with the hardware reason and do not attempt it; **#39,
-   R-2** closes when DJ_tools is retired at U29; **#80, R-324** is closed, the
-   answer being that U25 is not finished, which is the next line.
-10. **#25, U25.** The two remaining vocal CLI shells, `analyze.vocals` and
-    `metadata.mytags-vocals`. The DSP is in the tree. The original brief is
-    replaced. This is the next session.
-11. Phase F explanation, over the U59 merge and the residual commits.
-12. **#29, U29.** Attended, per workflow, never batched, and never a session's
-    to take. This is the exit.
+**#29, U29, stays attended and is never a session's to take.** See below.
 
 ## Relay
 
-Relay runs the compound engineering chain by construction: its brief template
-names the four skills as steps and its classifier halts a task that calls the
-built in `code-review` in their place. It is not in this project's loop until it
-has a native mode. That work is Relay's, tracked on Relay's board, not here.
+Native Relay runs this file's pipeline, one fresh headless session per board
+item, merging and pushing each. It lives at `~/Documents/PhilAI/native-relay`,
+and its manifests, gate wrapper and run state live in `~/.relay`, outside this
+repository on purpose. The original Relay ran the compound engineering chain
+and is not used here.
+
+**A feeder keeps the run continuous**, `~/.relay/manifests/cratekit-feeder.py`.
+It appends ready board items to the manifest a few at a time in the priority
+order of `cratekit-parity.order`, runs them, syncs the board and repeats. It
+appends only what the board derives as READY, so a unit never launches before
+the units it depends on have landed. A task that halts twice is excluded with
+its reason rather than retried for ever, and a cycle whose tasks all died
+inside ten minutes is read as a usage limit and waited out.
+
+**Under Relay a session is on `relay/N`, not on `main`**, so `board.py start`
+is not run and the closing trailer is still owed on the merge. Before building,
+run `board.py show N`. If any issue on its `Depends on` line is still open, the
+outcome is BLOCKED, not a build against a tree missing its foundation.
+
+**Relay owns `main` while it runs.** One writer at a time. Attended work goes
+to a worktree with its own venv and merges between tasks, never during one. A
+merge that lands mid task halts that task as `remote_advanced`.
 
 ## Do not touch
 

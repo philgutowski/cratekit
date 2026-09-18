@@ -17603,3 +17603,262 @@ directly.
 from a shipped verb, or R-8 item 3 is reopened to say it did not close.
 
 ---
+
+## R-413. An acquired file cannot leave download staging, so no batch of downloads becomes an importable file
+
+**Found:** 2026-09-18, by two independent reads made while planning the close of
+R-400, one designing the acquisition seam and one checking the parity audit for
+what it missed. Read, not driven.
+
+`acquire download` commits each file to the staging root,
+`acquire/cli.py:545-549` and `:602-618`. `intake/ingest.py:58-70` `place_files`
+refuses any path under staging, and its only caller is `pipeline.ingest_file`
+with one path, reached only from `intake file --export`, `intake/cli.py:623-639`.
+Nothing in `src` moves a file out of staging: the only renames are same
+directory, `write/naming_cli.py:150-167` and `analysis/cli.py:523`.
+`core/config.py:2188-2194` describes staging as "where fresh downloads land
+before they are moved into the library", and `processed_dir` at `:2176` has no
+consumer. `docs/GUIDE.md:143-155` tells a person to tag and name in staging and
+never says how the files reach an intake file.
+
+The source system's pipeline stages 7 to 11 moved a batch into the library and
+spliced the folder into one importable file.
+
+**Why it matters more than its size.** R-400 reads as the last seam. It is the
+second to last. With a list document produced and downloaded, the files still
+sit where ownership cannot see them, `acquire/match_cli.py:846-863` walks
+`library.root / music_dir` only, so a downloaded track reads as missing on the
+next pass and is offered for download again.
+
+**Measured cost:** not measured live, because no acquisition workflow completes
+today. Every acquisition entrance ends here once R-400 closes.
+
+**Why not fixed here.** Found while planning. It is an engine and a gated verb,
+two units.
+
+**Closes when:** a shipped verb moves a staged batch under the library and
+writes one intake file naming every moved track.
+
+---
+
+## R-414. The rating planner puts an export scale value into a database field
+
+**Found:** 2026-09-18, reading `write/metadata.py` to plan the close of R-405.
+Read, not driven, and the database scale is unconfirmed.
+
+The shipped taxonomy's rating cuts are on the export scale, 51 to 255,
+`templates/taxonomy.default.toml:99-105`. `plan_rating_backfill`,
+`write/metadata.py:434-441`, puts `cut.rating` straight into a database `Rating`
+change, and `tests/test_metadata_policy.py:128-132` asserts `row.Rating == 255`.
+A rekordbox export spells five stars 255. The database is believed to store 0
+to 5. If that is right, the first verb to drive this planner writes 255 into a
+field that holds 5, and the test that should catch it pins the wrong number,
+which is METHOD's fourth defect pattern, a measurement taken on a fixture.
+
+**Measured cost:** none today, since the planner has no caller. It is the
+entry condition for whoever binds it.
+
+**Why not fixed here.** The scale needs one read of a real database on a
+disposable copy, which is attended.
+
+**Closes when:** the database scale is read off a real library and the planner
+and its test agree with it, or ratings are written through the export medium
+only, where the taxonomy's scale is already the right one.
+
+---
+
+## R-415. R-400 names a hand typed text list as the workaround, and `acquire download` refuses one
+
+**Found:** 2026-09-18, by the completeness check over the parity audit. **This
+entry corrects R-400's wording and points at R-302.**
+
+R-400 says a person "has to retype what they want into a text list by hand
+before a single file downloads". `acquire/cli.py:228-237` refuses any origin
+but the provider's and any row without a provider identifier, so a text list
+downloads nothing. R-302 already records the missing piece, that nothing
+resolves an artist and title to a provider identifier. The consequence R-400
+does not draw: a typed tracklist, a screenshot transcribed to text and every
+recognised set row stay dead after R-400 closes, unless a name or ISRC to
+identifier resolution is built.
+
+**Measured cost:** the tracklist and set branches of the source system's intake
+have no route to a download in this product, by any amount of hand work.
+
+**Why not fixed here.** A correction found by reading.
+
+**Closes when:** a row with no provider identifier has a route to one, exact
+ISRC first, and R-400's sentence is corrected or superseded by its close.
+
+---
+
+## R-416. The export medium routing writers have no caller, so nothing files a track on a library that has not cut over
+
+**Found:** 2026-09-18, completeness check. Read, not driven. The library volume
+was not mounted during the read, so the live tree registry's state is unconfirmed.
+
+`write/trees.py:347` and `:367`, the export medium writers
+`apply_playlist_changes` and `apply_unplaced_changes`, have no caller in `src`,
+and neither does `add_vox_playlists` at `:475`. The database path returns
+`no-native-tree` until a cutover is recorded, `write/routing_cli.py:215-217`,
+and R-235 records that no shipped verb records one. `route inbox` also reads a
+disk folder `<root>/INBOX`, `_inbox_items` at `write/routing_cli.py:110-120`,
+where the source system sorted the INBOX playlist of a fresh export.
+
+**Measured cost:** "sort my inbox" does nothing on the author's live library
+today. The source system did this work on an export and wrote a new file to
+import, which needs no database write at all.
+
+**Why not fixed here.** Found by a read. The native half is behind U29, which is
+attended. The export half is not, and is a unit.
+
+**Closes when:** a routing pass over a fresh export writes a file rekordbox
+imports, on a library whose tree has not cut over.
+
+---
+
+## R-417. Two parity claims about the vocal sub playlists are false
+
+**Found:** 2026-09-18, completeness check. Read, not driven.
+
+`cli/registry.py:1234` has `analyze.vocals` claim `dj-vox-backfill`, and that
+verb scores and tags and files nothing. `CUT.md` cuts `dj-create-vox-playlists`
+on the reason that the tree writers create the sub playlists, and
+`write/trees.py:475` `add_vox_playlists` has no caller, while every routing
+caller passes `vocal_threshold=None`, `write/routing_cli.py:236` and
+`cli/converge.py:126`. R-276 records the unread calibration and R-316 the
+silence about it. Neither records that the contract test is satisfied by two
+claims that are not true.
+
+**Measured cost:** the vocal rollout ends at tags and My Tags, and nothing ever
+lands under "with vox".
+
+**Why not fixed here.** Found by a read, and it closes with R-276.
+
+**Closes when:** a routing pass reads the calibrated cut and fills the sub
+playlists, or both claims are withdrawn.
+
+---
+
+## R-418. No verb sets a label's track limit or its seed artists
+
+**Found:** 2026-09-18, completeness check. `docs/cutover.md:75` observed it live
+on 2026-09-17 and gave it no number.
+
+`label/cli.py:53-64` takes a name and a match. `label/registry.py:220-236`
+stores a track limit and seed artists. The fourth sitting carried 47 labels
+"through the store's own `add` because no verb sets a track limit", from Python.
+R-351 made an `id:` seed storable and nothing on the command line reaches it.
+
+**Measured cost:** 31 of 47 labels refused for want of a seed artist on
+2026-09-17, and the repair for each one is a Python call.
+
+**Closes when:** the registry verbs set every field the store holds.
+
+---
+
+## R-419. An approved harvested label never enters the registry
+
+**Found:** 2026-09-18, completeness check. Read, not driven.
+
+`label/harvest.py:50-57` with `label/cli.py:680-760` offers harvested labels
+into the review queue. An accepted verdict is recorded and nothing reads it, the
+same shape R-402 records for releases. R-141 and R-142 cover the harvest's
+verification, not this hop.
+
+**Measured cost:** each approved label is retyped into `label registry add`.
+
+**Closes when:** an accepted harvest verdict adds the label to the registry.
+
+---
+
+## R-420. The label genre gate has no caller
+
+**Found:** 2026-09-18, completeness check. Read, not driven.
+
+`core/routing.py:452` `gate_decisions` has no caller in `src`. The source
+system's label batch held a release whose genre the taxonomy does not file out
+of the download. Latent under R-402, since nothing downloads a label today.
+
+**Measured cost:** none today. The day R-402 closes, a label that also releases
+out of genre material downloads all of it.
+
+**Closes when:** the label hand off to acquisition consults the gate, or the
+decision not to is recorded.
+
+---
+
+## R-421. `repair paths` queues proposals that nothing applies
+
+**Found:** 2026-09-18, completeness check. R-407 mentions it in passing.
+
+`intake/repair_cli.py:1-58` scans and queues proposals. `intake/repair.py:85-111`
+builds them. An accepted verdict applies nothing, no code consumes the queue,
+and the source system's third mode, rewriting the locations in an export, has no
+counterpart.
+
+**Measured cost:** a filename rekordbox rejected still needs the source
+system's script.
+
+**Closes when:** an accepted proposal renames the file under R-407's collection
+guard, or the verb's summary stops implying a repair.
+
+---
+
+## R-422. Identification alone reports owned tracks as missing, drops the tracklist, and pays for recognition twice
+
+**Found:** 2026-09-18, completeness check. Read, not driven.
+
+`intake/cli.py:515-530` with `intake/pipeline.py:53-66`: the identify only path
+never consults the library, so every identified row is reported missing, and the
+tracklist text is computed and dropped. `intake/acrcloud.py` keeps no cache of a
+recognition result, so `intake identify` followed by `intake set` over the same
+recording pays for every chunk twice. R-304 records that the spend is not
+resumable and does not record the cache.
+
+**Measured cost:** a false "missing" on every owned track in an identified set,
+and doubled recognition spend on the ordinary two step use.
+
+**Closes when:** identify consults the library and writes its tracklist, and a
+second pass over an unchanged recording spends nothing.
+
+---
+
+## R-423. The inbound half of `dj-favorites` is not ported: hearts on the account never reach the library
+
+**Found:** 2026-09-18, by a user session asking whether every Tidal favourite is
+in the rekordbox library. Filed on the board the same day as issue 110, which
+said this entry was owed. R-144 is the parent and says this half "stays open as
+its own residual rather than under this number".
+
+`favorites/cli.py` builds candidates from a collection export and hearts each
+local row on the account. `TidalAccount._favorites` has one caller, `has_heart`.
+Nothing reads the account's favourite tracks as a source of work, so the verb
+answers "is every local favourite hearted" and never "is every heart in my
+library".
+
+**Measured cost:** live on 2026-09-17 the account held 197 favourite tracks, the
+verb reported on 109 local rows and acquired nothing, because acquiring is not a
+thing it does.
+
+**Closes when:** a hearted track the library does not own becomes an acquirable
+item.
+
+---
+
+## R-424. `crate sync favorites` declares a local colour and tag write it never performs
+
+**Found:** 2026-09-18, filed on the board the same day as issue 111, which said
+this entry was owed.
+
+`favorites/cli.py:302` passes `colors=None` and `:307` reports a `colored` list
+that is always empty. `cli/registry.py:1328` declares `db_tree`, `db_metadata`,
+`xml` and `files` beside `remote`, and `docs/GUIDE.md:202-205` promises a
+colour, a tag and a membership. The same shape as R-313.
+
+**Measured cost:** 0 coloured on both live passes of 2026-09-17, under a
+declaration and a guide that say otherwise.
+
+**Closes when:** the verb declares only the remote heart it performs, or the
+local write is built.
+
+---
