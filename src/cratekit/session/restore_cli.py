@@ -364,6 +364,52 @@ def _target_is_live(message: str, **detail: Any) -> CratekitError:
     )
 
 
+def _same_place(one: Path, other: Path) -> bool:
+    """Whether two paths name ONE place on the disk, rather than one spelling.
+
+    ``Path.resolve`` AND ``==`` IS NOT A SAME-DIRECTORY TEST, and the difference
+    is the whole reason this function exists. Every filesystem this product runs
+    on in practice is case insensitive by default, which is APFS as macOS ships
+    it and exFAT on the external drive a DJ library normally lives on. On one of
+    those, a library root typed in a different case is the SAME directory, and
+    both ``==`` and ``is_relative_to`` answer that the two paths are unrelated
+    because both are string comparisons wearing a path's clothes. Measured by the
+    review of this unit: a target spelled in the wrong case passed both checks
+    below, the restore was pointed at the live database's own directory, and the
+    live write-ahead log was unlinked.
+
+    ``samefile`` ASKS THE FILESYSTEM, comparing device and inode, so it answers
+    about the place instead of about the name. It needs both paths to exist,
+    which is why the fallback is here rather than an error: a target that does
+    not exist cannot be a directory the live library occupies, and
+    ``backup.plan_restore`` refuses it as absent a moment later. A case folded
+    spelling of a directory that DOES exist also exists on these filesystems,
+    which is precisely why the stat succeeds in the case this is for.
+    """
+    try:
+        return one.samefile(other)
+    except OSError:
+        return one == other
+
+
+def _holds_or_is(root: Path, place: Path) -> bool:
+    """Whether ``place`` IS ``root`` or sits underneath it, place by place.
+
+    WALKED RATHER THAN PREFIX MATCHED, for the reason
+    :func:`_same_place` gives: a prefix match over strings cannot see that a
+    differently cased ancestor is the same directory. Each of the candidate's
+    own ancestors is asked instead, so a target three directories inside a
+    library root typed in another case is still inside it.
+
+    The string test is kept as the first question and not as the only one. It is
+    the cheap answer on the common path, it needs nothing to exist, and it is
+    the whole answer on a case sensitive filesystem.
+    """
+    if place == root or place.is_relative_to(root):
+        return True
+    return any(_same_place(ancestor, root) for ancestor in (place, *place.parents))
+
+
 def _restore_target(cfg: config.Config, args) -> Path | None:
     """The directory ``--target`` names, resolved and refused, or ``None``.
 
@@ -383,7 +429,8 @@ def _restore_target(cfg: config.Config, args) -> Path | None:
     nothing: ``Path("library")`` is neither the configured root nor inside it,
     whatever directory the person is standing in when they type it. Both sides
     are resolved so the comparison is about the two places on the disk rather
-    than about two spellings.
+    than about two spellings. Resolving is not ENOUGH for that, which is what
+    :func:`_same_place` is for and why neither check below is a bare ``==``.
 
     TWO DESTINATION CHECKS, AND THE SECOND IS NOT IMPLIED BY THE FIRST. The
     containment check refuses the library root and anything above or below it.
@@ -425,7 +472,7 @@ def _restore_target(cfg: config.Config, args) -> Path | None:
         )
     resolved = Path(raw).expanduser().resolve()
     root = Path(cfg.library.root).resolve()
-    if resolved == root or resolved.is_relative_to(root) or root.is_relative_to(resolved):
+    if _holds_or_is(root, resolved) or _holds_or_is(resolved, root):
         raise _target_is_live(
             f"{resolved} is the live library at {root}, or holds it, or sits "
             f"inside it; a rehearsal restores somewhere the live library is not, "
@@ -436,7 +483,9 @@ def _restore_target(cfg: config.Config, args) -> Path | None:
         )
     landing = backup.database_target_for(cfg, resolved).resolve()
     live = config.state_path("rekordbox_db", cfg).resolve()
-    if landing == live:
+    if _same_place(landing, live) or (
+        landing.name == live.name and _same_place(landing.parent, live.parent)
+    ):
         raise _target_is_live(
             f"the database would land on {landing}, which is this library's live "
             f"database; the target is outside the library root and the database "
@@ -536,6 +585,7 @@ def _offer(
     snapshot: str | None,
     include_mirror: bool,
     target: Path | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """What the person is being asked to approve, as a ``plan/1`` payload.
 
@@ -557,6 +607,15 @@ def _offer(
     against the destructive one. ``"library"`` names the absent flag rather than
     ``None``, so the two are different values under the digest and neither is the
     empty one.
+
+    SO IS THE REHEARSAL FLAG, and the hole it closes is the one the target was
+    added to avoid, found one flag over by this unit's own review. ``--dry-run``
+    walks every step and performs none, so it is the cheapest thing a person can
+    be asked to approve; with it outside the digest, the decision recorded
+    against a preview matches a later invocation without the flag exactly, and
+    authorises a real restore over the live database. It is digested rather than
+    listed as an item because it is a property of the whole run, both halves at
+    once, rather than of either half.
     """
     items: list[dict[str, Any]] = []
     if from_backup:
@@ -583,9 +642,11 @@ def _offer(
             }
         )
     return {
-        "digest": digest_of({"kind": "restore.run", "items": items}),
+        "digest": digest_of(
+            {"kind": "restore.run", "items": items, "dry_run": dry_run}
+        ),
         "items": items,
-        "totals": {"halves": len(items)},
+        "totals": {"halves": len(items), "dry_run": dry_run},
         "chunk": None,
     }
 
@@ -897,6 +958,7 @@ def perform_restore(ctx) -> Envelope:
         snapshot=ctx.args.snapshot,
         include_mirror=ctx.args.include_mirror,
         target=target,
+        dry_run=ctx.args.dry_run,
     )
     spec = _confirm_gate(ctx.entry)
     option = ctx.gate.require(spec, digest=offered["digest"])

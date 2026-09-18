@@ -1682,3 +1682,129 @@ def test_a_relative_target_is_compared_as_the_place_it_names(installed, monkeypa
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+
+
+def _case_folds(where: Path) -> bool:
+    """Whether this filesystem reads two spellings of one name as one directory.
+
+    ASKED OF THE DIRECTORY THE TEST WILL USE, not of the platform. macOS ships
+    APFS case insensitive and can be formatted case sensitive, and an external
+    drive holding a library is frequently exFAT, so a check keyed on
+    ``sys.platform`` would answer for the wrong volume on the machine it most
+    matters on.
+    """
+    probe = where / "Case_Probe"
+    probe.mkdir()
+    try:
+        return (where / "case_probe").is_dir()
+    finally:
+        probe.rmdir()
+
+
+def test_a_differently_cased_library_root_is_still_the_library(
+    installed, tmp_path, monkeypatch
+):
+    """The guard's own defect, found by this unit's review and driven here.
+
+    ``Path.resolve`` followed by ``==`` or ``is_relative_to`` compares STRINGS.
+    On a case insensitive filesystem, which is APFS as macOS ships it and exFAT
+    on the external drive a DJ library normally lives on, the library root typed
+    in another case is the same directory and both of those answer that the two
+    paths are unrelated. Measured before the fix, through the real dispatcher:
+    exit 0, the transfer pointed at the live database's own directory, and the
+    live write-ahead log unlinked. The rehearsal destroyed the one thing no
+    capture holds.
+
+    BOTH FILESYSTEMS ARE ASSERTED rather than one being skipped, and neither is
+    faked. Whether two spellings are one directory is a fact about the volume the
+    test is running on, so a monkeypatched ``samefile`` would measure the stub;
+    and a skip would make this whole property invisible on a machine where it
+    happens not to hold, which is how a guard rots. Where the names are two
+    places the refusal would be WRONG, so the expectation flips with the
+    filesystem and the run says which branch it took.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+    root = Path(installed.library.root)
+    shouted = root.with_name(root.name.upper())
+    assert str(shouted) != str(root), "the fixture's root is already upper case"
+    live = config.state_path("rekordbox_db", installed)
+    companions = _sidecars_beside(live)
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
+
+    if _case_folds(tmp_path):
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        assert all(beside.exists() for beside in companions), (
+            "a target spelled in another case was accepted and cleared the live "
+            "companion files"
+        )
+        assert not log.exists(), "the remote was reached by a run that is refused"
+    else:
+        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
+            f"this filesystem holds the two spellings as two directories, so "
+            f"{shouted} is not the library and refusing it names the wrong fact"
+        )
+
+
+def test_a_differently_cased_database_directory_is_still_the_live_database(
+    installed, tmp_path, monkeypatch
+):
+    """The same fold, on the destination check rather than on containment.
+
+    The two checks compare different pairs of paths, so a fix on one of them is
+    not a fix on the other. This is the acknowledged layout again, where the
+    target is the live database's own directory and only the spelling differs.
+
+    BOTH FILESYSTEMS AGAIN, for the reason the test above gives at length.
+    """
+    acknowledge(installed)
+    home = tmp_path / "home" / "Rekordbox"
+    home.mkdir(parents=True)
+    outside = replace(
+        installed,
+        library=replace(
+            installed.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-18",
+        ),
+    )
+    config.save(outside)
+    config.reset_cache()
+    (home / "master.db").write_bytes(b"database, generation one")
+    shouted = home.with_name(home.name.upper())
+    assert str(shouted) != str(home)
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
+
+    if _case_folds(tmp_path):
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        assert envelope["cause"]["detail"]["check"] == "destination"
+    else:
+        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
+            f"this filesystem holds the two spellings as two directories, so the "
+            f"database would land in {shouted} and not on the live one"
+        )
+
+
+def test_the_digest_moves_when_the_rehearsal_flag_does(installed):
+    """The hole one flag over, found by this unit's review of the target.
+
+    ``--dry-run`` walks every step and performs none, so it is the cheapest thing
+    a person can be asked to approve. With it outside the digest, the decision
+    recorded against a preview matched a later invocation without the flag
+    exactly, and authorised a real restore over the live database. Driven before
+    the fix: the answer given to the rehearsal was honoured, the run exited OK,
+    one real copy landed on the live database and the live log was gone.
+    """
+    record, _captured = completed_session(installed)
+
+    _code, preview = _drive(["restore", "run", record.session_id, "--dry-run"])
+    _code, real = _drive(["restore", "run", record.session_id])
+
+    assert _offered_digest(preview) != _offered_digest(real), (
+        "the rehearsal flag did not move the digest, so a decision made about a "
+        "preview is honoured against a restore that performs every step"
+    )
