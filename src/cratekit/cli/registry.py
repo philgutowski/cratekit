@@ -984,10 +984,13 @@ ENTRIES: tuple[Entry, ...] = (
         #: Files only, corrected in U39. The handler renames on disk and
         #: rewrites the title tag. Since U67 it READS the database, to hold back
         #: every file the collection references, and that open is a read with
-        #: ``require_closed`` False, so it still never reaches the guarded
-        #: writer or its cloud sync decision, and the conformance suite refuses
-        #: a declared decision a verb cannot reach, in both directions. An
-        #: unreadable collection refuses as ``collection-unreadable``. The
+        #: ``require_closed`` False, so it never reaches the guarded writer or
+        #: the cannot-read cloud sync DECISION, which binds to write intent
+        #: only, and the conformance suite refuses a declared decision a verb
+        #: cannot reach, in both directions. The read open DOES still refuse a
+        #: library whose cloud sync is ON, and that refusal, like every other
+        #: failed read, reaches a person as ``collection-unreadable`` carrying
+        #: the inner cause's message and its ``disable-cloud-sync`` remedy. The
         #: rekordbox Name half of the padding convention is
         #: ``write/metadata.plan_title_padding``, which no verb calls (R-165).
         writes=frozenset({"files"}),

@@ -659,3 +659,24 @@ def test_a_row_that_appears_after_the_gate_still_protects_its_file(collected, mo
     _apply(folder)
     assert held.is_file()
     assert not free.exists()
+
+
+def test_a_library_with_cloud_sync_on_refuses_and_names_the_real_cause(collected, monkeypatch):
+    """The read open still runs the canary, which refuses a library whose cloud
+    sync is ON. That is kept as a refusal, the same one every other collection
+    reader makes, and the person is told the real cause and its remedy rather
+    than only that the collection could not be read."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    monkeypatch.setattr(
+        rb_writer,
+        "read_rekordbox_settings",
+        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 1},
+    )
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    cause = envelope["cause"]
+    assert cause["reason"] == "collection-unreadable"
+    assert cause["remediation"]["remedy"] == "disable-cloud-sync"
+    assert "Cloud Library Sync" in cause["message"]
+    assert held.is_file() and free.is_file()
