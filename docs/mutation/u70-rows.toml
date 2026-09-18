@@ -1,0 +1,177 @@
+name = "u70"
+pass_kind = "light"
+
+# U70 adds the reserved reference favorites to intake.playlist, a sixth
+# Catalogue member, favourite_tracks, and one boundary that translates a hearts
+# listing failure. The unit writes no file and no row, so the table is scoped
+# to its new guards, each removed alone, plus a fixed sample of four existing
+# guards the hearts path now leans on. Subset: the two test files that import
+# the mutated modules and drive the new path; a zero is promoted to the full
+# suite.
+
+# ---------------------------------------------------------------------------
+# The reserved reference, intake/cli.py
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "S1_sentinel_checked"
+description = "The reserved reference is never recognised, so favorites reaches playlist_for as a playlist reference"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    if is_favorites(reference):
+        rows = label_cli.favourite_tracks_or_refuse(found, reference)'''
+new = '''    if False:
+        rows = label_cli.favourite_tracks_or_refuse(found, reference)'''
+
+[[rows]]
+id = "S2_sentinel_casefold"
+description = "The sentinel is compared case sensitively, so Favorites is read as a playlist reference"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    return str(reference or "").strip().casefold() == FAVORITES'''
+new = '''    return str(reference or "").strip() == FAVORITES'''
+
+[[rows]]
+id = "S3_sentinel_strip"
+description = "The sentinel is compared unstripped, so a padded favorites is read as a playlist reference"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    return str(reference or "").strip().casefold() == FAVORITES'''
+new = '''    return str(reference or "").casefold() == FAVORITES'''
+
+[[rows]]
+id = "S4_canonical_source"
+description = "The job records the reference as typed rather than the canonical favorites, so the resume argv carries the typed spelling"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        if hearts:
+            reference = FAVORITES
+        found = catalogue.resolve(cfg)'''
+new = '''        found = catalogue.resolve(cfg)'''
+
+[[rows]]
+id = "S5_source_id_recorded"
+description = "A hearts job is queued with no source_id, so nothing can tell it from a playlist job"
+file = "src/cratekit/intake/cli.py"
+surface = "maintainer"
+tests = ["tests/intake/test_workers.py", "tests/test_label_tidal_catalogue.py"]
+old = '''            source_id=FAVORITES_SOURCE_ID if hearts else None,'''
+new = '''            source_id=None,'''
+
+[[rows]]
+id = "S6_source_id_only_for_hearts"
+description = "Every playlist job is stamped source_id favorites, so a playlist reads as the hearts listing"
+file = "src/cratekit/intake/cli.py"
+surface = "maintainer"
+tests = ["tests/intake/test_workers.py", "tests/test_label_tidal_catalogue.py"]
+old = '''            source_id=FAVORITES_SOURCE_ID if hearts else None,'''
+new = '''            source_id=FAVORITES_SOURCE_ID,'''
+
+# ---------------------------------------------------------------------------
+# The boundary, label/cli.py
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "B1_cratekit_passthrough"
+description = "An adapter's own refusal under the hearts listing is flattened into label-playlist-unreadable"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        return list(found.favourite_tracks())
+    except CratekitError:
+        raise'''
+new = '''        return list(found.favourite_tracks())
+    except ZeroDivisionError:
+        raise'''
+
+[[rows]]
+id = "B2_broad_translation"
+description = "The translation is narrowed to LookupError, so ListingTruncated escapes the boundary as an unclassified crash"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        return list(found.favourite_tracks())
+    except CratekitError:
+        raise
+    except Exception as exc:'''
+new = '''        return list(found.favourite_tracks())
+    except CratekitError:
+        raise
+    except LookupError as exc:'''
+
+# ---------------------------------------------------------------------------
+# The adapter, label/tidal_catalogue.py
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A1_no_favourites_refused"
+description = "A client exposing no favourites is not refused by name, so the read fails as an attribute error"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if getattr(user, "favorites", None) is None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A2_through_the_listing"
+description = "The hearts are read as one unpaged call rather than through listing.favorite_tracks, so the first window is the whole answer"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        return tuple(listing.favorite_tracks(self._session))'''
+new = '''        return tuple(self._session.user.favorites.tracks())'''
+
+# ---------------------------------------------------------------------------
+# A fixed sample of existing guards the hearts path leans on
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "E1_missing_id_refused"
+description = "Existing: a provider row with no id is not refused by position, so a heart without one is queued under a blank key"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''        if row.origin != match.TEXT and not row.ref'''
+new = '''        if row.origin != match.TEXT and False'''
+
+[[rows]]
+id = "E2_budget_raises"
+description = "Existing: a spent request budget stops the walk quietly instead of raising ListingTruncated"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_listing.py"]
+old = '''        if pages >= max_pages:
+            raise ListingTruncated('''
+new = '''        if pages >= max_pages:
+            break
+            raise ListingTruncated('''
+
+[[rows]]
+id = "E3_hearts_declared_total"
+description = "Existing: the favourites walk ends on a page shape instead of the declared count"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_listing.py"]
+old = '''    kwargs.setdefault("declared_total", _declared_count(favorites, "get_tracks_count"))'''
+new = '''    kwargs.setdefault("declared_total", None)'''
+
+[[rows]]
+id = "E4_playlist_boundary"
+description = "Existing: the playlist boundary's broad translation is narrowed, the sibling the hearts boundary copies"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        playlist = found.playlist_for(reference)
+        return harvest.playlist_tracks(playlist)
+    except CratekitError:
+        raise
+    except Exception as exc:'''
+new = '''        playlist = found.playlist_for(reference)
+        return harvest.playlist_tracks(playlist)
+    except CratekitError:
+        raise
+    except LookupError as exc:'''

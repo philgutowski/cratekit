@@ -10,7 +10,7 @@ consumers arrive here in one branch. One copy means a method the real
 place rather than absent in three.
 
 **IT REFUSES ANYTHING OUTSIDE THE PROTOCOL, AND THAT IS A GUARD RATHER THAN
-TIDINESS.** ``label.catalogue.Catalogue`` declares four reads and no write at
+TIDINESS.** ``label.catalogue.Catalogue`` declares six reads and no write at
 all: no playlist create, no heart, no follow. :class:`StrictCatalogue` raises on
 any other attribute, so a worker that reached for one fails the suite instead of
 failing silently against a fake permissive enough to answer.
@@ -38,6 +38,7 @@ PROTOCOL_METHODS = frozenset(
         "search_release",
         "check_label",
         "account_playlists",
+        "favourite_tracks",
     }
 )
 
@@ -193,6 +194,7 @@ class FakeCatalogue:
         confirmed: set[str] | frozenset[str] | None = None,
         known_labels: set[str] | frozenset[str] | None = None,
         account: list[Any] | None = None,
+        hearts: list[Any] | None = None,
     ) -> None:
         self.artists = dict(artists or {})
         self.playlists = dict(playlists or {})
@@ -200,6 +202,9 @@ class FakeCatalogue:
         #: order the listing serves them.
         self.account = list(account or [])
         self.account_listings = 0
+        #: The account's hearted tracks, in the order the listing serves them.
+        self.hearts = list(hearts or [])
+        self.heart_listings = 0
         self.confirmed = None if confirmed is None else frozenset(confirmed)
         self.known_labels = None if known_labels is None else frozenset(known_labels)
         self.asked_for: list[str] = []
@@ -241,6 +246,10 @@ class FakeCatalogue:
     def account_playlists(self) -> tuple[Any, ...]:
         self.account_listings += 1
         return tuple(self.account)
+
+    def favourite_tracks(self) -> tuple[Any, ...]:
+        self.heart_listings += 1
+        return tuple(self.hearts)
 
     def check_label(self, name: str) -> dict:
         if self.known_labels is not None and name not in self.known_labels:
@@ -292,6 +301,10 @@ class UnreadableCatalogue(FakeCatalogue):
     def playlist_for(self, reference: str) -> Any:
         self.playlists_asked_for.append(reference)
         raise RuntimeError(f"the catalogue could not read the playlist {reference!r}")
+
+    def favourite_tracks(self) -> tuple[Any, ...]:
+        self.heart_listings += 1
+        raise RuntimeError("the catalogue could not list the account's favourites")
 
 
 class VerificationOutage(FakeCatalogue):

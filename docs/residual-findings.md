@@ -17877,6 +17877,30 @@ thing it does.
 **Closes when:** a hearted track the library does not own becomes an acquirable
 item.
 
+**Narrowed 2026-09-18 on `relay/115`, U70. The listing and resolution half is
+closed and the acquisition half is open.** `crate intake playlist favorites`
+lists the account's hearts through a sixth `Catalogue` member,
+`favourite_tracks`, which `TidalCatalogue` answers through
+`listing.favorite_tracks`, and queues one `intake.playlist` item per heart,
+keyed by its provider id, with `source_id` favorites. The shared worker reports
+each heart owned, offered or missing. Ownership is the match engine's one rule,
+not the source system's ISRC first rule: a heart held in another version is
+OFFERED for review rather than counted owned, and a row carries an ISRC only if
+the file's tag has one (R-355). The quarterly placeholder playlists are NOT
+reproduced, since they existed for a downloader that took a playlist URL and
+this product's adapter takes track ids; a missing heart is an item carrying its
+provider id, and a re-run needs no cursor because an acquired heart resolves
+owned. A truncated or unreadable listing refuses whole as
+`label-playlist-unreadable`. Driven in `tests/intake/test_workers.py` and
+`tests/test_label_tidal_catalogue.py`. Mutation table `docs/mutation/u70.md`,
+14 of 14 killing, the author's table and not an independent one. **Still
+open:** a missing heart becomes an acquirable ITEM only once `intake missing
+--job` (U69) writes the list document from the finished job; that verb does
+not exist on this tree, so the brief's drive through it is owed there, and
+`test_the_missing_hearts_carry_the_provider_id_acquisition_reads` pins what it
+will read. `crate sync all` queueing the hearts is U74. The live read, with the
+heart count compared against the account's 197, is owed to an attended sitting.
+
 ---
 
 ## R-424. `crate sync favorites` declares a local colour and tag write it never performs
@@ -17985,5 +18009,46 @@ and the brief asks for the frozen input. Widening the freeze changes what
 
 **Closes when:** the frozen input is removed from `rows_of`, or the freeze
 carries the version, key and spelling through.
+
+---
+
+## R-429. Two jobs of different verbs both carry `source_id` favorites
+
+**Found:** 2026-09-18, U70, by the unit's `/code-review`, read and not driven.
+
+`intake.cli.intake_playlist` stamps a hearts job, handler `intake.playlist`,
+with `source_id` favorites, which is the brief's payload. `favorites.cli`
+already stamps the `sync.favorites` job with the same value. The only reader of
+`source_id` on a job today, `sync.playlists`, selects `playlists` and reads
+neither, so nothing conflates them.
+
+**Measured cost:** none today. A later reader that selects jobs by `source_id`
+alone, which U74 may become when `sync all` queues the hearts, would take the
+outbound heart sweep and the inbound hearts listing for one source.
+
+**Closes when:** every reader of `source_id` also selects on the handler key,
+or the hearts job carries a value of its own.
+
+---
+
+## R-430. Two hearts with no provider id fold into one and the refusal undercounts them
+
+**Found:** 2026-09-18, U70, driven against `TidalCatalogue.favourite_tracks`
+over a stand in client.
+
+`listing.favorite_tracks` deduplicates by `str(track.id)`, so every heart with
+no id shares the key `""` and all but the first are dropped before the rows are
+read. `intake.cli.frozen_rows` still refuses the listing whole, so nothing is
+queued, but the refusal names one position where there were several: four
+hearts with ids blank at positions 2 and 4 refuse as "1 track(s) ... (positions
+2)". The message also says "in this playlist" for the account's hearts.
+
+**Measured cost:** a person is told a smaller number than the listing held,
+inside a refusal that queues nothing either way. Whether the provider ever
+serves a heart with no id is unmeasured; the adapter's stand in was the only
+producer driven.
+
+**Closes when:** the favourites key falls back to object identity for a blank
+id, or the refusal counts from the unfolded listing.
 
 ---

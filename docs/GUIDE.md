@@ -120,6 +120,7 @@ Pick the verb by what you are holding.
 
 ```bash
 crate intake playlist https://tidal.com/playlist/PLAYLIST_UUID
+crate intake playlist favorites
 crate intake file /path/to/one-track.aiff
 crate intake set /path/to/recording.wav
 crate intake identify /path/to/recording.wav
@@ -128,6 +129,13 @@ crate match run /path/to/tracklist.txt
 
 - `intake playlist` reads a streaming playlist and reports each track as owned,
   offered or missing. It queues a job and does not download.
+- `intake playlist favorites` does the same for every track hearted on the
+  account, which answers whether each heart is in your library. Ownership is
+  the same match rule a playlist gets, so a heart you hold in another version
+  is offered for review rather than counted owned. Nothing is written to the
+  account, no holding playlist is made, and a heart you acquire later simply
+  reads owned on the next run. A listing that cannot be read in full refuses
+  rather than reporting a short one.
 - `intake file` shows a plan by default. It writes only when you also pass
   `--export` with the collection export to splice the track into.
 - `intake set` takes a recording on this machine. A mix URL is not fetched by

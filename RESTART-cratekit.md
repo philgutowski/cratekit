@@ -4,7 +4,31 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U68, issue #113, `relay/113`, 2026-09-18.**
+**Last merged: U70, issue #115, `relay/115`, 2026-09-18.**
+`crate intake playlist favorites` answers "is every heart in my library". The
+reserved reference `favorites` is checked in `intake.cli._playlist_rows` before
+`playlist_for` could see it, and lists the account's hearts through a sixth
+`Catalogue` member, `favourite_tracks`, which `TidalCatalogue` answers through
+`listing.favorite_tracks` and refuses when the client exposes no favourites.
+The rows go through the same reader, freeze and worker a playlist uses, so each
+heart reports owned, offered or missing by the match engine's one rule; a heart
+held in another version is offered, not owned. The job is an `intake.playlist`
+job whose source is the canonical `favorites`, so the resume argv is unchanged,
+with `source_id` favorites. The listing crosses
+`label_cli.favourite_tracks_or_refuse`, the playlist boundary's twin, so
+`ListingTruncated` refuses whole as `label-playlist-unreadable` and an adapter's
+own refusal passes through. No placeholder playlist, no account write, no
+cursor: a re-run is idempotent through ownership. `tests/label_fakes.py`
+declares six methods and `FakeCatalogue(hearts=...)` answers the sixth; a test
+holds the fake's set equal to the protocol's. **`intake missing` does not exist
+yet** (U69, issue #114), so the brief's drive through it is owed there;
+R-423 is narrowed, not closed. R-429 and R-430 filed, neither meeting the board
+bar. Mutation table `docs/mutation/u70.md`, 14 of 14 killing, null control 0 of
+7751. **Main's highest residual number is R-430.** Owed to an attended sitting:
+one live run of `crate intake playlist favorites`, with the heart count
+compared against the account's 197.
+
+**The session before: U68, issue #113, `relay/113`, 2026-09-18.**
 The product has a writer for the list document `acquire download` reads, which
 closes R-400's engine half. `src/cratekit/acquire/listdoc.py` is ONE shared
 emitter, not a document per source, and it is pure. `rows_of` takes `Wanted`

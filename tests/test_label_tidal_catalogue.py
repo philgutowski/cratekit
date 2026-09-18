@@ -590,6 +590,95 @@ def test_a_client_that_cannot_name_its_account_refuses_rather_than_owning_nothin
         tidal_catalogue.TidalCatalogue(client).account_playlists()
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# U70: the account's hearts, the sixth read
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class HeartsFavorites:
+    """The client's favourites object: pages its tracks and declares a count.
+
+    ``endless`` serves a full window at every offset, which is what a provider
+    whose offset parameter stopped advancing looks like, and is the shape that
+    spends the listing's whole request budget.
+    """
+
+    def __init__(self, tracks, *, declared=None, endless=False) -> None:
+        self._tracks = list(tracks)
+        self.declared = len(self._tracks) if declared is None else declared
+        self.endless = endless
+        self.pages: list[tuple[int, int]] = []
+
+    def tracks(self, limit: int | None = None, offset: int = 0):
+        size = 100 if limit is None else limit
+        self.pages.append((size, offset))
+        if self.endless:
+            return self._tracks[:size]
+        return self._tracks[offset : offset + size]
+
+    def get_tracks_count(self) -> int:
+        return self.declared
+
+
+class HeartsUser:
+    def __init__(self, favorites) -> None:
+        self.id = 42
+        self.favorites = favorites
+
+
+def hearts_client(favorites) -> FakeClient:
+    client = FakeClient()
+    client.user = HeartsUser(favorites)
+    return client
+
+
+def test_the_hearts_listing_pages_to_the_declared_total_through_the_listing():
+    hearts = [ProviderTrack(str(500 + n), f"Act {n}", f"Title {n}") for n in range(230)]
+    favorites = HeartsFavorites(hearts)
+    listed = tidal_catalogue.TidalCatalogue(hearts_client(favorites)).favourite_tracks()
+    assert [track.id for track in listed] == [str(500 + n) for n in range(230)]
+    assert len(favorites.pages) == 3, "the hearts were not listed through the paging wrapper"
+
+
+def test_a_hearts_listing_that_never_ends_raises_and_never_returns_a_short_one():
+    hearts = [ProviderTrack(str(500 + n), f"Act {n}", f"Title {n}") for n in range(100)]
+    favorites = HeartsFavorites(hearts, declared=150, endless=True)
+    adapter = tidal_catalogue.TidalCatalogue(hearts_client(favorites))
+    with pytest.raises(listing.ListingTruncated):
+        adapter.favourite_tracks()
+    with pytest.raises(CratekitError) as excinfo:
+        label_cli.favourite_tracks_or_refuse(adapter, "favorites")
+    assert excinfo.value.cause.reason == "label-playlist-unreadable"
+    assert excinfo.value.cause.detail["kind"] == "ListingTruncated"
+    assert excinfo.value.cause.detail["playlist"] == "favorites"
+
+
+def test_a_client_that_exposes_no_favourites_refuses_rather_than_holding_no_hearts():
+    client = FakeClient()
+    client.user = AccountUser(42, [])
+    with pytest.raises(LookupError):
+        tidal_catalogue.TidalCatalogue(client).favourite_tracks()
+    with pytest.raises(LookupError):
+        tidal_catalogue.TidalCatalogue(FakeClient()).favourite_tracks()
+
+
+def test_the_reserved_reference_is_never_a_playlist_reference():
+    """``favorites`` cannot name a playlist, so reserving it shadows none.
+
+    A playlist a person TITLED favorites is referenced by its identifier or
+    its URL, which is what ``playlist_id`` accepts, so the reserved word and a
+    real playlist can never be the same input.
+    """
+    for spelling in ("favorites", "Favorites", " FAVORITES "):
+        with pytest.raises(tidal_catalogue.PlaylistReferenceInvalid):
+            tidal_catalogue.playlist_id(spelling)
+    titled = ProviderPlaylist([ProviderTrack("700", "Act", "Title")])
+    titled.name = "favorites"
+    adapter = tidal_catalogue.TidalCatalogue(FakeClient(playlists={PLAYLIST: titled}))
+    rows = label_cli.playlist_tracks_or_refuse(adapter, PLAYLIST)
+    assert [row.id for row in rows] == ["700"]
+
+
 def test_an_unresolvable_label_raises_and_never_returns_none():
     adapter = tidal_catalogue.TidalCatalogue(FakeClient())
     entry = labels.LabelEntry(label_id="nowhere", name="Nowhere Records")

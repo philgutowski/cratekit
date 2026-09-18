@@ -73,7 +73,7 @@ class AccountPlaylist:
 class Catalogue(Protocol):
     """Every provider read the product makes through this seam, and nothing more.
 
-    FIVE MEMBERS BECAUSE THERE ARE FIVE CALL SITES, and the protocol is the list
+    SIX MEMBERS BECAUSE THERE ARE SIX CALL SITES, and the protocol is the list
     rather than a description of a provider. A method nobody calls is a method an
     adapter has to implement for no reason, and it is the shape by which a seam
     stops being a seam and becomes a client library.
@@ -139,6 +139,19 @@ class Catalogue(Protocol):
         RAISES when the listing cannot be read, on the same contract as the two
         lookups above: an empty tuple means the provider answered and the account
         has no playlists, never that nobody could ask.
+        """
+
+    def favourite_tracks(self) -> tuple[Any, ...]:
+        """Every track the logged in account has hearted, across every page.
+
+        Consumed by ``intake.cli`` for the reserved reference ``favorites``,
+        which resolves the account's hearts against the library the way a
+        playlist's tracks are resolved. The rows are the shape
+        ``match.read_tidal_tracks`` reads. RAISES when the listing cannot be read
+        in full, on the same contract as the reads above: a short listing would
+        report hearts the library lacks as absent from the account, so no page
+        shape may end it early, and an empty tuple means the account has no
+        hearts, never that nobody could ask.
         """
 
 
