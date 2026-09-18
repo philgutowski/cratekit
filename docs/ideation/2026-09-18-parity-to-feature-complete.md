@@ -140,7 +140,7 @@ it does. The write stays open in the ledger.
 | U106 | The ledger marks closed what the code already fixed, and points superseded entries at their successors | ledger hygiene, no residual number | none |
 
 After U72 the favourites workflow runs end to end. After U74 one `sync all`
-covers it. After U91 a sorted library is filed and rated on the live library.
+covers it. After U88 a sorted library is filed and rated on the live library.
 
 ## Residuals that met the board bar
 

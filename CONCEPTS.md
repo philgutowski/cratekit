@@ -83,6 +83,35 @@ often than their authors realize, since each side of a collision has its own
 reason to write one, so a merge reads both branches' records rather than only the
 one it is standing on.
 
+### Board bar
+The test a residual finding has to pass to earn an issue, decided 2026-09-18. A
+finding passes when it is open and a person using the shipped verbs pays for it
+in one of four ways: data can be lost, the product says something false, a
+workflow cannot finish, or a guard on a path that writes or deletes is absent.
+Everything else stays in the ledger with no card. It exists because the board
+is the queue, so a finding that matters and has no card is a finding nobody
+does, and because a ledger of four hundred entries put on the board whole would
+claim an intention to do four hundred things. The session that files a residual
+applies the bar and files the card itself.
+
+### Feeder
+The loop that keeps a native Relay run continuous. Relay reads its manifest once
+per run, so the feeder appends a few ready board cards to the manifest, runs it,
+reads the summary and repeats. It lives beside the manifest in `~/.relay`, never
+in this repository. "Ready" is the board's derivation and not the feeder's
+opinion, which is what stops a unit launching before the units it depends on
+have landed. It excludes a task that halts twice and waits out a cycle in which
+every task died within minutes, which is what a usage limit looks like.
+
+### Name claim
+How the contract test in `tests/test_cli_contract.py` decides a source entry
+point is ported: some registry entry names it in `source_scripts`. A claim by
+name says nothing about which half of that script's behaviour landed, which is
+how `sync.favorites` claimed `dj-favorites` while performing one direction of
+it, and how a board could read complete while no acquisition workflow finished.
+A name claim is evidence that a verb exists. It is not evidence that a workflow
+ends.
+
 ## Acquisition
 
 ### Adapter
@@ -114,6 +143,22 @@ searcher no source answered refuses rather than declining, so a job cannot
 report a clean sweep over answers it never got. A decline is a question the
 next run asks again; a refusal fails that one item and leaves the job
 resumable.
+
+### Landing
+The step between a download and a rekordbox import: moving a batch of acquired
+files out of download staging into `Music/<batch>/` and splicing them into one
+intake file. Staging is deliberately invisible to ownership, which walks the
+music directory only, so an acquired file that has not landed still reads as
+missing and would be offered for download again. R-413 records that the step did
+not exist.
+
+### List document
+The one file format `acquire download` reads: a versioned, closed document of
+provider track identifiers, read by `match_cli.read_list` and nothing else. Until
+Phase G nothing in the product wrote one, which is R-400. One shared emitter
+writes it, and what each identifier came from, a playlist, a label and year, a
+sync run, rides a sidecar manifest beside it because the document's own keys are
+closed.
 
 ## Verification
 
