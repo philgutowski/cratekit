@@ -1510,6 +1510,9 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "intake.set": ["https://example.invalid/mix"],
         "intake.identify": [str(library / "no-such-set.mp3")],
         "intake.playlist": ["https://example.invalid/playlist"],
+        # U69. The job verbs' convention: an identifier deliberately absent,
+        # so the verb must refuse from the vocabulary rather than trace back.
+        "intake.missing": ["--job", "no-such-job"],
         "intake.file": [str(library / "no-such-track.flac")],
         "tag.folder": [str(library / "Music")],
         # U40. Same convention as tag.folder: a folder under the CONFIGURED

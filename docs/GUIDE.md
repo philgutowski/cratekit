@@ -148,6 +148,21 @@ crate match run /path/to/tracklist.txt
   exists, such as a remix or an edit, and only you can say if it counts. Those
   become review items.
 
+When a playlist job has finished, turn what it found missing into a list the
+download step reads:
+
+```bash
+crate intake missing --job JOB_ID
+```
+
+It writes `intake-JOB_ID.list.json` into a `lists` folder under download
+staging, or into the folder you name with `--out`, and prints the path and the
+exact `acquire download` command to run next. Only missing tracks are listed.
+Owned tracks, tracks offered for review, and tracks you deleted on purpose are
+counted and left out. A job that is still running, failed or was cancelled is
+refused rather than listed in part. A missing track the provider cannot be
+asked for is reported as a failing line, never dropped in silence.
+
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
 is not blocked, and `crate acquire audit` reports files that break the lossless

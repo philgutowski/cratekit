@@ -890,6 +890,23 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted", "credential.provider"),
     ),
     Entry(
+        name="intake.missing",
+        summary="write the list acquire download reads from a finished intake job's missing tracks",
+        module="cratekit.intake.missing_cli",
+        builder="build_missing",
+        handler_key="intake.missing",
+        feature_rows=(3, 35),
+        # ``diagnostic/1`` because the default human renderer shows checks and
+        # nothing else, and the one thing a person needs from this verb is the
+        # list's path and the command that downloads it (R-400).
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # NO WRITE SURFACE, and therefore not destructive, on the precedent
+        # ``review export`` sets: it adds two new files beside nothing and
+        # ``listdoc.write`` refuses rather than replaces a file holding anything
+        # else, so there is nothing a destructive session's gates would protect.
+    ),
+    Entry(
         name="intake.file",
         summary="ingest one audio file already on disk",
         module="cratekit.intake.cli",
