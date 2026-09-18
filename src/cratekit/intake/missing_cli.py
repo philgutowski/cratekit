@@ -127,7 +127,7 @@ def _reports_or_refuse(store, job: jobs.Job) -> tuple[dict[str, Any], ...]:
             job_id=job.job_id,
             items=len(wanted),
             reports=len(reports),
-            unreported=absent[:20],
+            unreported=absent,
         )
     for report in reports:
         if report.get("state") not in _WORDS or not isinstance(report.get("track"), Mapping):
@@ -194,7 +194,7 @@ def intake_missing(ctx) -> Envelope:
     listed = len(written.listed)
     unlisted = len(written.unlisted)
     command = (
-        f"crate acquire download {shlex.quote(str(written.list_path))}"
+        shlex.join(["crate", "acquire", "download", str(written.list_path)])
         if written.list_path is not None
         else None
     )
