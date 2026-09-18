@@ -680,3 +680,64 @@ def test_a_library_with_cloud_sync_on_refuses_and_names_the_real_cause(collected
     assert cause["remediation"]["remedy"] == "disable-cloud-sync"
     assert "Cloud Library Sync" in cause["message"]
     assert held.is_file() and free.is_file()
+
+
+def test_a_file_recorded_by_its_real_path_is_protected_through_a_linked_root(
+    collected, tmp_path
+):
+    """The root is given through a link and the row records the real path, so
+    only the RESOLVED spelling of the candidate matches."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, str(held), identifier="10")
+    link = tmp_path / "linked"
+    link.symlink_to(folder, target_is_directory=True)
+    _apply(link)
+    assert held.is_file()
+    assert not free.exists()
+
+
+def test_a_file_recorded_through_a_link_is_protected_through_that_link(
+    collected, tmp_path
+):
+    """The row records the path through a link and the root is given the same
+    way, so only the ABSOLUTE spelling of the candidate matches."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    link = tmp_path / "linked"
+    link.symlink_to(folder, target_is_directory=True)
+    _record(collected, str(link / held.name), identifier="10")
+    _apply(link)
+    assert held.is_file()
+    assert not free.exists()
+
+
+def test_a_row_naming_another_host_neither_blocks_nor_protects(collected):
+    """A remote location has no local path, so it protects no local file, and
+    one such row in a library must not stop the verb for every other file."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, f"file://elsewhere.invalid{held}", identifier="10")
+    _apply(folder)
+    assert not held.exists() and not free.exists()
+
+
+def test_a_read_that_fails_after_the_open_refuses_and_renames_nothing(
+    collected, monkeypatch
+):
+    """The open succeeds and the query does not, which is a failure no open
+    side check classifies. It still refuses rather than reading as empty."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+
+    class _Broken:
+        def get_content(self):
+            raise RuntimeError("the query failed")
+
+    monkeypatch.setattr(rb_writer, "open_db", lambda *args, **kwargs: _Broken())
+    monkeypatch.setattr(rb_writer, "close_db", lambda handle: None)
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    assert envelope["cause"]["reason"] == "collection-unreadable"
+    assert envelope["cause"]["remediation"]["remedy"] == "report-defect"
+    assert held.is_file() and free.is_file()
