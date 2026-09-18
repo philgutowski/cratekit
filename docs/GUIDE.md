@@ -61,12 +61,14 @@ Four words carry most of the rest.
 
 Two habits follow from that design. Read a refusal instead of retrying it, since
 every refusal names a reason and what to do about it. And put root options
-before the verb, because they belong to the top level command:
+before the verb, because they belong to the top level command. `--output json`
+gives a machine readable answer, `--decision` answers a gate on the same line, and
+`--run` continues a run that stopped at a gate:
 
 ```bash
-crate --output json doctor          # machine readable answer
+crate --output json doctor
 crate --decision route.inbox.apply=apply route inbox
-crate --run RUN_ID route inbox      # continue a run that stopped at a gate
+crate --run RUN_ID route inbox
 ```
 
 ## Before every session
@@ -142,12 +144,15 @@ Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
 is not blocked, and `crate acquire audit` reports files that break the lossless
 policy. What arrived then needs tagging, naming and filing, in this order.
+`tag folder` writes genre and album art to the files only. `name apply` rebuilds
+filenames from your template. `route inbox` files the intake folder into your
+taxonomy, and `route pending` files the rest once you have imported.
 
 ```bash
-crate tag folder /path/to/staging      # genre and album art, files only
-crate name apply                       # rebuilds filenames from your template
-crate route inbox                      # files the intake folder into your taxonomy
-crate route pending                    # after you have imported, files the rest
+crate tag folder /path/to/staging
+crate name apply
+crate route inbox
+crate route pending
 ```
 
 `name apply` and `route inbox` each build a plan and stop at a gate before they
@@ -158,7 +163,7 @@ plan and answering, the answer is refused as stale and you plan again.
 ### Follow record labels
 
 ```bash
-crate label registry                                 # list who you follow
+crate label registry
 crate label registry add "Some Label" --match "Some Label Rec"
 crate label harvest https://tidal.com/playlist/PLAYLIST_UUID
 crate label import "Some Label"
@@ -167,7 +172,8 @@ crate review list --queue label-release
 crate review resolve ITEM_ID --verdict accepted --actor YOUR_NAME
 ```
 
-The registry records who you follow and nothing about what has been pulled. A
+`label registry` lists who you follow. The registry records nothing about what has
+been pulled. A
 label's identifier is made once, when you add it, and the record of what has been
 pulled hangs off that identifier. To change how a label is displayed, use
 `label registry rename`. Removing and re-adding under a new spelling makes the
@@ -214,17 +220,20 @@ Cratekit already made instead of creating a second.
 ### Keep the library tidy
 
 ```bash
-crate route unplaced                              # tracks no tree files
-crate audit coverage /path/to/export.xml          # same idea, from an export
-crate audit duplicates /path/to/export.xml        # never deletes
+crate route unplaced
+crate audit coverage /path/to/export.xml
+crate audit duplicates /path/to/export.xml
 crate report library /path/to/export.xml
 crate report intake-aging /path/to/export.xml
-crate repair paths                                # proposes, never applies
-crate route resort                                # after a genre or energy change
-crate converge                                    # does each tree match the database
+crate repair paths
+crate route resort
+crate converge
 ```
 
-Reports and audits are read only. `repair paths` proposes a new location for each
+`route unplaced` lists tracks no tree files, and `audit coverage` asks the same
+question from an export. `audit duplicates` never deletes. Run `route resort`
+after a genre or energy change, and `converge` to check that each tree matches
+the database. Reports and audits are read only. `repair paths` proposes a new location for each
 row whose file has moved, and you accept or reject each one with
 `crate review resolve`. A wrong repair points a row at somebody else's file, so
 nothing is inferred. `converge` reports and never repairs. If a tree has fallen
@@ -241,9 +250,12 @@ so that version can be acquired again.
 ```bash
 crate analyze run /path/to/staging
 crate analyze vocals /path/to/one-folder
-crate metadata mytags-vocals            # plan only
-crate metadata mytags-vocals --apply    # writes, needs the acknowledgment
+crate metadata mytags-vocals
+crate metadata mytags-vocals --apply
 ```
+
+The first `metadata` line shows the plan only. Adding `--apply` writes, and needs
+the backup acknowledgment.
 
 Analysis needs the `analysis` extra and vocals needs the `vocals` extra, both in
 the README. Cratekit never writes a beat grid, a tempo element or an average BPM
@@ -288,13 +300,16 @@ session.
 ## Answering a gate
 
 A gated verb exits asking for a decision and prints the gate's name, its options
-and a run identifier. Answer it on the same line, or later, from anywhere.
+and a run identifier. Answer it on the same line, or later, from anywhere. On the
+same line:
 
 ```bash
-# on the invocation
 crate --decision route.inbox.apply=apply route inbox
+```
 
-# or afterwards
+Or afterwards, from any terminal:
+
+```bash
 crate run show RUN_ID
 crate run decide RUN_ID route.inbox.apply apply --actor YOUR_NAME
 crate --run RUN_ID route inbox
