@@ -1,0 +1,234 @@
+{
+  "name": "r378",
+  "pass_kind": "light",
+  "branch": "unit/issue91-the-harvest-prints-nothing-a-person-can-",
+  "head": "6144d6a",
+  "when": "2026-09-18 04:26 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7603,
+  "baseline_exit": 0,
+  "pytest_runs": 9,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/cli/render.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/cli/render.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "3bff90e9117839f4",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7603,
+    "baseline_collected": 7603,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_drop_the_review_set_case",
+      "description": "the original defect: render never asks for the review set",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2b022628e01a2e0a",
+      "subset": [
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_an_empty_harvest_still_names_that_nothing_was_offered",
+        "tests/test_label_workers.py::test_harvest_human_output_names_each_offered_label",
+        "tests/test_label_workers.py::test_harvest_human_output_names_the_unresolved_count_and_not_an_unconfirmed_imprint"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    checks = render_checks(envelope)\n    review_set = render_review_set(envelope)\n    if envelope.cause is not None:\n        lines.append(\"\")\n        lines += render_cause(envelope.cause, summary_only=bool(checks))\n    lines += checks\n    lines += review_set\n",
+      "new": "    checks = render_checks(envelope)\n    if envelope.cause is not None:\n        lines.append(\"\")\n        lines += render_cause(envelope.cause, summary_only=bool(checks))\n    lines += checks\n"
+    },
+    {
+      "id": "G2_name_is_dumped_with_the_other_fields",
+      "description": "a named item is printed as key=value, so the name is not its own line",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e8ff5a22f7d24fb8",
+      "subset": [
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_harvest_human_output_names_each_offered_label",
+        "tests/test_label_workers.py::test_harvest_human_output_names_the_unresolved_count_and_not_an_unconfirmed_imprint"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    name = item.get(\"name\")\n    if isinstance(name, str) and name:\n        return name\n    return \", \".join(f\"{k}={_shown_value(v)}\" for k, v in item.items())\n",
+      "new": "    return \", \".join(f\"{k}={_shown_value(v)}\" for k, v in item.items())\n"
+    },
+    {
+      "id": "G3_unresolved_is_omitted",
+      "description": "the unresolved count is never printed",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7f8b1e7d721e4f82",
+      "subset": [
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_a_review_set_item_without_a_name_is_rendered_from_its_own_fields",
+        "tests/test_label_workers.py::test_an_empty_harvest_still_names_that_nothing_was_offered",
+        "tests/test_label_workers.py::test_harvest_human_output_names_each_offered_label",
+        "tests/test_label_workers.py::test_harvest_human_output_names_the_unresolved_count_and_not_an_unconfirmed_imprint"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unresolved is not None:\n        lines.append(f\"  unresolved: {_shown_value(unresolved)}\")\n",
+      "new": ""
+    },
+    {
+      "id": "G4_the_schema_gate_is_dropped",
+      "description": "any envelope that carries items is rendered as a review set",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f055a5c4e2dec1c7",
+      "subset": [
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_review_set_rendering_is_gated_on_the_schema_not_an_items_key"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not envelope.schema.startswith(\"review_set/\"):\n        return []\n",
+      "new": ""
+    },
+    {
+      "id": "G5_items_are_printed_with_repr",
+      "description": "each item is the interpreter's spelling, not the name line",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8b7f51190c3c7ded",
+      "subset": [
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_a_review_set_item_without_a_name_is_rendered_from_its_own_fields",
+        "tests/test_label_workers.py::test_harvest_human_output_names_each_offered_label",
+        "tests/test_label_workers.py::test_harvest_human_output_names_the_unresolved_count_and_not_an_unconfirmed_imprint"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            lines.append(f\"  {_review_item_line(item)}\")\n",
+      "new": "            lines.append(f\"  {item!r}\")\n"
+    },
+    {
+      "id": "G6_the_queue_is_omitted",
+      "description": "the queue is never named, so an empty harvest looks like no renderer",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1a0f236e02af2192",
+      "subset": [
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_an_empty_harvest_still_names_that_nothing_was_offered",
+        "tests/test_label_workers.py::test_harvest_human_output_names_each_offered_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if queue not in (None, \"\"):\n        lines.append(f\"  queue: {_shown_value(queue)}\")\n",
+      "new": ""
+    }
+  ],
+  "dropped": [
+    {
+      "id": "G7_an_empty_name_string_is_still_the_line",
+      "description": "treat a blank name as the whole line and hide the other fields",
+      "reason": "ranked below the cap: no review_set producer puts an empty name at the top level"
+    },
+    {
+      "id": "G8_names_are_printed_without_indent",
+      "description": "the name line loses its two space prefix",
+      "reason": "ranked below the cap: same line as G5, and the harvest tests pin the indent"
+    }
+  ]
+}
