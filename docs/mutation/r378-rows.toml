@@ -1,0 +1,95 @@
+# R-378, author's table. Harvest's human output names the labels.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r378-rows.toml
+
+name = "r378"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_drop_the_review_set_case"
+description = "the original defect: render never asks for the review set"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''    checks = render_checks(envelope)
+    review_set = render_review_set(envelope)
+    if envelope.cause is not None:
+        lines.append("")
+        lines += render_cause(envelope.cause, summary_only=bool(checks))
+    lines += checks
+    lines += review_set
+'''
+new = '''    checks = render_checks(envelope)
+    if envelope.cause is not None:
+        lines.append("")
+        lines += render_cause(envelope.cause, summary_only=bool(checks))
+    lines += checks
+'''
+
+[[rows]]
+id = "G2_name_is_dumped_with_the_other_fields"
+description = "a named item is printed as key=value, so the name is not its own line"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''    name = item.get("name")
+    if isinstance(name, str) and name:
+        return name
+    return ", ".join(f"{k}={_shown_value(v)}" for k, v in item.items())
+'''
+new = '''    return ", ".join(f"{k}={_shown_value(v)}" for k, v in item.items())
+'''
+
+[[rows]]
+id = "G3_unresolved_is_omitted"
+description = "the unresolved count is never printed"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''    if unresolved is not None:
+        lines.append(f"  unresolved: {_shown_value(unresolved)}")
+'''
+new = ''''''
+
+[[rows]]
+id = "G4_the_schema_gate_is_dropped"
+description = "any envelope that carries items is rendered as a review set"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''    if not envelope.schema.startswith("review_set/"):
+        return []
+'''
+new = ''''''
+
+[[rows]]
+id = "G5_items_are_printed_with_repr"
+description = "each item is the interpreter's spelling, not the name line"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''            lines.append(f"  {_review_item_line(item)}")
+'''
+new = '''            lines.append(f"  {item!r}")
+'''
+
+[[rows]]
+id = "G6_the_queue_is_omitted"
+description = "the queue is never named, so an empty harvest looks like no renderer"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''    if queue not in (None, ""):
+        lines.append(f"  queue: {_shown_value(queue)}")
+'''
+new = ''''''
+
+[[dropped]]
+id = "G7_an_empty_name_string_is_still_the_line"
+description = "treat a blank name as the whole line and hide the other fields"
+reason = "ranked below the cap: no review_set producer puts an empty name at the top level"
+
+[[dropped]]
+id = "G8_names_are_printed_without_indent"
+description = "the name line loses its two space prefix"
+reason = "ranked below the cap: same line as G5, and the harvest tests pin the indent"
