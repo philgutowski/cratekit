@@ -635,7 +635,10 @@ def test_an_unresolved_id_seed_refuses_the_label():
     )
     with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
         adapter.artist_for(entry)
-    assert "id:99" in str(excinfo.value)
+    message = str(excinfo.value)
+    assert "id:99" in message
+    assert "identifier" in message
+    assert "named exactly" not in message
     assert client.artist_lookups == ["99"]
     assert "id:99" not in client.searches
 
@@ -651,6 +654,20 @@ def test_a_provider_outage_looking_up_an_id_seed_is_not_an_unresolved_seed():
         label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
     )
     with pytest.raises(ConnectionError):
+        adapter.artist_for(entry)
+
+
+def test_a_key_error_looking_up_an_id_seed_is_not_an_unresolved_seed():
+    class BrokenClient(FakeClient):
+        def artist(self, artist_id: str | None = None) -> ProviderArtist:
+            self.artist_lookups.append(str(artist_id))
+            raise KeyError(artist_id)
+
+    adapter = tidal_catalogue.TidalCatalogue(BrokenClient())
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("id:99",)
+    )
+    with pytest.raises(KeyError):
         adapter.artist_for(entry)
 
 

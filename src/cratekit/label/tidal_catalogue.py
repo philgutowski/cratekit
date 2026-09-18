@@ -226,7 +226,13 @@ class TidalCatalogue:
         """
         try:
             artist = self._session.artist(artist_id)
-        except (LookupError, tidalapi.exceptions.ObjectNotFound):
+        except tidalapi.exceptions.ObjectNotFound:
+            return None
+        except LookupError as exc:
+            # Bare LookupError is the fake's not found. KeyError and IndexError
+            # are subclasses, and those are parse failures, not a missing id.
+            if type(exc) is not LookupError:
+                raise
             return None
         return artist or None
 
@@ -258,10 +264,15 @@ class TidalCatalogue:
             else:
                 artists.append(artist)
         if unresolved:
+            bits = []
+            for seed in unresolved:
+                if seed_identifier(seed) is not None:
+                    bits.append(f"no artist with identifier {seed!r}")
+                else:
+                    bits.append(f"no artist named exactly {seed!r}")
             raise LabelUnresolvable(
-                f"the provider has no artist named exactly "
-                f"{', '.join(repr(name) for name in unresolved)}, a seed of the "
-                f"label {entry.name!r}"
+                f"the provider has {', '.join(bits)}, a seed of the label "
+                f"{entry.name!r}"
             )
         if not artists:
             raise LabelUnresolvable(
