@@ -301,6 +301,46 @@ def render_checks(envelope: Envelope) -> list[str]:
     return lines
 
 
+def render_review_set(envelope: Envelope) -> list[str]:
+    """The review set a person reads, or nothing at all.
+
+    Harvest already puts the offered names and the unresolved count on the
+    envelope. Without a case here, the default output is the verb, the outcome,
+    and a run id, and a person has to ask for json to see what was found.
+
+    Gated on the schema rather than on the presence of an ``items`` key, so a
+    later surface that happens to carry one is not rendered in a shape that was
+    never designed for it. An item that already has a name is that name, because
+    that is the field harvest projected for a person. An item that does not
+    keeps its own fields rather than growing a harvest shaped line.
+    """
+    if not envelope.schema.startswith("review_set/"):
+        return []
+    data = envelope.data
+    queue = data.get("queue")
+    items = data.get("items")
+    unresolved = data.get("unresolved")
+    lines = [""]
+    if queue not in (None, ""):
+        lines.append(f"  queue: {_shown_value(queue)}")
+    if isinstance(items, (list, tuple)):
+        for item in items:
+            lines.append(f"  {_review_item_line(item)}")
+    if unresolved is not None:
+        lines.append(f"  unresolved: {_shown_value(unresolved)}")
+    return lines if len(lines) > 1 else []
+
+
+def _review_item_line(item: Any) -> str:
+    """One review item as a person should read it."""
+    if not isinstance(item, Mapping):
+        return _shown_value(item)
+    name = item.get("name")
+    if isinstance(name, str) and name:
+        return name
+    return ", ".join(f"{k}={_shown_value(v)}" for k, v in item.items())
+
+
 def render(envelope: Envelope) -> str:
     """The default human output for any verb's result.
 
@@ -327,10 +367,12 @@ def render(envelope: Envelope) -> str:
             lines.append(f"  blocks: {', '.join(pending.blocks)}")
 
     checks = render_checks(envelope)
+    review_set = render_review_set(envelope)
     if envelope.cause is not None:
         lines.append("")
         lines += render_cause(envelope.cause, summary_only=bool(checks))
     lines += checks
+    lines += review_set
 
     for warning in envelope.warnings:
         lines.append(f"warning [{warning.get('code', '?')}]: {warning.get('message', '')}")
@@ -439,4 +481,5 @@ __all__ = [
     "render_cause",
     "render_checks",
     "render_gate",
+    "render_review_set",
 ]
