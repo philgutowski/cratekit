@@ -27,6 +27,7 @@ Layer: modules.
 from __future__ import annotations
 
 import re
+from collections import deque
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlsplit
@@ -36,6 +37,7 @@ from urllib.parse import urlsplit
 import tidalapi
 
 from cratekit.acquire import listing, provider_session
+from cratekit.core.cause import CratekitError
 from cratekit.label import harvest, registry
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import AccountPlaylist
@@ -60,6 +62,10 @@ SHORT_LINK_HOST = "link.tidal.com"
 #: and ranks exact names first, so the first page is where an exact match is.
 SEARCH_LIMIT = 50
 
+#: Numbered compilation titles the source system searched for, ``001`` through
+#: ``079``. Discovery issues one album search per value, plus the bare name.
+COMPILATION_RANGE = range(1, 80)
+
 #: A seed recorded as a provider identifier rather than a name. The digits
 #: after the prefix are what ``session.artist`` is called with. Anything else
 #: is still a name, resolved by exact fold.
@@ -81,7 +87,8 @@ class LabelUnresolvable(LookupError):
     """A favourite label none of whose names, or one of whose seeds, resolved.
 
     Also raised for a name more than one provider artist carries exactly, since
-    picking one of them is a guess.
+    picking one of them is a guess. Discovery that finds no credited artist is
+    the same refusal, with a message that names that search found nothing.
     """
 
 
@@ -123,7 +130,8 @@ class LabelRoster:
 
     ``Catalogue.artist_for`` hands ``crawl.releases`` ONE object, and a label on
     the provider is a roster: the label's own artist page when it has one, plus
-    the seed artists the registry names. This presents the roster in the shape
+    the seed artists the registry names, plus artists discovery found by album
+    search and a credited artist walk. This presents the roster in the shape
     ``listing.artist_releases`` pages.
 
     THE LISTING HAPPENS HERE, ONCE, AT CONSTRUCTION, and the two methods serve
@@ -176,6 +184,34 @@ def seed_identifier(seed: str) -> str | None:
     """The provider artist id inside an ``id:<digits>`` seed, else ``None``."""
     matched = _ID_SEED.fullmatch(str(seed or "").strip())
     return matched.group(1) if matched else None
+
+
+def album_search_queries(name: str) -> tuple[str, ...]:
+    """The album searches discovery issues for one label.
+
+    The bare name, then each numbered compilation in :data:`COMPILATION_RANGE`.
+    Single shot each, not a page loop. The test derives this set from the range
+    rather than listing queries by hand.
+    """
+    return (name, *(f"{name} {number:03d}" for number in COMPILATION_RANGE))
+
+
+def _credits_label(release: Any, needle: str) -> bool:
+    """Whether harvest's copyright extractor names this label on ``release``."""
+    return any(
+        label_verify.labels_match(needle, name)
+        for name in harvest.labels_from_copyright(release)
+    )
+
+
+def _credited_ids(release: Any) -> tuple[str, ...]:
+    """Provider artist ids credited on one album, skipping blanks."""
+    held: list[str] = []
+    for artist in getattr(release, "artists", None) or ():
+        identity = str(getattr(artist, "id", "") or "")
+        if identity:
+            held.append(identity)
+    return tuple(held)
 
 
 class TidalCatalogue:
@@ -243,14 +279,67 @@ class TidalCatalogue:
             return self._artist_identified(identifier)
         return self._artist_named(seed)
 
+    def _discover(self, entry: registry.LabelEntry, held: list[Any]) -> list[Any]:
+        """Artists album search plus a credited artist walk add to the roster.
+
+        Runs even when ``held`` is already non empty, because an incomplete
+        seed list is the silent shortfall, not only an empty roster. A listing
+        failure on one artist skips that artist. A session dead failure, a
+        ``CratekitError``, still refuses the label.
+        """
+        needle = entry.match or entry.name
+        seen: set[str] = set()
+        queue: deque[str] = deque()
+
+        def enqueue(artist_id: str) -> None:
+            if artist_id and artist_id not in seen:
+                seen.add(artist_id)
+                queue.append(artist_id)
+
+        for query in album_search_queries(entry.name):
+            found = self._session.search(
+                query, models=[tidalapi.album.Album], limit=SEARCH_LIMIT
+            )
+            for album in _results(found, "albums"):
+                if _credits_label(album, needle):
+                    for identity in _credited_ids(album):
+                        enqueue(identity)
+
+        discovered: list[Any] = []
+        held_ids = {str(getattr(artist, "id", "") or "") for artist in held}
+        held_ids.discard("")
+        while queue:
+            artist_id = queue.popleft()
+            artist = self._artist_identified(artist_id)
+            if artist is None:
+                continue
+            try:
+                releases = listing.artist_releases(artist)
+            except CratekitError:
+                raise
+            except Exception:  # noqa: BLE001 - one artist's listing, not the session
+                continue
+            for release in releases:
+                if _credits_label(release, needle):
+                    for identity in _credited_ids(release):
+                        enqueue(identity)
+            identity = str(getattr(artist, "id", "") or artist_id)
+            if identity not in held_ids:
+                discovered.append(artist)
+                held_ids.add(identity)
+        return discovered
+
     def artist_for(self, entry: registry.LabelEntry) -> LabelRoster:
-        """The label's roster: its own artist page if one exists, and every seed.
+        """The label's roster: own page, every seed, then discovery.
 
         A SEED THAT DOES NOT RESOLVE REFUSES THE LABEL rather than narrowing the
-        crawl in silence. A sweep over four of five seeds reports that it looked
-        and offers less than the label released, which is the R-135 reading this
-        contract exists to stop. The label's own page is optional because most
-        labels have none, and a label with seeds is fully described by them.
+        crawl in silence, and refuses before discovery runs, so an unresolved
+        seed is not rescued by albums the search would have found. A sweep over
+        four of five seeds reports that it looked and offers less than the label
+        released, which is the R-135 reading this contract exists to stop. The
+        label's own page is optional because most labels have none. Discovery
+        still runs when the roster already has members, because the silent
+        shortfall is an incomplete seed list, not only an empty roster.
         """
         artists: list[Any] = []
         own = self._artist_named(entry.name)
@@ -274,10 +363,11 @@ class TidalCatalogue:
                 f"the provider has {', '.join(bits)}, a seed of the label "
                 f"{entry.name!r}"
             )
+        artists.extend(self._discover(entry, artists))
         if not artists:
             raise LabelUnresolvable(
-                f"the provider has no artist named exactly {entry.name!r} and the "
-                f"label names no seed artists to crawl instead"
+                f"the provider has no artist named exactly {entry.name!r}, the "
+                f"label names no seed artists, and discovery found nothing"
             )
         return LabelRoster(artists)
 
@@ -372,6 +462,7 @@ def open_catalogue() -> TidalCatalogue:
 
 
 __all__ = [
+    "COMPILATION_RANGE",
     "PLAYLIST_HOSTS",
     "SHORT_LINK_HOST",
     "LabelRoster",
@@ -379,6 +470,7 @@ __all__ = [
     "PlaylistReferenceInvalid",
     "PlaylistUnresolvable",
     "TidalCatalogue",
+    "album_search_queries",
     "open_catalogue",
     "playlist_id",
 ]
