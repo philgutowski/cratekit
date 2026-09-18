@@ -16,13 +16,15 @@ import ast
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
-from tidalapi.exceptions import ObjectNotFound
+import tidalapi
+from tidalapi.exceptions import ObjectNotFound, TooManyRequests
 
 from cratekit.acquire import listing, match, provider_session
 from cratekit.core import config, jobs, review, secrets
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue, sweep, tidal_catalogue
@@ -51,8 +53,9 @@ STORED = {
 
 
 class Named:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, *, identity: str | None = None) -> None:
         self.name = name
+        self.id = identity
 
 
 class ProviderTrack:
@@ -82,11 +85,19 @@ class ProviderPlaylist:
 
 
 class Release:
-    def __init__(self, release_id: str, *, copyright: str = "", year: str = "2026") -> None:
+    def __init__(
+        self,
+        release_id: str,
+        *,
+        copyright: str = "",
+        year: str = "2026",
+        artists: list[Any] | tuple[Any, ...] = (),
+    ) -> None:
         self.id = release_id
         self.copyright = copyright
         self.year = year
         self.name = f"Release {release_id}"
+        self.artists = list(artists)
 
 
 class ProviderArtist:
@@ -117,6 +128,24 @@ class ProviderArtist:
         return self._singles[offset : offset + size]
 
 
+class UnlistableAct:
+    """An artist whose listings reject pagination, so the wrapper refuses at bind.
+
+    ``listing.artist_releases`` raises ``ListingNotPaginated`` before the retry
+    ladder, which is the listing failure discovery must skip without sleeping.
+    """
+
+    def __init__(self, name: str, artist_id: str) -> None:
+        self.name = name
+        self.id = artist_id
+
+    def get_albums(self) -> list[Release]:
+        return []
+
+    def get_ep_singles(self) -> list[Release]:
+        return []
+
+
 class MissingObject(Exception):
     """What the provider client raises for an identifier it has nothing for."""
 
@@ -132,14 +161,17 @@ class FakeClient:
         playlists: dict[str, ProviderPlaylist] | None = None,
         artists: list[ProviderArtist] | None = None,
         albums: list[Release] | None = None,
+        albums_by_query: dict[str, list[Release]] | None = None,
     ) -> None:
         self.accept = accept
         self.raises = raises
         self.playlists = dict(playlists or {})
         self.artists = list(artists or [])
         self.albums = list(albums or [])
+        self.albums_by_query = albums_by_query
         self.logins: list[dict] = []
         self.searches: list[str] = []
+        self.search_calls: list[tuple[str, tuple[Any, ...]]] = []
         self._artists_by_id = FakeArtistLookup()
         self.artist_lookups = self._artists_by_id.artist_lookups
         self.token_type = None
@@ -174,11 +206,17 @@ class FakeClient:
             raise MissingObject(playlist_id) from exc
 
     def search(self, query: str, models=None, limit: int = 50, offset: int = 0) -> dict:
-        del models, limit, offset
+        del limit, offset
+        recorded = tuple(models or ())
+        self.search_calls.append((query, recorded))
         self.searches.append(query)
+        if self.albums_by_query is not None and tidalapi.album.Album in recorded:
+            albums = list(self.albums_by_query.get(query, []))
+        else:
+            albums = list(self.albums)
         return {
             "artists": [artist for artist in self.artists if query.casefold() in artist.name.casefold()],
-            "albums": list(self.albums),
+            "albums": albums,
         }
 
     def album(self, album_id: str) -> Release:
@@ -785,6 +823,327 @@ def test_the_roster_crawls_the_label_page_and_every_seed_through_the_listing(cfg
     assert {item.identity for item in found} == {f"a{n}" for n in range(150)} | {"shared", "s1"}
     assert ("get_albums", 100, 100) in label_page.asked
     assert client.searches[:2] == ["Harbour Lights", "Quiet Act"]
+
+
+def album_queries_of(client: FakeClient) -> list[str]:
+    return [
+        query
+        for query, models in client.search_calls
+        if models == (tidalapi.album.Album,)
+    ]
+
+
+def _credited(name: str, artist_id: str, *, copyright: str = "(P) 2026 Harbour Lights") -> tuple[ProviderArtist, Release]:
+    artist = ProviderArtist(name, [Release("a1", copyright=copyright)], artist_id=artist_id)
+    compilation = Release(
+        "va1",
+        copyright=copyright,
+        artists=[Named(name, identity=artist_id)],
+    )
+    return artist, compilation
+
+
+def test_discovery_from_a_copyright_matching_compilation_offers_the_credited_artist(
+    cfg, monkeypatch
+):
+    del cfg
+    act, compilation = _credited("Act A", "10")
+    use_client(monkeypatch, FakeClient(artists=[act], albums=[compilation]))
+    record_session()
+    entry = labels.LabelEntry(label_id="harbour", name="Harbour Lights")
+    adapter = catalogue.resolve(config.load())
+
+    roster = adapter.artist_for(entry)
+    source = sweep.LabelSource(
+        config.load(),
+        registry=labels.Registry(labels={entry.label_id: entry}),
+        catalogue=adapter,
+    )
+    found = source.list_recent(-1)
+
+    assert roster.artists == [act]
+    assert {item.identity for item in found} == {"a1"}
+    assert "va1" not in {item.identity for item in found}
+
+
+def test_discovery_that_finds_only_copyright_mismatches_still_refuses():
+    act = ProviderArtist("Act A", [Release("a1", copyright="(P) 2026 Other House")], artist_id="10")
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Other House",
+        artists=[Named("Act A", identity="10")],
+    )
+    client = FakeClient(artists=[act], albums=[compilation])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
+        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+    message = str(excinfo.value)
+    assert "discovery found nothing" in message
+    assert "named exactly 'Harbour Lights'" in message
+
+
+def test_numbered_compilation_queries_are_the_production_range():
+    client = FakeClient()
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    with pytest.raises(tidal_catalogue.LabelUnresolvable):
+        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert list(tidal_catalogue.COMPILATION_RANGE) == list(range(1, 80))
+    assert album_queries_of(client) == [
+        "Harbour Lights",
+        *(f"Harbour Lights {number:03d}" for number in range(1, 80)),
+    ]
+
+
+def test_a_compilation_returned_only_for_a_numbered_query_is_consumed():
+    act = ProviderArtist(
+        "Act A", [Release("a1", copyright="(P) 2026 Harbour Lights")], artist_id="10"
+    )
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Harbour Lights",
+        artists=[Named("Act A", identity="10")],
+    )
+    compilation.name = "Harbour Lights 042"
+    client = FakeClient(
+        artists=[act],
+        albums_by_query={"Harbour Lights 042": [compilation]},
+    )
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert roster.artists == [act]
+
+
+def test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page():
+    own = ProviderArtist(
+        "Harbour Lights",
+        [Release("own1", copyright="(P) 2026 Harbour Lights")],
+        artist_id="1",
+    )
+
+    class FlakySearch(FakeClient):
+        def search(self, query: str, models=None, limit: int = 50, offset: int = 0) -> dict:
+            recorded = tuple(models or ())
+            self.search_calls.append((query, recorded))
+            self.searches.append(query)
+            if recorded == (tidalapi.album.Album,) and query.endswith("042"):
+                raise TooManyRequests("slow down")
+            return {
+                "artists": [
+                    artist
+                    for artist in self.artists
+                    if query.casefold() in artist.name.casefold()
+                ],
+                "albums": list(self.albums),
+            }
+
+    client = FlakySearch(artists=[own])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert roster.artists == [own]
+    assert "Harbour Lights 042" in album_queries_of(client)
+    assert "Harbour Lights 043" in album_queries_of(client)
+
+
+def test_an_authentication_error_on_album_search_still_refuses_the_label():
+    own = ProviderArtist(
+        "Harbour Lights",
+        [Release("own1", copyright="(P) 2026 Harbour Lights")],
+        artist_id="1",
+    )
+
+    class DeadSearch(FakeClient):
+        def search(self, query: str, models=None, limit: int = 50, offset: int = 0) -> dict:
+            recorded = tuple(models or ())
+            self.search_calls.append((query, recorded))
+            self.searches.append(query)
+            if recorded == (tidalapi.album.Album,):
+                raise tidalapi.exceptions.AuthenticationError("expired")
+            return {
+                "artists": [
+                    artist
+                    for artist in self.artists
+                    if query.casefold() in artist.name.casefold()
+                ],
+                "albums": list(self.albums),
+            }
+
+    adapter = tidal_catalogue.TidalCatalogue(DeadSearch(artists=[own]))
+    with pytest.raises(tidalapi.exceptions.AuthenticationError):
+        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+
+def test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered(
+    cfg, monkeypatch
+):
+    del cfg
+    act = ProviderArtist("Act A", [Release("a1", copyright="(P) 2026 Harbour Lights")], artist_id="10")
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Harbour Lights",
+        artists=[Named("Act A", identity="10")],
+    )
+    use_client(monkeypatch, FakeClient(artists=[act], albums=[compilation]))
+    record_session()
+    entry = labels.LabelEntry(label_id="harbour", name="Harbour Lights")
+    source = sweep.LabelSource(
+        config.load(),
+        registry=labels.Registry(labels={entry.label_id: entry}),
+        catalogue=catalogue.resolve(config.load()),
+    )
+
+    found = source.list_recent(-1)
+
+    assert {item.identity for item in found} == {"a1"}
+    assert "va1" not in {item.identity for item in found}
+
+
+def test_an_unresolved_name_seed_refuses_even_when_discovery_would_find_albums():
+    act, compilation = _credited("Act A", "10")
+    client = FakeClient(artists=[act], albums=[compilation])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    entry = labels.LabelEntry(
+        label_id="harbour", name="Harbour Lights", seed_artists=("Gone Act",)
+    )
+    with pytest.raises(tidal_catalogue.LabelUnresolvable) as excinfo:
+        adapter.artist_for(entry)
+    assert "Gone Act" in str(excinfo.value)
+    assert album_queries_of(client) == []
+
+
+def test_discovery_enqueues_collaborators_from_listed_matching_releases():
+    lead = ProviderArtist(
+        "Lead Act",
+        [
+            Release(
+                "collab",
+                copyright="(P) 2026 Harbour Lights",
+                artists=[
+                    Named("Lead Act", identity="10"),
+                    Named("Guest", identity="11"),
+                ],
+            )
+        ],
+        artist_id="10",
+    )
+    guest = ProviderArtist(
+        "Guest",
+        [Release("g1", copyright="(P) 2026 Harbour Lights")],
+        artist_id="11",
+    )
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Harbour Lights",
+        artists=[Named("Lead Act", identity="10")],
+    )
+    client = FakeClient(artists=[lead, guest], albums=[compilation])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert roster.artists == [lead, guest]
+
+
+def test_a_discovered_artist_already_on_the_roster_is_not_added_twice():
+    own = ProviderArtist(
+        "Harbour Lights",
+        [Release("own1", copyright="(P) 2026 Harbour Lights")],
+        artist_id="1",
+    )
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Harbour Lights",
+        artists=[Named("Harbour Lights", identity="1")],
+    )
+    client = FakeClient(artists=[own], albums=[compilation])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert roster.artists == [own]
+
+
+def test_discovery_runs_when_the_label_already_has_an_artist_page():
+    own = ProviderArtist(
+        "Harbour Lights",
+        [Release("own1", copyright="(P) 2026 Harbour Lights")],
+        artist_id="1",
+    )
+    collab = ProviderArtist(
+        "Quiet Act",
+        [Release("q1", copyright="(P) 2026 Harbour Lights")],
+        artist_id="10",
+    )
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Harbour Lights",
+        artists=[Named("Quiet Act", identity="10")],
+    )
+    client = FakeClient(artists=[own, collab], albums=[compilation])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert roster.artists == [own, collab]
+
+
+def test_discovery_matches_copyright_against_the_entry_match_needle():
+    act, compilation = _credited("Act A", "10", copyright="(P) 2026 HL")
+    client = FakeClient(artists=[act], albums=[compilation])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    entry = labels.LabelEntry(label_id="harbour", name="Not The Label Name", match="HL")
+
+    roster = adapter.artist_for(entry)
+
+    assert roster.artists == [act]
+
+
+def test_a_listing_failure_on_one_discovered_artist_skips_that_artist():
+    broken = UnlistableAct("Broken", "9")
+    act = ProviderArtist(
+        "Act A", [Release("a1", copyright="(P) 2026 Harbour Lights")], artist_id="10"
+    )
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Harbour Lights",
+        artists=[
+            Named("Broken", identity="9"),
+            Named("Act A", identity="10"),
+        ],
+    )
+    client = FakeClient(artists=[broken, act], albums=[compilation])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+
+    assert roster.artists == [act]
+
+
+def test_a_session_dead_during_discovery_refuses_the_label():
+    compilation = Release(
+        "va1",
+        copyright="(P) 2026 Harbour Lights",
+        artists=[Named("Act A", identity="10")],
+    )
+
+    class DeadLookup(FakeClient):
+        def artist(self, artist_id: str | None = None) -> ProviderArtist:
+            self.artist_lookups.append(str(artist_id))
+            raise refuse(
+                "credential-missing",
+                "the stored session is gone",
+                steps=("crate login",),
+                scope=Scope.RUN,
+                origin=("test",),
+            )
+
+    adapter = tidal_catalogue.TidalCatalogue(DeadLookup(albums=[compilation]))
+    with pytest.raises(CratekitError) as excinfo:
+        adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
+    assert excinfo.value.cause.reason == "credential-missing"
 
 
 def test_a_release_confirms_from_its_own_copyright_line_or_a_re_read():

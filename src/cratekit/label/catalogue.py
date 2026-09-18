@@ -102,7 +102,9 @@ class Catalogue(Protocol):
 
         Consumed by ``sweep.list_for_label`` through ``crawl.releases``, which
         pages it. RAISES for a label the provider cannot resolve; see the failure
-        contract above for why an absence may not be returned.
+        contract above for why an absence may not be returned. The object may be
+        a roster: the label's own page, every resolved seed, and artists
+        discovery found by album search and a credited artist walk.
         """
 
     def playlist_for(self, reference: str) -> Any:

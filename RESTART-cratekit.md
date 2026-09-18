@@ -4,7 +4,22 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-351, issue #93, `unit/issue93-a-seed-artist-cannot-be-pinned-by-identi`.**
+**Last merged: R-352, issue #94, `unit/issue94-the-adapter-s-roster-is-narrower-than-th`.**
+After own page and seeds, `TidalCatalogue.artist_for` searches the label
+name and numbered compilations `001` through `079`, keeps copyright matches
+via Cratekit `labels_from_copyright` and `labels_match`, and walks credited
+artists through `session.artist` and `listing.artist_releases`. Discovery
+runs when the roster is already non empty. An unresolved seed still refuses
+first. A rate limited album query skips that query and keeps a resolved own
+page. `AuthenticationError` on search still refuses. Catalogue members are
+unchanged. The V/A shortfall is R-392. Mutation table
+`docs/mutation/r352.md`, 17 of 17 killing, null control 0 of 7633, no
+collect drift, every restore verified against `git show HEAD`. R-352 is
+closed in place. The learning is
+`docs/solutions/workflow-issues/a-search-fake-that-returns-every-album-cannot-catch-numbered-results-being-ignored.md`.
+Main's highest residual number is R-394.
+
+**The session before, 2026-09-18, R-351, issue #93, `unit/issue93-a-seed-artist-cannot-be-pinned-by-identi`.**
 A seed of the form `id:<digits>` is looked up via `session.artist` with no
 search. A name seed stays exact fold and still refuses when two provider
 artists carry that name. An identifier seed plus a colliding same name
@@ -12,7 +27,7 @@ artist succeeds. A missing identifier refuses the label. A provider outage,
 and a KeyError or IndexError, is not read as absence. `ObjectNotFound` is
 the live client's missing shape. Bare `LookupError` is the fake's.
 Registry `add` stores `id:` seeds. Catalogue members are unchanged.
-Discovery is still issue 94, blocked on this until the merge. Mutation
+Discovery landed as issue 94. Mutation
 table `docs/mutation/r351.md`, 13 of 13 killing, null control 0 of 7619, no
 collect drift, every restore verified against `git show HEAD`. R-351 is
 closed in place. The learning is

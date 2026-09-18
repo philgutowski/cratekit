@@ -15843,6 +15843,20 @@ the shortfall this entry predicted, now with a number on it.
 registry gains seed artists for the labels whose artist page is not named for
 them, and a sweep of the 47 refuses materially fewer.
 
+**Closed 2026-09-18 on `unit/issue94-the-adapter-s-roster-is-narrower-than-th`.**
+After own page and seeds, `TidalCatalogue.artist_for` searches the label name
+and numbered compilations `001` through `079`, keeps copyright matches via
+`harvest.labels_from_copyright` and `verify.labels_match` against
+`entry.match or entry.name`, and walks credited artists through
+`session.artist` and `listing.artist_releases`. Discovery runs when the roster
+is already non empty. An unresolved seed still refuses first. A rate limited
+album query skips that query and keeps a resolved own page.
+`AuthenticationError` on search still refuses. Catalogue members are
+unchanged. The V/A shortfall is R-392. Mutation table
+`docs/mutation/r352.md`, 17 of 17 killing, null control 0 of 7633, no collect
+drift, every restore verified against `git show HEAD`. The learning is
+`docs/solutions/workflow-issues/a-search-fake-that-returns-every-album-cannot-catch-numbered-results-being-ignored.md`.
+
 ---
 
 ## R-353. The login classification is read off a fake's shape, not a live rejection
@@ -16879,5 +16893,75 @@ the driver claimed last.
 
 **Closes when:** the job cause names every distinct permanent reason, or a
 driven mixed permanent job shows that one reason is enough.
+
+---
+
+## R-392. A copyright matching Various compilation is found by search and then dropped
+
+**Found:** during R-352, 2026-09-18, the accepted shortfall the brief named.
+
+Discovery keeps a copyright matching compilation long enough to enqueue its
+credited artists. Offering goes through `LabelRoster` and `crawl.releases`,
+which list those artists, not the search hits. A Various compilation whose
+credited artists do not list that album is therefore never offered. Pinned by
+`test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered`.
+The next attended sweep can measure how often a carried label's new releases
+are only on compilations of that shape.
+
+**Measured cost:** unmeasured live. The suite's compilation is titled as a
+search hit and is absent from the credited artist's listing, and the sweep
+offers the artist's own matching release only.
+
+**Closes when:** the attended sitting counts how many copyright matching
+albums search finds that no roster artist lists, or a later unit offers those
+albums without adding a sixth catalogue member.
+
+---
+
+## R-393. A rate limit during a BFS listing is skipped as if that artist was read
+
+**Found:** during R-352's review, 2026-09-18.
+
+`_discover` skips `Exception` from `listing.artist_releases` other than
+`CratekitError`. The brief asked for that skip. Live `tidalapi` listing
+raises `TooManyRequests` on a 429, which is not a `CratekitError`. Driven
+with retries forced to zero, a 429 from `get_albums` skipped that artist and
+returned the others. The suite's skip pin is `UnlistableAct`, which raises
+`ListingNotPaginated` before the retry ladder. A live 429 during BFS therefore
+looks like a complete roster that happens not to include the unread artist.
+
+Search classifies the same 429 the other way: skip that query, keep the
+roster. Session death is `AuthenticationError` or `CratekitError` and still
+refuses.
+
+**Measured cost:** unmeasured live. Sitting 4 did not record a 429 during a
+label crawl. One unread artist on a 47 label sweep is a silent shortfall, not
+a refusal.
+
+**Why not fixed here.** Refusing the label on one artist's 429 is the search
+defect this unit just closed, moved onto listing. The brief said a listing
+failure skips that artist.
+
+**Closes when:** the attended sitting records whether a 429 during BFS
+happens, or listing 429 is retried without sleeping 31 seconds in the suite.
+
+---
+
+## R-394. Discovery's empty message says search found nothing when credited artists failed
+
+**Found:** during R-352's review, 2026-09-18.
+
+When album search keeps copyright matching hits and every credited id then
+fails `session.artist` or fails to list, the roster is empty and the refusal
+says discovery found nothing. Search found work. The refusal is still honest
+in the R-135 sense: no roster is returned, nothing is offered as a successful
+empty sweep. The wording is the miss.
+
+**Measured cost:** a person reads that the catalogue had no discovery hits,
+then retries a search that already kept albums. Unmeasured how often every
+credited artist then fails.
+
+**Closes when:** the message names that credited artists did not resolve, or
+that every credited artist failed to list, when search had kept hits.
 
 ---

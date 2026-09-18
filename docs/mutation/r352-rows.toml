@@ -1,0 +1,291 @@
+# R-352, author's table. Discovery expands the roster behind artist_for.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r352-rows.toml
+
+name = "r352"
+pass_kind = "light"
+
+# ---------------------------------------------------------------------------
+# This round's own guards
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "G1_skip_discovery"
+description = "the original defect: own page and seeds are the whole roster"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        artists.extend(self._discover(entry, artists))
+'''
+new = '''        pass
+'''
+
+[[rows]]
+id = "G2_skip_when_roster_nonempty"
+description = "discovery does not run when the label already has an artist page"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        needle = entry.match or entry.name
+        seen: set[str] = set()
+'''
+new = '''        if held:
+            return []
+        needle = entry.match or entry.name
+        seen: set[str] = set()
+'''
+
+[[rows]]
+id = "G3_discover_before_unresolved_seed"
+description = "discovery runs even when a seed did not resolve, so albums can rescue it"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if unresolved:
+            bits = []
+            for seed in unresolved:
+                if seed_identifier(seed) is not None:
+                    bits.append(f"no artist with identifier {seed!r}")
+                else:
+                    bits.append(f"no artist named exactly {seed!r}")
+            raise LabelUnresolvable(
+                f"the provider has {', '.join(bits)}, a seed of the label "
+                f"{entry.name!r}"
+            )
+        artists.extend(self._discover(entry, artists))
+'''
+new = '''        artists.extend(self._discover(entry, artists))
+        if unresolved:
+            bits = []
+            for seed in unresolved:
+                if seed_identifier(seed) is not None:
+                    bits.append(f"no artist with identifier {seed!r}")
+                else:
+                    bits.append(f"no artist named exactly {seed!r}")
+            raise LabelUnresolvable(
+                f"the provider has {', '.join(bits)}, a seed of the label "
+                f"{entry.name!r}"
+            )
+'''
+
+[[rows]]
+id = "G4_empty_message_omits_discovery"
+description = "an empty roster still says only that the label names no seed artists"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''                f"the provider has no artist named exactly {entry.name!r}, the "
+                f"label names no seed artists, and discovery found nothing"
+'''
+new = '''                f"the provider has no artist named exactly {entry.name!r} and the "
+                f"label names no seed artists to crawl instead"
+'''
+
+[[rows]]
+id = "G5_compilation_range_shrunk"
+description = "numbered compilation searches stop at 001"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''COMPILATION_RANGE = range(1, 80)
+'''
+new = '''COMPILATION_RANGE = range(1, 2)
+'''
+
+[[rows]]
+id = "G6_name_query_only"
+description = "discovery searches the bare label name and no numbered compilations"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''    return (name, *(f"{name} {number:03d}" for number in COMPILATION_RANGE))
+'''
+new = '''    return (name,)
+'''
+
+[[rows]]
+id = "G7_ignore_match_needle"
+description = "copyright match uses the display name and ignores entry.match"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        needle = entry.match or entry.name
+'''
+new = '''        needle = entry.name
+'''
+
+[[rows]]
+id = "G8_artist_lookup_outage_skipped"
+description = "a session dead failure looking up a credited artist is skipped as a listing miss"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            artist = self._artist_identified(artist_id)
+            if artist is None:
+                continue
+'''
+new = '''            try:
+                artist = self._artist_identified(artist_id)
+            except Exception:
+                continue
+            if artist is None:
+                continue
+'''
+
+[[rows]]
+id = "G9_listing_failure_refuses"
+description = "a listing failure on one discovered artist refuses the whole label"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            except Exception:  # noqa: BLE001 - one artist's listing, not the session
+                continue
+'''
+new = '''            except Exception:  # noqa: BLE001 - one artist's listing, not the session
+                raise
+'''
+
+[[rows]]
+id = "G10_no_collaborator_enqueue"
+description = "BFS does not enqueue credited artists from listed matching releases"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            for release in releases:
+                if _credits_label(release, needle):
+                    for identity in _credited_ids(release):
+                        enqueue(identity)
+'''
+new = '''            for release in releases:
+                if _credits_label(release, needle):
+                    pass
+'''
+
+[[rows]]
+id = "G11_discovered_not_added"
+description = "credited artists are walked but never appended to the roster"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            if identity not in held_ids:
+                discovered.append(artist)
+                held_ids.add(identity)
+'''
+new = '''            if identity not in held_ids:
+                held_ids.add(identity)
+'''
+
+[[rows]]
+id = "G12_keep_copyright_mismatches"
+description = "album search keeps every hit, not only copyright matches"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''                if _credits_label(album, needle):
+                    for identity in _credited_ids(album):
+                        enqueue(identity)
+'''
+new = '''                if True:
+                    for identity in _credited_ids(album):
+                        enqueue(identity)
+'''
+
+[[rows]]
+id = "G13_duplicate_roster_member"
+description = "a discovered artist already on the roster is appended again"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            if identity not in held_ids:
+                discovered.append(artist)
+                held_ids.add(identity)
+'''
+new = '''            discovered.append(artist)
+            held_ids.add(identity)
+'''
+
+[[rows]]
+id = "G14_search_rate_limit_refuses"
+description = "TooManyRequests from one album query propagates and discards the own page"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            try:
+                found = self._session.search(
+                    query, models=[tidalapi.album.Album], limit=SEARCH_LIMIT
+                )
+            except CratekitError:
+                raise
+            except tidalapi.exceptions.AuthenticationError:
+                raise
+            except Exception:  # noqa: BLE001 - one query, not the session
+                continue
+'''
+new = '''            found = self._session.search(
+                query, models=[tidalapi.album.Album], limit=SEARCH_LIMIT
+            )
+'''
+
+[[rows]]
+id = "G15_auth_error_skipped"
+description = "an AuthenticationError on album search is skipped as a one query miss"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''            except CratekitError:
+                raise
+            except tidalapi.exceptions.AuthenticationError:
+                raise
+            except Exception:  # noqa: BLE001 - one query, not the session
+                continue
+'''
+new = '''            except CratekitError:
+                raise
+            except Exception:  # noqa: BLE001 - one query, not the session
+                continue
+'''
+
+# ---------------------------------------------------------------------------
+# Sample of the existing absence contract this unit still owes
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A1_unresolved_seed_skipped"
+description = "crawl the seeds that resolved and skip the one that did not"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if unresolved:
+            bits = []
+'''
+new = '''        if unresolved and not artists:
+            bits = []
+'''
+
+[[rows]]
+id = "A2_empty_roster_returned"
+description = "return an empty roster for a label nothing resolved"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if not artists:
+            raise LabelUnresolvable(
+'''
+new = '''        if False and not artists:
+            raise LabelUnresolvable(
+'''
+
+[[dropped]]
+id = "G14_search_limit_one"
+description = "SEARCH_LIMIT becomes 1"
+reason = "ranked below the cap: FakeClient ignores limit, so the row cannot kill"
+
+[[dropped]]
+id = "G15_dfs_not_bfs"
+description = "queue.pop instead of popleft"
+reason = "ranked below the cap: tests do not pin walk order, only membership"
+
+[[dropped]]
+id = "G16_listing_cratekiterror_skipped"
+description = "drop the CratekitError reraise around listing.artist_releases"
+reason = "ranked below the cap: session dead is driven on session.artist, and a CratekitError from get_albums spends the retry ladder first"

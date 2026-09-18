@@ -1,0 +1,576 @@
+{
+  "name": "r352",
+  "pass_kind": "light",
+  "branch": "unit/issue94-the-adapter-s-roster-is-narrower-than-th",
+  "head": "19db0ac",
+  "when": "2026-09-18 14:53 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7633,
+  "baseline_exit": 0,
+  "pytest_runs": 20,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/tidal_catalogue.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/tidal_catalogue.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2c74cee1745734b6",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7633,
+    "baseline_collected": 7633,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_skip_discovery",
+      "description": "the original defect: own page and seeds are the whole roster",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7525f095d47f6611",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 11,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_compilation_returned_only_for_a_numbered_query_is_consumed",
+        "tests/test_label_tidal_catalogue.py::test_a_listing_failure_on_one_discovered_artist_skips_that_artist",
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page",
+        "tests/test_label_tidal_catalogue.py::test_a_session_dead_during_discovery_refuses_the_label",
+        "tests/test_label_tidal_catalogue.py::test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered",
+        "tests/test_label_tidal_catalogue.py::test_an_authentication_error_on_album_search_still_refuses_the_label",
+        "tests/test_label_tidal_catalogue.py::test_discovery_enqueues_collaborators_from_listed_matching_releases",
+        "tests/test_label_tidal_catalogue.py::test_discovery_from_a_copyright_matching_compilation_offers_the_credited_artist",
+        "tests/test_label_tidal_catalogue.py::test_discovery_matches_copyright_against_the_entry_match_needle",
+        "tests/test_label_tidal_catalogue.py::test_discovery_runs_when_the_label_already_has_an_artist_page",
+        "tests/test_label_tidal_catalogue.py::test_numbered_compilation_queries_are_the_production_range"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        artists.extend(self._discover(entry, artists))\n",
+      "new": "        pass\n"
+    },
+    {
+      "id": "G2_skip_when_roster_nonempty",
+      "description": "discovery does not run when the label already has an artist page",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "18cc4ee8983e02c2",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page",
+        "tests/test_label_tidal_catalogue.py::test_an_authentication_error_on_album_search_still_refuses_the_label",
+        "tests/test_label_tidal_catalogue.py::test_discovery_runs_when_the_label_already_has_an_artist_page"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        needle = entry.match or entry.name\n        seen: set[str] = set()\n",
+      "new": "        if held:\n            return []\n        needle = entry.match or entry.name\n        seen: set[str] = set()\n"
+    },
+    {
+      "id": "G3_discover_before_unresolved_seed",
+      "description": "discovery runs even when a seed did not resolve, so albums can rescue it",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9a3a4645adcbc1cc",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_name_seed_refuses_even_when_discovery_would_find_albums"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if unresolved:\n            bits = []\n            for seed in unresolved:\n                if seed_identifier(seed) is not None:\n                    bits.append(f\"no artist with identifier {seed!r}\")\n                else:\n                    bits.append(f\"no artist named exactly {seed!r}\")\n            raise LabelUnresolvable(\n                f\"the provider has {', '.join(bits)}, a seed of the label \"\n                f\"{entry.name!r}\"\n            )\n        artists.extend(self._discover(entry, artists))\n",
+      "new": "        artists.extend(self._discover(entry, artists))\n        if unresolved:\n            bits = []\n            for seed in unresolved:\n                if seed_identifier(seed) is not None:\n                    bits.append(f\"no artist with identifier {seed!r}\")\n                else:\n                    bits.append(f\"no artist named exactly {seed!r}\")\n            raise LabelUnresolvable(\n                f\"the provider has {', '.join(bits)}, a seed of the label \"\n                f\"{entry.name!r}\"\n            )\n"
+    },
+    {
+      "id": "G4_empty_message_omits_discovery",
+      "description": "an empty roster still says only that the label names no seed artists",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5469dccb4734cfb9",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_discovery_that_finds_only_copyright_mismatches_still_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                f\"the provider has no artist named exactly {entry.name!r}, the \"\n                f\"label names no seed artists, and discovery found nothing\"\n",
+      "new": "                f\"the provider has no artist named exactly {entry.name!r} and the \"\n                f\"label names no seed artists to crawl instead\"\n"
+    },
+    {
+      "id": "G5_compilation_range_shrunk",
+      "description": "numbered compilation searches stop at 001",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f4da36bb94b4a4f2",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_compilation_returned_only_for_a_numbered_query_is_consumed",
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page",
+        "tests/test_label_tidal_catalogue.py::test_numbered_compilation_queries_are_the_production_range"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "COMPILATION_RANGE = range(1, 80)\n",
+      "new": "COMPILATION_RANGE = range(1, 2)\n"
+    },
+    {
+      "id": "G6_name_query_only",
+      "description": "discovery searches the bare label name and no numbered compilations",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b085017b136d17e4",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_compilation_returned_only_for_a_numbered_query_is_consumed",
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page",
+        "tests/test_label_tidal_catalogue.py::test_numbered_compilation_queries_are_the_production_range"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (name, *(f\"{name} {number:03d}\" for number in COMPILATION_RANGE))\n",
+      "new": "    return (name,)\n"
+    },
+    {
+      "id": "G7_ignore_match_needle",
+      "description": "copyright match uses the display name and ignores entry.match",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "207766d6900c42f1",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_discovery_matches_copyright_against_the_entry_match_needle"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        needle = entry.match or entry.name\n",
+      "new": "        needle = entry.name\n"
+    },
+    {
+      "id": "G8_artist_lookup_outage_skipped",
+      "description": "a session dead failure looking up a credited artist is skipped as a listing miss",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "accf1ac614afb3d4",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_session_dead_during_discovery_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            artist = self._artist_identified(artist_id)\n            if artist is None:\n                continue\n",
+      "new": "            try:\n                artist = self._artist_identified(artist_id)\n            except Exception:\n                continue\n            if artist is None:\n                continue\n"
+    },
+    {
+      "id": "G9_listing_failure_refuses",
+      "description": "a listing failure on one discovered artist refuses the whole label",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "007cd6887afe1344",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_listing_failure_on_one_discovered_artist_skips_that_artist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            except Exception:  # noqa: BLE001 - one artist's listing, not the session\n                continue\n",
+      "new": "            except Exception:  # noqa: BLE001 - one artist's listing, not the session\n                raise\n"
+    },
+    {
+      "id": "G10_no_collaborator_enqueue",
+      "description": "BFS does not enqueue credited artists from listed matching releases",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "712a5bd543c34f16",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_discovery_enqueues_collaborators_from_listed_matching_releases"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            for release in releases:\n                if _credits_label(release, needle):\n                    for identity in _credited_ids(release):\n                        enqueue(identity)\n",
+      "new": "            for release in releases:\n                if _credits_label(release, needle):\n                    pass\n"
+    },
+    {
+      "id": "G11_discovered_not_added",
+      "description": "credited artists are walked but never appended to the roster",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e7ac1633999cfe9c",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_compilation_returned_only_for_a_numbered_query_is_consumed",
+        "tests/test_label_tidal_catalogue.py::test_a_listing_failure_on_one_discovered_artist_skips_that_artist",
+        "tests/test_label_tidal_catalogue.py::test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered",
+        "tests/test_label_tidal_catalogue.py::test_discovery_enqueues_collaborators_from_listed_matching_releases",
+        "tests/test_label_tidal_catalogue.py::test_discovery_from_a_copyright_matching_compilation_offers_the_credited_artist",
+        "tests/test_label_tidal_catalogue.py::test_discovery_matches_copyright_against_the_entry_match_needle",
+        "tests/test_label_tidal_catalogue.py::test_discovery_runs_when_the_label_already_has_an_artist_page"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if identity not in held_ids:\n                discovered.append(artist)\n                held_ids.add(identity)\n",
+      "new": "            if identity not in held_ids:\n                held_ids.add(identity)\n"
+    },
+    {
+      "id": "G12_keep_copyright_mismatches",
+      "description": "album search keeps every hit, not only copyright matches",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8607f495e8fe1ee8",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_discovery_that_finds_only_copyright_mismatches_still_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if _credits_label(album, needle):\n                    for identity in _credited_ids(album):\n                        enqueue(identity)\n",
+      "new": "                if True:\n                    for identity in _credited_ids(album):\n                        enqueue(identity)\n"
+    },
+    {
+      "id": "G13_duplicate_roster_member",
+      "description": "a discovered artist already on the roster is appended again",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0a71417cbd763337",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_discovered_artist_already_on_the_roster_is_not_added_twice"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if identity not in held_ids:\n                discovered.append(artist)\n                held_ids.add(identity)\n",
+      "new": "            discovered.append(artist)\n            held_ids.add(identity)\n"
+    },
+    {
+      "id": "G14_search_rate_limit_refuses",
+      "description": "TooManyRequests from one album query propagates and discards the own page",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2dbddba194a4646c",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            try:\n                found = self._session.search(\n                    query, models=[tidalapi.album.Album], limit=SEARCH_LIMIT\n                )\n            except CratekitError:\n                raise\n            except tidalapi.exceptions.AuthenticationError:\n                raise\n            except Exception:  # noqa: BLE001 - one query, not the session\n                continue\n",
+      "new": "            found = self._session.search(\n                query, models=[tidalapi.album.Album], limit=SEARCH_LIMIT\n            )\n"
+    },
+    {
+      "id": "G15_auth_error_skipped",
+      "description": "an AuthenticationError on album search is skipped as a one query miss",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7ed2e4859f470761",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_authentication_error_on_album_search_still_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            except CratekitError:\n                raise\n            except tidalapi.exceptions.AuthenticationError:\n                raise\n            except Exception:  # noqa: BLE001 - one query, not the session\n                continue\n",
+      "new": "            except CratekitError:\n                raise\n            except Exception:  # noqa: BLE001 - one query, not the session\n                continue\n"
+    },
+    {
+      "id": "A1_unresolved_seed_skipped",
+      "description": "crawl the seeds that resolved and skip the one that did not",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c34715348fea8d29",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_seed_that_does_not_resolve_refuses_the_label_rather_than_narrowing_it",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolved_id_seed_refuses_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if unresolved:\n            bits = []\n",
+      "new": "        if unresolved and not artists:\n            bits = []\n"
+    },
+    {
+      "id": "A2_empty_roster_returned",
+      "description": "return an empty roster for a label nothing resolved",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1948855a43123954",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_near_name_is_not_the_label",
+        "tests/test_label_tidal_catalogue.py::test_an_unresolvable_label_raises_and_never_returns_none",
+        "tests/test_label_tidal_catalogue.py::test_discovery_that_finds_only_copyright_mismatches_still_refuses",
+        "tests/test_label_tidal_catalogue.py::test_numbered_compilation_queries_are_the_production_range",
+        "tests/test_label_tidal_catalogue.py::test_the_absence_contract_holds_through_the_sweep"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not artists:\n            raise LabelUnresolvable(\n",
+      "new": "        if False and not artists:\n            raise LabelUnresolvable(\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "G14_search_limit_one",
+      "description": "SEARCH_LIMIT becomes 1",
+      "reason": "ranked below the cap: FakeClient ignores limit, so the row cannot kill"
+    },
+    {
+      "id": "G15_dfs_not_bfs",
+      "description": "queue.pop instead of popleft",
+      "reason": "ranked below the cap: tests do not pin walk order, only membership"
+    },
+    {
+      "id": "G16_listing_cratekiterror_skipped",
+      "description": "drop the CratekitError reraise around listing.artist_releases",
+      "reason": "ranked below the cap: session dead is driven on session.artist, and a CratekitError from get_albums spends the retry ladder first"
+    }
+  ]
+}
