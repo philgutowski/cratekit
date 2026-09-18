@@ -9,7 +9,10 @@ in the suite scans this file for a direct paging call and for a vendored import.
 **ADD ONLY, BECAUSE THE PROTOCOL IS.** ``service.RemoteAccount`` declares no
 remove, and this class calls no remove on the client. The outbound gates and the
 confirm digest sit in front of every write; this module adds no gate and removes
-none.
+none. ``rename_playlist`` is the one member that writes to something the product
+did not create, and it is still not a removal: it retitles, changes no membership
+and deletes nothing. The suite scans this file for a removal shape and a retitle
+is not one.
 
 **THE WORKERS RELY ON THREE RULES THAT ARE NOT VISIBLE IN THEIR CODE.**
 
@@ -53,6 +56,7 @@ import tidalapi  # noqa: F401
 
 from cratekit.acquire import listing, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
+from cratekit.core.cause import Scope, refuse
 from cratekit.modules.outbound import account
 
 #: How many times a write or a single lookup is retried after its first attempt.
@@ -106,7 +110,10 @@ def track_reference(identity: str) -> str | None:
 
 
 class TidalAccount:
-    """The six add only ``RemoteAccount`` members, over one logged in client."""
+    """The seven ``RemoteAccount`` members, over one logged in client.
+
+    Six add only, and one that retitles a playlist the account owns.
+    """
 
     def __init__(
         self, session: Any, *, sleep: Callable[[float], None] | None = None
@@ -292,6 +299,64 @@ class TidalAccount:
 
     def playlist_tracks(self, playlist_id: str) -> tuple[str, ...]:
         return tuple(self._membership(playlist_id))
+
+    def rename_playlist(self, playlist_id: str, name: str) -> None:
+        """Retitle the playlist, leaving its membership and description alone.
+
+        RETRIED LIKE A WRITE AND NOT LIKE A CREATE. The reason ``create_playlist``
+        takes no retry is that a create which reached the provider and then timed
+        out would be retried into a second playlist nothing records. A retitle
+        names the playlist it edits and asks for one fixed title, so the retry
+        asks for the state the first attempt asked for.
+
+        A PLAYLIST THE SESSION DOES NOT OWN COMES BACK WITHOUT AN EDITOR, since
+        the client hands out a read only object for somebody else's playlist.
+        That is refused rather than passed over, because a rename reported as
+        done over a playlist that still carries its old title is how the source
+        system is told a sweep finished that it will offer again.
+
+        AN EMPTY TITLE IS REFUSED HERE AND NOT AT THE PROVIDER. The client's own
+        edit reads a falsy title as "keep the current one" and answers True, so
+        an empty string would be a write that changed nothing, reported as a
+        rename that succeeded. That is the same wrong answer the two refusals
+        above exist to prevent, arriving through the one door neither watches.
+        """
+        # The title is NOT stripped for the write, only for the emptiness test.
+        # A caller that asked for a title with a trailing space asked for it.
+        wanted = str(name)
+        doing = f"rename the playlist {playlist_id} to {wanted!r}"
+        if not wanted.strip():
+            # NOT ``provider_failure``. The provider did not fail, and its
+            # remedy is "resume the job to retry this item", which is advice
+            # that cannot work: the same empty title fails the same way.
+            raise refuse(
+                "internal-error",
+                f"a rename of the playlist {playlist_id} was asked for with no "
+                f"title; the client reads a falsy title as keep the current one "
+                f"and answers that it succeeded, so nothing was sent",
+                scope=Scope.SOURCE,
+                origin=("outbound", "account"),
+                detail={"playlist_id": str(playlist_id)},
+            )
+        playlist = self._playlist(playlist_id)
+        retitle = getattr(playlist, "edit", None)
+        if not callable(retitle):
+            raise account.provider_failure(
+                LookupError(
+                    f"the provider's playlist {playlist_id!r} cannot be retitled by "
+                    f"this account"
+                ),
+                doing,
+            )
+        # The client answers a refused edit with ``False`` rather than a raise,
+        # on ``add_heart``'s shape, and returning here would report a mark the
+        # account does not carry.
+        accepted = self._call(doing, lambda: retitle(title=wanted))
+        if accepted is False or accepted is _ABSENT:
+            raise account.provider_failure(
+                RuntimeError("the provider did not accept the new playlist title"),
+                doing,
+            )
 
 
 def open_account() -> TidalAccount:

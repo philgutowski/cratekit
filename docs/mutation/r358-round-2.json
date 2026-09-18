@@ -1,0 +1,158 @@
+{
+  "name": "r358-round-2",
+  "pass_kind": "light",
+  "branch": "relay/105",
+  "head": "abbcbf4",
+  "when": "2026-09-18 20:39 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7674,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/modules/outbound/tidal_account.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/modules/outbound/tidal_account.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "fe7946903057798e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7674,
+    "baseline_collected": 7674,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A3_editor_check",
+      "description": "Drop the editor check, so a playlist the account cannot edit is renamed",
+      "file": "src/cratekit/modules/outbound/tidal_account.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df4caa5dc93293f1",
+      "subset": [
+        "tests/test_outbound_tidal_account.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_outbound_tidal_account.py::test_a_playlist_the_account_cannot_edit_refuses_rather_than_reporting_a_rename"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not callable(retitle):\n            raise account.provider_failure(\n                LookupError(\n                    f\"the provider's playlist {playlist_id!r} cannot be retitled by \"\n                    f\"this account\"\n                ),\n                doing,\n            )\n",
+      "new": ""
+    },
+    {
+      "id": "A5_absent_answer",
+      "description": "Accept an explicit not found as a rename that landed",
+      "file": "src/cratekit/modules/outbound/tidal_account.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34f581c663bfecb5",
+      "subset": [
+        "tests/test_outbound_tidal_account.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_outbound_tidal_account.py::test_a_playlist_deleted_between_the_open_and_the_edit_is_the_items_cause"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        accepted = self._call(doing, lambda: retitle(title=wanted))\n        if accepted is False or accepted is _ABSENT:",
+      "new": "        accepted = self._call(doing, lambda: retitle(title=wanted))\n        if accepted is False:"
+    },
+    {
+      "id": "A7_empty_title_message",
+      "description": "Reword the empty-title refusal, never append to it",
+      "file": "src/cratekit/modules/outbound/tidal_account.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3b1a092b72f17624",
+      "subset": [
+        "tests/test_outbound_tidal_account.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_outbound_tidal_account.py::test_a_rename_with_no_title_is_refused_before_the_client_sees_it[   ]",
+        "tests/test_outbound_tidal_account.py::test_a_rename_with_no_title_is_refused_before_the_client_sees_it[\\n]",
+        "tests/test_outbound_tidal_account.py::test_a_rename_with_no_title_is_refused_before_the_client_sees_it[]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                f\"a rename of the playlist {playlist_id} was asked for with no \"\n                f\"title; the client reads a falsy title as keep the current one \"\n                f\"and answers that it succeeded, so nothing was sent\",",
+      "new": "                f\"the playlist {playlist_id} was given a blank title, which the \"\n                f\"client would read as an instruction to keep the current one\","
+    },
+    {
+      "id": "S3_gone_from_the_listing",
+      "description": "Drop the listed check, so a playlist the account no longer lists is pending",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a5f99c644841fc94",
+      "subset": [
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 45,
+      "baseline_collected": 45,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_the_pass_never_listed_is_not_pending_at_all"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if listed.get(identity) and not is_swept_name(listed[identity])",
+      "new": "        if not is_swept_name(listed.get(identity) or \"\")"
+    }
+  ],
+  "dropped": []
+}

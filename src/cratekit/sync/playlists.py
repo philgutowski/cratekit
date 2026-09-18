@@ -26,14 +26,28 @@ job is not recorded and its playlist is offered again. Nothing is ever filtered
 by title except the two naming conventions above, which are conventions spelled
 in the name by the systems that apply them, and neither is stored (D5).
 
-**THE MARK IS UNBOUND.** ``sync/marks.py`` states the rule: a remote playlist is
-renamed only after the importable file exists and a recheck holds. Two things
-are missing for that here, and both are reported rather than worked around. The
-account seam, ``modules.outbound.service.RemoteAccount``, declares no rename, so
-there is nothing to apply the mark through; and the intake worker writes no
-importable file, since it resolves tracks and does not acquire them. So every
-pass reports the mark as :data:`MARK_UNBOUND`, on R-203's pattern, and the cursor
-is the only record a sweep leaves.
+**THE MARK IS HALF BOUND, AND THE PASS SAYS WHICH HALF.** ``sync/marks.py``
+states the rule: a remote playlist is renamed only after the importable file
+exists and a recheck holds. Two things were missing for that, and R-358 closes
+one of them. The account seam, ``modules.outbound.service.RemoteAccount``, now
+declares ``rename_playlist``, so there is something to apply the mark through,
+and :func:`mark_swept` is that application. What is still missing is the file:
+the intake worker a sweep composes writes no importable file, since it resolves
+tracks and does not acquire them. So nothing calls :func:`mark_swept` on the
+production path, every pass still reports the mark as :data:`MARK_UNBOUND`, on
+R-203's pattern, and the cursor is still the only record a sweep leaves.
+
+**THE RECHECK IS A SECOND READ, NOT THE PLAN'S OWN.** :func:`mark_swept` reads
+the account listing again rather than trusting the one :func:`plan` already took.
+A recheck served from the planning read confirms only that the plan was
+internally consistent, which it always is, and the thing it is supposed to catch
+is a playlist that changed between the plan and the mark. That second read is
+taken once and shared by every mark in the batch.
+
+**THE MARK SET IS THE CURSOR, NOT WHAT THIS PASS ADDED TO IT.** The cursor is
+written before anything is marked and moves whether or not the mark lands, so a
+set taken from the newly recorded is a set nothing can offer a second time. See
+:func:`pending_marks`, which is where the reasoning lives.
 
 Layer: modules.
 """
@@ -43,14 +57,22 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from cratekit.core import config, jobs
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
 from cratekit.label.catalogue import AccountPlaylist, Catalogue
+from cratekit.sync import marks
 from cratekit.sync.watermarks import WatermarkStore
+
+if TYPE_CHECKING:  # pragma: no cover - the seam's type, never imported at runtime
+    # Behind the guard because this source is CORE, the slim profile runs it
+    # alone, and the outbound package is a feature module. The annotation is the
+    # honest one, and a slim install still imports nothing extra to read it.
+    from cratekit.modules.outbound.service import RemoteAccount
 
 #: This source's identifier, as ``sync.sources`` declares it and as the jobs it
 #: queues carry it.
@@ -61,9 +83,16 @@ SOURCE_ID = "playlists"
 #: reinvented, because the live account already carries it.
 SWEPT_PREFIX = "DOWNLOADED "
 
-#: What the pass says about the mark step, every time, until the account seam
-#: can rename a playlist.
+#: What the pass says about the mark step when nothing marked the account,
+#: which is every production pass until a sweep writes an importable file.
 MARK_UNBOUND = "unbound"
+
+#: What the pass says when :func:`mark_swept` ran against the account seam.
+MARK_APPLIED = "applied"
+
+#: The kind every mark this source defers carries. One kind, because the only
+#: remote side effect a sweep leaves is the swept prefix on a title.
+MARK_KIND = "prefix"
 
 #: The two refusals one playlist's listing may end in that are about THAT
 #: playlist. Any other refusal, a credential or an unbound adapter, is about the
@@ -151,15 +180,18 @@ def open_playlists(found: Iterable[jobs.Job]) -> frozenset[str]:
 
 def reconcile(store, cfg: config.Config, *, handler_key: str) -> tuple[str, ...]:
     """Record every playlist whose job completed cleanly. Returns the newly recorded."""
-    marks = WatermarkStore(cfg)
-    existing = marks.read(SOURCE_ID)
+    # NOT ``marks``, which is this module's deferred mark engine. The local name
+    # used to be ``marks`` and shadowed nothing, because nothing here imported
+    # the engine until R-358 did.
+    cursor = WatermarkStore(cfg)
+    existing = cursor.read(SOURCE_ID)
     known = set(existing.swept) if existing is not None else set()
     fresh = [
         identity
         for identity in completed(source_jobs(store, cfg, handler_key=handler_key))
         if identity not in known
     ]
-    marks.record_swept(SOURCE_ID, fresh, library_id=cfg.library.volume_id)
+    cursor.record_swept(SOURCE_ID, fresh, library_id=cfg.library.volume_id)
     return tuple(fresh)
 
 
@@ -173,6 +205,11 @@ class Sweep:
     excluded: dict[str, Excluded] = field(default_factory=dict)
     unreadable: dict[str, str] = field(default_factory=dict)
     recorded_now: tuple[str, ...] = ()
+    #: THE WHOLE CURSOR after this pass reconciled, not only what it added. It
+    #: is what :func:`mark_swept` marks from, for the reason that function
+    #: gives: the cursor moves whether or not the mark lands, so a mark set
+    #: taken from :attr:`recorded_now` is a set nothing can offer a second time.
+    recorded: frozenset[str] = frozenset()
 
     def names(self) -> dict[str, str]:
         return {playlist.playlist_id: playlist.name for playlist in self.listed}
@@ -212,7 +249,11 @@ def plan(
     recorded = frozenset(existing.swept) if existing is not None else frozenset()
     in_flight = open_playlists(source_jobs(store, cfg, handler_key=handler_key))
 
-    sweep = Sweep(listed=_listed_or_refuse(found), recorded_now=recorded_now)
+    sweep = Sweep(
+        listed=_listed_or_refuse(found),
+        recorded_now=recorded_now,
+        recorded=recorded,
+    )
     for playlist in sweep.listed:
         reason = exclusion(playlist, recorded=recorded, in_flight=in_flight)
         if reason is not None:
@@ -263,8 +304,103 @@ def queue(
         )
 
 
-def report(sweep: Sweep, filed: Sequence[jobs.Job]) -> dict[str, Any]:
-    """The playlists block of the pass summary. Identifiers first, names to read."""
+def pending_marks(sweep: Sweep) -> tuple[marks.PendingMark, ...]:
+    """Every recorded playlist the account still lists under an unprefixed name.
+
+    **THE SET IS THE WHOLE CURSOR AND NOT** :attr:`Sweep.recorded_now`. The
+    cursor is written by :func:`reconcile` at the top of :func:`plan`, before
+    anything could have marked anything, and it moves whether the mark then
+    lands, refuses or finds a stale recheck. So a set taken from what this pass
+    ADDED is a set no later pass can offer again: the playlist is recorded, it
+    is excluded as :attr:`Excluded.RECORDED` forever after, and it never carries
+    the prefix. Taking the set from what the cursor HOLDS makes a mark that did
+    not land this pass an ordinary candidate on the next one.
+
+    What ends the retrying is the mark itself. A playlist the prefix reached is
+    listed under a swept name, and a swept name is skipped here, so the set
+    shrinks by exactly what landed. That is also why a name already carrying the
+    prefix is skipped rather than marked again: the prefix goes on the title, so
+    a second pass over one would build ``DOWNLOADED DOWNLOADED Warmup``.
+
+    A recorded playlist the account no longer lists has no name to prefix and is
+    not pending. Nothing is owed to a playlist that is gone.
+    """
+    listed = sweep.names()
+    return tuple(
+        marks.PendingMark(target_id=identity, kind=MARK_KIND)
+        for identity in sorted(sweep.recorded)
+        if listed.get(identity) and not is_swept_name(listed[identity])
+    )
+
+
+def mark_swept(
+    sweep: Sweep,
+    found: Catalogue,
+    account: RemoteAccount,
+    *,
+    local_output: Path,
+    applied: list[str] | None = None,
+) -> tuple[str, ...]:
+    """Prefix the recorded playlists on the account. Returns the marked ids.
+
+    **THE FILE IS CHECKED FIRST AND BY** :func:`marks.apply_deferred`, which
+    refuses ``sync-marks-blocked`` when the importable file is missing or empty.
+    There is deliberately no early return in front of it: a call with nothing
+    pending and no file still refuses, because a caller that has no file is
+    wrong about the run whether or not this pass happened to record anything.
+
+    ``applied`` is APPENDED TO AS EACH RENAME LANDS, on :func:`queue`'s pattern
+    and for its reason. Each rename is its own remote write, a failure on the
+    third playlist leaves the first two renamed on the account, and the return
+    value is gone when this raises. A caller that wants to name what landed
+    passes a list; a caller that does not is relying on the next pass to see the
+    prefix, which :func:`pending_marks` makes true.
+
+    **NOTHING ON THE PRODUCTION PATH CALLS THIS YET.** The intake worker a sweep
+    composes resolves tracks and acquires none, so it writes no importable file
+    and there is nothing to hand ``local_output``. ``sync.cli`` therefore reports
+    :data:`MARK_UNBOUND`. That half of R-358 is attended, since a first live
+    rename is a write to a real account.
+    """
+    listed = sweep.names()
+    landed = applied if applied is not None else []
+    held: list[dict[str, str]] = []
+
+    def current() -> dict[str, str]:
+        """The account's names now, read ONCE and only when a mark asks."""
+        if not held:
+            held.append(
+                {
+                    playlist.playlist_id: playlist.name
+                    for playlist in _listed_or_refuse(found)
+                }
+            )
+        return held[0]
+
+    def recheck(mark: marks.PendingMark) -> bool:
+        name = listed.get(mark.target_id) or ""
+        return bool(name) and current().get(mark.target_id) == name
+
+    def apply(mark: marks.PendingMark) -> None:
+        account.rename_playlist(mark.target_id, SWEPT_PREFIX + listed[mark.target_id])
+        landed.append(mark.target_id)
+
+    return marks.apply_deferred(
+        pending_marks(sweep), local_output=local_output, recheck=recheck, apply=apply
+    )
+
+
+def report(
+    sweep: Sweep, filed: Sequence[jobs.Job], *, marked: Sequence[str] | None = None
+) -> dict[str, Any]:
+    """The playlists block of the pass summary. Identifiers first, names to read.
+
+    ``marked`` is what :func:`mark_swept` returned, or ``None`` when the pass
+    never reached the mark step. The two are different facts and the block says
+    which: ``None`` reports :data:`MARK_UNBOUND`, and an empty result reports
+    :data:`MARK_APPLIED` with nothing under ``marked``, which is a mark step that
+    ran and found every recheck stale.
+    """
     names = sweep.names()
     return {
         "listed": len(sweep.listed),
@@ -283,11 +419,14 @@ def report(sweep: Sweep, filed: Sequence[jobs.Job]) -> dict[str, Any]:
         },
         "unreadable": dict(sweep.unreadable),
         "recorded_now": list(sweep.recorded_now),
-        "mark": MARK_UNBOUND,
+        "mark": MARK_UNBOUND if marked is None else MARK_APPLIED,
+        "marked": list(marked or ()),
     }
 
 
 __all__ = [
+    "MARK_APPLIED",
+    "MARK_KIND",
     "MARK_UNBOUND",
     "PER_PLAYLIST_REASONS",
     "SOURCE_ID",
@@ -297,7 +436,9 @@ __all__ = [
     "completed",
     "exclusion",
     "is_swept_name",
+    "mark_swept",
     "open_playlists",
+    "pending_marks",
     "plan",
     "queue",
     "reconcile",
