@@ -1,0 +1,265 @@
+name = "u68"
+pass_kind = "light"
+
+# U68 adds the one writer of the list document, acquire/listdoc.py. It writes
+# files, so every new guard is removed alone. The unit is new, so there are no
+# existing guards of its own to sample. Subset: tests/test_listdoc.py, the only
+# file importing the module; a zero is promoted to the full suite.
+
+# ---------------------------------------------------------------------------
+# Which rows reach the document
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "D1_unlisted_on_blank_ref"
+description = "A row with no provider id is written to the document instead of being returned unlisted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        if not ref:
+            unlisted.append(row)
+            continue'''
+new = '''        if False:
+            unlisted.append(row)
+            continue'''
+
+[[rows]]
+id = "D2_first_id_wins"
+description = "A repeated id is written again instead of being folded into its first occurrence"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        if ref in seen:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "D3_ref_stripped"
+description = "An id is compared as given rather than stripped, as the reader strips it"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        ref = str(row.ref or "").strip()'''
+new = '''        ref = str(row.ref or "")'''
+
+[[rows]]
+id = "D4_reader_check"
+description = "Drop the read back through the reader's own row recognition, so a row the reader refuses is written"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        track = _track(row, ref)
+        _checked(track, position)'''
+new = '''        track = _track(row, ref)'''
+
+[[rows]]
+id = "D5_no_listable_row"
+description = "No listable row writes an empty document instead of writing nothing"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''    if not listed:
+        return Written(None, None, (), unlisted)'''
+new = '''    if False:
+        return Written(None, None, (), unlisted)'''
+
+# ---------------------------------------------------------------------------
+# What a written track carries
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "T1_version_written"
+description = "A declared version is not written to the track"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''    if row.version.strip():
+        track["version"]'''
+new = '''    if False:
+        track["version"]'''
+
+[[rows]]
+id = "T2_isrc_written"
+description = "An isrc is not written to the track"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''    if row.isrc and row.isrc.strip():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "T3_key_written"
+description = "A key is not written to the track"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''    if row.key and row.key.strip():'''
+new = '''    if False:'''
+
+# ---------------------------------------------------------------------------
+# rows_of: turning read tracks into rows
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "W1_other_service_unlisted"
+description = "A track from another service keeps its id and is written as a provider id"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''    ref = wanted.ref if wanted.origin == match.TIDAL else ""'''
+new = '''    ref = wanted.ref'''
+
+[[rows]]
+id = "W2_raw_title_candidate"
+description = "Drop the raw title plus declared version spelling, so the split title is the fallback"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        if wanted.version and wanted.spelled.endswith(suffix):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "W3_listed_compared"
+description = "Accept a spelling without comparing its addressed title"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        and again.listed == wanted.listed
+    )'''
+new = '''    )'''
+
+[[rows]]
+id = "W4_version_compared"
+description = "Accept a spelling without comparing its version token"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        and again.version_key == wanted.version_key
+'''
+new = '''
+'''
+
+[[rows]]
+id = "W5_title_compared"
+description = "Accept a spelling without comparing its matching title"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        again.title == wanted.title
+        and '''
+new = '''        '''
+
+[[rows]]
+id = "W6_unreadable_spelling"
+description = "A spelling the reader refuses counts as reading back"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_listdoc.py"]
+old = '''    except match.UnreadableList:
+        return False'''
+new = '''    except match.UnreadableList:
+        return True'''
+
+# ---------------------------------------------------------------------------
+# The files
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "F1_different_file_refused"
+description = "An existing file holding different bytes is overwritten instead of refused"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''    if present != payload:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "F2_identical_is_noop"
+description = "An identical file is rewritten rather than left alone"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_listdoc.py"]
+old = '''        if not _unchanged(path, payload)
+    ]'''
+new = '''        if not _unchanged(path, payload) or True
+    ]'''
+
+[[rows]]
+id = "F3_checks_before_writes"
+description = "Write each file as it is checked, so a refused manifest can leave a written list and the reverse"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''    pending = [
+        (path, payload)
+        for path, payload in ((manifest_path, manifest_bytes), (list_path, list_bytes))
+        if not _unchanged(path, payload)
+    ]
+    for path, payload in pending:
+        config.atomic_write_bytes(payload, path)'''
+new = '''    for path, payload in ((list_path, list_bytes), (manifest_path, manifest_bytes)):
+        if not _unchanged(path, payload):
+            config.atomic_write_bytes(payload, path)'''
+
+[[rows]]
+id = "N1_slash"
+description = "A name holding a slash is accepted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        or "/" in name
+'''
+new = '''
+'''
+
+[[rows]]
+id = "N2_surrounding_space"
+description = "A name with leading or trailing space is accepted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_listdoc.py"]
+old = '''        or name != name.strip()
+'''
+new = '''
+'''
+
+[[rows]]
+id = "N3_dot_names"
+description = "A name of one or two dots is accepted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_listdoc.py"]
+old = '''        or name in {".", ".."}
+'''
+new = '''
+'''
+
+[[rows]]
+id = "P1_missing_provenance"
+description = "A listed id with no provenance is not refused by name"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''    if found is None:
+        raise ListDocRefused'''
+new = '''    if False:
+        raise ListDocRefused'''
+
+[[rows]]
+id = "P2_blank_source"
+description = "A provenance naming no source is accepted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''    if not isinstance(found.source, str) or not found.source.strip():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M1_manifest_version"
+description = "The manifest records the declared version of a row as empty"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_listdoc.py"]
+old = '''            "version": track.get("version", ""),'''
+new = '''            "version": "",'''
