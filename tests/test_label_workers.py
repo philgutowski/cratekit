@@ -35,11 +35,13 @@ rather than the fake.
 
 from __future__ import annotations
 
+import io
 from dataclasses import replace
 
 import pytest
 
-from cratekit.cli import handlers, registry
+from cratekit import cli
+from cratekit.cli import handlers, output, registry, render
 from cratekit.core import config, jobs, review, tombstone
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
@@ -1207,6 +1209,18 @@ def run_harvest(reference: str = PLAYLIST) -> tuple[int, dict]:
     return drive(["label", "harvest", reference])
 
 
+def run_harvest_human(reference: str = PLAYLIST) -> tuple[int, str]:
+    """The default output a person gets.
+
+    ``drive`` always requests json, which is why every harvest test in this file
+    stayed green over a blank human answer. These rows go through the dispatcher
+    the way a person does.
+    """
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["label", "harvest", reference], stdout=out, stderr=err)
+    return code, out.getvalue() or err.getvalue()
+
+
 def test_harvest_of_a_readable_playlist_offers_one_item_per_verified_label(
     installed, monkeypatch
 ):
@@ -1317,6 +1331,108 @@ def test_an_empty_playlist_offers_nothing_and_reports_zero_rather_than_refusing(
     # labels" are both successes and the difference belongs where it can be read.
     assert envelope["outcome"] == "no_op"
     assert harvested(installed) == []
+
+
+def test_harvest_human_output_names_each_offered_label(installed, monkeypatch):
+    """The sitting's missing case: default output names what harvest found.
+
+    A substring match on the name is not enough. Dumping the json envelope as
+    text would contain the name inside a quoted key and would not tell a person
+    what was harvested. The name is its own indented line, which is the shape
+    ``_offered`` put on the envelope for this reason.
+    """
+    del installed
+    bind(monkeypatch, playlist_of(FakeTrack("t1", copyright="2026 Anjunadeep")))
+
+    code, text = run_harvest_human()
+
+    assert code == int(ExitCode.OK), text
+    lines = text.splitlines()
+    assert f"  {CONFIRMED}" in lines, text
+    assert "  unresolved: 0" in lines, text
+    assert f"  queue: {review.Queue.LABEL_RELEASE}" in lines, text
+
+
+def test_harvest_human_output_names_the_unresolved_count_and_not_an_unconfirmed_imprint(
+    installed, monkeypatch
+):
+    """An unconfirmed copyright string is a count, never a harvested label."""
+    del installed
+    bind(
+        monkeypatch,
+        playlist_of(
+            FakeTrack("t1", copyright="2026 Anjunadeep"),
+            FakeTrack("t2", copyright="2026 Mystery Distro"),
+        ),
+    )
+
+    code, text = run_harvest_human()
+
+    assert code == int(ExitCode.OK), text
+    lines = text.splitlines()
+    assert f"  {CONFIRMED}" in lines, text
+    assert f"  {UNCONFIRMED}" not in lines, text
+    assert "  unresolved: 1" in lines, text
+
+
+def test_an_empty_harvest_still_names_that_nothing_was_offered(installed, monkeypatch):
+    """A no_op that prints only the verb and a run id is the original defect.
+
+    The empty playlist is a success, and the human form has to say the set was
+    empty rather than looking like the renderer still has no case for it.
+    """
+    del installed
+    bind(monkeypatch, playlist_of())
+
+    code, text = run_harvest_human()
+
+    assert code == int(ExitCode.OK), text
+    lines = text.splitlines()
+    assert lines[0] == "label.harvest: no_op", text
+    assert f"  {CONFIRMED}" not in lines, text
+    assert "  unresolved: 0" in lines, text
+    assert f"  queue: {review.Queue.LABEL_RELEASE}" in lines, text
+
+
+def test_a_review_set_item_without_a_name_is_rendered_from_its_own_fields():
+    """Harvest is not the only review_set verb. Do not invent a name line."""
+    envelope = output.build(
+        verb="review.list",
+        run_id="r",
+        schema=output.current_schema("review_set"),
+        started="2026-08-02T00:00:00+00:00",
+        data={
+            "queue": "deletion",
+            "items": [{"id": "abc", "kind": "removed-track", "path": "/x.flac"}],
+            "unresolved": 3,
+        },
+    )
+
+    lines = render.render_review_set(envelope)
+    joined = "\n".join(lines)
+    assert "abc" in joined
+    assert "removed-track" in joined
+    assert "unresolved: 3" in joined
+    assert f"  {CONFIRMED}" not in lines
+
+
+def test_review_set_rendering_is_gated_on_the_schema_not_an_items_key():
+    """Same gate render_checks uses: a later surface with items is not this shape."""
+    plan = output.build(
+        verb="profile.set",
+        run_id="r",
+        schema=output.current_schema("plan"),
+        started="2026-08-02T00:00:00+00:00",
+        data={
+            "digest": "d",
+            "items": [{"name": CONFIRMED}],
+            "totals": {},
+            "chunk": None,
+        },
+    )
+
+    assert render.render_review_set(plan) == []
+    assert CONFIRMED not in render.render(plan)
 
 
 def test_a_playlist_the_catalogue_cannot_resolve_refuses_that_it_was_unreadable(
