@@ -58,7 +58,12 @@ def effective_limit(entry: LabelEntry, default: int = DEFAULT_TRACK_LIMIT) -> in
 
 @dataclass(frozen=True, slots=True)
 class LabelEntry:
-    """One followed label. ``label_id`` is the identity; ``name`` is display."""
+    """One followed label. ``label_id`` is the identity; ``name`` is display.
+
+    ``seed_artists`` holds names, or provider identifiers of the form
+    ``id:<digits>``. A name is resolved by exact fold. An identifier is
+    looked up with no search.
+    """
 
     label_id: str
     name: str
