@@ -16976,7 +16976,7 @@ worker refusal tell the reader to run `pip install 'cratekit[analysis]'` (or
 literals in `analysis/cli.py` and `analysis/vocals.py`. The README now installs
 with pipx, which keeps Cratekit in its own private environment. A bare `pip` runs
 against whichever Python the shell finds first, not the environment `crate` runs
-in. The command that works for a pipx install is `pipx install --force --python python3.12 --editable '.[analysis]'`
+in. The command that works for a pipx install is `pipx install --force '.[analysis]'`
 from inside the clone, and it is in the README. The developer hint in
 `cli/doctor.py`, `pip install -e '.[dev]'`, is correct for the virtual
 environment used in development and is not part of this finding.

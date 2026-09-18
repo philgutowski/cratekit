@@ -61,18 +61,20 @@ Cratekit:
 ```bash
 git clone https://github.com/philgutowski/cratekit.git
 cd cratekit
-pipx install --python python3.12 --editable .
+pipx install --python python3.12 .
 ```
 
 That installs the `crate` command. `--python python3.12` pins the Python version,
 because Cratekit needs 3.12 or 3.13 and pipx otherwise uses whichever Python
 Homebrew currently ships, which can be newer and is refused. If you only have
-3.13, write `python3.13`. `--editable` links the command to this folder instead
-of copying it, so a `git pull` updates it. Keep the folder where it is, since
-moving or deleting it breaks the command. Every example in these docs writes the
-command as plain `crate`. If a command answers `command not found: crate`, open a
-new terminal window, because `pipx ensurepath` only affects windows opened after
-it ran.
+3.13, write `python3.13`. pipx copies Cratekit into its own environment, so the
+folder is needed again only when you update. Do not add `--editable`, which links
+the command to the folder instead of copying it. An editable install makes
+`crate doctor` treat your machine as a developer checkout and fail a check about
+commit hooks, and that failure stops `crate setup`. Every example in these docs
+writes the command as plain `crate`. If a command answers
+`command not found: crate`, open a new terminal window, because
+`pipx ensurepath` only affects windows opened after it ran.
 
 That is the slim install: no audio DSP, no web framework, no machine-learning
 stack. Feature modules that need heavy dependencies declare them as extras named
@@ -81,18 +83,21 @@ adds vocal presence and singer gender. Add the ones you will use, from inside th
 cratekit folder, and list every extra you want in one command:
 
 ```bash
-pipx install --force --python python3.12 --editable '.[analysis,vocals]'
+pipx install --force '.[analysis,vocals]'
 ```
 
-The quotes matter, since zsh reads square brackets as a pattern and refuses the
+`--force` reuses the environment you already made and keeps its Python version,
+so this command takes no `--python`, and pipx ignores one with a warning. The
+quotes matter, since zsh reads square brackets as a pattern and refuses the
 command without them. Turning on a module without its extra is not a crash. The
 CLI attaches a stub that prints an install command and exits non-zero, so
 `crate --help` keeps working on a slim machine. That printed command starts with
 `pip`, which is written for a plain virtual environment and installs into the
 wrong place for a pipx install. Use the pipx command above instead.
 
-To update, pull and reinstall from inside the cratekit folder. A reinstall keeps
-the extras you chose:
+To update, pull and reinstall from inside the cratekit folder. Pulling alone
+changes nothing, since pipx holds its own copy. A reinstall keeps the extras you
+chose:
 
 ```bash
 git pull
@@ -158,8 +163,10 @@ keeps its own license, shipped intact alongside its source.
 
 ## Development
 
-Development uses its own environment inside the checkout rather than pipx. Set
-it up once, and activate it in each terminal window you work in:
+Development uses its own editable environment inside the checkout rather than
+pipx. Because it is editable, `crate doctor` checks that the commit hooks under
+Guards are installed, and fails until they are. Set it up once, and activate it
+in each terminal window you work in:
 
 ```bash
 python3.12 -m venv .venv
