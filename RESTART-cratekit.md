@@ -26,9 +26,9 @@ checks ask `samefile` now. Mutation tables `docs/mutation/r368.md` and
 control 0 of 7649 and 0 of 7651, no collect drift, every restore verified
 against `git show HEAD`. R-368 is closed against its RESTATED close and is not
 fully closed: a rehearsal still takes the live library lock and still needs
-rekordbox gone, which is R-395. The learning is
+rekordbox gone, which is R-396. The learning is
 `docs/solutions/integration-issues/a-resolved-path-compared-with-equals-is-not-a-same-directory-test.md`.
-Main's highest residual number is R-395.
+Main's highest residual number is R-396.
 
 **The session before, 2026-09-18, R-352, issue #94, `unit/issue94-the-adapter-s-roster-is-narrower-than-th`.**
 After own page and seeds, `TidalCatalogue.artist_for` searches the label

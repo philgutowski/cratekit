@@ -16278,7 +16278,7 @@ collect drift, every restore verified against `git show HEAD`. The learning is
 **NOT fully closed, and the close above says which part.** The gates are
 still the live restore's: a rehearsal into a scratch directory takes the live
 library lock, refuses while rekordbox is running, and writes a session record
-on the live volume for a run that touches nothing on it. That is R-395.
+on the live volume for a run that touches nothing on it. That is R-396.
 
 ---
 
@@ -17021,10 +17021,17 @@ assert the literal `pip install 'cratekit[analysis]'` change with it.
 
 ---
 
-## R-395. A restore into a scratch directory still takes the live library's lock and still needs rekordbox closed
+## R-396. A restore into a scratch directory still takes the live library's lock and still needs rekordbox closed
 
 **Found:** 2026-09-18, landing the restore rehearsal target, and named in that
 unit's brief as the leftover it would file.
+
+**395 is skipped on purpose.** Main's highest number at branch time was R-394,
+which is what the brief said to number above, and by the time this was written
+GitHub issue 109 carried R-395 in its title for a different finding, the
+missing-extra message printing a bare pip command. An issue title is a surface
+this document cannot see and is why a renumber is forbidden, so the fresh
+number moved rather than the one already given. A gap is fine.
 
 `crate restore run --from-backup --target SCRATCH` restores the database into
 a directory the live library is not in and does not contain. It reaches that
