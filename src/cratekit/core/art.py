@@ -54,8 +54,17 @@ ART_MIN_QUALITY = 50
 JPEG_MIME = "image/jpeg"
 #: The picture type every tag format numbers 3, "Cover (front)".
 FRONT_COVER = 3
-#: Bits per pixel by Pillow mode, the figure a FLAC picture block declares.
-_DEPTH_BY_MODE = {"RGB": 24, "RGBA": 32, "L": 8, "P": 8, "CMYK": 32}
+#: Bits per pixel by Pillow mode, the figure a FLAC picture block declares. A
+#: mode missing from this table measures as depth 0, never as a guessed 24.
+_DEPTH_BY_MODE = {
+    "1": 1, "L": 8, "P": 8, "LA": 16, "PA": 16, "I;16": 16,
+    "RGB": 24, "YCbCr": 24, "LAB": 24, "HSV": 24,
+    "RGBA": 32, "RGBX": 32, "CMYK": 32, "I": 32, "F": 32,
+}
+#: What transparent pixels are flattened onto. JPEG has no alpha, and a plain
+#: mode conversion exposes whatever colour sits UNDER the transparency, which
+#: for most exported logos is black: dark art on a black square.
+_FLATTEN_ONTO = (255, 255, 255)
 
 #: The containers with verified picture handling, DERIVED from the tag module's
 #: own suffix tuples so a suffix added there is not silently half supported here.
@@ -72,6 +81,16 @@ ART_SUFFIXES: tuple[str, ...] = tuple(
 
 class ArtError(ValueError):
     """Image bytes that cannot be made into, or are not, CDJ safe art."""
+
+
+class UnreadableFile(Exception):
+    """An audio file whose pictures could not be looked at, for any reason.
+
+    DELIBERATELY NOT AN :class:`ArtError`. That one is a verdict on image bytes.
+    This one says nothing was learned about the file, and the cause may be the
+    volume or the install rather than the file. A sweep that caught both under
+    one name would mark a whole unmounted library as carrying bad art.
+    """
 
 
 @dataclass(frozen=True)
@@ -106,11 +125,16 @@ class EmbeddedPicture:
     progressive: bool
     decoded: bool
     data: bytes
+    #: What Pillow found the bytes to BE, "JPEG" or "PNG", or None when they did
+    #: not decode. ``mime`` is only what the container claims, and a block
+    #: claiming image/jpeg over PNG bytes is a thing other taggers produce.
+    format: str | None = None
 
 
 @dataclass(frozen=True)
 class _Measured:
     format: str | None
+    mode: str
     width: int
     height: int
     depth: int
@@ -118,7 +142,12 @@ class _Measured:
 
 
 def _measure(data: bytes) -> _Measured | None:
-    """What Pillow reads from ``data``, or None when it reads nothing."""
+    """What Pillow reads from ``data``, or None when it reads nothing.
+
+    A FULL decode, not a header read. A truncated picture opens cleanly and
+    fails only on ``load``, and it renders as blank as a progressive one, so a
+    header read would call it fine. That costs a decode per picture on a sweep.
+    """
     from PIL import Image
 
     try:
@@ -128,9 +157,10 @@ def _measure(data: bytes) -> _Measured | None:
             width, height = img.size
             return _Measured(
                 format=img.format,
+                mode=img.mode,
                 width=width,
                 height=height,
-                depth=_DEPTH_BY_MODE.get(img.mode, 24),
+                depth=_DEPTH_BY_MODE.get(img.mode, 0),
                 progressive=progressive,
             )
     except Exception as exc:  # noqa: BLE001 - Pillow raises many types on bad bytes
@@ -161,6 +191,19 @@ def _quality_ladder() -> list[int]:
     return [*rungs, ART_MIN_QUALITY]
 
 
+def _flatten_to_rgb(img):
+    """``img`` as RGB, with any transparency composited onto white first."""
+    from PIL import Image
+
+    has_alpha = img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info
+    if not has_alpha:
+        return img.convert("RGB")
+    rgba = img.convert("RGBA")
+    flat = Image.new("RGB", rgba.size, _FLATTEN_ONTO)
+    flat.paste(rgba, mask=rgba.getchannel("A"))
+    return flat
+
+
 def to_cdj_jpeg(
     data: bytes, *, size: int | None = ART_SIZE, max_bytes: int = ART_MAX_BYTES
 ) -> CdjJpeg:
@@ -171,6 +214,11 @@ def to_cdj_jpeg(
     upscaling only invents detail. A non square image is resized to the square
     without cropping, which is what the source system did.
 
+    Two things a re-encode would otherwise lose are applied first. An EXIF
+    orientation is baked into the pixels, because the tag does not survive and
+    the cover would come out sideways for good. Transparency is flattened onto
+    white, because JPEG has no alpha.
+
     Quality steps down from :data:`ART_START_QUALITY` until the picture fits.
     If it still does not fit at :data:`ART_MIN_QUALITY` this raises rather than
     returning bytes over the cap, because a function that takes a cap and
@@ -179,11 +227,11 @@ def to_cdj_jpeg(
     The returned dimensions and depth are measured by reading the encoded bytes
     back, not copied from the image that went in.
     """
-    from PIL import Image
+    from PIL import Image, ImageOps
 
     try:
         with Image.open(io.BytesIO(data)) as source:
-            img = source.convert("RGB")
+            img = _flatten_to_rgb(ImageOps.exif_transpose(source))
     except Exception as exc:  # noqa: BLE001 - Pillow raises many types on bad bytes
         raise ArtError(f"the image bytes could not be decoded: {exc}") from exc
 
@@ -222,6 +270,7 @@ def _picture(mime: str, data: bytes, declared: tuple[int, int, int] | None) -> E
         progressive=measured.progressive if measured is not None else False,
         decoded=measured is not None,
         data=data,
+        format=measured.format if measured is not None else None,
     )
 
 
@@ -229,15 +278,15 @@ def read_pictures(path: Path) -> list[EmbeddedPicture]:
     """Every picture embedded in ``path``, in the order the container holds them.
 
     An empty list means the file was read and holds no picture. A file that
-    could not be read raises :class:`ArtError` instead, so "no art" and "could
-    not look" stay two different answers. An unknown container raises
+    could not be read raises :class:`UnreadableFile` instead, so "no art" and
+    "could not look" stay two different answers. An unknown container raises
     :class:`tags.UnsupportedContainer`.
     """
     suffix = _require_art_container(path)
     try:
         handle = tags._open(path)
     except Exception as exc:  # noqa: BLE001 - mutagen raises many types
-        raise ArtError(f"could not read {path.name}: {exc}") from exc
+        raise UnreadableFile(f"could not read {path.name}: {exc}") from exc
 
     if suffix in tags.FLAC_SUFFIXES:
         return [
@@ -263,14 +312,16 @@ def read_pictures(path: Path) -> list[EmbeddedPicture]:
     ]
 
 
-def write_front_cover(path: Path, jpeg: bytes) -> bool:
+def write_front_cover(path: Path, jpeg: bytes, *, max_bytes: int = ART_MAX_BYTES) -> bool:
     """Make ``jpeg`` the file's one embedded picture, a front cover.
 
-    ``jpeg`` must already be a baseline JPEG, which is what
-    :func:`to_cdj_jpeg` returns. It is checked HERE, before the file is opened,
-    so an unreadable image, a PNG, or a progressive JPEG raises
-    :class:`ArtError` and the audio file is never touched. Embedding what a CDJ
-    renders blank would be a write that reports success over art nobody sees.
+    ``jpeg`` must already be what :func:`to_cdj_jpeg` returns: a baseline RGB
+    JPEG no larger than ``max_bytes``. All of that is checked HERE, before the
+    file is opened, so an unreadable image, a PNG, a progressive, greyscale or
+    CMYK JPEG, or a picture over the cap raises :class:`ArtError` and the audio
+    file is never touched. Embedding what a CDJ may render blank would be a
+    write that reports success over art nobody sees. A caller that encoded to a
+    different cap passes the same figure here.
 
     EVERY existing picture is removed, of any type, not only a previous front
     cover. That is the source system's behaviour and it is what makes a second
@@ -292,6 +343,16 @@ def write_front_cover(path: Path, jpeg: bytes) -> bool:
         raise ArtError(
             "the picture is a progressive JPEG, which Pioneer players render "
             "blank; pass it through to_cdj_jpeg first"
+        )
+    if measured.mode != "RGB":
+        raise ArtError(
+            f"the picture is a {measured.mode} JPEG and only RGB is verified on "
+            f"a player; pass it through to_cdj_jpeg first"
+        )
+    if len(jpeg) > max_bytes:
+        raise ArtError(
+            f"the picture is {len(jpeg)} bytes, over the {max_bytes} byte cap; "
+            f"pass it through to_cdj_jpeg first"
         )
 
     try:
@@ -345,6 +406,7 @@ __all__ = [
     "ArtError",
     "CdjJpeg",
     "EmbeddedPicture",
+    "UnreadableFile",
     "read_pictures",
     "to_cdj_jpeg",
     "write_front_cover",

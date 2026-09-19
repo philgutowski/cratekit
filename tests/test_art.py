@@ -28,6 +28,7 @@ from PIL import Image
 from cratekit.core import art, tags
 from cratekit.core.art import (
     ArtError,
+    UnreadableFile,
     read_pictures,
     to_cdj_jpeg,
     write_front_cover,
@@ -174,6 +175,48 @@ def test_the_encoder_never_goes_below_the_quality_floor():
     assert len(to_cdj_jpeg(_encode(pixels, "PNG"), max_bytes=at_floor).data) == at_floor
     with pytest.raises(ArtError):
         to_cdj_jpeg(_encode(pixels, "PNG"), max_bytes=at_floor - 1)
+
+
+def test_an_exif_orientation_is_baked_into_the_pixels():
+    # Left half red, right half blue, stored with "rotate 90 to display". The
+    # re-encode drops the tag, so unless the rotation is applied first the cover
+    # is sideways for good. Expected geometry comes from Pillow's own transpose.
+    from PIL import ImageOps
+
+    img = Image.new("RGB", (400, 200), (255, 0, 0))
+    img.paste((0, 0, 255), (200, 0, 400, 200))
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    source = _encode(img, "JPEG", quality=95, exif=exif)
+    with Image.open(io.BytesIO(source)) as tagged:
+        upright = ImageOps.exif_transpose(tagged).convert("RGB")
+    assert upright.size == (200, 400)
+
+    result = to_cdj_jpeg(source, size=None)
+
+    with Image.open(io.BytesIO(result.data)) as out:
+        assert out.size == upright.size
+        for spot in [(100, 50), (100, 350)]:
+            got, want = out.convert("RGB").getpixel(spot), upright.getpixel(spot)
+            assert all(abs(a - b) < 40 for a, b in zip(got, want)), (spot, got, want)
+
+
+@pytest.mark.parametrize("mode", ["RGBA", "LA", "P"])
+def test_transparency_is_flattened_onto_white_not_onto_what_lies_under_it(mode):
+    # Fully transparent pixels stored as black, which is how most tools export
+    # a logo. A plain mode conversion turns the whole cover black.
+    clear = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    if mode == "P":
+        clear = Image.new("P", (64, 64), 0)
+        clear.putpalette([0, 0, 0] * 256)
+        source = _encode(clear, "PNG", transparency=0)
+    else:
+        source = _encode(clear.convert(mode), "PNG")
+
+    result = to_cdj_jpeg(source, size=None)
+
+    with Image.open(io.BytesIO(result.data)) as out:
+        assert all(channel > 240 for channel in out.convert("RGB").getpixel((32, 32)))
 
 
 def test_unreadable_image_bytes_raise_from_the_encoder():
@@ -365,6 +408,42 @@ def test_a_png_is_refused_and_the_file_untouched(tmp_path):
     assert _digest(path) == before
 
 
+@pytest.mark.parametrize("mode", ["L", "CMYK"])
+def test_a_jpeg_that_is_not_rgb_is_refused_and_the_file_untouched(tmp_path, mode):
+    path = synth_container(tmp_path, ".aiff")
+    before = _digest(path)
+    jpeg = _encode(_gradient(64, 64).convert(mode), "JPEG", progressive=False)
+    with Image.open(io.BytesIO(jpeg)) as check:
+        assert check.mode == mode and check.format == "JPEG"
+
+    with pytest.raises(ArtError, match="only RGB"):
+        write_front_cover(path, jpeg)
+
+    assert _digest(path) == before
+
+
+def test_a_picture_over_the_cap_is_refused_and_the_file_untouched(tmp_path):
+    path = synth_container(tmp_path, ".wav")
+    before = _digest(path)
+    jpeg = _baseline_jpeg()
+
+    with pytest.raises(ArtError, match="over the"):
+        write_front_cover(path, jpeg, max_bytes=len(jpeg) - 1)
+
+    assert _digest(path) == before
+    # The cap is inclusive, the same way the encoder's is.
+    assert write_front_cover(path, jpeg, max_bytes=len(jpeg)) is True
+
+
+def test_the_writer_default_cap_is_the_encoder_default_cap(tmp_path):
+    path = synth_container(tmp_path, ".flac")
+    big = _encode(_noise(1600, 1600), "JPEG", quality=95, progressive=False)
+    assert len(big) > 450_000
+
+    with pytest.raises(ArtError, match="over the"):
+        write_front_cover(path, big)
+
+
 @pytest.mark.parametrize("suffix", [".ogg", ".opus", ".xyz", ""])
 def test_a_container_without_verified_picture_handling_raises(tmp_path, suffix):
     path = tmp_path / f"probe{suffix}"
@@ -423,6 +502,42 @@ def test_a_written_cover_reads_back_with_its_measurements(tmp_path, suffix):
     assert (picture.width, picture.height, picture.depth) == (320, 240, 24)
     assert picture.decoded is True
     assert picture.progressive is False
+    assert picture.format == "JPEG"
+
+
+def test_a_png_mislabelled_as_jpeg_reads_with_both_facts(tmp_path):
+    # What the container claims and what the bytes are, side by side, so a
+    # repair pass cannot read a claimed mime as a measured format.
+    from mutagen.id3 import APIC, ID3
+
+    path = synth_container(tmp_path, ".mp3")
+    planted = ID3()
+    png = _encode(_gradient(64, 64), "PNG")
+    planted.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="", data=png))
+    planted.save(path)
+
+    (picture,) = read_pictures(path)
+
+    assert picture.mime == "image/jpeg"
+    assert picture.format == "PNG"
+
+
+def test_a_mode_with_no_known_depth_reads_as_zero_not_as_a_guess(tmp_path):
+    from mutagen.id3 import APIC, ID3
+
+    path = synth_container(tmp_path, ".mp3")
+    planted = ID3()
+    one_bit = _encode(Image.new("1", (32, 32), 1), "PNG")
+    wide = _encode(Image.new("I;16", (32, 32), 1000), "PNG")
+    planted.add(APIC(encoding=3, mime="image/png", type=3, desc="a", data=one_bit))
+    planted.add(APIC(encoding=3, mime="image/png", type=4, desc="b", data=wide))
+    planted.save(path)
+
+    depths = {p.data: p.depth for p in read_pictures(path)}
+
+    assert depths[one_bit] == 1
+    assert depths[wide] == 16
+    assert art._DEPTH_BY_MODE.get("some mode pillow adds later", 0) == 0
 
 
 def test_a_zeroed_flac_block_reads_as_zeroes_not_as_the_decoded_size(tmp_path):
@@ -471,8 +586,28 @@ def test_an_undecodable_embedded_picture_says_so(tmp_path):
     (picture,) = read_pictures(path)
 
     assert picture.decoded is False
+    assert picture.format is None
     assert (picture.width, picture.height, picture.depth) == (0, 0, 0)
     assert picture.data == b"garbage"
+
+
+def test_a_truncated_picture_does_not_read_as_decoded(tmp_path):
+    # It opens cleanly and only fails on a full decode, which is why the reader
+    # pays for one: a player shows this as blank too.
+    from mutagen.id3 import APIC, ID3
+
+    path = synth_container(tmp_path, ".mp3")
+    planted = ID3()
+    whole = _baseline_jpeg(320, 320)
+    cut = whole[: len(whole) // 2]
+    with Image.open(io.BytesIO(cut)) as opens:
+        assert opens.size == (320, 320)
+    planted.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="", data=cut))
+    planted.save(path)
+
+    (picture,) = read_pictures(path)
+
+    assert picture.decoded is False
 
 
 def test_an_mp4_png_cover_reads_with_its_own_mime(tmp_path):
@@ -493,7 +628,10 @@ def test_a_file_that_cannot_be_read_raises_rather_than_reading_as_no_art(tmp_pat
     broken = tmp_path / "broken.flac"
     broken.write_bytes(b"not a flac at all")
 
-    with pytest.raises(ArtError, match="could not read"):
+    with pytest.raises(UnreadableFile, match="could not read"):
         read_pictures(broken)
-    with pytest.raises(ArtError, match="could not read"):
+    with pytest.raises(UnreadableFile, match="could not read"):
         read_pictures(tmp_path / "absent.mp3")
+    # A verdict on a file is not a verdict on an image, so a sweep catching one
+    # must not catch the other.
+    assert not issubclass(UnreadableFile, ArtError)
