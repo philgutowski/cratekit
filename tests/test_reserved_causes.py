@@ -5262,13 +5262,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # cause: unplaced-export, the plan KIND the unplaced sweep digests its items
     # under, beside inbox-export. The sweep's one new refusal reuses
     # governed-tree-absent, which the table already reserves.
-    # Re-pinned on U75, 2026-09-19: 423 to 425 distinct, 265 to 266 non-keys.
-    # TWO literals joined and NOTHING left, differenced over an archive of
+    # Re-pinned on U75, 2026-09-19: 423 to 427 distinct, 265 to 268 non-keys.
+    # FOUR literals joined and NOTHING left, differenced over an archive of
     # `main`'s `src` against the branch's. One is a KEY, label-list-unusable,
-    # named at the population assertion above. The other is not a cause:
+    # named at the population assertion above. Three are not causes:
     # label-approved, the prefix every list ``label approved`` writes is named
-    # under, before the digest of the identifiers it lists.
-    assert (len(literals), len(literals - set(causes))) == (425, 266), (
+    # under, and no-identifier and not-asked, two of the four KINDS that verb
+    # gives a release it could not read, which pick the step its failing line
+    # ends in and are never a refusal's reason.
+    assert (len(literals), len(literals - set(causes))) == (427, 268), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
