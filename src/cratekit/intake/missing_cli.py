@@ -8,8 +8,8 @@ emitter, :func:`cratekit.acquire.listdoc.write`, so a person gets a file the
 download verb accepts without retyping a track.
 
 ONLY MISSING IS LISTED. An owned track is held, an offered one is a question a
-person has not answered, and a suppressed one is a track somebody deleted on
-purpose. Listing any of those would spend a download on an answer nobody gave.
+person has not answered yet, and a suppressed one is a track somebody deleted
+on purpose. Listing any of those would spend a download on an answer nobody gave.
 
 MISSING WHEN THE JOB RAN IS ASKED AGAIN AT LISTING TIME (R-502). A report's
 state was fixed when the job ran, and the second listing of a job whose tracks
@@ -22,6 +22,18 @@ rewritten. A rerun over a library that gained nothing writes the same bytes;
 one that gained every row writes nothing and names no download; one that gained
 some writes a shorter list, which the emitter refuses over the job's earlier
 list of the same name, and the refusal says so.
+
+AN OFFERED ROW IS LISTABLE ONCE IT IS ANSWERED (R-503). The offered check sends
+a person to ``crate review list``, and for as long as the listing read only the
+report, no answer given there ever reached it. Each offered row's review item is
+looked up by the identifier its report names, read only. An unanswered row stays
+offered and nothing more is asked. An answered one goes through the same consult
+as a missing row, so the answer decides it as the worker would: a rejection is
+missing and listed unless a tombstone stands, a yes bound to a copy still held
+is owned, and a yes about a copy that is gone stays a question. The counts say
+what each row is now, and ``answered_*`` says how many got there by an answer.
+A rejected row makes the job's list longer than an earlier copy of the same
+name, which the emitter refuses, and the refusal says so.
 
 A PARTIAL LIST THAT READS AS COMPLETE IS THE DEFECT THIS FILE IS SHAPED
 AGAINST. A job that is still open, failed or was cancelled has not resolved
@@ -138,6 +150,23 @@ _SINCE: Mapping[match.MatchState, str] = {
     match.MatchState.MATCHED: "owned_since",
     match.MatchState.SUPPRESSED: "suppressed_since",
     match.MatchState.NEEDS_REVIEW: "offered_since",
+}
+
+#: What a row its job offered for review, and a person has answered since, is
+#: now, by the summary key it is counted under (R-503).
+_ANSWERED: Mapping[match.MatchState, str] = {
+    match.MatchState.MISSING: "answered_missing",
+    match.MatchState.MATCHED: "answered_owned",
+    match.MatchState.SUPPRESSED: "answered_suppressed",
+    match.MatchState.NEEDS_REVIEW: "answered_offered",
+}
+
+#: The report word each state the consult answers is counted under.
+_WORD: Mapping[match.MatchState, str] = {
+    match.MatchState.MISSING: "missing",
+    match.MatchState.MATCHED: "owned",
+    match.MatchState.SUPPRESSED: "suppressed",
+    match.MatchState.NEEDS_REVIEW: "offered",
 }
 
 #: Twelve characters: country, registrant, year, designation. Hyphens and
@@ -317,7 +346,14 @@ def _out_dir(ctx, subject: Mapping[str, Any]) -> Path:
 
 
 def _written_or_refuse(
-    out: Path, name: str, rows, provenance, subject, handed_on=(), gained: int = 0
+    out: Path,
+    name: str,
+    rows,
+    provenance,
+    subject,
+    handed_on=(),
+    gained: int = 0,
+    answered: int = 0,
 ):
     """The emitter's write, with both of its failures as this verb's refusal.
 
@@ -329,18 +365,24 @@ def _written_or_refuse(
     ``gained`` is how many rows the library answered since the job ran. A list
     that shrank by them is refused over the earlier list of the same name, and
     without that said the refusal reads as somebody else's file in the way.
+    ``answered`` is how many rows a person answered in review since and that are
+    missing now (R-503), which makes the list longer than the earlier one.
     """
     try:
         return listdoc.write(out, name, rows, provenance, handed_on=handed_on)
     except listdoc.ListDocRefused as exc:
-        why = (
-            (
+        why = []
+        if gained:
+            why.append(
                 f"if it is this list's earlier copy: {gained} track(s) it names are no "
-                f"longer missing, so this list is shorter than that one",
+                f"longer missing, so this list is shorter than that one"
             )
-            if gained
-            else ()
-        )
+        if answered:
+            why.append(
+                f"if it is this list's earlier copy: {answered} track(s) offered for "
+                f"review were answered since and are missing now, so this list names "
+                f"tracks that one does not"
+            )
         raise _unusable(
             str(exc),
             *why,
@@ -584,10 +626,33 @@ def _provenance(
     }
 
 
-def _still_missing(
-    missing: list[match.Wanted], origins: list[jobs.Job], subject: Mapping[str, Any]
-) -> tuple[list[match.Wanted], list[jobs.Job], dict[str, int]]:
-    """The rows still missing now, their jobs, and what the rest became since.
+def _answered(offered: list[dict[str, Any]]) -> list[bool]:
+    """Whether each offered report's review item carries an answer now (R-503).
+
+    BY THE KEY THE WORKER OFFERED IT UNDER. Every report the worker commits
+    names the item it asked, ``review_item``, so the item is found by that
+    identifier rather than by one rebuilt from a library that may have moved
+    since. READ ONLY: an unanswered row is left exactly where it is, nothing is
+    offered and the library is not walked, so a job whose questions nobody
+    answered lists as it always did. A report naming no item has no answer
+    that could reach it and stays offered. A store that cannot be read refuses,
+    because it is not a store where nobody answered.
+    """
+    if not offered:
+        return []
+    with review.open_store(intake_cli._load()) as items:
+        said = []
+        for report in offered:
+            item_id = str(report.get("review_item") or "").strip()
+            held = review.find(items, item_id) if item_id else None
+            said.append(held is not None and held.resolved)
+    return said
+
+
+def _asked_again(
+    wanted: list[match.Wanted], origins: list[jobs.Job], subject: Mapping[str, Any]
+) -> list[match.TrackMatch]:
+    """What each row resolves to now, asked the way the worker asked it.
 
     THE WORKER'S CONSULT, NOT A SECOND OPINION. Each row is resolved as
     :func:`cratekit.intake.cli.resolve_track` resolves it: the library view
@@ -605,6 +670,12 @@ def _still_missing(
 
     AN ABSENT LIBRARY IS NOT AN EMPTY ONE. Every row would recheck missing and
     the list would read as asked again when it was not.
+
+    Two kinds of row come here, and the caller counts them apart: a row the
+    job found missing (R-502), and a row the job offered for review that a
+    person has answered since (R-503). The second is decided by that answer
+    exactly as the worker decides it, rejection and tombstone, a yes bound to
+    the copy it was about, a yes about a copy that is gone still a question.
     """
     cfg = intake_cli._load()
     music = Path(cfg.library.root) / cfg.library.music_dir
@@ -612,8 +683,8 @@ def _still_missing(
         raise refuse(
             "library-volume-unmounted",
             f"this library's music folder {str(music)!r} is not there, so no track "
-            f"the job found missing can be asked again whether it is held now; "
-            f"nothing was written",
+            f"the job found missing, or a person answered since, can be asked "
+            f"again whether it is held now; nothing was written",
             remedy=Remedy.MOUNT_LIBRARY_VOLUME,
             origin=("intake.missing",),
             detail={"music": str(music), **subject},
@@ -621,7 +692,7 @@ def _still_missing(
     index, suppresses, identify = match_cli.library_view(cfg)
     now = [
         match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify)
-        for one in missing
+        for one in wanted
     ]
     # BY THE JOB'S OWN VERB, since the review item is keyed by the handler that
     # asked it and the worker asked under the job's.
@@ -641,14 +712,7 @@ def _still_missing(
                 )
                 for n, one in zip(at, answered.matches, strict=True):
                     now[n] = one
-    since = dict.fromkeys(_SINCE.values(), 0)
-    kept: list[int] = []
-    for n, one in enumerate(now):
-        if one.state is match.MatchState.MISSING:
-            kept.append(n)
-        else:
-            since[_SINCE[one.state]] += 1
-    return [missing[n] for n in kept], [origins[n] for n in kept], since
+    return now
 
 
 def _listed(
@@ -669,27 +733,56 @@ def _listed(
     run skipped, whose tracks nothing resolved.
     """
     counts = {word: 0 for word in _WORDS}
-    missing: list[match.Wanted] = []
-    origins: list[jobs.Job] = []
+    # IN REPORT ORDER, missing and offered together, so a row a person answered
+    # is listed where its playlist put it and a list's bytes do not depend on
+    # which rows were answered first.
+    rows_in: list[tuple[jobs.Job, dict[str, Any]]] = []
     for job, reports in found:
         for report in reports:
             counts[report["state"]] += 1
-            if report["state"] == "missing":
-                missing.append(intake_cli.thawed(report["track"]))
-                origins.append(job)
+            if report["state"] in ("missing", "offered"):
+                rows_in.append((job, report))
+    offered = [report for _job, report in rows_in if report["state"] == "offered"]
+    answered = iter(_answered(offered))
+    # AN OFFERED ROW NOBODY ANSWERED IS NOT ASKED AGAIN. It stays offered on the
+    # check it always had, and asking it would offer it again from here.
+    asking = [
+        (job, report)
+        for job, report in rows_in
+        if report["state"] == "missing" or next(answered)
+    ]
+    missing = [intake_cli.thawed(report["track"]) for _job, report in asking]
+    origins = [job for job, _report in asking]
     written = listdoc.Written(None, None, (), ())
     handed: list[tuple[listdoc.Row, match.Wanted, _Unnamed]] = []
     unwritable: list[tuple[listdoc.Row, _Unnamed]] = []
     by_isrc = 0
     since = dict.fromkeys(_SINCE.values(), 0)
+    now_answered = dict.fromkeys(_ANSWERED.values(), 0)
     out: Path | None = None
     if missing:
         # THE FOLDER BEFORE THE LIBRARY WALK AND THE PROVIDER, so a bad --out
         # spends neither.
         out = _out_dir(ctx, subject)
-        missing, origins, since = _still_missing(missing, origins, subject)
+        now = _asked_again(missing, origins, subject)
+        kept: list[int] = []
+        for n, (one, (_job, report)) in enumerate(zip(now, asking, strict=True)):
+            if report["state"] == "offered":
+                # COUNTED AS WHAT THE ANSWER MADE IT. A rejected row is missing
+                # and an accepted one is owned, and the offered count is what is
+                # still a question, which is what the check promises (R-503).
+                now_answered[_ANSWERED[one.state]] += 1
+                counts["offered"] -= 1
+                counts[_WORD[one.state]] += 1
+            elif one.state is not match.MatchState.MISSING:
+                since[_SINCE[one.state]] += 1
+            if one.state is match.MatchState.MISSING:
+                kept.append(n)
+        missing = [missing[n] for n in kept]
+        origins = [origins[n] for n in kept]
         counts["missing"] = len(missing)
     gained = sum(since.values())
+    answered_in = now_answered["answered_missing"]
     if missing:
         rows = list(listdoc.rows_of(missing))
         bare = [n for n, row in enumerate(rows) if not str(row.ref or "").strip()]
@@ -723,6 +816,7 @@ def _listed(
             subject,
             handed_on=writable,
             gained=gained,
+            answered=answered_in,
         )
     listed = len(written.listed)
     unlisted = len(handed)
@@ -789,9 +883,18 @@ def _listed(
             "offered",
             "info",
             f"{counts['offered']} offered for review and not listed until answered; "
-            f"see: crate review list",
+            f"see: crate review list, then list this again",
         ),
         _check("suppressed", "info", f"{counts['suppressed']} deleted on purpose, not listed"),
+        _check(
+            "answered",
+            "info",
+            f"{sum(now_answered.values())} track(s) offered for review when the job ran "
+            f"were answered since, asked again now: {now_answered['answered_missing']} "
+            f"missing, {now_answered['answered_owned']} in the library, "
+            f"{now_answered['answered_suppressed']} deleted on purpose, "
+            f"{now_answered['answered_offered']} still a question the answer did not settle",
+        ),
         _check(
             "since",
             "info",
@@ -836,6 +939,7 @@ def _listed(
         "offered": counts["offered"],
         "suppressed": counts["suppressed"],
         **since,
+        **now_answered,
         "by_isrc": by_isrc,
         "unlisted": unlisted,
         "unlisted_list": (
