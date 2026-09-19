@@ -270,6 +270,9 @@ def test_rows_acquired_since_the_job_are_not_listed_and_name_no_download(cfg, li
     assert (summary["list"], summary["next"]) == (None, None)
     checks = {check["title"]: check for check in envelope["data"]["checks"]}
     assert "crate acquire download" not in checks["written"]["detail"]
+    assert "found missing is in the library" in checks["written"]["detail"], (
+        "not the sentence for a job that never had a missing track"
+    )
     assert "2 in the library since" in checks["since"]["detail"]
     assert listed.read_bytes() == before, "the earlier list is not this verb's to remove"
 
