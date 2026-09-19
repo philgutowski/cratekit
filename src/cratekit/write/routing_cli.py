@@ -769,7 +769,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         reason=reason,
         inserted=report.inserted,
         rated=rated,
-        long_tracks=lengthened,
+        long_added=lengthened,
         duration_unreadable=long_plan.unreadable,
         created=list(report.created),
         output=None if destination is None else str(destination),

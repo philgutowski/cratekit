@@ -1806,7 +1806,7 @@ def test_a_25_minute_track_is_a_member_and_a_19_minute_one_is_not(
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     totals = envelope["data"]["totals"]
-    assert (totals["inserted"], totals["long_tracks"]) == (3, 2)
+    assert (totals["inserted"], totals["long_added"]) == (3, 2)
     assert _long_members(_routed(export).read_bytes()) == ("11", "31")
     assert LONG_PLAYLIST in envelope["pending_human_action"]["summary"]
 
@@ -1831,7 +1831,7 @@ def test_a_second_run_over_its_own_output_adds_nothing(configured, tagged, tmp_p
     code, envelope = _apply_export(first)
     assert code == int(ExitCode.OK), envelope
     totals = envelope["data"]["totals"]
-    assert (totals["inserted"], totals["long_tracks"]) == (0, 0)
+    assert (totals["inserted"], totals["long_added"]) == (0, 0)
     assert totals["reason"] == "nothing-to-route"
     assert envelope["warnings"] == []
     assert all(item["long_track"] == "" for item in envelope["data"]["items"]), (
@@ -1848,7 +1848,7 @@ def test_a_long_track_alone_is_a_change_and_writes_a_file(configured, tagged, tm
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     totals = envelope["data"]["totals"]
-    assert (totals["inserted"], totals["long_tracks"]) == (0, 2)
+    assert (totals["inserted"], totals["long_added"]) == (0, 2)
     assert _long_members(_routed(export).read_bytes()) == ("11", "31")
 
 
@@ -1856,7 +1856,7 @@ def test_no_long_track_builds_no_empty_playlist(configured, tagged, tmp_path):
     export = _long_export(configured, tmp_path / "exports", lengths={"31": "300"})
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
-    assert envelope["data"]["totals"]["long_tracks"] == 0
+    assert envelope["data"]["totals"]["long_added"] == 0
     assert _long_members(_routed(export).read_bytes()) is None
 
 
@@ -1872,7 +1872,7 @@ def test_a_track_is_never_removed_from_the_playlist(configured, tagged, tmp_path
     export = _long_export(configured, tmp_path / "exports", root_extra=existing)
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
-    assert envelope["data"]["totals"]["long_tracks"] == 2
+    assert envelope["data"]["totals"]["long_added"] == 2
     assert _long_members(_routed(export).read_bytes()) == ("77", "12", "11", "31")
 
 
@@ -1910,7 +1910,7 @@ def test_a_root_folder_of_that_name_is_a_warning_and_is_not_replaced(
     export = _long_export(configured, tmp_path / "exports", root_extra=folder)
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
-    assert envelope["data"]["totals"]["long_tracks"] == 0
+    assert envelope["data"]["totals"]["long_added"] == 0
     skipped = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
     assert any(LONG_PLAYLIST in message for message in skipped), envelope["warnings"]
     assert all(item["long_track"] == "" for item in envelope["data"]["items"]), (
@@ -1936,7 +1936,7 @@ def test_a_missing_duration_is_counted_not_guessed(configured, tagged, tmp_path)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     totals = envelope["data"]["totals"]
     assert totals["duration_unreadable"] == 5
-    assert totals["long_tracks"] == 1
+    assert totals["long_added"] == 1
     assert _long_members(_routed(export).read_bytes()) == ("33",)
 
 
@@ -1965,7 +1965,7 @@ def test_a_template_declaring_no_long_track_playlist_builds_none(
     export = _long_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
-    assert envelope["data"]["totals"]["long_tracks"] == 0
+    assert envelope["data"]["totals"]["long_added"] == 0
     assert _long_members(_routed(export).read_bytes()) is None
     assert all(item["long_track"] == "" for item in envelope["data"]["items"])
 
