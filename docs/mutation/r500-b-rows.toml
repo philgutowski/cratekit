@@ -1,0 +1,44 @@
+name = "r500-b"
+pass_kind = "light"
+
+[[rows]]
+id = "G6_reread_after_gate_skipped"
+description = "Existing U67 guard, sampled: the apply pass trusts the plan's read and never reads the collection again, so a row that goes dark while the gate waits is not met"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''    referenced = _referenced(_recorded(cfg), cfg=cfg) if renames else frozenset()
+    for item in renames:'''
+new = '''    referenced = frozenset()
+    for item in renames:'''
+
+[[rows]]
+id = "G7_raw_spelling_quoted"
+description = "Collect the raw recorded value rather than the decoded path, so the refusal quotes a percent encoded spelling a rule can never match"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''            dark.append(decoded)'''
+new = '''            dark.append(value)'''
+
+[[rows]]
+id = "G8_last_row_named"
+description = "Name the last dark row in the message rather than the first"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''f"them {dark[0]}, so which file'''
+new = '''f"them {dark[-1]}, so which file'''
+
+[[rows]]
+id = "G9_plural_always"
+description = "Move the singular wording's bound, so one row reads as rows"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''"collection row records" if count == 1 else'''
+new = '''"collection row records" if count == 0 else'''
+
+[[rows]]
+id = "G10_cap_halved"
+description = "Halve the cap on the detail's location list, a coefficient"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''            "unmapped_locations": dark[:20],'''
+new = '''            "unmapped_locations": dark[:10],'''
