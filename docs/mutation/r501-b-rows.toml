@@ -1,0 +1,72 @@
+name = "r501-b"
+pass_kind = "light"
+
+[[rows]]
+id = "I1_rollback_abandon"
+description = "ingest.place_files: drop the abandon in the rollback, so a refused call leaves its session non terminal"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''        with contextlib.suppress(Exception):
+            routing_pass.close_run(record, cfg, state=session.SessionState.ABANDONED)
+        raise'''
+new = '''        raise'''
+
+[[rows]]
+id = "I2_rollback_unlink"
+description = "ingest.place_files: drop the unlink in the rollback, so a refused call leaves an intake file with no run behind it"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''        if wrote and fresh:
+            with contextlib.suppress(OSError):
+                destination.unlink(missing_ok=True)'''
+new = '''        if False:
+            with contextlib.suppress(OSError):
+                destination.unlink(missing_ok=True)'''
+
+[[rows]]
+id = "I3_rollback_fresh_only"
+description = "ingest.place_files: unlink whatever is at the destination, so a failed call removes an earlier run's intake file"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''        if wrote and fresh:'''
+new = '''        if wrote:'''
+
+[[rows]]
+id = "I4_mark_awaiting"
+description = "ingest.place_files: never mark the session awaiting-import, so every landing leaves an open record again"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''        wrote = True
+        session.mark_awaiting_import('''
+new = '''        wrote = True
+        session.pending_import if False else (lambda *a, **k: None)('''
+
+[[rows]]
+id = "I5_open_before_refusal"
+description = "ingest.place_files: open a session before the playlist refusal, so an export with no intake folder leaves an open record"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''    if playlist_error:
+        raise refuse('''
+new = '''    if playlist_error:
+        session.open_session(cfg, workflow=INTAKE_WORKFLOW)
+        raise refuse('''
+
+[[rows]]
+id = "L1_unretired_name"
+description = "land_cli.unretired_name: return the name unchanged, so sync mark cannot find its pass from a retired intake file"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_sync_mark.py"]
+old = '''    return _RETIRED_TAIL.sub("", name)'''
+new = '''    return name'''
+
+[[dropped]]
+id = "I6_mark_before_ledger"
+description = "ingest.place_files: move the awaiting-import mark below the ledger write, so a failing mark leaves an abandoned run's intents outstanding"
+reason = "NOT MEASURED. A reorder is two sites and the driver replaces one string. test_a_failed_call_records_no_track_the_ledger_cannot_withdraw is the test written to pin it, and whether it dies was not driven."

@@ -1,0 +1,106 @@
+name = "r501-d"
+pass_kind = "light"
+
+[[rows]]
+id = "M7_retire_next_free_name"
+description = "imported_cli.retire: never take the next free name, so a second retirement lands on the first"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''        while not naming.claim_target(target):'''
+new = '''        while False:'''
+
+[[rows]]
+id = "M9_waiting_capture"
+description = "imported_cli._waiting: drop the no capture condition, so an open destructive session is taken for a landing"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''        record.state is session.SessionState.OPEN
+        and record.snapshot_path is None
+        and record.pending is None'''
+new = '''        record.state is session.SessionState.OPEN
+        and record.pending is None'''
+
+[[rows]]
+id = "M10_waiting_legacy"
+description = "imported_cli._waiting: look only for awaiting-import, so every landing made before the fix is left where it was"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''    if record.state is session.SessionState.AWAITING_IMPORT:
+        return True
+    return ('''
+new = '''    if record.state is session.SessionState.AWAITING_IMPORT:
+        return True
+    return False and ('''
+
+[[rows]]
+id = "M11_close_refusal_reported"
+description = "imported_cli._close_if_nothing_is_owed: raise the gated close's refusal, ending the verb after the file is retired and the proof recorded"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''    except CratekitError as exc:
+        return {"closed": False, "close_refused": exc.cause.reason, "why": exc.cause.message}'''
+new = '''    except CratekitError:
+        raise'''
+
+[[rows]]
+id = "M13_waiting_needs_export"
+description = "imported_cli.intake_imported: drop the refusal when a run is waiting and no export is named, so the verb answers no-op over a waiting run"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''    if waiting and export is None:
+        raise _no_export(waiting)'''
+new = '''    if waiting and export is None:
+        waiting = []'''
+
+[[rows]]
+id = "R2_settled_is_not_imported"
+description = "routing_cli._all_settled: count acknowledged tracks as proof, so a run nobody imported is recorded as proven"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_deferred_routing.py", "tests/test_routing_workers.py"]
+old = '''    return bool(routed) and not ledger.outstanding(session_id)'''
+new = '''    return not ledger.outstanding(session_id)'''
+
+[[rows]]
+id = "R3_pass_is_proof"
+description = "routing_cli._close_if_settled: never record the pass as proof, so after a cutover no landed run can close"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_deferred_routing.py", "tests/test_routing_workers.py"]
+old = '''        if record.state is session.SessionState.AWAITING_IMPORT and _all_settled('''
+new = '''        if False and _all_settled('''
+
+[[dropped]]
+id = "R1_no_native_outcome"
+description = "routing_cli.route_pending: answer ok again with no native tree"
+reason = "ranked below the cap: test_route_pending_with_no_native_tree_is_a_no_op_that_says_so asserts the outcome literal and the warning code directly"
+
+[[dropped]]
+id = "M12_absent_export"
+description = "imported_cli.intake_imported: drop the up front refusal of an export that is not a file"
+reason = "ranked below the cap: one test and the contract drive both assert the refusal directly"
+
+[[dropped]]
+id = "V1_verify_verb_value"
+description = "ingest.VERIFY_VERB: name route.pending again"
+reason = "ranked below the cap: three tests assert the literal"
+
+[[dropped]]
+id = "C1_intake_file_pending"
+description = "intake/cli.py intake_file: answer ok again after a write"
+reason = "ranked below the cap: same guard family as I4, which is measured, and test_intake_file_ends_pending asserts the exit code"
+
+[[dropped]]
+id = "D1_doctor_label"
+description = "doctor._open_state: list a proven run bare"
+reason = "maintainer facing wording, one test asserts it"
+
+[[dropped]]
+id = "M8_file_before_record"
+description = "imported_cli.settle: mark the run proven before retiring its file"
+reason = "NOT MEASURED. A reorder is two sites. test_a_retire_that_cannot_rename_is_a_refusal_and_changes_nothing is the test written to pin it."

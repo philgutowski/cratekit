@@ -849,3 +849,22 @@ def test_doctor_reads_a_proven_run_as_proven_and_not_as_in_progress(cfg):
 
     assert "import proven" in doctor._open_state(session.read_record(proven.session_id, cfg))
     assert doctor._open_state(in_flight) == "open"
+
+
+def test_an_intake_file_no_waiting_run_names_is_still_refused_as_the_export(
+    cfg, silence, export, tmp_path
+):
+    """THE NAME CHECK ALONE, where the identity check cannot help. A later
+    batch's intake file is spliced from an export that already holds this run's
+    tracks, so it names them all, and no waiting run's record points at it."""
+    _land(cfg, silence, export)
+    other = tmp_path / "later_inboxed.xml"
+    other.write_bytes(_intake_file(cfg).read_bytes())
+
+    _, result = _drive(["intake", "imported", "--export", str(other)])
+
+    assert result["cause"]["reason"] == "library-export-unusable", result
+    assert "carries a name" in result["cause"]["message"]
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.AWAITING_IMPORT
+    assert _intake_file(cfg).is_file()
