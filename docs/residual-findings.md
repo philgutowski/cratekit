@@ -20035,6 +20035,12 @@ measured.
 `label approved` does, or a repeat run is decided to replace its own earlier
 files.
 
+**Reached a second way, 2026-09-19, `relay/183`.** Since R-502 closed, a
+repeat listing of a job some of whose missing rows the library gained since
+lists fewer rows and refuses over the job's earlier list the same way. The
+refusal names how many rows were gained. Driven in
+`test_a_shorter_rerun_over_the_jobs_earlier_list_refuses_and_says_why`.
+
 ---
 
 ## R-477. `TidalAccount.match_track` reads `InvalidISRC` as no match, and the client raises it for outages
@@ -20646,6 +20652,41 @@ for each row it is about to write, or says in a failing check how old the
 job's answers are, and a repeat run over rows since acquired lists none of
 them.
 
+**CLOSED 2026-09-19 on `relay/183`, by the first of the two.** `_listed` in
+`intake/missing_cli.py` hands every missing report to `_still_missing` before
+anything is named or written, for `--job` and `--run` alike. Each row is
+resolved again with `match.resolve_one` over `match_cli.library_view`, the
+worker's consult, and a question the library raises goes through
+`match_cli.adjudicate` under the job's own verb, so an answer a person already
+gave still decides it. A row now held, deleted on purpose or held in another
+version is counted as `owned_since`, `suppressed_since` or `offered_since`, on
+a new `intake.missing.since` check, and is neither listed nor handed on.
+`missing` is now what is still missing. The committed reports are not
+rewritten, so `sync mark` reads what it read before. **The library as it is
+now, not as the job froze it**: the code review found the first draft read the
+frozen root, which refused a moved library as unmounted, and it now reads the
+current configuration as `--list` and `sync mark` do. An absent music folder
+refuses `library-volume-unmounted` before any row is asked again, and only
+when there is a missing row to ask about; `intake.missing` declares
+`library.mounted` to doctor.
+
+**What the second run writes, decided here.** A library that gained nothing
+writes the same bytes and is recognised, pinned by reading them. One that
+gained every row writes nothing, names no download, answers `no_op`, and leaves
+the first list where it was. One that gained some composes a shorter list,
+which `listdoc.write` refuses over the job's earlier list of the same name,
+since the name is fixed by the job; the refusal gains a step saying how many
+rows were gained and to move that file aside. That is R-476's fixed name,
+recorded there, and closes with it. Driven in
+`test_rows_acquired_since_the_job_are_not_listed_and_name_no_download` and
+`test_a_shorter_rerun_over_the_jobs_earlier_list_refuses_and_says_why`, with
+nine more in `tests/test_intake_missing.py`. Mutation tables
+`docs/mutation/r502-*.md`, summary in `r502-notes.md`: nineteen rows, the
+author's own, every user facing row killing after two tests were fixed; two
+maintainer zeros. The earlier list itself still names what was gained, and
+`acquire download` over it still fetches it, which is out of this entry's
+scope.
+
 ---
 
 ## R-503. An offered track never becomes listable, whatever the review answer
@@ -21222,3 +21263,23 @@ or fetched because of it.
 
 **Closes when:** R-519's closing condition lands, since a companion that knows
 its guests can be compared with the held file's own.
+
+---
+
+## R-522. `intake missing --job` over a job queued for another library rechecks it against this one
+
+**Found:** 2026-09-19, on `relay/183`, R-502, while deciding which
+configuration the recheck reads. Read, not driven.
+
+`--run` keeps only the jobs queued for the current library's volume, and
+`--job` has never compared the job's `library_id` with the current one. Before
+R-502 that wrote another library's missing rows into this library's staging.
+Now each row is also asked of THIS library, so a track this library holds and
+the other does not drops out of the other library's list as owned since.
+
+**Measured cost:** unmeasured. It needs two libraries on one installation and
+a person naming the other library's job by hand. Nothing is deleted, and the
+worst case is a list short of a track the other library wanted.
+
+**Closes when:** `--job` refuses a job queued for another library, as `--run`
+already filters one out.

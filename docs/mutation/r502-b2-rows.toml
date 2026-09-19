@@ -1,0 +1,17 @@
+name = "r502-b2"
+pass_kind = "light"
+
+# G13 again after its test was strengthened: the first pass read zero because
+# the all acquired test asserted only that no download was named, which the
+# nothing missing sentence also satisfies. See r502-b.md.
+
+[[rows]]
+id = "G13_written_line_for_gained"
+description = "Drop the written line's gained branch, so a job whose rows were all gained reads as a job with nothing missing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    elif gained:
+        said = ('''
+new = '''    elif False:
+        said = ('''
+

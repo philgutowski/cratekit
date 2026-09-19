@@ -1,0 +1,100 @@
+name = "r502-a"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_no_recheck"
+description = "Drop the recheck call in _listed, so the job's missing reports are listed as they stood when it ran (R-502 as filed)"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        missing, origins, since = _still_missing(missing, origins, subject)
+'''
+new = ""
+
+[[rows]]
+id = "G2_owned_kept"
+description = "Keep a row the library now holds (MATCHED) as still missing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if one.state is match.MatchState.MISSING:
+            kept.append(n)'''
+new = '''        if one.state in (match.MatchState.MISSING, match.MatchState.MATCHED):
+            kept.append(n)'''
+
+[[rows]]
+id = "G3_suppressed_kept"
+description = "Keep a row tombstoned since the job (SUPPRESSED) as still missing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if one.state is match.MatchState.MISSING:
+            kept.append(n)'''
+new = '''        if one.state in (match.MatchState.MISSING, match.MatchState.SUPPRESSED):
+            kept.append(n)'''
+
+[[rows]]
+id = "G4_offered_kept"
+description = "Keep a row now held in another version (NEEDS_REVIEW after adjudication) as still missing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if one.state is match.MatchState.MISSING:
+            kept.append(n)'''
+new = '''        if one.state in (match.MatchState.MISSING, match.MatchState.NEEDS_REVIEW):
+            kept.append(n)'''
+
+[[rows]]
+id = "G5_no_adjudicate"
+description = "Skip reading a person's answer back, so a row answered as another track reads as a fresh question and drops out"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if asked:
+        with review.open_store(cfg) as items:
+            for handler_key, at in asked.items():'''
+new = '''    if False:
+        with review.open_store(cfg) as items:
+            for handler_key, at in asked.items():'''
+
+[[rows]]
+id = "G6_no_mount_guard"
+description = "Drop the absent music folder refusal before the library walk"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if not music.is_dir():
+        raise refuse(
+            "library-volume-unmounted",
+            f"this library's music folder {str(music)!r} is not there, so no track "'''
+new = '''    if False:
+        raise refuse(
+            "library-volume-unmounted",
+            f"this library's music folder {str(music)!r} is not there, so no track "'''
+
+[[rows]]
+id = "G7_frozen_config"
+description = "Ask the library at the root the first job froze rather than the current configuration (the review's finding)"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    cfg = intake_cli._load()
+    music = Path(cfg.library.root) / cfg.library.music_dir'''
+new = '''    cfg = jobs.frozen_config(origins[0])
+    music = Path(cfg.library.root) / cfg.library.music_dir'''
+
+[[rows]]
+id = "G8_mount_guard_everywhere"
+description = "Recheck (and so require the library) even when no report is missing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "maintainer"
+old = '''        out = _out_dir(ctx, subject)
+        missing, origins, since = _still_missing(missing, origins, subject)
+        counts["missing"] = len(missing)'''
+new = '''        out = _out_dir(ctx, subject)
+    missing, origins, since = _still_missing(missing, origins, subject)
+    if True:
+        counts["missing"] = len(missing)'''
+
+[[rows]]
+id = "E1_offered_listed"
+description = "Existing guard sample: list offered reports as well as missing ones"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            if report["state"] == "missing":
+                missing.append(intake_cli.thawed(report["track"]))'''
+new = '''            if report["state"] in ("missing", "offered"):
+                missing.append(intake_cli.thawed(report["track"]))'''

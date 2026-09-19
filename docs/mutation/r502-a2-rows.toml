@@ -1,0 +1,17 @@
+name = "r502-a2"
+pass_kind = "light"
+
+# G7 again after its test was fixed: the first pass read zero because the
+# test moved the root through the environment override, which re-bases the
+# frozen configuration too. See r502-a.md.
+
+[[rows]]
+id = "G7_frozen_config"
+description = "Ask the library at the root the first job froze rather than the current configuration (the review's finding)"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    cfg = intake_cli._load()
+    music = Path(cfg.library.root) / cfg.library.music_dir'''
+new = '''    cfg = jobs.frozen_config(origins[0])
+    music = Path(cfg.library.root) / cfg.library.music_dir'''
+
