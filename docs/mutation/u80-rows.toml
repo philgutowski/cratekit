@@ -1,0 +1,302 @@
+name = "u80"
+pass_kind = "light"
+
+# ── The engine, src/cratekit/acquire/fallback.py ───────────────────────────
+
+[[rows]]
+id = "F1_one_platform"
+description = "Only the first platform is searched, so YouTube is never asked"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    for platform in PLATFORMS:
+        answer = searcher.search(platform, query(wanted), SEARCH_LIMIT)'''
+new = '''    for platform in PLATFORMS[:1]:
+        answer = searcher.search(platform, query(wanted), SEARCH_LIMIT)'''
+
+[[rows]]
+id = "F2_order_reversed"
+description = "YouTube is searched before SoundCloud, against the source system's order"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''PLATFORMS: tuple[str, ...] = (SOUNDCLOUD, YOUTUBE)'''
+new = '''PLATFORMS: tuple[str, ...] = (YOUTUBE, SOUNDCLOUD)'''
+
+[[rows]]
+id = "F3_exit_one_is_empty"
+description = "A search exiting with status 1 reads as an empty answer rather than an outage"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''        if done.returncode != 0:'''
+new = '''        if done.returncode not in (0, 1):'''
+
+[[rows]]
+id = "F4_timeout_is_empty"
+description = "A search that timed out reads as an empty answer rather than an outage"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''        except subprocess.TimeoutExpired as exc:
+            raise FallbackUnavailable(
+                f"the {platform} search did not answer within {self._timeout:g} seconds"
+            ) from exc'''
+new = '''        except subprocess.TimeoutExpired:
+            return Answer(hits=())'''
+
+[[rows]]
+id = "F5_api_url_kept"
+description = "An unresolvable api.soundcloud.com URL is offered instead of the page URL"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    if "api.soundcloud.com" in str(url):
+        url = said.get("webpage_url") or ""'''
+new = '''    if "api.soundcloud.com" in str(url) and False:
+        url = said.get("webpage_url") or ""'''
+
+[[rows]]
+id = "F6_ignore_errors_back"
+description = "The subprocess is run with the source system's ignore errors flag again"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''            "--no-warnings",
+            "--print",'''
+new = '''            "--no-warnings",
+            "--ignore-errors",
+            "--print",'''
+
+[[rows]]
+id = "F7_mix_boundary"
+description = "An upload exactly at the mix length is demoted as a mix"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    if hit.duration is not None and hit.duration > LIKELY_MIX_SECONDS:'''
+new = '''    if hit.duration is not None and hit.duration >= LIKELY_MIX_SECONDS:'''
+
+[[rows]]
+id = "F8_mix_not_demoted"
+description = "A long mix is no longer demoted below the track it names"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''        said *= MIX_FACTOR'''
+new = '''        said *= 1.0'''
+
+[[rows]]
+id = "F9_coverage_weight"
+description = "The score weights similarity 60 and word coverage 40, not half and half"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    said = 50.0 * ratio + 50.0 * coverage'''
+new = '''    said = 60.0 * ratio + 40.0 * coverage'''
+
+[[rows]]
+id = "F10_no_url_dedupe"
+description = "The same upload returned twice is offered as two options"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''        if hit.url in seen:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "F11_tie_ignores_platform"
+description = "Two equal scores are ordered by position alone, not SoundCloud first"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''        key=lambda entry: entry[:3],
+    )
+    seen: set[str] = set()
+    kept: list[Candidate] = []'''
+new = '''        key=lambda entry: (entry[0], entry[2]),
+    )
+    seen: set[str] = set()
+    kept: list[Candidate] = []'''
+
+[[rows]]
+id = "F12_open_searched_again"
+description = "An open question is not read from the queue, so it is searched again"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    if held.verdict is None:
+        return Proposal(
+            wanted,
+            WAITING,'''
+new = '''    if held.verdict is None:
+        return None
+        return Proposal(
+            wanted,
+            WAITING,'''
+
+[[rows]]
+id = "F13_rejected_searched_again"
+description = "A rejected row is searched and offered again"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    if held.verdict is review.Verdict.REJECTED:
+        return Proposal('''
+new = '''    if held.verdict is review.Verdict.REJECTED:
+        return None
+        return Proposal('''
+
+[[rows]]
+id = "F14_single_option_stalls"
+description = "An acceptance over one option without naming it stalls instead of choosing it"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    if chosen is None and count == 1:'''
+new = '''    if chosen is None and count == 0:'''
+
+[[rows]]
+id = "F15_empty_offered"
+description = "A row with no candidate is offered as an empty item rather than reported"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    on_screen = ranked(wanted, answer)
+    if not on_screen:'''
+new = '''    on_screen = ranked(wanted, answer)
+    if False:'''
+
+# ── The verb, src/cratekit/acquire/fallback_cli.py ──────────────────────────
+
+[[rows]]
+id = "C1_provider_id_searched"
+description = "A row carrying the provider's own id is searched on a second source"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''                if missing_cli.provider_ref(one):'''
+new = '''                if False:'''
+
+[[rows]]
+id = "C2_provider_waiting_searched"
+description = "A row whose provider candidate waits in review is searched elsewhere"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''                    candidates.WAITING,
+                    candidates.ACCEPTED,
+                ):'''
+new = '''                    candidates.ACCEPTED,
+                ):'''
+
+[[rows]]
+id = "C3_dedupe_on_match_id"
+description = "Rows are deduplicated on the match id, which carries the key"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''            asked = fallback.item_id(one.wanted)'''
+new = '''            asked = one.match_id'''
+
+[[rows]]
+id = "C4_searcher_eager"
+description = "The searcher is built before any row needs a search, so an owned list needs yt-dlp"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''            found: fallback.FallbackSearcher | None = None'''
+new = '''            try:
+                found: fallback.FallbackSearcher | None = searcher()
+            except binaries.BinaryNotFound as exc:
+                raise _binary_refusal(exc, subject) from exc'''
+
+[[rows]]
+id = "C5_hint_dropped"
+description = "The missing binary refusal carries no install step"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''            (f"install {', '.join(hint.packages)} with {hint.manager}, then run it again",)
+            if hint is not None'''
+new = '''            (f"install {', '.join(hint.packages)} with {hint.manager}, then run it again",)
+            if False'''
+
+[[rows]]
+id = "C6_remedy_constant"
+description = "A broken override is told to install the binary rather than fix the override"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''        remedy=Remedy(exc.remedy.value),'''
+new = '''        remedy=Remedy.INSTALL_BINARY,'''
+
+[[rows]]
+id = "C7_offered_not_named"
+description = "An outage no longer names the rows this run already offered"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''                if made.state == fallback.OFFERED:
+                    offered_now.append(made)'''
+new = '''                if made.state == fallback.OFFERED:
+                    pass'''
+
+[[rows]]
+id = "C8_outage_narrowed"
+description = "Only FallbackUnavailable is an outage, so any other searcher failure crashes"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''                except Exception as exc:  # noqa: BLE001 - refused whole, never swallowed'''
+new = '''                except fallback.FallbackUnavailable as exc:'''
+
+[[rows]]
+id = "C9_none_is_silent"
+description = "No candidate anywhere is a quiet no-op instead of a refusal"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    if unfound and not waiting and not accepted and not provider_routed:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C10_provider_routed_refuses"
+description = "A list whose only routed rows are on the provider refuses over its unfound rows"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    if unfound and not waiting and not accepted and not provider_routed:'''
+new = '''    if unfound and not waiting and not accepted:'''
+
+[[dropped]]
+id = "D1_oserror_is_empty"
+description = "A program that cannot start reads as an empty answer"
+reason = "the same shape as F4 on the sibling except clause; F4 measures the pattern"
+
+[[dropped]]
+id = "D2_non_object_line"
+description = "A printed line that is JSON but not an object is read as a hit"
+reason = "removing the dict check turns a list line into an AttributeError, a crash every reader sees; maintainer facing"
+
+[[dropped]]
+id = "D3_bool_duration"
+description = "A boolean duration is read as one second"
+reason = "a boolean duration from yt-dlp is not a produced shape; maintainer facing"
+
+[[dropped]]
+id = "D4_unnamed_line_uncounted"
+description = "A line naming no usable URL is not counted unreadable"
+reason = "the unreadable count is reported, never acted on; ranked below the user facing guards"
+
+[[dropped]]
+id = "D5_unfound_check_status"
+description = "The unfound check reads info rather than fail"
+reason = "the failing status of the unfound check is a rendering detail below the refusal C9 measures"
+
+[[dropped]]
+id = "C11_unmounted_searched"
+description = "An absent music folder is read as an empty library and every row is searched"
+reason = "the guard is intake missing's, copied with its sentence; its test drives it, and the cap ranks it below the new guards"

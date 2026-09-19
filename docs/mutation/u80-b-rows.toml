@@ -1,0 +1,34 @@
+name = "u80-b"
+pass_kind = "light"
+
+# The three zeros of docs/mutation/u80.md, re-measured after a test each.
+
+[[rows]]
+id = "F9_coverage_weight"
+description = "The score weights similarity 60 and word coverage 40, not half and half"
+file = "src/cratekit/acquire/fallback.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    said = 50.0 * ratio + 50.0 * coverage'''
+new = '''    said = 60.0 * ratio + 40.0 * coverage'''
+
+[[rows]]
+id = "C4_searcher_eager"
+description = "The searcher is built before any row needs a search, so a settled list needs yt-dlp"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''            found: fallback.FallbackSearcher | None = None'''
+new = '''            try:
+                found: fallback.FallbackSearcher | None = searcher()
+            except binaries.BinaryNotFound as exc:
+                raise _binary_refusal(exc, subject) from exc'''
+
+[[rows]]
+id = "C10_provider_routed_refuses"
+description = "A list whose only routed rows are on the provider refuses over its unfound rows"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py"]
+old = '''    if unfound and not waiting and not accepted and not provider_routed:'''
+new = '''    if unfound and not waiting and not accepted:'''

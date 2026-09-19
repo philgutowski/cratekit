@@ -33,6 +33,9 @@ from tests.test_config import valid_data
 
 SC, YT = fallback.SOUNDCLOUD, fallback.YOUTUBE
 
+#: The verb's own seam, kept before any test rebinds it.
+SHIPPED_SEARCHER = fallback_cli.searcher
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
 # ═══════════════════════════════════════════════════════════════════════════
@@ -539,8 +542,11 @@ def test_the_score_is_half_similarity_half_word_coverage():
 
     said = fallback.score(wanted, half)
 
-    # Two of four words, 50 * 0.5 = 25, plus half the sequence similarity.
-    assert 25.0 < said < 75.0, said
+    # Worked by hand, not by the code under test: "aurora bloom sun path"
+    # against "aurora bloom" matches 12 characters of 21 plus 12, a ratio of
+    # 24 / 33, and carries two of the four words. 50 * 24 / 33 + 50 * 2 / 4 is
+    # 36.36 plus 25, which rounds to 61.4.
+    assert said == 61.4, said
     assert fallback.score(wanted, hit(SC, 2, "", "")) == 0.0
 
 
@@ -699,3 +705,37 @@ def test_one_track_with_and_without_a_key_is_searched_once(cfg, library, tmp_pat
     assert len(fake.calls) == 2, fake.calls
     assert envelope["data"]["summary"]["fallback_offered"] == 1
     assert len(items_of(cfg)) == 1
+
+
+def test_a_list_whose_rows_are_all_settled_needs_no_binary(cfg, library, tmp_path, monkeypatch):
+    """The searcher is built only when a row needs a search, so a second run
+    over rows already in review spends no lookup of yt-dlp at all."""
+    path = tracklist(tmp_path, BOOT)
+    bind(monkeypatch, FakeSearcher(boot_answers()))
+    first, _ = run(path)
+    assert first == int(ExitCode.OK)
+    monkeypatch.setattr(fallback_cli, "searcher", SHIPPED_SEARCHER)
+    unfindable(monkeypatch)
+
+    code, envelope = run(path)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["waiting"] == 1
+
+
+def test_a_provider_route_beside_an_unfound_row_is_reported_not_refused(
+    cfg, library, tmp_path, monkeypatch
+):
+    """A row with a route is something to do, so the run does not read as a
+    list nothing can be done about. The unfound row is a failing check."""
+    _provider_question(cfg, TIDE, None)
+    path = tracklist(tmp_path, TIDE, GLASS)
+    bind(monkeypatch, FakeSearcher({}))
+
+    code, envelope = run(path)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["provider_routed"], summary["unfound"]) == (1, 1)
+    assert checks(envelope)["unfound"]["status"] == "fail"
+    assert "Mira Vale - Glass Hour" in checks(envelope)["unfound"]["detail"]

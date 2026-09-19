@@ -1,0 +1,127 @@
+{
+  "name": "u80-b",
+  "pass_kind": "light",
+  "branch": "relay/125",
+  "head": "1fba320",
+  "when": "2026-09-19 14:07 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8547,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/fallback.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/fallback.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "dc3c0b9fdc3d68ba",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8547,
+    "baseline_collected": 8547,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "F9_coverage_weight",
+      "description": "The score weights similarity 60 and word coverage 40, not half and half",
+      "file": "src/cratekit/acquire/fallback.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d886f1c49f22ca8a",
+      "subset": [
+        "tests/test_acquire_fallback.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback.py::test_the_score_is_half_similarity_half_word_coverage"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    said = 50.0 * ratio + 50.0 * coverage",
+      "new": "    said = 60.0 * ratio + 40.0 * coverage"
+    },
+    {
+      "id": "C4_searcher_eager",
+      "description": "The searcher is built before any row needs a search, so a settled list needs yt-dlp",
+      "file": "src/cratekit/acquire/fallback_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d8f80653f4e6d708",
+      "subset": [
+        "tests/test_acquire_fallback.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback.py::test_a_list_whose_rows_are_all_settled_needs_no_binary"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            found: fallback.FallbackSearcher | None = None",
+      "new": "            try:\n                found: fallback.FallbackSearcher | None = searcher()\n            except binaries.BinaryNotFound as exc:\n                raise _binary_refusal(exc, subject) from exc"
+    },
+    {
+      "id": "C10_provider_routed_refuses",
+      "description": "A list whose only routed rows are on the provider refuses over its unfound rows",
+      "file": "src/cratekit/acquire/fallback_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "01590914c73878e4",
+      "subset": [
+        "tests/test_acquire_fallback.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback.py::test_a_provider_route_beside_an_unfound_row_is_reported_not_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unfound and not waiting and not accepted and not provider_routed:",
+      "new": "    if unfound and not waiting and not accepted:"
+    }
+  ],
+  "dropped": []
+}
