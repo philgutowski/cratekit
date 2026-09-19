@@ -1725,8 +1725,11 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"plan"}),
         output_schema="plan/1",
         #: Files and one XML. The engine renames each file out of staging with
-        #: ``os.replace`` and never replaces a target, and ``place_files``
-        #: writes a new intake file it refuses to overwrite. No database open.
+        #: ``os.replace`` and refuses a target that exists, and it refuses an
+        #: intake file that exists before the first move. ``place_files`` itself
+        #: writes with a plain overwrite, so that check is the only protection,
+        #: and a file arriving after it is the window R-432 records. No
+        #: database open.
         writes=frozenset({"xml", "files"}),
         destructive=True,
         doctor_checks=("library.mounted",),
