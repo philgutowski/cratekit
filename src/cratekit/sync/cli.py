@@ -307,9 +307,10 @@ def _check(plan: _Plan) -> dict[str, Any]:
             "not queued: the confirmation was answered abort; the source's own "
             "verb asks the same question on its own"
         )
-    said = plan.note(plan.detail or {}) if plan.note is not None else None
-    if said:
-        check["detail"] += f"; {said}"
+    # NOT ``said``, which the nothing new branch above binds as its loop name.
+    noted = plan.note(plan.detail or {}) if plan.note is not None else None
+    if noted:
+        check["detail"] += f"; {noted}"
     return check
 
 
