@@ -1520,8 +1520,8 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # U82. A real export document under the CONFIGURED library, named as an
         # intake file of a pass this fixture never ran. No playlist job spells
         # that name, so the plan is empty, the explicit gate is still asked,
-        # and the verb ends NO_OP without reading a manifest, listing the
-        # account or asking for a credential this fixture does not have. The
+        # and the verb ends NO_OP without listing the account or asking for a
+        # credential this fixture does not have. The
         # marking path is driven in tests/test_sync_mark.py.
         "sync.mark": [
             "--xml",

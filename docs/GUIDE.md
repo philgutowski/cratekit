@@ -245,11 +245,13 @@ playlists it finished, by putting `DOWNLOADED ` in front of their names:
 crate sync mark --xml /path/to/library/RUN_synced_inboxed.xml
 ```
 
-Give it the importable file `intake land` wrote for the pass. It reads the
-pass's manifest from download staging, or the one you name with `--manifest`,
-and plans a rename only for a playlist whose every listed track is now in your
-library. A playlist with a track still missing is left alone and the track is
-named. Nothing is renamed until you answer the gate, a playlist whose name
+Give it the importable file `intake land` wrote for the pass, under the name
+`intake missing --run` told you to land it as, since the name is how the pass is
+found. It reads what each playlist's job reported, and plans a rename only for a
+playlist whose every track is now in your library, counting a track you have
+since deleted on purpose as settled. A playlist with a track still missing, or
+one the pass offered you for review and you have not got, is left alone and the
+track is named. Nothing is renamed until you answer the gate, a playlist whose name
 changed since the plan is skipped, and a playlist already carrying the prefix is
 never prefixed twice. If a rename fails part way, the run names the playlists it
 had already renamed, and running it again picks up the rest. A rename is a

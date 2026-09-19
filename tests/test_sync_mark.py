@@ -1,9 +1,9 @@
 """``crate sync mark``: a landed sync pass marks the playlists it finished (U82).
 
-THE PRODUCER IS THE REAL SEQUENCE AND NOT A HAND BUILT MANIFEST. Every test
-below drives ``crate sync all``, finishes the intake jobs it queued, and lists
-the pass with ``crate intake missing --run``, so the manifest, its name and the
-jobs the verb compares it with are the ones the product writes. What is faked is
+THE PRODUCER IS THE REAL SEQUENCE AND NOT A HAND BUILT REPORT. Every test below
+drives ``crate sync all``, finishes the intake jobs it queued, and lists the
+pass with ``crate intake missing --run``, so the reports the verb reads, the
+name the pass goes by and the jobs that spell it are the ones the product writes. What is faked is
 the two provider seams, the catalogue and the account, and the landing itself:
 the landed files are written where ``intake land`` puts them and the intake file
 is a real export shape naming them, because a real landing needs a Fresh Export
@@ -21,14 +21,17 @@ import pytest
 
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
-from cratekit.core import config, jobs, locations
+from cratekit.core import artifacts, config, jobs, locations
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import land_cli, missing_cli
-from cratekit.sync import marks, playlists, watermarks
+from cratekit.modules.outbound import account as account_module
+from cratekit.sync import mark_cli, marks, playlists, watermarks
 from tests import outbound_fakes
 from tests.cli_drive import drive
+from tests.intake.test_workers import Track
+from tests.test_intake_missing import tombstone
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_sync_all import _playlist, _playlist_jobs, _tracks, bind_playlists
 from tests.test_sync_all import slim as slim  # noqa: PLC0414 - the fixture, re-exported
@@ -276,7 +279,8 @@ def test_a_row_the_library_holds_and_the_file_does_not_name_is_owned(slim, monke
 
 
 def test_a_track_two_playlists_share_holds_both_back_until_it_lands(slim, monkeypatch):
-    """``source_refs`` is read, and not only the first asker's ``source_ref``."""
+    """Each playlist's own reports carry the shared track, so neither is whole
+    until it lands, whichever of the two the pass's list credits it to."""
     _fake, name = _swept_pass(
         monkeypatch,
         (_playlist("pl-a", "Warmup"), _tracks("101", "900")),
@@ -379,8 +383,11 @@ def test_a_partial_failure_names_what_was_marked(slim, monkeypatch):
     xml = _land(slim, name, "101", "102", "201")
 
     code, failed = _answered(xml)
-    assert code != int(ExitCode.OK), failed
+    assert code == int(ExitCode.INTERNAL), failed
     cause = failed["cause"]
+    # THE FAKE RAISES A BARE RuntimeError, which no adapter should, so it is
+    # reported as this build's defect and not as a provider to wait out.
+    assert cause["reason"] == "internal-error"
     assert cause["detail"]["marked"] == ["pl-a"]
     assert cause["detail"]["unmarked"] == ["pl-b"]
     assert "Warmup" in cause["message"] and "stay marked" in cause["message"]
@@ -393,6 +400,30 @@ def test_a_partial_failure_names_what_was_marked(slim, monkeypatch):
     assert code == int(ExitCode.OK), done
     assert account.renamed[-1] == ("pl-b", "DOWNLOADED Peak")
     assert len(account.renamed) == 2
+
+
+def test_a_refusal_the_account_raised_keeps_its_reason_and_names_what_was_marked(
+    slim, monkeypatch
+):
+    """What the real adapter raises: its provider's failure, already a cause."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+    rename = account.rename_playlist
+
+    def refusing(playlist_id: str, title: str) -> None:
+        if playlist_id == "pl-b":
+            raise account_module.provider_failure(TimeoutError("slow"), "rename a playlist")
+        rename(playlist_id, title)
+
+    monkeypatch.setattr(account, "rename_playlist", refusing)
+    code, failed = _answered(xml)
+    assert code != int(ExitCode.OK), failed
+    cause = failed["cause"]
+    assert cause["reason"] == "unavailable-transient"
+    assert cause["detail"]["marked"] == ["pl-a"] and cause["detail"]["unmarked"] == ["pl-b"]
+    assert "Warmup" in cause["message"]
 
 
 def test_a_failure_before_any_rename_says_nothing_was_marked(slim, monkeypatch):
@@ -442,19 +473,151 @@ def test_an_intake_file_of_no_pass_is_a_gated_plan_of_nothing(slim, monkeypatch)
     assert account.renamed == []
 
 
-def test_a_missing_manifest_refuses_and_never_reads_as_nothing_owed(slim, monkeypatch):
-    """Absence is not evidence of absence. With no manifest every playlist would
-    have no rows, and no rows is what a finished playlist looks like."""
+def test_a_track_the_pass_offered_for_review_holds_its_playlist_back(slim, monkeypatch):
+    """The track no manifest row ever stood for, which is why the reports are
+    read. The library holds another version of ``102``, so the pass OFFERS it
+    and never lists it for download, and everything that was listed lands."""
+    music = Path(slim.library.root) / slim.library.music_dir
+    (music / "Artist 102 - Title 102 (Someone Remix).flac").write_bytes(b"")
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "201")
+    manifest = Path(slim.paths.download_staging) / missing_cli.LISTS_DIR / f"{name}.manifest.json"
+    assert '"102"' not in manifest.read_text(encoding="utf-8"), "the offered track was listed"
+
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    held_back = _by_id(done)["pl-a"]
+    assert (held_back["action"], held_back["reason"]) == ("skip", "rows-outstanding")
+    assert [row["id"] for row in held_back["outstanding"]] == ["102"]
+
+
+def test_the_pass_is_decided_without_its_manifest(slim, monkeypatch):
+    """The manifest is another pass's as easily as this one's, and a pass whose
+    every missing track was handed on has none, so nothing here reads it."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "201")
+    (Path(slim.paths.download_staging) / missing_cli.LISTS_DIR / f"{name}.manifest.json").unlink()
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _by_id(done)["pl-a"]["reason"] == "rows-outstanding"
+
+
+def test_a_track_deleted_on_purpose_since_the_pass_is_not_owed(slim, monkeypatch):
+    """The pass never owes a suppressed track, and a tombstone recorded after it
+    is the same decision made later, so it does not hold the playlist for ever."""
+    # A TRACK THAT RESEMBLES NOTHING ELSE HERE. The engine asks the tombstones
+    # last, immediately before it calls a track missing, so a title close to
+    # one the library holds is a question for a person and never reaches them.
+    _fake, name = _swept_pass(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), [*_tracks("101"), Track("102", "Nova Reef", "Tide")]),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "201")
+    code, held = _mark(xml)
+    assert code == int(ExitCode.DECISION_REQUIRED), held
+    assert len(held["cause"]["detail"]["shown"]["left alone"]) == 1, "it was never owed"
+
+    tombstone(slim, "Nova Reef", "Tide")
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    item = _by_id(done)["pl-a"]
+    assert item["action"] == "marked", item.get("why")
+    assert (item["landed"], item["suppressed"]) == (1, 1)
+
+
+def test_a_playlist_whose_reports_cannot_be_read_is_left_alone(slim, monkeypatch):
+    """Unread is not nothing owed."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
     xml = _land(slim, name, "101", "102", "201")
-    manifest = Path(slim.paths.download_staging) / missing_cli.LISTS_DIR / f"{name}.manifest.json"
-    manifest.unlink()
+    (job,) = [job for job in _playlist_jobs() if playlists.playlist_of(job) == "pl-a"]
+    with jobs.open_store() as store:
+        item = jobs.items(store, job.job_id)[0]
+    artifacts.final_path(
+        intake_cli.ARTIFACTS, jobs.frozen_config(job), job.job_id, item.ordinal
+    ).write_text("{", encoding="utf-8")
+
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _by_id(done)["pl-a"]["reason"] == "reports-unreadable"
+
+
+def test_the_library_is_not_walked_when_no_playlist_is_left_to_settle(slim, monkeypatch):
+    """A second run over a marked pass decides every playlist by its name."""
+    fake, name = _swept_pass(monkeypatch, *TWO)
+    bind_account(monkeypatch, outbound_fakes.FakeAccount())
+    xml = _land(slim, name, "101", "102", "201")
+    fake.account = [_playlist("pl-a", "DOWNLOADED Warmup"), _playlist("pl-b", "DOWNLOADED Peak")]
+
+    def walked(_cfg):
+        raise AssertionError("the library was walked with nothing to resolve")
+
+    monkeypatch.setattr(mark_cli.match_cli, "library_view", walked)
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op"
+    assert {item["reason"] for item in done["data"]["items"]} == {"already-marked"}
+
+
+def test_a_location_on_another_host_is_passed_over_and_never_a_traceback(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+    body = xml.read_bytes().replace(
+        b"  </COLLECTION>",
+        b'    <TRACK TrackID="99" Name="Far" Artist="A" '
+        b'Location="file://elsewhere.invalid/Music/Far.flac"/>\r\n  </COLLECTION>',
+    )
+    xml.write_bytes(body)
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    assert len(account.renamed) == 2
+
+
+def test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said(slim, monkeypatch):
+    """Through the verb, which is where the skip is reported. The answered run
+    lists the account once to plan and once more to recheck, and the account
+    moves between those two reads, so the plan still matches the answer and the
+    recheck is what catches it."""
+    fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
     code, refused = _mark(xml)
-    assert code == int(ExitCode.PRECONDITION), refused
-    assert refused["cause"]["reason"] == "sync-marks-blocked"
-    assert account.renamed == []
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    code, _ = drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK)
+
+    planned_at = fake.account_listings + 1
+    listing = type(fake).account_playlists
+
+    def moving(self):
+        listed = listing(self)
+        if self.account_listings > planned_at:
+            return (_playlist("pl-a", "Warmup (edited)"), _playlist("pl-b", "Peak"))
+        return listed
+
+    monkeypatch.setattr(type(fake), "account_playlists", moving)
+    code, done = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    skipped = _by_id(done)["pl-a"]
+    assert (skipped["action"], skipped["reason"]) == ("skip", "changed-since-plan")
+    assert [w["code"] for w in done["warnings"]] == ["sync-mark-changed-since-plan"]
+    assert done["data"]["totals"] == {"count": 2, "marked": 1, "skip": 1}
 
 
 def test_an_abort_renames_nothing(slim, monkeypatch):

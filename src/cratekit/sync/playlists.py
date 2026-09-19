@@ -185,8 +185,12 @@ def source_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.Jo
     )
 
 
-def _playlist_of(job: jobs.Job) -> str:
+def playlist_of(job: jobs.Job) -> str:
+    """The account playlist a job this source queued is about, or ``""``."""
     return str((job.payload or {}).get(intake_cli.SOURCE) or "")
+
+
+_playlist_of = playlist_of
 
 
 def completed(found: Iterable[jobs.Job]) -> tuple[str, ...]:
@@ -518,6 +522,7 @@ __all__ = [
     "marking_sweep",
     "open_playlists",
     "pending_marks",
+    "playlist_of",
     "plan",
     "queue",
     "reconcile",
