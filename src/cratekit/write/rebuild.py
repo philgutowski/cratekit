@@ -313,8 +313,13 @@ def not_compared_warnings(not_compared: Iterable[str]) -> tuple[dict[str, str], 
     right. What the person needs is to know that a clean job is not a filed
     vocal sub-playlist, which the engine has always said and no surface
     repeated. The shape is the ``{code, message}`` that
-    ``handlers.drift_warnings`` established, and it is one wording for every
-    surface that files through this engine, so two of them cannot drift apart.
+    ``handlers.drift_warnings`` established, and it is one wording for the
+    inbox apply and the rebuild and resort resumes, so they cannot drift apart.
+
+    THE EXPORT ROUTE DOES NOT CARRY IT, deliberately. It already reports the
+    same gaps in its totals under ``not_derived``, and it reads any warning as
+    a sign a write was skipped, so adding this one there would turn a run that
+    simply had nothing to route into one reported as blocked.
     """
     if VOCAL_DIMENSION not in tuple(not_compared):
         return ()
