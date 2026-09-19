@@ -1770,7 +1770,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: intake file that exists before the first move. ``place_files`` itself
         #: writes with a plain overwrite, so that check is the only protection,
         #: and a file arriving after it is the window R-432 records. No
-        #: database open.
+        #: database open. With ``--manifest`` the same XML also gains the label
+        #: tree (U77): it is the intake file this run just made that is read
+        #: and replaced, never the export, so the write surface is unchanged.
         writes=frozenset({"xml", "files"}),
         destructive=True,
         doctor_checks=("library.mounted",),

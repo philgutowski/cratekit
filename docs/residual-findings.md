@@ -17544,6 +17544,20 @@ sitting.
 `Record Labels / <Label> / <Label> <year>`, and `insert_record_labels_tree`
 still has no caller. That is U77, which reads the manifest this unit writes.
 
+**CLOSED 2026-09-19 on `relay/122`, U77, the tree half.**
+`crate intake land --manifest M` reads the manifest U75 writes. After the move
+and the splice it ties each label row to a landed file with
+`match.resolve_one` over `match.index_library` of the batch folder only, and
+writes the matched track ids under `<Label> / <Label> <year>` in the catalog
+tree, into the same intake file. `insert_record_labels_tree` has its first
+caller, through `insert_record_labels_trees`, which writes every label in one
+read and one replace. Everything the writer can refuse is asked of a copy
+before the first move. An approved label release is therefore acquired by
+`acquire download` and filed by the landing, which is what this entry said it
+closes on. Landed against fakes. **Owed to an attended sitting:** import one
+labelled intake file into rekordbox and read the tree it makes. What the unit
+left open is R-455 to R-459.
+
 ---
 
 ## R-403. `crate sync all` lands nothing, and its combined intake file is unreachable
@@ -19115,3 +19129,126 @@ export of a library that R-129's import already doubled.
 **Closes when:** each of those writers asks `_sole_child` or a public form of
 it, with a test per writer, or the decision to leave them is recorded with a
 driven reason.
+
+---
+
+## R-455. The landing asks the tree writer about every label the manifest names, not only the ones that land
+
+**Found:** 2026-09-19, U77 on `relay/122`, by the author, and raised again by
+the unit's `/code-review` as a question of where the matching belongs.
+
+`landing._check_export` trials the catalog writer over a copy of the export
+before the first move, because a refusal after the moves leaves a batch in the
+library with no labels. Which rows land is known only once the batch folder is
+indexed, and the brief fixed that index as `match.index_library(batch_dir)`,
+after the moves. So the trial covers every label and year in the manifest. An
+export holding two folders of a label this batch does not carry refuses the
+whole landing.
+
+**Measured cost:** driven for a label the batch does carry,
+`test_an_export_holding_a_label_folder_twice_refuses_before_any_file_moves`.
+The case of a label the batch does NOT carry was not driven. Nothing moves
+and what the refusal says is true of the export, so the cost is a landing
+that has to wait for an export the person had to mend anyway.
+
+**The alternative the review named:** resolve the manifest rows against the
+staged files before the move. The tags and names are the same on both sides of
+`os.replace`, so the trial would be exact, the gate could show what will be
+filed instead of what is listed, and the filter on this run's placed files
+would not be needed. Not taken here because the brief made the other decision
+and the difference is an over refusal, not a wrong write.
+
+**Closes when:** the rows are resolved against the staged files and the trial
+names only what will be written, or the over refusal is driven on a real
+manifest and the decision to keep it is recorded.
+
+---
+
+## R-456. A label tree the disk refuses after the moves leaves its rows filed nowhere, and no verb files them later
+
+**Found:** 2026-09-19, U77 on `relay/122`, by the author.
+
+`landing._label` runs after `place_files` has written the intake file and
+recorded a routing intent for every landed file. A failure there is reported,
+one `label-tree-unwritten` warning per row, and the intake file is kept as the
+splice left it, because taking it back would leave intents pointing at rows
+nothing will ever import. The files are out of staging by then, so
+`intake land` cannot be run over them again, and no other verb takes a
+manifest.
+
+**Measured cost:** driven with a faked `OSError` from the writer and from the
+index, `test_a_tree_the_disk_refuses_after_the_moves_is_named_and_the_file_stays`
+and `test_a_batch_folder_that_cannot_be_indexed_reports_every_label_row`.
+Reachability on a real disk is unmeasured. Every refusal the writer itself can
+make, the database owned tree included, was driven to refuse BEFORE the first
+move, and the registry is read once before it, so the candidates left are a
+full or failing volume between the splice and the label write.
+
+**Closes when:** a verb files a manifest's label rows over files already in
+the library, or the landing writes the intake playlist and the label tree in
+one replace so there is no second write to fail.
+
+---
+
+## R-457. An unmatched label row cannot tell a track an earlier landing filed from a download that never arrived
+
+**Found:** 2026-09-19, U77 on `relay/122`, by the unit's `/code-review`.
+
+The index is of the batch folder only. A manifest of 200 rows landed in two
+halves, the workflow `docs/GUIDE.md` describes, gives the second landing about
+100 rows that resolve to no file it placed. Each is a `label-row-unmatched`
+warning and an `unfiled` item. The sentence was false when the review found it,
+it claimed a file had landed, and is now true of both cases. The noise is not
+fixed: the warnings that matter, a download that never arrived, read the same
+as the ones that do not.
+
+**Measured cost:** the sentence was driven and fixed,
+`test_a_label_row_no_landed_file_matches_is_reported_by_name`. The count on a
+real second landing is unmeasured, since no live label list has been landed.
+
+**Closes when:** the landing reads the export's own label playlist and says
+"already filed" for a row whose track is there, which needs the row tied to a
+collection row by more than a name, or the unmatched rows are reported as one
+line with a count when the export already holds the label's folder.
+
+---
+
+## R-458. A catalog tree that has cut over to the database makes every `--manifest` landing refuse
+
+**Found:** 2026-09-19, U77 on `relay/122`, by the first caller hunt.
+
+`rbxml.insert_catalog_folder` calls `_refuse_wrong_medium` first, which raises
+`TreeModeRefused` when the registry records the catalog tree as database
+native. The landing's check catches it before the first move and refuses with
+the writer's own reason, pinned by
+`test_a_catalog_tree_the_database_owns_refuses_before_any_file_moves`. That is
+the correct refusal, and it means a library whose catalog tree has cut over
+cannot file a label through the landing at all. The person can still land
+without the manifest, and the refusal does not say so.
+
+**Measured cost:** not reachable today. One candidate producer was read and
+not driven: a cutover is U29's work, which is attended and has recorded no
+catalog tree.
+
+**Closes when:** the catalog tree has a database writer the landing can call
+for a tree that has cut over, or the refusal names landing without the
+manifest as the way through.
+
+---
+
+## R-459. The label index reads every landed file's tags again, straight after the splice read them
+
+**Found:** 2026-09-19, U77 on `relay/122`, by the unit's `/code-review`.
+
+`place_files` reads each file's tags to build its collection row, and
+`match.index_library` then opens each file again for the artist, the title and
+the key. The review's other efficiency finding, a rewrite of the whole intake
+file per label, is fixed: `insert_record_labels_trees` is one read and one
+replace, pinned by
+`test_the_intake_file_is_rewritten_once_however_many_labels_it_carries`.
+
+**Measured cost:** not measured. It is a second tag read per landed file on
+the library's volume, and a label batch is hundreds of files, not thousands.
+
+**Closes when:** the index is built from what `place_files` already read, or
+a measurement on a real batch shows the second read does not matter.

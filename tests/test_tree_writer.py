@@ -536,6 +536,131 @@ def test_a_catalog_write_that_cannot_place_its_folder_writes_no_document(tmp_pat
     assert not (tmp_path / "out.xml").exists()
 
 
+def test_the_catalog_check_refuses_what_the_writer_would_and_writes_nothing():
+    """U77: the landing engine asks before it moves a file, so the check has to
+    refuse exactly where the writer does."""
+    without = replace(taxonomy.default_taxonomy(), catalog=None)
+    raw = _fresh_xml()
+    with pytest.raises(CratekitError) as excinfo:
+        trees.check_record_labels_tree(raw, {"Kompakt": [2025]}, declared=without)
+    assert excinfo.value.cause.reason == "catalog-tree-undeclared"
+
+    with pytest.raises(CratekitError) as excinfo:
+        trees.check_record_labels_tree(
+            b"<DJ_PLAYLISTS></DJ_PLAYLISTS>\r\n",
+            {"Kompakt": [2025]},
+            tree=rbxml.Tree(display=CATALOG_DISPLAY),
+        )
+    assert "Kompakt" in excinfo.value.cause.message
+
+
+def test_the_catalog_check_asks_nothing_when_there_is_nothing_to_write():
+    """An undeclared tree costs a caller with no catalogued source nothing."""
+    without = replace(taxonomy.default_taxonomy(), catalog=None)
+    trees.check_record_labels_tree(_fresh_xml(), {}, declared=without)
+
+
+def test_the_catalog_check_passes_a_document_the_writer_can_write_and_leaves_it_alone():
+    raw = _fresh_xml()
+    trees.check_record_labels_tree(
+        raw, {"Kompakt": [2025, 2024], "Ostgut Ton": [2025]}, registry=tree_registry.EMPTY
+    )
+    assert raw == _fresh_xml()
+
+
+def test_the_catalog_check_refuses_a_held_year_playlist_that_appears_twice(tmp_path):
+    """The deepest of the three levels the writer refuses at, reached only when
+    the check names the YEAR and not the label alone."""
+    once = tmp_path / "once.xml"
+    once.write_bytes(_fresh_xml())
+    trees.insert_record_labels_tree(
+        once, "Kompakt", _buckets(2025), once, registry=tree_registry.EMPTY
+    )
+    body = once.read_bytes()
+    start = body.index(b'<NODE Name="Kompakt 2025"')
+    start = body.rindex(b"\r\n", 0, start) + 2
+    close = b"</NODE>\r\n"
+    end = body.index(close, start) + len(close)
+    doubled = body.replace(body[start:end], body[start:end] * 2, 1)
+
+    trees.check_record_labels_tree(doubled, {"Kompakt": [2024]}, registry=tree_registry.EMPTY)
+    with pytest.raises(CratekitError):
+        trees.check_record_labels_tree(
+            doubled, {"Kompakt": [2025]}, registry=tree_registry.EMPTY
+        )
+
+
+def test_several_sources_are_one_write_and_a_new_tree_reads_a_to_z(tmp_path):
+    source = tmp_path / "fresh.xml"
+    source.write_bytes(_fresh_xml())
+    out = tmp_path / "out.xml"
+    catalog = {"Ostgut Ton": _buckets(2025), "Kompakt": _buckets(2025, 2024)}
+
+    trees.insert_record_labels_trees(source, catalog, out, registry=tree_registry.EMPTY)
+
+    body = out.read_bytes()
+    assert _no_bare_lf(body)
+    assert body.count(b'<NODE Name="Record Labels" Type="0" Count="2">') == 1
+    assert body.find(b'Name="Kompakt"') < body.find(b'Name="Ostgut Ton"')
+    # The same bytes the one source writer gives, written last name first.
+    step = tmp_path / "step.xml"
+    trees.insert_record_labels_tree(
+        source, "Ostgut Ton", catalog["Ostgut Ton"], step, registry=tree_registry.EMPTY
+    )
+    trees.insert_record_labels_tree(
+        step, "Kompakt", catalog["Kompakt"], step, registry=tree_registry.EMPTY
+    )
+    assert step.read_bytes() == body
+
+
+def test_one_source_the_writer_refuses_writes_none_of_them(tmp_path):
+    """All or nothing. A document holding one label of two would import as a
+    finished one."""
+    once = tmp_path / "once.xml"
+    once.write_bytes(_fresh_xml())
+    trees.insert_record_labels_tree(
+        once, "Kompakt", _buckets(2025), once, registry=tree_registry.EMPTY
+    )
+    body = once.read_bytes()
+    opened = b'<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">'
+    assert body.count(opened) == 1
+    once.write_bytes(body.replace(opened, b'<NODE Name="Kompakt 2025" Type="1" KeyType="0">'))
+    out = tmp_path / "out.xml"
+
+    with pytest.raises(CratekitError):
+        trees.insert_record_labels_trees(
+            once,
+            {"Ostgut Ton": _buckets(2025), "Kompakt": {2025: [{"track_ids": [7]}]}},
+            out,
+            registry=tree_registry.EMPTY,
+        )
+
+    assert not out.exists()
+
+
+def test_the_catalog_check_reaches_a_held_playlist_the_writer_cannot_extend(tmp_path):
+    """The trial gives every year one id no document holds. With none, the
+    writer returns before it looks at the held playlist's own layout, and the
+    check passed a document the write then refused."""
+    once = tmp_path / "once.xml"
+    once.write_bytes(_fresh_xml())
+    trees.insert_record_labels_tree(
+        once, "Kompakt", _buckets(2025), once, registry=tree_registry.EMPTY
+    )
+    body = once.read_bytes()
+    opened = b'<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">'
+    assert body.count(opened) == 1
+    broken = body.replace(opened, b'<NODE Name="Kompakt 2025" Type="1" KeyType="0">')
+
+    with pytest.raises(CratekitError) as excinfo:
+        trees.check_record_labels_tree(broken, {"Kompakt": [2025]}, registry=tree_registry.EMPTY)
+
+    assert "Entries" in excinfo.value.cause.message
+    # And the trial id is left in nothing: the check writes to a copy only.
+    trees.check_record_labels_tree(body, {"Kompakt": [2025]}, registry=tree_registry.EMPTY)
+    assert b'Key="-1"' not in body
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Row matching: the active-row rule and the two-sided normalization
 # ═══════════════════════════════════════════════════════════════════════════

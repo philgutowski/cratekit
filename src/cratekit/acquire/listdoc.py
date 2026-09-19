@@ -49,9 +49,10 @@ from cratekit.core import config
 LIST_SUFFIX = ".list.json"
 MANIFEST_SUFFIX = ".manifest.json"
 
-#: The version of the provenance sidecar. Nothing reads the sidecar yet, so
-#: nothing refuses an unknown version of it; a reader, when one lands, should
-#: refuse the way ``read_list`` refuses the list's own.
+#: The version of the provenance sidecar. :func:`read_manifest` refuses any
+#: other, whole, the way ``read_list`` refuses the list's own. So a bump here
+#: stops every manifest already on disk from being read, and the landing verb
+#: with it: raise it only with a reader for the version it leaves behind.
 MANIFEST_VERSION = 1
 
 
@@ -398,3 +399,116 @@ def write(
     for path, payload in pending:
         config.atomic_write_bytes(payload, path)
     return Written(list_path, manifest_path, listed, unlisted)
+
+
+# ---------------------------------------------------------------------------
+# Reading the manifest back
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestRow:
+    """One manifest entry, as it was written: the listed id and where it came from.
+
+    ``track`` is the row in the list document's own shape, so a reader that
+    wants a :class:`match.Wanted` hands it to :func:`match.read_row` and gets
+    the identity the list itself would have given, not one recomposed here.
+    """
+
+    ref: str
+    provenance: Provenance
+    track: Mapping[str, Any]
+
+
+def _text_or_none(entry: Mapping[str, Any], key: str, ref: str) -> str | None:
+    value = entry.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ListDocRefused(f"manifest entry {ref!r} carries a {key} that is not text")
+    return value
+
+
+def _manifest_row(ref: str, entry: object) -> ManifestRow:
+    if not isinstance(entry, Mapping):
+        raise ListDocRefused(f"manifest entry {ref!r} is not an object")
+    source = entry.get("source")
+    if not isinstance(source, str) or not source.strip():
+        raise ListDocRefused(f"manifest entry {ref!r} names no source")
+    year = entry.get("year")
+    # ``bool`` is an ``int`` to Python, and a year of ``true`` is not a year.
+    if year is not None and (isinstance(year, bool) or not isinstance(year, int)):
+        raise ListDocRefused(f"manifest entry {ref!r} carries a year that is not a number")
+    track: dict[str, Any] = {
+        "id": ref,
+        "artist": _text_or_none(entry, "artist", ref) or "",
+        "title": _text_or_none(entry, "title", ref) or "",
+        "version": _text_or_none(entry, "version", ref) or "",
+    }
+    isrc = _text_or_none(entry, "isrc", ref)
+    if isrc:
+        track["isrc"] = isrc
+    # Present only when more than one source asked for the id, which is the
+    # writer's rule, and read back as written so no asker is lost on the way.
+    asked = entry.get("source_refs", [])
+    if not isinstance(asked, list) or not all(isinstance(one, str) for one in asked):
+        raise ListDocRefused(f"manifest entry {ref!r} carries source_refs that are not text")
+    return ManifestRow(
+        ref=ref,
+        provenance=Provenance(
+            source=source,
+            source_ref=_text_or_none(entry, "source_ref", ref),
+            label_id=_text_or_none(entry, "label_id", ref),
+            label_name=_text_or_none(entry, "label_name", ref),
+            year=year,
+            release_id=_text_or_none(entry, "release_id", ref),
+            source_refs=tuple(asked),
+        ),
+        track=track,
+    )
+
+
+def read_manifest(path: Path) -> tuple[ManifestRow, ...]:
+    """Every entry of a provenance sidecar, in the order it was written.
+
+    REFUSES THE WAY ``read_list`` REFUSES THE LIST'S OWN, which is what the
+    comment on :data:`MANIFEST_VERSION` asked of the first reader: a version
+    this build did not write is refused whole and never read on the hope that
+    the keys still mean what they meant. A file that is not a manifest at all,
+    a list document passed by mistake included, is refused by name.
+    """
+    try:
+        raw = Path(path).read_bytes()
+    except OSError as exc:
+        raise ListDocRefused(
+            f"the manifest {path} could not be read: {exc.strerror or exc}"
+        ) from exc
+    return manifest_rows(raw, path)
+
+
+def manifest_rows(raw: bytes, path: Path | str) -> tuple[ManifestRow, ...]:
+    """:func:`read_manifest` over bytes somebody already holds.
+
+    For a caller that fingerprinted the bytes and must parse THOSE bytes, since
+    a second read of the path is a second file if it was rewritten in between.
+    ``path`` is only what the refusals call the file.
+    """
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ListDocRefused(f"the manifest {path} is not JSON: {exc}") from exc
+    if not isinstance(body, Mapping) or "manifest" not in body:
+        raise ListDocRefused(
+            f"{path} is not a manifest; pass the file ending in {MANIFEST_SUFFIX} "
+            f"that was written beside the list"
+        )
+    version = body["manifest"]
+    if isinstance(version, bool) or version != MANIFEST_VERSION:
+        raise ListDocRefused(
+            f"the manifest {path} is version {version!r} and this build reads "
+            f"version {MANIFEST_VERSION}"
+        )
+    rows = body.get("rows")
+    if not isinstance(rows, Mapping):
+        raise ListDocRefused(f"the manifest {path} carries no rows object")
+    return tuple(_manifest_row(str(ref), entry) for ref, entry in rows.items())

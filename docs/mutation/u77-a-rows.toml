@@ -1,0 +1,92 @@
+name = "u77-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_label_source_filter"
+description = "read_label_manifest: keep every manifest row whatever its source, so a favourites or playlist row is filed under a label"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''rows=tuple(row for row in rows if row.provenance.source == LABEL_SOURCE),'''
+new = '''rows=tuple(row for row in rows if row.provenance.source),'''
+
+[[rows]]
+id = "A2_engine_stale_digest"
+description = "apply: never compare the manifest's bytes with the fingerprint the caller was shown, so a manifest rewritten after the gate is filed (the engine layer alone, the gate's own check left in place)"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''if manifest_digest is not None and read.digest != manifest_digest:'''
+new = '''if manifest_digest is None and read.digest != manifest_digest:'''
+
+[[rows]]
+id = "A3_premove_catalog_check"
+description = "_check_export: hand the tree check an empty catalog, so no refusal of the tree writer is asked before the first move"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''trees.check_record_labels_tree(bytes(trial), catalog, registry=registry)'''
+new = '''trees.check_record_labels_tree(bytes(trial), {}, registry=registry)'''
+
+[[rows]]
+id = "A4_export_reason_mapping"
+description = "_check_export: pass the writer's internal-error through unchanged, so a doubled label folder in the person's export reaches them as a defect"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''if exc.cause.reason != "internal-error":'''
+new = '''if exc.cause.reason:'''
+
+[[rows]]
+id = "A5_needs_review_guard"
+description = "_file_labels: stop treating a needs review match as a question, so a row whose batch holds another version falls through to the unmatched answer"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''if found.state is match.MatchState.NEEDS_REVIEW:'''
+new = '''if found.state is match.MatchState.SUPPRESSED:'''
+
+[[rows]]
+id = "A6_no_landed_file_guard"
+description = "_file_labels: file a row that resolved to no file this run placed, so a year playlist is written for a track the intake file gave no id"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''        if not landed:
+            # TRUE OF BOTH ROWS'''
+new = '''        if landed is None:
+            # TRUE OF BOTH ROWS'''
+
+[[rows]]
+id = "A7_year_absent_guard"
+description = "_file_labels: file a label row that carries no year, so a playlist named for the label and None is written"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''        if not label or year is None:
+            absent ='''
+new = '''        if not label:
+            absent ='''
+
+[[rows]]
+id = "A8_library_template"
+description = "_file_labels: index the batch folder with the bare default name template, so the library's lossy marker stays in a title read from the filename"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''index = match.index_library(batch_dir, template=template)'''
+new = '''index = match.index_library(batch_dir)'''
+
+[[rows]]
+id = "A9_this_runs_files_only"
+description = "_file_labels: take a matched path's id without asking whether this run placed it (the membership test removed, the lookup defaulted), so a file an earlier landing left in the batch folder is filed under id None"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''            ids[Path(path).resolve()]
+            for path in (found.paths if found.state is match.MatchState.MATCHED else ())
+            if Path(path).resolve() in ids
+'''
+new = '''            ids.get(Path(path).resolve())
+            for path in (found.paths if found.state is match.MatchState.MATCHED else ())
+'''

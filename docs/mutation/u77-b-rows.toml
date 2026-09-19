@@ -1,0 +1,90 @@
+name = "u77-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_reported_ids_deduped"
+description = "_label: report a year's ids as collected instead of deduplicated, so a recording listed under two provider ids is reported twice while the file holds it once"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''track_ids=tuple(rbxml.dedupe_track_ids(years[label][year])),'''
+new = '''track_ids=tuple(years[label][year]),'''
+
+[[rows]]
+id = "B2_disk_refusal_reported"
+description = "_label: catch only a structured refusal from the tree write, so a disk that refuses after the moves raises out of a landing that already succeeded"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''    except (CratekitError, OSError) as exc:
+        said = f"the label tree could not be written ({exc})"'''
+new = '''    except CratekitError as exc:
+        said = f"the label tree could not be written ({exc})"'''
+
+[[rows]]
+id = "B3_index_refusal_reported"
+description = "_label: stop catching a batch folder that cannot be read, so the index raises after the moves"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''    except OSError as exc:
+        said = f"the batch folder could not be read'''
+new = '''    except KeyError as exc:
+        said = f"the batch folder could not be read'''
+
+[[rows]]
+id = "B4_registry_read_once"
+description = "_label: read the registry again for the write instead of using the one read before the first move, so a registry that cannot be read raises after the moves"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''            destination,
+            registry=registry,
+        )'''
+new = '''            destination,
+            registry=tree_registry.read(cfg),
+        )'''
+
+[[rows]]
+id = "B5_unmatched_sentence"
+description = "_file_labels: reword the unmatched sentence so it no longer limits the claim to this run, which is false of a row an earlier landing filed"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''sentence=f"{spelled} was filed under no label playlist by this run, because {because}",'''
+new = '''sentence=f"{spelled} was filed under no label playlist at all, because {because}",'''
+
+[[rows]]
+id = "B6_trial_id"
+description = "check_record_labels_tree: trial every year with no id, so the writer returns from a held playlist before its three layout refusals and the check passes what the write refuses"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''trial, label, [(f"{label} {year}", [_TRIAL_ID]) for year in years], target'''
+new = '''trial, label, [(f"{label} {year}", []) for year in years], target'''
+
+[[rows]]
+id = "B7_check_empty_catalog"
+description = "check_record_labels_tree: resolve the catalog tree even when nothing would be written, so an undeclared tree refuses a landing that has no label row"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''    if not catalog:
+        return
+    target = _catalog_tree(declared, registry, tree)
+    trial'''
+new = '''    if catalog is None:
+        return
+    target = _catalog_tree(declared, registry, tree)
+    trial'''
+
+[[rows]]
+id = "B8_label_write_order"
+description = "insert_record_labels_trees: write the sources first name first, so a new tree reads Z to A"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''    for label in sorted(catalog, reverse=True):
+        _insert_catalog(content,'''
+new = '''    for label in sorted(catalog):
+        _insert_catalog(content,'''

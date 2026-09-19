@@ -1,0 +1,11 @@
+name = "u77-a2"
+pass_kind = "light"
+
+[[rows]]
+id = "A2_engine_stale_digest"
+description = "apply: the same row as u77-a's, measured again with a mutation that only removes the guard. The first inverted the test for a fingerprint being given, so it refused every landing that gave none and its 19 deaths were mostly not the guard's. This one compares the fingerprint with itself, so the check can never fire and nothing else changes"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''if manifest_digest is not None and read.digest != manifest_digest:'''
+new = '''if manifest_digest is not None and manifest_digest != manifest_digest:'''

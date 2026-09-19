@@ -4,7 +4,8 @@ A golden file pins the EXACT bytes a splicer emits against a synthetic fixture.
 It is the cheapest possible answer to the question that makes an incremental
 rewrite safe: did that refactor change the output, and by how much.
 
-The nine goldens are ported unchanged, byte for byte, from the source system.
+Nine goldens are ported unchanged, byte for byte, from the source system, and
+``NOT_PORTED`` names the ones this product produced itself.
 They matter more here than they did there. The source system had FIVE duplicated
 splice implementations, and Cratekit collapses them into one writer. Collapsing
 five implementations into one is exactly the change that produces a silent byte
@@ -90,8 +91,20 @@ GOLDEN_INVARIANTS: dict[str, tuple[str, bytes]] = {
         "CRLF label subtree, ROOT Count bumped, newest year ordered first",
         b'<NODE Name="Record Labels" Type="0" Count="1">',
     ),
+    # Not ported: the source system had no landing step. Produced by
+    # ``tests/test_landing_labels.py``, which is the file REGEN=1 is run over
+    # for this one.
+    "land_label_tree": (
+        "a landed batch whose one document carries the intake playlist and the "
+        "label tree, labels A to Z and newest year first",
+        b'<NODE Name="Record Labels" Type="0" Count="2">',
+    ),
 }
 
+
+#: Goldens this product produced itself, with no source system file behind them.
+#: Named, so the count of ported ones below cannot be met by one of these.
+NOT_PORTED = frozenset({"land_label_tree"})
 
 def _check(name: str, produced: bytes) -> None:
     """Compare produced bytes to the golden, or rewrite it under REGEN=1."""
@@ -135,7 +148,9 @@ def test_every_declared_golden_is_present_and_no_others():
         f"goldens on disk but undeclared: {sorted(on_disk - declared)}; "
         f"declared but missing from disk: {sorted(declared - on_disk)}"
     )
-    assert len(declared) == 9, "the source system had nine goldens; all nine port"
+    ported = declared - NOT_PORTED
+    assert len(ported) == 9, "the source system had nine goldens; all nine port"
+    assert NOT_PORTED <= declared, "a golden named as this product's own is gone"
 
 
 @pytest.mark.parametrize("name", sorted(GOLDEN_INVARIANTS))

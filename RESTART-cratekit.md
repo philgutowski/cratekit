@@ -4,7 +4,63 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U76, issue #121, `relay/121`, 2026-09-19.**
+**Last merged: U77, issue #122, `relay/122`, 2026-09-19.**
+A landing given a manifest files its label tracks in the same intake file,
+which closes R-402. `crate intake land --manifest M` reads the provenance
+sidecar `label approved` writes, through a new `listdoc.read_manifest` that
+refuses any version but its own whole. The manifest is read ONCE, before the
+gate, for both its rows and a fingerprint of its bytes, in
+`landing.read_label_manifest`. So a list passed where the manifest belongs
+refuses before an answer is spent, the gate screen names every label playlist
+listed, the bytes are in the plan digest, and `landing.apply` is handed the
+fingerprint and refuses `decision-stale` with nothing moved if the file it
+reads again is not the one that was shown. After the move and the splice,
+`landing._file_labels` builds a `Wanted` for each row whose `source` is `label`
+through `match.read_row`, resolves it with `match.resolve_one` over
+`match.index_library` of the BATCH FOLDER ONLY, read with
+`match_cli.library_template(cfg)`, and keeps only paths this call placed.
+`insert_record_labels_tree` has its first caller through a new
+`trees.insert_record_labels_trees`, one read and one atomic replace for every
+label together, last name first so a new tree reads A to Z. One XML carries the
+intake playlist and the tree. A row with no file, a row whose batch holds
+another version and a row with no year are each reported by name, as an
+`unfiled` plan item and a warning, codes `label-row-unmatched`,
+`label-row-needs-review` and `label-row-incomplete`. The plan surface is closed
+at four fields, so filed playlists and unfiled rows ride in `items` and
+`totals`. EVERYTHING THE WRITER CAN REFUSE IS ASKED OF A COPY BEFORE THE FIRST
+MOVE, in `trees.check_record_labels_tree`: the undeclared catalog tree, a
+doubled folder or playlist, a held playlist it cannot extend and a tree the
+database owns. A layout refusal reaches a person as `library-export-unusable`
+with steps, not as the writer's `internal-error`. The registry is read once,
+before the first move. A tree the disk refuses AFTER the moves is a
+`label-tree-unwritten` warning per row over an intake file that stays, because
+every landed file already has a routing intent naming it, R-456. The unit's
+`/code-review` raised ten findings. Seven were fixed, two of them driven red
+first: the trial handed every year an empty id list, so the writer returned
+from a held playlist before its three layout refusals and the check passed an
+export the write then refused after the moves, now filed under
+`docs/solutions/integration-issues/`; and the batch index used the bare name
+template, so a marked lossy file with no title tag matched nothing. One was
+half fixed, the unmatched sentence is now true and its noise on a second
+landing is R-457. Two are recorded and not taken: matching before the move,
+R-455, because the brief decided the other way, and the second tag read, R-459.
+The first caller hunt found the one failure the writer raises and does not
+return, the database owned tree, driven to refuse before the moves, R-458. It
+looked one file over for the empty trial shape and `insert_intake_playlist` has
+no refusal that depends on its ids. 60 new test cases by collected count, 27 of
+them in the new `tests/test_landing_labels.py`, and a tenth golden,
+`land_label_tree`, named in `NOT_PORTED` so the count of ported goldens stays
+nine. `tests/test_reserved_causes.py` is re-pinned for four new warning codes,
+none a cause. Mutation tables `docs/mutation/u77-a.md`, `u77-b.md`, `u77-c.md`
+and `u77-a2.md`, 25 rows, all killed, read in `u77-notes.md`. R-402 is closed
+in place. R-455 to R-459 are filed and none is on the board: none loses data,
+says something false, blocks a workflow or guards nothing. **Owed to an
+attended sitting:** import one labelled intake file into rekordbox and read the
+tree it makes. Battery on the recorded tree: ruff clean, `scan_repo.py` exit 0,
+pytest 8182 passed and 1 skipped in 66 seconds, and no test of this unit's among
+the ten slowest. **Main's highest residual number is R-459.**
+
+**The session before: U76, issue #121, `relay/121`, 2026-09-19.**
 The catalog writer merges into a folder the document already holds, and refuses
 a duplicated sibling, which closes R-129's writer half.
 `rbxml.insert_catalog_folder`, the producer `trees.insert_record_labels_tree`

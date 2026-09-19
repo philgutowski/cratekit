@@ -19,6 +19,12 @@ closes the intake session :func:`cratekit.intake.ingest.place_files` opens once
 the imported rows exist. It BLOCKS NOTHING. A blocking action makes every verb
 it names refuse, and no consequence of an unimported landing was driven that
 would justify that.
+
+``--manifest`` FILES LABEL TRACKS IN THE SAME FILE. The manifest is the
+provenance ``label approved`` wrote beside its list. Its bytes are part of what
+the gate compares, so an answer given against one manifest is stale for
+another. A label row that no landed file matches is a warning that names the
+track, never a failure: the file, if there is one, is in the intake playlist.
 """
 
 from __future__ import annotations
@@ -37,6 +43,10 @@ from cratekit.intake import landing
 LAND = "land"
 LANDED = "landed"
 REFUSED = "refused"
+
+#: What a label playlist written, and a label row filed under none, are marked.
+FILED = "filed"
+UNFILED = "unfiled"
 
 #: The verb that proves an intake file imported. Named here and not in the
 #: engine, because a layer below the command line must not spell a verb.
@@ -85,11 +95,25 @@ def build_land(parser, entry) -> None:
         metavar="NAME",
         help="the batch folder under the music folder (default: this run's identifier)",
     )
+    parser.add_argument(
+        "--manifest",
+        default=None,
+        metavar="JSON",
+        help=(
+            "the manifest written beside the list these files were acquired "
+            "from; its label rows are filed under the record labels tree"
+        ),
+    )
     parser.set_defaults(_handler=intake_land)
 
 
 def _payload(
-    planned: landing.Plan, *, target: Path, destination: Path, export: Path
+    planned: landing.Plan,
+    *,
+    target: Path,
+    destination: Path,
+    export: Path,
+    manifest: landing.LabelManifest | None = None,
 ) -> dict:
     items = [
         {"action": LAND, "from": str(item), "to": str(target / item.name)}
@@ -104,6 +128,14 @@ def _payload(
         "export": str(export),
         "files": planned.digest,
     }
+    if manifest is not None:
+        # Only when one is given, so a landing without a manifest is compared
+        # exactly as it was before the manifest existed.
+        # The bytes and not only the path: a manifest rewritten under the same
+        # name files other tracks under other labels, and a digest of the name
+        # would call that the plan the person saw.
+        identity["manifest"] = str(manifest.path)
+        identity["manifest_bytes"] = manifest.digest
     return {
         "digest": digest_of(identity),
         "items": items,
@@ -113,16 +145,28 @@ def _payload(
 
 
 def _shown(
-    planned: landing.Plan, *, target: Path, destination: Path
+    planned: landing.Plan,
+    *,
+    target: Path,
+    destination: Path,
+    manifest: landing.LabelManifest | None = None,
 ) -> dict[str, Any]:
     """What the gate screen puts in front of the person, one line per fact."""
-    return {
+    shown: dict[str, Any] = {
         "folder": str(planned.folder),
         "lands in": str(target),
         "intake file": str(destination),
         "count": len(planned.items),
         "files": [item.name for item in planned.items],
     }
+    if manifest is not None:
+        # What the manifest ASKS for, since which rows have a file in this
+        # batch is known only once the batch folder can be indexed.
+        shown["labels filed from"] = str(manifest.path)
+        shown["label playlists named"] = [
+            f"{name} ({count} listed)" for name, count in sorted(manifest.playlists().items())
+        ]
+    return shown
 
 
 def _planned(folder: Path, cfg: config.Config, batch: str) -> landing.Plan:
@@ -143,7 +187,7 @@ def _planned(folder: Path, cfg: config.Config, batch: str) -> landing.Plan:
 def _reported(payload: dict, landed: landing.Landed) -> dict:
     """The plan, each item marked with what the apply actually did to it."""
     refused = {str(entry.path): entry for entry in landed.refused}
-    items: list[dict[str, str]] = []
+    items: list[dict[str, Any]] = []
     for item in payload["items"]:
         entry = refused.get(item["from"])
         if entry is None:
@@ -152,25 +196,57 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
             items.append(
                 {**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence}
             )
-    return {
-        **payload,
-        "items": items,
-        "totals": {
-            "count": payload["totals"]["count"],
-            "landed": len(landed.moved),
-            "refused": len(landed.refused),
-        },
+    totals = {
+        "count": payload["totals"]["count"],
+        "landed": len(landed.moved),
+        "refused": len(landed.refused),
     }
+    if landed.labelled or landed.unlabelled:
+        # IN ``items`` AND ``totals``, because the plan surface is closed at
+        # four fields and a fifth is a schema break for every consumer. A label
+        # playlist written and a label row left out are both things this run
+        # did to the plan it was shown, which is what an item is.
+        items.extend(
+            {
+                "action": FILED,
+                "label": entry.label,
+                "year": entry.year,
+                "playlist": entry.playlist,
+                "count": len(entry.track_ids),
+            }
+            for entry in landed.labelled
+        )
+        items.extend(
+            {
+                "action": UNFILED,
+                "id": entry.ref,
+                "artist": entry.artist,
+                "title": entry.title,
+                "label": entry.label,
+                "year": entry.year,
+                "reason": entry.reason,
+                "why": entry.sentence,
+            }
+            for entry in landed.unlabelled
+        )
+        totals["filed"] = len(landed.labelled)
+        totals["unfiled"] = len(landed.unlabelled)
+    return {**payload, "items": items, "totals": totals}
 
 
 def _pending(run_id: str, landed: landing.Landed, target: Path) -> PendingHumanAction:
     destination = landed.destination
+    filed = (
+        f", with {len(landed.labelled)} label playlist(s) in the same file"
+        if landed.labelled
+        else ""
+    )
     return PendingHumanAction(
         kind="rekordbox_import",
         id=new_pending_id(run_id),
         summary=(
             f"{len(landed.moved)} file(s) landed in {target} and are named in "
-            f"{destination.name}, which rekordbox has not imported yet"
+            f"{destination.name}{filed}, which rekordbox has not imported yet"
         ),
         verify_verb=VERIFY_VERB,
         artifact=str(destination),
@@ -186,29 +262,44 @@ def intake_land(ctx) -> Envelope:
     folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.paths.download_staging)
     batch = ctx.args.name if ctx.args.name is not None else default_name(ctx.run.run_id)
     export = Path(ctx.args.export)
+    # READ BEFORE THE GATE, so a file that is not a manifest refuses before
+    # anybody spends an answer on it, and the screen can say what it names.
+    manifest = (
+        landing.read_label_manifest(Path(ctx.args.manifest)) if ctx.args.manifest else None
+    )
     planned = _planned(folder, cfg, batch)
     target = landing.target_dir(cfg, batch)
     destination = intake_file(cfg, batch)
-    payload = _payload(planned, target=target, destination=destination, export=export)
+    payload = _payload(
+        planned, target=target, destination=destination, export=export, manifest=manifest
+    )
     spec = ctx.entry.gates[0]
     option = ctx.gate.require(
         spec,
         digest=payload["digest"],
-        context=_shown(planned, target=target, destination=destination),
+        context=_shown(planned, target=target, destination=destination, manifest=manifest),
     )
     if option != "apply" or not planned.items:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     # The engine lists the folder again and refuses a fingerprint that moved,
     # so the gap between this plan and the moves is its to close, not this
     # shell's. What the gate compared is what the person was shown.
-    landed = landing.apply(planned, cfg=cfg, export=export, destination=destination)
+    landed = landing.apply(
+        planned,
+        cfg=cfg,
+        export=export,
+        destination=destination,
+        manifest=manifest.path if manifest is not None else None,
+        manifest_digest=manifest.digest if manifest is not None else None,
+    )
     return ctx.envelope(
         data=_reported(payload, landed),
         outcome=Outcome.PENDING,
         code=ExitCode.PENDING_HUMAN,
         pending=_pending(ctx.run.run_id, landed, target),
         warnings=[
-            {"code": entry.reason, "message": entry.sentence} for entry in landed.refused
+            {"code": entry.reason, "message": entry.sentence}
+            for entry in (*landed.refused, *landed.unlabelled)
         ],
     )
 

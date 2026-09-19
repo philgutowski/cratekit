@@ -5270,7 +5270,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # under, and no-identifier and not-asked, two of the four KINDS that verb
     # gives a release it could not read, which pick the step its failing line
     # ends in and are never a refusal's reason.
-    assert (len(literals), len(literals - set(causes))) == (427, 268), (
+    # Re-pinned on U77, 2026-09-19: 427 to 431 distinct, 268 to 272 non-keys.
+    # FOUR literals joined and NOTHING left, differenced over the branch's diff
+    # of `src` against `main` with `git grep` on `main` for each. None is a
+    # cause. All four are WARNING codes a landing gives a manifest's label row
+    # it filed under no label: label-row-incomplete, the row names no label or
+    # no year; label-row-unmatched, no file this run landed matches it;
+    # label-row-needs-review, the batch holds another version of it; and
+    # label-tree-unwritten, the disk refused the label's folder after the moves.
+    # Every refusal the landing raises reuses a slug the table already reserves.
+    assert (len(literals), len(literals - set(causes))) == (431, 272), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

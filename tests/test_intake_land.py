@@ -9,6 +9,7 @@ nothing, and a landed batch leaves a pending import a person can see.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import re
@@ -18,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
+from cratekit.acquire import listdoc
 from cratekit.cli import output, registry
 from cratekit.core import config, tags
 from cratekit.core.exit_codes import ExitCode
@@ -353,6 +355,167 @@ def test_the_refused_item_is_marked_in_the_plan_payload(cfg, silence, export):
     assert items["Clash.flac"]["action"] == "refused"
     assert items["Clash.flac"]["reason"] == "output-exists"
     assert envelope["data"]["totals"] == {"count": 2, "landed": 1, "refused": 1}
+
+
+def _manifest(tmp_path: Path, listed: list[tuple[str, str, str, str, int]]) -> Path:
+    """Written by the product's own emitter, the way ``label approved`` does."""
+    rows = [listdoc.Row(ref=ref, artist=artist, title=title) for ref, artist, title, _, _ in listed]
+    provenance = {
+        ref: listdoc.Provenance(source="label", label_name=label, year=year)
+        for ref, _, _, label, year in listed
+    }
+    written = listdoc.write(tmp_path, "label-approved-verb", rows, provenance)
+    assert written.manifest_path is not None
+    return written.manifest_path
+
+
+def test_a_manifest_is_on_the_gate_screen_and_its_labels_are_in_the_envelope(
+    cfg, silence, export, tmp_path
+):
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(
+        tmp_path,
+        [("1", "Probe", "One", "Kompakt", 2025), ("2", "Probe", "Never Arrived", "Kompakt", 2024)],
+    )
+    argv = _land(export, "--name", BATCH, "--manifest", str(manifest))
+
+    code, refused = _drive(argv)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["labels filed from"] == str(manifest)
+    assert shown["label playlists named"] == ["Kompakt 2024 (1 listed)", "Kompakt 2025 (1 listed)"]
+
+    code, envelope = _drive(["-d", f"{GATE}=apply", *argv])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    data = envelope["data"]
+    assert [item["action"] for item in data["items"]] == ["landed", "filed", "unfiled"]
+    assert data["items"][1] == {
+        "action": "filed",
+        "label": "Kompakt",
+        "year": 2025,
+        "playlist": "Kompakt 2025",
+        "count": 1,
+    }
+    unfiled = data["items"][2]
+    assert (unfiled["id"], unfiled["title"], unfiled["reason"]) == (
+        "2",
+        "Never Arrived",
+        "label-row-unmatched",
+    )
+    assert data["totals"] == {"count": 1, "landed": 1, "refused": 0, "filed": 1, "unfiled": 1}
+    (warning,) = envelope["warnings"]
+    assert warning["code"] == "label-row-unmatched"
+    assert "Probe - Never Arrived" in warning["message"]
+    assert "1 label playlist(s)" in envelope["pending_human_action"]["summary"]
+    body = (Path(cfg.library.root) / f"{BATCH}_inboxed.xml").read_bytes()
+    assert b'<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">' in body
+
+
+def test_a_landing_without_a_manifest_reports_nothing_about_labels(cfg, silence, export):
+    _stage(cfg, silence, "One.flac")
+    code, envelope = _drive(["-d", f"{GATE}=apply", *_land(export, "--name", BATCH)])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"] == {"count": 1, "landed": 1, "refused": 0}
+    assert "label playlist" not in envelope["pending_human_action"]["summary"]
+
+
+def test_an_answer_given_against_one_manifest_is_stale_once_it_is_rewritten(
+    cfg, silence, export, tmp_path
+):
+    """The same path holding other rows files other tracks under other labels,
+    so the bytes are what the gate compares and not the name."""
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
+    argv = _land(export, "--name", BATCH, "--manifest", str(manifest))
+    code, refused = _drive(argv)
+    run_id = refused["run_id"]
+    decided, _ = _drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+
+    manifest.write_bytes(manifest.read_bytes().replace(b"Kompakt", b"Another"))
+    code, stale = _drive(["--run", run_id, *argv])
+
+    assert stale["cause"]["reason"] == "decision-stale", stale
+    # THE GATE'S refusal and not the engine's, which carries the same reason
+    # one layer down. Each is removed alone in the mutation table, and a test
+    # that either one satisfies is a test of neither.
+    assert stale["cause"]["detail"]["gate"] == GATE
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_the_engine_is_handed_the_fingerprint_of_the_bytes_the_gate_compared(
+    cfg, silence, export, tmp_path, monkeypatch
+):
+    """Between the gate and the first move the file is read again. Without the
+    fingerprint the engine has nothing to compare that second read against."""
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
+    real = land_cli.landing.apply
+    handed: list[str | None] = []
+
+    def watched(planned, **kwargs):
+        handed.append(kwargs.get("manifest_digest"))
+        return real(planned, **kwargs)
+
+    monkeypatch.setattr(land_cli.landing, "apply", watched)
+
+    code, envelope = _drive(
+        ["-d", f"{GATE}=apply", *_land(export, "--name", BATCH, "--manifest", str(manifest))]
+    )
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert handed == [hashlib.sha256(manifest.read_bytes()).hexdigest()]
+
+
+def test_a_manifest_whose_only_row_matched_nothing_still_reports_it(
+    cfg, silence, export, tmp_path
+):
+    """Nothing filed is when the report matters most."""
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(tmp_path, [("2", "Probe", "Never Arrived", "Kompakt", 2024)])
+
+    code, envelope = _drive(
+        ["-d", f"{GATE}=apply", *_land(export, "--name", BATCH, "--manifest", str(manifest))]
+    )
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    data = envelope["data"]
+    assert [item["action"] for item in data["items"]] == ["landed", "unfiled"]
+    assert data["totals"] == {"count": 1, "landed": 1, "refused": 0, "filed": 0, "unfiled": 1}
+    assert [warning["code"] for warning in envelope["warnings"]] == ["label-row-unmatched"]
+
+
+def test_a_manifest_that_is_not_there_is_refused_before_the_gate(
+    cfg, silence, export, tmp_path
+):
+    _stage(cfg, silence, "One.flac")
+    code, refused = _drive(
+        _land(export, "--name", BATCH, "--manifest", str(tmp_path / "absent.manifest.json"))
+    )
+
+    assert refused["cause"]["reason"] == "intake-list-unusable", refused
+    assert code == int(ExitCode.PRECONDITION)
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_the_list_passed_where_the_manifest_belongs_is_refused_before_the_gate(
+    cfg, silence, export, tmp_path
+):
+    """The mistake the two file names invite. Refused before anybody spends an
+    answer on a plan that could never run."""
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
+    listed = manifest.with_name(manifest.name.replace(".manifest.json", ".list.json"))
+    assert listed.is_file()
+
+    code, refused = _drive(_land(export, "--name", BATCH, "--manifest", str(listed)))
+
+    assert refused["cause"]["reason"] == "intake-list-unusable", refused
+    assert "not a manifest" in refused["cause"]["message"]
+    assert code == int(ExitCode.PRECONDITION)
+    assert _staged_names(cfg) == ["One.flac"]
 
 
 def test_guide_names_the_verb_between_naming_and_routing():
