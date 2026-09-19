@@ -17897,6 +17897,28 @@ attended. The export half is not, and is a unit.
 **Closes when:** a routing pass over a fresh export writes a file rekordbox
 imports, on a library whose tree has not cut over.
 
+**Closed 2026-09-18 on `relay/131`, U86, for the INBOX half.** `crate route
+inbox --export X` reads the intake folder of a fresh export, a direct child of
+the playlist root, and writes `<X stem>_routed.xml` beside X, atomically,
+never in place. The routing decision is the native path's: readings through
+`rebuild.read_truth`, placements through `rebuild.derive_from_taxonomy`,
+display names through `routing_pass.destination`. The write is
+`trees.apply_playlist_changes`, the non creating writer and now its first
+caller, over the governed routing tree, so a sub the tree lacks is a warning
+and nothing is created. A routing tree that has cut over refuses before the
+plan is offered. A key with no collection row, or a Location naming no file
+here after the prefix map, is a warning and is not routed. A run that inserted
+nothing writes no file, and answers `nothing-to-route` only when it left no
+warning, since that is the answer the pending action's check reads. A written
+file ends with a `rekordbox_import` pending action whose verify verb is
+`route.inbox` itself. Without `--export` the `no-native-tree` answer now names
+`--export`. Driven in `tests/test_routing_workers.py`, 18 tests; mutation
+tables `docs/mutation/u86.md` and `u86-b.md`, 19 of 24 killing, the author's
+and not independent, read in `u86-notes.md`. `apply_unplaced_changes` and
+`add_vox_playlists` still have no caller, and are `route unplaced` and the
+vocal subs, each its own unit. **Owed to an attended sitting:** one routed
+file imported into rekordbox.
+
 ---
 
 ## R-417. Two parity claims about the vocal sub playlists are false
@@ -18461,5 +18483,52 @@ planner.
 
 **Closes when:** one pass resolves the catalogue once and hands it to every
 planner that reads it, or the cost is measured live and judged negligible.
+
+---
+
+## R-439. A routed export is not an un-imported intake XML to the cutover check
+
+**Found:** 2026-09-18, by U86 on `relay/131`. Read, not driven.
+
+`route inbox --export X` writes `<X stem>_routed.xml`, and
+`tree_registry.PENDING_XML_SUFFIXES` names `_synced.xml`, `_inboxed.xml` and
+`_favorites.xml` only, so `assert_cutover_ready` does not see an un-imported
+routed file. Under U9's A2 verdict an XML import replaces a tree outright, so
+importing a routed file after the routing tree has cut over would replace the
+tree the database owns. The file also sits beside the export, which may be
+outside both roots `pending_intake_xml` walks.
+
+**Measured cost:** unreachable today. No shipped verb records a cutover (R-235)
+and U29 is attended, so no library can hold a native routing tree for a routed
+file to overwrite. Not driven.
+
+**Why not fixed here.** Widening the cutover check changes what U29's
+readiness refuses, and that is U29's to decide at an attended sitting.
+
+**Closes when:** the cutover check refuses while a routed file it can find is
+un-imported, or a routed file is written where that check already looks.
+
+---
+
+## R-440. A routed export's items name a destination for a track whose write was skipped
+
+**Found:** 2026-09-18, by U86's `/code-review` on `relay/131`. Driven.
+
+The item list `route inbox --export` returns is the plan the apply gate's
+digest was taken over, so it is computed before the write. When a write is
+skipped, because the routing tree, a genre folder or a sub is not in the
+export, the item still names that destination. The same run carries a
+`route-write-skipped` warning naming the missing piece, `totals.inserted`
+counts what landed, and a run that inserted nothing answers `route-blocked`.
+
+**Measured cost:** a reader of the item list alone sees a destination for a
+track that was not written there. The warnings and the totals say so.
+
+**Why not fixed here.** Rewriting the items after the write would change the
+payload the digest was taken over, and a per item outcome needs the bridge
+writer to report which keys each warning covers, which it does not.
+
+**Closes when:** each item carries whether its write landed, or the bridge
+writer reports its warnings per plan entry.
 
 ---
