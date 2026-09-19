@@ -30,7 +30,7 @@ already means picture bytes. The item artifact carries both keys, and
 report committed before this unit. `/code-review` raised two findings. One was
 fixed and one was filed as R-486. The `to_cdj_jpeg` failure paths were
 then read as this unit's own, and the repair loop's catch was widened to
-every exception. 22 new test cases by collected count, 8420 to 8442: 20 in
+every exception. 23 new test cases by collected count, 8420 to 8443: 21 in
 `tests/test_tagging_engine.py` and 2 in `tests/test_tag_workers.py`. Mutation
 tables `docs/mutation/u84-a.md`, `u84-b.md` and `u84-a4.md`, 25 rows at the
 cap plus one re-measure, 24 killed on the first pass and the one zero killed
@@ -38,7 +38,8 @@ after a test, read in `u84-notes.md`. R-486 and R-487 are filed, and neither
 meets the board bar. **Still open under R-399:** the fetch for a file with no
 art and the verb's art write (U85), and the registry summary. **Owed to an
 attended sitting:** one repaired FLAC shown on a real CDJ or XDJ. Battery on
-the recorded tree: see the line below.
+the recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 8442 passed and 1
+skipped in 71 seconds, and no test of this unit's among the ten slowest.
 **Main's highest residual number is R-487.**
 
 **The session before: U82, issue #127, `relay/127`, 2026-09-19.**
