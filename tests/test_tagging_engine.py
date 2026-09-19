@@ -1000,3 +1000,63 @@ def test_the_folder_pass_hands_its_fetch_to_every_file(folder, silence):
 
     assert [result.art_fetch for result in results] == [tag.ART_EMBEDDED] * 2
     assert sorted(fetch.asked) == [f"{ART_URL}?one", f"{ART_URL}?two"]
+
+
+def _refusing(reason: str):
+    """A searcher that refuses the way the shipped one does when nothing answered."""
+    from cratekit.core.cause import refuse
+
+    asked: list[tuple[str, str]] = []
+
+    def searcher(artist: str, title: str):
+        asked.append((artist, title))
+        raise refuse(reason, f"no catalogue could be read for {title!r}", origin=("test",))
+
+    searcher.asked = asked  # type: ignore[attr-defined]
+    return searcher
+
+
+@pytest.mark.parametrize("reason", ["catalogue-unreachable", "catalogue-parse-broken"])
+def test_a_tagged_file_searched_only_for_art_is_not_failed_by_a_refusal(
+    folder, silence, reason
+):
+    """Code review of U85. Its genre was never needed and a missing picture is a
+    decline, so the refusal becomes ``unavailable`` naming the refusal. A parse
+    break is not retryable, so letting it through would fail the file every run.
+    """
+    path = place(folder, silence, "track", SPECIFIC)
+    searcher = _refusing(reason)
+    fetch = fetching()
+
+    result = tag.tag_one(path, searcher=searcher, fetch_image=fetch)
+
+    assert searcher.asked == [("", "track")]
+    assert result.skipped == tag.HAS_GENRE
+    assert result.art_fetch == tag.ART_UNAVAILABLE
+    assert result.art_fetch_detail.startswith(f"{reason}: ")
+    assert fetch.asked == []
+    assert tags.read_genre_from_file(path) == SPECIFIC
+
+
+def test_an_untagged_file_still_fails_on_a_refusal(folder, silence):
+    """The genre is what the refusal left unlearned, so this one still propagates."""
+    from cratekit.core.cause import CratekitError
+
+    path = place(folder, silence, "track")
+
+    with pytest.raises(CratekitError):
+        tag.tag_one(path, searcher=_refusing("catalogue-unreachable"), fetch_image=fetching())
+
+    assert tags.read_genre_from_file(path) is None
+    assert blocks(path) == []
+
+
+def test_a_tagged_file_whose_searcher_breaks_outright_still_raises(folder, silence):
+    """Only a refusal is absorbed. A defect in the searcher is not a decline."""
+    path = place(folder, silence, "track", SPECIFIC)
+
+    def broken(artist: str, title: str):
+        raise RuntimeError("a bug, not a refusal")
+
+    with pytest.raises(RuntimeError):
+        tag.tag_one(path, searcher=broken, fetch_image=fetching())

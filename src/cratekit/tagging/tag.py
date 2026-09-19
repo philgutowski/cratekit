@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cratekit.core import art, tags
+from cratekit.core.cause import CratekitError
 from cratekit.core.naming import AUDIO_EXTS
 
 Searcher = Callable[[str, str], "SearchHit | None"]
@@ -250,10 +251,17 @@ def tag_one(
 
     A DECLINE IS NOT A FAILURE and this function never raises for one. The
     searcher raises when it could not read a catalogue at all, and that
-    propagates, because an item that reported done having learned nothing is
-    the clean-report-over-unreadable-state cost the merge bar names. That now
-    includes a tagged file searched only for its art, and it is the same
-    trade: the item fails and a retry asks again.
+    propagates for a file that needs its GENRE, because an item that reported
+    done having learned nothing is the clean-report-over-unreadable-state cost
+    the merge bar names.
+
+    A TAGGED FILE SEARCHED ONLY FOR ITS ART DOES NOT FAIL on that refusal. Its
+    genre was never needed and a missing picture is a decline, so the refusal
+    becomes ``unavailable`` with the refusal's own sentence, which says the
+    catalogues could not be read rather than that they lacked the track. Before
+    art, this file was a clean ``has-genre`` skip. Letting the refusal through
+    would fail every such file in an outage, and on a parse break, which is not
+    retryable, fail it on every run.
 
     THE ART REPAIR RUNS FIRST, before the genre check can return. A file that
     already carries a genre is exactly the file the source system repaired, so a
@@ -271,7 +279,16 @@ def tag_one(
         )
     artist = tags.read_tag(path, "artist") or ""
     title = tags.read_tag(path, "title") or path.stem
-    hit = searcher(artist, title)
+    try:
+        hit = searcher(artist, title)
+    except CratekitError as exc:
+        if not existing:
+            raise
+        unread = {
+            "art_fetch": ART_UNAVAILABLE,
+            "art_fetch_detail": f"{exc.cause.reason}: {exc.cause.message}",
+        }
+        return TagResult(path=path, genre_written=None, skipped=HAS_GENRE, **repaired, **unread)
     written: str | None = None
     if existing:
         skipped: str | None = HAS_GENRE
