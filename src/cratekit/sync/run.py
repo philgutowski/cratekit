@@ -11,7 +11,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, ContextManager, Protocol, Sequence
+from typing import Any, Callable, Container, ContextManager, Protocol, Sequence
 
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.sync import artifacts, scope
@@ -125,7 +125,7 @@ def _append_intake(path: Path, identities: Sequence[str]) -> None:
 def increment(
     source: Source,
     *,
-    owned: set[str] | frozenset[str],
+    owned: Container[str],
     limit: int,
     watermarks: WatermarkStore,
     artifacts: artifacts.ArtifactRegistry,
@@ -216,7 +216,7 @@ def increment(
 def run_independent(
     source_list: Sequence[Source],
     *,
-    owned: set[str] | frozenset[str],
+    owned: Container[str],
     limit: int,
     watermarks: WatermarkStore,
     artifacts: artifacts.ArtifactRegistry,

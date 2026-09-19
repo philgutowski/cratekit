@@ -8,7 +8,7 @@ repository already removed once.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Container, Sequence
 from typing import Protocol
 
 
@@ -21,7 +21,7 @@ class ScopedItem(Protocol):
 def scoped(
     candidates: Sequence[ScopedItem],
     *,
-    owned: set[str] | frozenset[str],
+    owned: Container[str],
     limit: int,
 ) -> list[ScopedItem]:
     """Return up to ``limit`` unowned candidates, preserving source order.

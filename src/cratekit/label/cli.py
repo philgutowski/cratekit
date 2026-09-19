@@ -8,7 +8,7 @@ run id so two sources queued by ``sync all`` still share one intake file.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Container, Sequence
 from pathlib import Path
 
 from cratekit.cli.output import Envelope
@@ -993,7 +993,7 @@ def run_increment(
     cfg: config.Config,
     source: sweep.LabelSource,
     *,
-    owned: set[str] | frozenset[str],
+    owned: Container[str],
     limit: int,
     run_id: str,
 ) -> run.IncrementResult:
@@ -1042,13 +1042,13 @@ def handle(job, item, cfg) -> jobs.Produced | None:
     substitute the seam. ``modules/outbound/account.py`` states the same contract
     for the outbound half, and ``label/catalogue.py`` states it for this one.
 
-    AN EMPTY OWNED SET (KTD9), because no producer of owned identities exists on
-    the labels path anywhere in ``src``. ``scope.scoped`` and ``list_for_label``
-    both filter on membership in the set they are handed, so this is not ownership
-    filtering happening in the wrong order, it is ownership filtering not
-    happening: a sweep offers releases the library may already hold. Stated here
-    and recorded as a residual rather than left for a reader to infer from a
-    literal.
+    ONE OWNED CONTAINER FOR BOTH FILTERS (R-259). ``list_for_label`` and
+    ``scope.scoped`` both filter on membership in what they are handed, and until
+    this unit the worker handed them an empty set, so every sweep offered releases
+    the library already held. :class:`~cratekit.label.sweep.OwnedReleases` answers
+    by reading a release's tracks and resolving them against the library index,
+    and the SAME object goes to the source and to the increment, so the second
+    filter reuses the first one's answers rather than reading every release again.
 
     NOTHING IS PRODUCED. The sweep writes no file: it OFFERS into the review
     queue, which is the durable record, so there is no artifact to commit and the
@@ -1083,16 +1083,19 @@ def handle(job, item, cfg) -> jobs.Produced | None:
     # whole of R17 on this path, and it is opened before the catalogue is
     # resolved so an unbound build's refusal costs nothing it did not already.
     with review.open_store(cfg) as store:
+        found = catalogue.resolve(cfg)
+        owned = sweep.OwnedReleases(cfg, found)
         source = sweep.LabelSource(
             cfg,
             registry=labels.Registry(labels={entry.label_id: entry}),
-            catalogue=catalogue.resolve(cfg),
+            catalogue=found,
             store=store,
+            owned=owned,
         )
         result = run_increment(
             cfg,
             source,
-            owned=set(),
+            owned=owned,
             limit=labels.effective_limit(entry),
             # THE RUN ID FALLS BACK TO THE JOB, so a sweep queued outside
             # ``sync all`` still has one. R29 is why the payload's is preferred:

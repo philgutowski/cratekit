@@ -463,6 +463,47 @@ def test_increment_does_not_use_the_watermark_as_a_date_floor(cfg):
     assert {item.payload["identity"] for item in items} == {"new", "old"}
 
 
+def test_an_owned_newest_release_does_not_hide_an_older_unowned_one(cfg):
+    """R-137, driven through ``LabelSource.list_recent`` and the increment.
+
+    The source used to take its newest N before anything asked about ownership,
+    and the increment's scope dropped the owned ones from that already sliced
+    list. A label whose newest release was held then offered nothing at a limit
+    of one, over an older release the library did not have. The owned identities
+    now reach the listing, so they are dropped before the cap and not after it.
+    """
+    from cratekit.label import registry as labels
+    from cratekit.label import sweep
+
+    store = labels.RegistryStore()
+    label_id = store.add("Kompakt", match="kompakt")
+    owned = {"new"}
+    source = sweep.LabelSource(
+        cfg,
+        registry=store.load(),
+        artists={
+            label_id: PagedArtist(
+                [
+                    Album("new", year="2026", artist="WhoMadeWho", title="New"),
+                    Album("old", year="2025", artist="WhoMadeWho", title="Old"),
+                ]
+            )
+        },
+        verify=_always_confirm,
+        owned=owned,
+    )
+    result = run.increment(
+        source,
+        owned=owned,
+        limit=1,
+        watermarks=watermarks.WatermarkStore(cfg),
+        artifacts=artifacts.ArtifactRegistry(cfg),
+        run_id="run-owned-newest",
+        staging=Path(cfg.paths.download_staging),
+    )
+    assert list(result.processed) == ["old"]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Harvest: playlist to labels, imports nothing
 # ═══════════════════════════════════════════════════════════════════════════
