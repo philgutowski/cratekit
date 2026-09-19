@@ -1,0 +1,217 @@
+{
+  "name": "u73-c",
+  "pass_kind": "light",
+  "branch": "relay/118",
+  "head": "28facf9",
+  "when": "2026-09-19 01:22 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7859,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "4d926ccf6eadc59e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7859,
+    "baseline_collected": 7859,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C3_next_only_with_intake_jobs",
+      "description": "Name intake missing --run on every pass, including one that queued no intake job",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cd4b5b5c6c1a5852",
+      "subset": [
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.cli",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_full_pass_queues_each_source_under_its_own_key_with_one_run",
+        "tests/test_sync_all.py::test_a_pass_that_queued_no_intake_job_names_no_run_verb",
+        "tests/test_sync_all.py::test_a_playlist_with_no_tracks_queues_nothing_and_is_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not filed:",
+      "new": "    if False:"
+    },
+    {
+      "id": "C4_next_counts_intake_jobs_only",
+      "description": "Count every filed job as an intake job when deciding to name the run verb",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "efca5aee0d33243e",
+      "subset": [
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_full_pass_queues_each_source_under_its_own_key_with_one_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "if job.handler_key in intake_cli.INTAKE_KEYS]",
+      "new": "if True]"
+    },
+    {
+      "id": "C5_next_check_row",
+      "description": "Keep the command in the summary and drop the check row the human output prints",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d8d14542fa04049b",
+      "subset": [
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_the_default_output_of_a_pass_that_queued_intake_jobs_names_the_run_verb"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        checks.append(step[\"check\"])",
+      "new": "        pass"
+    },
+    {
+      "id": "C6_landing_hint_export",
+      "description": "Reword the landing hint without the --export intake land requires",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f81759a6a155cbba",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_the_default_human_output_names_the_list_the_download_and_the_landing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "f\"--export XML --name {name}, XML being a Fresh Export of the collection\"",
+      "new": "f\"--name {name}\""
+    },
+    {
+      "id": "C7_sample_missing_not_listed",
+      "description": "Existing U69 guard, sampled: drop the refusal of missing tracks none of which can be listed",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "594b05a6a66a8e6a",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_missing_tracks_none_of_which_can_be_listed_refuse_rather_than_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if missing and not listed:",
+      "new": "    if False:"
+    },
+    {
+      "id": "C8_sample_reports_by_id",
+      "description": "Existing U69 guard, sampled: drop the reports by identifier comparison every run job also passes through",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7751c58a064b43f5",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_report_for_the_wrong_item_refuses_even_when_the_count_matches",
+        "tests/test_intake_missing.py::test_fewer_readable_reports_than_items_refuses_rather_than_listing_a_subset"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sorted(reported) != sorted(wanted):",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": []
+}

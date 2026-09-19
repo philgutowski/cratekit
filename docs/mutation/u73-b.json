@@ -1,0 +1,241 @@
+{
+  "name": "u73-b",
+  "pass_kind": "light",
+  "branch": "relay/118",
+  "head": "28facf9",
+  "when": "2026-09-19 01:19 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7859,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/missing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/missing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2362b860db919a83",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7859,
+    "baseline_collected": 7859,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_left_out_nothing_listed",
+      "description": "Drop the refusal of a skip-failed run that lists nothing, so it reads as a clean no-op",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c7e3531e002d8903",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_skip_failed_over_nothing_missing_refuses_rather_than_a_clean_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if left_out and not listed:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B2_every_ref_kept",
+      "description": "Stop accumulating every reference an id came from",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "63f21b6da34e2a12",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_two_playlists_sharing_a_track_list_it_once_with_both_provenances"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            refs.append(said)",
+      "new": "            pass"
+    },
+    {
+      "id": "B3_first_source_wins",
+      "description": "Let the last job an id came from win its provenance instead of the first",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "98e42cd10934f745",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_two_playlists_sharing_a_track_list_it_once_with_both_provenances"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        first.setdefault(ref, job)",
+      "new": "        first[ref] = job"
+    },
+    {
+      "id": "B4_skip_failed_with_job",
+      "description": "Drop the refusal of --skip-failed given with --job, so the flag is silently ignored",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "889d727d932e1c88",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_skip_failed_with_one_job_is_refused_rather_than_ignored"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.args.skip_failed:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B5_refs_deduplicated",
+      "description": "Stop deduplicating the references, so one playlist listing a track twice names itself twice",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "db02ec9df37b0ab5",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7859,
+      "baseline_collected": 7859,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "if said is not None and said not in refs:",
+      "new": "if said is not None:"
+    },
+    {
+      "id": "C1_refs_only_when_several",
+      "description": "Write source_refs for a single reference too, changing the bytes of a manifest an earlier build wrote",
+      "file": "src/cratekit/acquire/listdoc.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae95c53446eebd2d",
+      "subset": [
+        "tests/test_listdoc.py"
+      ],
+      "subset_reason": "test files importing cratekit.acquire.listdoc",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_listdoc.py::test_one_reference_writes_the_bytes_a_manifest_had_before_the_field"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if len(origin.source_refs) > 1:",
+      "new": "        if len(origin.source_refs) >= 1:"
+    },
+    {
+      "id": "C2_refs_written",
+      "description": "Never write source_refs into the manifest",
+      "file": "src/cratekit/acquire/listdoc.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0d1c870c2e009fb5",
+      "subset": [
+        "tests/test_listdoc.py"
+      ],
+      "subset_reason": "test files importing cratekit.acquire.listdoc",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_listdoc.py::test_the_manifest_keeps_every_reference_an_id_came_from"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            entry[\"source_refs\"] = list(origin.source_refs)",
+      "new": "            pass"
+    }
+  ],
+  "dropped": []
+}

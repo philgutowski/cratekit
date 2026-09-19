@@ -1,0 +1,314 @@
+{
+  "name": "u73",
+  "pass_kind": "light",
+  "branch": "relay/118",
+  "head": "28facf9",
+  "when": "2026-09-19 01:16 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7859,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/missing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/missing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2362b860db919a83",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7859,
+    "baseline_collected": 7859,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_blank_run",
+      "description": "Drop the refusal of a blank --run, so a blank run is compared as it stands",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "982c5ff94f685465",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_blank_run_is_refused_and_does_not_match_a_job_queued_with_no_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not run_id.strip():",
+      "new": "    if False:"
+    },
+    {
+      "id": "A2_library_filter",
+      "description": "Drop the library half of the run selection, so the run alone picks jobs",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "076d619621c0629d",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_another_librarys_job_in_the_same_run_is_not_this_librarys_to_list"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "and job.library_id == library_id",
+      "new": "and True"
+    },
+    {
+      "id": "A3_run_filter",
+      "description": "Drop the run half of the selection, so every intake job for the library is listed",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7863ada07e1af1e6",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_job_queued_by_hand_is_not_part_of_any_run",
+        "tests/test_intake_missing.py::test_an_unknown_run_is_refused_by_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "(job.payload or {}).get(RUN_ID) == run_id",
+      "new": "True"
+    },
+    {
+      "id": "A4_intake_key_filter",
+      "description": "Drop the intake handler key filter, so a labels or favourites job in the run is selected",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5cc28b9b8dfb42be",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_job_of_another_verb_in_the_same_run_is_not_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if job.handler_key in intake_cli.INTAKE_KEYS",
+      "new": "            if True"
+    },
+    {
+      "id": "A5_oldest_first",
+      "description": "Reverse the job order, newest first, so first source wins picks the later playlist",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "57d7a90c6b20d19f",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_two_playlists_sharing_a_track_list_it_once_with_both_provenances"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "key=lambda job: (job.created, job.job_id),",
+      "new": "key=lambda job: (job.created, job.job_id), reverse=True,"
+    },
+    {
+      "id": "A7_open_refuses",
+      "description": "Drop the refusal of a run holding an open job",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0658fe914e2f0003",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_an_open_job_refuses_the_whole_run_and_names_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if still_open:",
+      "new": "    if False:"
+    },
+    {
+      "id": "A8_failed_refuses",
+      "description": "Drop the refusal of a run holding a failed or cancelled job",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b35dfb35b3cb08b5",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_failed_job_is_named_and_refuses_the_run_without_skip_failed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unfinished and not skip_failed:",
+      "new": "    if False:"
+    },
+    {
+      "id": "A9_skip_failed_ignored",
+      "description": "Ignore --skip-failed, so a failed job refuses the run whatever the flag says",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e9be05736704ff3e",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_run_whose_every_job_failed_refuses_even_with_skip_failed",
+        "tests/test_intake_missing.py::test_skip_failed_lists_the_rest_and_names_what_it_left_out"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unfinished and not skip_failed:",
+      "new": "    if unfinished:"
+    },
+    {
+      "id": "A10_every_job_skipped",
+      "description": "Drop the refusal of a run whose every job failed, left to the layer after it",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "46a76f02ccbdacad",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_run_whose_every_job_failed_refuses_even_with_skip_failed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not kept:",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "A6_tie_break",
+      "description": "Drop job_id from the sort key, leaving created alone",
+      "reason": "the tie break only matters for two jobs created in the same timestamp, which the fixture cannot produce without faking the clock; A5 measures the order itself"
+    },
+    {
+      "id": "A11_sync_run_dest",
+      "description": "Write --run into dest run, colliding with the dispatcher's global --run",
+      "reason": "a one site mutation cannot express it, since the handler reads the new dest by name; every run test drives the collision's absence, and the first build measured it failing eleven tests before the dest was separated"
+    }
+  ]
+}

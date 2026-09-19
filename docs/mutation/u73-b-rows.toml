@@ -1,0 +1,58 @@
+name = "u73-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_left_out_nothing_listed"
+description = "Drop the refusal of a skip-failed run that lists nothing, so it reads as a clean no-op"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if left_out and not listed:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B2_every_ref_kept"
+description = "Stop accumulating every reference an id came from"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            refs.append(said)'''
+new = '''            pass'''
+
+[[rows]]
+id = "B3_first_source_wins"
+description = "Let the last job an id came from win its provenance instead of the first"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        first.setdefault(ref, job)'''
+new = '''        first[ref] = job'''
+
+[[rows]]
+id = "B4_skip_failed_with_job"
+description = "Drop the refusal of --skip-failed given with --job, so the flag is silently ignored"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if ctx.args.skip_failed:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B5_refs_deduplicated"
+description = "Stop deduplicating the references, so one playlist listing a track twice names itself twice"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "maintainer"
+old = '''if said is not None and said not in refs:'''
+new = '''if said is not None:'''
+
+[[rows]]
+id = "C1_refs_only_when_several"
+description = "Write source_refs for a single reference too, changing the bytes of a manifest an earlier build wrote"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+old = '''        if len(origin.source_refs) > 1:'''
+new = '''        if len(origin.source_refs) >= 1:'''
+
+[[rows]]
+id = "C2_refs_written"
+description = "Never write source_refs into the manifest"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+old = '''            entry["source_refs"] = list(origin.source_refs)'''
+new = '''            pass'''

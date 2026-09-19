@@ -8300,6 +8300,13 @@ inventing the worker here would pretend a listing exists.
 `sync.all` invocation, `sync.favorites` is remounted onto the unit that
 lands `cratekit.favorites.cli`, and the intake file is the U37 emitter.
 
+**Superseded by R-403, recorded 2026-09-18 on `relay/118`, U73.** No source
+worker calls `increment` with a shared run id and none will: the one intake
+file per pass that R29 asks for is now the pass's one list, landed by `crate
+intake land --name <run>_synced`, and the engine's stub writer below the
+`acquires` early return is unreachable, R-437. The favourites half landed with
+`cratekit.favorites.cli`. Nothing here is still owed under this number.
+
 ## R-131. U20 lands the cutover machinery; it does not flip a live tree
 
 **Found:** at the U20 review, 2026-08-17. Accepted rather than held.
@@ -17386,6 +17393,28 @@ do.
 **Closes when:** a sync pass in which at least one source acquires writes a
 combined intake file.
 
+**Closed 2026-09-18 on `relay/118`, U73.** The combined importable file is
+`crate intake land --name <run>_synced`, as the brief decided, and not
+`run.increment`. What was missing between a pass and that landing was one list
+for the whole pass, and `crate intake missing --run RUN_ID` is it,
+`src/cratekit/intake/missing_cli.py`. It selects the intake jobs carrying the
+run AND queued for this library, refuses while any is open and names each with
+its resume command, names and refuses a failed or cancelled job unless
+`--skip-failed`, which reports what it left out as a failing check, and refuses
+a skip that leaves nothing listed rather than reading as a clean no-op. The
+missing rows are unioned oldest job first into one `listdoc.write` named
+`<run without colons>_synced`, first source wins, and a manifest entry for an id
+several playlists wanted carries `source_refs` naming all of them. The output
+names the download command and `intake land --export XML --name
+<run>_synced`. `crate sync all` ends with one `sync.next` check naming the verb
+whenever the pass filed an intake job, driven in the default human output. The
+whole chain, a pass, both jobs run by the real worker, then the named command,
+is driven in `tests/test_sync_all.py`. `_append_intake` is left in place and
+unreachable, R-437. Mutation tables `docs/mutation/u73.md`, `u73-b.md` and
+`u73-c.md`, 22 rows, 21 killing, read in `docs/mutation/u73-notes.md`, the
+author's own. Owed to an attended sitting: one `sync all` through to a landed
+`_synced` intake file, with a real provider and a real download.
+
 ---
 
 ## R-404. No acquisition path exists for a track the configured provider does not carry
@@ -18338,5 +18367,27 @@ a parameter.
 **Closes when:** an import check exists that reads the collection for the
 landed Locations and the pending action names it, or `route pending` refuses or
 says so when no tree is database native.
+
+---
+
+## R-437. `run.increment`'s intake writer is unreachable and still pinned by its own tests
+
+**Found:** 2026-09-18, by U73 on `relay/118`. Read, not driven.
+
+`_append_intake` in `src/cratekit/sync/run.py` writes the stub `TRACK Name`
+listing R-130 described, and it sits below the early return a source that
+declares `acquires` False takes. The only production caller of `increment`, the
+labels worker, declares exactly that, so nothing reaches it. U73 made the pass's
+importable file `intake land --name <run>_synced` and left the writer in place
+on the brief's decision, because `tests/test_incremental_sync.py` pins it.
+
+**Measured cost:** none to a person. A maintainer reading `run.py` meets a
+second intake writer that no path uses and could take it for the pass's.
+
+**Why not fixed here.** Deleting it means rewriting the tests that pin it,
+which the brief named as a follow up rather than this unit's.
+
+**Closes when:** `_append_intake` and the tests pinning it are removed, or a
+caller that acquires is given it deliberately.
 
 ---
