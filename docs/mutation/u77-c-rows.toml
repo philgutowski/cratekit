@@ -1,0 +1,92 @@
+name = "u77-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_manifest_version"
+description = "manifest_rows: refuse only a version below this build's, so a manifest of a later version is read on the hope its keys still mean what they meant"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''if isinstance(version, bool) or version != MANIFEST_VERSION:'''
+new = '''if isinstance(version, bool) or version < MANIFEST_VERSION:'''
+
+[[rows]]
+id = "C2_manifest_version_bool"
+description = "manifest_rows: drop the boolean test on the version, so true, which Python holds equal to 1, reads as version 1"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''if isinstance(version, bool) or version != MANIFEST_VERSION:'''
+new = '''if version != MANIFEST_VERSION:'''
+
+[[rows]]
+id = "C3_not_a_manifest"
+description = "manifest_rows: stop asking whether the document names a manifest version at all, so a list document passed by mistake is not refused by name"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''if not isinstance(body, Mapping) or "manifest" not in body:'''
+new = '''if not isinstance(body, Mapping):'''
+
+[[rows]]
+id = "C4_year_bool"
+description = "_manifest_row: drop the boolean test on the year, so a year of true is read as the year 1"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''if year is not None and (isinstance(year, bool) or not isinstance(year, int)):'''
+new = '''if year is not None and not isinstance(year, int):'''
+
+[[rows]]
+id = "C5_source_refs_kept"
+description = "_manifest_row: read every entry's source_refs as empty, so the other sources that asked for an id are lost on the way back"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''            source_refs=tuple(asked),
+'''
+new = '''            source_refs=(),
+'''
+
+[[rows]]
+id = "C6_gate_manifest_bytes"
+description = "_payload: leave the manifest's bytes out of the plan identity, so the gate accepts an answer given against other rows (the gate layer alone, the engine's own check left in place)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''identity["manifest_bytes"] = manifest.digest'''
+new = '''identity["manifest_bytes"] = ""'''
+
+[[rows]]
+id = "C7_digest_handed_to_engine"
+description = "intake_land: hand the engine no fingerprint, so a manifest rewritten between the gate and the first move is filed"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''manifest_digest=manifest.digest if manifest is not None else None,'''
+new = '''manifest_digest=None,'''
+
+[[rows]]
+id = "C8_unfiled_rows_warned"
+description = "intake_land: warn about refused files only, so a label row filed under nothing is named nowhere a person reads"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = '''for entry in (*landed.refused, *landed.unlabelled)'''
+new = '''for entry in (*landed.refused,)'''
+
+[[dropped]]
+id = "X1_catalog_skips_undated_rows"
+reason = "_check_export leaves a label row with no year out of the trial catalog. Reverting it trials a playlist named for the label and None, which refuses nothing on any fixture, so it guards no surface a person sees. Ranked below the cap."
+
+[[dropped]]
+id = "X2_nothing_filed_skips_the_write"
+reason = "_label returns before the writer when no row was filed. Reverting it rewrites the intake file with the bytes it already holds. An efficiency guard with no user facing surface, ranked below the cap."
+
+[[dropped]]
+id = "X3_gate_screen_playlists"
+reason = "_shown lists the label playlists the manifest names. Pinned by one verb test. Ranked below the two stale checks and the warning row, which protect a write and this protects a screen."
+
+[[dropped]]
+id = "X4_reported_only_when_both"
+reason = "_reported adds the label items when either list is non empty. A test written this round drives the unfiled only case. Ranked below the cap."
