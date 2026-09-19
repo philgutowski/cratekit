@@ -170,8 +170,13 @@ def test_a_vocal_calibration_this_account_cannot_read_refuses(tmp_path):
             metadata_cli.vocal_cut(cfg)
     finally:
         path.chmod(0o600)
-    assert caught.value.cause.reason == "vocal-calibration-unreadable"
-    assert caught.value.cause.detail["kind"] == "PermissionError"
+    # The site declares its own slug, and cause.classified corrects a refusal
+    # the operating system made to the access slug whose remedy is granting
+    # access, as it does for every ``raise refuse(...) from exc``. Either way it
+    # is a refusal and never the default cut.
+    assert caught.value.declared_cause.reason == "vocal-calibration-unreadable"
+    assert caught.value.declared_cause.detail["kind"] == "PermissionError"
+    assert caught.value.cause.reason == "path-permission-denied"
 
 
 def test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing(ready):
