@@ -1,0 +1,127 @@
+name = "r239-a"
+pass_kind = "light"
+
+# The opener's own answer, and the probe it asks. Batch A of two, split so each
+# batch stays under the tool ceiling. Batch B is r239-b-rows.toml.
+
+[[rows]]
+id = "A1_probe_to_true"
+description = "open_db answers every unnamed open with the key on, the old default, instead of asking the file"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if unlock is None:
+        unlock = unlock_needed(target)
+'''
+new = '''
+    if unlock is None:
+        unlock = True
+'''
+
+[[rows]]
+id = "A2_probe_to_false"
+description = "open_db answers every unnamed open with the key off, the constant the five verb sites used to pass"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if unlock is None:
+        unlock = unlock_needed(target)
+'''
+new = '''
+    if unlock is None:
+        unlock = False
+'''
+
+[[rows]]
+id = "A3_probe_removed"
+description = "Delete the probe block, so None reaches the binding, which reads it as no key"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if unlock is None:
+        unlock = unlock_needed(target)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "A4_open_default_true"
+description = "open_db's unlock default back to True, so the probe branch never fires for an unnamed open"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    force_cloud_canary: bool = False,
+    unlock: bool | None = None,
+'''
+new = '''
+    force_cloud_canary: bool = False,
+    unlock: bool | None = True,
+'''
+
+[[rows]]
+id = "A5_integrity_default_true"
+description = "integrity_ok's unlock default back to True, the value the snapshot capture check used before"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = None) -> bool:'''
+new = '''def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = True) -> bool:'''
+
+[[rows]]
+id = "A6_integrity_default_false"
+description = "integrity_ok's unlock default to False, so an encrypted capture fails its check"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = None) -> bool:'''
+new = '''def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = False) -> bool:'''
+
+[[rows]]
+id = "A7_needed_always_true"
+description = "unlock_needed answers encrypted for every readable file, the U55 row that read zero with no encrypted input"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''            return not handle.read(len(SQLITE_HEADER)).startswith(SQLITE_HEADER)'''
+new = '''            return True'''
+
+[[rows]]
+id = "A8_needed_always_false"
+description = "unlock_needed answers plain for every readable file, the other U55 zero row, now with an encrypted input to fail on"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''            return not handle.read(len(SQLITE_HEADER)).startswith(SQLITE_HEADER)'''
+new = '''            return False'''
+
+[[rows]]
+id = "A9_header_nearby_value"
+description = "The plain header constant to a realistic nearby value, SQLite format 4, so no plain file matches it"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''SQLITE_HEADER = b"SQLite format 3"'''
+new = '''SQLITE_HEADER = b"SQLite format 4"'''
+
+[[rows]]
+id = "A10_unreadable_answers_plain"
+description = "unlock_needed answers plain rather than encrypted for a file it cannot read"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    except OSError:
+        return True
+
+
+'''
+new = '''
+    except OSError:
+        return False
+
+
+'''
