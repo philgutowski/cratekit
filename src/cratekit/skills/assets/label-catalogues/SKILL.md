@@ -144,6 +144,44 @@ you deliberately declined does not come back in through the label door:
 crate tombstone list --all
 ```
 
+## From an accepted release to a download list
+
+Accepting a release records a decision and acquires nothing. `label approved`
+is the step that turns those decisions into work:
+
+```bash
+crate label approved
+crate acquire download LIST_PATH
+```
+
+It reads every accepted release on the label queue, reads each release's tracks
+from the provider again by release identifier, resolves every track against the
+library, and writes the missing ones into a list document `acquire download`
+accepts. The default output names the list's path and the next command. A
+manifest is written beside the list, carrying the label, the year and the
+release behind every listed track, which is what a later landing files label
+tracks by.
+
+What it does not list, and says so by count: a track the library already holds,
+a track held in another version, which is offered for review under this verb's
+own key and listed on a later run once answered, a track deleted on purpose,
+and the same recording arriving a second time from another accepted release.
+
+There is no handed off state. Ownership is the record, so run it as often as
+you like: a track that has landed since the last run resolves owned and drops
+out. The list's name carries a digest of the track identifiers it lists, so the
+same work rewrites the same file and different work never collides with an
+earlier list.
+
+A release the provider no longer has is a failing line naming the release and
+the `crate review clear` that revokes its acceptance, and the other releases
+still list. A release the provider could not answer for is a failing line that
+says to run again. If no release could be read at all, or nothing was listed
+while some could not be read, it refuses with `label-list-unusable` rather than
+report a clean no-op, because that would read as a library that already holds
+everything. A release with no readable year is listed, reported as undated, and
+carries no year in the manifest.
+
 ## Syncing the followed set
 
 The labels sync pulls new releases across every followed label and advances its
