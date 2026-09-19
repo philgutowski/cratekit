@@ -4,7 +4,28 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-316, issue #107, `relay/107`, 2026-09-19.**
+**Last merged: R-313, issue #106, `relay/106`, 2026-09-19.**
+`route.unplaced` now declares itself a report. The registry entry has no write
+surface, is not destructive, names no gate, and asks doctor for
+`library.mounted` and `rekordbox.pins`. `rekordbox.closed` and the cloud-sync
+decision are gone, and no sweep was added. Driven with rekordbox and its agent
+reported running and no acknowledgment recorded, `crate route unplaced`
+reports both unplaced rows, leaves the database file byte identical and takes
+no session lock. The brief said drop `rekordbox.pins` as well. The unit's
+`/code-review` found that wrong: the writer checks the binding pin on every
+open, and driven with the binding version patched the report refuses
+`pyrekordbox-pin-drift`, exit 23, so the pins stay. Doctor's report is profile
+wide and still requires rekordbox closed in `slim`, `full` and `custom`,
+because the core write verbs declare it, so what `crate doctor` prints is
+unchanged today. The route skill no longer says all four routing verbs want
+rekordbox closed. 4 new tests in `tests/test_routing_workers.py`. Mutation
+table `docs/mutation/r313.md`, 7 of 7 killing. R-444 filed, not on the board:
+`converge` reads the database without declaring the pins, and the pins check
+mixes a pin every open needs with one only a write needs. Battery on the
+recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 7974 passed and 1
+skipped in 59 seconds. **Main's highest residual number is R-444.**
+
+**The session before: R-316, issue #107, `relay/107`, 2026-09-19.**
 A declared vocal sub-playlist that a run did not derive is now said on the
 envelope. A confirmed `crate route inbox` and a driven `crate rebuild --job` or
 `crate route resort --job` carry a `vocal-dimension-not-compared` warning,
@@ -1334,8 +1355,9 @@ learning. Four are worth knowing before touching routing again:
 - **R-316, closed 2026-09-19.** Neither worker derives the vocal dimension,
   and both now report the gap as a `vocal-dimension-not-compared` warning.
   Deriving it is still open.
-- **R-313.** `route.unplaced` declares `writes` and `destructive` and only
-  reports, so a person is told to close rekordbox for a read.
+- **R-313, closed 2026-09-19.** `route.unplaced` declares no write and is not
+  destructive. It keeps `rekordbox.pins`, because a read checks the binding
+  pin, and R-444 records the same shape in `converge`.
 
 ## What U57 left behind, still current
 
