@@ -94,6 +94,31 @@ def test_an_accepted_label_is_added_once_and_a_second_run_adds_none(installed):
     assert intent_bytes() == written
 
 
+def test_an_adopt_that_adds_nothing_does_not_rewrite_the_registry(installed):
+    """A rewrite of equal entries is not harmless: ``recognize`` drops what it cannot read.
+
+    The second run in the test above leaves equal bytes whether or not it
+    wrote, so it cannot tell the two apart. A record the loader skips can: a
+    save of what was loaded discards it.
+    """
+    path = config.state_path("label_intent")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        '{"version": 1, "labels": {'
+        '"kompakt": {"label_id": "kompakt", "name": "Kompakt"}, '
+        '"unread": "a record this build cannot read"}}\n',
+        encoding="utf-8",
+    )
+    before = intent_bytes()
+    ids = offer(installed, "Kompakt")
+    answer(ids["Kompakt"])
+
+    envelope = adopt()
+
+    assert envelope["data"]["summary"]["present"] == ["kompakt"]
+    assert intent_bytes() == before
+
+
 def test_a_rejected_or_open_label_is_not_added(installed):
     ids = offer(installed, "Kept", "Turned Down", "Undecided")
     answer(ids["Kept"])
