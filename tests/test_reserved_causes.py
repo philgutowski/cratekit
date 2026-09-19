@@ -5789,7 +5789,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # and yt-dlp-missing through cause.refuse. acquire/fallback.py names no
     # cause. Measured by listing this file's own holders on the
     # branch. It holds no in-range integer, so the other half stays 19.
-    assert (len(literal_holders), len(literal_both)) == (99, 19), (
+    # Re-pinned on U103, 2026-09-19: holders UNCHANGED at 99, and the
+    # also-holds-an-integer half moves 19 to 20. No module joined the holders.
+    # ONE holder gained an in-range integer: intake/cli.py held none on main
+    # and holds 12 now, which is TRACKLIST_DIGEST_CHARS, how many characters
+    # of the recording's digest a tracklist's file name carries. It is a
+    # length and is never an exit status. Measured by walking that file's
+    # integer constants on main and on the branch.
+    assert (len(literal_holders), len(literal_both)) == (99, 20), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
