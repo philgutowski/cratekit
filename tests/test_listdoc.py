@@ -414,3 +414,93 @@ def test_source_refs_that_are_not_text_refuse(tmp_path):
         listdoc.read_manifest(path)
 
     assert "source_refs" in str(excinfo.value)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U78: the rows handed on, as a text list beside the provider document
+# ═══════════════════════════════════════════════════════════════════════════
+
+HANDED = (
+    listdoc.HandedOn(Row(ref="", artist="Kite Shore", title="Unlisted"), "no ISRC"),
+    listdoc.HandedOn(
+        Row(ref="", artist="Lumen Drift", title="Salt Road", version="Extended Mix"),
+        "several tracks",
+    ),
+)
+
+
+def test_rows_handed_on_are_a_text_list_the_reader_reads_back(tmp_path):
+    written = listdoc.write(tmp_path, "set", ROWS, SOURCE, handed_on=HANDED)
+
+    assert written.unlisted_path == tmp_path / "set.unlisted.json"
+    raw = json.loads(written.unlisted_path.read_text())
+    assert raw == {
+        "list": 1,
+        "origin": "text",
+        "tracks": [
+            "# no ISRC",
+            "Kite Shore - Unlisted",
+            "# several tracks",
+            "Lumen Drift - Salt Road (Extended Mix)",
+        ],
+    }
+    read = read_list(written.unlisted_path)
+    assert [(one.artist, one.title, one.version) for one in read] == [
+        ("Kite Shore", "Unlisted", ""),
+        ("Lumen Drift", "Salt Road", "Extended Mix"),
+    ]
+
+
+def test_rows_handed_on_with_nothing_listable_still_write_the_text_list_alone(tmp_path):
+    written = listdoc.write(tmp_path, "set", (), SOURCE, handed_on=HANDED)
+
+    assert (written.list_path, written.manifest_path) == (None, None)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["set.unlisted.json"]
+
+
+def test_the_same_line_twice_is_written_once_under_its_first_reason(tmp_path):
+    twice = (*HANDED[:1], listdoc.HandedOn(HANDED[0].row, "played again"))
+    raw = listdoc.text_document(twice)
+    assert raw["tracks"] == ["# no ISRC", "Kite Shore - Unlisted"]
+
+
+def test_a_reason_carrying_a_line_break_stays_one_row(tmp_path):
+    raw = listdoc.text_document(
+        [listdoc.HandedOn(HANDED[0].row, "first\nsecond")]
+    )
+    assert raw["tracks"][0] == "# first second"
+    read_back = match.read_text_rows(raw["tracks"])
+    assert len(read_back) == 1
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        Row(ref="", artist="Kite - Shore", title="Unlisted"),
+        Row(ref="", artist="12. Kite Shore", title="Unlisted"),
+    ],
+    ids=["separator-in-artist", "leading-ordinal"],
+)
+def test_a_row_that_would_read_back_as_another_track_is_refused_by_position(tmp_path, row):
+    with pytest.raises(listdoc.ListDocRefused) as refused:
+        listdoc.write(
+            tmp_path, "set", ROWS, SOURCE, handed_on=(HANDED[0], listdoc.HandedOn(row, "why"))
+        )
+    assert refused.value.position == 2
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_an_existing_different_unlisted_file_refuses_before_either_half_is_written(tmp_path):
+    (tmp_path / "set.unlisted.json").write_text("somebody else's\n")
+
+    with pytest.raises(listdoc.ListDocRefused):
+        listdoc.write(tmp_path, "set", ROWS, SOURCE, handed_on=HANDED)
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["set.unlisted.json"]
+
+
+def test_writing_the_same_handed_on_rows_again_is_a_no_op(tmp_path):
+    first = listdoc.write(tmp_path, "set", ROWS, SOURCE, handed_on=HANDED)
+    before = first.unlisted_path.read_bytes()
+    again = listdoc.write(tmp_path, "set", ROWS, SOURCE, handed_on=HANDED)
+    assert again.unlisted_path.read_bytes() == before
