@@ -88,7 +88,14 @@ class Row:
 
 @dataclass(frozen=True, slots=True)
 class Provenance:
-    """Where a listed id came from. None of it is read to acquire anything."""
+    """Where a listed id came from. None of it is read to acquire anything.
+
+    ``source_ref`` is the reference the listed row was taken from, and
+    ``source_refs`` is every reference that asked for the same id, in order. A
+    list built from several jobs writes one row per id, first source wins, and
+    without the second field the other playlists that wanted the track would
+    vanish from the record. Left empty, it is ``source_ref`` alone.
+    """
 
     source: str
     source_ref: str | None = None
@@ -96,6 +103,13 @@ class Provenance:
     label_name: str | None = None
     year: int | None = None
     release_id: str | None = None
+    source_refs: tuple[str, ...] = ()
+
+    def every_ref(self) -> list[str]:
+        """Every reference this id came from, the one it was taken from first."""
+        if self.source_refs:
+            return list(self.source_refs)
+        return [self.source_ref] if self.source_ref else []
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,6 +334,7 @@ def manifest(
         entries[track["id"]] = {
             "source": origin.source,
             "source_ref": origin.source_ref,
+            "source_refs": origin.every_ref(),
             "label_id": origin.label_id,
             "label_name": origin.label_name,
             "year": origin.year,

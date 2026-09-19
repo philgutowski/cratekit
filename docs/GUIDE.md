@@ -163,6 +163,21 @@ counted and left out. A job that is still running, failed or was cancelled is
 refused rather than listed in part. A missing track the provider cannot be
 asked for is reported as a failing line, never dropped in silence.
 
+A `crate sync all` pass queues one playlist job per new playlist, and its output
+ends with the command that lists the whole pass at once:
+
+```bash
+crate intake missing --run RUN_ID
+```
+
+It writes one list for every playlist job the pass queued on this library,
+named for the run, so the pass downloads and lands as one batch. A track two
+playlists share is listed once, and the list's manifest names both playlists.
+A job still running refuses the whole run. A job that failed or was cancelled
+is named and refuses the run too, unless you pass `--skip-failed`, which lists
+the rest and reports what it left out as a failing line. The output names the
+`--name` to give `intake land` so the landed batch carries the run's name.
+
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
 is not blocked, and `crate acquire audit` reports files that break the lossless

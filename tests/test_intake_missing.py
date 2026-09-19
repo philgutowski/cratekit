@@ -1,4 +1,5 @@
-"""U69: ``crate intake missing --job JOB``, driven through the real dispatcher.
+"""U69 and U73: ``crate intake missing --job JOB`` and ``--run RUN``, driven
+through the real dispatcher.
 
 A finished playlist intake leaves one committed report per track saying owned,
 offered, suppressed or missing. This verb turns the missing ones into the list
@@ -15,6 +16,7 @@ a real person or a real track.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 from pathlib import Path
@@ -36,7 +38,7 @@ from cratekit.intake import missing_cli
 from cratekit.label import catalogue
 from tests.acquire_fakes import FAKE_ADAPTER, FAKE_DECLARATION, FakeAdapter, Landing, Script
 from tests.cli_drive import drive
-from tests.label_fakes import StrictCatalogue, catalogue_factory
+from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, StrictCatalogue, catalogue_factory
 from tests.test_config import valid_data
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -479,6 +481,221 @@ def test_a_deleted_track_the_tombstone_consult_cannot_reach_is_listed_as_recorde
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["suppressed"]) == (1, 0)
     assert match_cli.TOMBSTONE_STORE == "tombstones"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# One sync pass, one list (U73)
+#
+# ``crate sync all`` queues one intake job per new playlist under one run. The
+# jobs here are queued through the same ``queue_playlist`` the pass calls, with
+# the run and the source it stamps, and driven through the real worker. The run
+# identifier is shaped like a real one, colons and all, because the list's name
+# is derived from it and a colon cannot be in a name on an exFAT volume.
+# ═══════════════════════════════════════════════════════════════════════════
+
+RUN = "2026-09-18T10:00:00Z-ab12"
+RUN_LIST = "2026-09-18T100000Z-ab12_synced.list.json"
+
+
+def in_run(cfg, reference: str, rows: list[Track], *, run_id: str = RUN) -> str:
+    """Queue one playlist job exactly as a sync pass does, and leave it open."""
+    tracks = intake_cli.list_playlist(
+        FakeCatalogue(playlists={reference: FakePagedPlaylist(rows)}), reference
+    )
+    with jobs.open_store() as store:
+        job = intake_cli.queue_playlist(
+            store, cfg, handler_key="intake.playlist", reference=reference,
+            tracks=tracks, run_id=run_id, source_id="playlists",
+        )
+    return job.job_id
+
+
+def finished_in_run(cfg, reference: str, rows: list[Track], *, run_id: str = RUN) -> str:
+    job_id = in_run(cfg, reference, rows, run_id=run_id)
+    code, envelope = drive(resume_argv(job_id))
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["state"] == "succeeded"
+    return job_id
+
+
+def fail(job_id: str) -> None:
+    cause = Cause(
+        reason="internal-error", message="stopped for the test",
+        remediation=Remediation(steps=("nothing",)), origin=("test",),
+    )
+    with jobs.open_store() as store:
+        jobs.transition(store, job_id, jobs.JobState.FAILED, cause=cause)
+
+
+def run_missing(*extra: str, run_id: str = RUN) -> tuple[int, dict]:
+    return drive(["intake", "missing", "--run", run_id, *extra])
+
+
+def test_two_playlists_sharing_a_track_list_it_once_with_both_provenances(cfg, library):
+    shared = Track("204", "Lumen Drift", "Salt Road")
+    first = finished_in_run(cfg, "pl-a", [Track("205", "Kite Harbor", "Low Tide Signal"), shared])
+    second = finished_in_run(cfg, "pl-b", [shared, Track("206", "Sable Cove", "Quiet Pier")])
+
+    code, envelope = run_missing()
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert summary["list"] == str(lists_dir(library) / RUN_LIST)
+    assert (summary["run_id"], summary["jobs"], summary["skipped"]) == (RUN, [first, second], [])
+    assert summary["land_name"] == "2026-09-18T100000Z-ab12_synced"
+    assert (summary["written"], summary["missing"]) == (3, 4)
+    body = json.loads(Path(summary["list"]).read_text())
+    assert [t["id"] for t in body["tracks"]] == ["205", "204", "206"]
+    rows = json.loads(Path(summary["manifest"]).read_text())["rows"]
+    assert rows["204"]["source_ref"] == "pl-a"
+    assert rows["204"]["source_refs"] == ["pl-a", "pl-b"]
+    assert rows["205"]["source_refs"] == ["pl-a"]
+    assert rows["206"]["source_refs"] == ["pl-b"]
+
+
+def test_a_run_list_is_one_file_a_second_listing_reproduces(cfg, library):
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    finished_in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+    _code, first = run_missing()
+
+    code, again = run_missing()
+
+    assert code == int(ExitCode.OK), again
+    assert again["data"]["summary"]["list"] == first["data"]["summary"]["list"]
+    assert sorted(p.name for p in lists_dir(library).iterdir()) == [
+        RUN_LIST, RUN_LIST.replace(".list.json", ".manifest.json"),
+    ]
+
+
+def test_the_default_human_output_names_the_list_the_download_and_the_landing(cfg, library):
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+
+    code, text = human(["intake", "missing", "--run", RUN])
+
+    assert code == int(ExitCode.OK), text
+    path = lists_dir(library) / RUN_LIST
+    assert f"next: crate acquire download {path}" in text
+    assert "crate intake land --name 2026-09-18T100000Z-ab12_synced" in text
+
+
+def test_an_open_job_refuses_the_whole_run_and_names_it(cfg, library):
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    still = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+
+    code, envelope = run_missing("--skip-failed")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert "still open" in envelope["cause"]["message"]
+    assert still in envelope["cause"]["message"]
+    assert envelope["cause"]["detail"]["open"] == [still]
+    assert still in " ".join(envelope["cause"]["remediation"]["steps"])
+    assert not lists_dir(library).exists()
+
+
+def test_a_failed_job_is_named_and_refuses_the_run_without_skip_failed(cfg, library):
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+    fail(broken)
+
+    code, envelope = run_missing()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert broken in envelope["cause"]["message"]
+    assert envelope["cause"]["detail"]["failed"] == [broken]
+    assert envelope["cause"]["inner"]["message"] == "stopped for the test"
+    assert "--skip-failed" in " ".join(envelope["cause"]["remediation"]["steps"])
+    assert not lists_dir(library).exists()
+
+
+def test_skip_failed_lists_the_rest_and_names_what_it_left_out(cfg, library):
+    kept = finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+    fail(broken)
+
+    code, envelope = run_missing("--skip-failed")
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["jobs"], summary["skipped"]) == ([kept], [broken])
+    body = json.loads(Path(summary["list"]).read_text())
+    assert [t["id"] for t in body["tracks"]] == ["204"]
+    (skipped,) = [c for c in envelope["data"]["checks"] if c["title"] == "skipped"]
+    assert skipped["status"] == "fail"
+    assert broken in skipped["detail"] and "pl-b" in skipped["detail"]
+
+
+def test_a_run_whose_every_job_failed_refuses_even_with_skip_failed(cfg, library):
+    broken = in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    fail(broken)
+
+    code, envelope = run_missing("--skip-failed")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert "nothing to list" in envelope["cause"]["message"]
+    assert not lists_dir(library).exists()
+
+
+def test_an_unknown_run_is_refused_by_name(cfg, library):
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+
+    code, envelope = run_missing(run_id="2026-01-01T00:00:00Z-0000")
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "job-unknown"
+    assert "2026-01-01T00:00:00Z-0000" in envelope["cause"]["message"]
+    assert not lists_dir(library).exists()
+
+
+def test_a_blank_run_is_refused_and_does_not_match_a_job_queued_with_no_run(cfg, library):
+    code, envelope = run_missing(run_id=" ")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+
+
+def test_another_librarys_job_in_the_same_run_is_not_this_librarys_to_list(cfg, library):
+    """The hazard the brief names: the run alone would merge two libraries. The
+    other library's job is left OPEN, so a filter on the run alone refuses."""
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    elsewhere = dataclasses.replace(
+        cfg, library=dataclasses.replace(cfg.library, volume_id="0000-0000")
+    )
+    in_run(elsewhere, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+
+    code, envelope = run_missing()
+
+    assert code == int(ExitCode.OK), envelope
+    body = json.loads(Path(envelope["data"]["summary"]["list"]).read_text())
+    assert [t["id"] for t in body["tracks"]] == ["204"]
+
+
+def test_a_job_queued_by_hand_is_not_part_of_any_run(cfg, library, monkeypatch):
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    queued(monkeypatch, hearts())
+
+    code, envelope = run_missing()
+
+    assert code == int(ExitCode.OK), envelope
+    assert len(envelope["data"]["summary"]["jobs"]) == 1
+
+
+def test_skip_failed_with_one_job_is_refused_rather_than_ignored(cfg, library, monkeypatch):
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+
+    code, envelope = missing(job_id, "--skip-failed")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "--skip-failed" in envelope["cause"]["message"]
+    assert not lists_dir(library).exists()
+
+
+def test_job_and_run_together_are_refused_by_the_parser(cfg):
+    code, _envelope = drive(["intake", "missing", "--job", "j", "--run", RUN])
+    assert code != int(ExitCode.OK)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

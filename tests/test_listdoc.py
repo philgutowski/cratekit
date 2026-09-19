@@ -200,6 +200,7 @@ def test_the_manifest_records_each_ids_provenance(tmp_path):
     assert doc["rows"]["101"] == {
         "source": "labels",
         "source_ref": None,
+        "source_refs": [],
         "label_id": "L1",
         "label_name": "Tidewater",
         "year": 2023,
@@ -210,6 +211,15 @@ def test_the_manifest_records_each_ids_provenance(tmp_path):
         "isrc": "GBAAA2400001",
     }
     assert doc["rows"]["303"]["version"] == "Extended Mix"
+    assert doc["rows"]["202"]["source_refs"] == ["pl-9"]
+
+
+def test_the_manifest_keeps_every_reference_an_id_came_from(tmp_path):
+    shared = Provenance(source="playlist", source_ref="pl-1", source_refs=("pl-1", "pl-2"))
+    written = _write(tmp_path, provenance=shared)
+    doc = json.loads(written.manifest_path.read_text(encoding="utf-8"))
+    assert {row["source_ref"] for row in doc["rows"].values()} == {"pl-1"}
+    assert {tuple(row["source_refs"]) for row in doc["rows"].values()} == {("pl-1", "pl-2")}
 
 
 def test_a_listed_id_with_no_provenance_refuses_and_writes_nothing(tmp_path):

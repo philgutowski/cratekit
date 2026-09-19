@@ -891,7 +891,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="intake.missing",
-        summary="write the list acquire download reads from a finished intake job's missing tracks",
+        summary=(
+            "write the list acquire download reads from the missing tracks of a "
+            "finished intake job or a whole sync pass"
+        ),
         module="cratekit.intake.missing_cli",
         builder="build_missing",
         handler_key="intake.missing",

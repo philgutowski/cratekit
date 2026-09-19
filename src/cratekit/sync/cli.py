@@ -24,6 +24,11 @@ Playlists queue one ``intake.playlist`` job per account playlist that is new, so
 a plan carries the jobs it filed as a list, and a refusal part way through keeps
 the ones already filed named in the report.
 
+THE PASS NAMES ITS NEXT STEP (U73). A pass that queued an intake job ends with
+one ``sync.next`` check naming ``crate intake missing --run RUN_ID``, which
+writes every missing track of the pass as one list, so the pass downloads and
+lands as one batch.
+
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23), and each source's module is imported only when
 the profile enables it.
@@ -338,7 +343,41 @@ def _report(plans: list[_Plan], run_id: str) -> dict[str, Any]:
             plan.detail = plan.describe(plan.filed)
         if plan.detail is not None:
             summary[plan.spec.source_id] = plan.detail
-    return {"checks": [_check(p) for p in plans], "summary": summary}
+    checks = [_check(p) for p in plans]
+    step = _next_step(plans, run_id)
+    summary["next"] = step["command"] if step is not None else None
+    if step is not None:
+        checks.append(step["check"])
+    return {"checks": checks, "summary": summary}
+
+
+def _next_step(plans: list[_Plan], run_id: str) -> dict[str, Any] | None:
+    """The one command that turns this pass's intake jobs into one list (U73).
+
+    Named only when the pass filed an intake job, because a run with none has
+    nothing ``intake missing --run`` could list and the verb refuses it. A check
+    row and not only a summary field, since the default human output prints the
+    checks and nothing else.
+    """
+    from cratekit.intake import cli as intake_cli
+
+    filed = [job for p in plans for job in p.filed if job.handler_key in intake_cli.INTAKE_KEYS]
+    if not filed:
+        return None
+    command = f"crate intake missing --run {run_id}"
+    return {
+        "command": command,
+        "check": {
+            "key": "sync.next",
+            "title": "next",
+            "status": "info",
+            "detail": (
+                f"once the {len(filed)} intake job(s) this pass queued have finished, "
+                f"write every track they found missing as one list with: {command}"
+            ),
+            "remedy": None,
+        },
+    }
 
 
 def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
