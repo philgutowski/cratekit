@@ -1,0 +1,84 @@
+name = "u79-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_floor_halved"
+description = "The floor's value is halved, so a weaker hit is shown"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''CANDIDATE_FLOOR = 60.0'''
+new = '''CANDIDATE_FLOOR = 30.0'''
+
+[[rows]]
+id = "B2_score_before_exact"
+description = "A near miss scoring 100 leads an exact candidate"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''            (not one.exact, -one.score, position, one)'''
+new = '''            (False, -one.score, position, one)'''
+
+[[rows]]
+id = "B3_no_identifier_offered"
+description = "A candidate with no identifier is offered as an option"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''            if one.track.ref and (one.exact or one.score >= CANDIDATE_FLOOR)
+        ),
+        key='''
+new = '''            if (one.exact or one.score >= CANDIDATE_FLOOR)
+        ),
+        key='''
+
+[[rows]]
+id = "B4_rejected_read_as_accepted"
+description = "A rejected row falls through to the accepted path and its one candidate is listed"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    if held.verdict is review.Verdict.REJECTED:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B5_unspecific_yes_takes_first"
+description = "An acceptance naming none of several candidates lists the first"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    if chosen is None and len(held.options) == 1:'''
+new = '''    if chosen is None and len(held.options) >= 1:'''
+
+[[rows]]
+id = "B6_option_track_mismatch"
+description = "An accepted option whose detail names another track is listed as that track"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    if track is None or not track.ref or track.ref != option.option_id:'''
+new = '''    if track is None or not track.ref:'''
+
+[[rows]]
+id = "B7_identity_without_version"
+description = "The question is keyed without the version, so two versions are one item"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''        "version": wanted.version_key,
+    }'''
+new = '''        "version": "",
+    }'''
+
+[[rows]]
+id = "B8_open_item_searched_again"
+description = "A row already in front of a person is searched for again"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    if held.verdict is None:
+        return Proposal('''
+new = '''    if held.verdict is None:
+        return None
+    if held.verdict is None:
+        return Proposal('''
