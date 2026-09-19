@@ -5375,7 +5375,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # hearts on the service and writes no colour, tag or playlist membership in
     # the library. Nothing refuses with it, because nothing about it is a
     # failure: it is the verb declaring its own scope.
-    assert (len(literals), len(literals - set(causes))) == (453, 292), (
+    # Re-pinned on U104, 2026-09-19: 453 to 454 distinct, 292 to 293 non-keys.
+    # ONE literal joined and NOTHING left, differenced over the branch's diff of
+    # `src` against `main`. It is not a cause: mix-scratch-left is the WARNING
+    # code `intake set` and `intake identify` carry when the scratch folder a
+    # fetched mix landed in could not be removed. Nothing refuses with it. The
+    # three refusals a mix URL can meet are yt-dlp-missing,
+    # unavailable-transient and intake-list-unusable, all keys already, and
+    # `intake/cli.py` was a holder before this unit, so neither the cause
+    # population nor the holder count moves.
+    assert (len(literals), len(literals - set(causes))) == (454, 293), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
