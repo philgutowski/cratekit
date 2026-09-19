@@ -557,7 +557,7 @@ def test_a_missing_yt_dlp_parks_the_job_rather_than_failing_every_item(
         "-o/tmp/x",
         "https://",
         # A HOST IS NOT A WEB ADDRESS. Both have one, and neither is a page the
-        # tool should be handed (u81-a row W2 read zero until these joined).
+        # tool should be handed (u81-fetch-a row W2 read zero until these joined).
         "file://localhost/etc/hosts",
         "ftp://uploads.example/track.mp3",
     ],

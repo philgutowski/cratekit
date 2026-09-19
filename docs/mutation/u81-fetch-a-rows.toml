@@ -1,4 +1,4 @@
-name = "u81-a"
+name = "u81-fetch-a"
 pass_kind = "light"
 
 # ── The worker, src/cratekit/acquire/fallback_cli.py handle_fetch ───────────

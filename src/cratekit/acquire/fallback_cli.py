@@ -458,7 +458,7 @@ def accepted_rows(
         said = fallback.settled(items, one)
         # ONE CHECK, THE STATE. ``settled`` names an upload only on an accepted
         # answer, so a second check for the URL could never be the one that
-        # decided, and u81-b measured it covering this one to a zero. An
+        # decided, and u81-fetch-b measured it covering this one to a zero. An
         # accepted answer with no upload would reach the worker as an empty
         # address and be refused there, never downloaded.
         if said is None or said.state != fallback.ACCEPTED:

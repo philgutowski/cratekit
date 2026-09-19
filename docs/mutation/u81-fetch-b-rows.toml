@@ -1,4 +1,4 @@
-name = "u81-b"
+name = "u81-fetch-b"
 pass_kind = "light"
 
 # Batch b of two, 13 rows, so the unit's table is 25 rows at the cap. Two rows

@@ -1,4 +1,4 @@
-# Mutation table: u81-a
+# Mutation table: u81-fetch-a
 
 Measured by `scripts/mutate.py` on 2026-09-19 15:04 UTC, branch `relay/126` at `a0e8f7c`. Pass kind: light.
 
