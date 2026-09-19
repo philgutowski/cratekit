@@ -345,16 +345,40 @@ def _out_dir(ctx, subject: Mapping[str, Any]) -> Path:
     return out
 
 
-def _written_or_refuse(
-    out: Path,
-    name: str,
-    rows,
-    provenance,
-    subject,
-    handed_on=(),
-    gained: int = 0,
-    answered: int = 0,
-):
+def _changed_since(out: Path, name: str, rows) -> list[str]:
+    """What an earlier list of this name names that ``rows`` do not, and the reverse.
+
+    READ FROM THAT FILE, NOT INFERRED FROM THE JOB. A count of rows the library
+    gained or a person answered since the job ran says nothing about when the
+    earlier list was written, so a row gained before it and one answered after
+    it read as the same story. The earlier file is the only witness to what it
+    names. One this cannot read gives no reason rather than a wrong one.
+    """
+    try:
+        body = json.loads((out / f"{name}{listdoc.LIST_SUFFIX}").read_text(encoding="utf-8"))
+        earlier = {
+            str(track["id"]): f"{track['artist']} - {track['title']}" for track in body["tracks"]
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    now = {str(row.ref or "").strip(): f"{row.artist} - {row.title}" for row in rows}
+    gone = [said for ref, said in earlier.items() if ref not in now]
+    new = [said for ref, said in now.items() if ref not in earlier]
+    why = []
+    if gone:
+        why.append(
+            f"if it is this list's earlier copy: {len(gone)} track(s) it names are not "
+            f"in this one, no longer missing since it was written: " + "; ".join(gone)
+        )
+    if new:
+        why.append(
+            f"if it is this list's earlier copy: {len(new)} track(s) this one names are "
+            f"not in it, missing since it was written: " + "; ".join(new)
+        )
+    return why
+
+
+def _written_or_refuse(out: Path, name: str, rows, provenance, subject, handed_on=()):
     """The emitter's write, with both of its failures as this verb's refusal.
 
     A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL, as it is
@@ -362,27 +386,15 @@ def _written_or_refuse(
     write through, and left alone that reaches a person as an internal error
     telling them to report a defect over a folder they cannot write to.
 
-    ``gained`` is how many rows the library answered since the job ran. A list
-    that shrank by them is refused over the earlier list of the same name, and
-    without that said the refusal reads as somebody else's file in the way.
-    ``answered`` is how many rows a person answered in review since and that are
-    missing now (R-503), which makes the list longer than the earlier one.
+    A LIST THAT CHANGED IS REFUSED OVER ITS EARLIER COPY, since the name is
+    fixed by the job, and without the change said the refusal reads as
+    somebody else's file in the way. Rows the library gained since (R-502) and
+    rows a person answered since (R-503) both change it.
     """
     try:
         return listdoc.write(out, name, rows, provenance, handed_on=handed_on)
     except listdoc.ListDocRefused as exc:
-        why = []
-        if gained:
-            why.append(
-                f"if it is this list's earlier copy: {gained} track(s) it names are no "
-                f"longer missing, so this list is shorter than that one"
-            )
-        if answered:
-            why.append(
-                f"if it is this list's earlier copy: {answered} track(s) offered for "
-                f"review were answered since and are missing now, so this list names "
-                f"tracks that one does not"
-            )
+        why = _changed_since(out, name, rows)
         raise _unusable(
             str(exc),
             *why,
@@ -782,7 +794,6 @@ def _listed(
         origins = [origins[n] for n in kept]
         counts["missing"] = len(missing)
     gained = sum(since.values())
-    answered_in = now_answered["answered_missing"]
     if missing:
         rows = list(listdoc.rows_of(missing))
         bare = [n for n, row in enumerate(rows) if not str(row.ref or "").strip()]
@@ -815,8 +826,6 @@ def _listed(
             _provenance(listed_rows, [origins[n] for n in kept]),
             subject,
             handed_on=writable,
-            gained=gained,
-            answered=answered_in,
         )
     listed = len(written.listed)
     unlisted = len(handed)

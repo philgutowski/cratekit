@@ -307,7 +307,11 @@ def test_a_shorter_rerun_over_the_jobs_earlier_list_refuses_and_says_why(cfg, li
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "intake-list-unusable"
     steps = " ".join(envelope["cause"]["remediation"]["steps"])
-    assert "1 track(s) it names are no longer missing" in steps
+    assert (
+        "1 track(s) it names are not in this one, no longer missing since it was "
+        "written: Lumen Drift - Salt Road"
+    ) in steps
+    assert "this one names are not in it" not in steps
     assert listed.read_bytes() == before
 
 
@@ -489,12 +493,58 @@ def test_a_rejection_after_a_listing_refuses_over_the_earlier_list_and_says_why(
 
     assert code == int(ExitCode.PRECONDITION), envelope
     steps = " ".join(envelope["cause"]["remediation"]["steps"])
-    assert "1 track(s) offered for review were answered since" in steps
-    assert "no longer missing" not in steps
+    assert (
+        "1 track(s) this one names are not in it, missing since it was written: "
+        "Nova Reef - Tide"
+    ) in steps
+    assert "it names are not in this one" not in steps
     assert listed.read_bytes() == before
     code, elsewhere = missing(job_id, "--out", str(tmp_path / "fresh"))
     assert code == int(ExitCode.OK), elsewhere
     assert elsewhere["data"]["summary"]["written"] == 3
+
+
+def test_the_refusal_names_what_the_earlier_list_holds_not_what_the_job_found(
+    cfg, library, monkeypatch
+):
+    """READ FROM THE EARLIER FILE. The row a person rejected was listed, then
+    landed. Every count the job can give says a row was answered since and
+    none was gained, and the true story is the reverse: the earlier list names
+    a track this one does not, and this one names nothing new."""
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    answer(job_id, "rejected")
+    _code, first = missing(job_id)
+    assert first["data"]["summary"]["written"] == 3
+    owned(library, "Nova Reef - Tide.flac")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    steps = " ".join(envelope["cause"]["remediation"]["steps"])
+    assert (
+        "1 track(s) it names are not in this one, no longer missing since it was "
+        "written: Nova Reef - Tide"
+    ) in steps
+    assert "this one names are not in it" not in steps
+
+
+def test_an_earlier_file_that_is_not_a_list_gives_no_reason_rather_than_a_wrong_one(
+    cfg, library, monkeypatch
+):
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    stranger = lists_dir(library) / f"intake-{job_id}.list.json"
+    stranger.parent.mkdir(parents=True)
+    stranger.write_text("not a list\n")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    steps = " ".join(envelope["cause"]["remediation"]["steps"])
+    assert "earlier copy" not in steps
+    assert "move the file aside" in steps
+    assert stranger.read_text() == "not a list\n"
 
 
 def test_an_unmounted_library_refuses_rather_than_reading_every_row_missing(
