@@ -180,8 +180,12 @@ def test_a_file_that_already_carries_a_genre_is_skipped_and_never_overwritten(
     decides the declared taxonomy calls it too coarse. Two verbs own this field
     under two policies, and a file that already has a value belongs to neither
     of them here.
+
+    U85: the file carries a picture too, because a file with a genre and NO
+    picture is now searched for its art. Only a file with both is not asked.
     """
     path = place(folder, silence, "track", SPECIFIC)
+    plant(path, _jpeg(320, 200), dims=(320, 200, 24))
     searcher = answering({"track": SearchHit(genre="Techno")})
 
     result = tag.tag_one(path, searcher=searcher)
@@ -325,7 +329,8 @@ def test_the_folder_pass_produces_exactly_what_the_per_file_calls_produce(
 def test_the_folder_pass_asks_once_per_untagged_file(folder, silence):
     place(folder, silence, "one")
     place(folder, silence, "two")
-    place(folder, silence, "already", SPECIFIC)
+    # Genre AND picture, since a tagged file with no picture is asked for art.
+    plant(place(folder, silence, "already", SPECIFIC), _jpeg(320, 200), dims=(320, 200, 24))
     searcher = answering({})
 
     tag.tag_folder(folder, searcher=searcher)
@@ -738,3 +743,260 @@ def test_an_encoder_failure_that_is_not_an_art_error_is_still_an_error(
 
     assert repair.status == art.REPAIR_ERROR
     assert "decoder fell over" in repair.detail
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# D. U85: a file with no picture gets the catalogue's, and no other file does
+# ═══════════════════════════════════════════════════════════════════════════
+
+ART_URL = "https://geo-media.example/image_size/1400x1400/cover.jpg"
+
+
+def fetching(answer: bytes | None = None, *, raises: Exception | None = None):
+    """An image fetch that answers ``answer`` and records every URL it was asked.
+
+    Defaults to a real 1000 square JPEG, deliberately not 800, so a write that
+    skipped the CDJ re-encode would show in the embedded block's size.
+    """
+    asked: list[str] = []
+
+    def fetch_image(url: str) -> bytes | None:
+        asked.append(url)
+        if raises is not None:
+            raise raises
+        return _jpeg(1000, 1000) if answer is None else answer
+
+    fetch_image.asked = asked  # type: ignore[attr-defined]
+    return fetch_image
+
+
+def test_a_file_with_no_genre_and_no_art_gets_both(folder, silence):
+    path = place(folder, silence, "track")
+    fetch = fetching()
+
+    result = tag.tag_one(
+        path,
+        searcher=answering({"track": SearchHit(genre=SPECIFIC, source="beatport", art_url=ART_URL)}),
+        fetch_image=fetch,
+    )
+
+    assert result.genre_written == SPECIFIC
+    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert result.art_fetch == tag.ART_EMBEDDED
+    assert result.art_fetch_detail == "800 by 800 from beatport"
+    assert fetch.asked == [ART_URL]
+    (block,) = blocks(path)
+    assert (block.type, block.mime) == (3, "image/jpeg")
+    assert (block.width, block.height, block.depth) == (800, 800, 24)
+    assert decoded(block.data)[:3] == ("JPEG", (800, 800), False)
+
+
+def test_a_file_with_a_genre_and_no_art_gets_art_and_its_genre_is_untouched(folder, silence):
+    """Art and genre are independent needs, so the tagged file is still asked."""
+    path = place(folder, silence, "track", SPECIFIC)
+    searcher = answering({"track": SearchHit(genre="Techno", source="beatport", art_url=ART_URL)})
+    fetch = fetching()
+
+    result = tag.tag_one(path, searcher=searcher, fetch_image=fetch)
+
+    assert searcher.asked == [("", "track")]
+    assert result.skipped == tag.HAS_GENRE
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert result.art_fetch == tag.ART_EMBEDDED
+    assert len(blocks(path)) == 1
+
+
+def test_a_tagged_file_with_zeroed_art_is_repaired_and_never_fetched(folder, silence):
+    """The previous unit's repair owns a picture the file already has."""
+    path = place(folder, silence, "track", SPECIFIC)
+    plant(path, _jpeg(320, 200))
+    searcher = answering({"track": SearchHit(genre="Techno", art_url=ART_URL)})
+    fetch = fetching()
+
+    result = tag.tag_one(path, searcher=searcher, fetch_image=fetch)
+
+    assert result.art_repair == art.REPAIR_FIXED
+    assert result.art_fetch == tag.ART_PRESENT
+    assert searcher.asked == [] and fetch.asked == []
+    (block,) = blocks(path)
+    assert (block.width, block.height) == (320, 200)
+
+
+def test_an_untagged_file_with_zeroed_art_gets_its_genre_and_keeps_its_picture(folder, silence):
+    """ANY picture settles the art, even on a file that is searched for its genre."""
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200))
+    fetch = fetching()
+
+    result = tag.tag_one(
+        path,
+        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
+        fetch_image=fetch,
+    )
+
+    assert result.genre_written == SPECIFIC
+    assert result.art_fetch == tag.ART_PRESENT
+    assert fetch.asked == []
+    (block,) = blocks(path)
+    assert (block.width, block.height) == (320, 200)
+
+
+def test_an_image_404_still_writes_the_genre_and_reports_art_unavailable(folder, silence):
+    path = place(folder, silence, "track")
+    fetch = fetching(b"")
+
+    result = tag.tag_one(
+        path,
+        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
+        fetch_image=fetch,
+    )
+
+    assert result.genre_written == SPECIFIC
+    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert result.art_fetch == tag.ART_UNAVAILABLE
+    assert ART_URL in result.art_fetch_detail
+    assert blocks(path) == []
+
+
+def test_a_fetch_that_raises_is_unavailable_and_never_fails_the_item(folder, silence):
+    path = place(folder, silence, "track")
+
+    result = tag.tag_one(
+        path,
+        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
+        fetch_image=fetching(raises=OSError("connection reset")),
+    )
+
+    assert result.genre_written == SPECIFIC
+    assert result.art_fetch == tag.ART_UNAVAILABLE
+    assert "connection reset" in result.art_fetch_detail
+
+
+def test_bytes_that_are_not_a_picture_are_unavailable_and_nothing_is_embedded(folder, silence):
+    path = place(folder, silence, "track")
+
+    result = tag.tag_one(
+        path,
+        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
+        fetch_image=fetching(b"<html>not found</html>"),
+    )
+
+    assert result.art_fetch == tag.ART_UNAVAILABLE
+    assert "not a usable picture" in result.art_fetch_detail
+    assert blocks(path) == []
+
+
+def test_a_fake_searcher_with_no_art_url_still_works_and_nothing_is_fetched(folder, silence):
+    path = place(folder, silence, "track")
+    fetch = fetching()
+
+    result = tag.tag_one(
+        path, searcher=answering({"track": SearchHit(genre=SPECIFIC)}), fetch_image=fetch
+    )
+
+    assert result.genre_written == SPECIFIC
+    assert result.art_fetch == tag.ART_UNAVAILABLE
+    assert fetch.asked == []
+    assert blocks(path) == []
+
+
+def test_no_fetch_supplied_is_unavailable_rather_than_a_silent_skip(folder, silence):
+    path = place(folder, silence, "track")
+
+    result = tag.tag_one(
+        path, searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)})
+    )
+
+    assert result.genre_written == SPECIFIC
+    assert result.art_fetch == tag.ART_UNAVAILABLE
+    assert "no image fetch" in result.art_fetch_detail
+
+
+def test_a_tagged_file_nobody_carries_is_still_has_genre_and_art_unavailable(folder, silence):
+    path = place(folder, silence, "track", SPECIFIC)
+    fetch = fetching()
+
+    result = tag.tag_one(path, searcher=answering({}), fetch_image=fetch)
+
+    assert result.skipped == tag.HAS_GENRE
+    assert result.art_fetch == tag.ART_UNAVAILABLE
+    assert fetch.asked == []
+
+
+def test_an_unmapped_genre_on_the_matched_row_still_brings_its_picture(folder, silence):
+    """The row passed the artist and title gate, and only its WORD was unmapped."""
+    path = place(folder, silence, "track")
+
+    result = tag.tag_one(
+        path,
+        searcher=answering({"track": SearchHit(source_genre="gqom", art_url=ART_URL)}),
+        fetch_image=fetching(),
+    )
+
+    assert result.skipped == tag.UNMAPPED_GENRE
+    assert result.art_fetch == tag.ART_EMBEDDED
+
+
+def test_a_file_whose_pictures_cannot_be_read_is_unchecked_and_not_fetched(
+    folder, silence, monkeypatch
+):
+    """Could not look is not the same as has no picture, so nothing is fetched."""
+    path = place(folder, silence, "track", SPECIFIC)
+
+    def unreadable(_path):
+        raise art.UnreadableFile("the volume went away")
+
+    monkeypatch.setattr(art, "read_pictures", unreadable)
+    searcher = answering({"track": SearchHit(genre="Techno", art_url=ART_URL)})
+    fetch = fetching()
+
+    result = tag.tag_one(path, searcher=searcher, fetch_image=fetch)
+
+    assert result.art_fetch == tag.ART_UNCHECKED
+    assert "the volume went away" in result.art_fetch_detail
+    assert searcher.asked == [] and fetch.asked == []
+
+
+def test_a_picture_the_file_will_not_take_is_an_error_and_the_genre_stands(
+    folder, silence, monkeypatch
+):
+    path = place(folder, silence, "track")
+    monkeypatch.setattr(art, "write_front_cover", lambda _path, _jpeg: False)
+
+    result = tag.tag_one(
+        path,
+        searcher=answering({"track": SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
+        fetch_image=fetching(),
+    )
+
+    assert result.genre_written == SPECIFIC
+    assert result.art_fetch == tag.ART_ERROR
+
+
+def test_an_mp3_with_no_picture_gets_an_id3_front_cover(tmp_path):
+    """Not only FLAC: the write goes through the per container writer."""
+    path = synth_container(tmp_path, ".mp3")
+
+    result = tag.tag_one(
+        path,
+        searcher=answering({path.stem: SearchHit(genre=SPECIFIC, art_url=ART_URL)}),
+        fetch_image=fetching(),
+    )
+
+    assert result.art_fetch == tag.ART_EMBEDDED
+    (picture,) = art.read_pictures(path)
+    assert (picture.width, picture.height, picture.progressive) == (800, 800, False)
+    assert tags.read_genre_from_file(path) == SPECIFIC
+
+
+def test_the_folder_pass_hands_its_fetch_to_every_file(folder, silence):
+    place(folder, silence, "one")
+    place(folder, silence, "two")
+    table = {name: SearchHit(genre=SPECIFIC, art_url=f"{ART_URL}?{name}") for name in ("one", "two")}
+    fetch = fetching()
+
+    results = tag.tag_folder(folder, searcher=answering(table), fetch_image=fetch)
+
+    assert [result.art_fetch for result in results] == [tag.ART_EMBEDDED] * 2
+    assert sorted(fetch.asked) == [f"{ART_URL}?one", f"{ART_URL}?two"]

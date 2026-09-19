@@ -73,6 +73,12 @@ bounded concurrent pool tied to the adapter contract, and importing it would bin
 tagging to acquisition for the sake of one interval. The duplication is recorded
 as a residual rather than hidden.
 
+THE PICTURE RIDES THE GENRE'S ROW. A match carries the cover URL off the same
+row that supplied its genre, Beatport's release image or Bandcamp's listing or
+page image, and Traxsource names none, which is parity. The image is fetched
+later, and only for a file with no picture, by :func:`default_image_fetch`,
+which shares this module's pacer shape and rate limit policy.
+
 ``requests`` IS NAMED IN EXACTLY ONE FUNCTION. Everything above it takes a fetch
 seam, and the default fetch takes its HTTP getter and its sleep as parameters, so
 the rate limit backoff is driven in the suite with nothing on the network.
@@ -83,6 +89,7 @@ Layer: modules.
 from __future__ import annotations
 
 import json
+import logging
 import random
 import re
 import time
@@ -97,7 +104,9 @@ from cratekit.core import routing
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import Taxonomy, default_taxonomy
-from cratekit.tagging.tag import Searcher, SearchHit
+from cratekit.tagging.tag import FetchImage, Searcher, SearchHit
+
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # The numbers, stated rather than left to a caller
@@ -185,12 +194,17 @@ class Answer(Enum):
 
 @dataclass(frozen=True, slots=True)
 class SourceOutcome:
-    """One catalogue's answer, with the source that gave it and what it said."""
+    """One catalogue's answer, with the source that gave it and what it said.
+
+    ``art_url`` is the picture on the row that answered, the same row as
+    ``source_genre``, or empty when that row named none.
+    """
 
     source: str
     answer: Answer
     source_genre: str = ""
     note: str = ""
+    art_url: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,29 +290,70 @@ def default_fetch(
     getter = _requests_get if get is None else get
 
     def fetch(url: str) -> Fetched:
-        for attempt in range(RATE_LIMIT_ATTEMPTS):
-            try:
-                response = getter(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_S)
-            # A bare except, on purpose. This IS the transport layer, and every
-            # way it can fail is one fact: the source could not be read. Naming
-            # the exception classes of whatever getter a caller injected would
-            # bind this seam to one client library and let the next one through.
-            except Exception as exc:  # noqa: BLE001
-                return Fetched(note=f"transport failure: {exc}")
-            status = getattr(response, "status_code", None)
-            if status == 429:
-                if attempt + 1 < RATE_LIMIT_ATTEMPTS:
-                    sleep(RATE_LIMIT_BASE_WAIT_S * (attempt + 1))
-                    continue
-                return Fetched(
-                    note=f"rate limited, {RATE_LIMIT_ATTEMPTS} attempts spent without an answer"
-                )
-            if status != 200:
-                return Fetched(note=f"HTTP {status}")
-            return Fetched(text=response.text)
-        return Fetched(note="rate limited, attempts spent")
+        response, note = _answered(getter, sleep, url)
+        if response is None:
+            return Fetched(note=note)
+        return Fetched(text=response.text)
 
     return fetch
+
+
+def _answered(
+    getter: Callable[..., Any], sleep: Callable[[float], None], url: str
+) -> tuple[Any, str]:
+    """One GET under the rate limit policy: the 200 response, or None and why.
+
+    Shared by the page fetch and the image fetch, so a picture is asked for on
+    exactly the terms a search page is, one timeout, one backoff, one cap.
+    """
+    for attempt in range(RATE_LIMIT_ATTEMPTS):
+        try:
+            response = getter(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_S)
+        # A bare except, on purpose. This IS the transport layer, and every
+        # way it can fail is one fact: the source could not be read. Naming
+        # the exception classes of whatever getter a caller injected would
+        # bind this seam to one client library and let the next one through.
+        except Exception as exc:  # noqa: BLE001
+            return None, f"transport failure: {exc}"
+        status = getattr(response, "status_code", None)
+        if status == 429:
+            if attempt + 1 < RATE_LIMIT_ATTEMPTS:
+                sleep(RATE_LIMIT_BASE_WAIT_S * (attempt + 1))
+                continue
+            return None, f"rate limited, {RATE_LIMIT_ATTEMPTS} attempts spent without an answer"
+        if status != 200:
+            return None, f"HTTP {status}"
+        return response, ""
+    return None, "rate limited, attempts spent"
+
+
+def default_image_fetch(
+    *,
+    get: Callable[..., Any] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    pacing: Pacer | None = None,
+) -> FetchImage:
+    """The shipped image seam: a paced GET, answering bytes or None.
+
+    PACED LIKE A SEARCH, because the picture lives on the same catalogue's
+    servers and a folder of new files is a burst of them. None rather than a
+    refusal for every failure, because a picture that cannot be had is a
+    decline for its file and :func:`cratekit.tagging.tag.tag_one` says so. The
+    reason is logged, since the bytes seam has nowhere else to carry it.
+    """
+    getter = _requests_get if get is None else get
+    pacer = Pacer(sleep=sleep) if pacing is None else pacing
+
+    def fetch_image(url: str) -> bytes | None:
+        pacer.wait()
+        response, note = _answered(getter, sleep, url)
+        if response is None:
+            log.debug("picture fetch failed for %s: %s", url, note)
+            return None
+        data = getattr(response, "content", None)
+        return bytes(data) if data else None
+
+    return fetch_image
 
 
 # ---------------------------------------------------------------------------
@@ -407,19 +462,60 @@ def _beatport_genre(track: dict[str, Any]) -> str:
     return genres[0].get("genre_name") or ""
 
 
-def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) -> str:
-    """The genre off the best scoring track, or empty when nothing scores.
+_BEATPORT_IMAGE_SIZE = re.compile(r"image_size/\d+x\d+/")
 
-    Rows carrying no genre are skipped rather than scored. This module writes one
-    field, so a row that cannot supply it is not a candidate, and letting one win
-    on title alone would turn a source that could have answered into a decline.
+#: The edge Beatport is asked to serve a cover at. The source system's value,
+#: large enough that the re-encode to the CDJ size only ever shrinks.
+BEATPORT_IMAGE_EDGE = 1400
+
+
+def _web_url(value: object) -> str:
+    """``value`` when it is an http or https URL, else empty.
+
+    A payload field is text somebody else chose, and this one becomes a GET.
+    Anything that is not a web address is no picture rather than a request.
+    """
+    text = value.strip() if isinstance(value, str) else ""
+    return text if text.startswith(("https://", "http://")) else ""
+
+
+def _beatport_art(track: dict[str, Any]) -> str:
+    """The row's release cover, resized, or empty when the row names none.
+
+    ``release.release_image_uri`` is the field the source system read. Whether
+    the payload this module parses still carries it is owed to an attended run.
+    """
+    release = track.get("release")
+    uri = _web_url(release.get("release_image_uri") if isinstance(release, dict) else "")
+    edge = BEATPORT_IMAGE_EDGE
+    return _BEATPORT_IMAGE_SIZE.sub(f"image_size/{edge}x{edge}/", uri)
+
+
+@dataclass(frozen=True, slots=True)
+class _Pick:
+    """The best scoring Beatport row's genre and picture, read off ONE row."""
+
+    genre: str
+    art_url: str = ""
+
+
+def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) -> _Pick | None:
+    """The genre and picture off the best scoring track, or None when nothing scores.
+
+    Rows carrying no genre are skipped rather than scored. A row that cannot
+    supply the genre is not a candidate, and letting one win on title alone
+    would turn a source that could have answered into a decline.
+
+    BOTH FIELDS COME OFF THE ONE WINNING ROW. A picture taken from a different
+    row than the genre is how a file ends up wearing another record's cover, so
+    the artist and title gate that picks the genre picks the picture too.
     """
     title_normalized = _normalized(title)
     bare_title = _without_trailing_bracket(title_normalized)
     searched = _artist_parts(artist, r"[,&]")
 
     best_score = 0
-    best_genre = ""
+    best: _Pick | None = None
     for track in tracks:
         genre = _beatport_genre(track)
         if not genre:
@@ -450,8 +546,8 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
         score = title_score * 10 + artist_score
         if score > best_score:
             best_score = score
-            best_genre = genre
-    return best_genre
+            best = _Pick(genre, _beatport_art(track))
+    return best
 
 
 def _search_beatport(
@@ -468,10 +564,12 @@ def _search_beatport(
             Answer.PARSE_BREAK,
             note="the search page carries no readable track payload",
         )
-    genre = _beatport_best(tracks, artist, title)
-    if not genre:
+    pick = _beatport_best(tracks, artist, title)
+    if pick is None:
         return SourceOutcome(BEATPORT, Answer.MISS)
-    return SourceOutcome(BEATPORT, Answer.MATCHED, source_genre=genre)
+    return SourceOutcome(
+        BEATPORT, Answer.MATCHED, source_genre=pick.genre, art_url=pick.art_url
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -551,6 +649,20 @@ _BC_SUBHEAD = re.compile(r'class="subhead">\s*(.*?)\s*</div>', re.DOTALL)
 _BC_BY = re.compile(r"by\s+(.*?)$")
 _BC_LISTING_GENRE = re.compile(r'class="genre">\s*genre:\s*(.*?)\s*</div>', re.DOTALL)
 _BC_TAG = re.compile(r'<a class="tag"[^>]*>([^<]+)</a>')
+_BC_LISTING_ART = re.compile(r'<img src="(https://f4\.bcbits\.com/img/[^"]+)"')
+_BC_OG_IMAGE = re.compile(r'<meta property="og:image"\s+content="([^"]+)"')
+_BC_IMAGE_SIZE = re.compile(r"_\d+\.jpg$")
+
+
+def _bandcamp_art(found: re.Match[str] | None) -> str:
+    """The picture a listing or a track page names, at its largest, or empty.
+
+    Bandcamp encodes the size in the file name's last number, and ``_10`` is the
+    original upload. The source system asked for that one.
+    """
+    if found is None:
+        return ""
+    return _BC_IMAGE_SIZE.sub("_10.jpg", _web_url(found.group(1)))
 
 
 def _bandcamp_credited(entry: str) -> str:
@@ -614,15 +726,21 @@ def _search_bandcamp(
 
         listed = _BC_LISTING_GENRE.search(entry)
         genre = listed.group(1).strip() if listed else ""
-        if not genre:
+        art_url = _bandcamp_art(_BC_LISTING_ART.search(entry))
+        if not genre or not art_url:
             # The genre usually lives on the track page rather than in the
-            # listing. This is the second touch, and it is paced like the first.
+            # listing, and so does the picture when the listing shows none. This
+            # is the second touch, and it is paced like the first. The listing's
+            # own answer wins where it gave one.
             pacer.wait()
             track_page = fetch(track_url)
             if track_page.text is not None:
-                genre = _bandcamp_tag(_BC_TAG.findall(track_page.text), declared)
+                genre = genre or _bandcamp_tag(_BC_TAG.findall(track_page.text), declared)
+                art_url = art_url or _bandcamp_art(_BC_OG_IMAGE.search(track_page.text))
         if genre:
-            return SourceOutcome(BANDCAMP, Answer.MATCHED, source_genre=genre)
+            return SourceOutcome(
+                BANDCAMP, Answer.MATCHED, source_genre=genre, art_url=art_url
+            )
 
     if entries and headings_read == 0:
         return SourceOutcome(
@@ -650,7 +768,12 @@ def _resolved(declared: Taxonomy, outcome: SourceOutcome) -> SearchHit:
     tag = suggestion.tag
     if suggestion.declined or not tag or declared.is_too_coarse_as_source(tag):
         tag = None
-    return SearchHit(genre=tag, source=outcome.source, source_genre=outcome.source_genre)
+    return SearchHit(
+        genre=tag,
+        source=outcome.source,
+        source_genre=outcome.source_genre,
+        art_url=outcome.art_url,
+    )
 
 
 def _decide(outcomes: Sequence[SourceOutcome], artist: str, title: str) -> None:
@@ -758,10 +881,22 @@ def for_taxonomy(declared: Taxonomy | None = None) -> Searcher:
     return catalogue_searcher(default_taxonomy() if declared is None else declared)
 
 
+def for_images() -> FetchImage:
+    """The image fetch a worker should use, looked up rather than constructed.
+
+    The same shape and the same reason as :func:`for_taxonomy`: a test replaces
+    this attribute on this module, and a worker that built its own fetch inline
+    would leave it nowhere to hand a fake in. Building one touches no network.
+    R-226's limit applies here too.
+    """
+    return default_image_fetch()
+
+
 __all__ = [
     "BANDCAMP",
     "BANDCAMP_SEARCH",
     "BEATPORT",
+    "BEATPORT_IMAGE_EDGE",
     "BEATPORT_SEARCH",
     "HEADERS",
     "JITTER_FRACTION",
@@ -781,5 +916,7 @@ __all__ = [
     "SourceOutcome",
     "catalogue_searcher",
     "default_fetch",
+    "default_image_fetch",
+    "for_images",
     "for_taxonomy",
 ]

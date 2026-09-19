@@ -122,12 +122,15 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     first rule, because it is a closed set this build declares. A report
     committed before the repair existed carries no status and is counted under
     none of them, since which status it would have had is not known.
+    ``art_fetch`` is the same rule over new art, so ``unavailable`` stands next
+    to ``embedded`` as a count a person can see was zero.
     """
     skipped = {
         reason: 0
         for reason in (tag_engine.HAS_GENRE, tag_engine.NO_HIT, tag_engine.UNMAPPED_GENRE)
     }
     art_repair = dict.fromkeys(art.REPAIR_STATUSES, 0)
+    art_fetch = dict.fromkeys(tag_engine.ART_FETCH_STATUSES, 0)
     unresolved: dict[str, int] = {}
     tagged = 0
     for report in artifacts.committed(cfg, job_id):
@@ -142,11 +145,15 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
         status = str(report.get("art_repair") or "")
         if status in art_repair:
             art_repair[status] += 1
+        fetched = str(report.get("art_fetch") or "")
+        if fetched in art_fetch:
+            art_fetch[fetched] += 1
     return {
         "tagged": tagged,
         "skipped": skipped,
         "unresolved": unresolved,
         "art_repair": art_repair,
+        "art_fetch": art_fetch,
     }
 
 
@@ -304,7 +311,9 @@ def handle(job, item, cfg) -> jobs.Produced:
             detail={"item": item.item_id, "folder": str(folder)},
         )
     result = tag_engine.tag_one(
-        path, searcher=searchers.for_taxonomy(taxonomy.default_taxonomy())
+        path,
+        searcher=searchers.for_taxonomy(taxonomy.default_taxonomy()),
+        fetch_image=searchers.for_images(),
     )
     return artifacts.produced(
         cfg,
@@ -319,5 +328,7 @@ def handle(job, item, cfg) -> jobs.Produced:
             "source_genre": result.source_genre,
             "art_repair": result.art_repair,
             "art_repair_detail": result.art_repair_detail,
+            "art_fetch": result.art_fetch,
+            "art_fetch_detail": result.art_fetch_detail,
         },
     )
