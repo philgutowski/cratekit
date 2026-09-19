@@ -1100,6 +1100,20 @@ def test_the_monthly_bound_reads_what_is_owed_and_the_per_run_bound_reads_the_gr
     assert monthly.value.cause.detail == {"planned": 3, "used": 3, "bound": 3, "kind": "monthly"}
 
 
+def test_the_monthly_bound_counts_only_the_gap_on_a_partly_kept_recording(tmp_path, cache, ledger):
+    """One chunk kept and two owed, with exactly two calls left in the month.
+    Counting the whole grid against the month would refuse a pass that fits."""
+    source = real_recording(tmp_path)
+    cached_run(
+        FakeTransport(hit("Aurora Bloom", "Sun Path"), ConnectionError("down"), coded(3000)),
+        source, cache, ledger,
+    )
+    assert ledger.used("2026-09") == 3
+    fill = FakeTransport(miss(), miss())
+    result = cached_run(fill, source, cache, ledger, budget=Budget(monthly=5))
+    assert (result.calls, result.cached) == (2, 1)
+
+
 def test_the_bound_identifier_hands_the_cache_through(tmp_path, cache, ledger):
     source = real_recording(tmp_path)
     transport = FakeTransport(*three_answers())
