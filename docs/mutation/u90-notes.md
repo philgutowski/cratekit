@@ -1,17 +1,21 @@
 # U90 mutation tables, read
 
-Four files, measured by `scripts/mutate.py` on `relay/135`. There are three
-batches because the driver pays a full suite baseline and a full suite null
-control on every call, and a relay task runs every command under a 600 second
-foreground ceiling. Each batch took 4 to 6 minutes.
+Five tables, measured by `scripts/mutate.py` on `relay/135`. The first pass is
+three batches because the driver pays a full suite baseline and a full suite
+null control on every call, and a relay task runs every command under a 600
+second foreground ceiling. Each batch took 4 to 6 minutes, and each single row
+call about 2 minutes 40 seconds.
 
 - `u90-a.md`, the range guard and the parser, 7 rows, 7 killing.
 - `u90-b.md`, what the hand path writes and reports, 8 rows, 8 killing.
 - `u90-c.md`, the one reader and the fit's report of what it replaced,
   6 rows, 5 killing.
 - `u90-c5.md`, C5 again after a new test answered its zero, 1 row, killing 1.
+- `u90-d.md`, D1, the guard the hunt after the review added: the fit's vocal
+  half fails its own check rather than refusing the verb over the energy
+  calibration it already wrote. 1 row, killing 1.
 
-**21 rows over the unit's new guards, under the cap of 25. 20 of 21 kill on the
+**22 rows over the unit's new guards, under the cap of 25. 21 of 22 kill on the
 first run. The one zero, C5, was a user surface. A new test turned it into a
 death, confirmed in `u90-c5.md`.** Every restore was verified against HEAD by
 the driver, and every null control killed nothing. These are the author's own
