@@ -12481,6 +12481,38 @@ correct answer and the mutated one agree on every input the suite has. Supplying
 `CRATEKIT_TEST_DB` pointing at a real snapshot is what would give those rows an
 input; this run had none.
 
+**Closed 2026-09-18 on `relay/156`.** `rb_writer.open_db` and
+`rb_writer.integrity_ok` now default `unlock` to `None`, which asks
+`unlock_needed` of the target just before the binding is constructed, and no
+caller in `src` names an answer. The five `unlock=False` sites and the four that
+spelled the probe themselves all leave it to the opener, and
+`deletion.cli._needs_unlock` is gone. The session read-back and the snapshot
+capture check used the old `True` default and failed on a plain database, the
+same shape one file over; both now ask with no edit of their own.
+
+The suite can now build an ENCRYPTED disposable database, so the gap this entry
+measured has an input. `tests/test_rb_writer_db.py::_encrypt_in_place` exports
+the synthetic database through `sqlcipher3` with the key the binding itself
+supplies, and a test proves the copy refuses to open with the key withheld. On
+that fixture `route inbox`, `route unplaced`, a queued `rebuild` and
+`route resort`, and `converge` were each driven through the command line and each
+failed at the open before the fix: the routing verbs refused, and `converge`
+answered "not compared" for the native tree. All pass after it. The two U55 rows
+that read zero now kill 49 and 8.
+
+A guard walks `src` and refuses any `open_db` or `integrity_ok` call that passes
+`unlock` itself, exempting by shape only `integrity_ok` forwarding its own
+argument. The brief's reading that `routing_cli.py:332` is `route resort` was
+wrong: it is `route unplaced`, `:510` is `route pending`, and resort goes
+through `rebuild.py:1685`. `route pending`, `delete review`, `mytags`, the naming
+reader, `adopt apply` and the session read-back are held by the source guard
+and by the opener's own encrypted test, not by a verb level drive on an
+encrypted library. Tables `docs/mutation/r239-a.md` and `r239-b.md`, 21 rows,
+20 killing; the zero is the unreadable file branch of `unlock_needed`, which is
+maintainer facing. A real library was not opened, because the live one is off
+limits; the encrypted fixture is the binding's own key over this suite's
+schema, not a snapshot of a real machine.
+
 ---
 
 ## R-240. A second copy of the job artifact helper, differing only in two directory names
