@@ -34,9 +34,10 @@ R-469 (a mixed refusal says resume) and R-470 (`tests/test_rebuild.py` flakes
 25 tests on some full parallel runs, seen twice this session) are filed.
 **R-467 and R-468 meet the board bar and their issues are owed**, to be filed
 after this merge lands on `main` per METHOD's board bar. **Owed to an attended
-sitting:** whether a live 429 happens during a label crawl. Battery on the
-recorded tree is at the end of this unit's last commit message.
-**Main's highest residual number is R-470.**
+sitting:** none; whether a live 429 happens during a label crawl stays
+unmeasured. Battery on the recorded tree: ruff clean, `scan_repo.py` exit 0,
+pytest 8266 passed and 1 skipped, and no test of this unit's among the ten
+slowest. **Main's highest residual number is R-470.**
 
 **The session before: R-259, issue #161, `relay/161`, 2026-09-19.**
 A label sweep no longer offers releases the library already holds, which
