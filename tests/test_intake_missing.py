@@ -549,8 +549,8 @@ def test_two_playlists_sharing_a_track_list_it_once_with_both_provenances(cfg, l
     rows = json.loads(Path(summary["manifest"]).read_text())["rows"]
     assert rows["204"]["source_ref"] == "pl-a"
     assert rows["204"]["source_refs"] == ["pl-a", "pl-b"]
-    assert rows["205"]["source_refs"] == ["pl-a"]
-    assert rows["206"]["source_refs"] == ["pl-b"]
+    assert (rows["205"]["source_ref"], rows["206"]["source_ref"]) == ("pl-a", "pl-b")
+    assert "source_refs" not in rows["205"] and "source_refs" not in rows["206"]
 
 
 def test_a_run_list_is_one_file_a_second_listing_reproduces(cfg, library):
@@ -575,7 +575,7 @@ def test_the_default_human_output_names_the_list_the_download_and_the_landing(cf
     assert code == int(ExitCode.OK), text
     path = lists_dir(library) / RUN_LIST
     assert f"next: crate acquire download {path}" in text
-    assert "crate intake land --name 2026-09-18T100000Z-ab12_synced" in text
+    assert "crate intake land --export XML --name 2026-09-18T100000Z-ab12_synced" in text
 
 
 def test_an_open_job_refuses_the_whole_run_and_names_it(cfg, library):
@@ -624,6 +624,35 @@ def test_skip_failed_lists_the_rest_and_names_what_it_left_out(cfg, library):
     (skipped,) = [c for c in envelope["data"]["checks"] if c["title"] == "skipped"]
     assert skipped["status"] == "fail"
     assert broken in skipped["detail"] and "pl-b" in skipped["detail"]
+
+
+def test_skip_failed_over_nothing_missing_refuses_rather_than_a_clean_no_op(cfg, library):
+    """The finished job owns everything and the skipped one resolved nothing, so
+    a no-op would say the pass needs no download when half of it was never read."""
+    owned(library, "Lumen Drift - Salt Road.flac")
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+    fail(broken)
+
+    code, envelope = run_missing("--skip-failed")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert broken in envelope["cause"]["message"]
+    assert envelope["cause"]["detail"]["failed"] == [broken]
+    assert not lists_dir(library).exists()
+
+
+def test_a_run_with_nothing_missing_and_nothing_skipped_is_a_no_op(cfg, library):
+    owned(library, "Lumen Drift - Salt Road.flac")
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+
+    code, envelope = run_missing()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["summary"]["next"] is None
+    assert not lists_dir(library).exists()
 
 
 def test_a_run_whose_every_job_failed_refuses_even_with_skip_failed(cfg, library):

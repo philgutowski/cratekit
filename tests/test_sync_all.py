@@ -994,8 +994,7 @@ def test_a_pass_through_to_one_list_holds_a_shared_track_once_with_both_playlist
     assert sorted(track["id"] for track in body["tracks"]) == ["101", "102", "201"]
     rows = json.loads(Path(summary["manifest"]).read_text())["rows"]
     assert sorted(rows["102"]["source_refs"]) == ["pl-a", "pl-b"]
-    assert rows["101"]["source_refs"] == ["pl-a"]
-    assert rows["201"]["source_refs"] == ["pl-b"]
+    assert (rows["101"]["source_ref"], rows["201"]["source_ref"]) == ("pl-a", "pl-b")
 
 
 def test_the_block_says_what_swept_means_whatever_the_pass_found():

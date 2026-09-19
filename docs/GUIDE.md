@@ -176,7 +176,8 @@ playlists share is listed once, and the list's manifest names both playlists.
 A job still running refuses the whole run. A job that failed or was cancelled
 is named and refuses the run too, unless you pass `--skip-failed`, which lists
 the rest and reports what it left out as a failing line. The output names the
-`--name` to give `intake land` so the landed batch carries the run's name.
+`--name` to give `intake land`, beside the `--export` it always needs, so the
+landed batch carries the run's name.
 
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account

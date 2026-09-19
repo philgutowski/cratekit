@@ -340,12 +340,14 @@ def _listed(
     subject: dict[str, Any],
     checks: list[dict[str, Any]],
     after: str = "",
+    left_out: tuple[jobs.Job, ...] = (),
 ) -> Envelope:
     """Write one list from every missing report of ``found``, in order, and report it.
 
     ``subject`` identifies what was listed, a job or a run, on every refusal
     and at the head of the summary. ``checks`` are the caller's own rows,
-    reported after the ones every listing carries.
+    reported after the ones every listing carries. ``left_out`` are the jobs a
+    run skipped, whose tracks nothing resolved.
     """
     counts = {word: 0 for word in _WORDS}
     missing = []
@@ -382,6 +384,19 @@ def _listed(
             unlisted_tracks=[
                 {"artist": row.artist, "title": row.title} for row in written.unlisted
             ],
+            **subject,
+        )
+    if left_out and not listed:
+        # NOTHING LISTED WITH JOBS LEFT OUT IS NOT A PASS WITH NOTHING MISSING.
+        # The skipped jobs' tracks were never resolved, and a no-op would tell a
+        # person and a script that the pass needs no download.
+        raise _unusable(
+            f"nothing is missing from the job(s) that finished, and "
+            f"{len(left_out)} job(s) that failed or were cancelled were left out "
+            f"unresolved, so this is not a pass with nothing to download: "
+            + ", ".join(f"{job.job_id} ({_source_ref(job)})" for job in left_out),
+            "queue those playlists again with crate sync all and list that run",
+            failed=[job.job_id for job in left_out],
             **subject,
         )
     command = (
@@ -476,7 +491,11 @@ def _missing_for_run(ctx, run_id: str) -> Envelope:
             "land_name": name,
         },
         checks=checks,
-        after=f"; land what it downloads as one batch with: crate intake land --name {name}",
+        after=(
+            f"; land what it downloads as one batch with: crate intake land "
+            f"--export XML --name {name}, XML being a Fresh Export of the collection"
+        ),
+        left_out=tuple(skipped),
     )
 
 

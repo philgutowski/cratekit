@@ -200,7 +200,6 @@ def test_the_manifest_records_each_ids_provenance(tmp_path):
     assert doc["rows"]["101"] == {
         "source": "labels",
         "source_ref": None,
-        "source_refs": [],
         "label_id": "L1",
         "label_name": "Tidewater",
         "year": 2023,
@@ -211,7 +210,7 @@ def test_the_manifest_records_each_ids_provenance(tmp_path):
         "isrc": "GBAAA2400001",
     }
     assert doc["rows"]["303"]["version"] == "Extended Mix"
-    assert doc["rows"]["202"]["source_refs"] == ["pl-9"]
+    assert "source_refs" not in doc["rows"]["202"]
 
 
 def test_the_manifest_keeps_every_reference_an_id_came_from(tmp_path):
@@ -220,6 +219,20 @@ def test_the_manifest_keeps_every_reference_an_id_came_from(tmp_path):
     doc = json.loads(written.manifest_path.read_text(encoding="utf-8"))
     assert {row["source_ref"] for row in doc["rows"].values()} == {"pl-1"}
     assert {tuple(row["source_refs"]) for row in doc["rows"].values()} == {("pl-1", "pl-2")}
+
+
+def test_one_reference_writes_the_bytes_a_manifest_had_before_the_field(tmp_path):
+    """A list written before ``source_refs`` existed is rewritten identically,
+    so the second write is a repeat and not a refusal. The key set is spelled
+    out rather than read off the module."""
+    one = Provenance(source="playlist", source_ref="pl-1", source_refs=("pl-1",))
+    written = _write(tmp_path, provenance=one)
+    doc = json.loads(written.manifest_path.read_text(encoding="utf-8"))
+    for row in doc["rows"].values():
+        assert set(row) == {
+            "source", "source_ref", "label_id", "label_name", "year", "release_id",
+            "artist", "title", "version", "isrc",
+        }
 
 
 def test_a_listed_id_with_no_provenance_refuses_and_writes_nothing(tmp_path):

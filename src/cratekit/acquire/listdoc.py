@@ -95,6 +95,12 @@ class Provenance:
     list built from several jobs writes one row per id, first source wins, and
     without the second field the other playlists that wanted the track would
     vanish from the record. Left empty, it is ``source_ref`` alone.
+
+    THE MANIFEST CARRIES ``source_refs`` ONLY WHEN THERE IS MORE THAN ONE. A
+    manifest this module wrote before the field existed is compared byte for
+    byte on the next identical write, and a key added to every entry would
+    turn that harmless repeat into a refusal. An entry without the key came
+    from its ``source_ref`` alone.
     """
 
     source: str
@@ -104,12 +110,6 @@ class Provenance:
     year: int | None = None
     release_id: str | None = None
     source_refs: tuple[str, ...] = ()
-
-    def every_ref(self) -> list[str]:
-        """Every reference this id came from, the one it was taken from first."""
-        if self.source_refs:
-            return list(self.source_refs)
-        return [self.source_ref] if self.source_ref else []
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,10 +331,9 @@ def manifest(
     entries: dict[str, dict[str, Any]] = {}
     for track in body["tracks"]:
         origin = _provenance_for(provenance, track["id"])
-        entries[track["id"]] = {
+        entry = entries[track["id"]] = {
             "source": origin.source,
             "source_ref": origin.source_ref,
-            "source_refs": origin.every_ref(),
             "label_id": origin.label_id,
             "label_name": origin.label_name,
             "year": origin.year,
@@ -344,6 +343,8 @@ def manifest(
             "version": track.get("version", ""),
             "isrc": track.get("isrc"),
         }
+        if len(origin.source_refs) > 1:
+            entry["source_refs"] = list(origin.source_refs)
     return {"manifest": MANIFEST_VERSION, "list": list_name, "rows": entries}
 
 
