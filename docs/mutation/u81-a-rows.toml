@@ -1,0 +1,151 @@
+name = "u81-a"
+pass_kind = "light"
+
+# ── The worker, src/cratekit/acquire/fallback_cli.py handle_fetch ───────────
+# Batch a of two. The unit's rows are split so each batch finishes inside the
+# 600 second tool ceiling in the foreground, which an unattended Relay session
+# must use. Batch b carries the queue side, the shipped fetcher and strip_tags.
+
+[[rows]]
+id = "W1_strict_not_refused"
+description = "The strict policy refusal before the download is removed, so a lossy upload is fetched under strict"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''    if not decision.permitted:
+        raise refuse(
+            "lossy-refused",'''
+new = '''    if False:
+        raise refuse(
+            "lossy-refused",'''
+
+[[rows]]
+id = "W2_scheme_half"
+description = "The web address check keeps only its host half, so any scheme with a host is handed to the tool"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''    if where.scheme not in ("http", "https") or not where.netloc:'''
+new = '''    if not where.netloc:'''
+
+[[rows]]
+id = "W3_host_half"
+description = "The web address check keeps only its scheme half, so an address with no host is handed to the tool"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''    if where.scheme not in ("http", "https") or not where.netloc:'''
+new = '''    if where.scheme not in ("http", "https"):'''
+
+[[rows]]
+id = "W4_empty_stem"
+description = "A row naming no artist and no title is fetched and committed as a bare suffix"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''    if not stem:
+        raise refuse('''
+new = '''    if False:
+        raise refuse('''
+
+[[rows]]
+id = "W5_pre_download_exists"
+description = "The name already taken is no longer checked before the download, so one is spent on it"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''    if expected.exists():
+        raise _exists(expected, detail)'''
+new = '''    if False:
+        raise _exists(expected, detail)'''
+
+[[rows]]
+id = "W6_post_landing_exists"
+description = "A file that appeared during the download is no longer checked, so the engine commits over it"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''    if final.exists():
+        raise _exists(final, detail)'''
+new = '''    if False:
+        raise _exists(final, detail)'''
+
+[[rows]]
+id = "W7_final_unmarked"
+description = "The committed name ignores the policy decision and is never marked"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''        Path(stem + landed.suffix), marker, required=decision.marker_required'''
+new = '''        Path(stem + landed.suffix), marker, required=False'''
+
+[[rows]]
+id = "W8_upload_tags_kept"
+description = "The upload's own tag block is not stripped before the row's artist and title are written"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''        written = tags.strip_tags(landed) and tags.write_tags('''
+new = '''        written = tags.write_tags('''
+
+[[rows]]
+id = "W9_row_tags_not_written"
+description = "The row's artist and title are never written, so the file carries no name at all"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''            landed, {"artist": artist or None, "title": title or None}'''
+new = '''            landed, {"artist": None, "title": None}'''
+
+[[rows]]
+id = "W10_untaggable_committed"
+description = "A landing that could not be tagged from its row is committed anyway"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''    if not written:
+        raise refuse(
+            "unavailable-transient",
+            untagged,'''
+new = '''    if False:
+        raise refuse(
+            "unavailable-transient",
+            untagged,'''
+
+[[rows]]
+id = "W11_missing_tool_fails_items"
+description = "A missing yt-dlp fails the item instead of parking the job, so every later item fails the same way"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''        raise jobs.Parked(
+            _binary_refusal(
+                exc,
+                detail,
+                said="A second source download runs it, so the job is parked with this "
+                "item not downloaded.",
+                origin=FETCH_ORIGIN,
+            ).cause
+        ) from exc'''
+new = '''        raise _binary_refusal(
+                exc,
+                detail,
+                said="A second source download runs it, so the job is parked with this "
+                "item not downloaded.",
+                origin=FETCH_ORIGIN,
+        ) from exc'''
+
+[[rows]]
+id = "W12_download_failure_not_retryable"
+description = "A failed download is refused as final rather than retryable"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback_fetch.py"]
+old = '''            f"queued",
+            remedy=Remedy.RETRY_LATER,
+            scope=Scope.ITEM,
+            retryable=True,'''
+new = '''            f"queued",
+            remedy=Remedy.RETRY_LATER,
+            scope=Scope.ITEM,
+            retryable=False,'''
