@@ -1,0 +1,103 @@
+name = "r503-b"
+pass_kind = "light"
+
+[[rows]]
+id = "G11_summary"
+description = "Drop the answered_* counts from the summary"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        **now_answered,
+'''
+new = ""
+
+[[rows]]
+id = "G12_answered_check"
+description = "Reword the answered check's breakdown"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            f"missing, {now_answered['answered_owned']} in the library, "'''
+new = '''            f"listed, {now_answered['answered_owned']} owned, "'''
+
+[[rows]]
+id = "G13_offered_check"
+description = "Reword the offered check's route back to this listing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            f"see: crate review list, then list this again",'''
+new = '''            f"see: crate review list",'''
+
+[[rows]]
+id = "G14_no_gone"
+description = "Never name the tracks the earlier list holds and this one does not"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if gone:
+        why.append('''
+new = '''    if False:
+        why.append('''
+
+[[rows]]
+id = "G15_no_new"
+description = "Never name the tracks this list holds and the earlier one does not"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if new:
+        why.append('''
+new = '''    if False:
+        why.append('''
+
+[[rows]]
+id = "G16_json_uncaught"
+description = "Let an earlier file that is not JSON escape the hint as an internal error"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    except (OSError, ValueError, KeyError, TypeError):
+        return []'''
+new = '''    except (OSError, KeyError, TypeError):
+        return []'''
+
+[[rows]]
+id = "G17_no_hint"
+description = "Drop the hint read from the earlier file altogether"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        why = _changed_since(out, name, rows)'''
+new = '''        why = []'''
+
+[[rows]]
+id = "G18_gone_by_ref"
+description = "Compare the two lists by name rather than by provider identifier"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "maintainer"
+old = '''    gone = [said for ref, said in earlier.items() if ref not in now]'''
+new = '''    gone = [said for ref, said in earlier.items() if said not in now.values()]'''
+
+[[rows]]
+id = "G19_store_always_opened"
+description = "Open the review store for a job with no offered row"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "maintainer"
+old = '''    if not offered:
+        return []
+    with review.open_store'''
+new = '''    with review.open_store'''
+
+[[rows]]
+id = "E1_no_adjudicate"
+description = "Existing (R-502): skip reading a person's answer back in the consult; the answered rows now pass through it too"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if asked:
+        with review.open_store(cfg) as items:
+            for handler_key, at in asked.items():'''
+new = '''    if False:
+        with review.open_store(cfg) as items:
+            for handler_key, at in asked.items():'''
+
+[[rows]]
+id = "E2_offered_listed"
+description = "Existing: list every offered report as missing without asking, the shape the brief forbids"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if report["state"] == "missing" or next(answered)'''
+new = '''        if report["state"] == "missing" or next(answered) or True'''
