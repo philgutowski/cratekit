@@ -1,0 +1,105 @@
+name = "u79-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_absent_music_folder"
+description = "A music folder that is not there reads as an empty library and every row is listed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if not music.is_dir():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C2_owned_row_searched"
+description = "A row the library holds is counted missing and searched for"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    for settled in resolved.matches:
+        if settled.state is match.MatchState.MATCHED:
+            counts["owned"] += 1
+        elif settled.state is match.MatchState.NEEDS_REVIEW:
+            counts["offered"] += 1
+        elif settled.state is match.MatchState.SUPPRESSED:
+            counts["suppressed"] += 1
+        else:
+            counts["missing"] += 1
+            # THE SAME LINE TWICE'''
+new = '''    for settled in resolved.matches:
+        if False:
+            counts["owned"] += 1
+        elif settled.state is match.MatchState.NEEDS_REVIEW:
+            counts["offered"] += 1
+        elif settled.state is match.MatchState.SUPPRESSED:
+            counts["suppressed"] += 1
+        else:
+            counts["missing"] += 1
+            # THE SAME LINE TWICE'''
+
+[[rows]]
+id = "C3_accepted_held_listed_again"
+description = "An accepted candidate the library now holds is listed for download again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''            if now.state in (match.MatchState.MATCHED, match.MatchState.SUPPRESSED):
+                proposals[n]'''
+new = '''            if False:
+                proposals[n]'''
+
+[[rows]]
+id = "C4_nothing_found_is_a_no_op"
+description = "Missing rows with no route to any of them end as nothing to do"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if unfound and not listed and not asked:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C5_foreign_ref_names_a_row"
+description = "Another service's identifier is read as the provider's, and the row is in no file"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    return str(wanted.ref or "").strip() if wanted.origin == match.TIDAL else ""'''
+new = '''    return str(wanted.ref or "").strip()'''
+
+[[rows]]
+id = "C6_isrc_named_keeps_origin"
+description = "A foreign row named by ISRC keeps its origin, so the emitter takes the ref off again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''                named.append(replace(one, ref=answer, origin=match.TIDAL))'''
+new = '''                named.append(replace(one, ref=answer))'''
+
+[[rows]]
+id = "C7_fixed_name"
+description = "The found list takes one fixed name, so the run after an answer is refused"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    return f"{stem or 'tracklist'}{FOUND_SUFFIX}-{digest}"'''
+new = '''    return f"{stem or 'tracklist'}{FOUND_SUFFIX}"'''
+
+[[rows]]
+id = "C8_asked_is_a_no_op"
+description = "A run that only put a question to a person ends as nothing to do"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''        outcome=Outcome.OK if listed or asked else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK if listed else Outcome.NO_OP,'''
+
+[[rows]]
+id = "D1_search_shape_read_as_empty"
+description = "A search answer with no track listing is read as no candidate"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if not present:
+            raise LookupError("the provider's search answer carries no track listing")'''
+new = '''        if False:
+            raise LookupError("the provider's search answer carries no track listing")'''

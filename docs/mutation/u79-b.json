@@ -1,0 +1,273 @@
+{
+  "name": "u79-b",
+  "pass_kind": "light",
+  "branch": "relay/124",
+  "head": "62d4af6",
+  "when": "2026-09-19 13:28 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8502,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/candidates.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/candidates.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "72d7d63f0077aab0",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8502,
+    "baseline_collected": 8502,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_floor_halved",
+      "description": "The floor's value is halved, so a weaker hit is shown",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6e9486f232dea101",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_no_candidate_for_any_row_refuses_rather_than_reading_as_nothing_to_do"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "CANDIDATE_FLOOR = 60.0",
+      "new": "CANDIDATE_FLOOR = 30.0"
+    },
+    {
+      "id": "B2_score_before_exact",
+      "description": "A near miss scoring 100 leads an exact candidate",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d74f92adb328d3bb",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_exact_candidate_under_the_floor_of_nothing_is_still_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            (not one.exact, -one.score, position, one)",
+      "new": "            (False, -one.score, position, one)"
+    },
+    {
+      "id": "B3_no_identifier_offered",
+      "description": "A candidate with no identifier is offered as an option",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "185fd34f1bfe3eba",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_exact_candidate_beside_an_exact_one_with_no_identifier_is_offered",
+        "tests/test_intake_missing_search.py::test_exact_hits_with_no_identifier_are_reported_as_that_and_not_as_no_resemblance"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if one.track.ref and (one.exact or one.score >= CANDIDATE_FLOOR)\n        ),\n        key=",
+      "new": "            if (one.exact or one.score >= CANDIDATE_FLOOR)\n        ),\n        key="
+    },
+    {
+      "id": "B4_rejected_read_as_accepted",
+      "description": "A rejected row falls through to the accepted path and its one candidate is listed",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3075bf0a8fa2fb9e",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_a_rejected_row_is_reported_and_never_searched_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if held.verdict is review.Verdict.REJECTED:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B5_unspecific_yes_takes_first",
+      "description": "An acceptance naming none of several candidates lists the first",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "51a853b831d8159f",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_acceptance_naming_none_of_several_candidates_lists_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if chosen is None and len(held.options) == 1:",
+      "new": "    if chosen is None and len(held.options) >= 1:"
+    },
+    {
+      "id": "B6_option_track_mismatch",
+      "description": "An accepted option whose detail names another track is listed as that track",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2eabf441cd3447a5",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_an_accepted_option_that_does_not_carry_its_own_track_lists_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if track is None or not track.ref or track.ref != option.option_id:",
+      "new": "    if track is None or not track.ref:"
+    },
+    {
+      "id": "B7_identity_without_version",
+      "description": "The question is keyed without the version, so two versions are one item",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2a8e5af8390430fc",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_the_identity_is_the_folded_row_and_not_its_spelling"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"version\": wanted.version_key,\n    }",
+      "new": "        \"version\": \"\",\n    }"
+    },
+    {
+      "id": "B8_open_item_searched_again",
+      "description": "A row already in front of a person is searched for again",
+      "file": "src/cratekit/intake/candidates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5ea806046735ed68",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_a_second_run_offers_nothing_new_and_spends_no_search"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if held.verdict is None:\n        return Proposal(",
+      "new": "    if held.verdict is None:\n        return None\n    if held.verdict is None:\n        return Proposal("
+    }
+  ],
+  "dropped": []
+}

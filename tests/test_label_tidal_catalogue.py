@@ -1852,3 +1852,83 @@ def test_a_client_with_no_isrc_lookup_refuses_at_once_and_never_climbs_the_ladde
     with pytest.raises(LookupError):
         tidal_catalogue.TidalCatalogue(FakeClient()).tracks_for_isrc("QZAAA2600001")
     assert pauses == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U79: a text search for one artist and title
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TrackSearchClient(FakeClient):
+    """Answers ``search`` from a script of answers and exceptions."""
+
+    def __init__(self, *answers: Any) -> None:
+        super().__init__()
+        self.answers = list(answers)
+        self.track_searches: list[tuple[str, tuple[Any, ...], int]] = []
+
+    def search(self, query: str, models: Any = None, limit: int = 50, **_: Any) -> Any:
+        self.track_searches.append((query, tuple(models or ()), limit))
+        answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+def test_a_track_search_returns_every_hit_in_the_providers_order_and_picks_none(pauses):
+    hits = [ProviderTrack("9002", "A", "B (Remix)"), ProviderTrack("9001", "A", "B")]
+    client = TrackSearchClient({"tracks": hits, "top_hit": hits[0]})
+
+    found = tidal_catalogue.TidalCatalogue(client).search_tracks(" A ", " B ")
+
+    assert [track.id for track in found] == ["9002", "9001"]
+    assert client.track_searches == [
+        ("A B", (tidalapi.media.Track,), tidal_catalogue.SEARCH_LIMIT)
+    ]
+    assert pauses == []
+
+
+def test_a_track_search_that_finds_nothing_is_an_empty_answer(pauses):
+    client = TrackSearchClient({"tracks": []})
+
+    assert tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B") == ()
+    assert pauses == []
+
+
+def test_a_rate_limited_track_search_waits_and_is_asked_again(pauses):
+    client = TrackSearchClient(TooManyRequests("slow down"), {"tracks": [ProviderTrack("9001", "A", "B")]})
+
+    found = tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B")
+
+    assert [track.id for track in found] == ["9001"]
+    assert pauses == [1.0]
+
+
+def test_a_track_search_that_keeps_failing_is_raised_and_a_not_found_is_no_answer(pauses):
+    """A search endpoint answers nothing found with an empty list, so a raised
+    not found is the endpoint failing, and read as empty it would report a track
+    the provider carries as having no candidate."""
+    client = TrackSearchClient(ObjectNotFound("search"))
+
+    with pytest.raises(ObjectNotFound):
+        tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B")
+
+    assert len(client.track_searches) == 6
+
+
+def test_a_search_answer_with_no_track_listing_is_raised_at_once_and_is_not_empty(pauses):
+    client = TrackSearchClient({"artists": []})
+
+    with pytest.raises(LookupError):
+        tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B")
+
+    assert len(client.track_searches) == 1, "a shape was waited on"
+    assert pauses == []
+
+
+@pytest.mark.parametrize(("artist", "title"), [("", ""), ("  ", None), (None, " ")])
+def test_a_search_for_nothing_is_refused_before_the_provider_is_asked(artist, title, pauses):
+    client = TrackSearchClient({"tracks": []})
+    with pytest.raises(ValueError):
+        tidal_catalogue.TidalCatalogue(client).search_tracks(artist, title)
+    assert client.track_searches == []

@@ -161,6 +161,17 @@ playlist, a label and year, a sync run, rides a sidecar manifest beside it
 because the document's own keys are closed. A row with no provider identifier
 is never written into it and comes back as unlisted.
 
+### Provider candidate
+A track the provider's text search returned for a missing row that nothing
+names exactly, since U79. A candidate is a PROPOSAL and never a pick. It is
+EXACT when it folds to the row in artist, title and version under `match`'s own
+fold, and a row is listed without a person only on one distinct exact
+candidate, in an answer that was read whole, was shorter than the seam's page,
+and answered a title that reads one way. Anything else is offered as a review
+item of kind `provider-candidate` on the `version-match` queue, keyed on the
+folded row, and `crate intake missing --list` lists the accepted one on its
+next run. A candidate's score orders the screen and never lists anything.
+
 ### Hearts reference
 The reserved word `favorites` in place of a playlist reference, since U70:
 `crate intake playlist favorites` lists every track hearted on the account and

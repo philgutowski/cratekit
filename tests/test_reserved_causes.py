@@ -5290,7 +5290,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # sync-mark-no-pass and sync-mark-changed-since-plan are WARNING codes.
     # Every refusal the verb raises reuses sync-marks-blocked or
     # internal-error, or passes on the reason the account's own failure carried.
-    assert (len(literals), len(literals - set(causes))) == (440, 281), (
+    # Re-pinned on U79, 2026-09-19: 440 to 442 distinct, 281 to 283 non-keys.
+    # TWO literals joined and NOTHING left, differenced over the branch's diff
+    # of `src` against `main` with `git grep` on `main` for each. Neither is a
+    # cause, and both are `intake.candidates`'s. provider-candidate is the KIND
+    # a provider search question is offered under on the version-match queue,
+    # and no-candidates is one of the seven STATES a searched row ends in.
+    # Every refusal `intake missing --list` raises reuses intake-list-unusable,
+    # unavailable-transient or library-volume-unmounted.
+    assert (len(literals), len(literals - set(causes))) == (442, 283), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5730,7 +5738,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # changed, held that slug on main already. The also-holds-an-integer half
     # stays 18, measured by the same run: the new module slices by a length it
     # takes from a constant and holds no in-range integer of its own.
-    assert (len(literal_holders), len(literal_both)) == (98, 18), (
+    # Re-pinned on U79, 2026-09-19: holders UNCHANGED at 98, and the
+    # also-holds-an-integer half moves 18 to 19. No module joined the holders:
+    # intake/candidates.py holds two kebab literals and neither is a cause,
+    # since it asks the queue through review.find rather than naming
+    # review-item-unknown itself. ONE holder gained an in-range integer:
+    # label/catalogue.py now declares TRACK_SEARCH_PAGE = 50, the most rows a
+    # track search returns, which sits on the seam because the caller reads it
+    # to tell a whole answer from one that may have been cut short. It is a
+    # row count, compared with a length and never returned as a status.
+    # Measured by listing this file's own holders on the branch and reading
+    # label/catalogue.py's integer constants on main, which held none in range.
+    assert (len(literal_holders), len(literal_both)) == (98, 19), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

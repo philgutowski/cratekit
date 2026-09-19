@@ -168,9 +168,35 @@ track only when exactly one provider track carries that code. A track with no
 ISRC, or one the provider files under no track or under several (a single, an
 album cut and a compilation often share one), is never guessed at. It is
 written to `intake-JOB_ID.unlisted.json` beside the list, with the reason above
-each line, and reported as a failing line. That file is a text list, so
-`crate match run` reads it as it stands. If the provider cannot be reached the
-verb refuses and writes nothing; run it again later.
+each line, and reported as a failing line. If the provider cannot be reached
+the verb refuses and writes nothing; run it again later.
+
+That file is a text list, and a text list has its own route to a download:
+
+```bash
+crate intake missing --list PATH
+```
+
+`PATH` is the unlisted file above, or any tracklist of `Artist - Title` lines
+you typed or transcribed from a screenshot. Every line is checked against the
+library first, exactly as `match run` checks it, so a track you own is never
+searched for. Each line that is still missing is searched for on the provider,
+and the search only ever proposes. A line is listed on its own only when exactly
+one track the provider returned matches it in artist, title and version. Two
+matching tracks, or none with near misses beside it, are offered for review
+with each candidate's score, and nothing is ever listed from a score:
+
+```bash
+crate review list --queue version-match --kind provider-candidate
+crate review resolve ITEM_ID --verdict accepted --option TRACK_ID
+```
+
+Run the same `intake missing --list` again after answering, and the candidate
+you accepted is listed. A rejected line is not searched for again until you
+clear the answer with `crate review clear ITEM_ID`. A line the provider has
+nothing for is reported as a failing line, never silently dropped. The list is
+written as `NAME-found.list.json`, `NAME` being the input's own name, so it
+never lands on the job's list.
 
 A `crate sync all` pass queues one playlist job per new playlist, and its output
 ends with the command that lists the whole pass at once:

@@ -14348,6 +14348,20 @@ once acquisition exists, and changing them twice is worse than once.
 a missing track through it, or the registry flags are brought down to what the
 worker writes.
 
+**Narrowed 2026-09-19 on `relay/124`, U79. The search half is closed and the
+registry half is open.** A search landed in the catalogue contract,
+`Catalogue.search_tracks(artist, title)`, and a recognised row with no usable
+ISRC now has a route to a download: `crate intake missing --job JOB` hands it
+to `<name>.unlisted.json`, and `crate intake missing --list` on that file
+searches the provider for it. The search proposes and never picks. Exactly one
+candidate matching under `match`'s own fold of artist, title and version is
+listed, anything else is offered on the `version-match` queue under the kind
+`provider-candidate`, and the next run lists what a person accepted. The
+worker still does not acquire, by R-140's argument: the list document and
+`acquire download` do. **Still open:** the registry entries for `intake.set`
+and `intake.identify` still declare `writes={"xml", "files"}` and
+`destructive=True` over a worker that writes a report and a review row.
+
 ---
 
 ## R-303. A mix URL is refused at the queue, and nothing drives the downloader
@@ -18216,6 +18230,16 @@ have no route to a download in this product, by any amount of hand work.
 **Closes when:** a row with no provider identifier has a route to one, exact
 ISRC first, and R-400's sentence is corrected or superseded by its close.
 
+**Closed 2026-09-19 on `relay/124`, U79.** A row with no provider identifier
+has a route to one, exact ISRC first (U78) and then the provider's text search
+(U79). `crate intake missing --list PATH` reads a typed tracklist, a
+transcribed screenshot or the unlisted list a set job wrote, resolves every row
+against the library, and writes the list `acquire download` reads from the rows
+it could name: by ISRC, by the one exact candidate a search held, or by the
+candidate a person accepted in review. R-400's sentence about retyping is
+superseded, since the text list is now an input and not a workaround. Landed
+against fakes. **Owed to an attended sitting:** one real typed tracklist.
+
 ---
 
 ## R-416. The export medium routing writers have no caller, so nothing files a track on a library that has not cut over
@@ -20063,3 +20087,99 @@ image.
 
 **Closes when:** the repair compares declared dimensions with decoded ones and
 repairs a mismatch, or a player is shown to render such a block.
+
+---
+
+## R-488. The candidate floor and the search query were never measured against a live provider
+
+**Found:** 2026-09-19, on `relay/124`, U79, by the author.
+
+`intake/candidates.py` shows a hit that is not exact only when its recording
+scores 60 or more against the row, `CANDIDATE_FLOOR`, by the scorer the
+library's own near match uses. The library's floor of 82 was tuned on pinned
+examples. This one was not tuned on anything: no live search answer has been
+read by this product. The same holds for the query, the artist, the title and
+the version when the row names one, and for the page of 50.
+
+**Driven:** on fakes only. The floor and the scorer never list anything, so a
+wrong floor cannot download a wrong track.
+
+**Measured cost.** Unmeasured. Too high, and a candidate a person would have
+accepted is not shown and the row is reported as having no candidate. Too low,
+and review items fill with hits that share one word with the row. A query the
+provider ranks badly pushes the wanted track off the page, and a full page is
+then offered rather than listed, which is the safe side.
+
+**Closes when:** the attended sitting's real typed tracklist is run, the
+offered items are read, and the floor and the query are kept or moved on what
+they showed.
+
+---
+
+## R-489. One row whose search fails on every run refuses the whole list
+
+**Found:** 2026-09-19, on `relay/124`, U79, by the unit's `/code-review`. Read,
+not driven.
+
+`missing_cli._searched` refuses the verb `unavailable-transient` when any one
+search raises, after the adapter's retry ladder, with no candidate offered and
+no list written. That is deliberate and is U78's rule for the ISRC read: a
+partial pass would report the unasked rows as having no candidate. An ISRC is
+a fixed twelve character code. A text query is whatever the row says, so a row
+the provider's client fails on deterministically would refuse every run of
+that list.
+
+**Driven:** no. No producer is known: no query that makes the client raise
+every time was found, and a live provider call is not a session's to make. The
+refusal now names taking the row out of the list as the way past it.
+
+**Measured cost.** Unmeasured reachability. If reachable, one line holds back
+every other line of a tracklist until a person edits the file. This would meet
+the board bar under (c) and is NOT on the board, because nothing shows the
+input exists. Drive a producer first.
+
+**Closes when:** a failing row is reported under a state of its own while the
+rest are listed and offered, with a bound on failures in a row as
+`label approved` has, or a sitting shows no query fails deterministically.
+
+---
+
+## R-490. Each differing run of `intake missing --list` leaves the earlier found list beside the new one
+
+**Found:** 2026-09-19, on `relay/124`, U79, in the fix for the review's first
+finding.
+
+The found list is named with a digest of its rows and provenance, because the
+emitter refuses a name whose file holds other bytes and the run after a review
+answer lists more than the run before it. The cost of that fix is that the
+earlier list stays in the lists folder. It holds a subset of the new one.
+
+**Driven:** the two lists, yes, in
+`test_the_run_after_an_answer_lists_more_than_the_first_and_is_not_refused`.
+Whether `acquire download` fetches a track again when handed both lists was
+not driven.
+
+**Measured cost.** A lists folder that grows by one small file per differing
+run, and a person who downloads both lists before landing either may fetch the
+shared tracks twice. A track that was landed is owned and is never listed
+again. `label approved` has had the same property since U75.
+
+**Closes when:** the download verb is shown to skip a track staging already
+holds, or the verb names the earlier list of the same input as superseded.
+
+---
+
+## R-491. A long tracklist is searched one row after another
+
+**Found:** 2026-09-19, on `relay/124`, U79, by the unit's `/code-review`.
+
+`missing_cli._searched` makes one blocking search per missing row, each on its
+own retry ladder, and the review store is opened up to three times a run. The
+catalogue is resolved once, which the fix round did.
+
+**Driven:** no. A 200 line tracklist is 200 round trips in sequence.
+
+**Measured cost.** Unmeasured wall time. No wrong output.
+
+**Closes when:** a sitting measures a real tracklist and the time is accepted,
+or the searches are bounded or batched.

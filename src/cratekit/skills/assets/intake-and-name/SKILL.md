@@ -30,7 +30,11 @@ Identification stops after it knows what is in the recording and downloads
 nothing.
 
 If you already have the tracklist as text, none of the four apply. Resolving a
-list against the library is `match run`, below.
+list against the library is `match run`, below, and turning its missing lines
+into a download list is `intake missing --list`, which searches the provider
+for each one, lists a line only on exactly one exact match, and offers
+everything else to `review list --queue version-match --kind provider-candidate`.
+Run it again after answering and the accepted candidate is listed.
 
 ## Identification is where money is spent, so it checks first
 

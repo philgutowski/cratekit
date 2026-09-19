@@ -4,7 +4,76 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U84, issue #129, `relay/129`, 2026-09-19.**
+**Last merged: U79, issue #124, `relay/124`, 2026-09-19.**
+A row nothing names exactly has a route to a download, which closes R-415 and
+narrows R-302 to its registry flags. `crate intake missing --list PATH` is a
+third chooser beside `--job` and `--run`. PATH is the unlisted list a set job
+wrote, or any list `match run` reads. Every row is resolved against the
+library first, through `match_cli.library_view`, `resolve_all` and
+`adjudicate`, so an owned track, a version question and a tombstoned track are
+never searched for, and a music folder that is not there refuses
+`library-volume-unmounted` rather than listing every row. A row still missing
+is asked by ISRC when it has one, then handed to the new
+`intake/candidates.py`. **A SEARCH IS A PROPOSAL, NEVER A PICK.** The ninth
+`Catalogue` member is `search_tracks(artist, title)`, one track search on the
+retry ladder, at most `catalogue.TRACK_SEARCH_PAGE` rows, choosing nothing. A
+row is listed without a person only when the exact candidates, under `match`'s
+own `recording_token` and `version_token`, carry ONE distinct identifier,
+every row of the answer was readable, the answer did not fill the page, and
+the title reads one way. Anything else with a candidate worth showing is
+offered on the `version-match` queue under a NEW KIND, `provider-candidate`,
+NOT a new queue, since that surface's legacy file is the source system's
+provider search review. The identity is the folded artist, title and version,
+the option id is the provider track id, and the option's detail carries the
+frozen track through a new public `intake_cli.frozen`. Exact candidates lead,
+then score, and `CANDIDATE_FLOOR` of 60 drops hits that resemble nothing. A
+score never lists anything. The queue is read BEFORE the provider through a new
+`review.find`: an accepted candidate is listed with no search spent, unless
+the library now holds it, state `held`; a rejected row stays rejected until
+cleared; an open one is not searched again; an acceptance naming none of
+several candidates stalls. Every search answer is in hand before any offer, so
+a provider that fails part way refuses `unavailable-transient` with no
+candidate offered and no list written. No candidate is a failing `unfound`
+check, and a run that listed nothing and asked nothing refuses
+`intake-list-unusable`. The list is `<input stem>-found-<12 hex>.list.json`,
+the digest over the rows and their provenance, source `list`. The `--job`
+flow's `unlisted_next` now names `intake missing --list`, since `match run`
+was a dead end for those rows. The registry entry declares `adjudicates`.
+**`/code-review` raised nine findings, two of them reproduced.** Seven were
+fixed in one round: the run after a review answer was REFUSED, because the
+found list had one fixed name and the emitter refuses other bytes, now the
+digest, and filed as a second way into the trap already under
+`docs/solutions/integration-issues/`; a missing row of another service's list
+was in no file and on no check at exit zero, because its ref is that service's
+id and the emitter strips it; a full page was read as the whole answer; a
+title with two readings was listed on one candidate; the failed search said
+nothing was offered over a queue holding the library's own question; the
+catalogue was resolved twice; and the unknown item lookup had two spellings.
+Two are R-489 and R-491. The hunt after it read `listdoc.write`'s failure
+paths as this unit's own and gave both paths of the verb one helper that turns
+a failed write into the verb's refusal. 61 new test cases by collected count,
+8443 to 8504: 52 in the new `tests/test_intake_missing_search.py`, 8 in
+`tests/test_label_tidal_catalogue.py`, and 1 that `tests/test_cli_contract.py`
+parametrizes over the newly adjudicating verb. `tests/test_reserved_causes.py`
+re-pinned to 442 kebab literals and 283 non-keys, holders unchanged at 98, and
+the also-holds-an-integer half 18 to 19 for `TRACK_SEARCH_PAGE`. Mutation
+tables `docs/mutation/u79-a.md`, `u79-b.md` and `u79-c.md`, 25 rows at the cap,
+25 killed on the first pass, three of them over guards that were given a test
+before the table because the author could see the zero, read in
+`u79-notes.md`. R-488 (the floor, the query and the page were never measured
+against a live provider), R-489 (one row whose search fails every run refuses
+the whole list, reachability unmeasured), R-490 (each differing run leaves the
+earlier found list beside the new one) and R-491 (rows are searched one after
+another) are filed, and none is on the board: R-489 could meet the bar and
+says a producer has to be driven first. `CONCEPTS.md` gains Provider
+candidate. The guide and the intake skill describe the route. **Owed to an
+attended sitting:** one real typed tracklist, which is also the first live call
+of `search_tracks` and R-488's measurement. Battery on the recorded tree: ruff
+clean, `scan_repo.py` exit 0, pytest 8503 passed and 1 skipped in 71 seconds,
+and no test of this unit's among the ten slowest.
+**Main's highest residual number is R-491.**
+
+**The session before: U84, issue #129, `relay/129`, 2026-09-19.**
 `crate tag folder` repairs zeroed or progressive FLAC picture blocks in place,
 without the web, which closes R-399's repair clause. New
 `core/art.py:repair_in_place(path)` returns an `ArtRepair(status, detail)` and

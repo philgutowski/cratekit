@@ -1,0 +1,80 @@
+name = "u79-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_ambiguous_listed"
+description = "A title that reads two ways is listed on one candidate without a person"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    if answer.ambiguous or answer.full:
+        return None'''
+new = '''    if answer.full:
+        return None'''
+
+[[rows]]
+id = "A2_full_page_listed"
+description = "A full page is read as the whole answer, so its one exact hit is listed"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    if answer.ambiguous or answer.full:
+        return None'''
+new = '''    if answer.ambiguous:
+        return None'''
+
+[[rows]]
+id = "A3_unreadable_ignored"
+description = "A row of the answer that could not be read no longer stops a listing"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    if answer.unreadable or not exact:'''
+new = '''    if not exact:'''
+
+[[rows]]
+id = "A4_no_identifier_listed"
+description = "Exact candidates carrying no identifier are one distinct value and are listed"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    if any(not one.track.ref for one in exact):
+        return None'''
+new = '''    if False:
+        return None'''
+
+[[rows]]
+id = "A5_two_exact_picked"
+description = "Two exact candidates list the first, the pick the brief forbids"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    if len({one.track.ref for one in exact}) != 1:'''
+new = '''    if len({one.track.ref for one in exact}) < 1:'''
+
+[[rows]]
+id = "A6_page_bound_off_by_one_up"
+description = "A page of exactly the seam's size is no longer read as full"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''        return self.hits >= TRACK_SEARCH_PAGE'''
+new = '''        return self.hits > TRACK_SEARCH_PAGE'''
+
+[[rows]]
+id = "A7_page_bound_off_by_one_down"
+description = "An answer one short of the page is read as full and offered"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''        return self.hits >= TRACK_SEARCH_PAGE'''
+new = '''        return self.hits >= TRACK_SEARCH_PAGE - 1'''
+
+[[rows]]
+id = "A8_version_out_of_exact"
+description = "The exact test compares the recording alone, so another version is exact"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''                exact=(track.recording, track.version_key) in exact_tokens,'''
+new = '''                exact=track.recording in {token for token, _version in exact_tokens},'''
