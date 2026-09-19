@@ -150,7 +150,7 @@ files out of download staging into `Music/<batch>/` and splicing them into one
 intake file. Staging is deliberately invisible to ownership, which walks the
 music directory only, so an acquired file that has not landed still reads as
 missing and would be offered for download again. R-413 records that the step did
-not exist.
+not exist. U71 built its engine, `intake/landing.py`, and the verb is still owed.
 
 ### List document
 The one file format `acquire download` reads: a versioned, closed document of

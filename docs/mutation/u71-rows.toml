@@ -1,0 +1,127 @@
+name = "u71"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_listing_dotfile"
+description = "Drop the dotfile skip in the listing, so a hidden file is planned"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if name.startswith(".") or name == ACQUIRE_STAGING_DIRNAME:'''
+new = '''    if name == ACQUIRE_STAGING_DIRNAME:'''
+
+[[rows]]
+id = "A2_listing_suffix"
+description = "Drop the audio suffix filter, so a text file is planned and moved"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if entry.suffix.lower() not in AUDIO_EXTS:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A3_listing_regular_file"
+description = "Drop the regular file check, so a directory named like audio is planned"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    return entry.is_file() and not entry.is_symlink()'''
+new = '''    return not entry.is_symlink()'''
+
+[[rows]]
+id = "A4_digest_names_only"
+description = "Fingerprint names alone, so a file replaced under its name is not stale"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''        hasher.update(f"{item.name}\0{stat.st_size}\0{stat.st_mtime_ns}\n".encode())'''
+new = '''        hasher.update(f"{item.name}\n".encode())'''
+
+[[rows]]
+id = "A5_digest_no_mtime"
+description = "Drop the modification time from the fingerprint, keeping name and size"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''        hasher.update(f"{item.name}\0{stat.st_size}\0{stat.st_mtime_ns}\n".encode())'''
+new = '''        hasher.update(f"{item.name}\0{stat.st_size}\n".encode())'''
+
+[[rows]]
+id = "A6_stale_refusal"
+description = "Drop the stale plan refusal whole"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if items != plan.items or _digest(items) != plan.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A7_stale_listing_only"
+description = "Compare the relisting by path only, dropping the digest half"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if items != plan.items or _digest(items) != plan.digest:'''
+new = '''    if items != plan.items:'''
+
+[[rows]]
+id = "A8_batch_name"
+description = "Drop the batch name check, so a path or a dot name is landed under"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if (
+        not batch
+'''
+new = '''    if False and (
+        not batch
+'''
+
+[[rows]]
+id = "A9_plan_empty"
+description = "Drop the refusal of a folder with nothing to land"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if not items:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A10_root_absent"
+description = "Drop the refusal of an absent library root before the device probe"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if not root.is_dir():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A11_owned_folder"
+description = "Drop the refusal of a source folder the library already owns"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if not in_staging and (source == owned or owned in source.parents):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A12_staging_inside_library"
+description = "Drop the exemption for staging configured inside the library root"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    in_staging = source == staging or staging in source.parents'''
+new = '''    in_staging = False'''
+
+[[dropped]]
+id = "D1_reason_for_permission"
+description = "Map a PermissionError on a move to intake-list-unusable"
+reason = "ranked below the cap: a reason slug, not a move or a write; test_a_move_that_fails_part_way asserts it"
+
+[[dropped]]
+id = "D2_place_files_reason"
+description = "Replace a place_files refusal's own reason with internal-error"
+reason = "ranked below the cap: a reported slug, asserted by test_a_refusal_from_place_files_keeps_its_own_reason"
+
+[[dropped]]
+id = "D3_symlink_clauses"
+description = "Drop the is_symlink halves in the listing and the occupied check"
+reason = "ranked below the cap: acquire download never commits a symlink, measured by reading its commit, not driven"
+
+[[dropped]]
+id = "D4_device_none"
+description = "Let an unmeasurable device pass the device check"
+reason = "ranked below the cap: _device_of answers None only when no ancestor up to / can be stat'ed"
+
+[[dropped]]
+id = "D5_apply_batch_recheck"
+description = "Drop the batch name recheck in apply"
+reason = "maintainer facing: a Plan built by plan already passed it; only a hand built Plan reaches it"

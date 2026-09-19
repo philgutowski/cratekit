@@ -1,0 +1,69 @@
+{
+  "name": "u71-c",
+  "pass_kind": "light",
+  "branch": "relay/116",
+  "head": "e84a876",
+  "when": "2026-09-19 00:13 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7811,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/landing.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/landing.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5531e7f606dd632f",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7811,
+    "baseline_collected": 7811,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_nothing_movable_rerun",
+      "description": "Drop the refusal before the batch folder is made when nothing can move",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "09e872328ca51882",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_batch_where_nothing_lands_leaves_no_batch_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not movable:",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": []
+}

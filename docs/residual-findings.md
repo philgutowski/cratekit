@@ -17693,6 +17693,33 @@ two units.
 **Closes when:** a shipped verb moves a staged batch under the library and
 writes one intake file naming every moved track.
 
+**Narrowed 2026-09-18 on `relay/116`, U71. The engine half is closed and the
+verb half is open.** `src/cratekit/intake/landing.py` does the move. `plan`
+lists a staging folder one level deep, audio only, skipping dotfiles and the
+unfinished download directory, and fingerprints each item by name, size and
+modification time. `apply` lists the folder again and refuses a stale
+fingerprint as `decision-stale`. Then, before any file moves, it refuses:
+- an absent library root
+- a source folder inside the library that is not staging
+- a target under staging
+- a staging folder on another device, by name and never copied
+- an existing intake file
+- every export refusal `place_files` can make, tried on a copy
+
+A file with no declared sub is left in staging with a sentence naming `crate
+tag folder`. Driven, the shipped taxonomy never produces that, because an
+untagged file lands in `electronica_other` / `unsorted`. Moves are `os.replace`
+only. A file whose target exists is refused alone and never replaced, and the
+rest land. `place_files` then runs over the moved paths, so no Location is
+stamped from staging. A failure after the first move names the moved files,
+which stay in the library, and leaves no intake file and no empty batch folder.
+Driven in `tests/test_landing.py` against real tagged FLAC containers. Mutation
+tables `docs/mutation/u71.md`, `u71-b.md` and `u71-c.md`, 25 rows, all killing
+after one test was strengthened, read in `docs/mutation/u71-notes.md`. This is
+the author's table, not an independent one. **Still open:** no verb calls
+`landing.apply`, so a person still cannot land a downloaded batch. That is the
+verb unit. R-432, R-433 and R-434 are what the engine leaves for it.
+
 ---
 
 ## R-414. The rating planner puts an export scale value into a database field
@@ -18125,5 +18152,88 @@ side can reach, R-72's closing condition, which also retires R-69's
 `UNRECONCILED` entry. Or `intake missing` gains a review step that offers
 each missing row sharing an artist and recording with a tombstone rather
 than listing it.
+
+---
+
+## R-432. The landing engine checks a target is free and then replaces it, and a file can arrive between the two
+
+**Found:** 2026-09-18, by the `/code-review` of U71 on `relay/116`. Read, and
+the window was driven only with a substituted `os.replace`.
+
+`intake/landing.py` refuses a file whose target under `Music/<batch>` already
+exists. It asks that question twice, once before the batch folder is made and
+again just before each move. Then it moves with `os.replace`, which replaces
+an existing target without a word. A file that reaches the same name between
+the second check and the rename is overwritten. Only a second writer into the
+same batch folder at the same moment can do that, for example two landings of
+different staging folders under one batch name.
+
+`os.link` followed by an unlink would refuse atomically, but the library
+volume this product targets is commonly exFAT, which has no hard links. The
+platform's exclusive rename is not exposed by Python's standard library.
+
+**Measured cost:** none today, because no verb calls the engine. The re-check
+at the move is pinned by
+`test_a_file_arriving_between_the_passes_is_not_replaced`. The window after it
+is not measured.
+
+**Why not fixed here.** The fix is a lock that one landing holds over the
+batch folder, and where that lock lives is the verb's choice, since the verb
+owns the job and its resume.
+
+**Closes when:** the verb that calls `landing.apply` holds a per batch lock
+across the moves, or the move uses an exclusive rename where the volume
+supports one.
+
+---
+
+## R-433. `place_files` leaves its intake session record open, on success and on every refusal after it opens
+
+**Found:** 2026-09-18, by U71 reading the failure paths of `place_files` as
+its first multi file caller. Read, not driven.
+
+`intake/ingest.py` `place_files` calls `session.open_session` before the per
+file placement refusal and the playlist refusal, and never calls
+`close_session` or `routing_pass.close_run`. So every call leaves an `OPEN`
+intake record, and a refused call leaves one with no routing intents. The
+landing engine makes both of those refusals before any move, on a copy of the
+export and from each file's tags, so through landing they are reached only if
+the tags change between the check and the splice.
+
+**Measured cost:** none found. A search of `src` for readers of
+`SessionState.OPEN` outside `core/session.py` found none, so an open intake
+record blocks nothing today. It is debris in the session directory, and it is
+a record that says a run is in progress when it is not.
+
+**Why not fixed here.** `ingest.py` is outside this unit's files, and the
+single file caller has the same shape.
+
+**Closes when:** `place_files` closes the session it opened, through
+`routing_pass.close_run` on success and as refused on a refusal, or opens
+it only after its last refusal.
+
+---
+
+## R-434. A landed batch marks no file lossy, whatever its name says
+
+**Found:** 2026-09-18, by U71. Read, not driven.
+
+`place_files` takes one `lossy` flag for the whole batch, and it decides
+whether the rekordbox Name carries the configured lossy marker.
+`landing.apply` passes the default, False. `acquire download` puts the marker
+in a lossy file's filename, in `acquire/cli.py` `marked_name`, but
+`ingest.read_meta` builds the Name from the title tag and the flag, not from
+the filename. So a lossy file landed through the engine may reach rekordbox
+without the marker a person relies on to see it is lossy.
+
+**Measured cost:** not measured. Whether an acquired lossy file's title tag
+already carries the marker was not driven.
+
+**Why not fixed here.** A batch can mix lossy and lossless files, so the fix
+is a per file flag in `place_files`, and `ingest.py` is outside this unit's
+files.
+
+**Closes when:** a lossy file landed through the engine is driven to a Name
+carrying the marker, or `place_files` takes the flag per file.
 
 ---

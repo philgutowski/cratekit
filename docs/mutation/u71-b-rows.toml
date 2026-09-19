@@ -1,0 +1,112 @@
+name = "u71-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_target_under_staging"
+description = "Drop the refusal of a landing target under download staging"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if resolved == staging or staging in resolved.parents:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B2_device"
+description = "Drop the cross device refusal, so a move across devices is attempted"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if here is None or there is None or here != there:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B3_destination_exists"
+description = "Drop the refusal of an intake file that already exists"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if destination.exists():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B4_export_missing"
+description = "Drop the missing export refusal before any move"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if not export.is_file():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B5_trial_splice"
+description = "Drop the trial splice on a copy, so a stub is met only after the moves"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    collection_xml.splice_tracks(trial, [])
+'''
+new = ''
+
+[[rows]]
+id = "B6_trial_playlist"
+description = "Drop the refusal of an export whose intake playlist cannot be written"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if error:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B7_unplaceable"
+description = "Treat every file as placeable, so a file with no sub moves then fails the batch"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if ingest.decide_placement(meta) is not None:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "B8_occupied_first_pass"
+description = "Drop the occupied check from the first pass, leaving the one at the move"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''_unplaceable(item) or _occupied(item, target / item.name)'''
+new = '''_unplaceable(item)'''
+
+[[rows]]
+id = "B9_nothing_movable"
+description = "Drop the refusal before the batch folder is made when nothing can move"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if not movable:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B10_occupied_at_move"
+description = "Drop the occupied check at the move, so os.replace can take a file's place"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''        occupied = _occupied(item, final)'''
+new = '''        occupied = None'''
+
+[[rows]]
+id = "B11_nothing_moved"
+description = "Drop the refusal after the move loop when nothing moved"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if not moved:
+        if made:'''
+new = '''    if False:
+        if made:'''
+
+[[rows]]
+id = "B12_take_back_folder"
+description = "Keep the batch folder this call made when the first move fails"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''            if made and not moved:
+                _remove_if_empty(target)
+'''
+new = ''
+
+[[rows]]
+id = "B13_unlink_destination"
+description = "Leave the intake file behind when place_files fails after writing it"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''        destination.unlink(missing_ok=True)
+'''
+new = ''

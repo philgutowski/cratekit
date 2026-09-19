@@ -1,0 +1,417 @@
+{
+  "name": "u71-b",
+  "pass_kind": "light",
+  "branch": "relay/116",
+  "head": "3ed5da5",
+  "when": "2026-09-19 00:08 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7811,
+  "baseline_exit": 0,
+  "pytest_runs": 17,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/landing.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/landing.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5531e7f606dd632f",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7811,
+    "baseline_collected": 7811,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_target_under_staging",
+      "description": "Drop the refusal of a landing target under download staging",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ad3c116695a031b2",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_landing_target_under_staging_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if resolved == staging or staging in resolved.parents:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B2_device",
+      "description": "Drop the cross device refusal, so a move across devices is attempted",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9547a3675f59be3f",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_staging_folder_on_another_device_is_refused_by_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if here is None or there is None or here != there:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B3_destination_exists",
+      "description": "Drop the refusal of an intake file that already exists",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1048a7aa894eeda2",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_an_existing_intake_file_is_never_overwritten"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if destination.exists():",
+      "new": "    if False:"
+    },
+    {
+      "id": "B4_export_missing",
+      "description": "Drop the missing export refusal before any move",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f1e1ea26bc7350ed",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_missing_export_is_refused_before_any_move"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not export.is_file():",
+      "new": "    if False:"
+    },
+    {
+      "id": "B5_trial_splice",
+      "description": "Drop the trial splice on a copy, so a stub is met only after the moves",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4c2c2468d5eb2cca",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_stub_export_is_refused_before_any_move"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    collection_xml.splice_tracks(trial, [])\n",
+      "new": ""
+    },
+    {
+      "id": "B6_trial_playlist",
+      "description": "Drop the refusal of an export whose intake playlist cannot be written",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "66533d2c0fbf3ee6",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_an_export_with_no_intake_folder_is_refused_before_any_move"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if error:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B7_unplaceable",
+      "description": "Treat every file as placeable, so a file with no sub moves then fails the batch",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6833a599803feb1f",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_batch_where_nothing_lands_leaves_no_batch_folder",
+        "tests/test_landing.py::test_a_file_with_no_declared_sub_is_left_in_staging_naming_tag_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ingest.decide_placement(meta) is not None:",
+      "new": "    if True:"
+    },
+    {
+      "id": "B8_occupied_first_pass",
+      "description": "Drop the occupied check from the first pass, leaving the one at the move",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "95cbb34982752c78",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_every_file_taken_at_the_move_writes_no_intake_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_unplaceable(item) or _occupied(item, target / item.name)",
+      "new": "_unplaceable(item)"
+    },
+    {
+      "id": "B9_nothing_movable",
+      "description": "Drop the refusal before the batch folder is made when nothing can move",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2b51aabf9d088469",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7811,
+      "baseline_collected": 7811,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if not movable:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B10_occupied_at_move",
+      "description": "Drop the occupied check at the move, so os.replace can take a file's place",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cf42fe1330ccd076",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_file_arriving_between_the_passes_is_not_replaced",
+        "tests/test_landing.py::test_every_file_taken_at_the_move_writes_no_intake_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        occupied = _occupied(item, final)",
+      "new": "        occupied = None"
+    },
+    {
+      "id": "B11_nothing_moved",
+      "description": "Drop the refusal after the move loop when nothing moved",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b29c2de6c7b3fd89",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_every_file_taken_at_the_move_writes_no_intake_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not moved:\n        if made:",
+      "new": "    if False:\n        if made:"
+    },
+    {
+      "id": "B12_take_back_folder",
+      "description": "Keep the batch folder this call made when the first move fails",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8c30333b4f6da05e",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_first_move_that_fails_leaves_no_batch_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if made and not moved:\n                _remove_if_empty(target)\n",
+      "new": ""
+    },
+    {
+      "id": "B13_unlink_destination",
+      "description": "Leave the intake file behind when place_files fails after writing it",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4e580fa03923edb3",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_splice_that_fails_after_the_moves_names_them_and_leaves_no_xml"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        destination.unlink(missing_ok=True)\n",
+      "new": ""
+    }
+  ],
+  "dropped": []
+}

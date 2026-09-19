@@ -1,0 +1,426 @@
+{
+  "name": "u71",
+  "pass_kind": "light",
+  "branch": "relay/116",
+  "head": "3ed5da5",
+  "when": "2026-09-19 00:05 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7811,
+  "baseline_exit": 0,
+  "pytest_runs": 15,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/landing.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/landing.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5531e7f606dd632f",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7811,
+    "baseline_collected": 7811,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_listing_dotfile",
+      "description": "Drop the dotfile skip in the listing, so a hidden file is planned",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9bf6cf8d096dacb2",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_the_listing_is_flat_audio_only_and_skips_dotfiles"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if name.startswith(\".\") or name == ACQUIRE_STAGING_DIRNAME:",
+      "new": "    if name == ACQUIRE_STAGING_DIRNAME:"
+    },
+    {
+      "id": "A2_listing_suffix",
+      "description": "Drop the audio suffix filter, so a text file is planned and moved",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c897765e8d036074",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_an_empty_folder_is_refused_at_plan",
+        "tests/test_landing.py::test_the_listing_is_flat_audio_only_and_skips_dotfiles"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if entry.suffix.lower() not in AUDIO_EXTS:",
+      "new": "    if False:"
+    },
+    {
+      "id": "A3_listing_regular_file",
+      "description": "Drop the regular file check, so a directory named like audio is planned",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e38c64d469392a28",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_directory_named_like_audio_is_not_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return entry.is_file() and not entry.is_symlink()",
+      "new": "    return not entry.is_symlink()"
+    },
+    {
+      "id": "A4_digest_names_only",
+      "description": "Fingerprint names alone, so a file replaced under its name is not stale",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e446124d6351c8b3",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_file_replaced_under_the_same_name_makes_the_plan_stale",
+        "tests/test_landing.py::test_a_touched_file_of_the_same_size_makes_the_plan_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        hasher.update(f\"{item.name}\\0{stat.st_size}\\0{stat.st_mtime_ns}\\n\".encode())",
+      "new": "        hasher.update(f\"{item.name}\\n\".encode())"
+    },
+    {
+      "id": "A5_digest_no_mtime",
+      "description": "Drop the modification time from the fingerprint, keeping name and size",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "205d946527a5b5a8",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_file_replaced_under_the_same_name_makes_the_plan_stale",
+        "tests/test_landing.py::test_a_touched_file_of_the_same_size_makes_the_plan_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        hasher.update(f\"{item.name}\\0{stat.st_size}\\0{stat.st_mtime_ns}\\n\".encode())",
+      "new": "        hasher.update(f\"{item.name}\\0{stat.st_size}\\n\".encode())"
+    },
+    {
+      "id": "A6_stale_refusal",
+      "description": "Drop the stale plan refusal whole",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c60e463eab60b6b0",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_file_replaced_under_the_same_name_makes_the_plan_stale",
+        "tests/test_landing.py::test_a_touched_file_of_the_same_size_makes_the_plan_stale",
+        "tests/test_landing.py::test_an_added_file_makes_the_plan_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if items != plan.items or _digest(items) != plan.digest:",
+      "new": "    if False:"
+    },
+    {
+      "id": "A7_stale_listing_only",
+      "description": "Compare the relisting by path only, dropping the digest half",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "93532dac526420a9",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_file_replaced_under_the_same_name_makes_the_plan_stale",
+        "tests/test_landing.py::test_a_touched_file_of_the_same_size_makes_the_plan_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if items != plan.items or _digest(items) != plan.digest:",
+      "new": "    if items != plan.items:"
+    },
+    {
+      "id": "A8_batch_name",
+      "description": "Drop the batch name check, so a path or a dot name is landed under",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "becc7766830a1871",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_batch_name_that_is_not_one_plain_folder_is_refused[ padded]",
+        "tests/test_landing.py::test_a_batch_name_that_is_not_one_plain_folder_is_refused[..]",
+        "tests/test_landing.py::test_a_batch_name_that_is_not_one_plain_folder_is_refused[.hidden]",
+        "tests/test_landing.py::test_a_batch_name_that_is_not_one_plain_folder_is_refused[]",
+        "tests/test_landing.py::test_a_batch_name_that_is_not_one_plain_folder_is_refused[a/b]",
+        "tests/test_landing.py::test_a_batch_name_that_is_not_one_plain_folder_is_refused[a\\\\b]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if (\n        not batch\n",
+      "new": "    if False and (\n        not batch\n"
+    },
+    {
+      "id": "A9_plan_empty",
+      "description": "Drop the refusal of a folder with nothing to land",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5f4b93e5f58e94c6",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_an_empty_folder_is_refused_at_plan"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not items:",
+      "new": "    if False:"
+    },
+    {
+      "id": "A10_root_absent",
+      "description": "Drop the refusal of an absent library root before the device probe",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4f7924a6473a6f7c",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_an_absent_library_root_is_refused_before_the_device_probe"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not root.is_dir():",
+      "new": "    if False:"
+    },
+    {
+      "id": "A11_owned_folder",
+      "description": "Drop the refusal of a source folder the library already owns",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aba04c32e4d928ea",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_folder_the_library_already_owns_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not in_staging and (source == owned or owned in source.parents):",
+      "new": "    if False:"
+    },
+    {
+      "id": "A12_staging_inside_library",
+      "description": "Drop the exemption for staging configured inside the library root",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5d552871739e56bf",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing.py::test_a_landing_target_under_staging_is_refused",
+        "tests/test_landing.py::test_staging_configured_inside_the_library_still_lands"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    in_staging = source == staging or staging in source.parents",
+      "new": "    in_staging = False"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_reason_for_permission",
+      "description": "Map a PermissionError on a move to intake-list-unusable",
+      "reason": "ranked below the cap: a reason slug, not a move or a write; test_a_move_that_fails_part_way asserts it"
+    },
+    {
+      "id": "D2_place_files_reason",
+      "description": "Replace a place_files refusal's own reason with internal-error",
+      "reason": "ranked below the cap: a reported slug, asserted by test_a_refusal_from_place_files_keeps_its_own_reason"
+    },
+    {
+      "id": "D3_symlink_clauses",
+      "description": "Drop the is_symlink halves in the listing and the occupied check",
+      "reason": "ranked below the cap: acquire download never commits a symlink, measured by reading its commit, not driven"
+    },
+    {
+      "id": "D4_device_none",
+      "description": "Let an unmeasurable device pass the device check",
+      "reason": "ranked below the cap: _device_of answers None only when no ancestor up to / can be stat'ed"
+    },
+    {
+      "id": "D5_apply_batch_recheck",
+      "description": "Drop the batch name recheck in apply",
+      "reason": "maintainer facing: a Plan built by plan already passed it; only a hand built Plan reaches it"
+    }
+  ]
+}
