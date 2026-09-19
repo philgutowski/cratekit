@@ -38,7 +38,8 @@ resolution picture over the cap is refused) and R-474 (failures return a
 quiet False, as `write_tags` does) are filed, and none meets the board bar
 while no verb calls the engine. **Owed to an attended sitting:** one file
 written by this engine, shown on a real CDJ or XDJ. Battery on the recorded
-tree is at the end of this unit's last commit message.
+tree: ruff clean, `scan_repo.py` exit 0, pytest 8349 passed and 1 skipped, and
+no test of this unit's among the ten slowest.
 **Main's highest residual number is R-474.**
 
 **The session before: R-261 with R-393, issue #162, `relay/162`, 2026-09-19.**
