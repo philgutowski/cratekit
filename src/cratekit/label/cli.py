@@ -183,11 +183,13 @@ def registry_cmd(ctx) -> Envelope:
     action = ctx.args.action
     seeds = ctx.args.seeds
     track_limit = ctx.args.track_limit
-    if action not in ("add", "set") and (seeds is not None or track_limit is not None):
+    fields_given = (seeds, track_limit, ctx.args.match)
+    if action not in ("add", "set") and any(given is not None for given in fields_given):
         raise refuse(
             "label-name-invalid",
-            f"label registry {action} does not set --seed or --track-limit, "
-            f"and ignoring them would report a change that was never written",
+            f"label registry {action} does not set --seed, --track-limit or "
+            f"--match, and ignoring them would report a change that was never "
+            f"written",
             steps=("use label registry set, or add, to change those fields",),
             origin=("label.cli",),
         )

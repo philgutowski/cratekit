@@ -193,12 +193,15 @@ def test_set_with_no_field_refuses_rather_than_reporting_an_edit(installed):
 
 
 @pytest.mark.parametrize("action", [["remove", "kompakt"], ["rename", "kompakt", "--to", "K"], []])
-def test_a_field_flag_on_an_action_that_does_not_set_it_refuses(installed, action):
+@pytest.mark.parametrize(
+    "field", [["--seed", "Michael Mayer"], ["--track-limit", "9"], ["--match", "Kompakt Rec"]]
+)
+def test_a_field_flag_on_an_action_that_does_not_set_it_refuses(installed, action, field):
     del installed
     ok(["add", "Kompakt"])
     before = intent_bytes()
 
-    cause = refused([*action, "--seed", "Michael Mayer"])
+    cause = refused([*action, *field])
 
     assert cause["reason"] == "label-name-invalid"
     assert intent_bytes() == before
