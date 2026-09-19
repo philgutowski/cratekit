@@ -1,0 +1,95 @@
+name = "u90-b"
+pass_kind = "light"
+
+# Batch B of three, what the hand path writes and reports.
+
+[[rows]]
+id = "B1_library_root_unchecked"
+description = "The hand path stops requiring the library root before it writes"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    _require_library_root(cfg)
+    previous, before = _previous_vocal_cut(cfg)'''
+new = '''    previous, before = _previous_vocal_cut(cfg)'''
+
+[[rows]]
+id = "B2_method_not_hand"
+description = "A hand cut recorded under the fit's method, otsu"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''method=VOCAL_METHOD_HAND, note='''
+new = '''method="otsu", note='''
+
+[[rows]]
+id = "B3_note_reworded"
+description = "The hand cut's note stops saying set by hand"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''note=f"set by hand on {today}"'''
+new = '''note=f"entered on {today}"'''
+
+[[rows]]
+id = "B4_date_field_dropped"
+description = "The hand cut's set_on date field no longer written"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''note=f"set by hand on {today}", set_on=today'''
+new = '''note=f"set by hand on {today}"'''
+
+[[rows]]
+id = "B5_previous_cut_not_reported"
+description = "The summary reports no previous cut whatever was on record"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''"previous_vocal_cut": previous}'''
+new = '''"previous_vocal_cut": None}'''
+
+[[rows]]
+id = "B6_hand_detail_drops_old_cut"
+description = "The hand path's check detail stops naming the cut it replaced"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''f"cut set by hand at {cut:g}, written to {target}; {before}; "'''
+new = '''f"cut set by hand at {cut:g}, written to {target}; "'''
+
+[[rows]]
+id = "B7_fit_detail_drops_old_cut"
+description = "The fit's check detail stops naming the cut it replaced"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''        f"written to {target}; {before}",'''
+new = '''        f"written to {target}",'''
+
+[[rows]]
+id = "B8_hand_reads_old_after_write"
+description = "The hand path reads the previous cut after its own write, so it reports itself"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    previous, before = _previous_vocal_cut(cfg)
+    today = _today()
+    target = _write_vocal_calibration(
+        cfg, cut, method=VOCAL_METHOD_HAND, note=f"set by hand on {today}", set_on=today
+    )'''
+new = '''    today = _today()
+    target = _write_vocal_calibration(
+        cfg, cut, method=VOCAL_METHOD_HAND, note=f"set by hand on {today}", set_on=today
+    )
+    previous, before = _previous_vocal_cut(cfg)'''
+
+[[dropped]]
+id = "B9_gender_margin_dropped"
+description = "The writer stops recording gender_margin"
+reason = "no reader: nothing in src reads gender_margin from the vocal calibration, so a zero here says nothing about this unit"
+
+[[dropped]]
+id = "B10_refusal_message_reworded"
+description = "Reword the out of range refusal's message"
+reason = "maintainer facing wording; the slug is what the verb's consumers read and A1 to A5 measure the guard behind it"

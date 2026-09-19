@@ -1,0 +1,68 @@
+name = "u90-a"
+pass_kind = "light"
+
+# Batch A of three, the range guard and the parser. Split so each driver call
+# fits the 600 second foreground ceiling a relay task runs under.
+
+[[rows]]
+id = "A1_lower_bound_strict"
+description = "The range guard's lower bound made strict, so a cut of 0 is refused"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:'''
+new = '''    if not VOCAL_SCORE_MIN < cut <= VOCAL_SCORE_MAX:'''
+
+[[rows]]
+id = "A2_upper_bound_strict"
+description = "The range guard's upper bound made strict, so a cut of 100 is refused"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:'''
+new = '''    if not VOCAL_SCORE_MIN <= cut < VOCAL_SCORE_MAX:'''
+
+[[rows]]
+id = "A3_range_guard_off"
+description = "The whole range guard switched off, so any float is written as the cut"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A4_max_coefficient"
+description = "The score range's top moved from 100 to 1000"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''VOCAL_SCORE_MAX = 100.0'''
+new = '''VOCAL_SCORE_MAX = 1000.0'''
+
+[[rows]]
+id = "A5_min_coefficient"
+description = "The score range's bottom moved from 0 to minus 1"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''VOCAL_SCORE_MIN = 0.0'''
+new = '''VOCAL_SCORE_MIN = -1.0'''
+
+[[rows]]
+id = "A6_dispatch_truthiness"
+description = "The hand path dispatched on truthiness, so a cut of 0 falls through to the fit"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if ctx.args.vocal_cut is not None:'''
+new = '''    if ctx.args.vocal_cut:'''
+
+[[rows]]
+id = "A7_exclusive_group_gone"
+description = "The folder and the flag no longer mutually exclusive in the parser"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    chosen = parser.add_mutually_exclusive_group()'''
+new = '''    chosen = parser'''

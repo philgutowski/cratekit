@@ -1,0 +1,66 @@
+name = "u90-c"
+pass_kind = "light"
+
+# Batch C of three, the one reader and the fit's report of what it replaced.
+
+[[rows]]
+id = "C1_swallow_every_refusal"
+description = "The previous cut reader swallows every refusal, the permission one included"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''        if exc.cause.reason != "vocal-calibration-unreadable":
+            raise
+'''
+new = ''
+
+[[rows]]
+id = "C2_unreadable_refuses"
+description = "An unreadable calibration refuses the hand cut instead of being replaced by it"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''        return None, "the calibration on record before could not be read, and this replaces it"'''
+new = '''        raise'''
+
+[[rows]]
+id = "C3_hand_branch_wrong_method"
+description = "The replaced cut is named as set by hand only when its method is otsu"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if record.get("method") == VOCAL_METHOD_HAND:'''
+new = '''    if record.get("method") == "otsu":'''
+
+[[rows]]
+id = "C4_fit_reads_old_after_write"
+description = "The fit reads the previous cut after its own write, so it reports itself"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    _, before = _previous_vocal_cut(cfg)
+    target = _write_vocal_calibration(
+        cfg, threshold, method="otsu", note=f"fitted over {folder}", n_tracks=len(scores)
+    )'''
+new = '''    target = _write_vocal_calibration(
+        cfg, threshold, method="otsu", note=f"fitted over {folder}", n_tracks=len(scores)
+    )
+    _, before = _previous_vocal_cut(cfg)'''
+
+[[rows]]
+id = "C5_record_threshold_unconverted"
+description = "The one reader returns the stored threshold as written rather than the checked float"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_metadata_cli.py"]
+old = '''    return {**record, "threshold": threshold}'''
+new = '''    return dict(record)'''
+
+[[rows]]
+id = "C6_wrapper_reads_nothing"
+description = "load_vocal_threshold stops delegating, so every caller sees an uncalibrated library"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_metadata_cli.py"]
+old = '''    return None if record is None else record["threshold"]'''
+new = '''    return None'''
