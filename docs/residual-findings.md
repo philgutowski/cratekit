@@ -20712,6 +20712,48 @@ job does not refuse, it answers ok and does nothing.
 `intake missing`, read from the review store at listing time, or the check
 stops promising it and names what a person must do instead.
 
+**CLOSED 2026-09-19 on `relay/184`, by the first of the two.** The review key
+did not need rebuilding: every report the worker has committed since U57 names
+the item it offered, `review_item`, which is `adjudicate`'s own `held.item_id`.
+`_listed` in `intake/missing_cli.py` now looks each offered report's item up
+by that identifier through the new `_answered`, read only, opening the review
+store only when a job has an offered row. An unanswered row stays offered on
+the check it always had, nothing is asked again and the library is not walked,
+so a job whose questions nobody answered lists as before. An answered row joins
+the missing rows in the consult R-502 built, renamed `_asked_again`, in report
+order and in one library walk, so the answer decides it as the worker would:
+rejected is missing and listed unless a tombstone stands, a yes bound to a copy
+still held is owned, a yes about a copy that is gone stays a question. The
+counts say what each row is now, `offered` is what is still a question, and
+the new `answered_missing`, `answered_owned`, `answered_suppressed` and
+`answered_offered` say how many got there by an answer, on a new
+`intake.missing.answered` check. The offered check now ends "see: crate review
+list, then list this again". The reports are not rewritten. `--job` and
+`--run` share `_listed`, so both have it.
+
+**The refusal over the job's earlier list, found by the code review.** A
+rejected row makes the job's list longer than an earlier copy of the same name,
+which `listdoc.write` refuses (the fixed name is R-476 and R-508, out of scope).
+The first draft said why from counts of what changed since the JOB ran, which
+says nothing about when the earlier LIST was written: a rejected row listed and
+then landed refused with no reason, and a row gained after a listing already
+naming an answered row was reported as new to it. The step is now read from the
+earlier list document itself, by the new `_changed_since`: the tracks it names
+that this one does not, and the reverse, by name. An earlier file that is not a
+list gives no reason rather than a wrong one. R-502's step was reworded with
+it, since it had the same shape.
+
+Driven in `test_an_offered_row_rejected_since_is_listed_and_no_longer_offered`,
+`test_an_offered_row_accepted_since_is_owned_and_not_listed`,
+`test_an_offered_row_nobody_answered_is_unchanged_and_asks_nothing` and
+`test_a_run_lists_an_offered_row_a_person_answered_as_a_job_does`, with five
+more in `tests/test_intake_missing.py`. Mutation tables
+`docs/mutation/r503-a.md` and `r503-b.md`, summary in `r503-notes.md`:
+twenty one rows, the author's own, every user facing row killing, three
+maintainer zeros. The same shape one file over was looked for: `sync mark`
+already resolves an offered report against the library at marking time, so it
+does not carry this defect.
+
 ---
 
 ## R-504. The hearts listing returns short with no error when the provider withholds unservable hearts

@@ -4,7 +4,31 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-502, issue #183, `relay/183`, 2026-09-19.**
+**Last merged: R-503, issue #184, `relay/184`, 2026-09-19.**
+An offered track a person answered in review is now listed, owned or left a
+question as the answer made it, which CLOSES R-503. `_listed` in
+`intake/missing_cli.py` looks each offered report's item up by the
+`review_item` the report names, through the new `_answered`, read only. An
+unanswered row stays offered and nothing is asked again. An answered row joins
+the missing rows in R-502's consult, renamed from `_still_missing` to
+`_asked_again`, in report order and one library walk, so a rejection is missing
+and listed unless a tombstone stands, a bound yes over a copy still held is
+owned, and a yes about a copy that is gone stays a question. Counts say what
+each row is now; `answered_missing`, `answered_owned`, `answered_suppressed`
+and `answered_offered` are on the summary and a new `intake.missing.answered`
+check. **The code review raised one finding, applied**: the step on a refusal
+over the job's earlier list was inferred from what changed since the job ran,
+and is now read from the earlier list itself by `_changed_since`, naming the
+tracks each names that the other does not; R-502's step was reworded with it.
+Collected **8772**, 9 of them this unit's, all in `tests/test_intake_missing.py`;
+the battery on the committed tree was **8771 passed and 1 skipped**, ruff and
+the scan clean. Mutation tables `docs/mutation/r503-a.md` and `r503-b.md`,
+summary `r503-notes.md`: twenty one rows, every user facing row killing, three
+maintainer zeros. Nothing filed. **R-517's issue is still owed** from two
+sessions before.
+**Main's highest residual number is R-522.**
+
+**The session before: R-502, issue #183, `relay/183`, 2026-09-19.**
 A second `intake missing` over a job no longer lists tracks the library has
 gained since, which CLOSES R-502. `_listed` in `intake/missing_cli.py` hands
 every missing report to the new `_still_missing` before anything is written,
@@ -32,7 +56,6 @@ zeros. G7's zero was the env override trap already filed under
 `docs/solutions/workflow-issues/`, met again. Filed: R-522, `--job` over
 another library's job rechecks against this one, read and not driven, no
 issue. **R-517's issue is still owed** from the session before.
-**Main's highest residual number is R-522.**
 
 **The session before: R-431, issue #179, `relay/179`, 2026-09-19.**
 A track deleted on purpose whose library row kept a featured credit is no

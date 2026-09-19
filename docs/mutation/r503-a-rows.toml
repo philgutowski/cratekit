@@ -1,0 +1,100 @@
+name = "r503-a"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_no_lookup"
+description = "Read no answer at all, so every offered row stays offered whatever a person said (R-503 as filed)"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    answered = iter(_answered(offered))'''
+new = '''    answered = iter([False] * len(offered))'''
+
+[[rows]]
+id = "G2_found_is_answered"
+description = "Treat an item that exists as answered, so an unanswered row is asked again and offered again from the listing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            said.append(held is not None and held.resolved)'''
+new = '''            said.append(held is not None)'''
+
+[[rows]]
+id = "G3_blank_key"
+description = "Look up a blank review_item rather than reading it as no item"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "maintainer"
+old = '''            held = review.find(items, item_id) if item_id else None'''
+new = '''            held = review.find(items, item_id)'''
+
+[[rows]]
+id = "G4_offered_not_decremented"
+description = "Leave an answered row in the offered count, so a rejected row still reads offered 1"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''                counts["offered"] -= 1
+'''
+new = ""
+
+[[rows]]
+id = "G5_state_not_counted"
+description = "Do not count an answered row under the word it resolved to, so an accepted row is not owned"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''                counts[_WORD[one.state]] += 1
+'''
+new = ""
+
+[[rows]]
+id = "G6_answered_not_counted"
+description = "Do not count answered rows under answered_*"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''                now_answered[_ANSWERED[one.state]] += 1
+'''
+new = ""
+
+[[rows]]
+id = "G7_answered_read_as_since"
+description = "Count an answered row as a missing row would be counted, under since, rather than as answered"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            if report["state"] == "offered":
+                # COUNTED'''
+new = '''            if report["state"] == "never":
+                # COUNTED'''
+
+[[rows]]
+id = "G8_rejected_not_kept"
+description = "Keep only rows the job found missing, so a rejected row is counted and never listed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            if one.state is match.MatchState.MISSING:
+                kept.append(n)'''
+new = '''            if one.state is match.MatchState.MISSING and report["state"] == "missing":
+                kept.append(n)'''
+
+[[rows]]
+id = "G9_answered_last"
+description = "Ask answered rows after missing ones, so a rejected row is listed out of its playlist order"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    asking = [
+        (job, report)
+        for job, report in rows_in
+        if report["state"] == "missing" or next(answered)
+    ]'''
+new = '''    asking = sorted(
+        [
+            (job, report)
+            for job, report in rows_in
+            if report["state"] == "missing" or next(answered)
+        ],
+        key=lambda pair: pair[1]["state"] == "offered",
+    )'''
+
+[[rows]]
+id = "G10_owned_key"
+description = "File an answered row now owned under answered_missing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    match.MatchState.MATCHED: "answered_owned",'''
+new = '''    match.MatchState.MATCHED: "answered_missing",'''

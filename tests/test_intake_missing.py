@@ -307,7 +307,11 @@ def test_a_shorter_rerun_over_the_jobs_earlier_list_refuses_and_says_why(cfg, li
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "intake-list-unusable"
     steps = " ".join(envelope["cause"]["remediation"]["steps"])
-    assert "1 track(s) it names are no longer missing" in steps
+    assert (
+        "1 track(s) it names are not in this one, no longer missing since it was "
+        "written: Lumen Drift - Salt Road"
+    ) in steps
+    assert "this one names are not in it" not in steps
     assert listed.read_bytes() == before
 
 
@@ -358,6 +362,189 @@ def test_a_row_a_person_answered_as_another_track_stays_listed(cfg, library, mon
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["missing"], summary["offered_since"]) == (1, 1, 0)
     assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["202"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-503: an offered row is listable once a person answers it
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def offered_item(job_id: str) -> str:
+    """The review item the worker named on the job's one offered report."""
+    with jobs.open_store() as store:
+        reports = missing_cli.job_reports(store, jobs.get(store, job_id))
+    (report,) = [one for one in reports if one["state"] == "offered"]
+    return report["review_item"]
+
+
+def answer(job_id: str, verdict: str) -> None:
+    code, answered = drive(["review", "resolve", offered_item(job_id), "--verdict", verdict])
+    assert code == int(ExitCode.OK), answered
+
+
+def checks_of(envelope: dict) -> dict[str, dict]:
+    return {check["title"]: check for check in envelope["data"]["checks"]}
+
+
+def test_an_offered_row_rejected_since_is_listed_and_no_longer_offered(cfg, library, monkeypatch):
+    """R-503 as driven: one offered row, answered rejected. The listing used to
+    count it offered on every run after, and nothing it printed could list it."""
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    answer(job_id, "rejected")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["missing"], summary["offered"]) == (3, 3, 0)
+    assert (summary["answered_missing"], summary["answered_owned"]) == (1, 0)
+    assert summary["owned"] == 2
+    assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == [
+        "202", "204", "205",
+    ], "in the playlist's order, not answered rows last"
+    checks = checks_of(envelope)
+    assert checks["offered"]["detail"].startswith("0 offered for review")
+    assert checks["answered"]["detail"].startswith("1 track(s) offered for review")
+    assert "asked again now: 1 missing, 0 in the library" in checks["answered"]["detail"]
+
+
+def test_an_offered_row_accepted_since_is_owned_and_not_listed(cfg, library, monkeypatch):
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    answer(job_id, "accepted")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["owned"], summary["offered"]) == (2, 3, 0)
+    assert (summary["answered_owned"], summary["answered_missing"]) == (1, 0)
+    assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["204", "205"]
+    assert "0 missing, 1 in the library" in checks_of(envelope)["answered"]["detail"]
+
+
+def test_an_offered_row_nobody_answered_is_unchanged_and_asks_nothing(cfg, library, monkeypatch):
+    """UNANSWERED IS TODAY'S BEHAVIOUR. Nothing is asked again, so a job whose
+    only question nobody answered does not need the library, and the item the
+    worker offered is left exactly as it was."""
+    owned(library, "Nova Reef - Tide (Someone Remix).flac")
+    job_id = finished(monkeypatch, [Track("202", "Nova Reef", "Tide")])
+    _code, shown = drive(["review", "show", offered_item(job_id)])
+    (library / "Music").rename(library / "Music-away")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    summary = envelope["data"]["summary"]
+    assert (summary["offered"], summary["missing"], summary["written"]) == (1, 0, 0)
+    assert sum(summary[key] for key in summary if key.startswith("answered_")) == 0
+    assert "then list this again" in checks_of(envelope)["offered"]["detail"]
+    assert drive(["review", "show", offered_item(job_id)])[1]["data"] == shown["data"]
+
+
+def test_a_yes_about_a_copy_that_is_gone_stays_a_question(cfg, library, monkeypatch):
+    """The answer decides as the worker decides it: a yes bound to the copy it
+    was about does not own a different copy held since."""
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    answer(job_id, "accepted")
+    held = library / "Music" / "Nova Reef - Tide (Someone Remix).flac"
+    held.rename(held.with_name("Nova Reef - Tide (Another Remix).flac"))
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["offered"], summary["answered_offered"], summary["written"]) == (1, 1, 2)
+    assert summary["owned"] == 2
+
+
+def test_a_rejected_row_under_a_tombstone_is_suppressed_not_listed(cfg, library, monkeypatch):
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    answer(job_id, "rejected")
+    tombstone(cfg, "Nova Reef", "Tide")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["suppressed"], summary["answered_suppressed"], summary["offered"]) == (1, 1, 0)
+    assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["204", "205"]
+
+
+def test_a_rejection_after_a_listing_refuses_over_the_earlier_list_and_says_why(
+    cfg, library, monkeypatch, tmp_path
+):
+    """The list's name is fixed by the job (R-508 and R-476, out of scope), so a
+    row answered since meets the first listing's bytes. The refusal says a row
+    was answered rather than reading as a stranger's file, and another folder
+    lists it."""
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    _code, first = missing(job_id)
+    listed = Path(first["data"]["summary"]["list"])
+    before = listed.read_bytes()
+    answer(job_id, "rejected")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    steps = " ".join(envelope["cause"]["remediation"]["steps"])
+    assert (
+        "1 track(s) this one names are not in it, missing since it was written: "
+        "Nova Reef - Tide"
+    ) in steps
+    assert "it names are not in this one" not in steps
+    assert listed.read_bytes() == before
+    code, elsewhere = missing(job_id, "--out", str(tmp_path / "fresh"))
+    assert code == int(ExitCode.OK), elsewhere
+    assert elsewhere["data"]["summary"]["written"] == 3
+
+
+def test_the_refusal_names_what_the_earlier_list_holds_not_what_the_job_found(
+    cfg, library, monkeypatch
+):
+    """READ FROM THE EARLIER FILE. The row a person rejected was listed, then
+    landed. Every count the job can give says a row was answered since and
+    none was gained, and the true story is the reverse: the earlier list names
+    a track this one does not, and this one names nothing new."""
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    answer(job_id, "rejected")
+    _code, first = missing(job_id)
+    assert first["data"]["summary"]["written"] == 3
+    owned(library, "Nova Reef - Tide.flac")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    steps = " ".join(envelope["cause"]["remediation"]["steps"])
+    assert (
+        "1 track(s) it names are not in this one, no longer missing since it was "
+        "written: Nova Reef - Tide"
+    ) in steps
+    assert "this one names are not in it" not in steps
+
+
+def test_an_earlier_file_that_is_not_a_list_gives_no_reason_rather_than_a_wrong_one(
+    cfg, library, monkeypatch
+):
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    stranger = lists_dir(library) / f"intake-{job_id}.list.json"
+    stranger.parent.mkdir(parents=True)
+    stranger.write_text("not a list\n")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    steps = " ".join(envelope["cause"]["remediation"]["steps"])
+    assert "earlier copy" not in steps
+    assert "move the file aside" in steps
+    assert stranger.read_text() == "not a list\n"
 
 
 def test_an_unmounted_library_refuses_rather_than_reading_every_row_missing(
@@ -898,6 +1085,21 @@ def test_a_run_asks_each_missing_row_again_as_a_job_does(cfg, library):
     assert (summary["owned_since"], summary["suppressed_since"]) == (2, 1)
     assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["205"]
     assert "land what it downloads" in {c["title"]: c for c in envelope["data"]["checks"]}["written"]["detail"]
+
+
+def test_a_run_lists_an_offered_row_a_person_answered_as_a_job_does(cfg, library):
+    """R-503 over ``--run``: the same lookup, per row, across every job."""
+    mixed_library(library)
+    asked = finished_in_run(cfg, "pl-a", [Track("202", "Nova Reef", "Tide")])
+    finished_in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+    answer(asked, "rejected")
+
+    code, envelope = run_missing()
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["offered"], summary["answered_missing"]) == (2, 0, 1)
+    assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["202", "205"]
 
 
 def test_a_run_whose_rows_were_all_acquired_since_names_no_download(cfg, library):
