@@ -18,6 +18,7 @@ D1 applies. Nothing here names a real volume, a real person, or a real track.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -323,12 +324,13 @@ def test_identify_writes_the_tracklist_naming_every_identified_row_in_order(
     code, envelope = drive(["intake", "identify", str(path)])
 
     assert code == int(ExitCode.OK), envelope
+    # The expected name is spelled out here, not asked of the code under test.
+    token = hashlib.sha256(b"ID3").hexdigest()[:12]
     written = (
         cfg.paths.download_staging
         / intake_cli.TRACKLISTS_DIR
-        / intake_cli.tracklist_name(path, acrcloud.content_digest(path))
+        / f"friday night-{token}.tracklist.txt"
     )
-    assert written.name.startswith("friday night-") and written.name.endswith(".tracklist.txt")
     assert written.read_text(encoding="utf-8") == (
         "Aurora Bloom - Sun Path\nNova Reef - Tide\nMira Vale - Glass Hour\n"
     )
