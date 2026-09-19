@@ -1,0 +1,69 @@
+{
+  "name": "u89-e6",
+  "pass_kind": "light",
+  "branch": "relay/134",
+  "head": "cefd575",
+  "when": "2026-09-19 04:57 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7998,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/routing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/routing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d24071f8a3353ece",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7998,
+    "baseline_collected": 7998,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "E6_vox_warnings",
+      "description": "_vox_subs: drop the vocal writer's per folder warnings",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6538ccc86f474e5c",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 115,
+      "baseline_collected": 115,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_folder_the_vocal_writer_cannot_serve_is_a_warning_and_the_rest_are_served"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    warnings.extend(\n        {\"code\": \"route-write-skipped\", \"message\": text} for text in report.warnings\n    )",
+      "new": ""
+    }
+  ],
+  "dropped": []
+}

@@ -1,0 +1,237 @@
+name = "u89"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_absent_is_default"
+description = "load_vocal_threshold: an absent calibration returns the default cut instead of None, so routing files from a cut nobody fitted"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_metadata_cli.py"]
+old = '''    if not path.is_file():
+        return None'''
+new = '''    if not path.is_file():
+        return DEFAULT_VOCAL_THRESHOLD'''
+
+[[rows]]
+id = "L2_tagging_default"
+description = "vocal_cut: drop the default fallback, so an uncalibrated My Tags pass has no cut"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_metadata_cli.py"]
+old = '''    return DEFAULT_VOCAL_THRESHOLD if threshold is None else threshold'''
+new = '''    return threshold'''
+
+[[rows]]
+id = "I1_inbox_threshold"
+description = "apply_inbox: pass None to the derivation instead of the loaded cut"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''                vocal_threshold=threshold,
+                truth=readings,'''
+new = '''                vocal_threshold=None,
+                truth=readings,'''
+
+[[rows]]
+id = "I2_inbox_load_first"
+description = "apply_inbox: take the cut as None instead of reading it, so a corrupt calibration no longer refuses the inbox"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    threshold = metadata_cli.load_vocal_threshold(cfg)
+    readings = [rebuild.read_truth(Path(item["path"])) for item in items]'''
+new = '''    threshold = None
+    readings = [rebuild.read_truth(Path(item["path"])) for item in items]'''
+
+[[rows]]
+id = "E1_export_threshold"
+description = "plan_export: derive with None instead of the loaded cut"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        declared, readings, vocal_threshold=threshold
+    )'''
+new = '''        declared, readings, vocal_threshold=None
+    )'''
+
+[[rows]]
+id = "E2_no_vox_subs"
+description = "_vox_subs: skip the vocal writer, so no sub exists for the router to splice into"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        written, report = trees.add_vox_playlists(content, declared, tree=tree)'''
+new = '''        written, report = content, trees.VoxReport()'''
+
+[[rows]]
+id = "E3_subs_uncalibrated"
+description = "_vox_subs: drop the calibration condition, so an uncalibrated export gains empty vocal subs"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if threshold is None or not any('''
+new = '''    if not any('''
+
+[[rows]]
+id = "E4_undeclared_sub"
+description = "_vox_subs: drop the declared vocal sub condition, so a taxonomy without one is asked for its display"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if threshold is None or not any(
+        entry.additive and entry.id == trees.VOX_SUB_CLASS for entry in declared.sub_classes
+    ):'''
+new = '''    if threshold is None:'''
+
+[[rows]]
+id = "E5_unreachable_tree"
+description = "_vox_subs: narrow the except to DuplicateFolders, so an export with no routing tree raises"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    except (trees.TreeUnreachable, trees.DuplicateFolders) as exc:'''
+new = '''    except trees.DuplicateFolders as exc:'''
+
+[[rows]]
+id = "E6_vox_warnings"
+description = "_vox_subs: drop the vocal writer's per folder warnings"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    warnings.extend(
+        {"code": "route-write-skipped", "message": text} for text in report.warnings
+    )'''
+new = ''
+
+[[rows]]
+id = "E7_subs_are_a_change"
+description = "apply_export: a run that only created vocal subs writes no file"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if not report.inserted and not rated and not lengthened and not vox_created:'''
+new = '''    if not report.inserted and not rated and not lengthened:'''
+
+[[rows]]
+id = "E8_subs_in_plan"
+description = "plan_export: drop the plan item for each created sub, so the creation is outside the digest"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        {"track_id": "", "destination": created, "vocal": "", "rating": "", "long_track": ""}
+        for created in vox_created'''
+new = '''        {"track_id": "", "destination": created, "vocal": "", "rating": "", "long_track": ""}
+        for created in ()'''
+
+[[rows]]
+id = "E9_vocal_item"
+description = "plan_export: the vocal placement overwrites the energy destination instead of riding as vocal"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        named = vocal if placement.sub == trees.VOX_SUB_CLASS else destined'''
+new = '''        named = destined'''
+
+[[rows]]
+id = "E10_pending_says_subs"
+description = "_export_pending: drop the created sub count from the pending summary"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        added += f", and {vox_created} vocal sub-playlist(s) were created"'''
+new = '''        added += ""'''
+
+[[rows]]
+id = "W1_resort_worker"
+description = "handle_resort: hand the engine None instead of the loaded cut"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        workflow=RESORT_WORKFLOW,
+        # THE CALIBRATED CUT, through the one loader, at the path the frozen
+        # configuration names. None on a library never calibrated (U89, D7).
+        vocal_threshold=metadata_cli.load_vocal_threshold(cfg),'''
+new = '''        workflow=RESORT_WORKFLOW,
+        vocal_threshold=None,'''
+
+[[rows]]
+id = "W2_resort_resume_warning"
+description = "resort _resume: ask the gap for no threshold, the pre U89 constant"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''            *rebuild.not_compared_warnings(rebuild.governed_not_compared(threshold)),'''
+new = '''            *rebuild.not_compared_warnings(rebuild.governed_not_compared(None)),'''
+
+[[rows]]
+id = "W3_resort_resume_loads_first"
+description = "resort _resume: do not read the cut before driving, so a corrupt calibration fails items instead of refusing"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
+        _, warnings = ctx.run_job(store, job)
+        job = jobs.get(store, job.job_id)
+        # THE SAME ENGINE'''
+new = '''        threshold = 0.0
+        _, warnings = ctx.run_job(store, job)
+        job = jobs.get(store, job.job_id)
+        # THE SAME ENGINE'''
+
+[[rows]]
+id = "W4_rebuild_worker"
+description = "cli/rebuild handle: hand the engine None instead of the loaded cut"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        vocal_threshold=metadata_cli.load_vocal_threshold(cfg),'''
+new = '''        vocal_threshold=None,'''
+
+[[rows]]
+id = "W5_rebuild_resume_warning"
+description = "cli/rebuild _resume: ask the gap for no threshold, the pre U89 constant"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''engine.governed_not_compared(threshold)'''
+new = '''engine.governed_not_compared(None)'''
+
+[[rows]]
+id = "W6_rebuild_resume_loads_first"
+description = "cli/rebuild _resume: do not read the cut before driving, so a corrupt calibration fails items instead of refusing"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))'''
+new = '''        threshold = 0.0'''
+
+[[rows]]
+id = "C1_converge_threshold"
+description = "converge _compare: pass None instead of the loaded cut"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''            vocal_threshold=metadata_cli.load_vocal_threshold(cfg),'''
+new = '''            vocal_threshold=None,'''
+
+[[rows]]
+id = "R1_gap_rule_threshold"
+description = "governed_not_compared: ignore the threshold it is handed"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    return not_derived(taxonomy.default_taxonomy(), vocal_threshold=vocal_threshold)'''
+new = '''    return not_derived(taxonomy.default_taxonomy(), vocal_threshold=None)'''
+
+[[rows]]
+id = "R2_required_threshold"
+description = "rebuild_governed_tree: give vocal_threshold back its None default"
+file = "src/cratekit/write/rebuild.py"
+surface = "maintainer"
+tests = ["tests/test_routing_workers.py"]
+old = '''    workflow: str = REBUILD_WORKFLOW,
+    vocal_threshold: float | None,
+) -> RebuildReport:'''
+new = '''    workflow: str = REBUILD_WORKFLOW,
+    vocal_threshold: float | None = None,
+) -> RebuildReport:'''

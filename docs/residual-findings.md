@@ -13662,6 +13662,19 @@ caller rather than imported, so the reader is that caller's.
 **Closes when:** a `load_vocal_threshold(cfg)` beside `energy.load_calibration`
 is what the converge and rebuild callers pass, driven.
 
+**Closed 2026-09-19 on `relay/134`, U89.** `write/metadata_cli.load_vocal_threshold`
+is the one reader: None when the file is absent, and the
+`vocal-calibration-unreadable` refusal R-342 hardened when it is corrupt.
+`vocal_cut` keeps the default cut over it for the My Tags verb. The inbox
+apply, the export route, `converge`, both rebuild workers and both resumes read
+the cut through it and pass it down, and `rebuild_governed_tree` takes it with
+no default. Driven through the command line on a disposable database with a
+calibration of 5.0: a voxlevel of 6 lands under "with vox" on the inbox, the
+rebuild, the resort and the export, and 4 does not. An absent calibration still
+files nothing there and keeps the R-316 warning; a calibrated run carries none.
+Mutation table `docs/mutation/u89.md`, the author's. The filing pass on the
+live library after a calibration is owed to an attended sitting.
+
 ---
 
 ## R-277. A track finalized while the model was unavailable is never scored again
@@ -18043,6 +18056,16 @@ lands under "with vox".
 **Closes when:** a routing pass reads the calibrated cut and fills the sub
 playlists, or both claims are withdrawn.
 
+**Closed 2026-09-19 on `relay/134`, U89.** Both claims stand as written and are
+now true. The routing passes read the calibrated cut (R-276's closing note),
+and on the export medium `trees.add_vox_playlists` has its first caller:
+a calibrated `route inbox --export` gives every genre folder its vocal sub
+before routing, each creation an item in the offered plan and a count in
+`totals.vox_created`, and a second run over its own output creates none. On
+the database medium the membership writer creates the sub where a vocal track
+lands, and a second run creates no second one. Driven in
+`tests/test_routing_workers.py`.
+
 ---
 
 ## R-418. No verb sets a label's track limit or its seed artists
@@ -18728,6 +18751,14 @@ both out of the brief's scope.
 **Closes when:** the vocal gap on a resume comes from the derivation that ran,
 or the decision is confirmed at an attended sitting.
 
+**Narrowed 2026-09-19 on `relay/134`, U89.** The workers now hand the engine a
+threshold, the day this entry named. `governed_not_compared` takes the
+threshold, and each resume reads it through the same loader, at the path the
+same frozen configuration names, as its worker, so the warning no longer
+answers for None over a calibrated job. Still open: the taxonomy half, since
+both sides still assume the shipped one, and the two reads happen at different
+moments, which R-445 records.
+
 ---
 
 ## R-444. A read that opens the database is not told it needs the binding pin, and the pins check cannot say only that
@@ -18755,5 +18786,31 @@ declare it. It becomes a cost if doctor ever reports per verb.
 **Closes when:** the pins check is split into a binding pin every database
 open needs and an application pin only a write needs, and each verb that
 opens the database declares the one it reaches.
+
+---
+
+## R-445. A queued job reads the vocal calibration as it stands when it runs, not as it stood when it was queued
+
+**Found:** 2026-09-19, U89 on `relay/134`, by the review. Read, not driven.
+
+A job freezes its configuration (KTD9), and the vocal calibration is not
+configuration: it is a state file the frozen configuration only locates. The
+rebuild and resort workers read it through `load_vocal_threshold` when each
+item runs, and the resume reads it once just before driving, for the warning.
+So a calibration written between queueing and resuming changes what the job
+files under "with vox", and no drift warning says so. Between the resume's read
+and an item's read the file can also change, and the warning then answers for
+a cut the item did not use.
+
+**Measured cost:** none driven. The new cut is the one a person most likely
+wants, which is why this was taken rather than freezing the value on the
+payload.
+
+**Why not fixed here.** Freezing the cut means a payload field, read by the
+worker in place of the file, which changes what a job records at queue time,
+outside the brief. It is a choice for the person.
+
+**Closes when:** the cut is frozen with the job, or reading it live is
+confirmed at an attended sitting.
 
 ---

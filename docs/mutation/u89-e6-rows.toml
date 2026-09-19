@@ -1,0 +1,13 @@
+name = "u89-e6"
+pass_kind = "light"
+
+[[rows]]
+id = "E6_vox_warnings"
+description = "_vox_subs: drop the vocal writer's per folder warnings"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    warnings.extend(
+        {"code": "route-write-skipped", "message": text} for text in report.warnings
+    )'''
+new = ''

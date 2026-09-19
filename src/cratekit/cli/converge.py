@@ -39,7 +39,7 @@ from cratekit.cli.output import Envelope
 from cratekit.core import config, convergence, rb_writer, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.write import rebuild, routing_pass
+from cratekit.write import metadata_cli, rebuild, routing_pass
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
@@ -117,13 +117,14 @@ def _compare(
             declared=declared,
             rows=rows,
             root_exists=lambda root_id: root_id in known,
-            # NO CALIBRATION IS READ HERE, and the gap is reported rather than
-            # assumed away. The threshold is a value the caller supplies (D7),
-            # nothing in this build reads the calibration file yet, and the
-            # engine names the dimension it therefore did not compare. Passing a
-            # number picked here would be this surface answering a question about
-            # somebody's library on their behalf.
-            vocal_threshold=None,
+            # THE CALIBRATED CUT, through the one loader the routing passes and
+            # the workers use (U89), so this report compares the vocal sub the
+            # same way they fill it. The threshold is a value the caller
+            # supplies (D7). None on a library never calibrated, and the engine
+            # then names the dimension it did not compare. A corrupt calibration
+            # refuses inside this try, so it is this tree's NOT_COMPARED with
+            # the loader's own message rather than the end of the report.
+            vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
         )
     except CratekitError as exc:
         return NOT_COMPARED, exc.cause.message

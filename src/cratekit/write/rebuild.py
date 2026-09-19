@@ -1692,7 +1692,7 @@ def rebuild_governed_tree(
     *,
     tree_id: str,
     workflow: str = REBUILD_WORKFLOW,
-    vocal_threshold: float | None = None,
+    vocal_threshold: float | None,
 ) -> RebuildReport:
     """Open this library's database, rebuild one governed tree, and close it again.
 
@@ -1714,11 +1714,13 @@ def rebuild_governed_tree(
     configuration it holds is the one its job was FROZEN against (KTD9); loading
     a fresh one is the resume bug that rule closes.
 
-    ``vocal_threshold`` IS PASSED IN AND DEFAULTS TO ABSENT, which is the same
-    answer the convergence report gives and for the same reason: nothing in this
-    build reads the calibration file, so a number chosen here would be this layer
-    answering a question about somebody's library on their behalf. The engine
-    names the dimension it therefore did not derive and the report carries it.
+    ``vocal_threshold`` IS PASSED IN AND HAS NO DEFAULT (D7). Each worker reads
+    it through ``metadata_cli.load_vocal_threshold`` at the path the
+    configuration its job was frozen against names, and None is that reader's answer for a library never
+    calibrated, in which case the engine names the dimension it did not derive.
+    It used to default to None, and every caller left it there, so the vocal
+    sub-playlists were never filled (R-276). A required keyword makes a caller
+    that forgets it fail at the call rather than file nothing in silence.
 
     THE ROWS ARE MATERIALIZED BEFORE THE ENGINE IS CALLED. They come from
     :func:`cratekit.write.routing_pass.content_rows`, the one producer that
@@ -1757,17 +1759,22 @@ def rebuild_governed_tree(
         rb_writer.close_db(handle)
 
 
-def governed_not_compared() -> tuple[str, ...]:
+def governed_not_compared(vocal_threshold: float | None) -> tuple[str, ...]:
     """What :func:`rebuild_governed_tree` leaves uncompared, asked without a library.
 
-    THE SAME TWO INPUTS THAT FUNCTION DERIVES WITH: the shipped taxonomy, and no
-    vocal threshold, since the workers hand it none. A resume reports this rather
-    than reading the rebuild's own report because the worker produces no
-    artifact and its report does not outlive the item; re-running the comparison
-    to recover it would walk every file in the library a second time to answer
-    a question that does not depend on any of them.
+    THE SAME TWO INPUTS THAT FUNCTION DERIVES WITH: the shipped taxonomy, and
+    the vocal threshold, which the resume reads through the same loader, at
+    the path the same frozen configuration names, as the worker does. Passed
+    rather than assumed, so
+    the warning stops the moment a calibration is read and the dimension is
+    compared; a constant None here would go on saying "not compared" over a
+    job that filed every vocal track (U89). A resume reports this rather than
+    reading the rebuild's own report because the worker produces no artifact
+    and its report does not outlive the item; re-running the comparison to
+    recover it would walk every file in the library a second time to answer a
+    question that does not depend on any of them.
     """
-    return not_derived(taxonomy.default_taxonomy(), vocal_threshold=None)
+    return not_derived(taxonomy.default_taxonomy(), vocal_threshold=vocal_threshold)
 
 
 __all__ = [

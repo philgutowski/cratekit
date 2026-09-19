@@ -61,7 +61,7 @@ from cratekit.core import (
 )
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.write import rbxml, rebuild, routing_pass, trees
+from cratekit.write import metadata_cli, rbxml, rebuild, routing_pass, trees
 
 #: The session log's name for a write this verb performed, one per verb, so a
 #: person reading the log can tell which act touched their library. Not shared
@@ -227,6 +227,10 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
     native = _native_trees(entries)
     if not native:
         return {"applied": False, "reason": "no-native-tree", "added": 0, "skipped": 0}
+    # THE CALIBRATED CUT, read before the database is opened so a corrupt
+    # calibration refuses before anything is written (U89). None on a library
+    # never calibrated, and the engine then names the dimension it left out.
+    threshold = metadata_cli.load_vocal_threshold(cfg)
     readings = [rebuild.read_truth(Path(item["path"])) for item in items]
     declared = taxonomy.default_taxonomy()
     added = 0
@@ -244,11 +248,7 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
                 cfg,
                 declared,
                 source=entries.derivation_source(tree_id),
-                # NO CALIBRATION IS READ HERE, the same answer the convergence
-                # report gives: nothing in this build reads the calibration file,
-                # and a number picked here would be this surface answering a
-                # question about somebody's library on their behalf.
-                vocal_threshold=None,
+                vocal_threshold=threshold,
                 truth=readings,
             )
             not_compared.update(gaps)
@@ -502,6 +502,50 @@ def _long_tracks(
     return LongPlan(tuple(keys), unreadable)
 
 
+def _vox_subs(
+    cfg: config.Config,
+    declared: taxonomy.Taxonomy,
+    content: bytes,
+    threshold: float | None,
+    warnings: list[dict[str, str]],
+) -> tuple[bytes, tuple[str, ...]]:
+    """Give every genre folder its vocal sub-playlist, before anything is routed.
+
+    Returns the bytes with the subs in place and each ``folder/sub`` created.
+
+    THE ROUTING WRITER DOES NOT CREATE A SUB, by design, so a vocal track could
+    only land under "with vox" in a folder that already had one. This is the
+    source system's ``dj-create-vox-playlists`` run first, on the same bytes, as
+    that system ran it before its vocal routing. It runs only on a CALIBRATED
+    library whose taxonomy declares the vocal sub: with no cut nothing is filed
+    as vocal, and an empty playlist per folder would be a change nobody asked
+    for. It is idempotent, so a second run over its own output creates none.
+
+    The tree is the governed routing tree :func:`apply_export` writes, so the
+    emitter guard is armed for this write as it is for the routing. A tree the
+    vocal writer cannot reach is a warning and the routing still runs, because
+    the routing writer reports the same tree for itself.
+    """
+    if threshold is None or not any(
+        entry.additive and entry.id == trees.VOX_SUB_CLASS for entry in declared.sub_classes
+    ):
+        return content, ()
+    tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
+    try:
+        written, report = trees.add_vox_playlists(content, declared, tree=tree)
+    except (trees.TreeUnreachable, trees.DuplicateFolders) as exc:
+        warnings.append({
+            "code": "route-write-skipped",
+            "message": f"no vocal sub-playlist was created: {exc}",
+        })
+        return content, ()
+    warnings.extend(
+        {"code": "route-write-skipped", "message": text} for text in report.warnings
+    )
+    sub = declared.sub_class(trees.VOX_SUB_CLASS).display
+    return written, tuple(f"{folder}/{sub}" for folder in report.modified)
+
+
 def plan_export(
     cfg: config.Config, export: Path
 ) -> tuple[
@@ -512,12 +556,15 @@ def plan_export(
     list[dict[str, str]],
     list[dict[str, str]],
     tuple[str, ...],
+    tuple[str, ...],
 ]:
     """Read one fresh export and decide where each intake track goes.
 
-    Returns the export's bytes, the plan the bridge writer takes, the star
+    Returns the bytes to write into, the plan the bridge writer takes, the star
     ratings to fill, the long track additions, the items a person is shown, the
-    warnings, and the dimensions not derived.
+    warnings, the dimensions not derived, and the vocal sub-playlists created.
+    The bytes are the export's with any vocal sub-playlist already added, which
+    is why they are returned rather than read again.
 
     THE ROUTING DECISION IS THE NATIVE PATH'S, called rather than restated. The
     readings come from :func:`cratekit.write.rebuild.read_truth`, the placements
@@ -528,8 +575,10 @@ def plan_export(
     not the export's ``Genre`` attribute, for the reason
     :func:`cratekit.core.tags.read_genre_from_file` gives.
 
-    NO CALIBRATION IS READ, the same answer :func:`apply_inbox` gives, so the
-    vocal dimension is named in the last return value rather than derived.
+    THE CALIBRATED CUT IS THE ONE LOADER'S, the same read :func:`apply_inbox`
+    makes (U89). With none the vocal dimension is named in ``gaps`` rather than
+    derived. With one, a vocal track files under the vocal sub as well as its
+    energy sub, and :func:`_vox_subs` has made that sub first.
     """
     if not export.is_file():
         raise _export_refusal(
@@ -550,6 +599,8 @@ def plan_export(
         for track in rbxml.collection_tracks(content)
     }
     warnings: list[dict[str, str]] = []
+    threshold = metadata_cli.load_vocal_threshold(cfg)
+    content, vox_created = _vox_subs(cfg, declared, content, threshold, warnings)
     files: dict[str, list[str]] = {}
     for key in keys:
         row = by_id.get(key)
@@ -572,25 +623,33 @@ def plan_export(
         files.setdefault(str(path), []).append(key)
 
     readings = [rebuild.read_truth(Path(path)) for path in files]
-    placements, gaps = rebuild.derive_from_taxonomy(declared, readings, vocal_threshold=None)
+    placements, gaps = rebuild.derive_from_taxonomy(
+        declared, readings, vocal_threshold=threshold
+    )
     plan: dict[tuple[str, str], list[str]] = {}
     destined: dict[str, str] = {}
+    vocal: dict[str, str] = {}
     for placement in placements:
         folder, sub = routing_pass.destination(declared, placement.bucket, placement.sub)
+        named = vocal if placement.sub == trees.VOX_SUB_CLASS else destined
         for key in files[placement.location]:
             plan.setdefault((folder, sub), []).append(key)
-            destined[key] = f"{folder}/{sub}"
+            named[key] = f"{folder}/{sub}"
     ratings = _ratings(declared, placements, readings, files, by_id)
     long_plan = _long_tracks(declared, content, by_id, warnings)
     lengthy = set(long_plan.keys)
     playlist = declared.long_tracks.display if declared.long_tracks else ""
     # The rating and the long track playlist ride the item, so both are inside
     # the digest a person approves: a write nobody was shown is a write nobody
-    # agreed to. A long track outside the intake gets an item of its own.
+    # agreed to. A long track outside the intake gets an item of its own, and so
+    # does each vocal sub-playlist this run creates, with no track and the new
+    # playlist as its destination. A vocal track's second placement rides as
+    # ``vocal``, beside the energy sub it also files into.
     items = [
         {
             "track_id": key,
             "destination": destined.get(key, ""),
+            "vocal": vocal.get(key, ""),
             "rating": str(ratings[key]) if key in ratings else "",
             "long_track": playlist if key in lengthy else "",
         }
@@ -598,11 +657,15 @@ def plan_export(
     ]
     intake = set(keys)
     items += [
-        {"track_id": key, "destination": "", "rating": "", "long_track": playlist}
+        {"track_id": key, "destination": "", "vocal": "", "rating": "", "long_track": playlist}
         for key in long_plan.keys
         if key not in intake
     ]
-    return content, plan, ratings, long_plan, items, warnings, gaps
+    items += [
+        {"track_id": "", "destination": created, "vocal": "", "rating": "", "long_track": ""}
+        for created in vox_created
+    ]
+    return content, plan, ratings, long_plan, items, warnings, gaps, vox_created
 
 
 def apply_export(
@@ -612,6 +675,7 @@ def apply_export(
     plan: dict[tuple[str, str], list[str]],
     ratings: dict[str, int],
     long_plan: LongPlan = LongPlan(),
+    vox_created: tuple[str, ...] = (),
 ) -> tuple[Path | None, trees.RouteReport, int, int, str | None]:
     """Write the plan into a copy of the export, beside it, never in place.
 
@@ -636,7 +700,9 @@ def apply_export(
     NOTHING CHANGED IS NOTHING WRITTEN. A file identical in every routed byte
     to the export would still be a file somebody is told to import. A track
     already filed and still unrated is a change, so a pass that only rates
-    writes a file, and so is a long track the playlist lacks.
+    writes a file, and so is a long track the playlist lacks. So is a vocal
+    sub-playlist ``content`` already gained from :func:`_vox_subs`, which is
+    the new node this file exists to carry into rekordbox.
 
     THE LONG TRACK PLAYLIST IS WRITTEN LAST and ONCE, add only, as the source
     system wrote it after the ratings. It is a direct child of the playlist
@@ -652,7 +718,7 @@ def apply_export(
         lengthened, long_warning = trees.add_to_root_playlist(
             declared.long_tracks.display, long_plan.keys, buffer
         )
-    if not report.inserted and not rated and not lengthened:
+    if not report.inserted and not rated and not lengthened and not vox_created:
         return None, report, rated, lengthened, long_warning
     destination = export.with_name(export.stem + ROUTED_SUFFIX)
     config.atomic_write_bytes(bytes(buffer), destination)
@@ -667,12 +733,15 @@ def _export_pending(
     rated: int,
     lengthened: int = 0,
     playlist: str = "",
+    vox_created: int = 0,
 ) -> PendingHumanAction:
     added = (
         f", and {lengthened} long track(s) were added to the {playlist!r} playlist"
         if lengthened
         else ""
     )
+    if vox_created:
+        added += f", and {vox_created} vocal sub-playlist(s) were created"
     return PendingHumanAction(
         kind="rekordbox_import",
         id=new_pending_id(run_id),
@@ -731,7 +800,9 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             origin=("routing_cli",),
             detail={"root": str(cfg.library.root), "export": str(export)},
         )
-    content, plan, ratings, long_plan, items, warnings, gaps = plan_export(cfg, export)
+    content, plan, ratings, long_plan, items, warnings, gaps, vox_created = plan_export(
+        cfg, export
+    )
     offered = _plan(items, kind="inbox-export")
     option = _apply_gate(ctx, offered)
     if option != "apply":
@@ -741,7 +812,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             warnings=warnings,
         )
     destination, report, rated, lengthened, long_warning = apply_export(
-        cfg, export, content, plan, ratings, long_plan
+        cfg, export, content, plan, ratings, long_plan, vox_created
     )
     # ONE CODE FOR EVERY SKIPPED WRITE, because the writer reports a missing
     # tree, a missing genre folder and a missing sub as sentences and the
@@ -777,6 +848,10 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         rated=rated,
         long_added=lengthened,
         duration_unreadable=long_plan.unreadable,
+        # THE PLAN'S LIST, and the writer's too: the subs are in the bytes the
+        # writer was handed, and a sub created is a change, so whenever this
+        # list is not empty a file was written and carries every one of them.
+        vox_created=list(vox_created),
         created=list(report.created),
         output=None if destination is None else str(destination),
         not_derived=list(gaps),
@@ -795,6 +870,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             rated,
             lengthened,
             declared.long_tracks.display if declared.long_tracks else "",
+            len(vox_created),
         ),
         warnings=warnings,
     )
@@ -960,12 +1036,20 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                 origin=("routing_cli",),
                 detail={"job_id": job.job_id},
             )
+        # THE CUT THE WORKER WILL READ, read the same way first (U89): the one
+        # loader, at the path the frozen configuration names. The file itself
+        # is read as it stands, not frozen with the job. A corrupt calibration
+        # refuses here before any item is claimed.
+        threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
         # THE SAME ENGINE AS THE REBUILD, SO THE SAME GAP (R-316). Only on the
         # branch that drove, because a job finished on entry was compared by an
         # earlier run and this one compared nothing at all.
-        warnings = (*warnings, *rebuild.not_compared_warnings(rebuild.governed_not_compared()))
+        warnings = (
+            *warnings,
+            *rebuild.not_compared_warnings(rebuild.governed_not_compared(threshold)),
+        )
     if not job.is_open() and job.cause is not None:
         raise CratekitError(job.cause)
     return ctx.envelope(data=_reported(store, job), warnings=warnings)
@@ -1020,7 +1104,14 @@ def handle_resort(job, item, cfg) -> None:
     loads one.
     """
     del job
-    rebuild.rebuild_governed_tree(cfg, tree_id=str(item.item_id), workflow=RESORT_WORKFLOW)
+    rebuild.rebuild_governed_tree(
+        cfg,
+        tree_id=str(item.item_id),
+        workflow=RESORT_WORKFLOW,
+        # THE CALIBRATED CUT, through the one loader, at the path the frozen
+        # configuration names. None on a library never calibrated (U89, D7).
+        vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
+    )
     return None
 
 
