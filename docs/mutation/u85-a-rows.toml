@@ -1,0 +1,155 @@
+name = "u85-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_search_skipped_only_with_both"
+description = "A tagged file skips the search whatever its art, so a tagged file with no picture is never given one"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''if existing and settled is not None:'''
+new = '''if existing:'''
+
+[[rows]]
+id = "A2_any_picture_settles"
+description = "A file carrying a picture is treated as needing one, so art it already has is re-downloaded over"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    if pictures:
+        return {"art_fetch": ART_PRESENT'''
+new = '''    if False:
+        return {"art_fetch": ART_PRESENT'''
+
+[[rows]]
+id = "A3_unreadable_is_unchecked"
+description = "A file whose pictures cannot be read raises out of the item instead of reporting unchecked"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''except (tags.UnsupportedContainer, art.UnreadableFile) as exc:'''
+new = '''except tags.UnsupportedContainer as exc:'''
+
+[[rows]]
+id = "A4_no_hit_guard"
+description = "A search that found nothing reaches hit.art_url on None"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    if hit is None:
+        return result('''
+new = '''    if False:
+        return result('''
+
+[[rows]]
+id = "A5_no_url_guard"
+description = "A hit naming no picture is still fetched, with an empty URL"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    if not hit.art_url:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A6_no_fetch_guard"
+description = "No fetch supplied calls None and reports the TypeError as a fetch failure"
+file = "src/cratekit/tagging/tag.py"
+surface = "maintainer"
+old = '''    if fetch_image is None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A7_fetch_raise_is_a_decline"
+description = "A fetch that raises fails the item instead of reporting art unavailable"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    except Exception as exc:  # noqa: BLE001
+        return result(ART_UNAVAILABLE, f"the picture at {url} could not be fetched: {exc}")'''
+new = '''    except ZeroDivisionError as exc:  # noqa: BLE001
+        return result(ART_UNAVAILABLE, f"the picture at {url} could not be fetched: {exc}")'''
+
+[[rows]]
+id = "A8_empty_bytes_guard"
+description = "No bytes go on to the re-encoder instead of being reported as not fetched"
+file = "src/cratekit/tagging/tag.py"
+surface = "maintainer"
+old = '''    if not data:
+        return result(ART_UNAVAILABLE'''
+new = '''    if False:
+        return result(ART_UNAVAILABLE'''
+
+[[rows]]
+id = "A9_not_a_picture_is_a_decline"
+description = "Bytes that are not an image fail the item instead of reporting art unavailable"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    except art.ArtError as exc:
+        return result(ART_UNAVAILABLE, f"what'''
+new = '''    except ZeroDivisionError as exc:
+        return result(ART_UNAVAILABLE, f"what'''
+
+[[rows]]
+id = "A10_new_art_is_cdj_sized"
+description = "New art is embedded at its native size instead of the 800 square CDJ size"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''cdj = art.to_cdj_jpeg(data)'''
+new = '''cdj = art.to_cdj_jpeg(data, size=None)'''
+
+[[rows]]
+id = "A11_failed_write_is_error"
+description = "A write the file refused is reported embedded"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    if not written:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A12_write_raise_absorbed"
+description = "A writer that raises fails the item instead of reporting error"
+file = "src/cratekit/tagging/tag.py"
+surface = "maintainer"
+old = '''    except Exception as exc:  # noqa: BLE001 - the contract is never raises
+        return result(ART_ERROR'''
+new = '''    except ZeroDivisionError as exc:  # noqa: BLE001 - the contract is never raises
+        return result(ART_ERROR'''
+
+[[rows]]
+id = "A13_art_only_refusal_absorbed"
+description = "A refusal on a tagged file searched only for art fails the item again"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    except CratekitError as exc:'''
+new = '''    except ZeroDivisionError as exc:'''
+
+[[rows]]
+id = "A14_untagged_refusal_propagates"
+description = "A refusal on an untagged file is absorbed and the item reports done having learned nothing"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        if not existing:
+            raise
+'''
+new = ""
+
+[[rows]]
+id = "A15_worker_hands_in_the_fetch"
+description = "The worker passes no image fetch, so the verb never embeds art"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''        fetch_image=searchers.for_images(),
+'''
+new = ""
+
+[[rows]]
+id = "A16_summary_counts_art"
+description = "The job summary never counts an art status"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''            art_fetch[fetched] += 1'''
+new = '''            pass'''
+
+[[dropped]]
+id = "D1_genre_saved_before_art"
+description = "Swap the order so the picture is embedded before the genre write"
+reason = "not a one site revert; the order guards against a genre save rebuilding the tag block, and no container measured here drops a picture on a genre write"
+
+[[dropped]]
+id = "D2_artifact_carries_art_fetch"
+description = "Remove the art_fetch key from the item artifact"
+reason = "same family as A16: the summary reads the artifact, so the worker test that kills A16 reads this key"
