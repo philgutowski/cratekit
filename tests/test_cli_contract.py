@@ -1437,6 +1437,9 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # refuses from the vocabulary before a library walk or a search, and no
         # contract run can ever reach the shipped searcher's subprocess.
         "acquire.fallback": [str(library / "no-such-list.txt")],
+        # U81. The same absent list, refused from the vocabulary before any
+        # library walk, queue or download.
+        "acquire.fallback-fetch": [str(library / "no-such-list.txt")],
         # U23. The census takes no positional argument at all: a taxonomy
         # declares exactly one routing tree by stable identifier, so a flag
         # naming one would be a second opinion about a value the template
