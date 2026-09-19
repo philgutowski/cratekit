@@ -84,11 +84,15 @@ def _swept_pass(monkeypatch, *listed, failing: tuple[str, ...] = ()) -> tuple[ob
     return fake, missing_cli.synced_name(run_id)
 
 
-def _land(cfg: config.Config, name: str, *track_ids: str, named: bool = True) -> Path:
+def _land(
+    cfg: config.Config, name: str, *track_ids: str, named: bool = True, spelled: Path | None = None
+) -> Path:
     """Put each track's file where a landing puts it, and write the intake file.
 
     ``named=False`` leaves the files out of the intake file, which is a track
-    the library holds that this landing did not bring.
+    the library holds that this landing did not bring. ``spelled`` is another
+    way to reach the library root, a link to it, and the intake file then
+    spells every file through that and not through the configured root.
     """
     batch = Path(cfg.library.root) / cfg.library.music_dir / name
     batch.mkdir(parents=True, exist_ok=True)
@@ -104,9 +108,10 @@ def _land(cfg: config.Config, name: str, *track_ids: str, named: bool = True) ->
         if named:
             paths.append(path)
     for number, path in enumerate(paths, start=1):
+        said = path if spelled is None else spelled / path.relative_to(cfg.library.root)
         collection.append(
             f'    <TRACK TrackID="{number}" Name="{path.stem}" Artist="A" '
-            f'Location="{locations.location_url(path)}"/>'
+            f'Location="{locations.location_url(said)}"/>'
         )
     collection.append("  </COLLECTION>")
     xml = land_cli.intake_file(cfg, name)
@@ -292,6 +297,29 @@ def test_a_row_the_library_holds_and_the_file_does_not_name_is_owned(slim, monke
     assert code == int(ExitCode.OK), done
     item = _by_id(done)["pl-a"]
     assert (item["action"], item["landed"], item["owned"]) == ("marked", 1, 1)
+
+
+def test_a_library_reached_through_a_link_still_reads_its_files_as_landed(
+    slim, monkeypatch, tmp_path
+):
+    """Row B2 of ``docs/mutation/u82-b.md`` killed nothing until this existed.
+
+    The intake file spells every landed file through a link to the library and
+    the index spells it through the configured root, which is an ordinary state
+    on a volume mounted under two names. Compared as spelled, no landed file is
+    found in the intake file and the screen credits the landing with nothing.
+    """
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    bind_account(monkeypatch, outbound_fakes.FakeAccount())
+    link = tmp_path / "the-same-library"
+    link.symlink_to(slim.library.root, target_is_directory=True)
+    xml = _land(slim, name, "101", "102", "201", spelled=link)
+    assert str(link) in xml.read_text(encoding="utf-8")
+
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    item = _by_id(done)["pl-a"]
+    assert (item["landed"], item["owned"]) == (2, 0)
 
 
 def test_a_track_two_playlists_share_holds_both_back_until_it_lands(slim, monkeypatch):
