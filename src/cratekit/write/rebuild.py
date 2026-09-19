@@ -109,6 +109,10 @@ REBUILD_WORKFLOW = "tree-rebuild"
 #: than spelled at the two places that produce and consume it.
 VOCAL_DIMENSION = "vocal"
 
+#: The envelope warning code a surface carries when the vocal dimension was not
+#: derived this run (R-316). One spelling, owned beside the dimension it names.
+VOCAL_NOT_COMPARED = "vocal-dimension-not-compared"
+
 
 # ---------------------------------------------------------------------------
 # What the declaration says a tree should hold
@@ -264,9 +268,7 @@ def derive_from_taxonomy(
             detail={"sub_classes": unknown},
         )
 
-    gaps: list[str] = []
-    if additive and vocal_threshold is None:
-        gaps.append(VOCAL_DIMENSION)
+    gaps = not_derived(declared, vocal_threshold=vocal_threshold)
 
     out: list[DeclaredPlacement] = []
     for entry in truth:
@@ -287,7 +289,50 @@ def derive_from_taxonomy(
                 out.append(
                     DeclaredPlacement(entry.location, resolution.bucket_id, sub_class.id)
                 )
-    return tuple(out), tuple(gaps)
+    return tuple(out), gaps
+
+
+def not_derived(
+    declared: taxonomy.Taxonomy, *, vocal_threshold: float | None
+) -> tuple[str, ...]:
+    """The declared dimensions a derivation over these inputs does not compare.
+
+    THE RULE :func:`derive_from_taxonomy` RETURNS AS ITS GAPS, and it calls this
+    rather than restating it. It depends on the declaration and the threshold
+    alone, never on the readings, which is what lets a surface that never held
+    the derivation's report still say what it left out (R-316).
+    """
+    additive = any(entry.additive for entry in declared.sub_classes)
+    return (VOCAL_DIMENSION,) if additive and vocal_threshold is None else ()
+
+
+def not_compared_warnings(not_compared: Iterable[str]) -> tuple[dict[str, str], ...]:
+    """The envelope warning for a declared vocal dimension this run did not file.
+
+    A warning rather than a refusal: the rest of the tree was written and is
+    right. What the person needs is to know that a clean job is not a filed
+    vocal sub-playlist, which the engine has always said and no surface
+    repeated. The shape is the ``{code, message}`` that
+    ``handlers.drift_warnings`` established, and it is one wording for the
+    inbox apply and the rebuild and resort resumes, so they cannot drift apart.
+
+    THE EXPORT ROUTE DOES NOT CARRY IT, deliberately. It already reports the
+    same gaps in its totals under ``not_derived``, and it reads any warning as
+    a sign a write was skipped, so adding this one there would turn a run that
+    simply had nothing to route into one reported as blocked.
+    """
+    if VOCAL_DIMENSION not in tuple(not_compared):
+        return ()
+    return (
+        {
+            "code": VOCAL_NOT_COMPARED,
+            "message": (
+                "this library's taxonomy declares a vocal sub-playlist and no vocal "
+                "calibration was read, so no track was filed into it this run and "
+                "nothing checked whether one belonged there"
+            ),
+        },
+    )
 
 
 #: One derivation per source a tree may cut over on. A MAPPING rather than a
@@ -1712,12 +1757,26 @@ def rebuild_governed_tree(
         rb_writer.close_db(handle)
 
 
+def governed_not_compared() -> tuple[str, ...]:
+    """What :func:`rebuild_governed_tree` leaves uncompared, asked without a library.
+
+    THE SAME TWO INPUTS THAT FUNCTION DERIVES WITH: the shipped taxonomy, and no
+    vocal threshold, since the workers hand it none. A resume reports this rather
+    than reading the rebuild's own report because the worker produces no
+    artifact and its report does not outlive the item; re-running the comparison
+    to recover it would walk every file in the library a second time to answer
+    a question that does not depend on any of them.
+    """
+    return not_derived(taxonomy.default_taxonomy(), vocal_threshold=None)
+
+
 __all__ = [
     "DERIVATIONS",
     "REBUILD_ACTOR",
     "REBUILD_ANSWERS_KIND",
     "REBUILD_WORKFLOW",
     "VOCAL_DIMENSION",
+    "VOCAL_NOT_COMPARED",
     "ConvergenceReport",
     "DeclaredPlacement",
     "Destination",
@@ -1732,7 +1791,10 @@ __all__ = [
     "close_restore_marker",
     "declared_membership",
     "derive_from_taxonomy",
+    "governed_not_compared",
     "library_truth",
+    "not_compared_warnings",
+    "not_derived",
     "plan_destinations",
     "read_tree",
     "read_truth",

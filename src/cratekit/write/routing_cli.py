@@ -231,12 +231,16 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
     declared = taxonomy.default_taxonomy()
     added = 0
     skipped = 0
+    # WHAT THE ENGINE SAID IT DID NOT COMPARE, kept rather than dropped (R-316).
+    # Dropping it is how a confirmed apply over a taxonomy that declares a vocal
+    # sub-playlist reported an ordinary write while filing nothing into it.
+    not_compared: set[str] = set()
     handle = rb_writer.open_db(cfg=cfg)
     try:
         known = {str(row.ID) for row in handle.get_playlist()}
         rows = list(routing_pass.content_rows(handle))
         for tree_id in native:
-            placements, _gaps = rebuild.declared_membership(
+            placements, gaps = rebuild.declared_membership(
                 cfg,
                 declared,
                 source=entries.derivation_source(tree_id),
@@ -247,6 +251,7 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
                 vocal_threshold=None,
                 truth=readings,
             )
+            not_compared.update(gaps)
             root_id = tree_registry.anchored_root(
                 tree_id, entries, root_exists=lambda root: root in known
             )
@@ -286,6 +291,7 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
         "added": added,
         "skipped": skipped,
         "trees": len(native),
+        "not_compared": tuple(sorted(not_compared)),
     }
 
 
@@ -823,13 +829,17 @@ def route_inbox(ctx) -> Envelope:
             outcome=Outcome.NO_OP,
         )
     result = apply_inbox(cfg, items)
+    # THE GAPS RIDE AS A WARNING, NOT IN THE TOTALS. They are what this run did
+    # not compare rather than a count of what it did, and the warning is the one
+    # place every surface over this engine says so in the same words.
+    not_compared = result.pop("not_compared", ())
     return ctx.envelope(
         data=_plan(items, kind="inbox", **result),
         outcome=Outcome.OK if result["applied"] else Outcome.NO_OP,
         warnings=(
             [{"code": "no-native-tree", "message": EXPORT_REMEDY}]
             if result["reason"] == "no-native-tree"
-            else []
+            else list(rebuild.not_compared_warnings(not_compared))
         ),
     )
 
@@ -948,6 +958,10 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             )
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
+        # THE SAME ENGINE AS THE REBUILD, SO THE SAME GAP (R-316). Only on the
+        # branch that drove, because a job finished on entry was compared by an
+        # earlier run and this one compared nothing at all.
+        warnings = (*warnings, *rebuild.not_compared_warnings(rebuild.governed_not_compared()))
     if not job.is_open() and job.cause is not None:
         raise CratekitError(job.cause)
     return ctx.envelope(data=_reported(store, job), warnings=warnings)

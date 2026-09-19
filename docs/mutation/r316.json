@@ -1,0 +1,472 @@
+{
+  "name": "r316",
+  "pass_kind": "light",
+  "branch": "relay/107",
+  "head": "ff528a4",
+  "when": "2026-09-19 04:08 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7972,
+  "baseline_exit": 0,
+  "pytest_runs": 18,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/routing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/routing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d24071f8a3353ece",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7972,
+    "baseline_collected": 7972,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_inbox_drops_gaps",
+      "description": "Restore the defect: apply_inbox drops the gaps declared_membership returns, as the old _gaps unpack did",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bc02272b00614905",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_over_the_shipped_taxonomy_says_the_vocal_dimension_was_not_compared"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            not_compared.update(gaps)\n",
+      "new": ""
+    },
+    {
+      "id": "M2_route_inbox_no_warning",
+      "description": "route_inbox keeps the gaps but emits no warning for them on a native library",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7f7edd88aa2b298b",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_over_the_shipped_taxonomy_says_the_vocal_dimension_was_not_compared"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            else list(rebuild.not_compared_warnings(not_compared))",
+      "new": "            else []"
+    },
+    {
+      "id": "M3_inbox_gaps_leak_into_totals",
+      "description": "route_inbox reads the gaps without taking them out of the result, so they ride in the plan totals",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b8d492b63517afd0",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_over_the_shipped_taxonomy_says_the_vocal_dimension_was_not_compared"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    not_compared = result.pop(\"not_compared\", ())",
+      "new": "    not_compared = result.get(\"not_compared\", ())"
+    },
+    {
+      "id": "M4_rebuild_resume_no_warning",
+      "description": "The rebuild resume drives the job and adds no vocal warning, the defect on the rebuild surface",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dd8c1efc8d16f1a6",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift[rebuild]",
+        "tests/test_routing_workers.py::test_a_resume_that_drove_nothing_carries_no_vocal_warning[rebuild]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        warnings = (*warnings, *engine.not_compared_warnings(engine.governed_not_compared()))\n",
+      "new": ""
+    },
+    {
+      "id": "M5_rebuild_resume_replaces_drift",
+      "description": "The rebuild resume's vocal warning replaces the drift warnings instead of sitting beside them",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5a8ddc593f4bbbb1",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift[rebuild]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        warnings = (*warnings, *engine.not_compared_warnings(engine.governed_not_compared()))",
+      "new": "        warnings = (*engine.not_compared_warnings(engine.governed_not_compared()),)"
+    },
+    {
+      "id": "M6_rebuild_warns_off_the_driven_branch",
+      "description": "The rebuild resume warns on every resume, including a job already finished on entry that this run did not drive",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "79262bf05c11bbda",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift[rebuild]",
+        "tests/test_routing_workers.py::test_a_resume_that_drove_nothing_carries_no_vocal_warning[rebuild]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not job.is_open() and job.cause is not None:\n        raise CratekitError(job.cause)\n    return ctx.envelope(\n        data=_reported(store, job),",
+      "new": "    warnings = (*warnings, *engine.not_compared_warnings(engine.governed_not_compared()))\n    if not job.is_open() and job.cause is not None:\n        raise CratekitError(job.cause)\n    return ctx.envelope(\n        data=_reported(store, job),"
+    },
+    {
+      "id": "M7_resort_resume_no_warning",
+      "description": "The resort resume drives the same engine and adds no vocal warning",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "74dae62e6605f386",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift[resort]",
+        "tests/test_routing_workers.py::test_a_resume_that_drove_nothing_carries_no_vocal_warning[resort]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        warnings = (*warnings, *rebuild.not_compared_warnings(rebuild.governed_not_compared()))\n",
+      "new": ""
+    },
+    {
+      "id": "M8_not_derived_ignores_declaration",
+      "description": "not_derived names the vocal gap whether or not the taxonomy declares an additive sub-playlist",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "04f37850312b8020",
+      "subset": [
+        "tests/test_routing_workers.py",
+        "tests/test_rebuild.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 191,
+      "baseline_collected": 191,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_taxonomy_with_no_vocal_dimension_warns_on_neither_surface"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (VOCAL_DIMENSION,) if additive and vocal_threshold is None else ()",
+      "new": "    return (VOCAL_DIMENSION,) if vocal_threshold is None else ()"
+    },
+    {
+      "id": "M9_not_derived_ignores_threshold",
+      "description": "not_derived names the vocal gap even when a threshold was handed in and the dimension was derived",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a8636a0fe9715c84",
+      "subset": [
+        "tests/test_routing_workers.py",
+        "tests/test_rebuild.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 191,
+      "baseline_collected": 191,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rebuild.py::test_a_vocal_track_lands_in_its_energy_sub_AND_the_additive_one",
+        "tests/test_routing_workers.py::test_the_gap_rule_is_the_derivations_own"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (VOCAL_DIMENSION,) if additive and vocal_threshold is None else ()",
+      "new": "    return (VOCAL_DIMENSION,) if additive else ()"
+    },
+    {
+      "id": "M10_derivation_restates_no_gap",
+      "description": "derive_from_taxonomy stops calling not_derived and reports no gaps, so the resume and the derivation disagree",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "39abdb6ce05c88bd",
+      "subset": [
+        "tests/test_routing_workers.py",
+        "tests/test_rebuild.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 191,
+      "baseline_collected": 191,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rebuild.py::test_a_library_with_no_vocal_calibration_reports_what_it_did_not_compare",
+        "tests/test_rebuild.py::test_the_derivation_routes_a_file_through_the_declared_rules",
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_over_the_shipped_taxonomy_says_the_vocal_dimension_was_not_compared",
+        "tests/test_routing_workers.py::test_the_gap_rule_is_the_derivations_own"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    gaps = not_derived(declared, vocal_threshold=vocal_threshold)",
+      "new": "    gaps = ()"
+    },
+    {
+      "id": "M11_warning_ignores_dimension",
+      "description": "not_compared_warnings warns whatever the gaps say, so a taxonomy with no vocal dimension is warned about",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "feb320e91d6d4a96",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_taxonomy_with_no_vocal_dimension_warns_on_neither_surface",
+        "tests/test_routing_workers.py::test_the_warning_code_is_the_locked_spelling"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if VOCAL_DIMENSION not in tuple(not_compared):\n        return ()\n",
+      "new": ""
+    },
+    {
+      "id": "M12_code_respelled",
+      "description": "The locked warning code is respelled to a realistic nearby value",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d7af3017fafcf258",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_warning_code_is_the_locked_spelling"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "VOCAL_NOT_COMPARED = \"vocal-dimension-not-compared\"",
+      "new": "VOCAL_NOT_COMPARED = \"vocal-dimension-not-derived\""
+    },
+    {
+      "id": "M13_governed_passes_a_threshold",
+      "description": "governed_not_compared asks with a threshold the workers never hand the engine, so the resume reports no gap",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "47a08096d6112fe8",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift[rebuild]",
+        "tests/test_routing_workers.py::test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift[resort]",
+        "tests/test_routing_workers.py::test_a_resume_that_drove_nothing_carries_no_vocal_warning[rebuild]",
+        "tests/test_routing_workers.py::test_a_resume_that_drove_nothing_carries_no_vocal_warning[resort]",
+        "tests/test_routing_workers.py::test_the_gap_rule_is_the_derivations_own"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return not_derived(taxonomy.default_taxonomy(), vocal_threshold=None)",
+      "new": "    return not_derived(taxonomy.default_taxonomy(), vocal_threshold=0.5)"
+    },
+    {
+      "id": "S1_existing_rebuild_failed_job_is_not_ok",
+      "description": "Sample of an existing guard: the rebuild resume stops raising the cause of a job that ended badly (R-225)",
+      "file": "src/cratekit/cli/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "034b69a7bef1dab0",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 88,
+      "baseline_collected": 88,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit[rebuild]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not job.is_open() and job.cause is not None:\n        raise CratekitError(job.cause)\n    return ctx.envelope(\n        data=_reported(store, job),",
+      "new": "    return ctx.envelope(\n        data=_reported(store, job),"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_message_reworded",
+      "description": "Reword the warning message so it no longer names the vocal dimension",
+      "reason": "ranked below the rows above: the message is prose under a locked code, and the one assertion on it checks the word vocal only"
+    },
+    {
+      "id": "D2_resort_replaces_drift",
+      "description": "The resort resume's vocal warning replaces its drift warnings",
+      "reason": "same shape as M5 on the rebuild surface, and the parametrized drift test runs both verbs, so M5 measures the assertion both share"
+    }
+  ]
+}

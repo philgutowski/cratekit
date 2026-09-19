@@ -176,6 +176,13 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             )
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
+        # WHAT THE REBUILD DID NOT COMPARE, beside the drift (R-316). The worker
+        # keeps its None, so the engine is asked the question its report would
+        # have answered: the gap depends on the declaration and the threshold,
+        # never on the library, and the worker hands the engine no threshold.
+        # Only on the branch that drove, because a queue-only answer and a job
+        # finished on entry compared nothing in this run.
+        warnings = (*warnings, *engine.not_compared_warnings(engine.governed_not_compared()))
     if not job.is_open() and job.cause is not None:
         raise CratekitError(job.cause)
     return ctx.envelope(

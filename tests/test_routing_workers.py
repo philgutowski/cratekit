@@ -846,6 +846,183 @@ def test_a_resume_reads_no_registry_of_its_own(acknowledged, native):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# R-316: the dimension the engine said it did not compare reaches the envelope
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The shipped taxonomy declares ``with_vox`` as an additive sub-playlist and no
+# worker reads a vocal calibration, so the engine names ``vocal`` in its gaps.
+# Before this, the inbox dropped that tuple and the rebuild worker dropped the
+# whole report, and a person saw a clean job over a dimension nothing filed.
+
+
+def _vocal_warnings(envelope: dict) -> list[dict]:
+    return [w for w in envelope["warnings"] if w["code"] == rebuild.VOCAL_NOT_COMPARED]
+
+
+@pytest.fixture
+def no_vocal_dimension(monkeypatch):
+    """The shipped taxonomy with its additive sub-playlists taken out.
+
+    A declaration with nothing additive has no vocal dimension to leave
+    uncompared, so a warning here would be the surface crying wolf, which
+    teaches a person to skip the warning that is real.
+    """
+    import dataclasses
+
+    shipped = taxonomy.default_taxonomy()
+    assert any(entry.additive for entry in shipped.sub_classes), (
+        "the shipped taxonomy no longer declares an additive sub-playlist, so the "
+        "tests beside this fixture no longer exercise the gap they are about"
+    )
+    narrowed = dataclasses.replace(
+        shipped,
+        sub_classes=tuple(entry for entry in shipped.sub_classes if not entry.additive),
+    )
+    monkeypatch.setattr(taxonomy, "default_taxonomy", lambda: narrowed)
+
+
+def test_a_confirmed_inbox_over_the_shipped_taxonomy_says_the_vocal_dimension_was_not_compared(
+    acknowledged, native
+):
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert applied["data"]["totals"]["applied"] is True
+    assert _membership(acknowledged, native) == {"2"}
+    warned = _vocal_warnings(applied)
+    assert len(warned) == 1, applied["warnings"]
+    assert set(warned[0]) == {"code", "message"}
+    assert "vocal" in warned[0]["message"]
+    assert "not_compared" not in applied["data"]["totals"], (
+        "the gap leaked into the plan totals, which is the payload a person's "
+        "decision is shown against, rather than riding as a warning"
+    )
+
+
+def test_a_declined_inbox_carries_no_vocal_warning(acknowledged, native):
+    """Nothing was derived on the declined branch, so nothing went uncompared."""
+    del acknowledged, native
+    code, declined = _drive(["-d", "route.inbox.apply=abort", "route", "inbox"])
+    assert code == int(ExitCode.OK), declined
+    assert _vocal_warnings(declined) == []
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
+def test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift(
+    acknowledged, native, argv
+):
+    """The rebuild's envelope carries the gap alongside the drift warning.
+
+    Drift is induced for real, by moving a setting on disk after the job was
+    queued, so the assertion is that the two warnings sit side by side rather
+    than that one replaced the other.
+    """
+    code, queued = _drive(argv)
+    assert code == int(ExitCode.OK), queued
+    assert _vocal_warnings(queued) == [], (
+        "the queue-only answer claimed a comparison nothing has run yet"
+    )
+    job_id = queued["data"]["job_id"]
+
+    moved = config.from_dict(
+        valid_data(
+            Path(acknowledged.library.root),
+            profile={"name": "full"},
+            rekordbox={
+                "pinned_app_version": RECORDED_APP_VERSION,
+                "validated_on": "2026-08-01",
+            },
+            paths={"download_staging": str(Path(acknowledged.library.root).parent / "moved")},
+        )
+    )
+    config.save(moved)
+    config.reset_cache()
+
+    code, done = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert [item.state for item in _items(job_id)] == [jobs.ItemState.DONE]
+    assert _membership(acknowledged, native) == {"1"}
+    codes = [w["code"] for w in done["warnings"]]
+    assert "config-drift" in codes, done["warnings"]
+    assert codes.count(rebuild.VOCAL_NOT_COMPARED) == 1, done["warnings"]
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
+def test_a_resume_that_drove_nothing_carries_no_vocal_warning(acknowledged, native, argv):
+    """A job already finished on entry was compared by an earlier run, not this one."""
+    del acknowledged, native
+    job_id = _drive(argv)[1]["data"]["job_id"]
+    code, first = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), first
+    assert len(_vocal_warnings(first)) == 1, first["warnings"]
+    code, again = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), again
+    assert _vocal_warnings(again) == []
+
+
+def test_a_taxonomy_with_no_vocal_dimension_warns_on_neither_surface(
+    acknowledged, native, no_vocal_dimension
+):
+    del no_vocal_dimension
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert applied["data"]["totals"]["applied"] is True
+    assert _vocal_warnings(applied) == [], applied["warnings"]
+
+    job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
+    code, done = _drive(["rebuild", "--actor", "a-person", "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert [item.state for item in _items(job_id)] == [jobs.ItemState.DONE]
+    assert _membership(acknowledged, native) == {"1", "2"}
+    assert _vocal_warnings(done) == [], done["warnings"]
+
+
+def test_the_rebuild_worker_still_returns_none(acknowledged, native):
+    """``handle`` produces no artifact, and R-316 did not change that.
+
+    Driven for real rather than through a spy, so the None is the worker's own
+    answer after a rebuild that wrote, not a stand in's.
+    """
+    from cratekit.cli import rebuild as rebuild_verb
+
+    item = jobs.Item(job_id="j", item_id=TREE_ID, ordinal=0, state=jobs.ItemState.PENDING)
+    assert rebuild_verb.handle(object(), item, acknowledged) is None
+    assert _membership(acknowledged, native) == {"1"}
+
+
+def test_the_gap_rule_is_the_derivations_own():
+    """``governed_not_compared`` and the derivation answer from one rule.
+
+    The warning on the rebuild's envelope is asked of the engine rather than read
+    off the discarded report, so the two must agree by construction: the gaps the
+    derivation returns over the shipped taxonomy with no threshold are exactly
+    what the resume reports.
+    """
+    shipped = taxonomy.default_taxonomy()
+    truth = [rebuild.Truth(location="/x/a.flac", genre=None, energy=None, voxlevel=None)]
+    _placements, gaps = rebuild.derive_from_taxonomy(shipped, truth, vocal_threshold=None)
+    assert gaps == (rebuild.VOCAL_DIMENSION,)
+    assert rebuild.governed_not_compared() == gaps
+    assert rebuild.derive_from_taxonomy(shipped, truth, vocal_threshold=0.5)[1] == ()
+
+
+def test_the_warning_code_is_the_locked_spelling():
+    """Every other assertion reads the constant, so this is the one that pins it.
+
+    A code is a contract with whoever filters on it, and the brief locked this
+    spelling. Renaming the constant's value would pass every test that compares
+    against the constant.
+    """
+    assert rebuild.VOCAL_NOT_COMPARED == "vocal-dimension-not-compared"
+    (warning,) = rebuild.not_compared_warnings((rebuild.VOCAL_DIMENSION,))
+    assert warning["code"] == "vocal-dimension-not-compared"
+    assert rebuild.not_compared_warnings(()) == ()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # The zero rows the first table found, turned into deaths
 # ═══════════════════════════════════════════════════════════════════════════
 
