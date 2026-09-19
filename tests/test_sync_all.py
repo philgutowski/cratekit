@@ -18,10 +18,12 @@ dispatcher, the real gate flow, the real queue and the real workers.
 from __future__ import annotations
 
 import ast
+import io
 from pathlib import Path
 
 import pytest
 
+from cratekit import cli
 from cratekit.cli import gates, handlers, registry
 from cratekit.cli import jobs as cli_jobs
 from cratekit.core import config, jobs
@@ -851,6 +853,79 @@ def test_the_current_intake_path_marks_nothing_and_still_reports_unbound(slim, m
     assert block["mark"] == playlists.MARK_UNBOUND
     assert block["marked"] == []
     assert _swept(cfg) == ("pl-a",)
+
+
+# R-359. SWEPT MEANS RESOLVED, NOT ACQUIRED, AND BOTH SURFACES SAY SO. The
+# producer is the real pass over a playlist the library owns none of: its
+# intake job SUCCEEDS with every track reported missing and none acquired, and
+# the next pass records it. ``reconcile`` is deliberately unchanged; what this
+# guards is that a person is not left to read "recorded" as "the library holds
+# the files". The literal is spelled out rather than read off the module, so a
+# changed token fails here instead of agreeing with itself.
+
+
+def _recorded_over_missing(monkeypatch) -> None:
+    """Drive the producer to the point the next pass records a playlist whose
+    every track the library does not own."""
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101", "102")))
+    code, first = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), first
+    (job,) = _playlist_jobs()
+    code, resumed = drive(cli_jobs.argv_for(job))
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+    progress = resumed["data"]["progress"]
+    assert (progress["missing"], progress["acquired"]) == (2, 0), progress
+
+
+def _run_human(argv: list[str]) -> tuple[int, str]:
+    """The default human mode, through the real dispatcher. ``drive`` always asks
+    for json, so a test through it stays green over a blank human answer."""
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(argv, stdout=out, stderr=err)
+    return code, out.getvalue()
+
+
+def _playlists_line(text: str) -> str:
+    (line,) = [row for row in text.splitlines() if "sync.playlists:" in row]
+    return line
+
+
+def test_a_recorded_playlist_says_in_json_its_tracks_were_resolved_not_acquired(
+    slim, monkeypatch
+):
+    cfg = slim
+    _recorded_over_missing(monkeypatch)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    block = passed["data"]["summary"]["playlists"]
+    assert block["recorded_now"] == ["pl-a"]
+    assert _swept(cfg) == ("pl-a",)
+    assert block["swept_means"] == "resolved-not-acquired"
+
+
+def test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acquired(
+    slim, monkeypatch
+):
+    del slim
+    _recorded_over_missing(monkeypatch)
+    code, text = _run_human(["sync", "all"])
+    assert code == int(ExitCode.OK), text
+    line = _playlists_line(text)
+    assert "1 recorded" in line, text
+    assert "resolved" in line and "not acquired" in line, text
+    lowered = text.lower()
+    for claim in ("downloaded", "library holds", "in your library", "acquired the"):
+        assert claim not in lowered, text
+
+
+def test_the_block_says_what_swept_means_whatever_the_pass_found():
+    """On the pure path too, so an account with nothing recorded is not a block
+    that leaves the word undefined."""
+    block = playlists.report(playlists.Sweep(), [])
+    assert block["swept_means"] == "resolved-not-acquired"
+    assert "not acquired" in (playlists.said(block) or "")
+    assert playlists.said({}) is None, "a block carrying no token was given words"
 
 
 def test_the_pass_composes_no_mark_step_while_no_sweep_writes_an_importable_file():

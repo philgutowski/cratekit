@@ -4,7 +4,33 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U71, issue #116, `relay/116`, 2026-09-18.**
+**Last merged: R-359, issue #104, `relay/104`, 2026-09-18.**
+Swept means resolved, not acquired, and `crate sync all` now says so on both
+surfaces. Every playlists block in `summary.playlists` carries `swept_means`,
+`resolved-not-acquired`. The `sync.playlists` check, which is what the default
+human output prints for this verb, ends with one sentence: a recorded playlist
+had its tracks resolved, not acquired, a missing track is still not in the
+library, `crate intake missing` lists it, and no later sync offers that
+playlist again. The words are `playlists.said(block)`, read off the block's own
+token and handed to `_check` through a new `_Plan.note`, so dropping the field
+drops the sentence. The sentence shows on every pass that reaches the
+playlists planner, recorded or not. `reconcile` and the cursor are unchanged
+and nothing composes `acquire download`. The guards drive the real producer, a
+succeeded intake job with two missing tracks and none acquired, through json
+and through `cli.run` in the default human mode. Mutation table
+`docs/mutation/r359.md`, 11 rows, all killing, null control 0 of 7814.
+`tests/test_reserved_causes.py` re-pinned to 413 kebab literals and 257
+non-keys, for the one new token. No residual filed. The one other surface
+that reads the cursor, the doctor's `source.playlists.watermark` row, prints
+counts and a time and never the word swept, so it claims no acquisition.
+R-435 filed, maintainer facing and not on the board: one full parallel run
+errored in the setup of a real database deletion test this branch does not
+touch, then passed alone, on the next full run, and on three runs of its file.
+Battery on the recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 7813
+passed and 1 skipped in 48 seconds. **Main's highest residual number is
+R-435.**
+
+**The session before: U71, issue #116, `relay/116`, 2026-09-18.**
 The landing engine, `src/cratekit/intake/landing.py`, moves acquired files
 out of download staging into the library and splices them into one intake
 file, which closes R-413's engine half. `plan(folder, cfg, batch)` lists the
@@ -30,8 +56,8 @@ batch marks nothing lossy) filed, none on the board, since no shipped verb
 reaches them. Mutation tables `docs/mutation/u71.md`, `u71-b.md` and
 `u71-c.md`, 25 rows, all killing after one test was strengthened, read in
 `docs/mutation/u71-notes.md`. `tests/test_reserved_causes.py` re-pinned to 96
-literal holders, measured as a set difference. **Main's highest residual
-number is R-434.** Owed to an attended sitting: one real landed batch imported
+literal holders, measured as a set difference. Main's highest residual
+number was then R-434. Owed to an attended sitting: one real landed batch imported
 into rekordbox.
 
 **The session before: U69, issue #114, `relay/114`, 2026-09-18.**

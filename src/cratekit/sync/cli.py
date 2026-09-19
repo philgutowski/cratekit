@@ -121,6 +121,10 @@ class _Plan:
     #: The question this source needs answered before it may queue, asked after
     #: every source is planned so the refusal can say what the pass would do.
     ask: Callable[[list[_Plan]], None] | None = None
+    #: Words the source's check carries whatever its status, read off its block.
+    #: The check detail is what the default human output prints for this verb,
+    #: so a fact only the json block states is a fact a person never reads.
+    note: Callable[[dict[str, Any]], str | None] | None = None
 
 
 def _plan_labels(spec: sources.SourceSpec, ctx) -> _Plan:
@@ -198,7 +202,7 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
     def describe(filed: list[jobs.Job]) -> dict[str, Any]:
         return playlists.report(sweep, filed)
 
-    plan = _Plan(spec=spec, describe=describe, detail=describe([]))
+    plan = _Plan(spec=spec, describe=describe, detail=describe([]), note=playlists.said)
     if sweep.unreadable:
         plan.warnings = (
             {
@@ -303,6 +307,10 @@ def _check(plan: _Plan) -> dict[str, Any]:
             "not queued: the confirmation was answered abort; the source's own "
             "verb asks the same question on its own"
         )
+    # NOT ``said``, which the nothing new branch above binds as its loop name.
+    noted = plan.note(plan.detail or {}) if plan.note is not None else None
+    if noted:
+        check["detail"] += f"; {noted}"
     return check
 
 

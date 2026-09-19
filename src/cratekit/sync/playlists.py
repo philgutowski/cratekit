@@ -26,6 +26,15 @@ job is not recorded and its playlist is offered again. Nothing is ever filtered
 by title except the two naming conventions above, which are conventions spelled
 in the name by the systems that apply them, and neither is stored (D5).
 
+**SWEPT MEANS RESOLVED, NOT ACQUIRED, AND THE PASS SAYS SO (R-359).** The job a
+sweep composes resolves every track to owned, offered or missing and acquires
+none, so a SUCCEEDED job is a playlist whose missing tracks are still not in the
+library, and once it is recorded no later pass offers it again. The cursor is
+deliberately left recording on success, because the alternative needs an
+acquisition step the pass does not compose. What changed is the report: every
+block carries :data:`SWEPT_MEANS`, and :func:`said` gives the check a person
+reads by default the same fact in words.
+
 **THE MARK IS HALF BOUND, AND THE PASS SAYS WHICH HALF.** ``sync/marks.py``
 states the rule: a remote playlist is renamed only after the importable file
 exists and a recheck holds. Two things were missing for that, and R-358 closes
@@ -54,10 +63,11 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from cratekit.core import config, jobs
@@ -82,6 +92,24 @@ SOURCE_ID = "playlists"
 #: convention its analysis pass skips a prefixed name by, kept rather than
 #: reinvented, because the live account already carries it.
 SWEPT_PREFIX = "DOWNLOADED "
+
+#: What a recorded playlist means in this build, on the block a machine reads.
+#: The cursor records a playlist whose intake job SUCCEEDED, which is every track
+#: resolved and none acquired (R-359).
+SWEPT_MEANS = "resolved-not-acquired"
+
+#: The same fact in words, keyed by the token the block carries, so the human
+#: sentence is there exactly when the machine field is.
+SWEPT_MEANS_SAID: Mapping[str, str] = MappingProxyType(
+    {
+        SWEPT_MEANS: (
+            "a recorded playlist had its tracks resolved against the library, not "
+            "acquired, so a track its intake job reported missing is still not in "
+            "the library, crate intake missing lists it, and no later sync offers "
+            "that playlist again"
+        ),
+    }
+)
 
 #: What the pass says about the mark step when nothing marked the account,
 #: which is every production pass until a sweep writes an importable file.
@@ -419,9 +447,19 @@ def report(
         },
         "unreadable": dict(sweep.unreadable),
         "recorded_now": list(sweep.recorded_now),
+        "swept_means": SWEPT_MEANS,
         "mark": MARK_UNBOUND if marked is None else MARK_APPLIED,
         "marked": list(marked or ()),
     }
+
+
+def said(block: Mapping[str, Any]) -> str | None:
+    """The words for what the block says swept means, or ``None`` when it says nothing.
+
+    Read off the block's own token rather than returned unconditionally, so a
+    block that stopped carrying the field is also a check that stopped saying it.
+    """
+    return SWEPT_MEANS_SAID.get(str(block.get("swept_means") or ""))
 
 
 __all__ = [
@@ -430,6 +468,8 @@ __all__ = [
     "MARK_UNBOUND",
     "PER_PLAYLIST_REASONS",
     "SOURCE_ID",
+    "SWEPT_MEANS",
+    "SWEPT_MEANS_SAID",
     "SWEPT_PREFIX",
     "Excluded",
     "Sweep",
@@ -443,5 +483,6 @@ __all__ = [
     "queue",
     "reconcile",
     "report",
+    "said",
     "source_jobs",
 ]
