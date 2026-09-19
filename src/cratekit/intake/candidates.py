@@ -399,7 +399,15 @@ def propose(
         )
     offered = shown(answer)
     if not offered:
-        best = max((one.score for one in answer.candidates), default=None)
+        # A MATCH WITH NO IDENTIFIER IS SAID AS THAT. It resembles the row and
+        # cannot be downloaded, and "none resembles it" over a hit scoring 100
+        # would send a person looking for a spelling problem they do not have.
+        unnamed = sum(
+            1
+            for one in answer.candidates
+            if not one.track.ref and (one.exact or one.score >= CANDIDATE_FLOOR)
+        )
+        best = max((one.score for one in answer.candidates if one.track.ref), default=None)
         return Proposal(
             wanted,
             NO_CANDIDATES,
@@ -407,8 +415,13 @@ def propose(
                 "the provider's search returned nothing for it"
                 if not answer.hits
                 else f"the provider's search returned {answer.hits} hit(s) and none "
-                f"resembles it"
+                f"that can be downloaded resembles it"
                 + (f", the best scoring {best:g}" if best is not None else "")
+                + (
+                    f"; {unnamed} that do resemble it carry no identifier"
+                    if unnamed
+                    else ""
+                )
                 + (f"; {answer.unreadable} could not be read" if answer.unreadable else "")
             ),
         )

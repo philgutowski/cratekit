@@ -248,6 +248,7 @@ def test_two_exact_candidates_are_offered_and_neither_is_picked(
     assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert (summary["list"], summary["written"], summary["candidates_offered"]) == (None, 0, 1)
+    assert envelope["outcome"] == "ok", "a question put to a person read as nothing to do"
     assert not list(lists_dir(library).glob("*")), "a list was written over an open question"
     item = the_item(cfg)
     assert item.verdict is None
@@ -554,7 +555,7 @@ def test_no_candidate_for_any_row_refuses_rather_than_reading_as_nothing_to_do(
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert "1 hit(s) and none resembles it" in envelope["cause"]["message"]
+    assert "1 hit(s) and none that can be downloaded resembles it" in envelope["cause"]["message"]
     assert [one for one in items_of(cfg) if one.kind == candidates.KIND] == []
 
 
@@ -957,6 +958,56 @@ def test_an_exact_candidate_under_the_floor_of_nothing_is_still_first():
 
     assert [one.track.ref for one in candidates.shown(answer)] == ["7001", "7009", "7002"]
     assert candidates.sole_exact(answer) is None
+
+
+def test_the_only_exact_candidate_carrying_no_identifier_is_not_listed():
+    """Both exact hits lack an id, so their ids are ONE distinct value, the
+    empty one, and only the identifier condition stands between that and a
+    listed row nothing can download."""
+    wanted, answer = answer_of(
+        "Aurora Bloom - Sun Path",
+        Hit("", "Aurora Bloom", "Sun Path"),
+        Hit("", "Aurora Bloom", "Sun Path"),
+    )
+
+    assert candidates.sole_exact(answer) is None
+
+
+def test_exact_hits_with_no_identifier_are_reported_as_that_and_not_as_no_resemblance(cfg):
+    wanted, answer = answer_of("Aurora Bloom - Sun Path", Hit("", "Aurora Bloom", "Sun Path"))
+
+    with review.open_store(cfg) as items:
+        said = candidates.propose(items, wanted, answer, handler_key="intake.missing")
+
+    assert said.state == candidates.NO_CANDIDATES
+    assert "1 that do resemble it carry no identifier" in said.reason
+
+
+def test_an_accepted_option_that_does_not_carry_its_own_track_lists_nothing(cfg):
+    """The option's id is what a person chose and its detail is what is listed,
+    so a detail naming another track is a download nobody accepted."""
+    wanted = match.read_text_lines("Aurora Bloom - Sun Path")[0]
+    other = match.read_row(Hit("9999", "Nova Reef", "Tide"), origin=match.TIDAL, position=1)
+    with review.open_store(cfg) as items:
+        held = review.offer(
+            items,
+            queue=candidates.QUEUE,
+            kind=candidates.KIND,
+            identity=candidates.identity(wanted),
+            payload={},
+            options=[
+                review.Option(
+                    option_id="7001", summary="one", detail={"track": intake_cli.frozen(other)}
+                )
+            ],
+            handler_key="intake.missing",
+        )
+        review.resolve(items, held.item_id, review.Verdict.ACCEPTED, option="7001", actor="suite")
+
+        said = candidates.settled(items, wanted)
+
+    assert said is not None and said.state == candidates.STALLED
+    assert said.track is None
 
 
 def test_the_identity_is_the_folded_row_and_not_its_spelling():
