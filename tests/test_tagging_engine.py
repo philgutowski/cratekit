@@ -699,3 +699,22 @@ def test_a_picture_inside_the_box_that_cannot_fit_is_an_error_and_is_never_enlar
     assert repair.status == art.REPAIR_ERROR
     assert "too small to shrink" in repair.detail
     assert blocks(path)[0].data == stored
+
+
+@pytest.mark.parametrize(
+    "data",
+    [b"garbage", _jpeg(320, 200)[:400]],
+    ids=["not-an-image", "truncated-jpeg"],
+)
+def test_an_undecodable_image_in_a_filled_block_is_an_error_not_ok(folder, silence, data):
+    """The mutation table's zero row: every corrupt image above sat in a ZEROED block.
+
+    A block whose dimensions are filled over bytes that do not decode renders
+    blank on a player all the same, so reading it as sound would report ok over
+    art nobody sees. The truncated JPEG opens cleanly and fails only on a full
+    decode, which is why the check decodes rather than reading a header.
+    """
+    path = place(folder, silence, "track")
+    plant(path, data, dims=(320, 200, 24))
+
+    assert art.repair_in_place(path).status == art.REPAIR_ERROR
