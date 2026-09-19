@@ -378,12 +378,24 @@ def _plan(spec: sources.SourceSpec, ctx) -> _Plan:
 
 
 def _awaiting(plans: list[_Plan]) -> dict[str, Any]:
-    """What a person is shown at the gate: nothing queued yet, and why not."""
+    """What a person is shown at the gate: nothing queued yet, and why not.
+
+    ``inbound`` says what each read only half will do WHATEVER the answer, so a
+    person deciding the write knows whether the hearts are being listed.
+    """
     return {
         "queued": [],
         "would_queue": [p.spec.source_id for p in plans if p.not_queued is None],
         "not_queued": {
             p.spec.source_id: p.not_queued for p in plans if p.not_queued is not None
+        },
+        "inbound": {
+            p.spec.source_id: {
+                "queued_whatever_the_answer": p.inbound.queue is not None,
+                "not_queued": p.inbound.not_queued,
+            }
+            for p in plans
+            if p.inbound is not None
         },
     }
 
@@ -464,7 +476,14 @@ def _inbound_check(plan: _Plan, inbound: _Inbound) -> dict[str, Any]:
         )
     elif inbound.refused is not None:
         check["status"] = "fail"
-        check["detail"] = f"the account's hearts were not listed: {inbound.refused.message}"
+        # LISTED AND THEN REFUSED AT THE QUEUE is a different fault from a
+        # listing that never happened, and sends a person somewhere else.
+        said = (
+            "the account's hearts were not listed"
+            if inbound.hearts is None
+            else f"the account's {inbound.hearts} heart(s) were listed and not queued"
+        )
+        check["detail"] = f"{said}: {inbound.refused.message}"
         check["remedy"] = str(inbound.refused.remediation.remedy)
     elif inbound.not_queued == playlists.Excluded.IN_FLIGHT:
         check["status"] = "info"

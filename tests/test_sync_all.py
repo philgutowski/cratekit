@@ -1268,6 +1268,20 @@ def test_the_gate_refusal_queues_no_hearts_listing_either(installed, exported, m
     code, refused = drive(_verb(exported))
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert _jobs() == []
+    # THE GATE SAYS the hearts go whatever the answer, which is what a person
+    # deciding the write needs to know about the read.
+    assert refused["cause"]["detail"]["shown"]["inbound"] == {
+        "favorites": {"queued_whatever_the_answer": True, "not_queued": None}
+    }
+
+
+def test_the_gate_says_when_the_hearts_could_not_be_listed(installed, exported):
+    del installed
+    code, refused = drive(_verb(exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["inbound"] == {
+        "favorites": {"queued_whatever_the_answer": False, "not_queued": "credential-missing"}
+    }
 
 
 def test_an_abort_still_queues_the_hearts_listing_under_the_shared_run(
@@ -1373,6 +1387,7 @@ def test_a_catalogue_refusal_is_the_hearts_own_and_the_others_still_run(installe
     assert block["hearts"] is None and block["job_ids"] == []
     check = _inbound_check(passed)
     assert check["status"] == "fail" and check["remedy"]
+    assert "hearts were not listed" in check["detail"]
     assert any(
         w["code"] == "sync-source-not-queued" and w["message"].startswith("favorites inbound:")
         for w in passed["warnings"]
@@ -1551,4 +1566,8 @@ def test_a_hearts_queue_refusal_is_recorded_against_the_hearts_alone(
     assert [job.handler_key for job in _jobs()] == ["sync.labels"]
     assert _inbound(passed)["not_queued"] == "internal-error"
     assert passed["data"]["summary"]["not_queued"]["favorites"] == "outbound-export-required"
-    assert _inbound_check(passed)["status"] == "fail"
+    check = _inbound_check(passed)
+    assert check["status"] == "fail"
+    # LISTED, THEN REFUSED AT THE QUEUE. Not the words a failed listing gets.
+    assert "3 heart(s) were listed and not queued" in check["detail"]
+    assert "were not listed" not in check["detail"]
