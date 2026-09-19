@@ -516,7 +516,7 @@ def repair_in_place(path: Path) -> ArtRepair:
             block.mime = JPEG_MIME
             block.width, block.height, block.depth = cdj.width, cdj.height, cdj.depth
             block.colors = 0  # not an indexed image
-    except ArtError as exc:
+    except Exception as exc:  # noqa: BLE001 - the contract is never raises, not only ArtError
         return ArtRepair(REPAIR_ERROR, f"a picture could not be repaired: {exc}")
     try:
         handle.clear_pictures()

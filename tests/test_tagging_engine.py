@@ -718,3 +718,23 @@ def test_an_undecodable_image_in_a_filled_block_is_an_error_not_ok(folder, silen
     plant(path, data, dims=(320, 200, 24))
 
     assert art.repair_in_place(path).status == art.REPAIR_ERROR
+
+
+def test_an_encoder_failure_that_is_not_an_art_error_is_still_an_error(
+    folder, silence, monkeypatch
+):
+    """This unit is the encoder's first caller in the product, so its failure
+    paths are this unit's. The contract is that the repair never raises, and
+    that has to hold for whatever Pillow throws, not only for ``ArtError``."""
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200))
+
+    def breaks(data, *, size=art.ART_SIZE, max_bytes=art.ART_MAX_BYTES):
+        raise OSError("decoder fell over")
+
+    monkeypatch.setattr(art, "to_cdj_jpeg", breaks)
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_ERROR
+    assert "decoder fell over" in repair.detail
