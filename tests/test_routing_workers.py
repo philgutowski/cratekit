@@ -1327,6 +1327,82 @@ def test_an_export_route_on_an_unmounted_library_refuses(configured, tagged, tmp
     assert not _routed(export).exists()
 
 
+def test_an_export_location_under_a_retired_volume_name_resolves_through_the_prefix_map(
+    configured, tagged, tmp_path
+):
+    """rekordbox keeps recording a volume name after the drive stopped using it,
+    and the declared prefix map is what finds the file again. Without it all
+    three tracks are unreadable and nothing is routed."""
+    from cratekit.core import locations
+
+    data = valid_data(
+        Path(configured.library.root),
+        profile={"name": "full"},
+        rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
+    )
+    data["library"]["location_prefix_map"] = [
+        {"from": "/retired-volume/lib", "to": "{library.root}"}
+    ]
+    config.save(config.from_dict(data))
+    config.reset_cache()
+    export = _write_export(configured, tmp_path / "exports")
+    live = locations.location_url(Path(configured.library.root)).encode()
+    old = locations.location_url("/retired-volume/lib").encode()
+    export.write_bytes(export.read_bytes().replace(live, old))
+    assert live not in export.read_bytes()
+
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["inserted"] == 3
+    assert envelope["warnings"] == []
+
+
+def test_a_native_routing_tree_refuses_before_the_plan_is_offered(
+    configured, tagged, tmp_path
+):
+    """Refused at the verb, not only at the emitter, so a person is never asked
+    to approve a write the guard would stop. A declined answer still refuses."""
+    export = _write_export(configured, tmp_path / "exports")
+    _cut_over_routing_tree(configured)
+    code, envelope = _drive(
+        ["-d", "route.inbox.apply=abort", "route", "inbox", "--export", str(export)]
+    )
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "tree-unconverged"
+
+
+def test_the_export_writer_itself_refuses_a_routing_tree_that_has_cut_over(
+    configured, tagged, tmp_path
+):
+    """The emitter layer alone, reached past the verb's own check, so neither
+    layer is a guard only the other one covers."""
+    from cratekit.write import routing_cli
+
+    export = _write_export(configured, tmp_path / "exports")
+    _content, plan, *_rest = routing_cli.plan_export(configured, export)
+    _cut_over_routing_tree(configured)
+    with pytest.raises(tree_registry.TreeModeRefused):
+        routing_cli.apply_export(configured, export, export.read_bytes(), plan)
+    assert not _routed(export).exists()
+
+
+def _cut_over_routing_tree(cfg: config.Config) -> None:
+    tree_registry.write(
+        cfg,
+        tree_registry.Registry(
+            (
+                tree_registry.TreeRecord(
+                    tree_id=taxonomy.default_taxonomy().tree.id,
+                    mode=tree_registry.Mode.DATABASE,
+                    cutover_on=date(2026, 8, 1),
+                    root_id="1",
+                    source=tree_registry.DerivationSource.TAXONOMY,
+                ),
+            )
+        ),
+    )
+
+
 def test_a_declined_export_route_writes_nothing(configured, tagged, tmp_path):
     export = _write_export(configured, tmp_path / "exports")
     code, envelope = _drive(
