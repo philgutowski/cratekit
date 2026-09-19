@@ -4,7 +4,45 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U87, issue #132, `relay/132`, 2026-09-18.**
+**Last merged: U88, issue #133, `relay/133`, 2026-09-18.**
+`crate route inbox --export X` now builds the "Sets and Long Tracks" playlist
+as it files and rates, which closes R-406. Every collection track, not only
+the intake, whose `TotalTime` is over the bound is added to one playlist that
+is a direct child of the playlist root, in the same written file.
+`TotalTime` is seconds, confirmed on the fixture and on
+`intake/collection_xml.py`'s own emitter. The name and the bound are the
+taxonomy's: a new optional `[long_tracks]` section with `id`, `display` and
+`over_seconds`, keyed on presence like `[catalog]`. The shipped template
+declares "Sets and Long Tracks" over 1200 seconds, the source system's values.
+`over_seconds` defaults to 1200 when omitted, must be a whole number above
+zero, and is strict, so exactly twenty minutes is not a member. The write is
+`trees.add_to_root_playlist`, which is add only: the members the playlist
+held are written back ahead of the new ones through one call of
+`rbxml.insert_root_playlist`, now its first caller in `src`.
+`trees.root_playlist_members` is the one read of those members, used by the
+planner and the writer alike. A track already a member is not planned, so a
+second run adds nothing and still answers `nothing-to-route`. A pass whose
+only change is a long track writes a file and ends PENDING. No long track
+means no playlist, never an empty one. An absent, non integer or zero
+`TotalTime` is counted in `totals.duration_unreadable`, not warned, since a
+warning would make every re-run `route-blocked`. A same named playlist inside
+a folder is neither read nor touched. A FOLDER of that name at the root is a
+`route-write-skipped` warning and is left alone, and the plan then offers
+nothing for it. Each item gains `long_track`, and a long track outside the
+intake gets an item of its own, so the additions are inside the digest. The
+totals gain `long_added` and `duration_unreadable`, and the pending summary
+names the additions. The unit's `/code-review` found nothing. Its one
+observation, that a hand removal is undone by the next pass, is in R-442,
+which also records the brief's add only decision. 22 new tests, 13 in
+`tests/test_routing_workers.py` and 9 in `tests/test_taxonomy.py`. Mutation
+tables `docs/mutation/u88.md` and `u88-b.md`, 21 of 25 killing, the four zeros
+maintainer rows, read in `u88-notes.md`. R-442 filed, not on the board. Owed
+to an attended sitting: the playlist seen in rekordbox after one import.
+Battery on the recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 7961
+passed and 1 skipped in 59 seconds. **Main's highest residual number is
+R-442.**
+
+**The session before: U87, issue #132, `relay/132`, 2026-09-18.**
 `crate route inbox --export X` now rates as it files, which closes R-405's
 first clause. Every intake track the pass places whose export `Rating` is
 empty or `"0"` gets the star value `routing.energy_rating` gives its energy,
