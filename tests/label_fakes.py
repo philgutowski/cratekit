@@ -43,6 +43,7 @@ PROTOCOL_METHODS = frozenset(
         "favourite_tracks",
         "release_tracks",
         "tracks_for_isrc",
+        "search_tracks",
     }
 )
 
@@ -201,6 +202,7 @@ class FakeCatalogue:
         hearts: list[Any] | None = None,
         releases: dict[str, tuple[list[Any], int | None]] | None = None,
         isrcs: dict[str, list[Any]] | None = None,
+        searches: dict[tuple[str, str], list[Any]] | None = None,
     ) -> None:
         self.artists = dict(artists or {})
         self.playlists = dict(playlists or {})
@@ -222,6 +224,11 @@ class FakeCatalogue:
         #: failure; :class:`UnreadableCatalogue` is the failure.
         self.isrcs = dict(isrcs or {})
         self.isrcs_asked_for: list[str] = []
+        #: The provider's hits for each search, keyed by the artist and the title
+        #: exactly as the seam was handed them, in the provider's order. A search
+        #: absent here is one the provider answers with nothing.
+        self.searches = dict(searches or {})
+        self.searched_for: list[tuple[str, str]] = []
         self.asked_for: list[str] = []
         self.playlists_asked_for: list[str] = []
 
@@ -279,6 +286,10 @@ class FakeCatalogue:
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
         self.isrcs_asked_for.append(isrc)
         return tuple(self.isrcs.get(isrc, ()))
+
+    def search_tracks(self, artist: str, title: str) -> tuple[Any, ...]:
+        self.searched_for.append((artist, title))
+        return tuple(self.searches.get((artist, title), ()))
 
     def check_label(self, name: str) -> dict:
         if self.known_labels is not None and name not in self.known_labels:
@@ -342,6 +353,10 @@ class UnreadableCatalogue(FakeCatalogue):
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
         self.isrcs_asked_for.append(isrc)
         raise RuntimeError(f"the catalogue could not look up the ISRC {isrc!r}")
+
+    def search_tracks(self, artist: str, title: str) -> tuple[Any, ...]:
+        self.searched_for.append((artist, title))
+        raise RuntimeError(f"the catalogue could not search for {artist!r} {title!r}")
 
 
 class VerificationOutage(FakeCatalogue):

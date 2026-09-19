@@ -120,7 +120,7 @@ class ReleaseUnresolvable(LookupError):
 class Catalogue(Protocol):
     """Every provider read the product makes through this seam, and nothing more.
 
-    EIGHT MEMBERS BECAUSE THERE ARE EIGHT CALL SITES, and the protocol is the list
+    NINE MEMBERS BECAUSE THERE ARE NINE CALL SITES, and the protocol is the list
     rather than a description of a provider. A method nobody calls is a method an
     adapter has to implement for no reason, and it is the shape by which a seam
     stops being a seam and becomes a client library.
@@ -241,6 +241,26 @@ class Catalogue(Protocol):
         stand-in, on the same contract as the reads above: an outage read as
         "no track" would hand a nameable row on as unnameable, and one read as a
         short answer could turn two releases into one and list a guess.
+        """
+
+    def search_tracks(self, artist: str, title: str) -> tuple[Any, ...]:
+        """The provider tracks a text search for one artist and title returns.
+
+        Consumed by ``intake.candidates``, which gives a missing row that has no
+        provider identifier and no usable ISRC, a typed tracklist line or a
+        recognised set track, a route to one (U79, R-302). A SEARCH IS A
+        PROPOSAL AND NEVER A PICK. The answer is ranked by the provider's own
+        relevance, which returns a remix beside the original and an unrelated
+        act of the same name beside both, so this method chooses nothing and the
+        caller lists a row only on its own exact test and offers everything
+        else to a person. ``title`` carries the version when the row names one,
+        since the provider searches one string. The rows are the shape
+        ``match.read_tidal_tracks`` reads, in the provider's order.
+
+        An empty tuple means the provider answered and found nothing. RAISES
+        when the provider could not answer, on the same contract as the reads
+        above: an outage read as "no candidate" would tell a person a track the
+        provider carries cannot be found there.
         """
 
 

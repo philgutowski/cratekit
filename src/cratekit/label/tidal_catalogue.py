@@ -647,6 +647,37 @@ class TidalCatalogue:
 
         return listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
 
+    def search_tracks(self, artist: str, title: str) -> tuple[Any, ...]:
+        """One track search for ``artist`` and ``title``, on the one retry ladder.
+
+        NOTHING IS CHOSEN HERE. The hits come back in the provider's order,
+        every one of them, and ``intake.candidates`` decides what is exact and
+        offers the rest to a person. One page of :data:`SEARCH_LIMIT`, because a
+        candidate list is read by a person and the caller truncates it again.
+
+        A search that fails climbs the ladder and is re-raised, a not found
+        among it: a search endpoint answers nothing found with an empty list,
+        so a raised not found is the endpoint failing and never an answer. An
+        answer with no ``tracks`` container at all is an empty answer only when
+        the container is there and empty. One that is absent is a shape this
+        adapter does not know and is raised, because read as empty it would
+        report a track the provider carries as having no candidate.
+        """
+        query = " ".join(part for part in (str(artist or "").strip(), str(title or "").strip()) if part)
+        if not query:
+            raise ValueError("no artist and no title were given to search for")
+
+        def attempt(limit: int, offset: int) -> Any:
+            del offset
+            return self._session.search(query, models=[tidalapi.media.Track], limit=limit)
+
+        found = listing.fetch_with_retry(attempt, limit=SEARCH_LIMIT, offset=0, sleep=_pause)
+        # AFTER THE LADDER, because waiting cannot change a shape.
+        present = "tracks" in found if isinstance(found, Mapping) else hasattr(found, "tracks")
+        if not present:
+            raise LookupError("the provider's search answer carries no track listing")
+        return tuple(_results(found, "tracks"))
+
 
 def open_catalogue() -> TidalCatalogue:
     """A catalogue over a freshly logged in client, from the stored session."""
