@@ -516,6 +516,9 @@ def test_a_batch_where_nothing_lands_leaves_no_batch_folder(
     assert excinfo.value.cause.reason == "intake-list-unusable"
     assert "crate tag folder" in excinfo.value.cause.message
     assert not target.exists()
+    # The music folder did not exist either, and nothing landed, so the
+    # refusal comes before any folder is made rather than tidying one after.
+    assert not target.parent.exists()
     assert not _destination(cfg).exists()
 
 
