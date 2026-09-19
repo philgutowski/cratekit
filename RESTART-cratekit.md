@@ -47,7 +47,8 @@ filed. **R-477 meets the board bar and its issue is owed**, to be filed after
 this merge lands on `main`: an outbound heart reports a track unmatched over a
 lookup that failed. **Owed to an attended sitting:** one real set, identified,
 listed, downloaded and landed, the first sitting `intake set` has had. Battery
-on the recorded tree: BATTERY_LINE
+on the recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 8382 passed
+and 1 skipped in 62 seconds, and no test of this unit's among the ten slowest.
 **Main's highest residual number is R-480.**
 
 **The session before: U83, issue #128, `relay/128`, 2026-09-19.**
