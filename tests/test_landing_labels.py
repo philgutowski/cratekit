@@ -12,6 +12,7 @@ import json
 import re
 import shutil
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -292,6 +293,44 @@ def test_a_held_year_playlist_the_writer_cannot_extend_refuses_before_any_move(
     assert "Kompakt 2025" in excinfo.value.cause.message
     assert staged.exists()
     assert not _music(cfg).exists()
+
+
+def test_a_catalog_tree_the_database_owns_refuses_before_any_file_moves(
+    cfg, silence, export, tmp_path, monkeypatch
+):
+    """The first caller owns the engine's failure paths, and this is the one the
+    writer RAISES rather than returns: a tree that has cut over to the database
+    must not be spliced into an export, or the import grows a second tree
+    beside the real one. After the moves it would be a batch with no labels
+    and a warning. Here it is a refusal with the batch still in staging."""
+    staged = _stage(cfg, silence, "Ada", "North")
+    manifest = _manifest(tmp_path, [("101", "Ada", "North", "Kompakt", 2025)])
+    catalog = taxonomy.default_taxonomy().catalog
+    assert catalog is not None
+    native = tree_registry.Registry(
+        (
+            tree_registry.TreeRecord(
+                tree_id=catalog.id,
+                mode=tree_registry.Mode.DATABASE,
+                cutover_on=date(2026, 8, 1),
+                root_id="123456789",
+                source=tree_registry.DerivationSource.TAXONOMY,
+            ),
+        )
+    )
+    monkeypatch.setattr(landing.tree_registry, "read", lambda _cfg: native)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _land(cfg, export, manifest)
+
+    cause = excinfo.value.cause
+    assert cause.inner is not None and cause.reason == cause.inner.reason
+    assert cause.reason != "internal-error"
+    assert catalog.id in cause.message
+    assert "nothing was moved" in cause.message
+    assert staged.exists()
+    assert not _music(cfg).exists()
+    assert not _destination(cfg).exists()
 
 
 def test_a_label_row_no_landed_file_matches_is_reported_by_name(
