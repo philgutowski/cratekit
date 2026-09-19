@@ -1446,8 +1446,12 @@ ENTRIES: tuple[Entry, ...] = (
         # ``DB_WRITE_SURFACES`` and a verb declaring a question its work cannot
         # raise is the over-claim wearing a prompt. ``destructive`` STAYS: the
         # verb writes an account a person cannot roll back, and whether an
-        # add-only remote write is destruction under KTD24 is a person's call,
-        # recorded as R-536 rather than taken here.
+        # add-only remote write is destruction under KTD24 is a person's call.
+        # It is recorded in `docs/residual-findings.md` as its own finding,
+        # under a heading naming this verb and this flag, rather than decided
+        # here: narrowing a claim in the cautious direction is a different act
+        # from removing one that was false, and only the second was this
+        # closure's to take.
         writes=frozenset({"remote"}),
         adjudicates=True,
         destructive=True,

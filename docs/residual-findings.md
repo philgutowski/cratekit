@@ -18674,6 +18674,50 @@ declaration and a guide that say otherwise.
 **Closes when:** the verb declares only the remote heart it performs, or the
 local write is built.
 
+**Closed 2026-09-19 on `relay/111`, issue 111.** The honest report arm, as the
+card's recorded decision directed. The local write was not built.
+
+The entry declares `writes={"remote"}` and nothing else. `db_tree` and
+`db_metadata` stood for the colour, the tag and the playlist membership, and the
+handler passes `colors=None` on every path, so none of the three happens.
+There is no document written beside the export, so no `xml`. The outbound write
+ledger is the one file a pass does touch and it is not `files`:
+`export.playlist` writes that same ledger through the same shell and has always
+declared `remote` alone, so counting it here would make one file two surfaces.
+The cloud sync decision went with the database surfaces, since it is the
+question the guarded writer raises and this verb never opens the writer.
+`rekordbox.closed` and `rekordbox.pins` went for the same reason and are driven:
+a sweep hearts both rows with rekordbox and its agent reported running and with
+`rb_writer.open_db` replaced by a function that raises. `library.mounted` stays,
+because the ledger is library scoped. The summary no longer says "both ways".
+
+The always empty `colored` key is gone from each item report, asserted on the
+committed artifact rather than on the worker's return value. In its place a
+standing warning, `favorites-local-write-unbound`, spelled once in
+`favorites/cli.py` and carried by both composers: the verb's own queueing
+branch, its resume through the shell's new `standing` argument, and
+`sync/cli._plan_favorites`, which builds the favourites plan itself rather than
+calling the verb and would otherwise have been silent on the pass most people
+run. It is a warning because the default renderer prints a verb's outcome, its
+warnings and its run id and nothing of its payload, so that channel is the only
+place a sentence reaches a person who did not ask for json. Two of the eight new
+guards drive that renderer rather than the json helper every other row in
+`tests/test_outbound_workers.py` uses.
+
+`docs/GUIDE.md` and the shipped `sync-and-publish` skill asset both promised a
+colour, a tag and a membership. The asset was found by sweeping for the claim
+one file over and went further than the guide, saying the verb also acquires
+what the library does not hold. Both now describe the outbound half and name
+`crate intake playlist favorites` as the inbound one. The asset's example gained
+the `--export` it has always needed.
+
+Two residuals filed rather than fixed. `destructive=True` stays on the entry and
+the reason is the residual "`sync.favorites` declares destruction while writing
+only an add-only remote surface". The warning is on the queueing pass and on the
+resume, and a resume run through the documented command is detached, which is
+the residual "A detached resume's report reaches the job log and never the
+terminal".
+
 ---
 
 ## R-425. `name apply` over a library with cloud sync on exits as unreadable rather than as an external writer
@@ -21776,3 +21820,67 @@ file is driven.
 
 **Closes when:** a person decides what a landing does with no `fcntl`, and the
 rest is either accepted at a retro or measured.
+
+---
+
+## R-536. `sync.favorites` declares destruction while writing only an add-only remote surface
+
+**Found:** 2026-09-19, on `relay/111`, while closing the residual "`crate sync
+favorites` declares a local colour and tag write it never performs". Raised by
+the narrowing rather than by a drive.
+
+The entry's `writes` came down to `remote`, and `destructive=True` stayed. The
+flag is declarative: its only reader in `src` is the registry's own validation,
+which forces it on for a verb that writes `files` or whose name begins with
+`delete.`, and neither is now true here. Conformance 6 quantifies over it and
+drives the shared session gates rather than the verb, so nothing about a live
+run changes either way.
+
+Two readings, and the argument runs both ways. KTD24 binds the destructive
+gates to DESTRUCTION, and this verb destroys nothing: the engine has no remove
+path, an argument shaped like one is recognised and ignored, and a heart is
+added or left alone. `export.playlist`, the sibling that writes the same remote
+surface and the same outbound ledger through the same shell, has never declared
+it. Against that, the verb writes an account a person cannot roll back from
+this side, and dropping the flag takes the verb out of the population a reader
+would call dangerous.
+
+**The decision taken here, conservatively.** The flag stays. Removing it is
+narrowing a claim in the cautious direction, which is a different act from
+removing a claim that was false, and this unit's brief is the second. Whether
+an add-only remote write is destruction under KTD24 is a person's call.
+
+**Measured cost:** none on any driven path. The suite is green with the flag
+set, and the flag reaches no runtime branch.
+
+**Closes when:** a person decides whether an add-only remote write is
+destruction, and the entry either keeps the flag with that reason recorded or
+drops it and joins `export.playlist`.
+
+---
+
+## R-537. A detached resume's report reaches the job log and never the terminal
+
+**Found:** 2026-09-19, on `relay/111`, by the review of the closure above.
+Read from the source and confirmed against `cli/jobs.resume`, not driven.
+
+`crate job resume JOB_ID` reconciles, spawns the child through `jobs.spawn` and
+returns an envelope carrying the job id, the state and any drift warning. The
+child's own envelope, which is where a long running verb says what it did and
+what it could not do, goes to `jobs.log_path(job_id)` under the queue root. No
+verb surfaces that file: the shipped job verbs are `list`, `show`, `resume` and
+`cancel`, and `show` carries the job's cause and not its output.
+
+The closure above put a standing warning on `sync.favorites` saying the sweep
+writes nothing in the library. It is on the queueing pass, which a person
+always reads, and on the resume, which in the documented flow they do not. The
+guide now says so rather than implying every report carries it, which is the
+honest half; the other half is that a person who resumes a job has no shipped
+way to read what that job printed.
+
+**Measured cost:** unmeasured on a live run. Read from the source: any warning
+a long running verb emits on its resume is invisible to a person who resumed it
+through the documented command, not only this one.
+
+**Closes when:** a verb surfaces a job's log, or the guide's resume section says
+where the file is and a person is expected to open it themselves.

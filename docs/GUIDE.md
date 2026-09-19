@@ -402,8 +402,11 @@ reads the live database, and it asks one gate before anything is queued.
 that is the whole of what it writes. It reads the favourites playlist out of a
 collection export, matches each track on the service, and hearts the ones the
 account does not already hold. It changes nothing in the library: no colour, no
-Favorite tag and no playlist membership is written locally, and the run says so
-in its own report. Hearts the library does not own reach it the other way, through
+Favorite tag and no playlist membership is written locally, and the pass that
+queues the sweep says so in its own report, before any heart is written. That is
+the pass to read it on: a resume runs detached and its own report goes to the
+job's log under the queue root rather than to the terminal that started it.
+Hearts the library does not own reach it the other way, through
 `crate intake playlist favorites`, which queues them for acquisition. Nothing
 un-hearts or un-colours, on either side.
 

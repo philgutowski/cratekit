@@ -73,12 +73,17 @@ placeholder_name = placeholders.placeholder_name
 #: favourites plan itself rather than calling this verb's queueing branch, so a
 #: message living in that branch alone would be absent from the pass most people
 #: actually run.
+#:
+#: IT NAMES ITS SUBJECT. Under ``crate sync all`` this sentence prints beside
+#: warnings from sources that genuinely do write the library, and "this sweep"
+#: in that company reads as a claim about the whole pass. The one place a
+#: warning can be misread is the place it appears next to other warnings.
 LOCAL_WRITE_WARNING: dict[str, str] = {
     "code": "favorites-local-write-unbound",
     "message": (
-        "this sweep hearts matching tracks on the streaming service and changes "
-        "nothing in the library: no colour, no Favorite tag and no playlist "
-        "membership is written locally"
+        "the favourites sweep hearts matching tracks on the streaming service "
+        "and changes nothing in the library: it writes no colour, no Favorite "
+        "tag and no playlist membership locally"
     ),
 }
 
