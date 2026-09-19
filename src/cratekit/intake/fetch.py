@@ -239,7 +239,7 @@ def assert_outside_library(scratch: Path, library_root: Path) -> None:
 
 
 @dataclass(slots=True)
-class Fetched:
+class FetchedMix:
     """One fetched mix, held for the length of a pass."""
 
     url: str
@@ -249,7 +249,7 @@ class Fetched:
 
 
 @contextmanager
-def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[Fetched]:
+def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[FetchedMix]:
     """Fetch ``url`` into its scratch folder, lend the file, and remove the folder.
 
     THE LANDING IS CHECKED, NOT TRUSTED. The fetcher is a seam, and a seam can
@@ -262,7 +262,7 @@ def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[Fetched
     address = url.strip()
     scratch = scratch_for(address)
     assert_outside_library(scratch, library_root)
-    held = Fetched(url=address, path=scratch)
+    held = FetchedMix(url=address, path=scratch)
     try:
         try:
             if scratch.exists():
@@ -294,7 +294,7 @@ __all__ = [
     "SCRATCH_KEY",
     "SET_FETCH_TIMEOUT_SECONDS",
     "STEM_MAX_CHARS",
-    "Fetched",
+    "FetchedMix",
     "ScratchUnderLibrary",
     "ScratchUnusable",
     "SetFetchFailed",

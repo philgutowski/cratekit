@@ -14387,6 +14387,17 @@ address is a manual download away from working.
 **Closes when:** a fetch step lands ahead of identification, under its own
 binary check, and the URL is accepted at the queue again.
 
+**CLOSED 2026-09-19 on `relay/149`, U104.** Every half of the closing line is
+built. `intake set` and `intake identify` take a mix address. The fetch step is
+`intake/fetch.py`, a `SetFetcher` seam whose shipped implementation composes
+the `yt-dlp` download U80 landed after this entry was written, under its own
+binary check: a missing `yt-dlp` refuses `yt-dlp-missing` with the install hint
+before anything is fetched or sent. The mix lands under a new installation
+scoped state entry, `mix_scratch`, never under the library, and is removed
+however the pass ends. The recognition gate runs before the fetch, and the job
+freezes the address. What stays open is recorded as R-538 to R-544, and one
+real address is owed to an attended sitting.
+
 ---
 
 ## R-304. Identification at the queue is un-resumable spend
@@ -21898,3 +21909,173 @@ through the documented command, not only this one.
 
 **Closes when:** a verb surfaces a job's log, or the guide's resume section says
 where the file is and a person is expected to open it themselves.
+
+---
+
+## R-538. A fetched mix is converted to MP3 whole before it is cut into chunks
+
+**Found:** 2026-09-19, on `relay/149`, U104, by the code review. Read from the
+source, NOT driven: driving it is a real download, which is attended.
+
+The mix download is U80's argv with two edits, and U80's argv extracts the
+audio and converts it to MP3 at the best quality setting. For one track that is
+the file the library keeps. For a mix it is a file cut into chunks by ffmpeg
+and then removed, so the conversion spends minutes of processor time on a lossy
+to lossy encode of something nobody keeps, and the audio that gets
+fingerprinted is one generation worse than the upload.
+
+The alternative is to fetch the best audio stream as it is and let ffmpeg carve
+from whatever container arrives. It was not applied, for two reasons. The
+conversion is the source system's argv, run against the real services for a
+long time, and the alternative has never been run here at all. And `landed_in`
+accepts one MP3 exactly, so the landing rule would have to learn what else a
+recording can be called.
+
+**Measured cost:** unmeasured. No download was made.
+
+**Closes when:** one real address is fetched both ways at an attended sitting,
+and either the conversion is kept with its measured cost recorded, or the
+stream is fetched as it is and the landing rule is widened to match.
+
+---
+
+## R-539. Whether a second fetch of one mix reproduces the bytes the recognition cache is keyed to is not known
+
+**Found:** 2026-09-19, on `relay/149`, U104, while deciding when the scratch
+folder is removed. NOT driven, for the reason R-538 gives.
+
+The recognition cache is keyed by a digest of the recording's bytes. A fetched
+mix is removed however the pass ends, so `intake identify` of an address
+followed by `intake set` of the same address fetches twice, and so does a
+second run after a pass that raised. If the two downloads are byte for byte the
+same, the second pass is free, which is what U103 promises for a recording on
+this machine. If the encoder's output differs at all, every chunk is paid for
+again and nothing says so beforehand.
+
+The scratch folder is removed on a raised pass too. Keeping it would have kept
+the bytes the paid answers are keyed to, in a folder under the state root that
+no verb shows a person, at a few hundred megabytes a mix. Removal was chosen as
+the conservative half.
+
+**Measured cost:** unmeasured. At worst, one full set of recognition calls per
+repeat pass over an address.
+
+**Closes when:** the same address is fetched twice at an attended sitting and
+the two digests are compared. If they differ, the cache needs a key for a
+fetched mix that is not its bytes, or the fetched file has to outlive the pass.
+
+---
+
+## R-540. `doctor` cannot say whether this machine can take a mix address
+
+**Found:** 2026-09-19, on `relay/149`, U104. A decision recorded, not a defect
+driven.
+
+`intake.set` and `intake.identify` do not declare `binary.yt-dlp` in
+`doctor_checks`. A declared check is one doctor FAILS the verb on, and only an
+address needs the downloader, so declaring it would fail doctor on a machine
+that identifies every recording it is handed. The cost of not declaring it is
+that doctor passes a machine where `crate intake set` refuses an address. The
+refusal is free, arrives before any fetch or spend, and carries the install
+hint, which is why this was the conservative call.
+
+**Measured cost:** one refused command, no spend.
+
+**Closes when:** the registry can declare a check that doctor reports without
+failing the verb on it, or a person decides the downloader is required.
+
+---
+
+## R-541. Nothing in U104 has met a real address
+
+**Found:** 2026-09-19, on `relay/149`, U104. Owed to an attended sitting by the
+brief.
+
+The unit landed against fakes, as the brief directs. Four things are therefore
+claims about `yt-dlp` and not measurements of it. The numbered output template
+and the playlist bound of two were added so that a set page or a playlist is
+refused as several recordings rather than returned as one file; that a pure
+playlist address ignores the single entry flag is read from the tool's
+documented behaviour. The download bound is 3600 seconds, four times U80's
+bound for one track, and is a guess. A SoundCloud and a Mixcloud address have
+each never been fetched by this package. And the refusal a failed download
+ends in quotes the tool's last line of error output, whose usefulness on a
+real failure is unknown.
+
+**Measured cost:** unmeasured.
+
+**Closes when:** one real mix address is run through `crate intake set` at an
+attended sitting, a set page is run once to see the several recordings refusal,
+and the bound is replaced by a measured one.
+
+---
+
+## R-542. Two passes over one address at the same moment share a scratch folder
+
+**Found:** 2026-09-19, on `relay/149`, U104. Read from the source, not driven.
+
+The scratch folder is named by a digest of the address and cleared before every
+attempt, so that a process killed mid download is cleaned up by the next run of
+the same address. The cost of that choice is that a second pass over the same
+address, started while the first is still identifying, clears the first one's
+recording. The first then fails inside the carver, loudly and with its answers
+so far kept by the recognition cache, which is R-539's question again.
+
+**Measured cost:** unmeasured. One failed pass, reachable only by running the
+same address twice at once.
+
+**Closes when:** the scratch folder is held under `jobs.driver_lock` for the
+length of a pass, as `landing.batch_lock` holds a batch name, or a person
+decides two passes at once over one address is not worth a lock.
+
+---
+
+## R-543. A mix left in scratch by a killed process stays until the same address is fetched again
+
+**Found:** 2026-09-19, on `relay/149`, U104. Read from the source, not driven.
+
+A pass that returns or raises removes its scratch folder. A process that is
+killed cannot. What it leaves is outside the library and is cleared by the next
+fetch of the SAME address, and by nothing else: no verb sweeps `mix_scratch`,
+and doctor does not report what is in it. A person who never runs that address
+again keeps a few hundred megabytes under the state root.
+
+**Measured cost:** unmeasured. Disk space only, never library state.
+
+**Closes when:** a fetch sweeps scratch folders older than a bound it can
+defend, or doctor reports the folder's size.
+
+---
+
+## R-544. Thirteen containment checks compare resolved paths as text, and `resolve` does not settle letter case
+
+**Found:** 2026-09-19, on `relay/149`, U104. The code review raised it against
+U104's own guard, where it was DRIVEN on this machine and fixed. The thirteen
+sites below were found by grep and were NOT driven, so their reachability is
+unmeasured.
+
+On a case insensitive volume, `Path.resolve` follows links and leaves letter
+case as it was typed. A lower case spelling of a mixed case folder therefore
+resolves to a path that is not textually inside it, and a guard of the shape
+`root in path.parents`, or `is_relative_to`, passes. Driven: a temporary folder
+`Library`, a scratch path spelled under `library`, the same folder by
+`samefile`, and the textual check said outside. U104's guard now also asks
+`samefile` of every ancestor that exists.
+
+The same shape, by `grep` over `src` for a parents membership test or
+`is_relative_to`: `core/config.py:2122`, `core/pool.py:656`,
+`core/restore.py:381`, `635` and `2427`, `core/snapshot.py:279`,
+`setbuilder/cli.py:184`, `cli/doctor.py:2182`, `intake/ingest.py:89`,
+`intake/landing.py:352`, `354` and `366`, and `session/restore_cli.py:408`.
+Several guard a write or a refusal: the snapshot store inside its own source,
+a landing whose source is in staging, a restore outside the configured root.
+Each is reached only when a person or a configuration spells one folder two
+ways, which is ordinary on the volumes a DJ library sits on and is not the
+same as likely.
+
+**Measured cost:** one site driven and fixed. Thirteen read and not driven, so
+"nothing reaches them" is NOT what this entry says.
+
+**Closes when:** each site is driven with two spellings of one folder, and
+either asks the filesystem as U104's guard does or is recorded as unreachable
+with the drive that showed it. One shared helper is the likely shape.

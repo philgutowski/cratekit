@@ -1,0 +1,156 @@
+{
+  "name": "u104-a",
+  "pass_kind": "light",
+  "branch": "relay/149",
+  "head": "735b82f",
+  "when": "2026-09-19 23:24 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8907,
+  "baseline_exit": 0,
+  "pytest_runs": 7,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/fetch.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/fetch.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "db6034ddb967cfd4",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8907,
+    "baseline_collected": 8907,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "F1_guard_string_layer",
+      "description": "Drop the textual half of the library guard: a scratch folder that resolves to the library or to a path under it is no longer refused by name",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ff946608641b7084",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_library_that_is_not_there_is_still_refused_by_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if here == library or library in here.parents:\n        raise ScratchUnderLibrary(here, library)\n    if not library.exists():",
+      "new": "    if not library.exists():"
+    },
+    {
+      "id": "F2_guard_samefile_layer",
+      "description": "Drop the filesystem half of the library guard: two spellings of one folder that resolve does not settle are no longer compared with samefile",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1095ced62464670c",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_the_library_guard_asks_the_filesystem_and_not_only_the_strings"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if ancestor.exists() and ancestor.samefile(library):\n            raise ScratchUnderLibrary(here, library)",
+      "new": "        if ancestor.exists() and ancestor.samefile(library):\n            pass"
+    },
+    {
+      "id": "F3_guard_absent_library_return",
+      "description": "Drop the early return for a library root that is not there, so samefile is asked about a folder that does not exist",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "371fd90fd5d047cf",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_library_that_is_not_there_has_nothing_to_be_inside"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not library.exists():\n        return\n",
+      "new": ""
+    },
+    {
+      "id": "F4_landing_inside_scratch",
+      "description": "Drop the half of the landing check that requires the fetched file to be inside the scratch folder it was handed",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8bbc3eba3247f9bb",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_fetcher_that_lands_outside_its_folder_is_a_failed_fetch"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not landed.is_file() or scratch.resolve() not in landed.resolve().parents:",
+      "new": "        if not landed.is_file():"
+    }
+  ],
+  "dropped": []
+}

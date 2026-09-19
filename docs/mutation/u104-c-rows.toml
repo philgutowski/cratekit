@@ -1,0 +1,56 @@
+name = "u104-c"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_numbered_output"
+description = "Put the fixed output name back, so every entry of a playlist address lands on one file name and a set page reads as one recording"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''        argv[template] = str(directory / f"{fallback.FETCH_STEM}-%(autonumber)s.%(ext)s")'''
+new = '''        argv[template] = str(directory / f"{fallback.FETCH_STEM}.%(ext)s")'''
+
+[[rows]]
+id = "P2_probe_bound"
+description = "Raise the playlist probe from two entries to twenty, a realistic nearby value that downloads most of a set page to learn it is one"
+file = "src/cratekit/intake/fetch.py"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''PLAYLIST_PROBE = 2'''
+new = '''PLAYLIST_PROBE = 20'''
+
+[[rows]]
+id = "P3_several_threshold"
+description = "Move the several recordings threshold from more than one to more than two, so exactly two landed recordings read as an ordinary failure"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''            if len(landed) > 1:'''
+new = '''            if len(landed) > 2:'''
+
+[[rows]]
+id = "P4_timeout_is_its_own_kind"
+description = "Drop the branch that tells a timed out download from every other failed one, so nothing is ever called retryable"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''            if isinstance(exc.__cause__, subprocess.TimeoutExpired):
+                raise SetFetchTimedOut(str(exc)) from exc
+'''
+new = ''
+
+[[rows]]
+id = "P5_stem_bound"
+description = "Multiply the tracklist stem bound by ten, 80 to 800, past what a file name may hold"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''STEM_MAX_CHARS = 80'''
+new = '''STEM_MAX_CHARS = 800'''
+
+[[rows]]
+id = "P6_address_is_stripped"
+description = "Stop stripping the address before it is digested, so a stray space names a second scratch folder for one mix"
+file = "src/cratekit/intake/fetch.py"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''    token = hashlib.sha256(url.strip().encode("utf-8")).hexdigest()[:SCRATCH_DIGEST_CHARS]'''
+new = '''    token = hashlib.sha256(url.encode("utf-8")).hexdigest()[:SCRATCH_DIGEST_CHARS]'''

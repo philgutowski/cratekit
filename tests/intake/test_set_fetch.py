@@ -487,8 +487,8 @@ def test_a_fetched_mix_with_no_digest_is_named_by_its_address_and_not_its_scratc
     """Every fetched mix lands on a file of one name pattern, so a token taken
     from the scratch path would say nothing about which mix it was."""
     path = tmp_path / "fetched-00001.mp3"
-    one = intake_cli.Recording(path=path, ref=URL, stem="mix", shown=URL)
-    other = intake_cli.Recording(path=path, ref=URL + "-two", stem="mix", shown=URL)
+    one = intake_cli.SetRecording(path=path, ref=URL, stem="mix", shown=URL)
+    other = intake_cli.SetRecording(path=path, ref=URL + "-two", stem="mix", shown=URL)
     assert intake_cli.tracklist_name(one, "") != intake_cli.tracklist_name(other, "")
     assert intake_cli.tracklist_name(one, "ab" * 32) == intake_cli.tracklist_name(other, "ab" * 32)
 

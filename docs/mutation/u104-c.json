@@ -1,0 +1,214 @@
+{
+  "name": "u104-c",
+  "pass_kind": "light",
+  "branch": "relay/149",
+  "head": "735b82f",
+  "when": "2026-09-19 23:30 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8907,
+  "baseline_exit": 0,
+  "pytest_runs": 9,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/fetch.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/fetch.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "db6034ddb967cfd4",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8907,
+    "baseline_collected": 8907,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "P1_numbered_output",
+      "description": "Put the fixed output name back, so every entry of a playlist address lands on one file name and a set page reads as one recording",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "76388d7d7d97a5f9",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_the_shipped_fetcher_runs_u80s_download_under_a_mix_sized_bound"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        argv[template] = str(directory / f\"{fallback.FETCH_STEM}-%(autonumber)s.%(ext)s\")",
+      "new": "        argv[template] = str(directory / f\"{fallback.FETCH_STEM}.%(ext)s\")"
+    },
+    {
+      "id": "P2_probe_bound",
+      "description": "Raise the playlist probe from two entries to twenty, a realistic nearby value that downloads most of a set page to learn it is one",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "5962e2fae2c6436a",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_the_shipped_fetcher_runs_u80s_download_under_a_mix_sized_bound"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "PLAYLIST_PROBE = 2",
+      "new": "PLAYLIST_PROBE = 20"
+    },
+    {
+      "id": "P3_several_threshold",
+      "description": "Move the several recordings threshold from more than one to more than two, so exactly two landed recordings read as an ordinary failure",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "91cb4b7fe32ac141",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_the_shipped_fetcher_refuses_a_playlist_that_landed_two_recordings"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if len(landed) > 1:",
+      "new": "            if len(landed) > 2:"
+    },
+    {
+      "id": "P4_timeout_is_its_own_kind",
+      "description": "Drop the branch that tells a timed out download from every other failed one, so nothing is ever called retryable",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3dc64fee10ab737c",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_the_shipped_fetcher_says_a_timeout_as_the_one_retryable_kind"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if isinstance(exc.__cause__, subprocess.TimeoutExpired):\n                raise SetFetchTimedOut(str(exc)) from exc\n",
+      "new": ""
+    },
+    {
+      "id": "P5_stem_bound",
+      "description": "Multiply the tracklist stem bound by ten, 80 to 800, past what a file name may hold",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "09cabc6e43427148",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_tracklist_stem_is_the_last_segment_reduced_to_a_safe_name[https://example.invalid/%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82%E3%81%82-E3-81-82-E3-81-82-E3-81-82-E3-81-82-E3-81-82-E3-81-82-E3-81-82-E3-81-82-E3-81-82]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "STEM_MAX_CHARS = 80",
+      "new": "STEM_MAX_CHARS = 800"
+    },
+    {
+      "id": "P6_address_is_stripped",
+      "description": "Stop stripping the address before it is digested, so a stray space names a second scratch folder for one mix",
+      "file": "src/cratekit/intake/fetch.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6fa7b8520246cdd7",
+      "subset": [
+        "tests/intake/test_set_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 42,
+      "baseline_collected": 42,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_the_scratch_entry_is_declared_under_the_installation_root"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    token = hashlib.sha256(url.strip().encode(\"utf-8\")).hexdigest()[:SCRATCH_DIGEST_CHARS]",
+      "new": "    token = hashlib.sha256(url.encode(\"utf-8\")).hexdigest()[:SCRATCH_DIGEST_CHARS]"
+    }
+  ],
+  "dropped": []
+}

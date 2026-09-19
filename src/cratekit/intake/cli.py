@@ -482,7 +482,7 @@ def _local_or_none(source: str) -> Path | None:
 
 
 @dataclass(slots=True)
-class Recording:
+class SetRecording:
     """The file a pass identifies, and what the pass calls it.
 
     ``ref`` is what is frozen, reported and shown: the absolute path of a local
@@ -504,14 +504,14 @@ class Recording:
     leftover: str | None = None
 
     @classmethod
-    def local(cls, path: Path) -> Recording:
+    def local(cls, path: Path) -> SetRecording:
         return cls(path=path, ref=str(path), stem=path.stem, shown=path.name)
 
 
 MIX_SCRATCH_LEFT = "mix-scratch-left"
 
 
-def _fetch_notes(held: Recording) -> tuple[dict[str, str], ...]:
+def _fetch_notes(held: SetRecording) -> tuple[dict[str, str], ...]:
     """A scratch folder that outlived its pass, said where a person reads it."""
     if held.leftover is None:
         return ()
@@ -528,7 +528,7 @@ def _fetch_notes(held: Recording) -> tuple[dict[str, str], ...]:
 
 
 @contextmanager
-def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[Recording]:
+def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[SetRecording]:
     """Lend the recording for one pass, fetching it first when it is a mix URL.
 
     A LOCAL RECORDING IS LENT AS IT IS and nothing about it changes.
@@ -543,7 +543,7 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
     never land beside the music.
     """
     if local is not None:
-        yield Recording.local(local)
+        yield SetRecording.local(local)
         return
     address = source.strip()
     try:
@@ -557,7 +557,7 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
         ) from exc
     try:
         with fetch.fetched(address, Path(cfg.library.root), found) as got:
-            held = Recording(
+            held = SetRecording(
                 path=got.path, ref=address, stem=fetch.stem_of(address), shown=address
             )
             try:
@@ -616,7 +616,7 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
         ) from exc
 
 
-def _named_for_the_address(exc: CratekitError, held: Recording) -> CratekitError:
+def _named_for_the_address(exc: CratekitError, held: SetRecording) -> CratekitError:
     """A refusal raised over a fetched mix, said about the ADDRESS.
 
     The identifier names what it was handed, in its message and in its detail,
@@ -636,7 +636,7 @@ def _named_for_the_address(exc: CratekitError, held: Recording) -> CratekitError
 
 
 def _coverage_or_refuse(
-    result: pipeline.IdentifyResult, held: Recording
+    result: pipeline.IdentifyResult, held: SetRecording
 ) -> tuple[dict[str, str], ...]:
     """The warnings a partially answered identification carries, or a refusal.
 
@@ -819,7 +819,7 @@ def _library_or_refuse(cfg: config.Config, source: Path | str) -> None:
     )
 
 
-def tracklist_name(held: Recording, digest: str) -> str:
+def tracklist_name(held: SetRecording, digest: str) -> str:
     """The tracklist's file name: the recording's stem and a piece of its digest.
 
     THE STEM ALONE IS NOT A NAME. A recorder that calls every set REC001 gives
@@ -860,7 +860,7 @@ def _tracklist_dir(cfg: config.Config, given: str | None, source: Path | str) ->
 
 
 def _tracklist_written(
-    out: Path, held: Recording, result: pipeline.IdentifyResult
+    out: Path, held: SetRecording, result: pipeline.IdentifyResult
 ) -> dict[str, str]:
     """Write the tracklist and return the note that names it.
 
@@ -1294,6 +1294,7 @@ __all__ = [
     "TRACKLIST_WRITTEN",
     "TRACKS",
     "UNREACHED",
+    "SetRecording",
     "build_file",
     "build_identify",
     "build_playlist",
