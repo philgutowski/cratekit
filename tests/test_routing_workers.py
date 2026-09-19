@@ -2636,3 +2636,26 @@ def test_a_calibrated_export_over_a_taxonomy_with_no_vocal_sub_creates_none(
     assert envelope["data"]["totals"]["not_derived"] == []
     # Spelled, because the narrowed taxonomy no longer declares the name.
     assert b'Name="with vox"' not in _routed(export).read_bytes()
+
+
+def test_a_folder_the_vocal_writer_cannot_serve_is_a_warning_and_the_rest_are_served(
+    configured, voiced, tmp_path
+):
+    """A FOLDER of the vocal name where the playlist belongs is refused by the
+    emitter, and that refusal reaches the envelope rather than reading as a
+    folder that already had its sub (the zero row E6 of the U89 table)."""
+    _calibrated(configured)
+    vox = _vox_display()
+    export = _write_export(
+        configured,
+        tmp_path / "exports",
+        folders=(("Deep House", ("Low", "Med", "High", vox)), ("Tech House", ("Low", "Med", "High"))),
+    )
+    export.write_bytes(
+        export.read_bytes().replace(f'Name="{vox}" Type="1"'.encode(), f'Name="{vox}" Type="0"'.encode())
+    )
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["vox_created"] == [f"Tech House/{vox}"]
+    messages = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
+    assert any(vox in m for m in messages), messages
