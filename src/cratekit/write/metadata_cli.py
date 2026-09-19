@@ -90,16 +90,36 @@ def vocal_tag_values(
 
 
 def vocal_cut(cfg: config.Config) -> float:
-    """The with-vox threshold, from the library's vocal calibration if present.
+    """The with-vox threshold for tagging: the fitted cut, or the default.
 
-    A MISSING file is the default cut. An UNREADABLE one refuses, because a
-    corrupt calibration and an absent one are different states, and folding the
-    first into the second tags a whole library from a cut nobody fitted. This
-    mirrors ``energy.load_calibration``.
+    A MISSING file is the default cut, because a My Tag written from the
+    default is the source system's behaviour. An unreadable one refuses, and
+    that refusal is :func:`load_vocal_threshold`'s, not a second copy.
+    """
+    threshold = load_vocal_threshold(cfg)
+    return DEFAULT_VOCAL_THRESHOLD if threshold is None else threshold
+
+
+def load_vocal_threshold(cfg: config.Config) -> float | None:
+    """The library's fitted with-vox cut, or None when it was never calibrated.
+
+    THE ONE READER OF THE VOCAL CALIBRATION. The tagging verb, the routing
+    passes, the rebuild and resort workers and the convergence report all come
+    through here, so a corrupt file refuses the same way on every surface and
+    no surface can read it more leniently than another.
+
+    A MISSING file is None rather than the default cut, and the difference is
+    the routing contract (R-276): the default was never fitted to this library,
+    so filing a whole library under "with vox" from it would be the product
+    answering for the person. None leaves the vocal dimension uncompared, and
+    the engine names it. An UNREADABLE file refuses, because a corrupt
+    calibration and an absent one are different states, and folding the first
+    into the second files or tags from a cut nobody fitted. This mirrors
+    ``energy.load_calibration``.
     """
     path = config.state_path(STATE_KEY_VOCAL_CALIBRATION, cfg)
     if not path.is_file():
-        return DEFAULT_VOCAL_THRESHOLD
+        return None
     # A list, string or null payload raises TypeError at the subscript, so
     # AttributeError, which energy's tuple carries for its ``.items()`` call,
     # has no producer here. json.loads accepts NaN and Infinity, and a NaN cut
