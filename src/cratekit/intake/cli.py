@@ -43,14 +43,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from cratekit.acquire import match, match_cli
 from cratekit.acquire.match import Wanted
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import artifacts, binaries, config, jobs, review
+from cratekit.core import artifacts, binaries, binary_refusal, config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import fetch, ingest, normalize, pipeline, recognize
@@ -482,26 +482,36 @@ def _local_or_none(source: str) -> Path | None:
 
 
 @dataclass(slots=True)
-class _Recording:
+class Recording:
     """The file a pass identifies, and what the pass calls it.
 
     ``ref`` is what is frozen, reported and shown: the absolute path of a local
     recording, or the ADDRESS of a fetched one, because the fetched file is
-    gone by the time anybody reads the job. ``stem`` names a tracklist.
-    ``leftover`` is a scratch folder that could not be removed, read after the
-    ``with`` block that lent the file.
+    gone by the time anybody reads the job. ``stem`` names a tracklist and
+    ``shown`` is the short name a sentence uses. ``leftover`` is a scratch
+    folder that could not be removed, read after the ``with`` block that lent
+    the file.
+
+    ONE OBJECT RATHER THAN A PATH AND SOME OPTIONAL OVERRIDES, because a helper
+    that takes the path and an optional address falls back to the scratch
+    file's name whenever a caller forgets the address, and says so to nobody.
     """
 
     path: Path
     ref: str
     stem: str
+    shown: str
     leftover: str | None = None
+
+    @classmethod
+    def local(cls, path: Path) -> Recording:
+        return cls(path=path, ref=str(path), stem=path.stem, shown=path.name)
 
 
 MIX_SCRATCH_LEFT = "mix-scratch-left"
 
 
-def _fetch_notes(held: _Recording) -> tuple[dict[str, str], ...]:
+def _fetch_notes(held: Recording) -> tuple[dict[str, str], ...]:
     """A scratch folder that outlived its pass, said where a person reads it."""
     if held.leftover is None:
         return ()
@@ -518,7 +528,7 @@ def _fetch_notes(held: _Recording) -> tuple[dict[str, str], ...]:
 
 
 @contextmanager
-def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[_Recording]:
+def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[Recording]:
     """Lend the recording for one pass, fetching it first when it is a mix URL.
 
     A LOCAL RECORDING IS LENT AS IT IS and nothing about it changes.
@@ -533,17 +543,13 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
     never land beside the music.
     """
     if local is not None:
-        yield _Recording(path=local, ref=str(local), stem=local.stem)
+        yield Recording.local(local)
         return
     address = source.strip()
     try:
         found = fetch.fetcher()
     except binaries.BinaryNotFound as exc:
-        # Imported here because ``fallback_cli`` imports this package's
-        # ``missing_cli``, which imports this module.
-        from cratekit.acquire import fallback_cli  # noqa: PLC0415
-
-        raise fallback_cli.binary_refusal(
+        raise binary_refusal.yt_dlp_missing(
             exc,
             {"source": address},
             said="Fetching a mix runs it, so nothing was fetched and nothing was sent.",
@@ -551,8 +557,13 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
         ) from exc
     try:
         with fetch.fetched(address, Path(cfg.library.root), found) as got:
-            held = _Recording(path=got.path, ref=address, stem=fetch.stem_of(address))
-            yield held
+            held = Recording(
+                path=got.path, ref=address, stem=fetch.stem_of(address), shown=address
+            )
+            try:
+                yield held
+            except CratekitError as exc:
+                raise _named_for_the_address(exc, held) from exc.__cause__
         held.leftover = got.leftover
     except fetch.ScratchUnderLibrary as exc:
         raise _unusable(
@@ -563,7 +574,17 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
             source=address,
             scratch=str(exc.scratch),
         ) from exc
-    except fetch.SetFetchFailed as exc:
+    except fetch.ScratchUnusable as exc:
+        raise _unusable(
+            f"{exc}, so the mix at {address} was not fetched; nothing was sent",
+            f"make that folder writable, or point {config.ENV_STATE_DIR} somewhere that is",
+            source=address,
+        ) from exc
+    except fetch.SetFetchTimedOut as exc:
+        # THE ONE FETCH FAILURE KNOWN TO BE WORTH A RETRY. Everything else a
+        # download can end on is below, and is not called retryable, because
+        # nobody watches a session and a driver that trusts the flag would
+        # re-run a dead address for ever.
         raise refuse(
             "unavailable-transient",
             f"the mix at {address} could not be fetched ({exc}); nothing was sent "
@@ -577,10 +598,45 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
             origin=("intake.cli",),
             detail={"source": address},
         ) from exc
+    except fetch.SeveralRecordings as exc:
+        raise _unusable(
+            f"{address} was not fetched: {exc}; nothing was sent and nothing was kept",
+            "give the address of one recording on that page",
+            source=address,
+        ) from exc
+    except fetch.SetFetchFailed as exc:
+        raise _unusable(
+            f"the mix at {address} could not be fetched ({exc}); nothing was sent "
+            f"and nothing was kept. Whether the address or the network is at fault "
+            f"is not known from a failed download",
+            "open the address in a browser to check it still plays, then run it again",
+            "a streaming playlist goes through intake playlist instead",
+            "or download the mix to a file yourself and run it on that file",
+            source=address,
+        ) from exc
+
+
+def _named_for_the_address(exc: CratekitError, held: Recording) -> CratekitError:
+    """A refusal raised over a fetched mix, said about the ADDRESS.
+
+    The identifier names what it was handed, in its message and in its detail,
+    and for a fetched mix that is a scratch file removed before anybody reads
+    the refusal. Some of these arrive after calls were paid for, so the one
+    thing a person can act on, the address, has to be in them. The reason, the
+    remedy and everything else are the identifier's and are kept.
+    """
+    cause = exc.declared_cause
+    message = cause.message.replace(str(held.path), held.ref).replace(held.path.name, held.ref)
+    detail = {
+        key: held.ref if value == str(held.path) else value
+        for key, value in dict(cause.detail).items()
+    }
+    detail.setdefault("source", held.ref)
+    return CratekitError(replace(cause, message=message, detail=detail))
 
 
 def _coverage_or_refuse(
-    result: pipeline.IdentifyResult, source: Path, ref: str | None = None
+    result: pipeline.IdentifyResult, held: Recording
 ) -> tuple[dict[str, str], ...]:
     """The warnings a partially answered identification carries, or a refusal.
 
@@ -597,14 +653,14 @@ def _coverage_or_refuse(
     if not result.rows:
         raise refuse(
             "intake-recognition-failed",
-            f"{result.unreached} of {result.chunks} chunk(s) of {ref or source.name} got no "
+            f"{result.unreached} of {result.chunks} chunk(s) of {held.shown} got no "
             f"answer and the rest named nothing, so this is not a set nobody "
             f"recognised; {result.calls} call(s) were made and counted",
             remedy=Remedy.RETRY_LATER,
             retryable=True,
             origin=("intake.cli",),
             detail={
-                "source": ref or str(source),
+                "source": held.ref,
                 "calls": result.calls,
                 "unreached": result.unreached,
             },
@@ -647,7 +703,7 @@ def intake_set(ctx) -> Envelope:
         job = None
         with _recording(cfg, source, local) as held:
             result = pipeline.identify_only(held.path, refresh=bool(ctx.args.refresh))
-            warnings = _coverage_or_refuse(result, held.path, held.ref) + _cache_notes(result)
+            warnings = _coverage_or_refuse(result, held) + _cache_notes(result)
             tracks = frozen_rows(result.rows)
             if tracks:
                 job = jobs.enqueue(
@@ -763,9 +819,7 @@ def _library_or_refuse(cfg: config.Config, source: Path | str) -> None:
     )
 
 
-def tracklist_name(
-    source: Path, digest: str, *, stem: str | None = None, ref: str | None = None
-) -> str:
+def tracklist_name(held: Recording, digest: str) -> str:
     """The tracklist's file name: the recording's stem and a piece of its digest.
 
     THE STEM ALONE IS NOT A NAME. A recorder that calls every set REC001 gives
@@ -776,12 +830,12 @@ def tracklist_name(
     read is named by its absolute path instead, which still separates two
     folders.
 
-    A FETCHED MIX PASSES ITS OWN ``stem`` AND ``ref``, because the file it was
-    fetched into is named for nothing: the stem is the address's last segment
-    and the fallback token is a digest of the address.
+    A FETCHED MIX IS NAMED BY ITS ADDRESS, because the file it was fetched
+    into is named for nothing: the stem is the address's last segment and the
+    fallback token is a digest of the address.
     """
-    token = digest or digest_of({"path": ref or str(source)})
-    return f"{stem or source.stem}-{token[:TRACKLIST_DIGEST_CHARS]}{TRACKLIST_SUFFIX}"
+    token = digest or digest_of({"path": held.ref})
+    return f"{held.stem}-{token[:TRACKLIST_DIGEST_CHARS]}{TRACKLIST_SUFFIX}"
 
 
 def _tracklist_dir(cfg: config.Config, given: str | None, source: Path | str) -> Path:
@@ -806,7 +860,7 @@ def _tracklist_dir(cfg: config.Config, given: str | None, source: Path | str) ->
 
 
 def _tracklist_written(
-    out: Path, held: _Recording, result: pipeline.IdentifyResult
+    out: Path, held: Recording, result: pipeline.IdentifyResult
 ) -> dict[str, str]:
     """Write the tracklist and return the note that names it.
 
@@ -820,7 +874,7 @@ def _tracklist_written(
     truthfully: nothing when every answer was kept, the unanswered chunks when
     some got none, and all of it when nothing could be kept.
     """
-    path = out / tracklist_name(held.path, result.digest, stem=held.stem, ref=held.ref)
+    path = out / tracklist_name(held, result.digest)
     try:
         config.atomic_write_bytes(result.tracklist.encode("utf-8"), path)
     except OSError as exc:
@@ -884,7 +938,7 @@ def intake_identify(ctx) -> Envelope:
     written = None
     with _recording(cfg, source, local) as held:
         result = pipeline.identify_only(held.path, refresh=bool(ctx.args.refresh))
-        warnings = _coverage_or_refuse(result, held.path, held.ref) + _cache_notes(result)
+        warnings = _coverage_or_refuse(result, held) + _cache_notes(result)
         if result.rows:
             written = _tracklist_written(out, held, result)
     warnings += _fetch_notes(held)
@@ -1233,6 +1287,7 @@ __all__ = [
     "FAVORITES_SOURCE_ID",
     "HEARTS_WITHHELD",
     "INTAKE_KEYS",
+    "MIX_SCRATCH_LEFT",
     "SOURCE",
     "TRACKLISTS_DIR",
     "TRACKLIST_SUFFIX",

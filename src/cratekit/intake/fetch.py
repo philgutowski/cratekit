@@ -7,11 +7,12 @@ was a manual download away from working.
 
 WHAT IS PORTED AND WHAT IS NOT. The download is ported, through the engine U80
 already landed: :class:`cratekit.acquire.fallback.YtDlpFetcher` is the one
-spelling of a ``yt-dlp`` audio download in this package, and a second one here
-would be a second argv to keep safe. WHERE IT LANDS is not ported. The source
-system kept the mix in a set folder beside the music. Here a mix is INPUT and
-never library material: it lands in a scratch folder under the installation
-state root, is identified, and is removed when the pass ends, however it ends.
+spelling of a ``yt-dlp`` audio download in this package, and the mix download
+is that argv with two edits rather than a second argv to keep safe. WHERE IT
+LANDS is not ported. The source system kept the mix in a set folder beside the
+music. Here a mix is INPUT and never library material: it lands in a scratch
+folder under the installation state root, is identified, and is removed when
+the pass ends, however it ends.
 
 THE SCRATCH FOLDER IS ONE PER ADDRESS, named by a digest of the address and
 cleared before every attempt. A process killed mid download leaves at most one
@@ -26,9 +27,12 @@ second download reproduces those bytes is NOT measured here. It is recorded as
 a residual rather than answered by keeping a few hundred megabytes in a folder
 nobody is shown.
 
-THIS MODULE RAISES NO REFUSAL. It raises two plain exceptions and the verb
-turns them into its own vocabulary, which is how ``acquire.fallback`` and its
-command line are split.
+THIS MODULE RAISES NO REFUSAL. It raises plain exceptions, each naming ONE
+situation, and the verb turns them into its own vocabulary, which is how
+``acquire.fallback`` and its command line are split. They are separate types
+because they are separate instructions: a download that timed out is worth
+running again, a playlist address never is, and a scratch folder that cannot
+be made is a fact about this machine and not about the address.
 
 No test runs ``yt-dlp``. ``fetcher`` is looked up on this module at call time,
 the suite's conftest replaces it with one that fails the test, and a test that
@@ -67,11 +71,38 @@ SET_FETCH_TIMEOUT_SECONDS = 3600
 #: What a tracklist is named for when the address's last segment names nothing.
 DEFAULT_STEM = "mix"
 
+#: The longest stem an address may give a tracklist. A percent encoded title
+#: runs to hundreds of characters, a file name is refused past 255 bytes, and
+#: the tracklist is written AFTER the paid step, so an unbounded stem is a
+#: refusal that arrives with the bill. The digest beside it keeps names apart.
+STEM_MAX_CHARS = 80
+
+#: Entries asked of an address that turns out to be a playlist. TWO, because
+#: two is enough to know there is more than one and a whole set page is hours.
+PLAYLIST_PROBE = 2
+
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 class SetFetchFailed(Exception):
-    """The mix could not be brought to this machine. Never read as "nothing there"."""
+    """The mix could not be brought to this machine. Never read as "nothing there".
+
+    WHETHER RUNNING IT AGAIN CAN HELP IS NOT KNOWN from a failed download: a
+    dead address and a dead network both end ``yt-dlp`` non zero. So this says
+    nothing about retrying, and only :class:`SetFetchTimedOut` does.
+    """
+
+
+class SetFetchTimedOut(SetFetchFailed):
+    """The download ran out its bound. The one failure known to be worth a retry."""
+
+
+class SeveralRecordings(SetFetchFailed):
+    """The address is a playlist of more than one recording, and one was asked for."""
+
+
+class ScratchUnusable(Exception):
+    """The scratch folder could not be prepared. A fact about this machine."""
 
 
 class ScratchUnderLibrary(Exception):
@@ -89,6 +120,27 @@ class SetFetcher(Protocol):
     def fetch(self, url: str, directory: Path) -> Path: ...
 
 
+class _MixDownload(fallback.YtDlpFetcher):
+    """U80's download with the two edits a stranger's MIX address needs.
+
+    U80 only ever hands its fetcher a single track page it found by searching.
+    A person hands this one anything, and a set page or a playlist is an
+    address too. ``--no-playlist`` does not stop a pure playlist address, and
+    U80's fixed output name would land every entry on ONE file name, so a
+    playlist of twelve recordings would come back as one file that looks like
+    a whole mix. Numbering the output makes each entry its own file, which
+    ``landed_in`` then refuses as more than one, and the probe bound stops the
+    download at two entries instead of at the whole page.
+    """
+
+    def argv(self, url: str, directory: Path) -> list[str]:
+        argv = super().argv(url, directory)
+        template = argv.index("--output") + 1
+        argv[template] = str(directory / f"{fallback.FETCH_STEM}-%(autonumber)s.%(ext)s")
+        argv[1:1] = ["--playlist-end", str(PLAYLIST_PROBE)]
+        return argv
+
+
 class YtDlpSetFetcher:
     """The shipped fetcher: U80's ``yt-dlp`` download under a mix sized bound.
 
@@ -102,13 +154,34 @@ class YtDlpSetFetcher:
         run: Callable[..., Any] = subprocess.run,
         timeout: float = SET_FETCH_TIMEOUT_SECONDS,
     ) -> None:
-        self._inner = fallback.YtDlpFetcher(binary, run=run, timeout=timeout)
+        self._inner = _MixDownload(binary, run=run, timeout=timeout)
+
+    def argv(self, url: str, directory: Path) -> list[str]:
+        return self._inner.argv(url, directory)
 
     def fetch(self, url: str, directory: Path) -> Path:
         try:
             return self._inner.fetch(url, directory)
         except fallback.FallbackUnavailable as exc:
+            if isinstance(exc.__cause__, subprocess.TimeoutExpired):
+                raise SetFetchTimedOut(str(exc)) from exc
+            landed = _recordings_in(directory)
+            if len(landed) > 1:
+                raise SeveralRecordings(
+                    f"the address is a playlist of more than one recording "
+                    f"({', '.join(landed)}), and one mix is fetched at a time"
+                ) from exc
             raise SetFetchFailed(str(exc)) from exc
+
+
+def _recordings_in(directory: Path) -> list[str]:
+    if not directory.is_dir():
+        return []
+    return sorted(
+        one.name
+        for one in directory.iterdir()
+        if one.is_file() and one.suffix.lower() == fallback.FETCH_SUFFIX
+    )
 
 
 def fetcher() -> SetFetcher:
@@ -135,7 +208,7 @@ def stem_of(url: str) -> str:
     """
     segments = [one for one in urlsplit(url.strip()).path.split("/") if one]
     cleaned = _UNSAFE.sub("-", segments[-1]).strip("-.") if segments else ""
-    return cleaned or DEFAULT_STEM
+    return cleaned[:STEM_MAX_CHARS].strip("-.") or DEFAULT_STEM
 
 
 def assert_outside_library(scratch: Path, library_root: Path) -> None:
@@ -146,11 +219,23 @@ def assert_outside_library(scratch: Path, library_root: Path) -> None:
     folder. A fetched mix under the library root is a file a library walk
     indexes and rekordbox can be pointed at, which is the one thing this
     module exists not to do.
+
+    AND ASKED OF THE FILESYSTEM, NOT ONLY OF THE STRINGS. ``resolve`` does not
+    settle letter case, and the volumes a DJ library sits on are case
+    insensitive: driven on this project's own machine, a state root spelled
+    in lower case under a library recorded in mixed case resolved to a path
+    that is not textually inside it. So every ancestor that exists is also
+    compared with ``samefile``, which asks whether two names are one folder.
     """
     here = scratch.resolve()
     library = library_root.resolve()
     if here == library or library in here.parents:
         raise ScratchUnderLibrary(here, library)
+    if not library.exists():
+        return
+    for ancestor in (here, *here.parents):
+        if ancestor.exists() and ancestor.samefile(library):
+            raise ScratchUnderLibrary(here, library)
 
 
 @dataclass(slots=True)
@@ -184,7 +269,7 @@ def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[Fetched
                 shutil.rmtree(scratch)
             scratch.mkdir(parents=True)
         except OSError as exc:
-            raise SetFetchFailed(
+            raise ScratchUnusable(
                 f"the scratch folder {scratch} could not be prepared "
                 f"({type(exc).__name__}: {exc.strerror or exc})"
             ) from exc
@@ -204,13 +289,18 @@ def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[Fetched
 
 __all__ = [
     "DEFAULT_STEM",
+    "PLAYLIST_PROBE",
     "SCRATCH_DIGEST_CHARS",
     "SCRATCH_KEY",
     "SET_FETCH_TIMEOUT_SECONDS",
+    "STEM_MAX_CHARS",
     "Fetched",
     "ScratchUnderLibrary",
+    "ScratchUnusable",
     "SetFetchFailed",
+    "SetFetchTimedOut",
     "SetFetcher",
+    "SeveralRecordings",
     "YtDlpSetFetcher",
     "assert_outside_library",
     "fetched",

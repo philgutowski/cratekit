@@ -551,11 +551,11 @@ def test_two_recordings_sharing_a_stem_keep_a_tracklist_each(cfg, library, recog
 
 
 def test_a_recording_with_no_digest_is_named_by_its_path_so_two_folders_still_differ(tmp_path):
-    one = intake_cli.tracklist_name(tmp_path / "a" / "REC001.WAV", "")
-    other = intake_cli.tracklist_name(tmp_path / "b" / "REC001.WAV", "")
+    one = intake_cli.tracklist_name(intake_cli.Recording.local(tmp_path / "a" / "REC001.WAV"), "")
+    other = intake_cli.tracklist_name(intake_cli.Recording.local(tmp_path / "b" / "REC001.WAV"), "")
     assert one != other
     assert one.startswith("REC001-") and one.endswith(intake_cli.TRACKLIST_SUFFIX)
-    assert intake_cli.tracklist_name(tmp_path / "REC001.WAV", "ab" * 32) == (
+    assert intake_cli.tracklist_name(intake_cli.Recording.local(tmp_path / "REC001.WAV"), "ab" * 32) == (
         "REC001-abababababab.tracklist.txt"
     )
 
