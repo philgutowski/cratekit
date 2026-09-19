@@ -714,16 +714,18 @@ def test_a_released_batch_lock_leaves_its_file_and_can_be_taken_again(cfg):
 
 
 def test_a_refusal_inside_the_batch_lock_releases_it(cfg):
-    with pytest.raises(RuntimeError) as excinfo:
+    """What this holds is a lock that OUTLIVES its ``with``, which mutation row
+    A4c measures. It cannot tell the release in the ``finally`` from CPython
+    freeing the finished generator's frame, which closes the descriptor at the
+    same moment (row A4, zero). Keeping the raised exception alive does not
+    separate them either: ``contextlib`` puts the caller's traceback back on
+    it, so the lock's frame is never held by one."""
+    with pytest.raises(RuntimeError):
         with landing.batch_lock(BATCH):
             raise RuntimeError("the landing failed")
 
     with landing.batch_lock(BATCH):
         pass
-    # KEPT ALIVE ACROSS THE SECOND TAKE, ON PURPOSE. The traceback holds the
-    # lock's own frame, so a release left to the collector has not happened yet
-    # and only the one in the ``finally`` lets the second take through.
-    assert excinfo.value.__traceback__ is not None
 
 
 def test_two_batch_names_are_held_together(cfg):

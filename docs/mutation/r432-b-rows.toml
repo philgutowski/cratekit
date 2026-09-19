@@ -1,0 +1,106 @@
+name = "r432-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_verb_takes_no_lock"
+description = "intake_land: call the engine with no lock held, the state R-432 recorded"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''    with landing.batch_lock(batch):
+        landed = landing.apply('''
+new = '''    if True:
+        landed = landing.apply('''
+
+[[rows]]
+id = "B2_lock_keyed_on_the_run"
+description = "intake_land: key the lock on the run id and not the batch name, so two runs under one --name never meet"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''    with landing.batch_lock(batch):
+        landed = landing.apply('''
+new = '''    with landing.batch_lock(ctx.run.run_id):
+        landed = landing.apply('''
+
+[[rows]]
+id = "B3_lock_dropped_before_the_apply"
+description = "intake_land: take the lock and let it go before the engine runs, so a held name still refuses at the door and nothing is held across the moves"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''    with landing.batch_lock(batch):
+        landed = landing.apply('''
+new = '''    with landing.batch_lock(batch):
+        pass
+    if True:
+        landed = landing.apply('''
+
+[[rows]]
+id = "B4_lock_asked_at_the_gate"
+description = "intake_land: ask for the lock before the gate as well, so a held name stops a person reading a plan that moves nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''    spec = ctx.entry.gates[0]
+    option = ctx.gate.require('''
+new = '''    with landing.batch_lock(batch):
+        pass
+    spec = ctx.entry.gates[0]
+    option = ctx.gate.require('''
+
+[[rows]]
+id = "B5_lock_on_the_library_volume"
+description = "config: declare the landing locks library scoped, which puts them on the volume that is commonly exFAT"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py", "tests/test_config.py"]
+old = '''        key="landing_locks",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,'''
+new = '''        key="landing_locks",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,'''
+
+[[rows]]
+id = "B6_lock_directory_renamed"
+description = "config: move the landing locks to another directory name under the state root"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py", "tests/test_config.py"]
+old = '''        relative="landing_locks",'''
+new = '''        relative="landings",'''
+
+[[rows]]
+id = "A4r_release_left_to_the_collector"
+description = "batch_lock: drop the release in the finally clause. Table a's zero, measured again here so its composite can sit beside it"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''        lock.__exit__(None, None, None)'''
+new = '''        pass'''
+
+[[rows]]
+id = "A4c_lock_outlives_its_with"
+description = "What the release tests do hold: drop the release AND keep the lock object alive, which is what a leaked lock is once the collector cannot free it"
+file = "src/cratekit/intake/landing.py"
+pairs_with = "A4r_release_left_to_the_collector"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''        lock.__exit__(None, None, None)'''
+new = '''        globals().setdefault("_LEAKED", []).append(lock)'''
+
+[[dropped]]
+id = "D1_snapshot_role"
+description = "config: declare the landing locks COUPLED so a restore replaces them"
+reason = "ranked below the cap in effort, not in rows: the registry's own suite holds every lock entry to NEVER_RESTORED and test_the_batch_lock_is_on_the_state_disk asserts it, and an installation scoped entry is not reached by a library restore. NOT MEASURED."
+
+[[dropped]]
+id = "D2_message_reworded"
+description = "batch_lock: reword the refusal sentence"
+reason = "the tests assert the batch name, the holder and the absence of job vocabulary with in, which A8 measures; a reword of the rest is prose no guard owns. NOT MEASURED."
+
+[[dropped]]
+id = "D3_holder_except_members"
+description = "_holder: drop OSError, TypeError or KeyError from the tolerated set one at a time"
+reason = "same family as A7, which is measured at 1. Only the empty file is driven; a lock file holding valid JSON of another shape is not, so those three members are NOT MEASURED and would likely read zero."
