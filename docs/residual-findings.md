@@ -13269,6 +13269,20 @@ two listings was skipped up to any place a person reads.
 person sees, or both listings are read through a client contract that cannot be
 half present.
 
+**Closed 2026-09-19 on `relay/162`, with R-393.** The skip stands and now
+leaves a record. `listing.artist_releases` appends each method it skips to an
+optional `skipped` collector. `LabelRoster` records every member missing a
+listing, since the roster itself always exposes both and the crawl paging it
+could never see one. `sweep._crawl_or_refuse` returns those records beside the
+releases as `catalogue.Unread`, and the label worker refuses
+`label-sweep-incomplete` after the increment has offered what was read, naming
+each artist and listing. A job item has no warning channel, only a cause, so
+the cause is the surface. A missing method is `report-defect` and not
+retryable, because a resume cannot give a client a method. Driven through the
+shipped adapter and the dispatcher in `tests/test_label_tidal_catalogue.py`
+(a roster seed with albums only) and through `LabelSource` for a plain object.
+No watermark moves either way, since the labels source never acquires.
+
 ---
 
 ## R-262. Two more verbs declare write surfaces their workers cannot reach
@@ -17217,6 +17231,19 @@ failure skips that artist.
 **Closes when:** the attended sitting records whether a 429 during BFS
 happens, or listing 429 is retried without sleeping 31 seconds in the suite.
 
+**Closed 2026-09-19 on `relay/162`, with R-261.** Both halves. Discovery's
+listing now climbs the ladder through `tidal_catalogue._pause`, so the suite
+drives a 429 through all six attempts without sleeping; before this the new
+test took 102 seconds on one run. Once the ladder is spent, the artist is
+still skipped and is now recorded as `Unread`, and the worker refuses
+`label-sweep-incomplete` after offering everything the crawl did read, as
+`resume-job` and retryable, since a rate limit clears. A listing that cannot
+page or ran out of pages is recorded as not transient. An artist the roster
+already holds is not recorded, because the roster lists it again and that read
+is the one the crawl uses; `/code-review` found that the first draft named such
+an artist and failed a sweep that had read it in full. What that choice leaves
+open is R-468.
+
 ---
 
 ## R-394. Discovery's empty message says search found nothing when credited artists failed
@@ -19498,3 +19525,97 @@ catalogue a release the library holds in full is offered when its read fails
 
 **Closes when:** an offer whose ownership was not read says so on the review
 item or the job, or the decision that it need not is recorded.
+
+---
+
+## R-467. A rate limit on a discovery album search is skipped as if that query was read
+
+**Found:** 2026-09-19, on `relay/162`, looking one function over from R-393
+for the same shape, which is METHOD's fifth pattern.
+
+`TidalCatalogue._discover` issues eighty album searches per label and skips a
+query whose search raises anything but a `CratekitError` or an
+`AuthenticationError` (`src/cratekit/label/tidal_catalogue.py`, the first loop
+in `_discover`). R-352 chose that on purpose: a 429 on one query must not
+refuse the label. R-393's fix made a skipped artist LISTING a recorded
+`Unread` that fails the sweep after its offers, and left the skipped QUERY
+silent. An artist credited only on a compilation that query would have found
+is never enqueued, and the sweep reports success.
+
+**Measured cost.** Read and not driven end to end. The suite pins the skip
+(`test_a_rate_limit_on_one_album_query_does_not_discard_the_own_page`) and no
+test asks what a person is told. Unmeasured live how often a search 429s.
+
+**Why not fixed here.** The brief's out of scope is anything the entries do not
+name, and the query skip is a decision R-352 made one unit ago. The fix is the
+same shape as R-393's: record the query as `Unread` and let the worker's
+refusal name it.
+
+**Closes when:** a sweep whose discovery skipped a search query says so where
+a person reads it, or the decision that a skipped query need not is recorded.
+
+---
+
+## R-468. A held artist whose discovery listing fails is not expanded, and nothing says so
+
+**Found:** 2026-09-19, on `relay/162`, in the fix for `/code-review`'s
+finding.
+
+The BFS walk lists every credited artist, including the seeds and the label's
+own page, to find collaborators on releases that credit the label. A held
+artist whose listing fails there is now NOT recorded, because the roster lists
+it again and that read decides its releases. That is right for the releases.
+It is not right for the walk: the collaborators credited on that artist's
+releases were never enqueued, so an artist discovery would have reached only
+through them is missing, and the sweep reports success.
+
+**Measured cost.** Read and not driven. It needs a held artist whose listing
+fails during discovery and then succeeds for the roster, which is a 429 that
+clears inside one label's crawl.
+
+**Why not fixed here.** Recording it as `Unread` names an artist whose
+releases were read, which is what the review finding was about. Closing it
+means walking the roster's own listing for collaborators instead of listing
+twice, which changes the discovery walk rather than its reporting.
+
+**Closes when:** discovery expands from the roster's read of a held artist,
+or a failed expansion is named without naming the artist's releases unread.
+
+---
+
+## R-469. A sweep with both a rate limit and a missing listing is told to resume
+
+**Found:** 2026-09-19, on `relay/162`, choosing the refusal's remedy.
+
+`label.cli._refuse_unread` is `resume-job` and retryable when ANY unread part
+is transient. When one artist hit a 429 and another member lacks a listing, a
+resume can read the first and can never read the second, so the resumed item
+fails again on the missing method, now as `report-defect`.
+
+**Measured cost.** One extra resume before the person is told the true remedy.
+No test drives a mixed set; the mutation row that would flip `any` to `all` was
+logged as dropped in `docs/mutation/r261-rows.toml`.
+
+**Closes when:** a mixed refusal names both remedies, or the decision that the
+resume comes first is recorded.
+
+---
+
+## R-470. `tests/test_rebuild.py` fails 25 tests on some full parallel runs
+
+**Found:** 2026-09-19, on `relay/162`, and it is the flake RESTART already
+recorded for `r259`'s first mutation attempt.
+
+Twice in this session a full `pytest` run reported 25 failures or errors, all
+in `tests/test_rebuild.py`, with a `sqlalchemy` error: once on the first full
+run after the build commit, once as `scripts/mutate.py`'s baseline, which then
+refused the batch. The file passes alone (103 passed) and the full suite passed
+on three other runs of the same tree.
+
+**Measured cost.** Maintainer facing: a red baseline refuses a mutation batch
+and a red battery reads as a broken tree. Two failing full runs in five on this
+tree.
+The cause was not investigated.
+
+**Closes when:** the shared state the file's tests race on under `-n auto` is
+found and isolated, or the file is pinned to one worker.

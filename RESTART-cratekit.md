@@ -4,7 +4,41 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-259, issue #161, `relay/161`, 2026-09-19.**
+**Last merged: R-261 with R-393, issue #162, `relay/162`, 2026-09-19.**
+A label sweep that could not read part of a label's catalogue now says so
+instead of reporting a complete crawl. Two skips were silent before: a client
+artist exposing `get_albums` and not `get_ep_singles` (R-261), and a discovered
+artist whose listing hit a 429 during the BFS walk (R-393). Both skips stay,
+because refusing the label would withhold everything the crawl did read. Each
+now leaves a `label.catalogue.Unread` record (artist, listing, reason,
+transient). `listing.artist_releases` takes an optional `skipped` collector.
+`LabelRoster` carries `unread`: discovery's failed listings plus every member
+missing a listing, since the roster always exposes both and a crawl over it
+could never see the gap. `Catalogue.artist_for`'s docstring states that
+contract. `sweep._crawl_or_refuse` returns the records beside the releases,
+`LabelListing.unread` and `LabelSource.unread` carry them, and `label.cli`'s
+worker refuses `label-sweep-incomplete` AFTER the increment, so every offer is
+already durable. The refusal names each artist and listing. It is `resume-job`
+and retryable when anything unread is transient, and `report-defect` when
+only a missing method is. Discovery's listing climbs the ladder through
+`tidal_catalogue._pause`, so the suite drives a 429 without sleeping 31
+seconds. `/code-review` found one defect, fixed: an artist the roster already
+holds was recorded when its discovery listing failed, although the roster
+reads it again. No watermark moves either way, since the labels source never
+acquires. 8 new test cases by collected count, 8259 to 8267: 7 in
+`tests/test_label_tidal_catalogue.py` and 1 in `tests/test_adapter_listing.py`.
+Mutation table `docs/mutation/r261.md`, 14 rows, 14 killed, one row logged as
+dropped. R-467 (a discovery search 429 is still silent, the same shape one
+loop over), R-468 (a held artist that failed in discovery is not expanded),
+R-469 (a mixed refusal says resume) and R-470 (`tests/test_rebuild.py` flakes
+25 tests on some full parallel runs, seen twice this session) are filed.
+**R-467 and R-468 meet the board bar and their issues are owed**, to be filed
+after this merge lands on `main` per METHOD's board bar. **Owed to an attended
+sitting:** whether a live 429 happens during a label crawl. Battery on the
+recorded tree is at the end of this unit's last commit message.
+**Main's highest residual number is R-470.**
+
+**The session before: R-259, issue #161, `relay/161`, 2026-09-19.**
 A label sweep no longer offers releases the library already holds, which
 closes R-259 and, by the same change, R-137. The worker used to hand the
 increment an empty owned set. It now builds `label.sweep.OwnedReleases`, a
