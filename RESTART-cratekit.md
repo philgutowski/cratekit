@@ -50,7 +50,8 @@ merge lands on `main`: a track accepted through review still holds its
 playlist's mark back, because the mark resolves without the review store.
 **Owed to an attended sitting:** the first live rename, which is Phillip's. No
 rename has been made on a real account by this product. Battery on the
-recorded tree: see the line below, written after the run.
+recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 8419 passed and 1
+skipped in 63 seconds, and no test of this unit's among the ten slowest.
 **Main's highest residual number is R-485.**
 
 **The session before: U78, issue #123, `relay/123`, 2026-09-19.**
