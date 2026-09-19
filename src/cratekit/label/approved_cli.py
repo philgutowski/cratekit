@@ -79,7 +79,10 @@ from cratekit.label import cli as label_cli
 
 #: What the provenance sidecar says a listed row came from. ``intake land``
 #: reads exactly this word to find the rows it files under the labels tree.
-PROVENANCE_SOURCE = "label"
+#: NOT NAMED ``PROVENANCE_SOURCE``: ``intake.missing_cli`` already exports that
+#: name as a mapping from a job's key, and one symbol meaning two things in two
+#: modules is a defect shape this repository has paid for.
+LABEL_SOURCE = "label"
 
 #: What every list this verb writes is named after, before the digest.
 LIST_PREFIX = "label-approved"
@@ -588,7 +591,7 @@ def _provenance(
         if not ref or ref in found:
             continue
         found[ref] = listdoc.Provenance(
-            source=PROVENANCE_SOURCE,
+            source=LABEL_SOURCE,
             source_ref=release.release_id,
             label_id=release.label_id,
             label_name=release.label_name,
@@ -615,12 +618,12 @@ def _summary(written: listdoc.Written | None, **fields: Any) -> dict[str, Any]:
 __all__ = [
     "DIGEST_BYTES",
     "GONE",
+    "LABEL_SOURCE",
     "LIST_PREFIX",
     "NOT_ASKED",
     "NO_IDENTIFIER",
     "OUTAGE_AFTER",
     "PROVIDER",
-    "PROVENANCE_SOURCE",
     "build_approved",
     "label_approved",
     "list_name",
