@@ -18229,6 +18229,33 @@ out of genre material downloads all of it.
 **Closes when:** the label hand off to acquisition consults the gate, or the
 decision not to is recorded.
 
+**Narrowed 2026-09-19 on `relay/146`, U101. The gate is consulted and nothing
+feeds it a genre.** `crate label approved` reads every accepted release, runs
+`gate_decisions` once per label over one genre per release, and lists only what
+it passes. A held release is named with its family, its count and the share, in
+a `held.<release>` line and in `summary.held`, and is never offered for review.
+A release whose rows report no genre, or disagree, or whose label had a release
+unread this run, is listed and named on a failing `ungated` line. Driven in
+`tests/test_label_approved.py` against the fake catalogue, 21 of 21 new guards
+killed in `docs/mutation/u101.md`.
+
+What is still open is the input. The genre is read off the catalogue's track
+rows, and no shipped catalogue puts one there: `TidalCatalogue.release_tracks`
+returns the client's track objects, and the client carries no genre on an album
+or a track, only a browse page (read in the installed client, 2026-09-19). So in
+the shipped build every release is listed unjudged and the verb says so on every
+run. The source system asked Beatport per track; `tagging.searchers` already
+asks it, and binding that here is a live provider call per track and a unit of
+its own.
+
+**Measured cost now:** off genre material on a favourite label is still listed,
+each such run shows a failing `ungated` line naming every release, and a person
+told the gate could not judge is told the truth. No issue: the product says
+nothing false and every workflow finishes, so the board bar is not met.
+
+**Closes when:** a shipped catalogue reports a genre per release or per track
+that the gate reads, or the decision to rely on review alone is recorded.
+
 ---
 
 ## R-421. `repair paths` queues proposals that nothing applies
@@ -19319,3 +19346,51 @@ path, a `review import` carrying such an item, was driven only through
 
 **Closes when:** adopt exits non zero when it refused something, or the decision
 that a per item failure is not a run failure is recorded.
+
+---
+
+## R-462. The genre gate's share is over the releases accepted this run, not the label's output
+
+**Found:** 2026-09-19, U101 on `relay/146`, the built in review of
+`crate label approved`.
+
+`label/approved_cli.py` `_gated` hands `gate_decisions` the genres of the
+label's releases that were ACCEPTED and READ this run. The source system judged
+a family against the label's whole classified catalogue. Rejected and
+unanswered releases are never read by this verb, a contract
+`test_an_accepted_release_is_listed_and_a_rejected_or_open_one_is_never_read`
+pins, and releases accepted and landed in an earlier run are not counted either.
+So a label whose only accepted release this sitting is off genre is that
+family's whole share and is never held.
+
+**Measured cost:** unmeasured on any producer, because no shipped catalogue
+reports a genre (R-420). Against the fake catalogue the direction is timid:
+fewer releases in the set means larger shares and fewer holds, and every
+release so kept was accepted by a person in review.
+
+**Options:** read every release the sweep offered for the label, which spends a
+provider read per rejected release; keep a per label genre tally across runs; or
+record that a person's acceptance outranks the share. The conservative call,
+taken here, keeps the verb's read contract.
+
+**Closes when:** the share is computed over the label's output rather than one
+sitting's acceptances, or the decision that acceptance outranks it is recorded.
+
+---
+
+## R-463. A release the genre gate holds has no way through short of editing the gate
+
+**Found:** 2026-09-19, U101 on `relay/146`, while writing the held line.
+
+`crate label approved` holds a release a person accepted in review when its
+family is under the share for its label. The held line names the numbers and
+offers no act, because none exists: the verb reads the shipped taxonomy through
+`taxonomy.default_taxonomy()`, so even editing a library's own template does not
+move it. The source system let a heart override the gate for favourites.
+
+**Measured cost:** none today, because nothing is held in the shipped build
+(R-420). Once a genre is reported, an accepted release a person wants and the
+gate holds reaches the list only through another intake verb.
+
+**Closes when:** a held release can be passed by a named act, or the decision
+that the gate outranks an acceptance is recorded.

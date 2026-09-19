@@ -201,6 +201,16 @@ provenance alike, so the same work rewrites the same file and any other work,
 a corrected year included, takes a new name rather than colliding with an
 earlier list.
 
+Before anything is resolved, the genre gate judges each label's accepted
+releases together. A release whose genre family is under the taxonomy's out of
+place share for its label, one hip hop EP among a house label's ten, is held:
+it is not listed, not offered for review, and is named on a line of its own
+with its family, its count and the share. A release whose genre is not known is
+listed and named on a failing `ungated` line, and so is every release of a label
+that had a release unread in the same run, since its share is then unknown. The
+genre is what the catalogue reports on a release's tracks, and the streaming
+catalogue reports none today, so expect every release on that line for now.
+
 Owned means landed, not listed and not staged. A list written before its tracks
 landed is superseded by the next one, which holds everything the earlier one
 did that is still owed. Download the newest list and ignore the older ones,

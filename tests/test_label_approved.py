@@ -1382,3 +1382,23 @@ def test_a_genre_on_a_mapping_row_is_read_like_one_on_an_object(cfg, library, mo
 
     assert "901" not in listed_ids(envelope)
     assert [one["genre"] for one in envelope["data"]["summary"]["held"]] == ["Hip Hop"]
+
+
+
+def test_a_family_exactly_at_the_share_belongs_and_is_listed(cfg, library, monkeypatch):
+    """One hip hop release in ten is exactly the 10% share, and only UNDER it drops."""
+    releases: dict = {}
+    for n in range(HOUSE_RELEASES - 1):
+        accepted(cfg, f"h-{n}", label_id="tide-works", label_name="Tide Works")
+        releases[f"h-{n}"] = (
+            [Track(f"h{n}", f"House Artist {n}", "Deep Cut", genre="Deep House")],
+            2024,
+        )
+    accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
+    releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
+    bind(monkeypatch, StrictCatalogue(releases=releases))
+
+    _code, envelope = approved()
+
+    assert "901" in listed_ids(envelope)
+    assert envelope["data"]["summary"]["held"] == []
