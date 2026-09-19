@@ -3061,3 +3061,43 @@ def test_the_creating_writer_refuses_a_document_whose_lines_end_in_lf():
     assert report.inserted == 0 and report.created == ()
     assert len(report.warnings) == 1 and "CRLF" in report.warnings[0]
     assert bytes(buffer) == document
+
+
+def test_a_namesake_genre_folder_outside_the_routing_tree_takes_nothing(
+    configured, tagged, tmp_path
+):
+    """The writer is told the tree, so it searches the tree alone (U91's U6 row).
+
+    A folder named Tech House sits in the intake folder, BEFORE the routing tree
+    in the document. Unscoped, the search finds it first and the created High
+    lands there, outside every tree a person routes by.
+    """
+    export = _unplaced_export(configured, tmp_path / "exports")
+    display = taxonomy.default_taxonomy().intake.display
+    opening = f'<NODE Type="0" Name="{display}" Count="1">\r\n'.encode()
+    namesake = (
+        b'        <NODE Type="0" Name="Tech House" Count="1">\r\n'
+        b'          <NODE Name="Low" Type="1" KeyType="0" Entries="0"/>\r\n'
+        b"        </NODE>\r\n"
+    )
+    document = export.read_bytes()
+    assert document.count(opening) == 1, "the fixture no longer has the shape this bends"
+    export.write_bytes(document.replace(opening, opening + namesake))
+
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["created"] == ["Tech House/High"]
+    written = _placed(export).read_bytes()
+    assert _sub_keys(written, "Tech House", "High") == ("13",)
+    assert written.count(b'Name="High"') == 1, "a High was created outside the routing tree"
+
+
+def test_an_intake_key_with_no_row_warns_once_and_only_as_row_absent(
+    configured, tagged, tmp_path
+):
+    """The inbox sweep hands _decide only rows it has, so a key with no row is
+    one warning naming the row, not a second one about a file (U91's P1 row)."""
+    export = _write_export(configured, tmp_path / "exports", inbox=("11", "99"))
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert [w["code"] for w in envelope["warnings"]] == ["track-row-absent"]

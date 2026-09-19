@@ -1728,10 +1728,11 @@ def _break_before(content: bytes, line_at: int) -> int | None:
     An insert that emits a lead broken node lands it just before that break.
     None when the line ends in a bare LF, or in nothing, for the reason
     :func:`_first_child_offset` gives: the only way to write there anyway is to
-    invent a line ending.
+    invent a line ending. A line at the very start has no break before it, and
+    the slice there is shorter than a CRLF, so it answers None the same way.
     """
     at = line_at - len(CRLF)
-    if at < 0 or bytes(content[at:line_at]) != CRLF:
+    if bytes(content[at:line_at]) != CRLF:
         return None
     return at
 
