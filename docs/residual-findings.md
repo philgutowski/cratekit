@@ -18174,6 +18174,16 @@ R-351 made an `id:` seed storable and nothing on the command line reaches it.
 
 **Closes when:** the registry verbs set every field the store holds.
 
+**Closed 2026-09-19 on `relay/144`, U99.** `crate label registry add` takes
+`--track-limit N` and a repeatable `--seed VALUE`, and `crate label registry set`
+edits a held entry's match, limit or seeds and keeps the rest, through a new
+`RegistryStore.edit`. `list` shows every field, in the check detail for a person
+and in `summary.labels` for a reader that is not. A seed that starts with `id:`
+and is not `id:` followed by ASCII digits refuses, in the store, on both verbs,
+and writes nothing. Driven through the real dispatcher in
+`tests/test_label_registry_verbs.py`. Mutation tables `docs/mutation/u99-a.md`
+and `u99-b.md`, read in `u99-notes.md`. What stays open is R-460.
+
 ---
 
 ## R-419. An approved harvested label never enters the registry
@@ -19252,3 +19262,23 @@ the library's volume, and a label batch is hundreds of files, not thousands.
 
 **Closes when:** the index is built from what `place_files` already read, or
 a measurement on a real batch shows the second read does not matter.
+
+---
+
+## R-460. No verb clears a label's seeds or its track limit back to none
+
+**Found:** 2026-09-19, U99 on `relay/144`, building `crate label registry set`.
+
+`set --seed` replaces the held seed list and `set --track-limit` replaces the
+limit, and neither can say "none". An empty `--seed` refuses as a blank seed, a
+zero limit refuses at the parser, and `RegistryStore.edit` is the only caller
+that can pass an empty tuple. The brief decided the verbs and did not name a
+clearing flag, so none was invented.
+
+**Measured cost:** a person who wants the label's own artist page alone, or the
+default limit again, removes the label and adds it back. Removal keeps the
+identifier and its watermark, so nothing is lost, and the person retypes the
+match needle.
+
+**Closes when:** `set` takes a clearing form for each field, or the decision
+not to is recorded.

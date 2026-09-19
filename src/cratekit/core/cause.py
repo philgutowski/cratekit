@@ -1168,9 +1168,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # The curated label list is present and cannot be understood. Treating
         # it as empty would drop the followed labels on the next save.
         "label-intent-unusable": ExitCode.PRECONDITION,
-        # A favourite-label name produced no identifier, or a rename arrived
-        # without the new display name. PRECONDITION rather than USAGE, because
-        # the parser accepted the invocation.
+        # A favourite-label name produced no identifier, a rename arrived
+        # without the new display name, or a registry verb was handed a field
+        # it cannot store: an id: seed that is not digits, a blank seed, a
+        # track limit below one, a field on an action that does not set it
+        # (U99). PRECONDITION rather than USAGE, because the parser accepted
+        # the invocation.
         "label-name-invalid": ExitCode.PRECONDITION,
         # The operator named a label the registry does not hold.
         "label-unknown": ExitCode.PRECONDITION,

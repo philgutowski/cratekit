@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Mapping
+import unicodedata
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,6 +38,69 @@ def slug(name: str) -> str:
             origin=("label.registry",),
         )
     return folded
+
+
+#: The one identifier seed shape R-351 defined. ASCII digits only, so a seed
+#: stored here is one the adapter's own ``^id:(\d+)$`` reads as an identifier.
+_ID_SEED = re.compile(r"id:[0-9]+")
+
+
+def _field_invalid(message: str, step: str, detail: dict[str, Any]) -> CratekitError:
+    return refuse(
+        "label-name-invalid",
+        message,
+        steps=(step,),
+        scope=Scope.ITEM,
+        origin=("label.registry",),
+        detail=detail,
+    )
+
+
+def check_seed(seed: str) -> str:
+    """A seed the registry can store, stripped, or a refusal.
+
+    AN ``id:`` SEED THAT IS NOT DIGITS IS REFUSED, NOT STORED AS A NAME. The
+    adapter reads anything that is not exactly ``id:<digits>`` as an artist
+    name, so ``id:12a`` or ``ID:12`` would be searched for as an act called
+    that, match nobody, and refuse the label on every sweep with nothing on the
+    screen saying the seed was mistyped.
+    """
+    text = str(seed).strip()
+    if not text:
+        raise _field_invalid(
+            "a seed artist needs a name or an identifier of the form id:<digits>",
+            "pass each seed as an artist name or as id: followed by the provider's digits",
+            {"seed": seed},
+        )
+    if text[:3].casefold() == "id:" and not _ID_SEED.fullmatch(text):
+        raise _field_invalid(
+            f"the seed {text!r} starts like a provider identifier and is not "
+            f"id: followed by digits, so it would be searched for as an artist "
+            f"name and match nobody",
+            "write the seed as id: followed by the provider artist's digits",
+            {"seed": text},
+        )
+    return text
+
+
+def check_track_limit(limit: int) -> int:
+    """A track limit of one or more, or a refusal. Zero would read as the default."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise _field_invalid(
+            f"a track limit must be a whole number of one or more, not {limit!r}",
+            "pass --track-limit with a positive number",
+            {"track_limit": limit},
+        )
+    return limit
+
+
+def _checked_seeds(seed_artists: Sequence[str]) -> tuple[str, ...]:
+    return tuple(check_seed(seed) for seed in seed_artists)
+
+
+def _name_key(name: str) -> str:
+    """NFC then casefold. Not ``rbxml._folded``, which is NFC and never case."""
+    return unicodedata.normalize("NFC", name.strip()).casefold()
 
 
 def _coerce_int(value: Any) -> int | None:
@@ -91,9 +155,9 @@ class Registry:
         return self.labels.get(label_id)
 
     def by_name(self, name: str) -> LabelEntry | None:
-        wanted = name.strip().casefold()
+        wanted = _name_key(name)
         for entry in self.labels.values():
-            if entry.name.casefold() == wanted:
+            if _name_key(entry.name) == wanted:
                 return entry
         return None
 
@@ -220,8 +284,15 @@ class RegistryStore:
         seed_artists: tuple[str, ...] | list[str] = (),
         track_limit: int | None = None,
     ) -> str:
-        """Add or update by identifier. Re-adding keeps the same ``label_id``."""
+        """Add or update by identifier. Re-adding keeps the same ``label_id``.
+
+        Every seed and the limit are checked before the lock is taken, so a
+        refused field writes nothing, not even the fields beside it.
+        """
         label_id = slug(name)
+        seeds = _checked_seeds(seed_artists)
+        if track_limit is not None:
+            check_track_limit(track_limit)
 
         def mutate(current: dict[str, LabelEntry]) -> None:
             existing = current.get(label_id)
@@ -229,7 +300,7 @@ class RegistryStore:
                 label_id=label_id,
                 name=name,
                 match=match if match is not None else (existing.match if existing else None),
-                seed_artists=tuple(seed_artists) if seed_artists else (
+                seed_artists=seeds if seeds else (
                     existing.seed_artists if existing else ()
                 ),
                 track_limit=track_limit if track_limit is not None else (
@@ -239,6 +310,51 @@ class RegistryStore:
 
         self.update(mutate)
         return label_id
+
+    def edit(
+        self,
+        name_or_id: str,
+        *,
+        match: str | None = None,
+        seed_artists: Sequence[str] | None = None,
+        track_limit: int | None = None,
+    ) -> LabelEntry:
+        """Change the given fields of a held entry and keep every other one.
+
+        Not ``update``, which is the locked read, modify, write this calls. The
+        entry is resolved INSIDE the lock, by identifier or display name, so a
+        concurrent remove is a refusal rather than a resurrection. A name that
+        resolves nothing refuses rather than creating an entry, which is what
+        separates this from :meth:`add`.
+        """
+        seeds = _checked_seeds(seed_artists) if seed_artists is not None else None
+        if track_limit is not None:
+            check_track_limit(track_limit)
+        edited: list[LabelEntry] = []
+
+        def mutate(current: dict[str, LabelEntry]) -> None:
+            existing = Registry(labels=current).resolve(name_or_id)
+            if existing is None:
+                raise refuse(
+                    "label-unknown",
+                    f"no favourite label is named {name_or_id!r}",
+                    steps=("list the registry and take the identifier from it",),
+                    scope=Scope.ITEM,
+                    origin=("label.registry",),
+                    detail={"name": name_or_id},
+                )
+            entry = LabelEntry(
+                label_id=existing.label_id,
+                name=existing.name,
+                match=match if match is not None else existing.match,
+                seed_artists=seeds if seeds is not None else existing.seed_artists,
+                track_limit=track_limit if track_limit is not None else existing.track_limit,
+            )
+            current[existing.label_id] = entry
+            edited.append(entry)
+
+        self.update(mutate)
+        return edited[0]
 
     def rename(self, label_id: str, new_name: str) -> LabelEntry:
         """Change the display name. The identifier, and its watermarks, stay."""

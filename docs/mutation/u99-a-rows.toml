@@ -1,0 +1,134 @@
+name = "u99-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_blank_seed"
+description = "check_seed: drop the blank seed refusal, so a whitespace seed is stored as an empty name"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''    if not text:
+        raise _field_invalid('''
+new = '''    if False:
+        raise _field_invalid('''
+
+[[rows]]
+id = "A2_malformed_id_seed"
+description = "check_seed: drop the malformed id: refusal, so id:12a is stored and later searched for as a name"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''    if text[:3].casefold() == "id:" and not _ID_SEED.fullmatch(text):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A3_id_prefix_case"
+description = "check_seed: compare the id: prefix case sensitively, so ID:12 is stored as a name"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''    if text[:3].casefold() == "id:" and not _ID_SEED.fullmatch(text):'''
+new = '''    if text[:3] == "id:" and not _ID_SEED.fullmatch(text):'''
+
+[[rows]]
+id = "A4_id_digits_optional"
+description = "_ID_SEED: allow zero digits, so a bare id: is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''_ID_SEED = re.compile(r"id:[0-9]+")'''
+new = '''_ID_SEED = re.compile(r"id:[0-9]*")'''
+
+[[rows]]
+id = "A5_id_prefix_match"
+description = "check_seed: match the identifier as a prefix rather than whole, so id:12a is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''not _ID_SEED.fullmatch(text):'''
+new = '''not _ID_SEED.match(text):'''
+
+[[rows]]
+id = "A6_store_limit_floor"
+description = "check_track_limit: accept zero, the store's own guard behind the parser's"
+file = "src/cratekit/label/registry.py"
+surface = "maintainer"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''or limit < 1:'''
+new = '''or limit < 0:'''
+
+[[rows]]
+id = "A7_add_unchecked_seeds"
+description = "add: store the seeds unchecked, so a malformed seed on add is written"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''        seeds = _checked_seeds(seed_artists)
+'''
+new = '''        seeds = tuple(seed_artists)
+'''
+
+[[rows]]
+id = "A8_edit_unchecked_seeds"
+description = "edit: store the seeds unchecked, so a malformed seed on set is written"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''        seeds = _checked_seeds(seed_artists) if seed_artists is not None else None'''
+new = '''        seeds = tuple(seed_artists) if seed_artists is not None else None'''
+
+[[rows]]
+id = "A9_edit_unknown_creates"
+description = "edit: create an entry for a name the registry does not hold instead of refusing label-unknown"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''            if existing is None:
+                raise refuse(
+                    "label-unknown",
+                    f"no favourite label is named {name_or_id!r}",
+                    steps=("list the registry and take the identifier from it",),
+                    scope=Scope.ITEM,
+                    origin=("label.registry",),
+                    detail={"name": name_or_id},
+                )
+            entry = LabelEntry('''
+new = '''            if existing is None:
+                existing = LabelEntry(label_id=slug(name_or_id), name=name_or_id)
+            entry = LabelEntry('''
+
+[[rows]]
+id = "A10_edit_drops_match"
+description = "edit: write the passed match even when none was passed, so set --track-limit clears the needle"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''                match=match if match is not None else existing.match,'''
+new = '''                match=match,'''
+
+[[rows]]
+id = "A11_edit_drops_seeds"
+description = "edit: write the passed seeds even when none were passed, so set --track-limit clears the seeds"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''                seed_artists=seeds if seeds is not None else existing.seed_artists,'''
+new = '''                seed_artists=seeds or (),'''
+
+[[rows]]
+id = "A12_edit_drops_limit"
+description = "edit: write the passed limit even when none was passed, so set --seed clears the limit"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''                track_limit=track_limit if track_limit is not None else existing.track_limit,'''
+new = '''                track_limit=track_limit,'''
+
+[[rows]]
+id = "A13_by_name_unnormalized"
+description = "_folded: drop the NFC normalization, so a decomposed accented name resolves nothing"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''    return unicodedata.normalize("NFC", name.strip()).casefold()'''
+new = '''    return name.strip().casefold()'''

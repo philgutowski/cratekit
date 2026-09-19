@@ -73,6 +73,26 @@ you want to see in the library. The needle is used for verification, the name is
 used for display, and keeping them apart is what lets you call a label whatever
 you like without breaking the check.
 
+## Seed artists and the track limit
+
+A label with no artist page of its own under its exact name cannot be crawled
+until it names at least one seed artist, and it refuses by name on every sweep
+until it does. A seed is an artist name, or `id:` followed by the provider's
+digits when two acts share that name. The track limit is how many of the
+label's newest tracks to take.
+
+```bash
+crate label registry add "Some Label" --track-limit 50 --seed "Some Artist" --seed id:12345
+crate label registry set some-label --track-limit 100
+crate label registry set some-label --seed "Another Artist"
+```
+
+`set` changes only the fields you pass and keeps the rest. A `--seed` list
+replaces the held one, so pass every seed you want kept. It refuses a label the
+registry does not hold rather than creating one, and it refuses a seed that
+starts with `id:` and is not digits, because that seed would be searched for as
+an artist name and match nobody.
+
 ## Importing one catalogue
 
 Import resolves the name against the registry first and refuses if it is not
