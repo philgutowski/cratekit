@@ -1,0 +1,288 @@
+{
+  "name": "r501-d",
+  "pass_kind": "light",
+  "branch": "relay/182",
+  "head": "9c701a4",
+  "when": "2026-09-19 21:25 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8834,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/imported_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/imported_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "367d754086c8cd95",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8834,
+    "baseline_collected": 8834,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M7_retire_next_free_name",
+      "description": "imported_cli.retire: never take the next free name, so a second retirement lands on the first",
+      "file": "src/cratekit/intake/imported_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2b7d0b9a980714f1",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_intake_land.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 689,
+      "baseline_collected": 689,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_retiring_never_lands_on_another_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        while not naming.claim_target(target):",
+      "new": "        while False:"
+    },
+    {
+      "id": "M9_waiting_capture",
+      "description": "imported_cli._waiting: drop the no capture condition, so an open destructive session is taken for a landing",
+      "file": "src/cratekit/intake/imported_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d185c32dcdf87d36",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_intake_land.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 689,
+      "baseline_collected": 689,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_an_open_run_holding_a_capture_is_never_taken_for_a_landing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        record.state is session.SessionState.OPEN\n        and record.snapshot_path is None\n        and record.pending is None",
+      "new": "        record.state is session.SessionState.OPEN\n        and record.pending is None"
+    },
+    {
+      "id": "M10_waiting_legacy",
+      "description": "imported_cli._waiting: look only for awaiting-import, so every landing made before the fix is left where it was",
+      "file": "src/cratekit/intake/imported_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2920dc4ee82722df",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_intake_land.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 689,
+      "baseline_collected": 689,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_a_run_landed_before_the_fix_is_settled_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if record.state is session.SessionState.AWAITING_IMPORT:\n        return True\n    return (",
+      "new": "    if record.state is session.SessionState.AWAITING_IMPORT:\n        return True\n    return False and ("
+    },
+    {
+      "id": "M11_close_refusal_reported",
+      "description": "imported_cli._close_if_nothing_is_owed: raise the gated close's refusal, ending the verb after the file is retired and the proof recorded",
+      "file": "src/cratekit/intake/imported_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fb90a34cbab4bc58",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_intake_land.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 689,
+      "baseline_collected": 689,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_a_refused_close_is_reported_and_tried_again_next_time"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except CratekitError as exc:\n        return {\"closed\": False, \"close_refused\": exc.cause.reason, \"why\": exc.cause.message}",
+      "new": "    except CratekitError:\n        raise"
+    },
+    {
+      "id": "M13_waiting_needs_export",
+      "description": "imported_cli.intake_imported: drop the refusal when a run is waiting and no export is named, so the verb answers no-op over a waiting run",
+      "file": "src/cratekit/intake/imported_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d7b9c83af509b9d2",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_intake_land.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 689,
+      "baseline_collected": 689,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_a_waiting_run_with_no_export_named_is_refused_and_says_what_to_pass"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if waiting and export is None:\n        raise _no_export(waiting)",
+      "new": "    if waiting and export is None:\n        waiting = []"
+    },
+    {
+      "id": "R2_settled_is_not_imported",
+      "description": "routing_cli._all_settled: count acknowledged tracks as proof, so a run nobody imported is recorded as proven",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "376be0b53a0b4460",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_deferred_routing.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 264,
+      "baseline_collected": 264,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_tracks_acknowledged_as_gone_are_not_proof_of_an_import"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return bool(routed) and not ledger.outstanding(session_id)",
+      "new": "    return not ledger.outstanding(session_id)"
+    },
+    {
+      "id": "R3_pass_is_proof",
+      "description": "routing_cli._close_if_settled: never record the pass as proof, so after a cutover no landed run can close",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "775ba8582c5b3b08",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_deferred_routing.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 264,
+      "baseline_collected": 264,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_after_a_cutover_the_pass_placing_every_track_is_proof_and_closes_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if record.state is session.SessionState.AWAITING_IMPORT and _all_settled(",
+      "new": "        if False and _all_settled("
+    }
+  ],
+  "dropped": [
+    {
+      "id": "R1_no_native_outcome",
+      "description": "routing_cli.route_pending: answer ok again with no native tree",
+      "reason": "ranked below the cap: test_route_pending_with_no_native_tree_is_a_no_op_that_says_so asserts the outcome literal and the warning code directly"
+    },
+    {
+      "id": "M12_absent_export",
+      "description": "imported_cli.intake_imported: drop the up front refusal of an export that is not a file",
+      "reason": "ranked below the cap: one test and the contract drive both assert the refusal directly"
+    },
+    {
+      "id": "V1_verify_verb_value",
+      "description": "ingest.VERIFY_VERB: name route.pending again",
+      "reason": "ranked below the cap: three tests assert the literal"
+    },
+    {
+      "id": "C1_intake_file_pending",
+      "description": "intake/cli.py intake_file: answer ok again after a write",
+      "reason": "ranked below the cap: same guard family as I4, which is measured, and test_intake_file_ends_pending asserts the exit code"
+    },
+    {
+      "id": "D1_doctor_label",
+      "description": "doctor._open_state: list a proven run bare",
+      "reason": "maintainer facing wording, one test asserts it"
+    },
+    {
+      "id": "M8_file_before_record",
+      "description": "imported_cli.settle: mark the run proven before retiring its file",
+      "reason": "NOT MEASURED. A reorder is two sites. test_a_retire_that_cannot_rename_is_a_refusal_and_changes_nothing is the test written to pin it."
+    }
+  ]
+}
