@@ -1,0 +1,74 @@
+name = "u78-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_malformed_asked"
+description = "A malformed ISRC is sent to the provider rather than handed on unasked"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    askable = list(dict.fromkeys(code for code in codes if _ISRC.fullmatch(code)))'''
+new = '''    askable = list(dict.fromkeys(code for code in codes if code))'''
+
+[[rows]]
+id = "A2_no_fold"
+description = "The ISRC is no longer folded of hyphens and spaces, so a presented code reads as malformed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    return re.sub(r"[\s-]", "", str(wanted.isrc or "")).upper()'''
+new = '''    return str(wanted.isrc or "").strip().upper()'''
+
+[[rows]]
+id = "A3_several_listed"
+description = "An ISRC filed under several tracks lists the first, the guess R-356 forbids"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''        elif len(answer) == 1:'''
+new = '''        elif len(answer) >= 1:'''
+
+[[rows]]
+id = "A4_cratekit_error_passthrough"
+description = "A product refusal raised by the catalogue is relabelled unavailable-transient"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''            except CratekitError:
+                raise
+            except Exception as exc:'''
+new = '''            except Exception as exc:'''
+
+[[rows]]
+id = "A5_outage_read_as_none"
+description = "A provider that could not answer is read as filing no track, so the row is handed on and the verb writes"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''            except Exception as exc:  # noqa: BLE001 - refused whole, never swallowed
+                raise refuse('''
+new = '''            except Exception as exc:  # noqa: BLE001 - refused whole, never swallowed
+                answers[code] = ()
+                continue
+                raise refuse('''
+
+[[rows]]
+id = "A6_blank_id_dropped"
+description = "A track with no identifier in the answer is dropped, so one named and one unnamed reads as one id"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if any(not one for one in ids):'''
+new = '''    ids = [one for one in ids if one]
+    if False:'''
+
+[[rows]]
+id = "A7_resolve_always"
+description = "The catalogue is resolved whenever a row lacks an id, spending a login with nothing to ask"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if askable:
+        found = catalogue.resolve(intake_cli._load())'''
+new = '''    if askable or wanted:
+        found = catalogue.resolve(intake_cli._load())'''

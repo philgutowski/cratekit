@@ -1,0 +1,60 @@
+name = "u78-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_unwritable_refuses_whole"
+description = "The per row text line check before writing is removed, so one unwritable row refuses the verb again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''            try:
+                listdoc.text_line(row)
+            except listdoc.ListDocRefused:'''
+new = '''            try:
+                pass
+            except listdoc.ListDocRefused:'''
+
+[[rows]]
+id = "B2_nothing_written_no_op"
+description = "Missing tracks with nothing at all written no longer refuse, and read as a job where everything was owned"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if missing and not listed and not in_file:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B3_ids_unsorted"
+description = "The identifiers in a several reason are written in provider order"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''f"({', '.join(sorted(answer))}), and which release to download is "'''
+new = '''f"({', '.join(answer)}), and which release to download is "'''
+
+[[rows]]
+id = "B4_left_out_handed_only"
+description = "A run whose finished jobs only handed tracks on, with jobs skipped, refuses instead of writing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if left_out and not listed and not unlisted:'''
+new = '''    if left_out and not listed:'''
+
+[[rows]]
+id = "B5_handed_only_no_op"
+description = "A job whose missing tracks were all handed on answers NO_OP rather than OK"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''        outcome=Outcome.OK if listed or unlisted else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK if listed else Outcome.NO_OP,'''
+
+[[rows]]
+id = "E1_reports_by_identifier"
+description = "Existing guard sample: reports compared by count rather than by identifier"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if sorted(reported) != sorted(wanted):'''
+new = '''    if len(reported) != len(wanted):'''

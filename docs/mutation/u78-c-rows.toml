@@ -1,0 +1,115 @@
+name = "u78-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_readback_identity"
+description = "The text line read back compares only that one track came back, not which"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if len(again) != 1 or (again[0].recording, again[0].version_key) != (
+        wanted.recording,
+        wanted.version_key,
+    ):'''
+new = '''    if len(again) != 1:'''
+
+[[rows]]
+id = "C2_readback_count"
+description = "The text line read back no longer requires exactly one track, so a line read as a comment passes"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if len(again) != 1 or (again[0].recording, again[0].version_key) != ('''
+new = '''    if again and (again[0].recording, again[0].version_key) != ('''
+
+[[rows]]
+id = "C3_dedupe_lines"
+description = "The same line twice is written twice"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_listdoc.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''        if line in seen:
+            continue
+        seen.add(line)'''
+new = '''        seen.add(line)'''
+
+[[rows]]
+id = "C4_reason_one_row"
+description = "A reason carrying a line break is written as it stands, so the text reader refuses the whole file"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''        tracks.extend((f"# {' '.join(str(entry.reason).split())}", line))'''
+new = '''        tracks.extend((f"# {entry.reason}", line))'''
+
+[[rows]]
+id = "C5_unlisted_checked_first"
+description = "The unlisted file is written over whatever is there, after the list, rather than checked with the other two"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''        files.append((unlisted_path, _encoded(text_document(handed))))
+    pending = [(path, payload) for path, payload in files if not _unchanged(path, payload)]
+    for path, payload in pending:
+        config.atomic_write_bytes(payload, path)'''
+new = '''    pending = [(path, payload) for path, payload in files if not _unchanged(path, payload)]
+    for path, payload in pending:
+        config.atomic_write_bytes(payload, path)
+    if handed:
+        config.atomic_write_bytes(_encoded(text_document(handed)), unlisted_path)'''
+
+[[rows]]
+id = "D1_not_found_answer"
+description = "The adapter no longer reads a not found as the empty answer, so it climbs the ladder and raises"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''                return tuple(lookup(wanted) or ())
+            except Exception as exc:
+                if _gone(exc):
+                    return ()
+                raise'''
+new = '''                return tuple(lookup(wanted) or ())
+            except Exception:
+                raise'''
+
+[[rows]]
+id = "D2_blank_isrc"
+description = "A blank ISRC is sent to the provider"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if not wanted:
+            raise ValueError("no ISRC was given to look up")'''
+new = ""
+
+[[rows]]
+id = "D3_no_lookup_method"
+description = "A client with no ISRC lookup climbs the whole ladder before failing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if not callable(lookup):
+            # A client without the method cannot be asked, and waiting on the
+            # ladder cannot grow one.
+            raise LookupError("the provider client exposes no ISRC lookup")'''
+new = ""
+
+[[rows]]
+id = "E2_emitter_checks_rows"
+description = "Existing guard sample: the emitter no longer reads each listed row back through the reader"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''        _checked(track, position)'''
+new = ""
+
+[[dropped]]
+id = "D4_none_answer"
+description = "The adapter's 'or ()' over a None answer from the client"
+reason = "ranked below the cap: the installed client returns a list or raises, never None, so the input has no producer to drive"
+
+[[dropped]]
+id = "A8_out_dir_first"
+description = "The --out check moved after the provider reads"
+reason = "ranked below the cap: costs lookups on a refused run, never a wrong file, and the refusal itself is U69's measured guard"
