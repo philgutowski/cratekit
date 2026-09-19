@@ -1,0 +1,293 @@
+{
+  "name": "u90-b",
+  "pass_kind": "light",
+  "branch": "relay/135",
+  "head": "1e4c7f6",
+  "when": "2026-09-19 05:18 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8015,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/analysis/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/analysis/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "3cd54f7639498b9e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8015,
+    "baseline_collected": 8015,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_library_root_unchecked",
+      "description": "The hand path stops requiring the library root before it writes",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9d0ef75f256d7387",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_hand_cut_refuses_with_the_library_away"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _require_library_root(cfg)\n    previous, before = _previous_vocal_cut(cfg)",
+      "new": "    previous, before = _previous_vocal_cut(cfg)"
+    },
+    {
+      "id": "B2_method_not_hand",
+      "description": "A hand cut recorded under the fit's method, otsu",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c3c9f59431444285",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_fit_after_a_hand_cut_replaces_it_and_says_so",
+        "tests/test_analysis_workers.py::test_a_hand_cut_is_written_and_the_one_loader_reads_it_back",
+        "tests/test_analysis_workers.py::test_a_second_hand_cut_reports_the_cut_it_replaces"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "method=VOCAL_METHOD_HAND, note=",
+      "new": "method=\"otsu\", note="
+    },
+    {
+      "id": "B3_note_reworded",
+      "description": "The hand cut's note stops saying set by hand",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "39c6c737272faa01",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_fit_after_a_hand_cut_replaces_it_and_says_so",
+        "tests/test_analysis_workers.py::test_a_hand_cut_is_written_and_the_one_loader_reads_it_back",
+        "tests/test_analysis_workers.py::test_a_second_hand_cut_reports_the_cut_it_replaces"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "note=f\"set by hand on {today}\"",
+      "new": "note=f\"entered on {today}\""
+    },
+    {
+      "id": "B4_date_field_dropped",
+      "description": "The hand cut's set_on date field no longer written",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b67cb770743c5f9a",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_hand_cut_is_written_and_the_one_loader_reads_it_back"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "note=f\"set by hand on {today}\", set_on=today",
+      "new": "note=f\"set by hand on {today}\""
+    },
+    {
+      "id": "B5_previous_cut_not_reported",
+      "description": "The summary reports no previous cut whatever was on record",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4ef49a24bdff78e2",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_second_hand_cut_reports_the_cut_it_replaces"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "\"previous_vocal_cut\": previous}",
+      "new": "\"previous_vocal_cut\": None}"
+    },
+    {
+      "id": "B6_hand_detail_drops_old_cut",
+      "description": "The hand path's check detail stops naming the cut it replaced",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5bc910f6274af860",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_hand_cut_is_written_and_the_one_loader_reads_it_back",
+        "tests/test_analysis_workers.py::test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_read",
+        "tests/test_analysis_workers.py::test_a_second_hand_cut_reports_the_cut_it_replaces"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "f\"cut set by hand at {cut:g}, written to {target}; {before}; \"",
+      "new": "f\"cut set by hand at {cut:g}, written to {target}; \""
+    },
+    {
+      "id": "B7_fit_detail_drops_old_cut",
+      "description": "The fit's check detail stops naming the cut it replaced",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "64be0950b8f631ba",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_fit_after_a_hand_cut_replaces_it_and_says_so",
+        "tests/test_analysis_workers.py::test_a_fit_over_a_fitted_cut_names_the_fit_it_replaces"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"written to {target}; {before}\",",
+      "new": "        f\"written to {target}\","
+    },
+    {
+      "id": "B8_hand_reads_old_after_write",
+      "description": "The hand path reads the previous cut after its own write, so it reports itself",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9ebe1544c954eadd",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_calibration_the_account_cannot_read_refuses_and_is_not_replaced",
+        "tests/test_analysis_workers.py::test_a_hand_cut_is_written_and_the_one_loader_reads_it_back",
+        "tests/test_analysis_workers.py::test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_read",
+        "tests/test_analysis_workers.py::test_a_second_hand_cut_reports_the_cut_it_replaces"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    previous, before = _previous_vocal_cut(cfg)\n    today = _today()\n    target = _write_vocal_calibration(\n        cfg, cut, method=VOCAL_METHOD_HAND, note=f\"set by hand on {today}\", set_on=today\n    )",
+      "new": "    today = _today()\n    target = _write_vocal_calibration(\n        cfg, cut, method=VOCAL_METHOD_HAND, note=f\"set by hand on {today}\", set_on=today\n    )\n    previous, before = _previous_vocal_cut(cfg)"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B9_gender_margin_dropped",
+      "description": "The writer stops recording gender_margin",
+      "reason": "no reader: nothing in src reads gender_margin from the vocal calibration, so a zero here says nothing about this unit"
+    },
+    {
+      "id": "B10_refusal_message_reworded",
+      "description": "Reword the out of range refusal's message",
+      "reason": "maintainer facing wording; the slug is what the verb's consumers read and A1 to A5 measure the guard behind it"
+    }
+  ]
+}
