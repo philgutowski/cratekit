@@ -98,6 +98,15 @@ def _list(folder: Path) -> tuple[Path, ...]:
     return tuple(sorted((e for e in folder.iterdir() if _listable(e)), key=lambda p: p.name))
 
 
+def listing(folder: Path) -> tuple[Path, ...]:
+    """What :func:`plan` would take from ``folder``, without refusing on none.
+
+    For the verb, which answers an empty staging folder with a plan of nothing
+    rather than a refusal. ``folder`` must be a directory.
+    """
+    return _list(folder)
+
+
 def _digest(items: tuple[Path, ...]) -> str:
     """Name, size and modification time of every item, in listing order.
 

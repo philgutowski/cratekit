@@ -1711,6 +1711,34 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
     ),
+    # ── Landing (U72) ───────────────────────────────────────────────────────
+    #
+    # Appended rather than beside its intake siblings, for the reason the block
+    # above gives.
+    Entry(
+        name="intake.land",
+        summary="move a folder of acquired files into the library and write one intake file",
+        module="cratekit.intake.land_cli",
+        builder="build_land",
+        handler_key="intake.land",
+        feature_rows=(3, 35),
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: Files and one XML. The engine renames each file out of staging with
+        #: ``os.replace`` and never replaces a target, and ``place_files``
+        #: writes a new intake file it refuses to overwrite. No database open.
+        writes=frozenset({"xml", "files"}),
+        destructive=True,
+        doctor_checks=("library.mounted",),
+        gates=(
+            GateSpec(
+                name="intake.land.confirm",
+                options=("apply", "abort"),
+                prompt="Move these files into the library and write the intake file?",
+                digest_source="plan",
+            ),
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

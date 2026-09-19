@@ -1514,6 +1514,9 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # so the verb must refuse from the vocabulary rather than trace back.
         "intake.missing": ["--job", "no-such-job"],
         "intake.file": [str(library / "no-such-track.flac")],
+        # U72. A folder under the CONFIGURED library that holds no audio, so
+        # the verb refuses from the vocabulary before its gate is reached.
+        "intake.land": [str(library / "Music"), "--export", str(library / "no-such.xml")],
         "tag.folder": [str(library / "Music")],
         # U40. Same convention as tag.folder: a folder under the CONFIGURED
         # library. It is empty here, so the selection is empty and the confirm
