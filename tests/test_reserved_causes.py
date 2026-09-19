@@ -5198,7 +5198,8 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # collection-unreadable, name apply's refusal over a collection it could
     # not read. The plan's two action values, rename and referenced, are not
     # kebab shaped and do not enter this population.
-    # Re-pinned on R-359, 2026-09-18: 412 to 413 distinct, 256 to 257
+    # Re-pinned on the residual finding "A playlist is recorded as swept once
+    # its tracks are resolved", 2026-09-18: 412 to 413 distinct, 256 to 257
     # non-keys. ONE literal joined and NOTHING left, differenced over the
     # branch's diff of `src` against `main`, which removes no kebab literal. It
     # is not a cause: resolved-not-acquired, the token every playlists block
