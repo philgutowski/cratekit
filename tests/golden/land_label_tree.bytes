@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="6.0.0" Company="AlphaTheta"/>
+  <COLLECTION Entries="4">
+      <TRACK TrackID="900000001" Name="North" Artist="Ada" Composer=""
+           Album="" Grouping="" Genre="Deep House" Kind="FLAC File" Size="0"
+           TotalTime="0" DiscNumber="0" TrackNumber="0" Year="0" AverageBpm="0.00"
+           DateAdded="2026-09-19" BitRate="0" SampleRate="0" Comments=""
+           PlayCount="0" Rating="204" Location="file://localhost/LIBRARY/Music/2026-09-19_labels/Ada%20-%20North.flac"
+           Remixer="" Tonality="" Label="" Mix="">
+    </TRACK>
+    <TRACK TrackID="900000002" Name="South" Artist="Ada" Composer=""
+           Album="" Grouping="" Genre="Deep House" Kind="FLAC File" Size="0"
+           TotalTime="0" DiscNumber="0" TrackNumber="0" Year="0" AverageBpm="0.00"
+           DateAdded="2026-09-19" BitRate="0" SampleRate="0" Comments=""
+           PlayCount="0" Rating="204" Location="file://localhost/LIBRARY/Music/2026-09-19_labels/Ada%20-%20South.flac"
+           Remixer="" Tonality="" Label="" Mix="">
+    </TRACK>
+    <TRACK TrackID="900000003" Name="East" Artist="Bo" Composer=""
+           Album="" Grouping="" Genre="Deep House" Kind="FLAC File" Size="0"
+           TotalTime="0" DiscNumber="0" TrackNumber="0" Year="0" AverageBpm="0.00"
+           DateAdded="2026-09-19" BitRate="0" SampleRate="0" Comments=""
+           PlayCount="0" Rating="204" Location="file://localhost/LIBRARY/Music/2026-09-19_labels/Bo%20-%20East.flac"
+           Remixer="" Tonality="" Label="" Mix="">
+    </TRACK>
+    <TRACK TrackID="900000004" Name="West" Artist="Bo" Composer=""
+           Album="" Grouping="" Genre="Deep House" Kind="FLAC File" Size="0"
+           TotalTime="0" DiscNumber="0" TrackNumber="0" Year="0" AverageBpm="0.00"
+           DateAdded="2026-09-19" BitRate="0" SampleRate="0" Comments=""
+           PlayCount="0" Rating="204" Location="file://localhost/LIBRARY/Music/2026-09-19_labels/Bo%20-%20West.flac"
+           Remixer="" Tonality="" Label="" Mix="">
+    </TRACK>
+</COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="2">
+      <NODE Name="Record Labels" Type="0" Count="2">
+        <NODE Name="Kompakt" Type="0" Count="2">
+          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">
+            <TRACK Key="900000001"/>
+          </NODE>
+          <NODE Name="Kompakt 2024" Type="1" KeyType="0" Entries="1">
+            <TRACK Key="900000002"/>
+          </NODE>
+        </NODE>
+        <NODE Name="Ostgut Ton" Type="0" Count="2">
+          <NODE Name="Ostgut Ton 2025" Type="1" KeyType="0" Entries="1">
+            <TRACK Key="900000003"/>
+          </NODE>
+          <NODE Name="Ostgut Ton 2024" Type="1" KeyType="0" Entries="1">
+            <TRACK Key="900000004"/>
+          </NODE>
+        </NODE>
+      </NODE>
+      <NODE Name="INBOX" Type="0" Count="1">
+        <NODE Name="2026-09-19_labels_inboxed" Type="1" KeyType="0" Entries="4">
+          <TRACK Key="900000001"/>
+          <TRACK Key="900000002"/>
+          <TRACK Key="900000003"/>
+          <TRACK Key="900000004"/>
+        </NODE>
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>

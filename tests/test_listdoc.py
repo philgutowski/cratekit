@@ -315,3 +315,81 @@ def test_a_track_from_another_service_is_unlisted_not_written_as_a_provider_id(t
     assert written.listed == ("101",)
     assert [row.ref for row in written.unlisted] == [""]
     assert written.unlisted[0].artist == "Aurora Bloom"
+
+
+# ---------------------------------------------------------------------------
+# U77: the manifest read back
+# ---------------------------------------------------------------------------
+
+
+def _written_manifest(tmp_path: Path) -> Path:
+    rows = [
+        Row(ref="101", artist="Ada", title="North", version="Extended Mix", isrc="DEA620000001"),
+        Row(ref="102", artist="Bo", title="East"),
+    ]
+    provenance = {
+        "101": Provenance(
+            source="label", label_id="7", label_name="Kompakt", year=2025, release_id="r1"
+        ),
+        "102": Provenance(source="playlist", source_ref="pl-1"),
+    }
+    written = listdoc.write(tmp_path, "round-trip", rows, provenance)
+    assert written.manifest_path is not None
+    return written.manifest_path
+
+
+def test_a_written_manifest_reads_back_as_what_was_written(tmp_path):
+    first, second = listdoc.read_manifest(_written_manifest(tmp_path))
+
+    assert first.ref == "101"
+    assert first.provenance == Provenance(
+        source="label", label_id="7", label_name="Kompakt", year=2025, release_id="r1"
+    )
+    assert second.provenance == Provenance(source="playlist", source_ref="pl-1")
+    assert second.provenance.year is None
+
+
+def test_a_manifest_row_reads_as_the_wanted_track_its_list_row_reads_as(tmp_path):
+    """The identity a landing matches on is the one the list itself gave, which
+    is the whole reason the row is handed to the reader and not recomposed."""
+    path = _written_manifest(tmp_path)
+    listed = read_list(path.with_name("round-trip.list.json"))
+    first, _ = listdoc.read_manifest(path)
+
+    wanted = match.read_row(first.track, origin=match.TIDAL, position=1)
+
+    assert wanted == listed[0]
+    assert (wanted.version, wanted.isrc) == ("Extended Mix", "DEA620000001")
+
+
+@pytest.mark.parametrize(
+    "body, said",
+    [
+        (b"\xff\xfe", "not JSON"),
+        (b"[]", "not a manifest"),
+        (b'{"list": 1, "origin": "tidal", "tracks": []}', "not a manifest"),
+        (b'{"manifest": 2, "rows": {}}', "version 2"),
+        (b'{"manifest": true, "rows": {}}', "version True"),
+        (b'{"manifest": 1, "rows": []}', "no rows object"),
+        (b'{"manifest": 1, "rows": {"1": []}}', "not an object"),
+        (b'{"manifest": 1, "rows": {"1": {"source": " "}}}', "names no source"),
+        (b'{"manifest": 1, "rows": {"1": {"source": "label", "year": "2025"}}}', "year"),
+        (b'{"manifest": 1, "rows": {"1": {"source": "label", "year": true}}}', "year"),
+        (b'{"manifest": 1, "rows": {"1": {"source": "label", "label_name": 7}}}', "label_name"),
+    ],
+)
+def test_a_manifest_this_build_did_not_write_is_refused_whole(tmp_path, body, said):
+    path = tmp_path / "other.manifest.json"
+    path.write_bytes(body)
+
+    with pytest.raises(listdoc.ListDocRefused) as excinfo:
+        listdoc.read_manifest(path)
+
+    assert said in str(excinfo.value)
+
+
+def test_a_manifest_that_is_not_there_is_refused_by_name(tmp_path):
+    with pytest.raises(listdoc.ListDocRefused) as excinfo:
+        listdoc.read_manifest(tmp_path / "absent.manifest.json")
+
+    assert "absent.manifest.json" in str(excinfo.value)

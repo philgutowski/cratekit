@@ -206,6 +206,22 @@ volume as the library, because a move there is a rename and a copy is refused. T
 run ends waiting on you, naming the file to import, and `crate route pending` is
 what confirms the import was done.
 
+Tracks you acquired from a label can be filed under that label in the same file.
+`crate label approved` writes a manifest beside its list, a file ending in
+`.manifest.json` that records which label and year each track came from. Pass it
+with `--manifest` and every label track that landed is also listed under
+`Record Labels`, in a folder for the label and a playlist for each year:
+
+```bash
+crate intake land --export /path/to/collection-export.xml --manifest /path/to/label-approved-NAME.manifest.json
+```
+
+A landed file is tied to its manifest row by artist, title and version, the same
+rule `acquire match` uses. A label track that no landed file matches is named in
+a warning and is filed under no label. It is still in the import if its file
+landed. An export that already holds a label's folder is added to, never
+doubled, so landing the rest of a label later is safe.
+
 `name apply`, `intake land` and `route inbox` each build a plan and stop at a
 gate before they write. Run once to read the plan, then answer the gate. See
 "Answering a gate". A plan is bound to the folder as it was, so if a file lands

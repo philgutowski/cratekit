@@ -536,6 +536,60 @@ def test_a_catalog_write_that_cannot_place_its_folder_writes_no_document(tmp_pat
     assert not (tmp_path / "out.xml").exists()
 
 
+def test_the_catalog_check_refuses_what_the_writer_would_and_writes_nothing():
+    """U77: the landing engine asks before it moves a file, so the check has to
+    refuse exactly where the writer does."""
+    without = replace(taxonomy.default_taxonomy(), catalog=None)
+    raw = _fresh_xml()
+    with pytest.raises(CratekitError) as excinfo:
+        trees.check_record_labels_tree(raw, {"Kompakt": [2025]}, declared=without)
+    assert excinfo.value.cause.reason == "catalog-tree-undeclared"
+
+    with pytest.raises(CratekitError) as excinfo:
+        trees.check_record_labels_tree(
+            b"<DJ_PLAYLISTS></DJ_PLAYLISTS>\r\n",
+            {"Kompakt": [2025]},
+            tree=rbxml.Tree(display=CATALOG_DISPLAY),
+        )
+    assert "Kompakt" in excinfo.value.cause.message
+
+
+def test_the_catalog_check_asks_nothing_when_there_is_nothing_to_write():
+    """An undeclared tree costs a caller with no catalogued source nothing."""
+    without = replace(taxonomy.default_taxonomy(), catalog=None)
+    trees.check_record_labels_tree(_fresh_xml(), {}, declared=without)
+
+
+def test_the_catalog_check_passes_a_document_the_writer_can_write_and_leaves_it_alone():
+    raw = _fresh_xml()
+    trees.check_record_labels_tree(
+        raw, {"Kompakt": [2025, 2024], "Ostgut Ton": [2025]}, registry=tree_registry.EMPTY
+    )
+    assert raw == _fresh_xml()
+
+
+def test_the_catalog_check_refuses_a_held_year_playlist_that_appears_twice(tmp_path):
+    """The deepest of the three levels the writer refuses at, reached only when
+    the check names the YEAR and not the label alone."""
+    once = tmp_path / "once.xml"
+    once.write_bytes(_fresh_xml())
+    trees.insert_record_labels_tree(
+        once, "Kompakt", _buckets(2025), once, registry=tree_registry.EMPTY
+    )
+    body = once.read_bytes()
+    start = body.index(b'<NODE Name="Kompakt 2025"')
+    start = body.rindex(b"\r\n", 0, start) + 2
+    close = b"</NODE>\r\n"
+    end = body.index(close, start) + len(close)
+    doubled = body.replace(body[start:end], body[start:end] * 2, 1)
+
+    trees.check_record_labels_tree(doubled, {"Kompakt": [2024]}, registry=tree_registry.EMPTY)
+    with pytest.raises(CratekitError):
+        trees.check_record_labels_tree(
+            doubled, {"Kompakt": [2025]}, registry=tree_registry.EMPTY
+        )
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Row matching: the active-row rule and the two-sided normalization
 # ═══════════════════════════════════════════════════════════════════════════

@@ -4,7 +4,7 @@ Byte-exact captures of what each rekordbox XML splicer emits, driven by
 `tests/test_xml_splice_golden.py` against the synthetic fixtures in
 `tests/xml_fixtures.py`.
 
-These nine files are ported byte for byte from the source system. They exist to
+Nine of these files are ported byte for byte from the source system, and the table says which one is not. They exist to
 make one specific change safe: the source system carried **five duplicated splice
 implementations**, and Cratekit collapses them into one writer. Collapsing five
 implementations into one is exactly the change that produces a byte difference
@@ -42,6 +42,7 @@ contain the structure the row claims. A golden cannot rot into an opaque blob.
 | `sort_unplaced_rating.bytes` | The second copy of the rating writer, pinned so the consolidation is byte-checked from both sides | U18 |
 | `create_vox_playlists.bytes` | CRLF only, a self-closed vocal sub-playlist node, folder Count bumped | U18 |
 | `label_library_insert.bytes` | CRLF label subtree, ROOT Count bumped, newest year ordered first | U18 |
+| `land_label_tree.bytes` | A landed batch's one document carries both the intake playlist and the label tree, labels A to Z, newest year first. NOT ported, the source system had no landing step. Regenerate with `REGEN=1 pytest tests/test_landing_labels.py`. The library's location, the date added and the container size are put back to fixed values before the compare | U77 (the landing engine and the catalog writer) |
 
 ## Why the producer tests are skipped right now
 
