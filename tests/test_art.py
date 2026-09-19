@@ -296,6 +296,31 @@ def test_a_flac_picture_of_another_type_is_replaced_too(tmp_path):
 
 
 @pytest.mark.parametrize("suffix", ID3_CONTAINERS)
+def test_an_id3_picture_another_tool_embedded_is_replaced_too(tmp_path, suffix):
+    # A frame under a DIFFERENT description, which is the case that matters:
+    # ID3 keys a picture by its description, so re-adding "Cover" replaces
+    # "Cover" with no help from anybody and proves nothing about the clearing.
+    import mutagen
+    from mutagen.id3 import APIC
+
+    path = synth_container(tmp_path, suffix)
+    handle = mutagen.File(path)
+    if handle.tags is None:
+        handle.add_tags()
+    handle.tags.add(
+        APIC(encoding=3, mime="image/jpeg", type=4, desc="from elsewhere",
+             data=_progressive_jpeg(100, 100))
+    )
+    handle.save()
+    assert len(_stored_pictures(path)) == 1
+
+    jpeg = _baseline_jpeg()
+    assert write_front_cover(path, jpeg) is True
+
+    assert _stored_pictures(path) == [jpeg]
+
+
+@pytest.mark.parametrize("suffix", ID3_CONTAINERS)
 def test_the_id3_frame_is_a_front_cover_jpeg(tmp_path, suffix):
     import mutagen
 
@@ -522,7 +547,7 @@ def test_a_png_mislabelled_as_jpeg_reads_with_both_facts(tmp_path):
     assert picture.format == "PNG"
 
 
-def test_a_mode_with_no_known_depth_reads_as_zero_not_as_a_guess(tmp_path):
+def test_each_listed_mode_reads_with_its_own_depth(tmp_path):
     from mutagen.id3 import APIC, ID3
 
     path = synth_container(tmp_path, ".mp3")
@@ -537,7 +562,24 @@ def test_a_mode_with_no_known_depth_reads_as_zero_not_as_a_guess(tmp_path):
 
     assert depths[one_bit] == 1
     assert depths[wide] == 16
-    assert art._DEPTH_BY_MODE.get("some mode pillow adds later", 0) == 0
+
+
+def test_a_mode_with_no_known_depth_reads_as_zero_not_as_a_guess(tmp_path, monkeypatch):
+    # Pillow can add a mode this table has never heard of. Stand in for that day
+    # by taking a real mode OUT of the table, then read a picture in it.
+    from mutagen.id3 import APIC, ID3
+
+    path = synth_container(tmp_path, ".mp3")
+    planted = ID3()
+    one_bit = _encode(Image.new("1", (32, 32), 1), "PNG")
+    planted.add(APIC(encoding=3, mime="image/png", type=3, desc="", data=one_bit))
+    planted.save(path)
+    monkeypatch.delitem(art._DEPTH_BY_MODE, "1")
+
+    (picture,) = read_pictures(path)
+
+    assert picture.decoded is True
+    assert picture.depth == 0
 
 
 def test_a_zeroed_flac_block_reads_as_zeroes_not_as_the_decoded_size(tmp_path):

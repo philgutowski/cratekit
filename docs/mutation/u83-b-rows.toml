@@ -1,0 +1,131 @@
+name = "u83-b"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_undecodable_guard"
+description = "The writer reworded refusal for undecodable bytes is dropped, so the bytes go on toward the file"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    if measured is None:
+        raise ArtError("the picture bytes could not be decoded, so nothing was written")
+'''
+new = ''''''
+
+[[rows]]
+id = "W2_format_guard"
+description = "The writer accepts a picture that is not a JPEG"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    if measured.format != "JPEG":'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W3_progressive_guard"
+description = "The writer accepts a progressive JPEG"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    if measured.progressive:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W4_rgb_guard"
+description = "The writer accepts a greyscale or CMYK JPEG"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    if measured.mode != "RGB":'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W5_cap_guard"
+description = "The writer accepts a picture over the byte cap"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    if len(jpeg) > max_bytes:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W5b_cap_inclusive"
+description = "The writer's cap becomes exclusive while the encoder's stays inclusive, so a picture encoded exactly to the cap is refused"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    if len(jpeg) > max_bytes:'''
+new = '''    if len(jpeg) >= max_bytes:'''
+
+[[rows]]
+id = "W6_flac_block_width"
+description = "The FLAC block declares width zero, the vendored downloader's defect"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''            block.width = measured.width'''
+new = '''            block.width = 0'''
+
+[[rows]]
+id = "W8_flac_clear_pictures"
+description = "The FLAC writer appends instead of replacing"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''            handle.clear_pictures()
+'''
+new = ''''''
+
+[[rows]]
+id = "W9_id3_delall"
+description = "The ID3 writer stops clearing pictures other tools embedded under another description"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''            handle.tags.delall("APIC")
+'''
+new = ''''''
+
+[[rows]]
+id = "W10_id3_add_tags"
+description = "The ID3 branch skips add_tags on a file with no tag yet, the step whose absence pushes a caller toward a bare ID3 object"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''                # and saved against them. add_tags() is the container's own way.
+                handle.add_tags()'''
+new = '''                # and saved against them. add_tags() is the container's own way.
+                pass'''
+
+[[rows]]
+id = "W11_save_seam"
+description = "The writer saves with mutagen directly rather than through tags._save, losing the MP3 ID3v1 trailer"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''        tags._save(path, handle)'''
+new = '''        handle.save()'''
+
+[[rows]]
+id = "W12_container_refusal"
+description = "A container with no verified picture handling is no longer refused"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    if suffix not in ART_SUFFIXES:'''
+new = '''    if False:'''
+
+[[dropped]]
+id = "W7_flac_block_depth"
+description = "The FLAC block declares depth zero"
+reason = "ranked below the cap: same guard family as W6, asserted by the same test"
+
+[[dropped]]
+id = "W13_mp4_format"
+description = "The MP4 cover is declared PNG"
+reason = "ranked below the cap: a constant asserted directly by one test"
+
+[[dropped]]
+id = "W14_apic_type"
+description = "The APIC frame is typed Other instead of front cover"
+reason = "ranked below the cap: a constant asserted directly by one parametrized test"
