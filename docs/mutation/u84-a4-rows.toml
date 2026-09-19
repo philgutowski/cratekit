@@ -1,0 +1,11 @@
+name = "u84-a4"
+pass_kind = "light"
+
+[[rows]]
+id = "A4_undecodable_is_broken"
+description = "Re-measure after the fix commit. Data that does not decode is read as sound, absence read as evidence of absence"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    return measured is None or measured.format != "JPEG" or measured.progressive'''
+new = '''    return measured is not None and (measured.format != "JPEG" or measured.progressive)'''

@@ -1,0 +1,137 @@
+name = "u84-b"
+pass_kind = "light"
+
+[[rows]]
+id = "A14_save_failure_never_raises"
+description = "A save that fails raises out of the repair, which aborts the item"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''        return ArtRepair(REPAIR_ERROR, f"the repaired art could not be saved: {exc}")'''
+new = '''        raise'''
+
+[[rows]]
+id = "A15_sound_blocks_kept"
+description = "Only the repaired blocks are written back, so a sound back cover beside a broken front one is deleted"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''        for block in blocks:
+            handle.add_picture(block)'''
+new = '''        for block in broken:
+            handle.add_picture(block)'''
+
+[[rows]]
+id = "A16_shrink_fallback"
+description = "A picture over the cap at native size is refused again, the review's finding, leaving it blank"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''        if _measure(data) is None:
+            raise'''
+new = '''        raise'''
+
+[[rows]]
+id = "A17_too_small_to_shrink"
+description = "The guard that refuses to shrink a picture already inside the box is removed"
+file = "src/cratekit/core/art.py"
+surface = "maintainer"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    if max(img.size) <= ART_SIZE:'''
+new = '''    if max(img.size) < 0:'''
+
+[[rows]]
+id = "A18_shrink_keeps_shape"
+description = "The shrink squares the picture instead of fitting it in the box, stretching a non square cover"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    img.thumbnail((ART_SIZE, ART_SIZE), Image.LANCZOS)'''
+new = '''    img = img.resize((ART_SIZE, ART_SIZE), Image.LANCZOS)'''
+
+[[rows]]
+id = "A19_mime_rewritten"
+description = "A repaired PNG block keeps claiming image/png over JPEG bytes"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''            block.mime = JPEG_MIME
+            block.width, block.height'''
+new = '''            block.width, block.height'''
+
+[[rows]]
+id = "T1_repair_runs_first"
+description = "The repair runs after the has-genre return, so an already tagged file is never repaired, the brief's named trap"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    repair = art.repair_in_place(path)
+    repaired = {"art_repair": repair.status, "art_repair_detail": repair.detail}
+    existing = tags.read_genre_from_file(path)
+    if existing:
+        return TagResult(path=path, genre_written=None, skipped=HAS_GENRE, **repaired)'''
+new = '''    existing = tags.read_genre_from_file(path)
+    if existing:
+        return TagResult(path=path, genre_written=None, skipped=HAS_GENRE)
+    repair = art.repair_in_place(path)
+    repaired = {"art_repair": repair.status, "art_repair_detail": repair.detail}'''
+
+[[rows]]
+id = "T2_status_on_no_hit"
+description = "A file the catalogue declined carries no repair status"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        return TagResult(path=path, genre_written=None, skipped=NO_HIT, **repaired)'''
+new = '''        return TagResult(path=path, genre_written=None, skipped=NO_HIT)'''
+
+[[rows]]
+id = "T3_status_on_written"
+description = "A file that had its genre written carries no repair status"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        genre_written=hit.genre,
+        source=hit.source,
+        source_genre=hit.source_genre,
+        **repaired,'''
+new = '''        genre_written=hit.genre,
+        source=hit.source,
+        source_genre=hit.source_genre,'''
+
+[[rows]]
+id = "T4_default_unchecked"
+description = "A result built without the repair claims the repair passed"
+file = "src/cratekit/tagging/tag.py"
+surface = "maintainer"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    art_repair: str = art.REPAIR_UNCHECKED'''
+new = '''    art_repair: str = art.REPAIR_OK'''
+
+[[rows]]
+id = "C1_artifact_carries_status"
+description = "The item artifact drops the repair status, so nothing on disk records what the repair did"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''            "art_repair": result.art_repair,
+'''
+new = ''''''
+
+[[rows]]
+id = "C2_summary_zero_filled"
+description = "The summary lists only the statuses it saw, so none repaired and not counted read the same"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''        "art_repair": art_repair,'''
+new = '''        "art_repair": {key: value for key, value in art_repair.items() if value},'''
+
+[[rows]]
+id = "C3_old_reports_uncounted"
+description = "A report committed before the repair existed is counted as ok, a status nobody measured"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''        status = str(report.get("art_repair") or "")'''
+new = '''        status = str(report.get("art_repair") or art.REPAIR_OK)'''

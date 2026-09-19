@@ -28,12 +28,14 @@ whole folder produce the same results in the same order.
 
 from __future__ import annotations
 
+import io
+import os
 import shutil
 from pathlib import Path
 
 import pytest
 
-from cratekit.core import tags, taxonomy
+from cratekit.core import art, tags, taxonomy
 from cratekit.tagging import retag, tag
 from cratekit.tagging.tag import SearchHit
 from tests._containers import synth_container
@@ -403,3 +405,336 @@ def test_the_queue_index_is_the_folder_passs_and_the_workers_one_function(folder
     this pass's answers, and the one that drifted would re-ask a settled question.
     """
     assert retag.decided_index(None) == {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# C. U84: the picture repair runs first, in place, without the web
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _gradient(width: int, height: int):
+    from PIL import Image
+
+    img = Image.new("RGB", (width, height))
+    img.putdata([(x % 256, y % 256, (x + y) % 256) for y in range(height) for x in range(width)])
+    return img
+
+
+def _jpeg(width: int = 320, height: int = 200, *, progressive: bool = False) -> bytes:
+    """Deliberately NOT 800 square, so a repair that resized would show."""
+    buffer = io.BytesIO()
+    _gradient(width, height).save(buffer, format="JPEG", quality=85, progressive=progressive)
+    return buffer.getvalue()
+
+
+def _png(width: int = 320, height: int = 200) -> bytes:
+    buffer = io.BytesIO()
+    _gradient(width, height).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def plant(path: Path, data: bytes, *, dims=(0, 0, 0), mime="image/jpeg", kind=3, desc=""):
+    """Add one FLAC picture block, by default in the vendored downloader's shape.
+
+    ``_vendor/tidal_dl_ng/metadata.py`` sets type, data and mime and never a
+    width, height or depth, so mutagen writes zeroes. ``dims`` fills them for a
+    block that is meant to be sound.
+    """
+    from mutagen.flac import FLAC, Picture
+
+    handle = FLAC(path)
+    block = Picture()
+    block.type = kind
+    block.mime = mime
+    block.desc = desc
+    block.data = data
+    block.width, block.height, block.depth = dims
+    handle.add_picture(block)
+    handle.save()
+
+
+def blocks(path: Path):
+    from mutagen.flac import FLAC
+
+    return list(FLAC(path).pictures)
+
+
+def decoded(data: bytes):
+    from PIL import Image
+
+    with Image.open(io.BytesIO(data)) as img:
+        img.load()
+        return img.format, img.size, bool(img.info.get("progressive") or img.info.get("progression")), img.convert("RGB")
+
+
+def mean_difference(a, b) -> float:
+    from PIL import ImageChops, ImageStat
+
+    return sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3
+
+
+def test_a_vendored_zeroed_block_ends_with_real_dimensions_and_the_same_image(folder, silence):
+    path = place(folder, silence, "track")
+    original = _jpeg(320, 200)
+    plant(path, original, kind=3, desc="Cover")
+
+    result = tag.tag_one(path, searcher=answering({}))
+
+    assert result.art_repair == art.REPAIR_FIXED
+    (block,) = blocks(path)
+    assert (block.width, block.height, block.depth) == (320, 200, 24)
+    assert (block.type, block.desc, block.mime) == (3, "Cover", "image/jpeg")
+    fmt, size, progressive, pixels = decoded(block.data)
+    assert (fmt, size, progressive) == ("JPEG", (320, 200), False)
+    assert mean_difference(pixels, decoded(original)[3]) < 4, "the repair changed the picture"
+
+
+def test_a_progressive_jpeg_with_sound_dimensions_becomes_baseline(folder, silence):
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200, progressive=True), dims=(320, 200, 24))
+    assert decoded(blocks(path)[0].data)[2] is True, "the fixture is not progressive"
+
+    result = tag.tag_one(path, searcher=answering({}))
+
+    assert result.art_repair == art.REPAIR_FIXED
+    (block,) = blocks(path)
+    assert decoded(block.data)[:3] == ("JPEG", (320, 200), False)
+
+
+def test_a_png_in_a_filled_block_is_re_encoded_as_a_baseline_jpeg(folder, silence):
+    path = place(folder, silence, "track")
+    plant(path, _png(), mime="image/png", dims=(320, 200, 24))
+
+    assert art.repair_in_place(path).status == art.REPAIR_FIXED
+
+    (block,) = blocks(path)
+    assert block.mime == "image/jpeg"
+    assert decoded(block.data)[:3] == ("JPEG", (320, 200), False)
+
+
+@pytest.mark.parametrize("dims", [(0, 200, 24), (320, 0, 24), (320, 200, 0)])
+def test_any_one_zeroed_dimension_is_broken(folder, silence, dims):
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200), dims=dims)
+
+    assert art.repair_in_place(path).status == art.REPAIR_FIXED
+    (block,) = blocks(path)
+    assert (block.width, block.height, block.depth) == (320, 200, 24)
+
+
+def test_sound_art_is_not_rewritten_and_its_mtime_is_unchanged(folder, silence):
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200), dims=(320, 200, 24))
+    os.utime(path, (1_000_000_000, 1_000_000_000))
+    before = path.read_bytes()
+
+    result = tag.tag_one(path, searcher=answering({}))
+
+    assert result.art_repair == art.REPAIR_OK
+    assert path.stat().st_mtime == 1_000_000_000
+    assert path.read_bytes() == before
+
+
+def test_a_file_that_already_has_a_genre_is_still_repaired(folder, silence):
+    path = place(folder, silence, "track", SPECIFIC)
+    plant(path, _jpeg(320, 200))
+    searcher = answering({"track": SearchHit(genre="Techno")})
+
+    result = tag.tag_one(path, searcher=searcher)
+
+    assert result.skipped == tag.HAS_GENRE
+    assert result.art_repair == art.REPAIR_FIXED
+    assert (blocks(path)[0].width, blocks(path)[0].height) == (320, 200)
+    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert searcher.asked == []
+
+
+def test_a_corrupt_image_reports_an_error_and_the_genre_flow_still_proceeds(folder, silence):
+    path = place(folder, silence, "track")
+    plant(path, b"\xff\xd8\xff\xe0 not really a jpeg")
+    stored = blocks(path)[0].data
+
+    result = tag.tag_one(path, searcher=answering({"track": SearchHit(genre=SPECIFIC)}))
+
+    assert result.art_repair == art.REPAIR_ERROR
+    assert "could not be repaired" in result.art_repair_detail
+    assert result.genre_written == SPECIFIC
+    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert blocks(path)[0].data == stored, "a failed repair rewrote the picture"
+
+
+def test_one_unrepairable_block_leaves_every_block_as_it_was(folder, silence):
+    """The source system's rule: a half repaired file is not reported fixed."""
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200))
+    plant(path, b"garbage", kind=4)
+    os.utime(path, (1_000_000_000, 1_000_000_000))
+    before = path.read_bytes()
+
+    assert art.repair_in_place(path).status == art.REPAIR_ERROR
+
+    assert path.read_bytes() == before
+    assert path.stat().st_mtime == 1_000_000_000
+
+
+def test_a_sound_block_beside_a_broken_one_is_kept_as_it_was_and_in_order(folder, silence):
+    path = place(folder, silence, "track")
+    sound = _jpeg(100, 100)
+    plant(path, sound, dims=(100, 100, 24), kind=4, desc="Back")
+    plant(path, _jpeg(320, 200), kind=3, desc="Cover")
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_FIXED
+    assert repair.detail == "1 of 2 pictures re-encoded"
+    first, second = blocks(path)
+    assert (first.type, first.desc, bytes(first.data)) == (4, "Back", sound)
+    assert (second.type, second.desc, second.width, second.height) == (3, "Cover", 320, 200)
+
+
+def test_a_file_with_no_picture_reports_none_and_is_not_written(folder, silence):
+    path = place(folder, silence, "track")
+    os.utime(path, (1_000_000_000, 1_000_000_000))
+
+    result = tag.tag_one(path, searcher=answering({}))
+
+    assert result.art_repair == art.REPAIR_NONE
+    assert path.stat().st_mtime == 1_000_000_000
+
+
+def test_a_container_that_is_not_flac_is_unchecked_rather_than_none(tmp_path):
+    """FLAC only is parity, and "did not look" must not read as "no art"."""
+    path = synth_container(tmp_path, ".mp3")
+    before = path.read_bytes()
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_UNCHECKED
+    assert repair.status != art.REPAIR_NONE
+    assert path.read_bytes() == before
+
+
+def test_an_unreadable_flac_is_an_error_and_never_raises(tmp_path):
+    path = tmp_path / "broken.flac"
+    path.write_bytes(b"not a flac at all")
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_ERROR
+    assert "could not read" in repair.detail
+
+
+def test_a_save_that_fails_is_an_error_and_never_raises(folder, silence, monkeypatch):
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200))
+
+    def refuse(path, handle):
+        raise OSError("read only volume")
+
+    monkeypatch.setattr(tags, "_save", refuse)
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_ERROR
+    assert "read only volume" in repair.detail
+
+
+def test_a_result_built_without_the_repair_does_not_claim_it_passed():
+    assert tag.TagResult(path=Path("x.flac"), genre_written=None).art_repair == (
+        art.REPAIR_UNCHECKED
+    )
+
+
+def _noise_jpeg(width: int, height: int) -> bytes:
+    """Incompressible pixels, so the byte cap is really exceeded at native size."""
+    import random
+
+    from PIL import Image
+
+    rng = random.Random(84)
+    img = Image.frombytes("RGB", (width, height), rng.randbytes(width * height * 3))
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
+def test_a_picture_too_large_for_the_cap_at_native_size_is_shrunk_not_left_blank(
+    folder, silence
+):
+    """The review's finding: refusing it would leave the block blank for good.
+
+    The source system saved an over cap picture rather than none. Here it is
+    shrunk to fit inside the new art edge, keeping its shape, and never enlarged.
+    """
+    data = _noise_jpeg(1400, 1000)
+    with pytest.raises(art.ArtError):
+        art.to_cdj_jpeg(data, size=None)
+    path = place(folder, silence, "track")
+    plant(path, data)
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_FIXED
+    assert repair.detail == "1 of 1 pictures re-encoded, 1 shrunk to fit 800 pixels"
+    (block,) = blocks(path)
+    assert (block.width, block.height, block.depth) == (800, 571, 24)
+    assert len(block.data) <= art.ART_MAX_BYTES
+    assert decoded(block.data)[:3] == ("JPEG", (800, 571), False)
+
+
+def test_a_picture_inside_the_box_that_cannot_fit_is_an_error_and_is_never_enlarged(
+    folder, silence, monkeypatch
+):
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200))
+    stored = blocks(path)[0].data
+
+    def never_fits(data, *, size=art.ART_SIZE, max_bytes=art.ART_MAX_BYTES):
+        raise art.ArtError("does not fit")
+
+    monkeypatch.setattr(art, "to_cdj_jpeg", never_fits)
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_ERROR
+    assert "too small to shrink" in repair.detail
+    assert blocks(path)[0].data == stored
+
+
+@pytest.mark.parametrize(
+    "data",
+    [b"garbage", _jpeg(320, 200)[:400]],
+    ids=["not-an-image", "truncated-jpeg"],
+)
+def test_an_undecodable_image_in_a_filled_block_is_an_error_not_ok(folder, silence, data):
+    """The mutation table's zero row: every corrupt image above sat in a ZEROED block.
+
+    A block whose dimensions are filled over bytes that do not decode renders
+    blank on a player all the same, so reading it as sound would report ok over
+    art nobody sees. The truncated JPEG opens cleanly and fails only on a full
+    decode, which is why the check decodes rather than reading a header.
+    """
+    path = place(folder, silence, "track")
+    plant(path, data, dims=(320, 200, 24))
+
+    assert art.repair_in_place(path).status == art.REPAIR_ERROR
+
+
+def test_an_encoder_failure_that_is_not_an_art_error_is_still_an_error(
+    folder, silence, monkeypatch
+):
+    """This unit is the encoder's first caller in the product, so its failure
+    paths are this unit's. The contract is that the repair never raises, and
+    that has to hold for whatever Pillow throws, not only for ``ArtError``."""
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200))
+
+    def breaks(data, *, size=art.ART_SIZE, max_bytes=art.ART_MAX_BYTES):
+        raise OSError("decoder fell over")
+
+    monkeypatch.setattr(art, "to_cdj_jpeg", breaks)
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_ERROR
+    assert "decoder fell over" in repair.detail

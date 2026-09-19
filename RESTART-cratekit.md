@@ -4,7 +4,45 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U82, issue #127, `relay/127`, 2026-09-19.**
+**Last merged: U84, issue #129, `relay/129`, 2026-09-19.**
+`crate tag folder` repairs zeroed or progressive FLAC picture blocks in place,
+without the web, which closes R-399's repair clause. New
+`core/art.py:repair_in_place(path)` returns an `ArtRepair(status, detail)` and
+never raises. A block is broken when it declares a zero width, height or depth,
+or its data is not a baseline JPEG after a full decode, which is the source
+system's `fix_flac_art` test (that file is at
+`DJ_tools/src/dj_tools/DJ_tagging/fix_flac_art.py`, not at the path the brief
+gave). Each broken block is re-encoded through `to_cdj_jpeg(size=None)` at
+native resolution, and its width, height and depth come from the new bytes.
+Its type, description and order are kept, and so is every sound block. Sound
+art is never written, so its mtime holds. One unrepairable block makes the
+file `error` with nothing written. **TWO DEPARTURES FROM THE BRIEF, both
+deliberate.** A fifth status, `unchecked`, is reported for any container that
+is not FLAC, because `none` would say "no art" where nothing looked. And
+`/code-review` drove a native picture over the 450 KB cap being refused and
+left blank for good, so `_repaired` shrinks such a picture into the 800 pixel
+box, keeping its shape and never enlarging it, and the detail says so. The
+source system saved over cap bytes instead. `tagging/tag.py:tag_one` runs the
+repair BEFORE the has-genre return. `TagResult` gains `art_repair` and
+`art_repair_detail`, NOT `art`, because `SearchHit.art` in the same file
+already means picture bytes. The item artifact carries both keys, and
+`progress.tagging.art_repair` counts every status, zero filled, skipping a
+report committed before this unit. `/code-review` raised two findings. One was
+fixed and one was filed as R-486. The `to_cdj_jpeg` failure paths were
+then read as this unit's own, and the repair loop's catch was widened to
+every exception. 23 new test cases by collected count, 8420 to 8443: 21 in
+`tests/test_tagging_engine.py` and 2 in `tests/test_tag_workers.py`. Mutation
+tables `docs/mutation/u84-a.md`, `u84-b.md` and `u84-a4.md`, 25 rows at the
+cap plus one re-measure, 24 killed on the first pass and the one zero killed
+after a test, read in `u84-notes.md`. R-486 and R-487 are filed, and neither
+meets the board bar. **Still open under R-399:** the fetch for a file with no
+art and the verb's art write (U85), and the registry summary. **Owed to an
+attended sitting:** one repaired FLAC shown on a real CDJ or XDJ. Battery on
+the recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 8442 passed and 1
+skipped in 71 seconds, and no test of this unit's among the ten slowest.
+**Main's highest residual number is R-487.**
+
+**The session before: U82, issue #127, `relay/127`, 2026-09-19.**
 A landed sync pass can mark the playlists it finished, which discharges the
 production half of R-358 and closes R-397 and R-398. `crate sync mark --xml X`
 is `src/cratekit/sync/mark_cli.py`, registry entry `sync.mark`, appended at the

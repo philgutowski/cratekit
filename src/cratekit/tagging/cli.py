@@ -35,7 +35,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs, taxonomy
+from cratekit.core import art, config, jobs, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.tagging import artifacts, searchers, shell
@@ -117,11 +117,17 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     declares, so their absence is a fact worth stating; a source genre is a word
     a catalogue chose, so there is no set to fill and every key present is one a
     person can go and add an alias for (R24).
+
+    ``art_repair`` COUNTS EVERY STATUS THE REPAIR CAN REPORT, zero filled on the
+    first rule, because it is a closed set this build declares. A report
+    committed before the repair existed carries no status and is counted under
+    none of them, since which status it would have had is not known.
     """
     skipped = {
         reason: 0
         for reason in (tag_engine.HAS_GENRE, tag_engine.NO_HIT, tag_engine.UNMAPPED_GENRE)
     }
+    art_repair = dict.fromkeys(art.REPAIR_STATUSES, 0)
     unresolved: dict[str, int] = {}
     tagged = 0
     for report in artifacts.committed(cfg, job_id):
@@ -133,7 +139,15 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
             tagged += 1
         if reason == tag_engine.UNMAPPED_GENRE and source_genre:
             unresolved[source_genre] = unresolved.get(source_genre, 0) + 1
-    return {"tagged": tagged, "skipped": skipped, "unresolved": unresolved}
+        status = str(report.get("art_repair") or "")
+        if status in art_repair:
+            art_repair[status] += 1
+    return {
+        "tagged": tagged,
+        "skipped": skipped,
+        "unresolved": unresolved,
+        "art_repair": art_repair,
+    }
 
 
 def _empty(reason: str, detail: str) -> tuple[dict, tuple[dict[str, str], ...]]:
@@ -303,5 +317,7 @@ def handle(job, item, cfg) -> jobs.Produced:
             "skipped": result.skipped,
             "source": result.source,
             "source_genre": result.source_genre,
+            "art_repair": result.art_repair,
+            "art_repair_detail": result.art_repair_detail,
         },
     )
