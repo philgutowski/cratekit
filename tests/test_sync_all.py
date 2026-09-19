@@ -1571,3 +1571,51 @@ def test_a_hearts_queue_refusal_is_recorded_against_the_hearts_alone(
     # LISTED, THEN REFUSED AT THE QUEUE. Not the words a failed listing gets.
     assert "3 heart(s) were listed and not queued" in check["detail"]
     assert "were not listed" not in check["detail"]
+
+
+def test_an_open_outbound_favourites_job_does_not_hold_the_hearts(
+    installed, exported, monkeypatch
+):
+    """The outbound job carries ``source_id`` favorites too, under its own key.
+    It is a write to the account, not a listing of the hearts."""
+    del installed
+    bind_hearts(monkeypatch)
+    _confirmed(exported)
+    (hearts_job,) = _hearts_jobs()
+    assert any(job.handler_key == "sync.favorites" and job.is_open() for job in _jobs())
+    with jobs.open_store() as store:
+        jobs.transition(store, hearts_job.job_id, jobs.JobState.FAILED)
+    _confirmed(exported)
+    assert len(_hearts_jobs()) == 2
+
+
+def test_a_declined_pass_whose_hearts_refused_is_a_refusal_not_a_no_op(
+    tmp_path, monkeypatch
+):
+    """Labels switched off and no playlist new: the unreadable hearts are the
+    only thing between this pass and work, so the pass says so with that
+    refusal rather than reading as the honest zero a declined write is."""
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    (root / "db").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    data = valid_data(root)
+    data["profile"] = {"name": "full"}
+    data["modules"] = {"labels": False}
+    config.save(config.from_dict(data))
+    config.reset_cache()
+    outbound_source.forget_libraries()
+    exported = outbound_fakes.write_export(root / "outbound")
+
+    class NoHearts(FakeCatalogue):
+        def favourite_tracks(self):
+            raise RuntimeError("the favourites listing failed")
+
+    bind_hearts(monkeypatch, NoHearts())
+    try:
+        _, code, refused = _confirmed(exported, option="abort")
+    finally:
+        outbound_source.forget_libraries()
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "label-playlist-unreadable"
+    assert _jobs() == []
