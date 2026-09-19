@@ -29,8 +29,9 @@ Mutation tables are read in `docs/mutation/u90-notes.md`, 22 rows, 21 killing on
 the first run, and the zero, C5, was killed by a new test. **Owed to an attended
 sitting:** nothing. The live library's hand written 5.0 stays as the sitting
 wrote it until the next hand cut or fit replaces it. Battery on the recorded
-tree: see the commit after this one. **Main's highest residual number is
-R-445.**
+tree: ruff clean, `scan_repo.py` exit 0, pytest 8016 passed and 1 skipped in 55
+seconds, and no test of this unit's among the ten slowest. **Main's highest
+residual number is R-445.**
 
 **The session before: U89, issue #134, `relay/134`, 2026-09-19.**
 Calibrate, then file, and tracks land under "with vox". This closes R-276 and
