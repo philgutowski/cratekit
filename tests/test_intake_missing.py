@@ -380,7 +380,10 @@ def test_the_library_is_asked_where_it_is_now_not_where_the_job_froze_it(
     job_id = finished(monkeypatch, hearts())
     moved = tmp_path / "moved"
     library.rename(moved)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(moved))
+    # THE FILE MOVES THE ROOT, NOT THE ENVIRONMENT. The override re-bases a
+    # frozen configuration as well as the current one, so a move made through
+    # it cannot tell the two apart, which the mutation table measured.
+    monkeypatch.delenv(config.ENV_LIBRARY_ROOT)
     config.save(
         config.from_dict(
             valid_data(
