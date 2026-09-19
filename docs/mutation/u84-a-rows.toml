@@ -1,0 +1,114 @@
+name = "u84-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_zero_width"
+description = "A block declaring a zero width is no longer broken, so a vendored block with only its width zeroed would stay blank"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    if block.width == 0 or block.height == 0 or block.depth == 0:'''
+new = '''    if block.height == 0 or block.depth == 0:'''
+
+[[rows]]
+id = "A2_zero_height"
+description = "A block declaring a zero height is no longer broken"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    if block.width == 0 or block.height == 0 or block.depth == 0:'''
+new = '''    if block.width == 0 or block.depth == 0:'''
+
+[[rows]]
+id = "A4_undecodable_is_broken"
+description = "Data that does not decode is read as sound, absence read as evidence of absence"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    return measured is None or measured.format != "JPEG" or measured.progressive'''
+new = '''    return measured is not None and (measured.format != "JPEG" or measured.progressive)'''
+
+[[rows]]
+id = "A5_not_jpeg_is_broken"
+description = "A PNG in a filled block is left as it is"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    return measured is None or measured.format != "JPEG" or measured.progressive'''
+new = '''    return measured is None or measured.progressive'''
+
+[[rows]]
+id = "A6_progressive_is_broken"
+description = "A progressive JPEG in a filled block is left as it is, the other way a Pioneer player renders blank"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    return measured is None or measured.format != "JPEG" or measured.progressive'''
+new = '''    return measured is None or measured.format != "JPEG"'''
+
+[[rows]]
+id = "A7_sound_art_not_written"
+description = "A file whose art is sound is saved anyway and reported fixed, so its mtime moves"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    if not broken:
+        return ArtRepair(REPAIR_OK)'''
+new = '''    if False:
+        return ArtRepair(REPAIR_OK)'''
+
+[[rows]]
+id = "A8_no_picture_is_none"
+description = "A file with no picture reports ok rather than none"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''    if not blocks:
+        return ArtRepair(REPAIR_NONE)'''
+new = '''    if False:
+        return ArtRepair(REPAIR_NONE)'''
+
+[[rows]]
+id = "A9_non_flac_unchecked"
+description = "A container that is not FLAC reports none, which says it has no art when nothing looked"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''        return ArtRepair(REPAIR_UNCHECKED, f"{path.suffix or 'no suffix'} is not repaired")'''
+new = '''        return ArtRepair(REPAIR_NONE, f"{path.suffix or 'no suffix'} is not repaired")'''
+
+[[rows]]
+id = "A10_native_resolution"
+description = "The repair re-encodes to the 800 square new art edge, which upscales a 320 by 200 cover and stretches it"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''        return to_cdj_jpeg(data, size=None), False'''
+new = '''        return to_cdj_jpeg(data, size=ART_SIZE), False'''
+
+[[rows]]
+id = "A11_dimensions_from_new_bytes"
+description = "The repaired block's width, height and depth are not written, so the zeroes stay"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''            block.width, block.height, block.depth = cdj.width, cdj.height, cdj.depth'''
+new = '''            pass'''
+
+[[rows]]
+id = "A12_all_or_nothing"
+description = "A block that cannot be repaired is passed over and the rest are saved and reported fixed"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''        return ArtRepair(REPAIR_ERROR, f"a picture could not be repaired: {exc}")'''
+new = '''        log.debug("a picture could not be repaired: %s", exc)'''
+
+[[rows]]
+id = "A13_read_failure_never_raises"
+description = "A FLAC mutagen cannot open raises out of the repair, which aborts the item"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_art.py"]
+old = '''        return ArtRepair(REPAIR_ERROR, f"could not read {path.name}: {exc}")'''
+new = '''        raise'''
