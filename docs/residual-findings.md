@@ -17845,6 +17845,28 @@ clean tags from the row, and the lossy marker at `core/naming.py:141` and
 system's `URL` column override, a lossless purchase link forced per row, has no
 counterpart either.
 
+**Closed 2026-09-19 on `relay/126`, U81.** `crate acquire fallback-fetch
+PATH` is the act. It resolves the list through the same helper `acquire
+fallback` now calls, `fallback_cli.missing_rows`, and queues one job item per
+row whose `fallback-candidate` item a person ACCEPTED with a named upload,
+keyed on the review item id, with the row's artist, listed title and the
+upload URL frozen in the payload. A row the library holds, a row with a
+provider route, and a row waiting, rejected or stalled are not queued. The
+worker `handle_fetch` refuses the strict policy per item with `lossy-refused`
+before any download, refuses a name already taken with `output-exists` before
+the download and again after it, downloads through the `FallbackFetcher` seam
+into the item's own `staging_dir`, passes the landing through
+`checked_landing`, marks it through `marked_name`, strips every tag the upload
+carried with the new `core.tags.strip_tags`, writes artist and title from the
+ROW, and commits into the download staging root, so the ordinary tag, name
+and land tail picks it up. A missing yt-dlp parks the job. The shipped
+`YtDlpFetcher` extracts MP3 at the best variable quality, the source system's
+recipe. `acquire fallback` names the new verb where it said nothing downloads
+accepted candidates. Driven in `tests/test_acquire_fallback_fetch.py`, 25 rows
+in `docs/mutation/u81-fetch-a.md` and `u81-fetch-b.md`, one zero fixed and not
+re-measured, read in `u81-fetch-notes.md`. What stays open is filed apart:
+R-498, the real download, and R-499, the per row purchase link override.
+
 ---
 
 ## R-405. No verb writes a star rating, so a sorted library is an unrated one
@@ -20366,3 +20388,47 @@ run. Nothing is written wrongly.
 
 **Closes when:** a decline is remembered per file, or a person accepts the
 cost as parity.
+
+---
+
+## R-498. The shipped fallback fetcher has never downloaded anything
+
+**Found:** 2026-09-19, on `relay/126`, U81.
+
+`acquire/fallback.py`'s `YtDlpFetcher` is driven only through a fake runner.
+The argv it builds, `--extract-audio --audio-format mp3 --audio-quality 0`,
+`--postprocessor-args "ExtractAudio:-map_metadata -1"`, a fixed
+`fetched.%(ext)s` output and `--` before the address, was never handed to the
+real tool, and `landed_in`'s rule that exactly one MP3 is left in the item's
+directory was never checked against what the tool leaves beside it. The
+metadata drop is known NOT to apply to an upload already served as MP3, read
+at yt-dlp 2026.6.9 `postprocessor/ffmpeg.py:510-514`, which is why the worker
+strips every tag itself; that strip is driven on a real MP3 carrying a tempo
+frame.
+
+**Measured cost:** unmeasured. The worst case is a refusal, not a wrong file:
+an argv the tool rejects exits nonzero and fails the item as
+`unavailable-transient`, and a landing that is not exactly one MP3 does the
+same.
+
+**Closes when:** one real accepted upload is downloaded at an attended sitting
+and lands marked, tagged from its row, with no tempo frame.
+
+---
+
+## R-499. The source system's per row purchase link override has no counterpart
+
+**Found:** 2026-09-19, on `relay/126`, U81, carried from R-404's narrowing.
+
+The source system's review file had a `URL` column a person could fill with a
+lossless purchase link, forced for that row over any search result. Cratekit's
+second source queue offers only what the search found, so a lossless copy
+bought elsewhere cannot be routed through `acquire fallback-fetch`, and the
+fetch is lossy by construction.
+
+**Measured cost:** a workflow step, not a loss. The bought file can be ingested
+with `crate intake file`, so nothing is blocked, and the lossy fetch of the
+same row stays refusable by leaving its candidate unaccepted.
+
+**Closes when:** a person can name a URL for a row in review and the fetch
+honours it, or the override is dispositioned as cut.

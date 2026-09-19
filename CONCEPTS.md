@@ -192,9 +192,19 @@ fallback` found for a missing row the configured provider has no route to,
 since U80. Offered as a review item of kind `fallback-candidate` on the
 `fallback-source` queue, keyed on the same folded row a provider candidate is,
 one option per upload page URL, ranked by a score that orders the screen and
-drops nothing. It is never picked and, until R-404's download half lands,
-never downloaded. A row with a provider route, its own provider id or a
-provider candidate waiting or accepted, is not searched for one.
+drops nothing. It is never picked. A row with a provider route, its own
+provider id or a provider candidate waiting or accepted, is not searched for
+one. An ACCEPTED one is downloaded by the fallback fetch, below.
+
+### Fallback fetch
+`crate acquire fallback-fetch PATH`, since U81, the one sanctioned lossy
+acquisition. One job item per row of the list whose fallback candidate a person
+accepted, downloaded as MP3 into the download staging directory, always
+carrying the lossy marker, stripped of every tag the upload carried and tagged
+with the ROW's artist and title, never the upload page's. A strict lossless
+policy refuses each such item with `lossy-refused` before anything downloads.
+The name and the tags come from the row because an upload title is somebody's
+typing, and the naming stage renames the file to the library's form later.
 
 ### Hearts reference
 The reserved word `favorites` in place of a playlist reference, since U70:
