@@ -36,10 +36,11 @@ from pathlib import Path
 import pytest
 
 from cratekit.cli import handlers, output, registry
-from cratekit.core import config, jobs, review, tags
+from cratekit.core import art, config, jobs, review, tags
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.tagging import artifacts, retag, searchers, shell, tag
+from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import SearchHit
 from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue, drive
@@ -763,6 +764,68 @@ def test_the_report_names_each_unresolved_source_genre_with_its_count(
         "gqom",
         "footwork",
     ]
+
+
+def test_the_art_repair_reaches_the_artifact_and_the_summary_counts_every_status(
+    cfg, folder, silence, monkeypatch
+):
+    """U84. The repair runs on every item and its status reaches both surfaces.
+
+    Two files carry the vendored downloader's zeroed block, one of them already
+    tagged, which is the file the source system repaired and a repair placed
+    after the genre skip would never reach. The third carries no picture. Every
+    status the repair can report is present in the counts, zeroes included.
+    """
+    from tests.test_tagging_engine import _jpeg, blocks, plant
+
+    for name, genre in (("a", None), ("b", SPECIFIC), ("c", None)):
+        path = place(folder, silence, name, genre=genre)
+        if name != "c":
+            plant(path, _jpeg(320, 200))
+    bound(monkeypatch, answering({}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    reports = artifacts.committed(cfg, job.job_id)
+    assert [report["art_repair"] for report in reports] == [
+        art.REPAIR_FIXED,
+        art.REPAIR_FIXED,
+        art.REPAIR_NONE,
+    ]
+    assert reports[0]["art_repair_detail"] == "1 of 1 pictures re-encoded"
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["art_repair"] == {
+        art.REPAIR_FIXED: 2,
+        art.REPAIR_OK: 0,
+        art.REPAIR_NONE: 1,
+        art.REPAIR_ERROR: 0,
+        art.REPAIR_UNCHECKED: 0,
+    }
+    assert tagging["skipped"][tag.HAS_GENRE] == 1
+    for name in ("a", "b"):
+        (block,) = blocks(folder / f"{name}.flac")
+        assert (block.width, block.height, block.depth) == (320, 200, 24)
+
+
+def test_a_report_from_before_the_repair_is_counted_under_no_status(cfg, store):
+    """A committed report carrying no status says nothing about the art.
+
+    Counting it as ``ok`` or ``none`` would state a status nobody measured.
+    """
+    job = a_job(store, cfg, "old.flac")
+    (item,) = jobs.items(store, job.job_id)
+    produced = artifacts.produced(
+        cfg, job, item, {"item": "old.flac", "genre_written": None, "skipped": tag.NO_HIT}
+    )
+    produced.final.parent.mkdir(parents=True, exist_ok=True)
+    produced.staged.replace(produced.final)
+
+    summary = tag_cli._summary(cfg, job.job_id)
+
+    assert summary["art_repair"] == dict.fromkeys(art.REPAIR_STATUSES, 0)
+    assert summary["skipped"][tag.NO_HIT] == 1
 
 
 def test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory(

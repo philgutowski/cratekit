@@ -4,6 +4,11 @@ Genre is written only when the file has none. Art is written only when a
 searcher returns bytes and the file has no usable picture. Both writes go
 through ``cratekit.core.tags``, never through a bare mutagen ID3 stream.
 
+Art a file ALREADY carries is repaired first, in place and without the web, by
+:func:`cratekit.core.art.repair_in_place`. That runs whatever the genre state,
+because the files the vendored downloader left with a zeroed picture block are
+mostly files that were tagged long ago.
+
 A searcher that returns nothing is a decline, not a failure. The file
 stays untagged and the next run asks again.
 
@@ -25,7 +30,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from cratekit.core import tags
+from cratekit.core import art, tags
 from cratekit.core.naming import AUDIO_EXTS
 
 Searcher = Callable[[str, str], "SearchHit | None"]
@@ -75,6 +80,16 @@ class TagResult:
     was written, so a skip reason of ``unmapped-genre`` reaches the job's
     committed artifact with the string that could not be mapped. A reason with
     no string beside it tells a person a gap exists and not which one.
+
+    ``art_repair`` is what the in place picture repair found and did, one of
+    :data:`cratekit.core.art.REPAIR_STATUSES`, and ``art_repair_detail`` its
+    sentence. It is independent of ``skipped``: a file skipped for its genre
+    still had its art looked at. The default is ``unchecked`` rather than ``ok``
+    so a result built without the repair cannot claim the repair passed.
+
+    NOT CALLED ``art``, because :class:`SearchHit` already has an ``art`` and it
+    means picture bytes to write. One name meaning bytes on one class and a
+    status on the other, in one file, is the defect ``docs/METHOD.md`` hunts.
     """
 
     path: Path
@@ -82,6 +97,8 @@ class TagResult:
     skipped: str | None = None
     source: str = ""
     source_genre: str = ""
+    art_repair: str = art.REPAIR_UNCHECKED
+    art_repair_detail: str = ""
 
 
 def audio_files(root: Path) -> tuple[Path, ...]:
@@ -118,15 +135,23 @@ def tag_one(path: Path, *, searcher: Searcher) -> TagResult:
     searcher raises when it could not read a catalogue at all, and that
     propagates, because an item that reported done having learned nothing is
     the clean-report-over-unreadable-state cost the merge bar names.
+
+    THE ART REPAIR RUNS FIRST, before the genre check can return. A file that
+    already carries a genre is exactly the file the source system repaired, so a
+    repair placed after that return would never reach it. The repair never
+    raises, so a picture that cannot be fixed is reported and the genre work on
+    the same file still happens.
     """
+    repair = art.repair_in_place(path)
+    repaired = {"art_repair": repair.status, "art_repair_detail": repair.detail}
     existing = tags.read_genre_from_file(path)
     if existing:
-        return TagResult(path=path, genre_written=None, skipped=HAS_GENRE)
+        return TagResult(path=path, genre_written=None, skipped=HAS_GENRE, **repaired)
     artist = tags.read_tag(path, "artist") or ""
     title = tags.read_tag(path, "title") or path.stem
     hit = searcher(artist, title)
     if hit is None:
-        return TagResult(path=path, genre_written=None, skipped=NO_HIT)
+        return TagResult(path=path, genre_written=None, skipped=NO_HIT, **repaired)
     if not hit.genre:
         # THE SOURCE GENRE IS WHAT SEPARATES THE TWO REASONS. A hit carrying one
         # means a catalogue answered and the taxonomy could not map its word; a
@@ -138,6 +163,7 @@ def tag_one(path: Path, *, searcher: Searcher) -> TagResult:
             skipped=reason,
             source=hit.source,
             source_genre=hit.source_genre,
+            **repaired,
         )
     tags.write_genre(path, hit.genre)
     return TagResult(
@@ -145,6 +171,7 @@ def tag_one(path: Path, *, searcher: Searcher) -> TagResult:
         genre_written=hit.genre,
         source=hit.source,
         source_genre=hit.source_genre,
+        **repaired,
     )
 
 
