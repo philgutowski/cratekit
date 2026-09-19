@@ -355,11 +355,25 @@ def test_a_chunk_container_never_receives_a_bare_id3_stream(tmp_path, suffix, ma
 
 
 def test_an_mp3_id3v1_trailer_survives_the_write(tmp_path):
+    # BOTH tags, disagreeing, or the test proves nothing. mutagen loads a lone
+    # ID3v1 trailer into v2 frames and writes it back faithfully, so a v1 only
+    # fixture survives a plain save and cannot tell the guarded save from the
+    # bare one. What a plain save destroys is a v1 genre byte beside a v2 genre
+    # outside the v1 list: it rewrites the byte to 255.
+    import mutagen.id3 as id3
+    from mutagen.mp3 import MP3
+
     path = synth_container(tmp_path, ".mp3")
-    trailer = b"TAG" + b"Legacy Title".ljust(30, b"\0") + b"\0" * 94 + bytes([17])
-    assert len(trailer) == 128
-    with path.open("ab") as handle:
-        handle.write(trailer)
+    handle = MP3(path)
+    if handle.tags is None:
+        handle.add_tags()
+    handle.tags["TCON"] = id3.TCON(encoding=3, text=["A Genre ID3v1 Never Listed"])
+    handle.save(v1=2)
+    raw = bytearray(path.read_bytes())
+    assert raw[-128:-125] == b"TAG"
+    raw[-1] = 31
+    path.write_bytes(bytes(raw))
+    trailer = bytes(raw[-128:])
 
     assert write_front_cover(path, _baseline_jpeg()) is True
 

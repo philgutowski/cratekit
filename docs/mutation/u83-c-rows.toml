@@ -1,0 +1,11 @@
+name = "u83-c"
+pass_kind = "light"
+
+[[rows]]
+id = "W11_save_seam_remeasured"
+description = "W11 again, after the fixture was rebuilt. Table B measured it at zero because a lone ID3v1 trailer survives a bare mutagen save. The fixture now carries a v2 genre outside the v1 list beside a v1 genre byte, the only state a bare save destroys"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''        tags._save(path, handle)'''
+new = '''        handle.save()'''
