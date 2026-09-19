@@ -753,15 +753,16 @@ def test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge()
 def test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another():
     """The hazard the brief names: a cover from a different row is the wrong cover.
 
-    Three rows. The first shares the artist and loses on title. The second is an
-    exact title with a picture and NO genre, so it is not a candidate at all and
-    must not lend its picture. The third wins, and both fields are its own.
+    Three rows. The first is an exact title with a picture and NO genre, so it is
+    not a candidate at all and must not lend its picture. The second wins, and
+    both fields are its own. The third shares the artist, loses on title, and is
+    the LAST row scanned, so a picture read off the loop's final row shows here.
     """
-    loser = _with_art(_beatport_track(ARTIST, f"{TITLE} Reprise Dub", SUB_GENRE), OTHER_ART)
     genreless = _with_art(_beatport_track(ARTIST, TITLE, ""), OTHER_ART)
     winner = _with_art(_beatport_track(ARTIST, TITLE, BUCKET_GENRE), BEATPORT_ART)
+    loser = _with_art(_beatport_track(ARTIST, f"{TITLE} Reprise Dub", SUB_GENRE), OTHER_ART)
 
-    hit = _searcher(_beatport_only([loser, genreless, winner]))(ARTIST, TITLE)
+    hit = _searcher(_beatport_only([genreless, winner, loser]))(ARTIST, TITLE)
 
     assert hit is not None
     assert hit.source_genre == BUCKET_GENRE
