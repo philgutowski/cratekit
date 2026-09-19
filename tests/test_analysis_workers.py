@@ -1147,6 +1147,21 @@ def test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_
     assert metadata_cli.load_vocal_threshold(cfg) == 5.0
 
 
+def test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float(cfg):
+    """A hand edited file can carry "5.0". The reader checks and converts it, and
+    the record it returns carries the converted number, not the text, so the
+    calibrate report and every tagging comparison meet a float."""
+    path = analysis_cli.vocal_calibration_path(cfg)
+    config._mkdir_private(path.parent)
+    path.write_text('{"threshold": "5.0", "method": "hand"}', encoding="utf-8")
+    assert metadata_cli.load_vocal_calibration(cfg)["threshold"] == 5.0
+    assert isinstance(metadata_cli.load_vocal_threshold(cfg), float)
+    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "7"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["previous_vocal_cut"] == 5.0
+    assert "this replaces the cut of 5 set by hand" in envelope["data"]["checks"][0]["detail"]
+
+
 def test_a_calibration_the_account_cannot_read_refuses_and_is_not_replaced(cfg):
     """Not the unreadable slug the hand cut writes over: a permission refusal."""
     path = analysis_cli.vocal_calibration_path(cfg)
