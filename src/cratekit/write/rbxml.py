@@ -1708,7 +1708,9 @@ def insert_catalog_folder(
       golden pins.
     * **An existing folder of that name is MERGED INTO, never appended beside
       and never replaced** (R-129). A playlist it already holds keeps every
-      member and gains only the ids it lacks; a playlist it lacks is added. So
+      member and gains only the ids it lacks; a playlist it lacks is added
+      before the first held playlist whose name sorts below its own, which is
+      newest first for playlists named by year. So
       writing the same catalog twice leaves the document byte for byte as the
       first write left it, and a re-crawl that found one new year adds one
       playlist and touches nothing else. The system being replaced always
@@ -1819,7 +1821,7 @@ def _merge_catalog(
         )
 
     created = 0
-    for position, (name, track_ids) in enumerate(pairs):
+    for name, track_ids in pairs:
         here = node_at(content, folder.tag_start, depth=folder.depth)
         if here is None:  # pragma: no cover - the folder was bounded a moment ago
             return f"the folder {folder.name!r} is no longer terminated"
@@ -1832,17 +1834,21 @@ def _merge_catalog(
                 return warning
             continue
 
-        # Before the first sibling a LATER pair names, so a folder read newest
-        # first stays newest first when a year arrives between two it holds.
-        # With no later sibling present, last.
-        anchor = None
-        for later, _ in pairs[position + 1 :]:
-            found = _sole_child(content, here, later, PLAYLIST_TYPE)
-            if isinstance(found, str):
-                return found
-            if found is not None:
-                anchor = found
-                break
+        # Before the first held playlist whose name sorts below the new one, and
+        # last when none does. A catalog folder is read newest first and its
+        # playlists are named for their year, so that is the newest first slot
+        # among what the folder HOLDS, including a year the caller did not name
+        # this time. Placing by the caller's own list alone put a new year after
+        # a held one it should precede whenever the caller left the held one out.
+        wanted = _folded(name)
+        anchor = next(
+            (
+                child
+                for child in child_nodes(content, here)
+                if child.node_type == PLAYLIST_TYPE and _folded(child.name) < wanted
+            ),
+            None,
+        )
         if anchor is not None:
             at = anchor.line_start
             if not _starts_its_line(content, at, anchor.tag_start):

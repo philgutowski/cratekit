@@ -670,6 +670,19 @@ def test_a_new_year_lands_first_or_last_by_the_callers_order():
     assert b'<NODE Name="Kompakt" Type="0" Count="3">' in out
 
 
+def test_a_new_year_is_placed_among_held_years_the_caller_did_not_name():
+    """A pull of recent years only still lands each one in newest first order.
+
+    Placing by the caller's own list alone, the folder holding only 2025 and the
+    caller naming 2026 and 2024, wrote 2025, 2026, 2024.
+    """
+    once, _ = _catalog(_fresh_xml(), "Kompakt", [("Kompakt 2025", [1])])
+    out, warning = _catalog(once, "Kompakt", [("Kompakt 2026", [9]), ("Kompakt 2024", [4])])
+    assert warning is None
+    at = [out.find(rbxml.name_marker(f"Kompakt {year}")) for year in (2026, 2025, 2024)]
+    assert -1 not in at and at == sorted(at), at
+
+
 def test_track_ids_are_deduplicated_inside_a_playlist():
     """Against the batch itself, against the members held, and across two pairs.
 
