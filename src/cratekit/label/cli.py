@@ -8,9 +8,10 @@ run id so two sources queued by ``sync all`` still share one intake file.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Container, Sequence
 from pathlib import Path
 
+from cratekit.acquire import match_cli
 from cratekit.cli.output import Envelope
 from cratekit.core import config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
@@ -993,7 +994,7 @@ def run_increment(
     cfg: config.Config,
     source: sweep.LabelSource,
     *,
-    owned: set[str] | frozenset[str],
+    owned: Container[str],
     limit: int,
     run_id: str,
 ) -> run.IncrementResult:
@@ -1007,6 +1008,30 @@ def run_increment(
         run_id=run_id,
         staging=Path(cfg.paths.download_staging),
     )
+
+
+#: The library view of the one job being driven, keyed by the job and the
+#: music folder it reads. One sweep job carries one item per favourite label,
+#: and a view per item walked the whole music volume once per label. The job
+#: driver runs a job's items one after another in one process, so a view built
+#: for the first label is still the library for the last. Holding one job's
+#: view and no other keeps a long lived process from carrying a stale library
+#: into a later job.
+_JOB_LIBRARY: dict[tuple[str, str], sweep.LibraryView] = {}
+
+
+def _job_library(job, cfg: config.Config) -> Callable[[], sweep.LibraryView]:
+    """The library view for ``job``, walked on first use and once per job."""
+    key = (str(job.job_id), str(cfg.library.root / cfg.library.music_dir))
+
+    def view() -> sweep.LibraryView:
+        held = _JOB_LIBRARY.get(key)
+        if held is None:
+            _JOB_LIBRARY.clear()
+            held = _JOB_LIBRARY[key] = match_cli.library_view(cfg)
+        return held
+
+    return view
 
 
 def handle(job, item, cfg) -> jobs.Produced | None:
@@ -1042,13 +1067,13 @@ def handle(job, item, cfg) -> jobs.Produced | None:
     substitute the seam. ``modules/outbound/account.py`` states the same contract
     for the outbound half, and ``label/catalogue.py`` states it for this one.
 
-    AN EMPTY OWNED SET (KTD9), because no producer of owned identities exists on
-    the labels path anywhere in ``src``. ``scope.scoped`` and ``list_for_label``
-    both filter on membership in the set they are handed, so this is not ownership
-    filtering happening in the wrong order, it is ownership filtering not
-    happening: a sweep offers releases the library may already hold. Stated here
-    and recorded as a residual rather than left for a reader to infer from a
-    literal.
+    ONE OWNED CONTAINER FOR BOTH FILTERS (R-259). ``list_for_label`` and
+    ``scope.scoped`` both filter on membership in what they are handed, and until
+    this unit the worker handed them an empty set, so every sweep offered releases
+    the library already held. :class:`~cratekit.label.sweep.OwnedReleases` answers
+    by reading a release's tracks and resolving them against the library index,
+    and the SAME object goes to the source and to the increment, so the second
+    filter reuses the first one's answers rather than reading every release again.
 
     NOTHING IS PRODUCED. The sweep writes no file: it OFFERS into the review
     queue, which is the durable record, so there is no artifact to commit and the
@@ -1083,16 +1108,19 @@ def handle(job, item, cfg) -> jobs.Produced | None:
     # whole of R17 on this path, and it is opened before the catalogue is
     # resolved so an unbound build's refusal costs nothing it did not already.
     with review.open_store(cfg) as store:
+        found = catalogue.resolve(cfg)
+        owned = sweep.OwnedReleases(cfg, found, library=_job_library(job, cfg))
         source = sweep.LabelSource(
             cfg,
             registry=labels.Registry(labels={entry.label_id: entry}),
-            catalogue=catalogue.resolve(cfg),
+            catalogue=found,
             store=store,
+            owned=owned,
         )
         result = run_increment(
             cfg,
             source,
-            owned=set(),
+            owned=owned,
             limit=labels.effective_limit(entry),
             # THE RUN ID FALLS BACK TO THE JOB, so a sweep queued outside
             # ``sync all`` still has one. R29 is why the payload's is preferred:

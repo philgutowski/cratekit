@@ -1,8 +1,9 @@
 """A label catalogue as a sync source: newest-N, verified, not tombstoned.
 
 ``list_recent`` does not read a watermark and does not apply a date floor.
-U22's increment owns owned-dedup and the source cursor. This module owns
-verification, tombstone consultation, and the review-queue offer.
+U22's increment owns the source cursor. This module owns verification,
+tombstone consultation, the review-queue offer, and since R-259 the question of
+which releases the library already holds, :class:`OwnedReleases`.
 
 It also owns one refusal, and it is the module's sharpest rule: a catalogue
 that could not be READ raises ``run.LookupFailure`` and never returns an empty
@@ -12,16 +13,17 @@ R-135 is what happens when those two answers share a shape.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Container, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from cratekit.acquire import match, match_cli
 from cratekit.core import config, review, tombstone
 from cratekit.core.cause import CratekitError
 from cratekit.core.review import DecisionStore, Queue
 from cratekit.label import crawl, registry
 from cratekit.label import verify as label_verify
-from cratekit.label.catalogue import Catalogue
+from cratekit.label.catalogue import Catalogue, ReleaseUnresolvable
 from cratekit.sync import run
 
 KIND = "label-release"
@@ -231,6 +233,115 @@ def _crawl_or_refuse(entry: registry.LabelEntry, artist: Any) -> list[Any]:
         ) from exc
 
 
+#: The library as the match engine sees it: the index and the tombstone view.
+#: What :func:`cratekit.acquire.match_cli.library_view` returns.
+LibraryView = tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]
+
+#: How many release track reads IN A ROW may fail before the rest of a label's
+#: releases are not asked. Three, on ``label.approved_cli.OUTAGE_AFTER``'s
+#: reasoning: one is a bad release, two a coincidence, and each has already
+#: spent a full retry ladder by the time it is counted.
+OUTAGE_AFTER = 3
+
+
+class OwnedReleases:
+    """The release identities the library already holds, asked one at a time.
+
+    R-259. A release is known here only by the provider's identifier, and the
+    library knows tracks, so ownership is a read: the release's tracks from the
+    catalogue, each resolved against the library index the match engine uses,
+    :func:`cratekit.acquire.match_cli.library_view`. That is why this is a
+    container and not a set. Nobody can list the owned identities up front
+    without reading every release on the label, so each is asked when a
+    membership test reaches it, and the answer is kept, because the labels path
+    asks twice: once in :func:`list_for_label` and again in the increment's
+    ``scope.scoped``.
+
+    OWNED MEANS EVERY TRACK, AND AT LEAST ONE. A release is owned when the
+    provider lists at least one track on it and every track resolves
+    ``MATCHED``. Everything short of that answers not owned, and so is offered:
+    no track at all, where ``all`` over nothing would say owned; a row the
+    reader cannot read; a track held only in another version, which is a
+    question for the person and never an answer; and a release the provider no
+    longer has. The direction is deliberate. An offer wrongly made costs a
+    person one decline, and a release wrongly called owned is music they never
+    see and nothing tells them about.
+
+    A TRACK READ THE PROVIDER COULD NOT ANSWER IS NOT OWNED, and the release is
+    offered. This is not the rule the listing and the verifier keep, where one
+    unreadable label refuses the source, and the difference is deliberate: by
+    the time this is asked the label was listed and the release confirmed, so
+    the sweep has real offers in hand, and refusing would withhold every new
+    release on the label over a question whose worst answer is one extra row a
+    person declines. Before R-259 every release took that path. :data:`OUTAGE_AFTER`
+    failures in a row stop the asking, so a provider that is down costs three
+    retry ladders and not one per release. A ``CratekitError`` passes through
+    unchanged, as at the other seam boundaries in this module, because an
+    expired session names an act the person can take.
+
+    THE LIBRARY IS WALKED ONCE, AND ONLY WHEN A RELEASE HAS TRACKS TO RESOLVE.
+    A label whose confirmed releases all turn out gone never walks it.
+    ``library`` lets the worker share one walk across every label in a job.
+    """
+
+    def __init__(
+        self,
+        cfg: config.Config,
+        catalogue: Catalogue,
+        *,
+        library: Callable[[], LibraryView] | None = None,
+    ) -> None:
+        self.cfg = cfg
+        self.catalogue = catalogue
+        self._library_of = library
+        self._view: LibraryView | None = None
+        self._answers: dict[str, bool] = {}
+        self._failed_in_a_row = 0
+
+    def __contains__(self, identity: object) -> bool:
+        if not isinstance(identity, str) or not identity:
+            return False
+        if identity not in self._answers:
+            self._answers[identity] = self._holds(identity)
+        return self._answers[identity]
+
+    def _library(self) -> LibraryView:
+        if self._view is None:
+            if self._library_of is not None:
+                self._view = self._library_of()
+            else:
+                self._view = match_cli.library_view(self.cfg)
+        return self._view
+
+    def _holds(self, release_id: str) -> bool:
+        if self._failed_in_a_row >= OUTAGE_AFTER:
+            return False
+        try:
+            rows, _year = self.catalogue.release_tracks(release_id)
+        except CratekitError:
+            raise
+        except ReleaseUnresolvable:
+            # THE PROVIDER ANSWERED, so the run of failures is broken.
+            self._failed_in_a_row = 0
+            return False
+        except Exception:  # noqa: BLE001 - not owned, and the release is offered
+            self._failed_in_a_row += 1
+            return False
+        self._failed_in_a_row = 0
+        if not rows:
+            return False
+        try:
+            wanted = match.read_tidal_tracks(rows)
+        except match.UnreadableList:
+            return False
+        index, suppresses, identify = self._library()
+        return all(
+            match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify).state
+            is match.MatchState.MATCHED
+            for one in wanted
+        )
+
+
 def list_for_label(
     cfg: config.Config,
     entry: registry.LabelEntry,
@@ -238,7 +349,7 @@ def list_for_label(
     artist: Any,
     verify: Callable[[str, Any], Mapping[str, Any]],
     last_pulled: str | None = None,
-    owned: set[str] | frozenset[str] | None = None,
+    owned: Container[str] | None = None,
     limit: int | None = None,
 ) -> LabelListing:
     """Crawl, verify, drop unconfirmed, report tombstones. Ignore ``last_pulled``.
@@ -253,29 +364,37 @@ def list_for_label(
     claimed = entry.match or entry.name
     listed = _crawl_or_refuse(entry, artist)
     listed.sort(key=_year_of, reverse=True)
-    owned_ids = owned or set()
+    owned_ids: Container[str] = owned if owned is not None else frozenset()
     cap = limit if limit is not None else registry.effective_limit(entry)
 
     candidates: list[run.Candidate] = []
     dropped: list[Dropped] = []
     suppressed: list[run.Candidate] = []
     tombstoned = _suppression_reader(cfg)
-    # THE LOCAL QUESTIONS COME FIRST AND THE PROVIDER CALL LAST. A tombstone is
-    # a decision the person already made and an owned release is one they
-    # already hold, and both are answered from this machine. Verifying before
-    # asking either spent a provider round trip per release whose answer the
-    # tombstone then threw away, which on a label with a long deleted back
-    # catalogue is most of the sweep's network calls, and each wasted one is a
-    # step closer to the rate limited endpoint the worker's refusal exists for.
-    # A tombstoned release therefore counts as suppressed whether or not the
-    # catalogue would have confirmed it, which is the honest reading: it was
-    # never a candidate, so nothing about it was for the provider to decide.
+    # THE LOCAL QUESTION COMES FIRST AND THE PROVIDER CALLS AFTER IT. A
+    # tombstone is a decision the person already made, answered from this
+    # machine. Verifying before asking it spent a provider round trip per
+    # release whose answer the tombstone then threw away, which on a label with
+    # a long deleted back catalogue is most of the sweep's network calls, and
+    # each wasted one is a step closer to the rate limited endpoint the
+    # worker's refusal exists for. A tombstoned release therefore counts as
+    # suppressed whether or not the catalogue would have confirmed it, which is
+    # the honest reading: it was never a candidate, so nothing about it was for
+    # the provider to decide.
+    #
+    # OWNERSHIP IS ASKED AFTER VERIFICATION, and before R-259 it came first.
+    # It was a local question only while nothing on this path produced an owned
+    # set; :class:`OwnedReleases` answers it by reading the release's tracks
+    # from the provider, so asking first would read the tracks of every release
+    # the catalogue then refuses to confirm as the label's. Asked here, a
+    # release that is not the label's is never read, and the verification
+    # outcomes the worker's "confirmed none" refusal counts are exactly the ones
+    # it counted before. An owned release does not count toward the cap, which
+    # is what drops owned before newest N rather than after it (R-137).
     for release in listed:
         identity = str(getattr(release, "id", "") or "")
         if tombstoned(release):
             suppressed.append(_candidate(entry, release))
-            continue
-        if identity in owned_ids:
             continue
         verdict = label_verify.verify_release(claimed, release, search=verify)
         status = str(verdict.get("verdict") or "unconfirmed")
@@ -287,6 +406,8 @@ def list_for_label(
                     notes=str(verdict.get("notes") or ""),
                 )
             )
+            continue
+        if identity in owned_ids:
             continue
         candidates.append(_candidate(entry, release))
         if len(candidates) >= cap:
@@ -340,8 +461,16 @@ class LabelSource:
         verify: Callable[[str, Any], Mapping[str, Any]] | None = None,
         catalogue: Catalogue | None = None,
         store: review.ReviewStore | None = None,
+        owned: Container[str] | None = None,
     ) -> None:
         self.cfg = cfg
+        #: The release identities the library already holds, handed to every
+        #: label's listing so an owned release is dropped before the per label
+        #: cap rather than after the increment has sliced newest N (R-137).
+        #: The worker passes an :class:`OwnedReleases` and the same object to
+        #: the increment, so the two filters on this path ask one question and
+        #: read each release once. ``None`` holds nothing.
+        self.owned = owned
         self.registry = registry
         self.artists = dict(artists or {})
         self.verify = verify
@@ -537,6 +666,7 @@ class LabelSource:
                 entry,
                 artist=self._artist_for(entry),
                 verify=verify,
+                owned=self.owned,
             )
             found.extend(listing.candidates)
             discarded.extend(listing.dropped)

@@ -4,7 +4,40 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U101, issue #146, `relay/146`, 2026-09-19.**
+**Last merged: R-259, issue #161, `relay/161`, 2026-09-19.**
+A label sweep no longer offers releases the library already holds, which
+closes R-259 and, by the same change, R-137. The worker used to hand the
+increment an empty owned set. It now builds `label.sweep.OwnedReleases`, a
+container rather than a set: membership reads a release's tracks through
+`Catalogue.release_tracks` and resolves each against the library index
+`match_cli.library_view` builds, the one `label approved` uses. A release is
+owned when it lists at least one track and every track resolves matched. No
+track, an unreadable row, a track held only in another version, a release that
+is gone, and a track read the provider could not answer all answer not owned,
+so the release is offered. One instance goes to the source and to the
+increment, so each release is read once, and the job shares one library walk
+across its labels. Ownership is asked after verification now, so an
+unconfirmed release is never read and the "confirmed none" refusal counts what
+it did before. `LabelSource` hands the container to every label's listing, so
+owned is dropped before the per label cap (R-137). `/code-review` found two
+costs, and both were fixed: a library walk per label, and a failed track read
+refusing the whole label. That read now offers the release, and three failures
+in a row stop the asking. 13 new test cases by collected count, 8246 to 8259:
+12 in `tests/test_label_workers.py` section 12 and 1 in
+`tests/modules/test_labels.py`. Mutation tables `docs/mutation/r259.md`, 24
+rows with 19 killed, and `r259-b.md`, which re-measured the two user facing
+zeros after the tests they bought and killed both. Read them in
+`r259-notes.md`. The three zeros left face maintainers and get a line each. A
+first `r259` attempt had a null control that killed 25 tests in
+`tests/test_rebuild.py`. It did not reproduce and was discarded. R-464 (harvest
+offers a label the registry already holds, driven), R-465 (owned releases are
+read again on every sweep) and R-466 (an offer whose ownership was not read
+says nothing) are filed and not on the board. **Owed to an attended sitting:**
+none. Battery on the recorded tree: ruff clean, `scan_repo.py` exit 0, pytest
+8258 passed and 1 skipped, and no test of this unit's among the ten slowest.
+**Main's highest residual number is R-466.**
+
+**The session before: U101, issue #146, `relay/146`, 2026-09-19.**
 `crate label approved` consults the genre gate, which narrows R-420. It is the
 first caller of `core/routing.gate_decisions`. The verb now reads every
 accepted release first, runs the gate once per label over one genre per

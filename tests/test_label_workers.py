@@ -47,6 +47,7 @@ from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
+from cratekit.label.catalogue import ReleaseUnresolvable
 from tests.cli_drive import drive
 from tests.label_fakes import (
     FakeCatalogue,
@@ -1883,3 +1884,337 @@ def test_a_refusal_the_artist_lookup_raises_in_kind_keeps_its_own_reason(
 
     assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 12. A release the library already holds is not offered. R-259.
+#
+# The worker passed an empty owned set, and both filters on the labels path are
+# membership tests against the set they are handed, so every sweep offered what
+# the library already held. A release is owned when the provider lists at least
+# one track on it and the library index the match engine uses resolves every
+# one of them as matched. Anything short of that is still offered, because an
+# offer costs a person one decline and a release wrongly called owned is music
+# they never see.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class Row:
+    """A provider track row in the shape ``match.read_tidal_tracks`` reads."""
+
+    def __init__(self, track_id: str, artist: str, name: str) -> None:
+        self.id = track_id
+        self.name = name
+        self.artist = {"name": artist}
+        self.isrc = ""
+
+
+#: The tracks on each of the first label's two releases, as the provider lists
+#: them when a release is read again by identifier.
+TRACKS = {
+    "hf-1": ([Row("11", "Aurora Bloom", "Sun Path"), Row("12", "Nova Reef", "Tide")], 2026),
+    "hf-2": ([Row("21", "Mira Vale", "Glass Hour")], 2025),
+}
+
+
+def hold(cfg: config.Config, *names: str) -> None:
+    """Put files in the library's music folder, named the way the library names them."""
+    for name in names:
+        (cfg.library.root / cfg.library.music_dir / name).write_bytes(b"")
+
+
+def tracked(*, releases=None, confirmed=None, cls=FakeCatalogue) -> FakeCatalogue:
+    """The first label's catalogue, able to read its releases' tracks."""
+    return cls(
+        artists={
+            SLUGS[0]: FakePagedArtist(
+                [FakeRelease(release_id) for release_id in RELEASES[SLUGS[0]]]
+            )
+        },
+        releases=TRACKS if releases is None else releases,
+        confirmed=confirmed,
+    )
+
+
+def test_a_label_whose_catalogue_the_library_already_holds_offers_nothing(
+    installed, monkeypatch
+):
+    """R-259's closing condition, driven through the real dispatcher and driver.
+
+    Before the fix both releases were offered, because the worker handed the
+    increment an empty owned set and nothing else on the path asked.
+    """
+    register(LABELS[0])
+    hold(
+        installed,
+        "Aurora Bloom - Sun Path.flac",
+        "Nova Reef - Tide.flac",
+        "Mira Vale - Glass Hour.flac",
+    )
+    bind(monkeypatch, tracked())
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert offers(installed) == {}
+
+
+def test_a_release_with_one_track_still_missing_is_offered_beside_one_that_is_held(
+    installed, monkeypatch
+):
+    """Every track, not any track. The composite for the test above."""
+    register(LABELS[0])
+    hold(installed, "Aurora Bloom - Sun Path.flac", "Mira Vale - Glass Hour.flac")
+    bind(monkeypatch, tracked())
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert offers(installed) == {"hf-1": SLUGS[0]}
+
+
+def test_a_release_listing_no_tracks_and_a_release_that_is_gone_are_both_offered(
+    installed, monkeypatch
+):
+    """Two absences that must not read as ownership.
+
+    ``all`` over no tracks is ``True``, so a release the provider lists with
+    nothing on it would be called owned by the shortest implementation. A
+    release the provider cannot read again is not known to be held either.
+    """
+    register(LABELS[0])
+    hold(installed, "Mira Vale - Glass Hour.flac")
+    fake = bind(monkeypatch, tracked(releases={"hf-1": ([], 2026)}))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
+    assert sorted(fake.releases_asked_for) == ["hf-1", "hf-2"]
+
+
+def test_a_release_the_library_holds_only_in_another_version_is_offered(
+    installed, monkeypatch
+):
+    """A different cut is a question for the person, never ownership."""
+    register(LABELS[0])
+    hold(
+        installed,
+        "Aurora Bloom - Sun Path.flac",
+        "Nova Reef - Tide.flac",
+        "Mira Vale - Glass Hour (Extended Mix).flac",
+    )
+    bind(monkeypatch, tracked())
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert offers(installed) == {"hf-2": SLUGS[0]}
+
+
+def test_an_unconfirmed_release_is_never_read_and_a_confirmed_one_is_read_once(
+    installed, monkeypatch
+):
+    """Ownership is a provider read now, so it is asked after verification.
+
+    A release the catalogue will not confirm is not the label's to offer, so
+    reading its tracks spends a call on an answer nothing uses. And the owned
+    check is asked twice on this path, once by the sweep and again by the
+    increment's scope, so an answer that was not kept is two reads per release.
+    """
+    register(LABELS[0])
+    fake = bind(monkeypatch, tracked(confirmed={"hf-1"}))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert fake.releases_asked_for == ["hf-1"]
+    assert offers(installed) == {"hf-1": SLUGS[0]}
+
+
+class TracksOutage(FakeCatalogue):
+    """A catalogue that lists and confirms, and cannot read a release's tracks."""
+
+    def release_tracks(self, release_id: str):
+        self.releases_asked_for.append(release_id)
+        raise RuntimeError("the provider answered 503 after the retry ladder")
+
+
+class TracksSessionExpired(FakeCatalogue):
+    """A catalogue whose track read refuses in this product's own vocabulary."""
+
+    def release_tracks(self, release_id: str):
+        del release_id
+        raise refuse(
+            "credential-missing",
+            "the stored provider session expired before the release was read",
+            origin=("tests",),
+        )
+
+
+def test_a_track_read_the_provider_could_not_answer_offers_the_release(
+    installed, monkeypatch
+):
+    """Not owned, offered, and the rest of the label is still swept.
+
+    The listing and the verifier refuse the whole source when the provider
+    cannot answer. This read comes after both have succeeded, so the sweep has
+    new releases in hand, and refusing would withhold all of them over a
+    question whose worst answer is one row a person declines. The library holds
+    every track here, so an offer can only come from the failed read.
+    """
+    register(LABELS[0])
+    hold(
+        installed,
+        "Aurora Bloom - Sun Path.flac",
+        "Nova Reef - Tide.flac",
+        "Mira Vale - Glass Hour.flac",
+    )
+    fake = bind(monkeypatch, tracked(cls=TracksOutage))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
+    assert sorted(fake.releases_asked_for) == ["hf-1", "hf-2"]
+
+
+def test_three_failed_track_reads_in_a_row_stop_the_asking(installed, monkeypatch):
+    """A provider that is down costs three retry ladders, not one per release."""
+    register(LABELS[0])
+    many = [FakeRelease(f"hf-{n}") for n in range(1, 6)]
+    fake = bind(
+        monkeypatch, TracksOutage(artists={SLUGS[0]: FakePagedArtist(many)})
+    )
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert len(fake.releases_asked_for) == 3, fake.releases_asked_for
+    assert sorted(offers(installed)) == [f"hf-{n}" for n in range(1, 6)]
+
+
+def test_a_release_that_is_gone_breaks_the_run_of_failed_reads(installed, monkeypatch):
+    """Gone is the provider answering, so it resets the count as a read does."""
+
+    class Alternating(FakeCatalogue):
+        def release_tracks(self, release_id: str):
+            self.releases_asked_for.append(release_id)
+            if release_id in {"hf-3", "hf-6"}:
+                raise ReleaseUnresolvable(f"no catalogue release {release_id!r}")
+            raise RuntimeError("the provider answered 503 after the retry ladder")
+
+    register(LABELS[0])
+    many = [FakeRelease(f"hf-{n}") for n in range(1, 8)]
+    fake = bind(monkeypatch, Alternating(artists={SLUGS[0]: FakePagedArtist(many)}))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert len(fake.releases_asked_for) == 7, fake.releases_asked_for
+
+
+def test_a_sweep_of_two_labels_walks_the_library_once(installed, monkeypatch):
+    """One view per job. A view per item walked the whole music volume per label."""
+    from cratekit.acquire import match_cli
+
+    register(LABELS[0], LABELS[1])
+    walks: list[object] = []
+    real_view = match_cli.library_view
+
+    def counted_view(cfg):
+        walks.append(cfg)
+        return real_view(cfg)
+
+    monkeypatch.setattr(match_cli, "library_view", counted_view)
+    bind(
+        monkeypatch,
+        FakeCatalogue(
+            artists={
+                slug: FakePagedArtist([FakeRelease(one) for one in RELEASES[slug]])
+                for slug in SLUGS[:2]
+            },
+            releases={**TRACKS, "ot-1": ([Row("31", "Lumen Drift", "Salt Road")], 2024)},
+        ),
+    )
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert len(walks) == 1, len(walks)
+    assert set(offers(installed)) == {"hf-1", "hf-2", "ot-1"}
+
+
+def test_a_refusal_the_track_read_raises_in_kind_keeps_its_own_reason(
+    installed, monkeypatch
+):
+    """The same pass through rule the other three seam boundaries keep."""
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, tracked(cls=TracksSessionExpired))
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
+
+
+def test_a_release_with_a_row_the_reader_cannot_read_is_offered(installed, monkeypatch):
+    """A row naming no artist is a track nobody can look for, so it is not held.
+
+    Every row the reader CAN read is in the library here, so the offer can come
+    only from the unreadable one.
+    """
+    register(LABELS[0])
+    hold(
+        installed,
+        "Aurora Bloom - Sun Path.flac",
+        "Nova Reef - Tide.flac",
+        "Mira Vale - Glass Hour.flac",
+    )
+    releases = {
+        **TRACKS,
+        "hf-2": ([Row("21", "Mira Vale", "Glass Hour"), Row("22", "", "Untitled")], 2025),
+    }
+    bind(monkeypatch, tracked(releases=releases))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert offers(installed) == {"hf-2": SLUGS[0]}
+
+
+def test_a_track_read_that_succeeds_breaks_the_run_of_failed_reads(
+    installed, monkeypatch
+):
+    """An answer resets the count, so failures that are not in a row never stop it."""
+
+    class Intermittent(FakeCatalogue):
+        def release_tracks(self, release_id: str):
+            self.releases_asked_for.append(release_id)
+            if release_id in {"hf-3", "hf-6"}:
+                return (Row(release_id, "Lumen Drift", release_id),), 2026
+            raise RuntimeError("the provider answered 503 after the retry ladder")
+
+    register(LABELS[0])
+    many = [FakeRelease(f"hf-{n}") for n in range(1, 8)]
+    fake = bind(monkeypatch, Intermittent(artists={SLUGS[0]: FakePagedArtist(many)}))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert len(fake.releases_asked_for) == 7, fake.releases_asked_for
