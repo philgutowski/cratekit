@@ -1009,6 +1009,19 @@ def test_the_gap_rule_is_the_derivations_own():
     assert rebuild.derive_from_taxonomy(shipped, truth, vocal_threshold=0.5)[1] == ()
 
 
+def test_the_warning_code_is_the_locked_spelling():
+    """Every other assertion reads the constant, so this is the one that pins it.
+
+    A code is a contract with whoever filters on it, and the brief locked this
+    spelling. Renaming the constant's value would pass every test that compares
+    against the constant.
+    """
+    assert rebuild.VOCAL_NOT_COMPARED == "vocal-dimension-not-compared"
+    (warning,) = rebuild.not_compared_warnings((rebuild.VOCAL_DIMENSION,))
+    assert warning["code"] == "vocal-dimension-not-compared"
+    assert rebuild.not_compared_warnings(()) == ()
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # The zero rows the first table found, turned into deaths
 # ═══════════════════════════════════════════════════════════════════════════
