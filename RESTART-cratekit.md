@@ -4,7 +4,37 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U69, issue #114, `relay/114`, 2026-09-18.**
+**Last merged: U71, issue #116, `relay/116`, 2026-09-18.**
+The landing engine, `src/cratekit/intake/landing.py`, moves acquired files
+out of download staging into the library and splices them into one intake
+file, which closes R-413's engine half. `plan(folder, cfg, batch)` lists the
+folder one level deep, audio only, skipping dotfiles and
+`.cratekit-acquire-staging`, and fingerprints each item by name, size and
+modification time. `apply(plan, cfg=, export=, destination=)` lists the
+folder again and refuses a stale plan as `decision-stale`. Every whole batch
+refusal runs before the first move: an absent library root, a source folder
+inside the library that is not staging, a target under staging, a staging
+folder on another device (refused by name, never copied), an existing intake
+file, and every export refusal `place_files` makes, tried on a copy. Files go
+to `library.root / music_dir / <batch>` by `os.replace` only. A file whose
+target exists is refused alone and never replaced, and a file with no
+declared sub is left in staging with a sentence naming `crate tag folder`.
+Driven: an untagged file lands in `electronica_other` / `unsorted`, so the
+shipped taxonomy never takes that branch. `place_files` runs over the moved
+paths, and `Landed.placed` carries each TrackID for the label tree unit. A
+failure after the first move names the moved files, which stay in the
+library, and leaves no intake file and no empty batch folder. **No verb
+calls it yet**, which is R-413's open half. R-432 (a check then replace
+window), R-433 (`place_files` leaves its session open) and R-434 (a landed
+batch marks nothing lossy) filed, none on the board, since no shipped verb
+reaches them. Mutation tables `docs/mutation/u71.md`, `u71-b.md` and
+`u71-c.md`, 25 rows, all killing after one test was strengthened, read in
+`docs/mutation/u71-notes.md`. `tests/test_reserved_causes.py` re-pinned to 96
+literal holders, measured as a set difference. **Main's highest residual
+number is R-434.** Owed to an attended sitting: one real landed batch imported
+into rekordbox.
+
+**The session before: U69, issue #114, `relay/114`, 2026-09-18.**
 `crate intake missing --job JOB` writes the list document `acquire download`
 reads, from a finished intake job, the first verb to call `listdoc.write`. It
 is `src/cratekit/intake/missing_cli.py`, registry entry `intake.missing`,

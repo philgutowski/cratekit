@@ -5607,7 +5607,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # main's src extracted into a scratch directory. It holds no in-range
     # integer, so the also-holds-an-integer half stays 19; a slice bound of
     # twenty on the unreported identifiers was removed rather than argued.
-    assert (len(literal_holders), len(literal_both)) == (95, 19), (
+    # Re-pinned on U71, 2026-09-18: 95 to 96 holders. ONE module joined and
+    # none left, and it is a new file. intake/landing.py names
+    # intake-list-unusable, intake-staging-refused, decision-stale,
+    # output-exists, library-root-unreachable, library-export-unusable,
+    # path-permission-denied and internal-error, each through cause.refuse or
+    # as the reason on a per file refusal it reports rather than raises.
+    # Differenced as SETS by re-deriving this module's own predicate over the
+    # working tree and over main's src extracted into a scratch directory. The
+    # also-holds-an-integer half stays 19, measured by the same run.
+    assert (len(literal_holders), len(literal_both)) == (96, 19), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
