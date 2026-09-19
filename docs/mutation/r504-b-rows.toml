@@ -42,10 +42,12 @@ id = "B5_noop_silent"
 description = "Every heart withheld is the quiet no-op again, with no warning"
 file = "src/cratekit/intake/cli.py"
 surface = "user"
-old = '''                outcome=Outcome.NO_OP,
+old = '''                data=_no_op("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,
                 warnings=warnings,
             )'''
-new = '''                outcome=Outcome.NO_OP,
+new = '''                data=_no_op("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,
             )'''
 
 [[rows]]
