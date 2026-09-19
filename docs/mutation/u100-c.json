@@ -1,0 +1,127 @@
+{
+  "name": "u100-c",
+  "pass_kind": "light",
+  "branch": "relay/145",
+  "head": "68fa9bb",
+  "when": "2026-09-19 08:55 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8230,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/registry.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/registry.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "f38755c7b90d2474",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8230,
+    "baseline_collected": 8230,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "R5_adopt_always_writes_after_fix",
+      "description": "RegistryStore.adopt asks for a write even when it added nothing, re-measured after the fix round added its test",
+      "file": "src/cratekit/label/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "76a8408fa932c74f",
+      "subset": [
+        "tests/test_label_registry_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_an_adopt_that_adds_nothing_does_not_rewrite_the_registry"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            return any(result.added for result in results)",
+      "new": "            return True"
+    },
+    {
+      "id": "R6_update_ignores_false_after_fix",
+      "description": "RegistryStore.update writes even when the mutator returns False, re-measured after the fix round added its test",
+      "file": "src/cratekit/label/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b78e3aa5c2384430",
+      "subset": [
+        "tests/test_label_registry_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_an_adopt_that_adds_nothing_does_not_rewrite_the_registry"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if changed is not False:",
+      "new": "            if True:"
+    },
+    {
+      "id": "C8_refused_counted_present_after_fix",
+      "description": "the summary lists a refused name as present, telling a script the registry holds it, re-measured after the fix round added its test",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4514ae174ff49379",
+      "subset": [
+        "tests/test_label_registry_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_a_name_with_no_identifier_fails_alone_and_the_rest_land"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    if not result.added and result.refused is None",
+      "new": "                    if not result.added"
+    }
+  ],
+  "dropped": []
+}

@@ -128,12 +128,19 @@ ones for review. It adds nothing to the registry and downloads nothing.
 ```bash
 crate label harvest https://provider.example/playlist/PLAYLIST_ID
 crate review list --queue label-release --kind harvested-label
+crate review resolve ITEM_ID --verdict accepted
+crate label registry adopt
 ```
 
 The separation is the whole point. A playlist tells you which imprints you are
-already listening to, and deciding to follow one is a second, explicit act you
-perform with `label registry add`. If the playlist cannot be listed, harvest
-refuses and says so rather than inventing a label name out of a track title.
+already listening to, and deciding to follow one is a second, explicit act: you
+accept the label in review, then `label registry adopt` adds every accepted
+label the registry does not already hold. A label already held under another
+spelling, a different case, a decomposed accent or the identifier a carried
+over list gave it, is reported as held and never filed twice, so adopt is safe
+to run after every review sitting. A rejected or undecided label is counted and
+left alone. If the playlist cannot be listed, harvest refuses and says so rather
+than inventing a label name out of a track title.
 
 ## Deciding on releases, once
 
