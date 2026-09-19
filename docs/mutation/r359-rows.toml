@@ -1,0 +1,90 @@
+name = "r359"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_drop_field"
+description = "Drop the swept_means field from the playlists block, the row the brief names"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        "swept_means": SWEPT_MEANS,
+'''
+new = ""
+
+[[rows]]
+id = "M2_token"
+description = "Change the machine token to a nearby word that no longer says not acquired"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''SWEPT_MEANS = "resolved-not-acquired"'''
+new = '''SWEPT_MEANS = "resolved"'''
+
+[[rows]]
+id = "M3_said_silent"
+description = "said returns nothing, so the check carries no sentence while the json field stays"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    return SWEPT_MEANS_SAID.get(str(block.get("swept_means") or ""))'''
+new = '''    return None'''
+
+[[rows]]
+id = "M4_said_unconditional"
+description = "said answers whatever the block carries, decoupling the sentence from the field"
+file = "src/cratekit/sync/playlists.py"
+old = '''    return SWEPT_MEANS_SAID.get(str(block.get("swept_means") or ""))'''
+new = '''    return SWEPT_MEANS_SAID[SWEPT_MEANS]'''
+
+[[rows]]
+id = "M5_unwired"
+description = "The playlists planner no longer hands its note to the plan"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    plan = _Plan(spec=spec, describe=describe, detail=describe([]), note=playlists.said)'''
+new = '''    plan = _Plan(spec=spec, describe=describe, detail=describe([]))'''
+
+[[rows]]
+id = "M6_no_append"
+description = "The check computes the note and never appends it to the detail a person reads"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        check["detail"] += f"; {noted}"'''
+new = '''        pass'''
+
+[[rows]]
+id = "M7_note_before_describe"
+description = "The note reads an empty block instead of the source's own, so it says nothing"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    noted = plan.note(plan.detail or {}) if plan.note is not None else None'''
+new = '''    noted = plan.note({}) if plan.note is not None else None'''
+
+[[rows]]
+id = "M8_drop_resolved"
+description = "Reword the sentence so it no longer says the tracks were resolved"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''            "a recorded playlist had its tracks resolved against the library, not "'''
+new = '''            "a recorded playlist had its tracks checked against the library, not "'''
+
+[[rows]]
+id = "M9_drop_not_acquired"
+description = "Reword the sentence so it no longer says the tracks were not acquired"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''            "acquired, so a track its intake job reported missing is still not in "'''
+new = '''            "fetched, so a track its intake job reported missing is still not in "'''
+
+[[rows]]
+id = "M10_claims_downloaded"
+description = "Reword the sentence into the false claim the defect is about, that the files were downloaded"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''            "the library, crate intake missing lists it, and no later sync offers "'''
+new = '''            "the library until downloaded, and no later sync offers "'''
+
+[[rows]]
+id = "S1_record_on_any_state"
+description = "Existing guard sample: the cursor records a playlist whatever state its job ended in"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        if job.state == jobs.JobState.SUCCEEDED and identity and identity not in seen:'''
+new = '''        if identity and identity not in seen:'''
