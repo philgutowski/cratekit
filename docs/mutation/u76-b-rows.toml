@@ -1,0 +1,126 @@
+name = "u76-b"
+pass_kind = "light"
+
+[[rows]]
+id = "X2_entries_count"
+description = "_extend_playlist: move Entries by the ids offered rather than the ids added"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    total = _read_int(content, entries) + len(fresh)'''
+new = '''    total = _read_int(content, entries) + len(track_ids)'''
+
+[[rows]]
+id = "X3_self_closed_playlist"
+description = "_extend_playlist: treat a self closed playlist as open, writing at the line of a close tag it does not have"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    if playlist.self_closing:
+        content[playlist.tag_end - 1 : playlist.tag_end + 1] = bytearray(
+            b">" + CRLF + lines + b" " * playlist.indent + _NODE_CLOSE'''
+new = '''    if playlist.self_closing and not playlist.self_closing:
+        content[playlist.tag_end - 1 : playlist.tag_end + 1] = bytearray(
+            b">" + CRLF + lines + b" " * playlist.indent + _NODE_CLOSE'''
+
+[[rows]]
+id = "X4_track_indent"
+description = "_extend_playlist: write the added track keys at the playlist's own indent rather than one step in"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    lines = track_key_lines(fresh, playlist.indent + INDENT_STEP).encode("utf-8")'''
+new = '''    lines = track_key_lines(fresh, playlist.indent).encode("utf-8")'''
+
+[[rows]]
+id = "X5_entries_absent"
+description = "_extend_playlist: write the ids into a held playlist with no Entries attribute rather than refusing"
+file = "src/cratekit/write/rbxml.py"
+surface = "maintainer"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    if entries is None:
+        return f"Entries attr not found for playlist {playlist.name!r}"
+    total = _read_int(content, entries) + len(fresh)'''
+new = '''    if entries is None:
+        entries = (playlist.tag_end, playlist.tag_end)
+    total = _read_int(content, entries) + len(fresh) if entries[0] != entries[1] else len(fresh)'''
+
+[[rows]]
+id = "S1_self_closed_folder"
+description = "_merge_catalog: do not open a self closed held folder before merging into it"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    if folder.self_closing:
+        # An empty folder exported self closed'''
+new = '''    if folder.self_closing and not folder.self_closing:
+        # An empty folder exported self closed'''
+
+[[rows]]
+id = "C1_count_bump"
+description = "_merge_catalog: move the folder's Count by one less than the playlists created"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''        _bump_count(content, here, created)'''
+new = '''        _bump_count(content, here, created - 1)'''
+
+[[rows]]
+id = "O1_anchor_order"
+description = "_merge_catalog: place a new year before the first held playlist sorting ABOVE it, reversing newest first"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''                if child.node_type == PLAYLIST_TYPE and _folded(child.name) < wanted'''
+new = '''                if child.node_type == PLAYLIST_TYPE and _folded(child.name) > wanted'''
+
+[[rows]]
+id = "O2_anchor_none"
+description = "_merge_catalog: always append a new year last"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''                if child.node_type == PLAYLIST_TYPE and _folded(child.name) < wanted'''
+new = '''                if child.node_type == PLAYLIST_TYPE and _folded(child.name) < wanted and False'''
+
+[[rows]]
+id = "L1_folder_own_line"
+description = "_merge_catalog: drop the check that the held folder starts its own line"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    if not _starts_its_line(content, folder.line_start, folder.tag_start):
+        return f"the folder {folder.name!r} does not start its own line"'''
+new = '''    if False:
+        return f"the folder {folder.name!r} does not start its own line"'''
+
+[[rows]]
+id = "L2_anchor_own_line"
+description = "_merge_catalog: drop the check that the playlist a new year goes before starts its own line"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''            if not _starts_its_line(content, at, anchor.tag_start):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "L3_folder_close_own_line"
+description = "_merge_catalog: drop the check that the folder's close tag starts its own line"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''            if not _starts_its_line(content, at, here.close_start):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "L4_playlist_close_own_line"
+description = "_extend_playlist: drop the check that a held playlist's close tag starts its own line"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''        if not _starts_its_line(content, at, playlist.close_start):'''
+new = '''        if False:'''
+
+[[dropped]]
+id = "L5_playlist_own_line"
+reason = "the held playlist's own line check in _extend_playlist is the sibling of L1 to L4 and pinned by the same test's held playlist shape; ranked below the cap because the self closed branch it protects is also held by X3"

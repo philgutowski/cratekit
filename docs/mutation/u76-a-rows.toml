@@ -1,0 +1,133 @@
+name = "u76-a"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_duplicate_sibling"
+description = "_sole_child: answer the first of two same named siblings instead of refusing the duplicate (R-129's refusal removed)"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    if len(matches) > 1:
+        return (
+            f"{len(matches)} {_type_name(node_type)}s named'''
+new = '''    if len(matches) > 99:
+        return (
+            f"{len(matches)} {_type_name(node_type)}s named'''
+
+[[rows]]
+id = "D2_type_collision"
+description = "_sole_child: check the type of every match but the first, so a same named node of the other type standing first is merged into"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    for child in matches:
+        if child.node_type != node_type:'''
+new = '''    for child in matches[1:]:
+        if child.node_type != node_type:'''
+
+[[rows]]
+id = "D3_tree_level_lookup"
+description = "_write_catalog: locate the catalog tree under ROOT with direct_child, so two trees of one name are written into rather than refused"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''        found = _sole_child(content, root, tree.display, FOLDER_TYPE)'''
+new = '''        found = direct_child(content, root, tree.display, FOLDER_TYPE)'''
+
+[[rows]]
+id = "D4_folder_level_lookup"
+description = "_write_catalog: locate the label folder with direct_child, so two folders of the label's name are written into rather than refused"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    existing = _sole_child(content, parent, folder_name, FOLDER_TYPE)'''
+new = '''    existing = direct_child(content, parent, folder_name, FOLDER_TYPE)'''
+
+[[rows]]
+id = "D5_playlist_level_lookup"
+description = "_merge_catalog: locate a held year playlist with direct_child, so two playlists of one year are written into rather than refused"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''        playlist = _sole_child(content, here, name, PLAYLIST_TYPE)'''
+new = '''        playlist = direct_child(content, here, name, PLAYLIST_TYPE)'''
+
+[[rows]]
+id = "M1_merge_not_append"
+description = "_write_catalog: never take the merge path, so a held folder gets a second folder of its name beside it (the R-129 doubling)"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    if existing is not None:
+        return _merge_catalog(content, existing, pairs)'''
+new = '''    if existing is not None and not existing:
+        return _merge_catalog(content, existing, pairs)'''
+
+[[rows]]
+id = "F1_nfc_fold"
+description = "_folded: compare names as given, so a composed and a decomposed spelling of one label are two folders"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    return unicodedata.normalize("NFC", name)'''
+new = '''    return name'''
+
+[[rows]]
+id = "F2_case_fold"
+description = "_folded: fold case as well, so a label differing only by case is poured into another label's folder"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    return unicodedata.normalize("NFC", name)'''
+new = '''    return unicodedata.normalize("NFC", name).casefold()'''
+
+[[rows]]
+id = "P1_join_pairs"
+description = "_merged_pairs: keep every pair as given, so a caller naming one playlist twice emits two siblings of that name"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    return [(joined[key][0], dedupe_track_ids(joined[key][1])) for key in order]'''
+new = '''    return [(name, dedupe_track_ids(ids)) for name, ids in playlists]'''
+
+[[rows]]
+id = "P2_dedupe_ids"
+description = "_merged_pairs: keep a batch's repeated ids, so a playlist lists one track twice"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    return [(joined[key][0], dedupe_track_ids(joined[key][1])) for key in order]'''
+new = '''    return [(joined[key][0], list(joined[key][1])) for key in order]'''
+
+[[rows]]
+id = "W1_copy_on_write"
+description = "insert_catalog_folder: edit the caller's document directly, so a refusal after an earlier merge leaves that merge behind"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    work = bytearray(content)
+    warning = _write_catalog('''
+new = '''    work = content
+    warning = _write_catalog('''
+
+[[rows]]
+id = "W2_commit_on_success"
+description = "insert_catalog_folder: copy the working bytes back even on a refusal"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    if warning is None:
+        content[:] = work
+    return warning'''
+new = '''    if warning is None or warning:
+        content[:] = work
+    return warning'''
+
+[[rows]]
+id = "X1_dedupe_against_held"
+description = "_extend_playlist: dedupe the new ids against nothing, so a member the playlist holds is added again"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    fresh = dedupe_track_ids(track_ids, track_keys(content, playlist))'''
+new = '''    fresh = dedupe_track_ids(track_ids, ())'''
