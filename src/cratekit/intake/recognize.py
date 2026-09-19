@@ -43,6 +43,16 @@ class Identified:
     answer at all. The last one is the one a report has to carry, because a
     set where most chunks were never answered is not a set nobody recognised,
     and the two look identical as a tuple of rows.
+
+    ``calls`` is what THIS pass paid for. ``cached`` is how many of the chunks
+    were answered from the recognition cache instead, so a second pass over an
+    unchanged recording reads ``calls`` of zero and ``cached`` equal to
+    ``chunks``. ``cache_unwritten`` is empty unless the answers this pass paid
+    for could not be kept, and then it says why: the pass still succeeded, and
+    the next one over the same recording will pay again, which a person is
+    owed the chance to know before it happens. ``digest`` is the sha256 of the
+    recording's bytes when they could be read, which is the one name two
+    recordings that share a file name do not share.
     """
 
     rows: tuple[Wanted, ...]
@@ -50,6 +60,9 @@ class Identified:
     chunks: int = 0
     misses: int = 0
     unreached: int = 0
+    cached: int = 0
+    cache_unwritten: str = ""
+    digest: str = ""
 
 
 #: An identifier answers with an :class:`Identified`, or with the bare rows
@@ -97,6 +110,7 @@ def identify(
     source: Path,
     *,
     identifier: Identifier | None = None,
+    refresh: bool = False,
 ) -> Identified:
     """Identify the tracks in ``source``: the Wanted rows, and what it cost.
 
@@ -108,12 +122,16 @@ def identify(
     THE GATE RUNS BEFORE THE IDENTIFIER IS BUILT. Building the bound one
     touches nothing, but the order is the contract rather than a nicety: a
     missing key refuses here, by name, and the keychain is never asked.
+
+    ``refresh`` asks the bound identifier to read nothing from the recognition
+    cache and pay for every chunk again. An injected identifier is handed the
+    recording and nothing else, so what it keeps is its own business.
     """
     assert_recognition_ready()
     if identifier is None:
         from cratekit.intake import acrcloud  # noqa: PLC0415 - bound only on the paid path
 
-        identifier = acrcloud.bound_identifier()
+        identifier = acrcloud.bound_identifier(refresh=refresh)
     found = identifier(source)
     if isinstance(found, Identified):
         return found

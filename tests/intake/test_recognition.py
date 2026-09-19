@@ -761,3 +761,366 @@ def test_a_ledger_that_cannot_record_stops_the_run_before_the_call(ledger, monke
     assert excinfo.value.cause.reason == "intake-recognition-failed"
     assert excinfo.value.cause.detail["calls"] == 0
     assert transport.requests == [], "a call was made that the ledger could not count"
+
+
+# ---------------------------------------------------------------------------
+# U103: the recognition cache. A chunk already answered is not paid for again.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def cache(tmp_path) -> acrcloud.RecognitionCache:
+    return acrcloud.RecognitionCache(root=tmp_path / "identify_cache")
+
+
+def real_recording(tmp_path, content: bytes = b"a recording", name: str = "set.mp3") -> Path:
+    path = tmp_path / name
+    path.write_bytes(content)
+    return path
+
+
+def counted_credentials():
+    """Credentials that count how often the keychain was asked."""
+    asked: list[int] = []
+
+    def read() -> tuple[str, str]:
+        asked.append(1)
+        return fixed_credentials()
+
+    read.asked = asked
+    return read
+
+
+def cached_run(transport, source, cache, ledger, *, duration_s=85.0, **kwargs) -> Identified:
+    return acrcloud.identify(
+        source,
+        transport=transport,
+        carver=kwargs.pop("carver", None) or FakeCarver(duration_s),
+        credentials=kwargs.pop("credentials", fixed_credentials),
+        ledger=ledger,
+        cache=cache,
+        month="2026-09",
+        **kwargs,
+    )
+
+
+def three_answers() -> list[dict]:
+    return [hit("Aurora Bloom", "Sun Path", isrc="X1"), miss(), hit("Nova Reef", "Tide", isrc="X2")]
+
+
+def test_a_second_pass_over_an_unchanged_recording_spends_nothing(tmp_path, cache, ledger):
+    source = real_recording(tmp_path)
+    first = cached_run(FakeTransport(*three_answers()), source, cache, ledger)
+    assert (first.calls, first.cached, first.cache_unwritten) == (3, 0, "")
+
+    silent = FakeTransport()
+    carver = FakeCarver(85.0)
+    credentials = counted_credentials()
+    second = cached_run(silent, source, cache, ledger, carver=carver, credentials=credentials)
+
+    assert silent.requests == [], "a kept chunk reached the transport"
+    assert carver.carved == [], "a kept chunk was carved"
+    assert credentials.asked == [], "a pass that owes nothing asked the keychain"
+    assert ledger.used("2026-09") == 3, "a kept chunk was counted as spend"
+    assert second.rows == first.rows
+    assert (second.calls, second.cached, second.chunks) == (0, 3, 3)
+    assert (second.misses, second.unreached) == (first.misses, first.unreached)
+
+
+def test_a_changed_file_misses_the_cache(tmp_path, cache, ledger):
+    source = real_recording(tmp_path)
+    cached_run(FakeTransport(*three_answers()), source, cache, ledger)
+    source.write_bytes(b"a different recording under the same name")
+
+    again = FakeTransport(miss(), miss(), miss())
+    result = cached_run(again, source, cache, ledger)
+
+    assert len(again.requests) == 3, "a changed file was served the old answers"
+    assert result.rows == ()
+    assert result.cached == 0
+
+
+def test_the_same_bytes_under_another_name_hit_the_cache(tmp_path, cache, ledger):
+    """The identity is the audio. A copy is the same recording."""
+    cached_run(FakeTransport(*three_answers()), real_recording(tmp_path), cache, ledger)
+    copy = real_recording(tmp_path, name="a copy.mp3")
+    silent = FakeTransport()
+    assert cached_run(silent, copy, cache, ledger).cached == 3
+    assert silent.requests == []
+
+
+def test_a_changed_chunk_plan_misses_the_cache(tmp_path, cache, ledger):
+    """The same bytes measured to a different length are a different grid."""
+    source = real_recording(tmp_path)
+    cached_run(FakeTransport(*three_answers()), source, cache, ledger, duration_s=85.0)
+    longer = FakeTransport(miss(), miss(), miss(), miss())
+    result = cached_run(longer, source, cache, ledger, duration_s=100.0)
+    assert len(longer.requests) == 4
+    assert result.cached == 0
+
+
+def test_another_regional_host_misses_the_cache(tmp_path, cache, ledger):
+    source = real_recording(tmp_path)
+    cached_run(FakeTransport(*three_answers()), source, cache, ledger)
+    other = FakeTransport(miss(), miss(), miss())
+    cached_run(other, source, cache, ledger, host="identify-eu-west-1.example.invalid")
+    assert len(other.requests) == 3
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"digest": "another"},
+        {"offsets": (0, 25)},
+        {"chunk_s": 10},
+        {"interval_s": 20},
+        {"sample_rate": 8000},
+        {"host": "elsewhere.example.invalid"},
+    ],
+    ids=lambda changed: next(iter(changed)),
+)
+def test_every_field_of_the_plan_moves_the_key(changed):
+    base = dict(digest="d", offsets=(0, 25, 50))
+    assert acrcloud.ChunkPlan(**base).key() != acrcloud.ChunkPlan(**{**base, **changed}).key()
+    assert acrcloud.ChunkPlan(**base).key() == acrcloud.ChunkPlan(**base).key()
+
+
+def test_the_digest_is_the_sha256_of_the_bytes(tmp_path):
+    source = real_recording(tmp_path, b"exactly these bytes")
+    assert acrcloud.content_digest(source) == hashlib.sha256(b"exactly these bytes").hexdigest()
+
+
+def test_a_chunk_that_got_no_answer_is_never_kept_so_only_the_gap_is_paid_again(
+    tmp_path, cache, ledger
+):
+    source = real_recording(tmp_path)
+    first = cached_run(
+        FakeTransport(hit("Aurora Bloom", "Sun Path"), ConnectionError("down"), coded(3000)),
+        source, cache, ledger,
+    )
+    assert first.unreached == 2
+
+    fill = FakeTransport(miss(), hit("Nova Reef", "Tide"))
+    second = cached_run(fill, source, cache, ledger)
+
+    assert [r.sample for r in fill.requests] == [b"chunk@25", b"chunk@50"]
+    assert (second.calls, second.cached, second.unreached) == (2, 1, 0)
+    assert [row.title for row in second.rows] == ["Sun Path", "Tide"]
+
+
+def test_kept_and_fresh_answers_fold_in_set_order(tmp_path, cache, ledger):
+    """A gap filled between two chunks of one record folds to ONE row."""
+    source = real_recording(tmp_path)
+    same = hit("Aurora Bloom", "Sun Path", isrc="X1")
+    cached_run(FakeTransport(same, ConnectionError("down"), same), source, cache, ledger)
+    second = cached_run(FakeTransport(same), source, cache, ledger)
+    assert [row.title for row in second.rows] == ["Sun Path"]
+
+
+def test_a_pass_that_raised_keeps_what_it_had_already_paid_for(tmp_path, cache, ledger):
+    """A quota refusal mid set. The answers before it are written on the way out."""
+    source = real_recording(tmp_path)
+    with pytest.raises(CratekitError) as refused:
+        cached_run(FakeTransport(hit("Aurora Bloom", "Sun Path"), coded(3003)), source, cache, ledger)
+    assert refused.value.cause.detail["kind"] == "provider-quota"
+
+    rest = FakeTransport(miss(), hit("Nova Reef", "Tide"))
+    result = cached_run(rest, source, cache, ledger)
+
+    assert [r.sample for r in rest.requests] == [b"chunk@25", b"chunk@50"]
+    assert (result.calls, result.cached) == (2, 1)
+    assert [row.title for row in result.rows] == ["Sun Path", "Tide"]
+
+
+def test_a_cache_that_cannot_be_written_does_not_replace_the_refusal_on_its_way_out(
+    tmp_path, cache, ledger, monkeypatch
+):
+    def failing(self, plan, answers):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(acrcloud.RecognitionCache, "write", failing)
+    with pytest.raises(CratekitError) as refused:
+        cached_run(
+            FakeTransport(hit("Aurora Bloom", "Sun Path"), coded(3003)),
+            real_recording(tmp_path), cache, ledger,
+        )
+    assert refused.value.cause.reason == "intake-recognition-spend-bound"
+
+
+def test_refresh_reads_nothing_kept_and_lays_the_new_answers_over_the_document(
+    tmp_path, cache, ledger
+):
+    source = real_recording(tmp_path)
+    cached_run(FakeTransport(hit("Aurora Bloom", "Sun Path"), miss(), miss()), source, cache, ledger)
+    asked = FakeTransport(hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide"), miss())
+    refreshed = cached_run(asked, source, cache, ledger, refresh=True)
+    assert len(asked.requests) == 3
+    assert (refreshed.calls, refreshed.cached) == (3, 0)
+    after = cached_run(FakeTransport(), source, cache, ledger)
+    assert [row.title for row in after.rows] == ["Sun Path", "Tide"]
+
+
+def test_the_write_is_a_merge_so_an_overlapping_pass_does_not_drop_what_another_paid_for(
+    tmp_path, cache
+):
+    source = real_recording(tmp_path)
+    plan = plan_of(source)
+    cache.write(plan, {0: hit("Aurora Bloom", "Sun Path")})
+    # A second pass that began before that write knows only its own answer.
+    cache.write(plan, {25: miss()})
+    assert sorted(cache.read(plan)) == [0, 25]
+    assert cache.path_for(plan).with_suffix(".lock").is_file()
+
+
+def test_the_pass_carries_the_recordings_digest(tmp_path, cache, ledger):
+    source = real_recording(tmp_path)
+    result = cached_run(FakeTransport(*three_answers()), source, cache, ledger)
+    assert result.digest == acrcloud.content_digest(source)
+
+
+def plan_of(source: Path, duration_s: float = 85.0) -> acrcloud.ChunkPlan:
+    return acrcloud.ChunkPlan(
+        digest=acrcloud.content_digest(source), offsets=acrcloud.sample_offsets(duration_s)
+    )
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "not json at all",
+        "[1, 2, 3]",
+        json.dumps({"version": 1, "plan": {"digest": "someone else's"}, "answers": {"0": miss()}}),
+    ],
+    ids=["corrupt", "not-an-object", "another-plan"],
+)
+def test_a_document_that_cannot_be_trusted_is_a_miss_and_never_a_tracklist(
+    tmp_path, cache, ledger, document
+):
+    source = real_recording(tmp_path)
+    plan = plan_of(source)
+    cache.root.mkdir(parents=True)
+    cache.path_for(plan).write_text(document)
+    assert cache.read(plan) == {}
+    paid = FakeTransport(*three_answers())
+    assert cached_run(paid, source, cache, ledger).cached == 0
+    assert len(paid.requests) == 3
+
+
+def test_a_document_from_another_cache_version_is_a_miss(tmp_path, cache):
+    source = real_recording(tmp_path)
+    plan = plan_of(source)
+    cache.write(plan, {0: miss()})
+    assert cache.read(plan) == {0: miss()}
+    held = json.loads(cache.path_for(plan).read_text())
+    held["version"] = acrcloud.CACHE_VERSION + 1
+    cache.path_for(plan).write_text(json.dumps(held))
+    assert cache.read(plan) == {}
+
+
+def test_only_an_answer_is_kept_or_served_in_either_direction(tmp_path, cache):
+    """Removed alone, each layer still holds: the writer drops a non answer,
+    and the reader refuses one a foreign writer left behind."""
+    source = real_recording(tmp_path)
+    plan = plan_of(source)
+    cache.write(plan, {0: hit("Aurora Bloom", "Sun Path"), 25: coded(3003), 50: coded(3000)})
+    assert sorted(json.loads(cache.path_for(plan).read_text())["answers"]) == ["0"]
+
+    held = json.loads(cache.path_for(plan).read_text())
+    held["answers"].update({"25": coded(3003), "50": "not an object", "75": miss(), "x": miss()})
+    cache.path_for(plan).write_text(json.dumps(held))
+    assert sorted(cache.read(plan)) == [0], "a non answer or an unplanned offset was served"
+
+
+def test_the_cache_lives_in_its_declared_installation_state_entry():
+    from cratekit.core import config
+
+    assert acrcloud.RecognitionCache().root == config.state_path(acrcloud.CACHE_KEY)
+    assert config.state_file(acrcloud.CACHE_KEY).root is config.StateRoot.INSTALLATION
+
+
+def test_the_cache_document_is_private_and_holds_no_credential(tmp_path, cache, ledger):
+    source = real_recording(tmp_path)
+    cached_run(FakeTransport(*three_answers()), source, cache, ledger)
+    (document,) = list(cache.root.glob("*.json"))
+    assert document.stat().st_mode & 0o777 == 0o600
+    text = document.read_text()
+    assert "an-access-key" not in text and "a-signing-key" not in text
+
+
+def test_a_recording_that_cannot_be_digested_is_identified_without_the_cache_and_says_so(
+    tmp_path, cache, ledger
+):
+    result = cached_run(FakeTransport(*three_answers()), tmp_path / "gone.mp3", cache, ledger)
+    assert result.calls == 3
+    assert "digest" in result.cache_unwritten
+    assert not cache.root.exists()
+
+
+def test_answers_that_cannot_be_kept_do_not_fail_the_pass_that_paid_for_them(
+    tmp_path, cache, ledger, monkeypatch
+):
+    def failing(self, plan, answers):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(acrcloud.RecognitionCache, "write", failing)
+    result = cached_run(FakeTransport(*three_answers()), real_recording(tmp_path), cache, ledger)
+    assert [row.title for row in result.rows] == ["Sun Path", "Tide"]
+    assert "PermissionError" in result.cache_unwritten
+
+
+def test_a_pass_that_paid_for_nothing_writes_nothing_and_reports_nothing_unwritten(
+    tmp_path, cache, ledger, monkeypatch
+):
+    source = real_recording(tmp_path)
+    cached_run(FakeTransport(*three_answers()), source, cache, ledger)
+
+    def failing(self, plan, answers):
+        raise AssertionError("a pass that paid for nothing rewrote the cache")
+
+    monkeypatch.setattr(acrcloud.RecognitionCache, "write", failing)
+    assert cached_run(FakeTransport(), source, cache, ledger).cache_unwritten == ""
+
+
+def test_the_monthly_bound_reads_what_is_owed_and_the_per_run_bound_reads_the_grid(
+    tmp_path, cache, ledger
+):
+    source = real_recording(tmp_path)
+    cached_run(FakeTransport(*three_answers()), source, cache, ledger)
+    spent = Budget(monthly=3)
+    # The month is used up and the recording is fully kept: nothing is owed.
+    assert cached_run(FakeTransport(), source, cache, ledger, budget=spent).cached == 3
+    # The per run bound still refuses a grid this size, kept or not.
+    with pytest.raises(CratekitError) as refused:
+        cached_run(FakeTransport(), source, cache, ledger, budget=Budget(per_run=2))
+    assert refused.value.cause.detail["kind"] == "per-run"
+    # And a recording that owes calls into a spent month is refused for them.
+    other = real_recording(tmp_path, b"another recording", name="other.mp3")
+    with pytest.raises(CratekitError) as monthly:
+        cached_run(FakeTransport(), other, cache, ledger, budget=spent)
+    assert monthly.value.cause.detail == {"planned": 3, "used": 3, "bound": 3, "kind": "monthly"}
+
+
+def test_the_monthly_bound_counts_only_the_gap_on_a_partly_kept_recording(tmp_path, cache, ledger):
+    """One chunk kept and two owed, with exactly two calls left in the month.
+    Counting the whole grid against the month would refuse a pass that fits."""
+    source = real_recording(tmp_path)
+    cached_run(
+        FakeTransport(hit("Aurora Bloom", "Sun Path"), ConnectionError("down"), coded(3000)),
+        source, cache, ledger,
+    )
+    assert ledger.used("2026-09") == 3
+    fill = FakeTransport(miss(), miss())
+    result = cached_run(fill, source, cache, ledger, budget=Budget(monthly=5))
+    assert (result.calls, result.cached) == (2, 1)
+
+
+def test_the_bound_identifier_hands_the_cache_through(tmp_path, cache, ledger):
+    source = real_recording(tmp_path)
+    transport = FakeTransport(*three_answers())
+    identifier = acrcloud.bound_identifier(
+        transport=transport, carver=FakeCarver(85.0), ledger=ledger, cache=cache
+    )
+    secrets.set(str(secrets.Credential.IDENTIFY_KEY), "k-1")
+    secrets.set(str(secrets.Credential.IDENTIFY_SIGNING_KEY), "s-1")
+    assert identifier(source).calls == 3
+    assert identifier(source).calls == 0

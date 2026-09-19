@@ -869,9 +869,22 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(5,),
         source_scripts=("dj-setid",),
         module_id="identify",
+        # U103. The identified rows are asked of the library, and a version the
+        # library may already hold is offered to the review queue under this
+        # verb's own key. It writes a tracklist text file into a folder of its
+        # own and declares no write surface, on the precedent ``intake
+        # missing`` sets.
+        adjudicates=True,
         emits=frozenset({"match"}),
         output_schema="match/1",
-        doctor_checks=("binary.ffmpeg", "binary.ffprobe", "credential.recognition"),
+        # The library is asked, so a machine with no library mounted is one
+        # doctor has to fail, or doctor passes a verb that refuses.
+        doctor_checks=(
+            "library.mounted",
+            "binary.ffmpeg",
+            "binary.ffprobe",
+            "credential.recognition",
+        ),
     ),
     Entry(
         name="intake.playlist",

@@ -5321,7 +5321,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # row of the list has an accepted second source candidate. Every refusal
     # the fetch raises reuses lossy-refused, output-exists,
     # unavailable-transient, unavailable-permanent or yt-dlp-missing.
-    assert (len(literals), len(literals - set(causes))) == (446, 286), (
+    # Re-pinned on U103, 2026-09-19: 446 to 449 distinct, 286 to 289 non-keys.
+    # THREE literals joined and NOTHING left, differenced over the branch's
+    # diff of `src` against `main` with `git grep` on `main` for each. None is
+    # a cause, and all three are WARNING codes the two recognition verbs add on
+    # the envelope. tracklist-written names the tracklist file `intake
+    # identify` wrote, because the match surface has no field for a path.
+    # recognition-cached says how many chunks were answered from what was kept
+    # and names the flag that asks again, and recognition-cache-unwritten says
+    # the answers a pass paid for could not be kept. Every refusal the verb
+    # raises reuses intake-list-unusable, library-volume-unmounted or a slug
+    # recognition already reserves.
+    assert (len(literals), len(literals - set(causes))) == (449, 289), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5778,7 +5789,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # and yt-dlp-missing through cause.refuse. acquire/fallback.py names no
     # cause. Measured by listing this file's own holders on the
     # branch. It holds no in-range integer, so the other half stays 19.
-    assert (len(literal_holders), len(literal_both)) == (99, 19), (
+    # Re-pinned on U103, 2026-09-19: holders UNCHANGED at 99, and the
+    # also-holds-an-integer half moves 19 to 20. No module joined the holders.
+    # ONE holder gained an in-range integer: intake/cli.py held none on main
+    # and holds 12 now, which is TRACKLIST_DIGEST_CHARS, how many characters
+    # of the recording's digest a tracklist's file name carries. It is a
+    # length and is never an exit status. Measured by walking that file's
+    # integer constants on main and on the branch.
+    assert (len(literal_holders), len(literal_both)) == (99, 20), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

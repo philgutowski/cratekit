@@ -758,6 +758,21 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="identify_cache",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.DIRECTORY,
+        relative="identify_cache",
+        why=(
+            "What the identification service answered about one recording, one "
+            "document per recording, named by a digest of the recording's bytes "
+            "and its chunk plan. An answer is a fact about the AUDIO and was paid "
+            "for on the credential's quota, so it sits beside the counter and "
+            "serves every library. Losing it costs money and no data: the next "
+            "pass over that recording pays for every chunk again."
+        ),
+    ),
+    StateFile(
         key="genre_lookup_cache",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,

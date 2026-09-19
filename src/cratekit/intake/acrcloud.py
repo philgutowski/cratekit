@@ -63,7 +63,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -134,6 +134,11 @@ class Outcome(StrEnum):
     AUTH = "auth"
     TRANSIENT = "transient"
     UNCLASSIFIED = "unclassified"
+
+
+#: The two families that are an ANSWER about the audio, and so the only two the
+#: recognition cache keeps or serves.
+_KEPT_OUTCOMES = frozenset({Outcome.MATCH, Outcome.MISS})
 
 
 # ---------------------------------------------------------------------------
@@ -571,6 +576,155 @@ def _same_recording(one: Match, other: Match) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# The recognition cache
+# ---------------------------------------------------------------------------
+
+#: The declared state entry the cache lives in. A directory, one document per
+#: recording and chunk plan. Installation scoped, beside the ledger, because an
+#: answer is a fact about the audio and was paid for on the credential's quota.
+CACHE_KEY = "identify_cache"
+
+#: The cache document's own version. A document carrying any other is a miss.
+CACHE_VERSION = 1
+
+#: How much of the recording is read at a time while it is digested.
+_DIGEST_BLOCK = 1 << 20
+
+
+def content_digest(source: Path) -> str:
+    """The sha256 of the recording's BYTES, streamed.
+
+    THE BYTES AND NOTHING ELSE. A path, a size and a modification time are each
+    an identity that is not unique to the thing it identifies: a second set
+    exported over the first keeps the path, a re-encode can keep the size, and
+    a copy keeps neither while holding the same audio. The whole file is
+    read, which is seconds for a compressed set and longer for a lossless one
+    on a slow volume, and it is paid on every pass because it is the only
+    thing that can say the audio has not changed. That is time, and what a
+    stale answer would cost is money and a false tracklist.
+    """
+    hashed = hashlib.sha256()
+    with source.open("rb") as handle:
+        while block := handle.read(_DIGEST_BLOCK):
+            hashed.update(block)
+    return hashed.hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkPlan:
+    """Everything that decides what one chunk's answer is an answer ABOUT.
+
+    The recording's content digest says which audio. The offsets, the chunk
+    length and the sample rate say which slices of it were sent and how they
+    were carved. The host says which regional bucket was asked. Change any one
+    and an answer kept under the old plan is an answer to a different
+    question, so every one of them is in the key and a cache document carries
+    the whole plan so it can be checked again on the way back in.
+    """
+
+    digest: str
+    offsets: tuple[int, ...]
+    chunk_s: int = CHUNK_S
+    interval_s: int = INTERVAL_S
+    sample_rate: int = SAMPLE_RATE
+    host: str = HOST
+
+    def material(self) -> dict[str, Any]:
+        return {
+            "digest": self.digest,
+            "offsets": list(self.offsets),
+            "chunk_s": self.chunk_s,
+            "interval_s": self.interval_s,
+            "sample_rate": self.sample_rate,
+            "host": self.host,
+        }
+
+    def key(self) -> str:
+        canonical = json.dumps(self.material(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class RecognitionCache:
+    """What the service already answered about a recording, kept per chunk.
+
+    AT THE TRANSPORT BOUNDARY. What is kept is the service's RAW answer for one
+    offset, not a parsed row, so a later build that reads an answer better
+    reads the kept one better too, and the fold runs over kept and fresh
+    answers alike.
+
+    ONLY AN ANSWER IS KEPT. A match and a miss are answers. A transient code,
+    a transport that raised, a quota refusal and a credential refusal are not:
+    each says nothing about the audio, and keeping one would turn a network
+    blip into a permanent hole in every later tracklist. The same rule is
+    applied again on the way back in, so a document written by anything else
+    cannot serve one either.
+
+    A DOCUMENT THAT CANNOT BE READ, OR THAT DISAGREES WITH THE PLAN IT WAS
+    ASKED FOR, IS A MISS. The cost of a miss is money and never a false
+    tracklist, which is the right way round for a cache to fail. A document
+    that cannot be WRITTEN raises to the caller, who reports it rather than
+    failing a pass whose answers are already paid for.
+
+    THE WRITE IS A LOCKED MERGE, NOT A REPLACE. Two passes over one recording
+    can overlap, ``intake identify`` and ``intake set`` started together or a
+    gap filling pass beside a slow one, and each read the document when it
+    began. A writer that replaced the document with what IT knew would drop
+    the answers the other paid for, so the document is read again under a
+    sibling lock and what this pass paid for is laid over it.
+    """
+
+    def __init__(self, root: Path | None = None) -> None:
+        self.root = root if root is not None else config.state_path(CACHE_KEY)
+
+    def path_for(self, plan: ChunkPlan) -> Path:
+        return self.root / f"{plan.key()}.json"
+
+    def read(self, plan: ChunkPlan) -> dict[int, Mapping[str, Any]]:
+        """The kept answers for ``plan``, by offset. Empty when there are none."""
+        try:
+            document = json.loads(self.path_for(plan).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(document, dict):
+            return {}
+        if document.get("version") != CACHE_VERSION or document.get("plan") != plan.material():
+            return {}
+        kept = document.get("answers")
+        if not isinstance(kept, dict):
+            return {}
+        planned = set(plan.offsets)
+        answers: dict[int, Mapping[str, Any]] = {}
+        for said, payload in kept.items():
+            try:
+                offset = int(said)
+            except (TypeError, ValueError):
+                continue
+            if offset not in planned or not isinstance(payload, dict):
+                continue
+            if classify(payload)[0] not in _KEPT_OUTCOMES:
+                continue
+            answers[offset] = payload
+        return answers
+
+    def write(self, plan: ChunkPlan, answers: Mapping[int, Mapping[str, Any]]) -> None:
+        """Lay ``answers`` over what is already kept for ``plan``, under its lock."""
+        path = self.path_for(plan)
+        with config._exclusive_lock(path.with_suffix(".lock")):
+            merged = {**self.read(plan), **answers}
+            document = {
+                "version": CACHE_VERSION,
+                "plan": plan.material(),
+                "answers": {
+                    str(offset): dict(merged[offset])
+                    for offset in sorted(merged)
+                    if classify(merged[offset])[0] in _KEPT_OUTCOMES
+                },
+            }
+            payload = json.dumps(document, indent=2, sort_keys=True) + "\n"
+            config.atomic_write_bytes(payload.encode("utf-8"), path)
+
+
+# ---------------------------------------------------------------------------
 # Identification
 # ---------------------------------------------------------------------------
 
@@ -666,6 +820,8 @@ def identify(
     credentials: Credentials = keychain_credentials,
     budget: Budget | None = None,
     ledger: Ledger | None = None,
+    cache: RecognitionCache | None = None,
+    refresh: bool = False,
     host: str = HOST,
     month: str | None = None,
 ) -> Identified:
@@ -687,9 +843,33 @@ def identify(
     never got an answer is returned rather than folded into the misses,
     because coverage that is incomplete is not a result and the caller has
     to be able to say so.
+
+    A CHUNK ALREADY ANSWERED IS NOT PAID FOR AGAIN. The recording is digested
+    and the kept answers for its chunk plan are read before anything is
+    carved. A kept chunk skips the carve, the ledger and the transport, and a
+    recording whose every chunk is kept never RETRIEVES a credential, so the
+    second of ``intake identify`` then ``intake set`` spends nothing. The
+    presence gate in :mod:`cratekit.intake.recognize` still runs first, so a
+    machine with no key recorded is refused there whatever is kept. The per
+    run bound still reads the WHOLE grid, because it is what refuses a file
+    that is not a set; the monthly bound reads only what is owed, because it
+    is a bound on spend.
+
+    A MISS IS KEPT UNTIL SOMEBODY ASKS AGAIN. The service's catalogue grows,
+    so a chunk it could not name last season may be one it can name now, and
+    nothing here can know that without paying. ``refresh`` is how a person
+    says so: nothing kept is read, every chunk is paid for, and what comes
+    back is laid over the document.
+
+    WHAT WAS PAID FOR IS KEPT ON THE WAY OUT, WHICHEVER WAY THAT IS. A quota
+    refusal on the hundred and twentieth chunk raises, and the hundred and
+    nineteen answers before it are written first, so the pass after the quota
+    resets pays for the rest and not for the set. What this does not cover is
+    a process that dies outright between the first answer and the write.
     """
     spend = budget or Budget()
     counter = ledger or Ledger()
+    kept_in = cache or RecognitionCache()
     try:
         duration_s = float(carver.duration(source))
     except (RuntimeError, OSError, ValueError, binaries.BinaryNotFound) as exc:
@@ -705,13 +885,75 @@ def identify(
             f"nothing was sent",
             source=str(source),
         )
-    assert_within(spend, planned=planned, used_this_month=counter.used(month))
+    assert_within(Budget(per_run=spend.per_run), planned=planned, used_this_month=0)
     offsets = sample_offsets(duration_s)
-    access_key, signing_key = credentials()
+    plan, unkept = _plan_for(source, offsets, host=host)
+    kept = kept_in.read(plan) if plan is not None and not refresh else {}
+    owed = [offset for offset in offsets if offset not in kept]
+    paid: dict[int, Mapping[str, Any]] = {}
+    try:
+        result = _identified(
+            source,
+            offsets=offsets,
+            kept=kept,
+            owed=owed,
+            paid=paid,
+            transport=transport,
+            carver=carver,
+            credentials=credentials,
+            spend=spend,
+            counter=counter,
+            host=host,
+            month=month,
+        )
+    finally:
+        # ``paid`` is filled as the answers arrive, so this keeps what a pass
+        # that RAISED had already paid for. A failed write must not replace
+        # the refusal on its way out, and on the way out of a pass that
+        # returned it is reported instead.
+        if paid and plan is not None:
+            try:
+                kept_in.write(plan, paid)
+            except (config.ConfigLockUnavailable, OSError) as exc:
+                unkept = f"{type(exc).__name__}: {exc}"
+    return replace(
+        result,
+        cache_unwritten=unkept if paid else "",
+        digest=plan.digest if plan is not None else "",
+    )
+
+
+def _identified(
+    source: Path,
+    *,
+    offsets: tuple[int, ...],
+    kept: Mapping[int, Mapping[str, Any]],
+    owed: list[int],
+    paid: dict[int, Mapping[str, Any]],
+    transport: Transport,
+    carver: Carver,
+    credentials: Credentials,
+    spend: Budget,
+    counter: Ledger,
+    host: str,
+    month: str | None,
+) -> Identified:
+    """The pass itself. ``paid`` is the caller's, filled as each answer arrives,
+    so the caller can keep it whether this returns or raises."""
+    if owed:
+        assert_within(spend, planned=len(owed), used_this_month=counter.used(month))
+        access_key, signing_key = credentials()
 
     found: list[Match] = []
     calls = misses = unreached = streak = 0
     for offset in offsets:
+        if offset in kept:
+            parsed = _heard(kept[offset], offset_s=offset)
+            if parsed is None:
+                misses += 1
+            else:
+                found.append(parsed)
+            continue
         try:
             sample = carver.carve(source, offset, CHUNK_S)
         except (RuntimeError, OSError, binaries.BinaryNotFound) as exc:
@@ -734,16 +976,14 @@ def identify(
                 calls=calls - 1,
             ) from exc
         outcome, code, message, payload = _answer(transport, request)
-        if outcome is Outcome.MATCH:
+        if outcome in _KEPT_OUTCOMES:
             streak = 0
-            parsed = parse_match(payload or {}, offset_s=offset)
+            paid[offset] = payload or {}
+            parsed = _heard(payload or {}, offset_s=offset)
             if parsed is None:
                 misses += 1
             else:
                 found.append(parsed)
-        elif outcome is Outcome.MISS:
-            streak = 0
-            misses += 1
         elif outcome is Outcome.QUOTA:
             raise _quota_refusal(code, message, calls=calls)
         elif outcome is Outcome.AUTH:
@@ -785,7 +1025,36 @@ def identify(
         chunks=len(offsets),
         misses=misses,
         unreached=unreached,
+        cached=len(offsets) - len(owed),
     )
+
+
+def _plan_for(
+    source: Path, offsets: tuple[int, ...], *, host: str
+) -> tuple[ChunkPlan | None, str]:
+    """The chunk plan for ``source``, or None and why the cache is out of reach.
+
+    A recording whose bytes cannot be read for a digest is identified WITHOUT
+    the cache rather than refused: the carver is what decides whether the
+    audio can be sent, and a digest that failed says nothing about that. What
+    it costs is said, because the next pass will pay again.
+    """
+    try:
+        digest = content_digest(source)
+    except OSError as exc:
+        return None, f"the recording could not be read for its digest ({type(exc).__name__})"
+    return ChunkPlan(digest=digest, offsets=tuple(offsets), host=host), ""
+
+
+def _heard(payload: Mapping[str, Any], *, offset_s: int) -> Match | None:
+    """The match one KEPT family answer names, or None for a miss.
+
+    One reading for a fresh answer and a kept one, so a chunk means the same
+    thing on the pass that paid for it and on the pass that did not.
+    """
+    if classify(payload)[0] is not Outcome.MATCH:
+        return None
+    return parse_match(payload, offset_s=offset_s)
 
 
 def bound_identifier(
@@ -794,6 +1063,8 @@ def bound_identifier(
     carver: Carver | None = None,
     budget: Budget | None = None,
     ledger: Ledger | None = None,
+    cache: RecognitionCache | None = None,
+    refresh: bool = False,
 ) -> Callable[[Path], Identified]:
     """The identifier in the seam's own shape, over the shipped seams.
 
@@ -810,12 +1081,16 @@ def bound_identifier(
             carver=carver or FfmpegCarver(),
             budget=budget,
             ledger=ledger,
+            cache=cache,
+            refresh=refresh,
         )
 
     return run
 
 
 __all__ = [
+    "CACHE_KEY",
+    "CACHE_VERSION",
     "CHUNK_S",
     "ENDPOINT",
     "HOST",
@@ -827,16 +1102,19 @@ __all__ = [
     "UNREACHED_STOP",
     "Budget",
     "Carver",
+    "ChunkPlan",
     "FfmpegCarver",
     "Ledger",
     "Match",
     "Outcome",
+    "RecognitionCache",
     "Request",
     "Response",
     "Transport",
     "assert_within",
     "bound_identifier",
     "classify",
+    "content_digest",
     "current_month",
     "fold",
     "http_transport",

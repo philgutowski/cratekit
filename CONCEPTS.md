@@ -217,6 +217,24 @@ favourites. The outbound direction, hearting local favourites on the account, is
 placeholder playlist: a heart the library lacks is a missing item carrying its
 provider identifier.
 
+### Recognition cache
+What the identification service already answered about a recording, since
+U103, kept so that `crate intake identify` followed by `crate intake set`
+pays for recognition once. One document per recording under the `identify_cache`
+state entry, holding the service's raw answer per chunk. Only an ANSWER is
+kept, a match or a miss. A chunk that got no answer is never kept, so a pass
+over a recording with gaps pays for the gaps and nothing else. A kept miss is
+served until somebody passes `--refresh`, which pays for every chunk again.
+
+### Chunk plan
+Everything that decides what one kept answer is an answer ABOUT: the sha256 of
+the recording's bytes, the offsets the chunks are taken at, the chunk length,
+the interval, the sample rate and the service host. It is the recognition
+cache's key, whole. A changed file, a recording measured to a different length
+or another regional host is a different plan and misses. A path, a size and a
+modification time are deliberately not in it, because none is unique to the
+audio.
+
 ## Verification
 
 ### Guard

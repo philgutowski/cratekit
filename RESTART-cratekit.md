@@ -4,7 +4,68 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U81, issue #126, `relay/126`, 2026-09-19.**
+**Last merged: U103, issue #148, `relay/148`, 2026-09-19.**
+`crate intake identify` asks the library, writes its tracklist, and recognition
+is paid for once, which CLOSES R-422 and NARROWS R-304. The resolve step is
+shared: `match_cli.resolve_list(cfg, wanted, handler_key=, run_id=)` is the
+body of `match_list` lifted out, returns a `ListResolved` of the result, the
+pending action and the warnings, and both verbs call it. Identify therefore
+reports `matched`, `needs_review` and `missing` for real, offers a version
+question under its own key (the registry entry is now `adjudicates`, and its
+doctor checks gain `library.mounted`), and ends PENDING_HUMAN over an open
+question exactly as `match run` does. The order in `intake_identify` is the
+spend order: config, recording, presence gate, `--out` is not a file,
+`_library_or_refuse` (an absent music folder is `library-volume-unmounted`),
+THEN the identifier, then the tracklist, then the library walk. The tracklist
+is `<stem>-<12 digest characters>.tracklist.txt` (`tracklist_name`) in `--out`
+or `tracklists` under download staging, replaced and not refused, and its path
+rides a `tracklist-written` note on the warnings channel because `match/1` is
+closed at three arrays. **The recognition cache** is `acrcloud.RecognitionCache`
+over the new declared state entry `identify_cache` (installation, directory,
+never restored): one JSON document per recording named by `ChunkPlan.key()`, a
+sha256 over `content_digest` (the recording's BYTES), the offsets, chunk
+length, interval, sample rate and host. It keeps the service's RAW answer per
+offset, only for a match or a miss, and the same rule is applied again on the
+way back in; a document that is unreadable, of another version or carrying
+another plan is a miss. A kept chunk skips the carve, the ledger and the
+transport, and a fully kept recording never RETRIEVES a credential, though the
+presence gate still runs. The per run bound reads the whole grid and the
+monthly bound reads only what is owed. The write is a locked merge under a
+sibling `.lock`, and it runs in a `finally`, so a pass that RAISED keeps what
+it paid for; a process that dies does not, which is what R-304 still holds.
+`Identified` and `IdentifyResult` gain `cached`, `cache_unwritten` and
+`digest`. Both verbs take `--refresh`, which reads nothing kept and pays for
+every chunk, and both say `recognition-cached` when kept answers were read and
+`recognition-cache-unwritten` when paid answers could not be kept; `intake set`
+reads the same cache with no code of its own, through `bound_identifier`.
+**The code review raised ten findings and eight were applied**: the absent
+library refusal, the digest in the tracklist name, the locked merge, keep on
+raise, `--refresh` and the served note, the dropped warnings on set's nothing
+identified path, a refusal message that promised a free rerun over a gap, and
+two redundant directory creations. The two not applied are recorded, the
+account missing from the cache key in R-513 and the digest being read before
+the monthly bound, which cannot move because what is owed depends on it.
+Collected **8679**, of which 46 are this unit's, 25 in
+`tests/intake/test_recognition.py`, 20 in `tests/intake/test_workers.py` and
+one new conformance 4 case; the battery on the committed tree was **8678
+passed and 1 skipped** in 88 seconds, ruff and the scan clean, and no test of
+this unit's is among the five slowest. Two pinned populations in
+`tests/test_reserved_causes.py` were re-pinned with their notes, three warning
+code literals and one in-range integer, the digest length 12. Mutation tables
+`docs/mutation/u103-a.md` and `u103-b.md`, 25 rows at the cap, run in the
+foreground under Relay in two tables to stay under the harness ceiling, 25 of
+25 killing, the author's tables and not independent ones; table a's one first
+pass zero got a test and was re-run killing, M1 reads collect-error because
+the flag it removes also removes a parametrized case, and nine rows considered
+and dropped are logged with reasons. A learning is filed,
+`docs/solutions/workflow-issues/the-shared-library-view-answers-an-absent-music-folder-with-an-empty-index.md`.
+R-512 (an absent music folder is an empty library to `match run` and the
+intake worker, DRIVEN, meets the board bar, **its issue is owed** because a
+Relay session cannot file one after the merge), R-513 and R-514 are filed.
+**Owed to an attended sitting:** one real identify then set over a real
+recording. **Main's highest residual number is R-514.**
+
+**The session before: U81, issue #126, `relay/126`, 2026-09-19.**
 Accepted second source candidates download, which CLOSES R-404: the one
 sanctioned lossy exception is an act again and not only a marker.
 `crate acquire fallback-fetch PATH` is a new queued verb in
