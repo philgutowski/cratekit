@@ -5713,14 +5713,7 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # label-approved. The also-holds-an-integer half stays 18, because the
     # module asks the hash for a six byte digest rather than slicing twelve
     # characters off a longer one, which was removed rather than argued.
-    # Re-pinned on U77, 2026-09-19: 97 to 98 holders. ONE module joined and
-    # none left. intake/land_cli.py held no cause literal on main, measured by
-    # `git grep` for a refusal there, and now names intake-list-unusable
-    # through cause.refuse for a manifest it cannot read before the gate.
-    # intake/landing.py was a holder already. The also-holds-an-integer half
-    # stays 18, measured by the same run: the manifest is fingerprinted whole
-    # and nothing is sliced off the digest.
-    assert (len(literal_holders), len(literal_both)) == (98, 18), (
+    assert (len(literal_holders), len(literal_both)) == (97, 18), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

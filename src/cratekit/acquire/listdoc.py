@@ -49,9 +49,10 @@ from cratekit.core import config
 LIST_SUFFIX = ".list.json"
 MANIFEST_SUFFIX = ".manifest.json"
 
-#: The version of the provenance sidecar. Nothing reads the sidecar yet, so
-#: nothing refuses an unknown version of it; a reader, when one lands, should
-#: refuse the way ``read_list`` refuses the list's own.
+#: The version of the provenance sidecar. :func:`read_manifest` refuses any
+#: other, whole, the way ``read_list`` refuses the list's own. So a bump here
+#: stops every manifest already on disk from being read, and the landing verb
+#: with it: raise it only with a reader for the version it leaves behind.
 MANIFEST_VERSION = 1
 
 
@@ -447,6 +448,11 @@ def _manifest_row(ref: str, entry: object) -> ManifestRow:
     isrc = _text_or_none(entry, "isrc", ref)
     if isrc:
         track["isrc"] = isrc
+    # Present only when more than one source asked for the id, which is the
+    # writer's rule, and read back as written so no asker is lost on the way.
+    asked = entry.get("source_refs", [])
+    if not isinstance(asked, list) or not all(isinstance(one, str) for one in asked):
+        raise ListDocRefused(f"manifest entry {ref!r} carries source_refs that are not text")
     return ManifestRow(
         ref=ref,
         provenance=Provenance(
@@ -456,6 +462,7 @@ def _manifest_row(ref: str, entry: object) -> ManifestRow:
             label_name=_text_or_none(entry, "label_name", ref),
             year=year,
             release_id=_text_or_none(entry, "release_id", ref),
+            source_refs=tuple(asked),
         ),
         track=track,
     )
@@ -476,6 +483,16 @@ def read_manifest(path: Path) -> tuple[ManifestRow, ...]:
         raise ListDocRefused(
             f"the manifest {path} could not be read: {exc.strerror or exc}"
         ) from exc
+    return manifest_rows(raw, path)
+
+
+def manifest_rows(raw: bytes, path: Path | str) -> tuple[ManifestRow, ...]:
+    """:func:`read_manifest` over bytes somebody already holds.
+
+    For a caller that fingerprinted the bytes and must parse THOSE bytes, since
+    a second read of the path is a second file if it was rewritten in between.
+    ``path`` is only what the refusals call the file.
+    """
     try:
         body = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:

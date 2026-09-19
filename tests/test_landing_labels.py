@@ -256,11 +256,42 @@ def test_an_export_holding_a_label_folder_twice_refuses_before_any_file_moves(
     with pytest.raises(CratekitError) as excinfo:
         _land(cfg, doubled, manifest)
 
-    assert "Kompakt" in excinfo.value.cause.message
-    assert "nothing was moved" in excinfo.value.cause.message
+    cause = excinfo.value.cause
+    # The person's export, which they mend and take again. Not a defect.
+    assert cause.reason == "library-export-unusable"
+    assert any("export the collection again" in step for step in cause.remediation.steps)
+    assert "Kompakt" in cause.message
+    assert "nothing was moved" in cause.message
     assert staged.exists()
     assert not _music(cfg).exists()
     assert not _destination(cfg).exists()
+
+
+def test_a_held_year_playlist_the_writer_cannot_extend_refuses_before_any_move(
+    cfg, silence, tmp_path
+):
+    """Found by this unit's review. A trial that adds no id returns before the
+    writer looks at the held playlist's own layout, so the real write refused
+    AFTER the moves. Here the held playlist has lost its Entries attribute."""
+    staged = _stage(cfg, silence, "Ada", "North")
+    held = tmp_path / "held.xml"
+    held.write_bytes(_fresh_xml())
+    trees.insert_record_labels_tree(
+        held, "Kompakt", {2025: [{"track_ids": [900000001]}]}, held, registry=tree_registry.EMPTY
+    )
+    body = held.read_bytes()
+    opened = b'<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">'
+    assert body.count(opened) == 1
+    held.write_bytes(body.replace(opened, b'<NODE Name="Kompakt 2025" Type="1" KeyType="0">'))
+    manifest = _manifest(tmp_path, [("101", "Ada", "North", "Kompakt", 2025)])
+
+    with pytest.raises(CratekitError) as excinfo:
+        _land(cfg, held, manifest)
+
+    assert excinfo.value.cause.reason == "library-export-unusable"
+    assert "Kompakt 2025" in excinfo.value.cause.message
+    assert staged.exists()
+    assert not _music(cfg).exists()
 
 
 def test_a_label_row_no_landed_file_matches_is_reported_by_name(
@@ -280,6 +311,10 @@ def test_a_label_row_no_landed_file_matches_is_reported_by_name(
     assert (missing.label, missing.year) == ("Kompakt", 2025)
     assert missing.reason == landing.NO_FILE
     assert "Ada - Never Arrived" in missing.sentence
+    # True of a download that never arrived AND of a row an earlier landing
+    # filed, which look the same from inside one batch folder.
+    assert "is in the intake playlist" not in missing.sentence
+    assert "filed under no label playlist by this run" in missing.sentence
     body = _destination(cfg).read_bytes()
     assert _playlist_keys(body, "Kompakt 2025") == [_id_of(landed, "Ada - North")]
     # The file no row names is filed under no label and is still importable.
@@ -300,6 +335,7 @@ def test_a_landed_file_at_another_version_is_a_question_and_is_not_filed(
 
     (asked,) = landed.unlabelled
     assert asked.reason == landing.NOT_EXACT
+    assert "that file is in the intake playlist" in asked.sentence
     assert landed.labelled == ()
     assert b"Record Labels" not in _destination(cfg).read_bytes()
 
@@ -394,39 +430,58 @@ def test_what_was_reported_filed_written_again_changes_no_byte(
     assert again.read_bytes() == before
 
 
-def test_a_label_the_disk_refuses_after_the_moves_is_named_and_the_file_stays(
+def test_a_tree_the_disk_refuses_after_the_moves_is_named_and_the_file_stays(
     cfg, silence, export, tmp_path, monkeypatch
 ):
     """By then every landed file has a routing intent naming the intake file,
-    so the file is kept and the label is what is reported lost. One label
-    failing costs the other nothing."""
+    so the file is kept, as the splice left it, and every row is named."""
     _stage(cfg, silence, "Ada", "North")
     _stage(cfg, silence, "Bo", "East")
     manifest = _manifest(
         tmp_path,
         [("101", "Ada", "North", "Kompakt", 2025), ("103", "Bo", "East", "Ostgut Ton", 2025)],
     )
-    real = trees.insert_record_labels_tree
 
-    def full_for_one(xml_path, label, *args, **kwargs):
-        if label == "Kompakt":
-            raise OSError(28, "No space left on device")
-        return real(xml_path, label, *args, **kwargs)
+    def full(*_args, **_kwargs):
+        raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr(trees, "insert_record_labels_tree", full_for_one)
+    monkeypatch.setattr(trees, "insert_record_labels_trees", full)
 
     landed = _land(cfg, export, manifest)
 
-    (lost,) = landed.unlabelled
-    assert (lost.ref, lost.reason) == ("101", landing.NOT_WRITTEN)
-    assert "Ada - North" in lost.sentence and "No space left" in lost.sentence
-    assert [entry.playlist for entry in landed.labelled] == ["Ostgut Ton 2025"]
+    assert [(entry.ref, entry.reason) for entry in landed.unlabelled] == [
+        ("101", landing.NOT_WRITTEN),
+        ("103", landing.NOT_WRITTEN),
+    ]
+    assert "Ada - North" in landed.unlabelled[0].sentence
+    assert "No space left" in landed.unlabelled[0].sentence
+    assert landed.labelled == ()
     body = _destination(cfg).read_bytes()
-    assert b'Name="Kompakt"' not in body
-    assert _playlist_keys(body, "Ostgut Ton 2025") == [_id_of(landed, "Bo - East")]
+    assert b"Record Labels" not in body
     assert sorted(_playlist_keys(body, f"{BATCH}_inboxed")) == sorted(
         item.track_id for item in landed.placed
     )
+
+
+def test_the_intake_file_is_rewritten_once_however_many_labels_it_carries(
+    cfg, silence, export, tmp_path, monkeypatch
+):
+    """The file is a whole collection. A rewrite per label moves the same tens
+    of megabytes once for every label a sweep lands."""
+    for _, artist, title, _, _ in FOUR:
+        _stage(cfg, silence, artist, title)
+    real = trees.insert_record_labels_trees
+    calls: list[list[str]] = []
+
+    def counted(xml_path, catalog, out_path, **kwargs):
+        calls.append(sorted(catalog))
+        return real(xml_path, catalog, out_path, **kwargs)
+
+    monkeypatch.setattr(trees, "insert_record_labels_trees", counted)
+
+    _land(cfg, export, _manifest(tmp_path, FOUR))
+
+    assert calls == [["Kompakt", "Ostgut Ton"]]
 
 
 def test_a_batch_folder_that_cannot_be_indexed_reports_every_label_row(
@@ -485,6 +540,78 @@ def test_a_manifest_that_is_not_there_refuses_before_any_file_moves(
 
     assert excinfo.value.cause.reason == "intake-list-unusable"
     assert staged.exists()
+
+
+def test_a_manifest_rewritten_after_it_was_fingerprinted_is_stale_and_moves_nothing(
+    cfg, silence, export, tmp_path
+):
+    """The engine reads the file again, so it is the engine that has to notice
+    the bytes are not the ones somebody was shown."""
+    staged = _stage(cfg, silence, "Ada", "North")
+    manifest = _manifest(tmp_path, [("101", "Ada", "North", "Kompakt", 2025)])
+    shown = landing.read_label_manifest(manifest)
+    assert shown.playlists() == {"Kompakt 2025": 1}
+    manifest.write_bytes(manifest.read_bytes().replace(b"Kompakt", b"Another"))
+    planned = landing.plan(_staging(cfg), cfg, BATCH)
+
+    with pytest.raises(CratekitError) as excinfo:
+        landing.apply(
+            planned,
+            cfg=cfg,
+            export=export,
+            destination=_destination(cfg),
+            manifest=manifest,
+            manifest_digest=shown.digest,
+        )
+
+    assert excinfo.value.cause.reason == "decision-stale"
+    assert staged.exists()
+    assert not _music(cfg).exists()
+
+
+def test_the_registry_is_read_before_the_first_move_and_never_after(
+    cfg, silence, export, tmp_path, monkeypatch
+):
+    """A registry that cannot be read after the moves would raise out of a
+    landing that has already succeeded, taking the pending import with it."""
+    _stage(cfg, silence, "Ada", "North")
+    manifest = _manifest(tmp_path, [("101", "Ada", "North", "Kompakt", 2025)])
+    real = tree_registry.read
+    seen: list[bool] = []
+
+    def watched(config_):
+        seen.append(_music(cfg).exists())
+        return real(config_)
+
+    monkeypatch.setattr(landing.tree_registry, "read", watched)
+
+    landed = _land(cfg, export, manifest)
+
+    assert len(landed.labelled) == 1
+    # ``place_files`` reads it for its own splice, which is not this engine's.
+    assert seen[0] is False
+    assert seen.count(False) == 1
+
+
+def test_a_marked_lossy_file_with_no_title_tag_is_still_filed(
+    cfg, silence, export, tmp_path
+):
+    """Found by this unit's review. Read with the bare default template, the
+    library's lossy marker stays in the title the filename gives, and the row
+    resolves to nothing here while ``acquire match`` matches the same file."""
+    marker = (cfg.naming.lossy_marker or "").strip()
+    assert marker, "the fixture configuration names no lossy marker"
+    # The marker is a HEAD, written before the artist, which is where the
+    # template strips it from.
+    path = _staging(cfg) / f"{marker} Ada - North.flac"
+    shutil.copyfile(silence, path)
+    assert tags.write_tags(path, {"artist": "Ada", "genre": "Deep House", "energylevel": 7})
+    manifest = _manifest(tmp_path, [("101", "Ada", "North", "Kompakt", 2025)])
+
+    landed = _land(cfg, export, manifest)
+
+    assert landed.unlabelled == ()
+    assert [entry.playlist for entry in landed.labelled] == ["Kompakt 2025"]
 
 
 def test_the_labelled_intake_file_golden(cfg, silence, export, tmp_path):

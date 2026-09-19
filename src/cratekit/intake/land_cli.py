@@ -29,13 +29,12 @@ track, never a failure: the file, if there is one, is in the intake playlist.
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
 from cratekit.core import config
-from cratekit.core.cause import Outcome, refuse
+from cratekit.core.cause import Outcome
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import landing
@@ -108,36 +107,13 @@ def build_land(parser, entry) -> None:
     parser.set_defaults(_handler=intake_land)
 
 
-def _manifest_digest(manifest: Path) -> str:
-    """The manifest's bytes, fingerprinted, or a refusal before the gate.
-
-    The bytes and not the path, because a manifest rewritten under the same
-    name between the plan and the answer files different tracks under different
-    labels, and a digest of the name would call that the plan the person saw.
-    """
-    try:
-        return hashlib.sha256(manifest.read_bytes()).hexdigest()
-    except OSError as exc:
-        raise refuse(
-            "intake-list-unusable",
-            f"the manifest {manifest} could not be read ({exc.strerror or exc}), "
-            f"so nothing was moved",
-            steps=(
-                "pass the manifest that label approved wrote beside the list, "
-                "or land without one to file nothing under a label",
-            ),
-            origin=("intake.land",),
-            detail={"manifest": str(manifest)},
-        ) from exc
-
-
 def _payload(
     planned: landing.Plan,
     *,
     target: Path,
     destination: Path,
     export: Path,
-    manifest: Path | None = None,
+    manifest: landing.LabelManifest | None = None,
 ) -> dict:
     items = [
         {"action": LAND, "from": str(item), "to": str(target / item.name)}
@@ -155,8 +131,11 @@ def _payload(
     if manifest is not None:
         # Only when one is given, so a landing without a manifest is compared
         # exactly as it was before the manifest existed.
-        identity["manifest"] = str(manifest)
-        identity["manifest_bytes"] = _manifest_digest(manifest)
+        # The bytes and not only the path: a manifest rewritten under the same
+        # name files other tracks under other labels, and a digest of the name
+        # would call that the plan the person saw.
+        identity["manifest"] = str(manifest.path)
+        identity["manifest_bytes"] = manifest.digest
     return {
         "digest": digest_of(identity),
         "items": items,
@@ -170,7 +149,7 @@ def _shown(
     *,
     target: Path,
     destination: Path,
-    manifest: Path | None = None,
+    manifest: landing.LabelManifest | None = None,
 ) -> dict[str, Any]:
     """What the gate screen puts in front of the person, one line per fact."""
     shown: dict[str, Any] = {
@@ -181,7 +160,12 @@ def _shown(
         "files": [item.name for item in planned.items],
     }
     if manifest is not None:
-        shown["labels filed from"] = str(manifest)
+        # What the manifest ASKS for, since which rows have a file in this
+        # batch is known only once the batch folder can be indexed.
+        shown["labels filed from"] = str(manifest.path)
+        shown["label playlists named"] = [
+            f"{name} ({count} listed)" for name, count in sorted(manifest.playlists().items())
+        ]
     return shown
 
 
@@ -278,7 +262,11 @@ def intake_land(ctx) -> Envelope:
     folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.paths.download_staging)
     batch = ctx.args.name if ctx.args.name is not None else default_name(ctx.run.run_id)
     export = Path(ctx.args.export)
-    manifest = Path(ctx.args.manifest) if ctx.args.manifest else None
+    # READ BEFORE THE GATE, so a file that is not a manifest refuses before
+    # anybody spends an answer on it, and the screen can say what it names.
+    manifest = (
+        landing.read_label_manifest(Path(ctx.args.manifest)) if ctx.args.manifest else None
+    )
     planned = _planned(folder, cfg, batch)
     target = landing.target_dir(cfg, batch)
     destination = intake_file(cfg, batch)
@@ -297,7 +285,12 @@ def intake_land(ctx) -> Envelope:
     # so the gap between this plan and the moves is its to close, not this
     # shell's. What the gate compared is what the person was shown.
     landed = landing.apply(
-        planned, cfg=cfg, export=export, destination=destination, manifest=manifest
+        planned,
+        cfg=cfg,
+        export=export,
+        destination=destination,
+        manifest=manifest.path if manifest is not None else None,
+        manifest_digest=manifest.digest if manifest is not None else None,
     )
     return ctx.envelope(
         data=_reported(payload, landed),

@@ -46,10 +46,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from cratekit.acquire import listdoc, match
+from cratekit.acquire import listdoc, match, match_cli
 from cratekit.core import config, tags, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError, refuse
-from cratekit.core.naming import AUDIO_EXTS
+from cratekit.core.naming import AUDIO_EXTS, NameTemplate
 from cratekit.intake import collection_xml, ingest
 from cratekit.intake.ingest import PlacedTrack
 from cratekit.write import rbxml, trees
@@ -282,9 +282,9 @@ def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:
 
 
 def _check_export(
-    cfg: config.Config,
     export: Path,
     destination: Path,
+    registry: tree_registry.Registry,
     label_rows: tuple[listdoc.ManifestRow, ...] = (),
 ) -> None:
     """Every refusal ``place_files`` can make about the export, made on a copy.
@@ -303,7 +303,7 @@ def _check_export(
         )
     trial = bytearray(export.read_bytes())
     collection_xml.splice_tracks(trial, [])
-    tree = rbxml.intake_tree(taxonomy.default_taxonomy(), tree_registry.read(cfg))
+    tree = rbxml.intake_tree(taxonomy.default_taxonomy(), registry)
     error = rbxml.insert_intake_playlist(trial, destination.stem, [], tree=tree)
     if error:
         raise refuse(
@@ -327,18 +327,38 @@ def _check_export(
         if name and year is not None:
             catalog.setdefault(name, set()).add(year)
     try:
-        trees.check_record_labels_tree(
-            bytes(trial), catalog, registry=tree_registry.read(cfg)
-        )
+        trees.check_record_labels_tree(bytes(trial), catalog, registry=registry)
     except CratekitError as exc:
-        raise refuse(
-            exc.cause.reason,
+        said = (
             f"the label tree could not be written into {export.name} "
-            f"({exc.cause.message}), so nothing was moved",
-            remedy=exc.cause.remediation.remedy,
-            steps=exc.cause.remediation.steps,
+            f"({exc.cause.message}), so nothing was moved"
+        )
+        detail = {"export": str(export)}
+        if exc.cause.reason != "internal-error":
+            raise refuse(
+                exc.cause.reason,
+                said,
+                remedy=exc.cause.remediation.remedy,
+                steps=exc.cause.remediation.steps,
+                origin=_ORIGIN,
+                detail=detail,
+                inner=exc.cause,
+            ) from exc
+        # The writer has one reason for every layout it will not write into,
+        # and it is the one for a defect, because the writer cannot know whose
+        # document it was handed. Here it is known: a Fresh Export the person
+        # took, holding a label folder twice or a node this product will not
+        # write inside, which they mend in rekordbox and export again.
+        raise refuse(
+            "library-export-unusable",
+            said,
+            steps=(
+                "in rekordbox, under the record labels folder, remove or merge "
+                "the folder or playlist the message names",
+                "export the collection again and pass that file",
+            ),
             origin=_ORIGIN,
-            detail={"export": str(export)},
+            detail=detail,
             inner=exc.cause,
         ) from exc
 
@@ -347,22 +367,65 @@ def _label_of(row: listdoc.ManifestRow) -> str:
     return (row.provenance.label_name or "").strip()
 
 
-def _read_label_rows(manifest: Path) -> tuple[listdoc.ManifestRow, ...]:
-    """The manifest's label rows, or a refusal before anything has moved."""
+@dataclass(frozen=True, slots=True)
+class LabelManifest:
+    """A manifest's label rows, and the fingerprint of the bytes they came from."""
+
+    path: Path
+    digest: str
+    rows: tuple[listdoc.ManifestRow, ...]
+
+    def playlists(self) -> dict[str, int]:
+        """Every ``<Label> <year>`` the rows name, and how many rows name it."""
+        counted: dict[str, int] = {}
+        for row in self.rows:
+            label, year = _label_of(row), row.provenance.year
+            if label and year is not None:
+                name = f"{label} {year}"
+                counted[name] = counted.get(name, 0) + 1
+        return counted
+
+
+def read_label_manifest(manifest: Path) -> LabelManifest:
+    """The manifest's label rows, or a refusal before anything has moved.
+
+    THE BYTES ARE READ ONCE and both the fingerprint and the rows come from
+    that one read. The verb shows the person a plan made from these rows and
+    hands the fingerprint back to :func:`apply`, which reads the file again
+    and refuses if it is not the same bytes. Fingerprinting one read and
+    parsing another let a manifest rewritten in between file tracks under
+    labels nobody was shown.
+    """
+    steps = (
+        "pass the manifest that label approved wrote beside the list, "
+        "or land without one to file nothing under a label",
+    )
     try:
-        rows = listdoc.read_manifest(manifest)
+        raw = manifest.read_bytes()
+    except OSError as exc:
+        raise refuse(
+            "intake-list-unusable",
+            f"the manifest {manifest} could not be read ({exc.strerror or exc}), "
+            f"so nothing was moved",
+            steps=steps,
+            origin=_ORIGIN,
+            detail={"manifest": str(manifest)},
+        ) from exc
+    try:
+        rows = listdoc.manifest_rows(raw, manifest)
     except listdoc.ListDocRefused as exc:
         raise refuse(
             "intake-list-unusable",
             f"{exc}, so nothing was moved",
-            steps=(
-                "pass the manifest that label approved wrote beside the list, "
-                "or land without one to file nothing under a label",
-            ),
+            steps=steps,
             origin=_ORIGIN,
             detail={"manifest": str(manifest)},
         ) from exc
-    return tuple(row for row in rows if row.provenance.source == LABEL_SOURCE)
+    return LabelManifest(
+        path=manifest,
+        digest=hashlib.sha256(raw).hexdigest(),
+        rows=tuple(row for row in rows if row.provenance.source == LABEL_SOURCE),
+    )
 
 
 def _never_suppressed(_recording: str, _address: object) -> bool:
@@ -393,10 +456,7 @@ def _unlabelled(row: listdoc.ManifestRow, reason: str, because: str) -> Unlabell
         label=label,
         year=row.provenance.year,
         reason=reason,
-        sentence=(
-            f"{spelled} was filed under no label playlist, because {because}; "
-            f"a file landed for it is still in the intake playlist"
-        ),
+        sentence=f"{spelled} was filed under no label playlist by this run, because {because}",
     )
 
 
@@ -408,6 +468,7 @@ def _file_labels(
     label_rows: tuple[listdoc.ManifestRow, ...],
     placed: list[PlacedTrack],
     batch_dir: Path,
+    template: NameTemplate,
 ) -> tuple[_Filed, list[Unlabelled]]:
     """Each label row tied to the track ids of the files this call landed.
 
@@ -417,9 +478,14 @@ def _file_labels(
     A batch folder landed into twice still holds the first landing's files, so
     a matched path is looked up among THIS call's placed tracks and a path that
     is not there is an unmatched row, said by name.
+
+    ``template`` is the library's own, lossy marker included, which is
+    ``match_cli.library_view``'s one builder rule: read with the bare default, a
+    marked lossy file with a missing tag folds to another recording here and to
+    the right one in ``acquire match``.
     """
     ids = {item.path.resolve(): item.track_id for item in placed}
-    index = match.index_library(batch_dir)
+    index = match.index_library(batch_dir, template=template)
     filed: _Filed = {}
     unfiled: list[Unlabelled] = []
     for position, row in enumerate(label_rows, start=1):
@@ -427,14 +493,24 @@ def _file_labels(
         if not label or year is None:
             absent = "label name" if not label else "year"
             unfiled.append(
-                _unlabelled(row, NO_LABEL, f"its manifest row carries no {absent}")
+                _unlabelled(
+                    row,
+                    NO_LABEL,
+                    f"its manifest row carries no {absent}; a file that landed "
+                    f"for it is in the intake playlist",
+                )
             )
             continue
         try:
             wanted = match.read_row(row.track, origin=match.TIDAL, position=position)
         except match.UnreadableList as exc:
             unfiled.append(
-                _unlabelled(row, NO_LABEL, f"its manifest row could not be read ({exc})")
+                _unlabelled(
+                    row,
+                    NO_LABEL,
+                    f"its manifest row could not be read ({exc}); a file that "
+                    f"landed for it is in the intake playlist",
+                )
             )
             continue
         found = match.resolve_one(
@@ -450,7 +526,8 @@ def _file_labels(
                 _unlabelled(
                     row,
                     NOT_EXACT,
-                    f"the batch holds something close to it and not it ({found.why})",
+                    f"the batch holds something close to it and not it "
+                    f"({found.why}); that file is in the intake playlist",
                 )
             )
             continue
@@ -460,8 +537,17 @@ def _file_labels(
             if Path(path).resolve() in ids
         ]
         if not landed:
+            # TRUE OF BOTH ROWS IT IS SAID ABOUT. A row whose download never
+            # arrived and a row an earlier landing already filed look the same
+            # from inside one batch folder, so the sentence claims neither that
+            # a file landed nor that the track is filed nowhere. R-457.
             unfiled.append(
-                _unlabelled(row, NO_FILE, "no file landed by this run matches it")
+                _unlabelled(
+                    row,
+                    NO_FILE,
+                    "no file it landed matches it; a track an earlier landing "
+                    "filed keeps the playlist it was given",
+                )
             )
             continue
         filed.setdefault(label, {}).setdefault(year, []).append((row, landed))
@@ -471,70 +557,77 @@ def _file_labels(
 def _label(
     cfg: config.Config,
     destination: Path,
+    registry: tree_registry.Registry,
     label_rows: tuple[listdoc.ManifestRow, ...],
     placed: list[PlacedTrack],
     batch_dir: Path,
 ) -> tuple[list[Labelled], list[Unlabelled]]:
     """Write every label the batch carries into the intake file, and say which.
 
-    A LABEL THAT CANNOT BE WRITTEN IS REPORTED, NOT RAISED, and the intake file
+    A TREE THAT CANNOT BE WRITTEN IS REPORTED, NOT RAISED, and the intake file
     stays. By now the files are in the library, the intake file names every one
     of them and ``place_files`` has recorded a routing intent for each. Taking
     the file back would leave those intents pointing at rows nothing will ever
-    import, to protect a tree the person can live without for one import. Each
-    label is one atomic replace of the file, so what is there after a failure
-    is the file as the last label that worked left it, whole and importable.
-    Everything the writer itself can refuse was asked of a copy before the
-    first move, so what arrives here is a disk that refused. R-456.
+    import, to protect a tree the person can live without for one import. The
+    writer makes one atomic replace for every label together, so what is there
+    after a failure is the file as the splice left it, whole and importable.
+    What the writer itself refuses was asked of a copy before the first move,
+    and the registry was read then too, so what arrives here should be a disk
+    that refused. Nothing below reads anything it could have read earlier.
+    R-456.
     """
     if not label_rows:
         return [], []
     try:
-        filed, unlabelled = _file_labels(label_rows, placed, batch_dir)
+        filed, unlabelled = _file_labels(
+            label_rows, placed, batch_dir, match_cli.library_template(cfg)
+        )
     except OSError as exc:
         said = f"the batch folder could not be read ({exc.strerror or exc})"
         return [], [_unlabelled(row, NOT_WRITTEN, said) for row in label_rows]
-    registry = tree_registry.read(cfg)
-    labelled: list[Labelled] = []
-    # LAST NAME FIRST, because the writer puts a new folder at the top of the
-    # tree, so writing Z before A is what leaves a new tree reading A to Z. A
-    # folder the export already holds stays where it is.
-    for label in sorted(filed, reverse=True):
-        years = {
+    if not filed:
+        return [], unlabelled
+    years = {
+        label: {
             year: [track_id for _, ids in rows for track_id in ids]
-            for year, rows in filed[label].items()
+            for year, rows in by_year.items()
         }
-        try:
-            # One album per year, because the manifest says which release a row
-            # came from and the playlist does not: the writer dedupes across
-            # the whole year either way. The intake file is read and replaced.
-            # It is this call's own product and nobody has imported it, so the
-            # writer's rule against writing over a Fresh Export is not in play.
-            trees.insert_record_labels_tree(
-                destination,
-                label,
-                {year: [{"track_ids": ids}] for year, ids in years.items()},
-                destination,
-                registry=registry,
-            )
-        except (CratekitError, OSError) as exc:
-            said = f"the {label} folder could not be written ({exc})"
-            unlabelled.extend(
-                _unlabelled(row, NOT_WRITTEN, said)
-                for year in sorted(filed[label], reverse=True)
-                for row, _ in filed[label][year]
-            )
-            continue
-        labelled.extend(
-            Labelled(
-                label=label,
-                year=year,
-                playlist=f"{label} {year}",
-                track_ids=tuple(rbxml.dedupe_track_ids(years[year])),
-            )
-            for year in sorted(years, reverse=True)
+        for label, by_year in filed.items()
+    }
+    try:
+        # One album per year, because the manifest says which release a row
+        # came from and the playlist does not: the writer dedupes across the
+        # whole year either way. The intake file is read and replaced. It is
+        # this call's own product and nobody has imported it, so the writer's
+        # rule against writing over a Fresh Export is not in play.
+        trees.insert_record_labels_trees(
+            destination,
+            {
+                label: {year: [{"track_ids": ids}] for year, ids in by_year.items()}
+                for label, by_year in years.items()
+            },
+            destination,
+            registry=registry,
         )
-    labelled.sort(key=lambda entry: (entry.label, -entry.year))
+    except (CratekitError, OSError) as exc:
+        said = f"the label tree could not be written ({exc})"
+        unlabelled.extend(
+            _unlabelled(row, NOT_WRITTEN, said)
+            for label in sorted(filed)
+            for year in sorted(filed[label], reverse=True)
+            for row, _ in filed[label][year]
+        )
+        return [], unlabelled
+    labelled = [
+        Labelled(
+            label=label,
+            year=year,
+            playlist=f"{label} {year}",
+            track_ids=tuple(rbxml.dedupe_track_ids(years[label][year])),
+        )
+        for label in sorted(years)
+        for year in sorted(years[label], reverse=True)
+    ]
     return labelled, unlabelled
 
 
@@ -608,12 +701,17 @@ def apply(
     export: Path,
     destination: Path,
     manifest: Path | None = None,
+    manifest_digest: str | None = None,
 ) -> Landed:
     """Move the planned files into the library, then write one intake file.
 
     ``manifest`` is the provenance sidecar of the list the batch was acquired
     from. With one, its label rows are filed under the catalog tree in the same
     intake file. Without one, nothing is, and nothing about a label is asked.
+    ``manifest_digest`` is the fingerprint :func:`read_label_manifest` gave the
+    caller that showed somebody a plan. The file is read again here, and bytes
+    that are not the ones that were shown refuse as stale with nothing moved,
+    which is what the folder's own digest does for the files.
     """
     items = _list(plan.folder) if plan.folder.is_dir() else ()
     if items != plan.items or _digest(items) != plan.digest:
@@ -634,8 +732,22 @@ def apply(
             origin=_ORIGIN,
             detail={"path": str(destination)},
         )
-    label_rows = _read_label_rows(manifest) if manifest is not None else ()
-    _check_export(cfg, export, destination, label_rows)
+    label_rows: tuple[listdoc.ManifestRow, ...] = ()
+    if manifest is not None:
+        read = read_label_manifest(manifest)
+        if manifest_digest is not None and read.digest != manifest_digest:
+            raise refuse(
+                "decision-stale",
+                f"{manifest} changed after it was planned, so nothing was moved",
+                origin=_ORIGIN,
+                detail={"manifest": str(manifest)},
+            )
+        label_rows = read.rows
+    # READ ONCE, BEFORE THE FIRST MOVE, and handed to both the check and the
+    # write. A registry that cannot be read refuses here, with nothing moved,
+    # and cannot refuse after the moves because nothing reads it again.
+    registry = tree_registry.read(cfg)
+    _check_export(export, destination, registry, label_rows)
 
     refused: list[Refused] = []
     movable: list[Path] = []
@@ -717,7 +829,7 @@ def apply(
             inner=inner,
         ) from exc
 
-    labelled, unlabelled = _label(cfg, destination, label_rows, placed, target)
+    labelled, unlabelled = _label(cfg, destination, registry, label_rows, placed, target)
     return Landed(
         destination=destination,
         placed=tuple(placed),

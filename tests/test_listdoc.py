@@ -393,3 +393,24 @@ def test_a_manifest_that_is_not_there_is_refused_by_name(tmp_path):
         listdoc.read_manifest(tmp_path / "absent.manifest.json")
 
     assert "absent.manifest.json" in str(excinfo.value)
+
+
+def test_every_source_that_asked_for_an_id_reads_back(tmp_path):
+    """Written only when there is more than one, and read back as written."""
+    asked = Provenance(source="playlist", source_ref="pl-1", source_refs=("pl-1", "pl-2"))
+    written = listdoc.write(tmp_path, "asked", [Row(ref="1", artist="Ada", title="North")], asked)
+    assert written.manifest_path is not None
+
+    (row,) = listdoc.read_manifest(written.manifest_path)
+
+    assert row.provenance == asked
+
+
+def test_source_refs_that_are_not_text_refuse(tmp_path):
+    path = tmp_path / "other.manifest.json"
+    path.write_bytes(b'{"manifest": 1, "rows": {"1": {"source": "label", "source_refs": "pl-1"}}}')
+
+    with pytest.raises(listdoc.ListDocRefused) as excinfo:
+        listdoc.read_manifest(path)
+
+    assert "source_refs" in str(excinfo.value)

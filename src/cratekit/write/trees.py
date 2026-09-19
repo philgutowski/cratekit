@@ -648,9 +648,13 @@ def check_record_labels_tree(
     the landing engine moves files out of staging first and writes the tree
     afterwards, and a refusal that arrived between the two would leave a batch
     in the library with no importable file. So the same tree resolution and the
-    same byte writer run here over a copy, with every year's playlist empty,
-    because where a folder and a playlist go, and whether two siblings share a
-    name, does not depend on the ids inside them.
+    same byte writer run here over a copy.
+
+    EVERY YEAR IS GIVEN ONE ID NO DOCUMENT HOLDS, NOT AN EMPTY LIST. The writer
+    returns early from a held playlist it has nothing to add to, before the
+    three refusals about that playlist's own layout, so a trial with no id
+    passed a document the real write then refused after the moves. Found by
+    this unit's review.
 
     An empty ``catalog`` asks nothing, the undeclared tree included: a caller
     with no catalogued source has no use for the tree.
@@ -659,9 +663,48 @@ def check_record_labels_tree(
         return
     target = _catalog_tree(declared, registry, tree)
     trial = bytearray(raw)
-    for label in sorted(catalog):
+    for label in sorted(catalog, reverse=True):
         years = sorted(set(catalog[label]), reverse=True)
-        _insert_catalog(trial, label, [(f"{label} {year}", []) for year in years], target)
+        _insert_catalog(
+            trial, label, [(f"{label} {year}", [_TRIAL_ID]) for year in years], target
+        )
+
+
+#: A track key no rekordbox document carries, since its keys are positive.
+_TRIAL_ID = -1
+
+
+def insert_record_labels_trees(
+    xml_path: Path | str,
+    catalog: Mapping[str, Mapping[int, Sequence[Mapping[str, Any]]]],
+    out_path: Path | str,
+    *,
+    declared: taxonomy.Taxonomy | None = None,
+    registry: tree_registry.Registry | None = None,
+    tree: rbxml.Tree | None = None,
+) -> Path:
+    """Write every catalogued source in ``catalog`` in ONE read and ONE write.
+
+    :func:`insert_record_labels_tree` for several sources. The document is a
+    whole collection, tens of megabytes on a real library, and a label sweep
+    lands dozens of labels at once, so a read and a rewrite per label is the
+    same bytes moved dozens of times over. ALL OR NOTHING: one source the
+    writer refuses leaves the output untouched, as one does below.
+
+    LAST NAME FIRST, because a new folder goes in at the top of the tree, so
+    writing Z before A is what leaves a new tree reading A to Z. A folder the
+    document already holds stays where it is.
+    """
+    target = _catalog_tree(declared, registry, tree)
+    content = bytearray(Path(xml_path).read_bytes())
+    for label in sorted(catalog, reverse=True):
+        _insert_catalog(content, label, _catalog_playlists(label, catalog[label]), target)
+    destination = Path(out_path)
+    # Atomically, like every other artifact this product persists. A partial
+    # document at this path is not a partial success; it is a file the user is
+    # told to import into a library that has no second copy.
+    config.atomic_write_bytes(bytes(content), destination)
+    return destination
 
 
 def insert_record_labels_tree(
@@ -692,15 +735,9 @@ def insert_record_labels_tree(
     caller can forget it: writing the same source twice writes the same bytes,
     and a document already holding two folders of its name refuses (R-129).
     """
-    tree = _catalog_tree(declared, registry, tree)
-    content = bytearray(Path(xml_path).read_bytes())
-    _insert_catalog(content, label, _catalog_playlists(label, buckets), tree)
-    destination = Path(out_path)
-    # Atomically, like every other artifact this product persists. A partial
-    # document at this path is not a partial success; it is a file the user is
-    # told to import into a library that has no second copy.
-    config.atomic_write_bytes(bytes(content), destination)
-    return destination
+    return insert_record_labels_trees(
+        xml_path, {label: buckets}, out_path, declared=declared, registry=registry, tree=tree
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1079,6 +1116,7 @@ __all__ = [
     "check_record_labels_tree",
     "index_active_rows",
     "insert_record_labels_tree",
+    "insert_record_labels_trees",
     "match_active_rows",
     "match_indexed_rows",
     "root_playlist_members",

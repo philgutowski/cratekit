@@ -216,11 +216,18 @@ with `--manifest` and every label track that landed is also listed under
 crate intake land --export /path/to/collection-export.xml --manifest /path/to/label-approved-NAME.manifest.json
 ```
 
+The gate screen names the manifest and every label playlist it lists, so you
+see what will be filed before you answer. A manifest changed after you read the
+plan makes the answer stale, the way a changed folder does.
+
 A landed file is tied to its manifest row by artist, title and version, the same
-rule `acquire match` uses. A label track that no landed file matches is named in
-a warning and is filed under no label. It is still in the import if its file
-landed. An export that already holds a label's folder is added to, never
-doubled, so landing the rest of a label later is safe.
+rule `acquire match` uses. A label track that no file in this landing matches is
+named in a warning, and this landing files it under no label. That warning is
+expected for a track you landed earlier, which keeps the playlist that landing
+gave it, and for a download that never arrived. An export that already holds a
+label's folder is added to, never doubled, so landing the rest of a label later
+is safe. An export holding the same label folder twice is refused before anything
+moves: merge the two in rekordbox and export again.
 
 `name apply`, `intake land` and `route inbox` each build a plan and stop at a
 gate before they write. Run once to read the plan, then answer the gate. See

@@ -380,7 +380,9 @@ def test_a_manifest_is_on_the_gate_screen_and_its_labels_are_in_the_envelope(
 
     code, refused = _drive(argv)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["shown"]["labels filed from"] == str(manifest)
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["labels filed from"] == str(manifest)
+    assert shown["label playlists named"] == ["Kompakt 2024 (1 listed)", "Kompakt 2025 (1 listed)"]
 
     code, envelope = _drive(["-d", f"{GATE}=apply", *argv])
 
@@ -447,6 +449,24 @@ def test_a_manifest_that_is_not_there_is_refused_before_the_gate(
     )
 
     assert refused["cause"]["reason"] == "intake-list-unusable", refused
+    assert code == int(ExitCode.PRECONDITION)
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_the_list_passed_where_the_manifest_belongs_is_refused_before_the_gate(
+    cfg, silence, export, tmp_path
+):
+    """The mistake the two file names invite. Refused before anybody spends an
+    answer on a plan that could never run."""
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
+    listed = manifest.with_name(manifest.name.replace(".manifest.json", ".list.json"))
+    assert listed.is_file()
+
+    code, refused = _drive(_land(export, "--name", BATCH, "--manifest", str(listed)))
+
+    assert refused["cause"]["reason"] == "intake-list-unusable", refused
+    assert "not a manifest" in refused["cause"]["message"]
     assert code == int(ExitCode.PRECONDITION)
     assert _staged_names(cfg) == ["One.flac"]
 
