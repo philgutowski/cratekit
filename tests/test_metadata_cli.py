@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
 
@@ -158,18 +157,23 @@ def test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting(tmp_path
     assert caught.value.cause.detail["calibration"] == str(path)
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file with no permissions")
-def test_a_vocal_calibration_this_account_cannot_read_refuses(tmp_path):
+def test_a_vocal_calibration_this_account_cannot_read_refuses(tmp_path, monkeypatch):
     from cratekit.core.cause import CratekitError
 
     cfg = config.from_dict(valid_data(tmp_path / "library"))
     path = _vocal_calibration(cfg, '{"threshold": 37.5}')
-    path.chmod(0)
-    try:
-        with pytest.raises(CratekitError) as caught:
-            metadata_cli.vocal_cut(cfg)
-    finally:
-        path.chmod(0o600)
+    # Raised rather than produced with chmod, because an account that bypasses
+    # file permissions would read the file and the row would measure nothing.
+    real_read_text = Path.read_text
+
+    def denied(self, *args, **kwargs):
+        if self == path:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", denied)
+    with pytest.raises(CratekitError) as caught:
+        metadata_cli.vocal_cut(cfg)
     # The site declares its own slug, and cause.classified corrects a refusal
     # the operating system made to the access slug whose remedy is granting
     # access, as it does for every ``raise refuse(...) from exc``. Either way it
