@@ -603,7 +603,9 @@ An account playlist the playlists source will not queue again: its name carries
 the source system's `DOWNLOADED ` prefix, or its id is in the playlists record
 because a job this source queued for it SUCCEEDED for this library. Queued is not
 swept, and in this build swept means every track was resolved against the library,
-not that any was acquired (R-359).
+not that any was acquired (R-359). `crate sync all` says so, as `swept_means`,
+`resolved-not-acquired`, on the playlists block and as a sentence on the
+`sync.playlists` check.
 
 *Avoid:* reading swept as downloaded, or deciding it from a title.
 

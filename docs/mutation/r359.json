@@ -1,0 +1,373 @@
+{
+  "name": "r359",
+  "pass_kind": "light",
+  "branch": "relay/104",
+  "head": "46297b7",
+  "when": "2026-09-19 00:28 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7814,
+  "baseline_exit": 0,
+  "pytest_runs": 15,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/playlists.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/playlists.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2718da47f2b27de8",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7814,
+    "baseline_collected": 7814,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_drop_field",
+      "description": "Drop the swept_means field from the playlists block, the row the brief names",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "777a3eeea7dceba9",
+      "subset": [
+        "tests/test_incremental_sync.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.playlists",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_json_its_tracks_were_resolved_not_acquired",
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acquired",
+        "tests/test_sync_all.py::test_the_block_says_what_swept_means_whatever_the_pass_found"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"swept_means\": SWEPT_MEANS,\n",
+      "new": ""
+    },
+    {
+      "id": "M2_token",
+      "description": "Change the machine token to a nearby word that no longer says not acquired",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "00029001da54e149",
+      "subset": [
+        "tests/test_incremental_sync.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.playlists",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_json_its_tracks_were_resolved_not_acquired",
+        "tests/test_sync_all.py::test_the_block_says_what_swept_means_whatever_the_pass_found"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "SWEPT_MEANS = \"resolved-not-acquired\"",
+      "new": "SWEPT_MEANS = \"resolved\""
+    },
+    {
+      "id": "M3_said_silent",
+      "description": "said returns nothing, so the check carries no sentence while the json field stays",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "09f288809be0d8d5",
+      "subset": [
+        "tests/test_incremental_sync.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.playlists",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acquired",
+        "tests/test_sync_all.py::test_the_block_says_what_swept_means_whatever_the_pass_found"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return SWEPT_MEANS_SAID.get(str(block.get(\"swept_means\") or \"\"))",
+      "new": "    return None"
+    },
+    {
+      "id": "M4_said_unconditional",
+      "description": "said answers whatever the block carries, decoupling the sentence from the field",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "7ebb4e2447d429ae",
+      "subset": [
+        "tests/test_incremental_sync.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.playlists",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_the_block_says_what_swept_means_whatever_the_pass_found"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return SWEPT_MEANS_SAID.get(str(block.get(\"swept_means\") or \"\"))",
+      "new": "    return SWEPT_MEANS_SAID[SWEPT_MEANS]"
+    },
+    {
+      "id": "M5_unwired",
+      "description": "The playlists planner no longer hands its note to the plan",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "41d574776e7e1765",
+      "subset": [
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acquired"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    plan = _Plan(spec=spec, describe=describe, detail=describe([]), note=playlists.said)",
+      "new": "    plan = _Plan(spec=spec, describe=describe, detail=describe([]))"
+    },
+    {
+      "id": "M6_no_append",
+      "description": "The check computes the note and never appends it to the detail a person reads",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9ff7719758be5d89",
+      "subset": [
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acquired"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        check[\"detail\"] += f\"; {noted}\"",
+      "new": "        pass"
+    },
+    {
+      "id": "M7_note_before_describe",
+      "description": "The note reads an empty block instead of the source's own, so it says nothing",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a9f0056d71fafe3e",
+      "subset": [
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acquired"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    noted = plan.note(plan.detail or {}) if plan.note is not None else None",
+      "new": "    noted = plan.note({}) if plan.note is not None else None"
+    },
+    {
+      "id": "M8_drop_resolved",
+      "description": "Reword the sentence so it no longer says the tracks were resolved",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a60d7a3b6a5cbc5e",
+      "subset": [
+        "tests/test_incremental_sync.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.playlists",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acquired"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"a recorded playlist had its tracks resolved against the library, not \"",
+      "new": "            \"a recorded playlist had its tracks checked against the library, not \""
+    },
+    {
+      "id": "M9_drop_not_acquired",
+      "description": "Reword the sentence so it no longer says the tracks were not acquired",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f90f196ca32e6145",
+      "subset": [
+        "tests/test_incremental_sync.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.playlists",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acquired",
+        "tests/test_sync_all.py::test_the_block_says_what_swept_means_whatever_the_pass_found"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"acquired, so a track its intake job reported missing is still not in \"",
+      "new": "            \"fetched, so a track its intake job reported missing is still not in \""
+    },
+    {
+      "id": "M10_claims_downloaded",
+      "description": "Reword the sentence into the false claim the defect is about, that the files were downloaded",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4e13c5444e7100c2",
+      "subset": [
+        "tests/test_incremental_sync.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.playlists",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acquired"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"the library, crate intake missing lists it, and no later sync offers \"",
+      "new": "            \"the library until downloaded, and no later sync offers \""
+    },
+    {
+      "id": "S1_record_on_any_state",
+      "description": "Existing guard sample: the cursor records a playlist whatever state its job ended in",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f970a0961e7c0831",
+      "subset": [
+        "tests/test_incremental_sync.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "test files importing cratekit.sync.playlists",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_a_failed_job_is_not_recorded_and_its_playlist_is_offered_again",
+        "tests/test_sync_all.py::test_the_cursor_records_ids_only_once_a_job_succeeds"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if job.state == jobs.JobState.SUCCEEDED and identity and identity not in seen:",
+      "new": "        if identity and identity not in seen:"
+    }
+  ],
+  "dropped": []
+}

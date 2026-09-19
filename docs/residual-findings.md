@@ -16061,6 +16061,26 @@ the missing rows and record after it.
 **Closes when:** swept means the library holds what the playlist held, or the
 report says in words that it does not.
 
+**Closed 2026-09-18 on `relay/104`, by the second half: the report says it.**
+Every playlists block `crate sync all` reports carries `swept_means`,
+`resolved-not-acquired`, and the `sync.playlists` check, which is what the
+default human output prints for this verb, ends with one sentence saying a
+recorded playlist had its tracks resolved, not acquired, that a missing track
+is still not in the library, that `crate intake missing` lists it, and that
+no later sync offers that playlist again. The sentence is read off the block's
+token by `playlists.said` and reaches the check through `_Plan.note`, so a
+block without the field is a check without the words. `reconcile` is
+unchanged and nothing composes `acquire download`; holding the cursor until
+the missing rows are acquired is still Phillip's product decision and still
+attended, since it spends downloads. Driven: a succeeded intake job with two
+missing tracks and none acquired, then the recording pass through json and
+through `cli.run` in the default human mode. Mutation table
+`docs/mutation/r359.md`, 11 of 11 killing, null control 0 of 7814, every
+restore verified against `git show HEAD`. Looked for the same shape one file
+over: the doctor's `source.playlists.watermark` row is the only other reader of
+the cursor, and it prints counts and a time, never swept, so it claims nothing
+about acquisition.
+
 ---
 
 ## R-360. The playlists cursor moves only when a pass runs, not when the job finishes
