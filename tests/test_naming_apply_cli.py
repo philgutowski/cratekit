@@ -687,6 +687,34 @@ def test_an_unmapped_row_whose_file_is_gone_refuses_even_outside_a_volume(
     assert held.is_file() and free.is_file()
 
 
+def test_the_refusal_counts_every_row_and_lists_no_more_than_twenty(collected):
+    """A fresh setup was measured at 9937 unmapped rows, which uncapped is 9937
+    strings in one envelope. The count is never capped, only the two lists."""
+    recorded = tuple(f"/absent-{index:02d}/music/track.flac" for index in range(25))
+    with pytest.raises(naming_cli.CratekitError) as refused:
+        naming_cli._referenced(recorded, cfg=collected)
+    detail = refused.value.cause.detail
+    assert detail["unmapped"] == 25
+    assert detail["unmapped_locations"] == list(recorded[:20])
+    assert detail["unmapped_prefixes"] == [f"/absent-{index:02d}/music" for index in range(20)]
+    assert refused.value.cause.message.startswith("25 collection rows record")
+
+
+def test_a_row_recording_a_link_to_nothing_is_dark(collected, tmp_path):
+    """The name is on this machine and the file behind it is not, so the row has
+    not answered. Existence is asked of what the path reaches, never of the
+    link itself."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    dangling = tmp_path / "elsewhere" / "gone.flac"
+    dangling.parent.mkdir()
+    dangling.symlink_to(tmp_path / "elsewhere" / "never there.flac")
+    _record(collected, str(dangling), identifier="10")
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert held.is_file() and free.is_file()
+
+
 def test_a_row_that_is_not_a_path_neither_blocks_nor_protects(collected):
     """A streaming pseudo-location references no file, so it is not a hole in
     the collection, and a library that ever streamed anything still renames."""
