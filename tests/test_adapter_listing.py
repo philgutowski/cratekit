@@ -611,6 +611,22 @@ def test_a_missing_release_listing_is_skipped_rather_than_fatal():
     assert len(listing.artist_releases(OnlyAlbums())) == 2
 
 
+def test_a_skipped_release_listing_is_named_to_a_caller_that_asks():
+    """R-261: the skip stands, and it leaves a record rather than nothing."""
+
+    class OnlyAlbums:
+        def get_albums(self, limit: int | None = None, offset: int = 0) -> list:
+            return corpus(2, prefix="a")[offset : offset + (limit or 2)]
+
+    skipped: list[str] = []
+    assert len(listing.artist_releases(OnlyAlbums(), skipped=skipped)) == 2
+    assert skipped == ["get_ep_singles"]
+
+    whole: list[str] = []
+    listing.artist_releases(Artist([Item("a1")], [Item("s1")]), skipped=whole)
+    assert whole == []
+
+
 def test_an_artist_listing_longer_than_a_page_is_read_fully():
     artist = Artist(corpus(180, prefix="a"), [])
     assert len(listing.artist_releases(artist)) == 180

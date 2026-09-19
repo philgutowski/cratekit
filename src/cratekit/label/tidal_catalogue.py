@@ -41,7 +41,12 @@ from cratekit.acquire import listing, provider_session
 from cratekit.core.cause import CratekitError
 from cratekit.label import harvest, registry
 from cratekit.label import verify as label_verify
-from cratekit.label.catalogue import AccountPlaylist, ReleaseUnresolvable
+from cratekit.label.catalogue import (
+    AccountPlaylist,
+    ReleaseUnresolvable,
+    Unread,
+    missing_listing,
+)
 
 #: A provider playlist identifier. The provider mints playlists as UUIDs, so a
 #: reference that is not one cannot name a playlist and is refused before a
@@ -192,23 +197,37 @@ class LabelRoster:
     retry would list every artist from the start. Built eagerly, a failure
     raises out of ``artist_for``, which is where a sweep already turns a foreign
     exception into its refusal, and the crawl pages memory that cannot fail.
+
+    THE ROSTER ALWAYS EXPOSES BOTH LISTINGS, so the crawl paging it can never
+    see a member that lacks one. ``unread`` is where that fact goes instead:
+    what discovery could not read, handed in, plus every member whose client
+    object lacks a listing, found here. The sweep reads it (R-261, R-393).
     """
 
-    def __init__(self, artists: list[Any]) -> None:
+    def __init__(self, artists: list[Any], unread: tuple[Unread, ...] = ()) -> None:
         self.artists = list(artists)
-        self._listed = {method: self._list(method) for method in listing.RELEASE_METHODS}
+        missing: list[Unread] = []
+        self._listed = {
+            method: self._list(method, missing) for method in listing.RELEASE_METHODS
+        }
+        self.unread = (*unread, *missing)
 
-    def _list(self, method: str) -> list[Any]:
+    def _list(self, method: str, missing: list[Unread]) -> list[Any]:
         """Every artist's releases for one listing, concatenated.
 
         NOT DEDUPLICATED HERE. ``listing.artist_releases`` deduplicates by
         identifier when the crawl pages this roster, and the copy that used to sit
         here killed no test in U62's mutation table because that one always ran
         after it. One place decides what a repeat is.
+
+        A member without ``method`` is skipped by the wrapper and recorded in
+        ``missing``.
         """
         held: list[Any] = []
         for artist in self.artists:
-            held.extend(listing.artist_releases(artist, methods=(method,)))
+            skipped: list[str] = []
+            held.extend(listing.artist_releases(artist, methods=(method,), skipped=skipped))
+            missing.extend(missing_listing(artist, name) for name in skipped)
         return held
 
     def get_albums(self, limit: int, offset: int = 0) -> list[Any]:
@@ -330,13 +349,21 @@ class TidalCatalogue:
             return self._artist_identified(identifier)
         return self._artist_named(seed)
 
-    def _discover(self, entry: registry.LabelEntry, held: list[Any]) -> list[Any]:
+    def _discover(
+        self, entry: registry.LabelEntry, held: list[Any], unread: list[Unread]
+    ) -> list[Any]:
         """Artists album search plus a credited artist walk add to the roster.
 
         Runs even when ``held`` is already non empty, because an incomplete
         seed list is the silent shortfall, not only an empty roster. A listing
         failure on one artist skips that artist. A session dead failure, a
         ``CratekitError``, still refuses the label.
+
+        THE SKIP IS RECORDED IN ``unread``, and the listing climbs the retry
+        ladder first (R-393). A live 429 is ``TooManyRequests``, not a
+        ``CratekitError``, so before this it skipped the artist in silence and
+        the roster read as complete. The ladder waits with :data:`_pause`, so
+        a suite can drive it without sleeping 31 seconds for real.
         """
         needle = entry.match or entry.name
         seen: set[str] = set()
@@ -372,10 +399,30 @@ class TidalCatalogue:
             if artist is None:
                 continue
             try:
-                releases = listing.artist_releases(artist)
+                releases = listing.artist_releases(artist, sleep=_pause)
             except CratekitError:
                 raise
-            except Exception:  # noqa: BLE001 - one artist's listing, not the session
+            except Exception as exc:  # noqa: BLE001 - one artist's listing, not the session
+                # A HELD ARTIST IS NOT RECORDED. The roster lists every held
+                # artist again when it is built, and that read is the one the
+                # crawl uses: it succeeds and this record would be stale, or it
+                # fails and refuses the label. Only an artist discovery alone
+                # would have added is lost here.
+                if str(getattr(artist, "id", "") or artist_id) in held_ids:
+                    continue
+                unread.append(
+                    Unread(
+                        artist=str(getattr(artist, "name", "") or artist_id),
+                        listing="artist_releases",
+                        reason=f"{type(exc).__name__}: {exc}",
+                        # A listing that cannot page, or ran out of pages, reads
+                        # the same way on every attempt; ``fetch_with_retry``
+                        # skips its ladder for the first on that argument.
+                        transient=not isinstance(
+                            exc, (listing.ListingNotPaginated, listing.ListingTruncated)
+                        ),
+                    )
+                )
                 continue
             for release in releases:
                 if _credits_label(release, needle):
@@ -421,13 +468,14 @@ class TidalCatalogue:
                 f"the provider has {', '.join(bits)}, a seed of the label "
                 f"{entry.name!r}"
             )
-        artists.extend(self._discover(entry, artists))
+        unread: list[Unread] = []
+        artists.extend(self._discover(entry, artists, unread))
         if not artists:
             raise LabelUnresolvable(
                 f"the provider has no artist named exactly {entry.name!r}, the "
                 f"label names no seed artists, and discovery found nothing"
             )
-        return LabelRoster(artists)
+        return LabelRoster(artists, tuple(unread))
 
     def playlist_for(self, reference: str) -> Any:
         """The provider playlist a URL, a share link, or an identifier names."""

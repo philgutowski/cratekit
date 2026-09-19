@@ -23,7 +23,7 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.review import DecisionStore, Queue
 from cratekit.label import crawl, registry
 from cratekit.label import verify as label_verify
-from cratekit.label.catalogue import Catalogue, ReleaseUnresolvable
+from cratekit.label.catalogue import Catalogue, ReleaseUnresolvable, Unread, missing_listing
 from cratekit.sync import run
 
 KIND = "label-release"
@@ -58,6 +58,9 @@ class LabelListing:
     dropped: tuple[Dropped, ...]
     suppressed: tuple[run.Candidate, ...]
     listed: int = 0
+    #: The parts of the catalogue the crawl could not read. Non empty means
+    #: ``listed`` is a count of part of the label, not of all of it (R-261).
+    unread: tuple[Unread, ...] = ()
 
 
 def _year_of(release: Any) -> str:
@@ -165,8 +168,15 @@ def _candidate(entry: registry.LabelEntry, release: Any) -> run.Candidate:
     )
 
 
-def _crawl_or_refuse(entry: registry.LabelEntry, artist: Any) -> list[Any]:
-    """Every release for one label, or a refusal. Never a silent empty list.
+def _crawl_or_refuse(
+    entry: registry.LabelEntry, artist: Any
+) -> tuple[list[Any], tuple[Unread, ...]]:
+    """Every release for one label and what could not be read, or a refusal.
+
+    Never a silent empty list, and since R-261 never a silent half of one
+    either. The second value names every listing the crawl skipped: the ones
+    this object lacks, found here, and the ones a roster could not read while
+    it was built, off its ``unread``. The caller decides what they mean.
 
     R-135 IS ABSENCE READ AS EVIDENCE OF ABSENCE, and this call had three ways to
     produce ``[]`` from a catalogue nobody had read. Two of them close here, on
@@ -222,8 +232,10 @@ def _crawl_or_refuse(entry: registry.LabelEntry, artist: Any) -> list[Any]:
             f"methods {', '.join(crawl.LISTING_METHODS)}, so its releases were "
             f"never read; that is not an empty catalogue"
         )
+    skipped: list[str] = []
     try:
-        return list(crawl.releases(artist))
+        releases = list(crawl.releases(artist, skipped=skipped))
+        built = tuple(getattr(artist, "unread", None) or ())
     except CratekitError:
         raise
     except Exception as exc:
@@ -231,6 +243,7 @@ def _crawl_or_refuse(entry: registry.LabelEntry, artist: Any) -> list[Any]:
             f"the catalogue listing for {entry.name!r} could not be read "
             f"({type(exc).__name__}: {exc}); that is not an empty catalogue"
         ) from exc
+    return releases, (*built, *(missing_listing(artist, method) for method in skipped))
 
 
 #: The library as the match engine sees it: the index and the tombstone view.
@@ -362,7 +375,7 @@ def list_for_label(
     """
     del last_pulled
     claimed = entry.match or entry.name
-    listed = _crawl_or_refuse(entry, artist)
+    listed, unread = _crawl_or_refuse(entry, artist)
     listed.sort(key=_year_of, reverse=True)
     owned_ids: Container[str] = owned if owned is not None else frozenset()
     cap = limit if limit is not None else registry.effective_limit(entry)
@@ -417,6 +430,7 @@ def list_for_label(
         dropped=tuple(dropped),
         suppressed=tuple(suppressed),
         listed=len(listed),
+        unread=unread,
     )
 
 
@@ -515,6 +529,12 @@ class LabelSource:
         #: were dropped is a label with nothing new and not a catalogue nobody
         #: could verify a line of.
         self.read = 0
+        #: WHAT THE LAST PASS COULD NOT READ, across its labels, rebuilt per
+        #: pass on the rule ``dropped`` states. The worker refuses a sweep that
+        #: left anything here, after the increment has offered what was read,
+        #: because a crawl that skipped a listing is not a crawl of the label
+        #: (R-261, R-393).
+        self.unread: tuple[Unread, ...] = ()
 
     def _artist_for(self, entry: registry.LabelEntry) -> Any:
         """The provider artist object for one favourite label, or a refusal.
@@ -659,6 +679,7 @@ class LabelSource:
         verify = self._verifier() if self.registry.labels else None
         found: list[run.Candidate] = []
         discarded: list[Dropped] = []
+        unread: list[Unread] = []
         read = 0
         for entry in self.registry.labels.values():
             listing = list_for_label(
@@ -670,8 +691,10 @@ class LabelSource:
             )
             found.extend(listing.candidates)
             discarded.extend(listing.dropped)
+            unread.extend(listing.unread)
             read += listing.listed
         self.dropped = tuple(discarded)
+        self.unread = tuple(unread)
         self.read = read
         found.sort(key=lambda item: item.recency, reverse=True)
         return found[:n] if n >= 0 else found

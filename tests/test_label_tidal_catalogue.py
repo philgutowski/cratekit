@@ -31,7 +31,7 @@ from cratekit.label import catalogue, sweep, tidal_catalogue
 from cratekit.label import cli as label_cli
 from cratekit.label import registry as labels
 from cratekit.label.catalogue import AccountPlaylist
-from cratekit.sync import run
+from cratekit.sync import run, watermarks
 from tests.cli_drive import drive
 from tests.label_fakes import FakeArtistLookup
 from tests.test_config import valid_data
@@ -1209,6 +1209,11 @@ def test_a_listing_failure_on_one_discovered_artist_skips_that_artist():
     roster = adapter.artist_for(labels.LabelEntry(label_id="harbour", name="Harbour Lights"))
 
     assert roster.artists == [act]
+    # R-393: the skip is recorded, and one that cannot page is not worth a resume.
+    ((artist, listed, transient),) = [
+        (one.artist, one.listing, one.transient) for one in roster.unread
+    ]
+    assert (artist, listed, transient) == ("Broken", "artist_releases", False)
 
 
 def test_a_session_dead_during_discovery_refuses_the_label():
@@ -1255,6 +1260,210 @@ def test_a_harvested_name_is_confirmed_only_by_a_matching_copyright_line():
     assert adapter.check_label("Harbour Lights")["verdict"] == "unconfirmed"
     client.albums.append(Release("r3", copyright="(P) 2026 Harbour Lights Ltd"))
     assert adapter.check_label("Harbour Lights")["verdict"] == "confirmed"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-261 and R-393: a crawl that did not read everything says so
+# ═══════════════════════════════════════════════════════════════════════════
+
+HARBOUR = "(P) 2026 Harbour Lights"
+
+
+class RateLimitedArtist(ProviderArtist):
+    """An artist whose album listing answers every request with a live 429."""
+
+    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Release]:
+        self.asked.append(("get_albums", limit or 0, offset))
+        raise TooManyRequests("slow down")
+
+
+class AlbumsOnlyArtist:
+    """A client version that exposes the album listing and not the singles one."""
+
+    def __init__(self, name: str, albums: list[Release], *, artist_id: str | None = None) -> None:
+        self.name = name
+        self.id = artist_id
+        self._albums = list(albums)
+
+    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Release]:
+        size = 100 if limit is None else limit
+        return self._albums[offset : offset + size]
+
+
+def _sweep_through_the_worker(monkeypatch, client: FakeClient) -> tuple[int, dict, str]:
+    """Register Harbour Lights, bind the shipped adapter over ``client``, drive a sweep."""
+    pauses: list[float] = []
+    monkeypatch.setattr(tidal_catalogue, "_pause", pauses.append)
+    code, added = drive(["label", "registry", "add", "Harbour Lights"])
+    assert code == int(ExitCode.OK), added
+    monkeypatch.setattr(
+        catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client)
+    )
+    code, queued = drive(["sync", "labels"])
+    assert code == int(ExitCode.OK), queued
+    job_id = queued["data"]["job_id"]
+    code, done = drive(["sync", "labels", "--job", job_id])
+    return code, done, job_id
+
+
+def _the_item_cause(job_id: str):
+    with jobs.open_store() as store:
+        (item,) = jobs.items(store, job_id)
+    return item.cause
+
+
+def _offered() -> set[str]:
+    with review.open_store(config.load()) as store:
+        page = review.list_items(store, queue=str(review.Queue.LABEL_RELEASE))
+    return {str(item.payload.get("identity")) for item in page.items}
+
+
+def _label_with_a_discovered_pair(first: ProviderArtist) -> FakeClient:
+    """The label's own page, and a compilation crediting ``first`` and Act A."""
+    own = ProviderArtist("Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1")
+    act = ProviderArtist("Act A", [Release("a1", copyright=HARBOUR)], artist_id="11")
+    compilation = Release(
+        "va1",
+        copyright=HARBOUR,
+        artists=[Named(first.name, identity=str(first.id)), Named("Act A", identity="11")],
+    )
+    return FakeClient(artists=[own, first, act], albums=[compilation])
+
+
+def test_a_rate_limit_during_discovery_fails_the_sweep_and_names_the_artist(cfg, monkeypatch):
+    """R-393: a 429 on one discovered artist used to read as a complete roster."""
+    del cfg
+    busy = RateLimitedArtist("Busy Act", [], artist_id="10")
+    client = _label_with_a_discovered_pair(busy)
+
+    code, failed, job_id = _sweep_through_the_worker(monkeypatch, client)
+
+    assert code != int(ExitCode.OK), failed
+    cause = _the_item_cause(job_id)
+    assert cause is not None and cause.reason == "label-sweep-incomplete"
+    assert "Busy Act" in cause.message
+    assert "TooManyRequests" in cause.message
+    assert cause.retryable is True
+    assert cause.remediation.remedy is Remedy.RESUME_JOB
+    assert [entry["artist"] for entry in cause.detail["unread"]] == ["Busy Act"]
+    # What WAS read is offered before the refusal, and stays offered.
+    assert _offered() == {"own1", "a1"}
+
+
+def test_a_rate_limit_during_discovery_climbs_the_ladder_before_it_is_recorded(
+    cfg, monkeypatch
+):
+    """R-393's closing condition: the 429 is retried, and the suite sleeps for none of it."""
+    del cfg
+    busy = RateLimitedArtist("Busy Act", [], artist_id="10")
+    client = _label_with_a_discovered_pair(busy)
+    pauses: list[float] = []
+
+    monkeypatch.setattr(tidal_catalogue, "_pause", pauses.append)
+    roster = tidal_catalogue.TidalCatalogue(client).artist_for(
+        labels.LabelEntry(label_id="harbour-lights", name="Harbour Lights")
+    )
+
+    assert len(busy.asked) == listing.DEFAULT_MAX_RETRIES + 1
+    assert len(pauses) == listing.DEFAULT_MAX_RETRIES
+    assert [(one.artist, one.listing) for one in roster.unread] == [
+        ("Busy Act", "artist_releases")
+    ]
+
+
+def test_a_held_artist_rate_limited_during_discovery_is_not_recorded_as_unread(
+    cfg, monkeypatch
+):
+    """Review finding: the roster reads a held artist again, and that read is the one used."""
+    del cfg
+
+    class LimitedForOneLadder(ProviderArtist):
+        """429 on every attempt discovery's ladder makes, then answers the roster."""
+
+        def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Release]:
+            if len(self.asked) <= listing.DEFAULT_MAX_RETRIES:
+                self.asked.append(("get_albums", limit or 0, offset))
+                raise TooManyRequests("slow down")
+            return super().get_albums(limit, offset)
+
+    own = LimitedForOneLadder(
+        "Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1"
+    )
+    compilation = Release(
+        "va1", copyright=HARBOUR, artists=[Named("Harbour Lights", identity="1")]
+    )
+    client = FakeClient(artists=[own], albums=[compilation])
+    monkeypatch.setattr(tidal_catalogue, "_pause", lambda seconds: None)
+
+    roster = tidal_catalogue.TidalCatalogue(client).artist_for(
+        labels.LabelEntry(label_id="harbour-lights", name="Harbour Lights")
+    )
+
+    # Discovery spent a whole ladder on it, then the roster read a page and the
+    # empty page after it.
+    albums_asked = [call for call in own.asked if call[0] == "get_albums"]
+    assert len(albums_asked) == (listing.DEFAULT_MAX_RETRIES + 1) + 2
+    assert roster.unread == ()
+    assert [release.id for release in listing.artist_releases(roster)] == ["own1"]
+
+
+def test_a_roster_member_missing_one_listing_fails_the_sweep_and_names_it(cfg, monkeypatch):
+    """R-261: a client exposing one of two listings used to report a complete crawl."""
+    del cfg
+    own = AlbumsOnlyArtist("Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1")
+    client = FakeClient(artists=[own])
+
+    code, failed, job_id = _sweep_through_the_worker(monkeypatch, client)
+
+    assert code != int(ExitCode.OK), failed
+    cause = _the_item_cause(job_id)
+    assert cause is not None and cause.reason == "label-sweep-incomplete"
+    assert "Harbour Lights" in cause.message
+    assert "get_ep_singles" in cause.message
+    # Waiting cannot give a client a method it does not have.
+    assert cause.retryable is False
+    assert cause.remediation.remedy is Remedy.REPORT_DEFECT
+    assert _offered() == {"own1"}
+
+
+def test_a_crawl_that_read_everything_still_succeeds(cfg, monkeypatch):
+    """The control for both: the same shape with nothing unread is a clean sweep."""
+    del cfg
+    steady = ProviderArtist("Steady Act", [Release("b1", copyright=HARBOUR)], artist_id="10")
+    client = _label_with_a_discovered_pair(steady)
+
+    code, done, job_id = _sweep_through_the_worker(monkeypatch, client)
+
+    assert code == int(ExitCode.OK), done
+    assert _the_item_cause(job_id) is None
+    assert _offered() == {"own1", "a1", "b1"}
+
+
+def test_a_crawl_that_skipped_a_listing_moves_no_watermark(cfg, monkeypatch):
+    """The labels source offers and never acquires, so no watermark moves, skip or not."""
+    busy = RateLimitedArtist("Busy Act", [], artist_id="10")
+
+    _sweep_through_the_worker(monkeypatch, _label_with_a_discovered_pair(busy))
+
+    assert watermarks.WatermarkStore(cfg).all() == {}
+
+
+def test_a_plain_artist_object_missing_one_listing_is_recorded_by_the_source(cfg):
+    """R-261 without the roster: an object handed straight to the source."""
+    entry = labels.LabelEntry(label_id="harbour", name="Harbour Lights")
+    source = sweep.LabelSource(
+        cfg,
+        registry=labels.Registry(labels={entry.label_id: entry}),
+        artists={entry.label_id: AlbumsOnlyArtist("Harbour Lights", [Release("own1")])},
+        verify=lambda claimed, release: {"resolved_label": claimed, "source": "test"},
+    )
+
+    found = source.list_recent(-1)
+
+    assert [item.identity for item in found] == ["own1"]
+    assert [(one.artist, one.listing) for one in source.unread] == [
+        ("Harbour Lights", "get_ep_singles")
+    ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

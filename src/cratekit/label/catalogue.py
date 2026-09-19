@@ -70,6 +70,41 @@ class AccountPlaylist:
     tracks: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class Unread:
+    """One part of a label's catalogue a crawl could not read, and why.
+
+    R-261 and R-393. A crawl skips a listing the client does not expose, and
+    discovery skips an artist whose listing failed after its retry ladder was
+    spent, and both skips are deliberate: refusing the label over one of them
+    would withhold everything else the crawl did read. What was missing was a
+    record. Without one the releases on the skipped part were indistinguishable
+    from releases that were never there, and the sweep reported success.
+
+    ``artist`` is the provider's name for the artist, or its identifier when it
+    has no name. ``listing`` is the method that was not read, or
+    ``artist_releases`` when the whole of one artist's listing failed.
+    ``reason`` is what the person is told. ``transient`` says whether another
+    attempt can differ: a rate limit clears, a method the client lacks does not.
+    """
+
+    artist: str
+    listing: str
+    reason: str
+    transient: bool
+
+
+def missing_listing(artist: Any, method: str) -> Unread:
+    """The record for a listing method ``artist`` does not expose."""
+    name = str(getattr(artist, "name", "") or getattr(artist, "id", "") or "")
+    return Unread(
+        artist=name or type(artist).__name__,
+        listing=method,
+        reason=f"the provider client exposes no {method} listing",
+        transient=False,
+    )
+
+
 class ReleaseUnresolvable(LookupError):
     """A release identifier the provider has nothing for, or none at all.
 
@@ -117,6 +152,12 @@ class Catalogue(Protocol):
         contract above for why an absence may not be returned. The object may be
         a roster: the label's own page, every resolved seed, and artists
         discovery found by album search and a credited artist walk.
+
+        THE OBJECT MAY CARRY ``unread``, a tuple of :class:`Unread` naming the
+        parts of the roster that could not be read while it was built. The sweep
+        reads it with a default of nothing, so a plain artist object needs no
+        such attribute, and an adapter that skips anything while building a
+        roster must put it here rather than drop it (R-261, R-393).
         """
 
     def playlist_for(self, reference: str) -> Any:
@@ -283,6 +324,8 @@ __all__ = [
     "AccountPlaylist",
     "Catalogue",
     "ReleaseUnresolvable",
+    "Unread",
     "bound",
+    "missing_listing",
     "resolve",
 ]
