@@ -9,7 +9,12 @@ is driven in ``tests/test_match_states.py`` and end to end in
 * a row with no credit gains nothing, which is what keeps a deletion of the
   plain record from ever withholding the credited one;
 * the companion never lands on a lookup under the tombstone's own kind;
-* REVOCABLE stays true of a deletion that is now two records.
+* REVOCABLE stays true of a deletion that is now two records, and each of
+  recording and lifting is ONE write, because the caller undoes its move when
+  the record raises.
+
+What it deliberately does not do is recorded under "A credited tombstone
+written before the companion existed still misses the provider shape".
 
 Every identity asserted here is a literal, because an expected value built by
 the code under test reduces the assertion to X equals X.
@@ -238,6 +243,121 @@ def test_a_companion_is_found_by_its_pointer_when_the_stripping_rule_has_moved(c
     assert live(cfg) == []
 
 
+def test_a_shared_companion_survives_a_lift_even_when_the_stripping_rule_has_moved(
+    cfg, monkeypatch
+):
+    """THE SAME LOOKUP FROM THE OTHER END. Mira's lift finds the shared companion
+    by its pointer whatever the rule has become. Whether Zed's standing tombstone
+    still accounts for it has to be a lookup too, or a rule change takes the
+    companion from a deletion nobody lifted."""
+    first = stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+    )
+    stores.record_tombstone(
+        cfg, row("Sun Path (feat. Zed) (Nightwave Remix)", content_id="9002"), actor="deletion"
+    )
+    monkeypatch.setattr(tombstone, "uncredited_title", lambda _title: "")
+    run.revoke(cfg, first.suppression_id, actor="a-person")
+    assert live(cfg) == [
+        ("version", "sun path (feat. zed) (nightwave remix)"),
+        ("version-uncredited", "sun path (nightwave remix)"),
+    ]
+
+
+def writes(cfg, monkeypatch) -> list[int]:
+    """Count the store's writes, each entry the number of records it held."""
+    from cratekit.core import review
+
+    seen: list[int] = []
+    real = review.DecisionStore._write
+
+    def counted(self, recorded):
+        seen.append(len(recorded))
+        return real(self, recorded)
+
+    monkeypatch.setattr(review.DecisionStore, "_write", counted)
+    return seen
+
+
+def test_a_credited_deletion_is_one_write_and_so_is_lifting_it(cfg, monkeypatch):
+    """THE CALLER UNDOES ITS MOVE WHEN THE RECORD RAISES. Two writes would leave
+    a window where the tombstone stands and the file has been put back, and two
+    revocations a window where a deletion is half lifted."""
+    seen = writes(cfg, monkeypatch)
+    written = stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+    )
+    assert seen == [2]
+    run.revoke(cfg, written.suppression_id, actor="a-person")
+    assert seen == [2, 2]
+    assert live(cfg) == []
+
+
+def test_a_record_that_cannot_be_written_leaves_neither_half(cfg, monkeypatch):
+    from cratekit.core import review
+
+    def refuses(self, recorded):
+        raise OSError("the disk is full")
+
+    monkeypatch.setattr(review.DecisionStore, "_write", refuses)
+    with pytest.raises(OSError):
+        stores.record_tombstone(
+            cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+        )
+    monkeypatch.undo()
+    assert stores.list_tombstones(cfg, include_revoked=True) == ()
+
+
+def test_a_tombstone_that_already_stood_gains_no_companion(cfg):
+    """A record an earlier build wrote, imitated by writing the tombstone the
+    way that build did. Recording the same deletion again is a no-op on the
+    tombstone, so it is a no-op on the companion too. The cost is recorded in
+    the residual this file's docstring names, and the other choice is the next
+    test's defect."""
+    from cratekit.core import review
+
+    review.DecisionStore(tombstone.STORE_KEY, cfg).record(
+        kind=tombstone.KIND_VERSION,
+        identity={"artist": "aurora bloom", "title": "sun path (feat. mira) (nightwave remix)"},
+        actor="an-earlier-build",
+    )
+    stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+    )
+    assert live(cfg) == [("version", "sun path (feat. mira) (nightwave remix)")]
+
+
+def test_a_companion_lifted_alone_does_not_come_back_behind_a_persons_back(cfg):
+    """A person lifts the companion so the provider shape can be acquired, and
+    later deletes a duplicate row of the same credited version. The tombstone
+    already stands, so nothing is written and the lift holds."""
+    stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+    )
+    companion = next(
+        one for one in stores.list_tombstones(cfg)
+        if one.kind == tombstone.KIND_VERSION_UNCREDITED
+    )
+    run.revoke(cfg, companion.suppression_id, actor="a-person")
+    stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)", content_id="9002"), actor="deletion"
+    )
+    assert live(cfg) == [("version", "sun path (feat. mira) (nightwave remix)")]
+
+
+def test_deleting_again_after_a_full_lift_suppresses_both_halves_again(cfg):
+    """Re-recording a REVOKED tombstone is how a person changes their mind back,
+    and it is a fresh deletion, so the companion comes back with it."""
+    written = stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+    )
+    run.revoke(cfg, written.suppression_id, actor="a-person")
+    stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+    )
+    assert [kind for kind, _title in live(cfg)] == ["version", "version-uncredited"]
+
+
 def test_lifting_the_companion_alone_leaves_the_tombstone_standing(cfg):
     written = stores.record_tombstone(
         cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
@@ -289,3 +409,19 @@ def test_the_listing_projects_a_companion_without_inventing_fields(cfg):
     assert shown["identity"] == "aurora bloom - sun path (nightwave remix)"
     assert shown["title"] == "Sun Path (feat. Mira) (Nightwave Remix)"
     assert shown["revoked"] is False
+
+
+def test_the_listing_links_the_two_halves_of_one_deletion_in_both_directions(cfg):
+    """Two rows with one artist and one title, and the listing is the only
+    surface a person has weeks later. Each names the other."""
+    stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+    )
+    stores.record_tombstone(cfg, row("Salt Road", content_id="9002"), actor="deletion")
+    shown = {one["identity"]: one for one in map(stores.summarize, stores.list_tombstones(cfg))}
+    credited = shown["aurora bloom - sun path (feat. mira) (nightwave remix)"]
+    companion = shown["aurora bloom - sun path (nightwave remix)"]
+    plain = shown["aurora bloom - salt road"]
+    assert (credited["uncredited_id"], credited["credited_id"]) == (companion["id"], "")
+    assert (companion["credited_id"], companion["uncredited_id"]) == (credited["id"], "")
+    assert (plain["credited_id"], plain["uncredited_id"]) == ("", "")

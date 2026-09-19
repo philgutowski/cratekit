@@ -579,6 +579,27 @@ def test_a_deleted_track_whose_row_kept_a_credit_is_suppressed_and_not_listed(
     assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
 
 
+def test_a_billed_guest_survives_the_freeze_the_worker_resolves_from():
+    """THE WORKER DECIDES SUPPRESSED FROM THE THAWED TRACK, not from the row the
+    reader saw. A freeze that dropped the field would let a row crediting Zed in
+    its artists list ask for the companion of a deletion that credited Mira. A
+    payload an older build froze never looked, so its absence reads as billed."""
+    from cratekit.acquire import match
+
+    solo, billed = match.read_tidal_tracks(
+        [
+            {"id": "1", "title": "Sun Path", "version": "Nightwave Remix",
+             "artists": [{"name": "Aurora Bloom"}]},
+            {"id": "2", "title": "Sun Path", "version": "Nightwave Remix",
+             "artists": [{"name": "Aurora Bloom"}, {"name": "Zed"}]},
+        ]
+    )
+    assert intake_cli.thawed(intake_cli.frozen(solo)).uncredited_spellings
+    assert intake_cli.thawed(intake_cli.frozen(billed)).uncredited_spellings == ()
+    older = {k: v for k, v in intake_cli.frozen(solo).items() if k != "several_artists"}
+    assert intake_cli.thawed(older).uncredited_spellings == ()
+
+
 def test_a_deleted_credited_row_never_withholds_another_remix_of_the_recording(
     cfg, library, monkeypatch
 ):

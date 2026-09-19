@@ -4001,6 +4001,65 @@ def test_a_provider_row_crediting_somebody_else_is_not_withheld(cfg):
     assert match.standing_tombstone(same, suppresses=suppresses, suppression_id=identify)
 
 
+def test_a_provider_row_billing_a_guest_in_its_artists_never_asks_for_a_companion():
+    """A CREDIT WITH NOTHING IN THE TITLE TO SHOW IT. The reader keeps the first
+    artist and drops the rest, so a row billing Zed beside the main artist reads
+    exactly like the row that credits nobody, and would be withheld by a deletion
+    of the recording that credits Mira. Under ``artists`` and under ``artist``,
+    as mappings and as strings, because those are one shape spelled four ways."""
+    solo, *billed = match.read_tidal_tracks(
+        [
+            {"title": "Sun Path", "version": "Nightwave Remix",
+             "artists": [{"name": "Aurora Bloom"}]},
+            {"title": "Sun Path", "version": "Nightwave Remix",
+             "artists": [{"name": "Aurora Bloom"}, {"name": "Zed"}]},
+            {"title": "Sun Path", "version": "Nightwave Remix",
+             "artists": ["Aurora Bloom", "Zed"]},
+            {"title": "Sun Path", "version": "Nightwave Remix",
+             "artist": ["Aurora Bloom", "Zed"]},
+        ]
+    )
+    assert {"artist": "aurora bloom", "title": "sun path (nightwave remix)"} in (
+        solo.uncredited_spellings
+    )
+    assert [one.uncredited_spellings for one in billed] == [(), (), ()]
+    # A blank entry is not a second artist, and a bare string is a list of one.
+    padded, bare = match.read_tidal_tracks(
+        [
+            {"title": "Sun Path", "version": "", "artists": [{"name": "Aurora Bloom"}, {"name": " "}]},
+            {"title": "Sun Path", "version": "", "artists": "Aurora Bloom, Zed"},
+        ]
+    )
+    assert padded.uncredited_spellings and bare.uncredited_spellings
+
+
+def test_a_wanted_nobody_read_from_a_listing_never_asks_for_a_companion():
+    """BUILT BY HAND MEANS NOBODY LOOKED. The verb builds one from a held file,
+    whose title the index has already taken the credits off, so "no credit in
+    it" is an absence of looking and not an absence of credits."""
+    by_hand = match.Wanted(artist="Aurora Bloom", title="Sun Path", version="Nightwave Remix")
+    assert by_hand.suppression_spellings
+    assert by_hand.uncredited_spellings == ()
+
+
+def test_a_held_file_crediting_somebody_else_never_calls_the_companion_stale(
+    cfg, music, tmp_path
+):
+    """THE REPORT THAT WOULD TELL A PERSON TO LIFT A DELETION THE DISK SAYS
+    NOTHING ABOUT. The Mira cut was deleted and the Zed cut is held. A companion
+    has had its guest taken out, so it cannot say which of the two it stands
+    for, and neither the matched row nor the offered file may report it as a
+    stale record over a held file."""
+    deleted(cfg, "Sun Path (feat. Mira) (Nightwave Remix)")
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (feat. Zed) (Nightwave Remix)")
+    body = "Aurora Bloom - Sun Path (Nightwave Remix)\nAurora Bloom - Sun Path (Daybreak Remix)\n"
+    _code, envelope = drive(["match", "run", write_list(tmp_path, body, "zed.txt")])
+
+    assert [one["version"] for one in envelope["data"]["matched"]] == ["Nightwave Remix"]
+    assert [one["version"] for one in envelope["data"]["needs_review"]] == ["Daybreak Remix"]
+    assert [w for w in envelope["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED] == []
+
+
 def test_a_deletion_of_the_plain_record_writes_no_companion(cfg, music, tmp_path):
     """THE GUARD ON THE RECORDING SIDE. One deletion of a row with no credit is
     one record, so there is nothing under the companion kind for anything to

@@ -1115,6 +1115,12 @@ class Wanted:
     #: has only one reading, which is almost every title. See
     #: :func:`split_ambiguous` and :attr:`readings`.
     other_reading: tuple[str, str] | None = None
+    #: WHETHER THE ROW BILLED MORE THAN ONE ARTIST. :attr:`artist` keeps the
+    #: first and drops the rest, and a provider that lists a guest beside the
+    #: main artist has credited them without a word of it reaching the title.
+    #: Read only by :attr:`uncredited_spellings`, which must not take a title
+    #: with no bracketed credit as a listing that credited nobody.
+    several_artists: bool = False
 
     @property
     def recording(self) -> str:
@@ -1291,6 +1297,15 @@ class Wanted:
         that spelled its credit reaches its own tombstone verbatim through
         :attr:`suppression_spellings` and needs nothing from this.
 
+        "SPELLED NO CREDIT" HAS TO BE SOMETHING THIS OBJECT SAW, and there are
+        two ways it can fail to have seen one. A ``Wanted`` built by hand carries
+        no :attr:`spelled` at all: the verb builds one from a HELD FILE, whose
+        title the index has already taken the credits off, so an empty answer
+        there means nobody looked and not that nobody was credited. And a
+        provider row that bills a guest in its ARTISTS list has credited them
+        with nothing in the title to show it, which :attr:`several_artists`
+        carries. Neither asks. Each costs a missed suppression that is reported.
+
         IT WIDENS NOTHING THE ENGINE DID NOT ALREADY CALL ONE VERSION. A credit
         names a performer and comes off the matching title, so this listing
         resolves OWNED against that credited row while the row is held.
@@ -1302,7 +1317,7 @@ class Wanted:
         The same spellings, because the companion kept whatever bracket shape
         the row used and only lost its credits.
         """
-        if _credits_in(self.listed):
+        if not self.spelled or self.several_artists or _credits_in(self.spelled):
             return ()
         return self.suppression_spellings
 
@@ -1362,6 +1377,23 @@ def _first_named(entries: object) -> str:
         if isinstance(name, str) and name.strip():
             return name.strip()
     return ""
+
+
+def _bills_several(row: object) -> bool:
+    """Whether a provider row names more than one artist, under either field.
+
+    Counted the way :func:`_first_named` reads, a string or a mapping or an
+    object with a name, so the two cannot disagree about what an entry is. A
+    bare string is a list of one and is never split, for the reason given there.
+    """
+    for field_name in ("artist", "artists"):
+        entries = _field(row, field_name)
+        if not isinstance(entries, (list, tuple)):
+            continue
+        named = [entry for entry in entries if _first_named([entry])]
+        if len(named) > 1:
+            return True
+    return False
 
 
 def _artist_of(row: object) -> str:
@@ -1571,6 +1603,7 @@ def _from_row(row: object, *, origin: str, position: int) -> Wanted:
         # nothing ambiguous, because the source already said which part is the
         # version.
         other_reading=None if declared else split_ambiguous(raw_title),
+        several_artists=_bills_several(row),
     )
 
 
@@ -2109,6 +2142,7 @@ def standing_tombstone(
     *,
     suppresses: Callable[[str, Mapping[str, Any]], bool],
     suppression_id: Callable[[str, Mapping[str, Any]], str],
+    companions: bool = True,
 ) -> str | None:
     """The identifier of the tombstone standing over this version, or None.
 
@@ -2125,8 +2159,19 @@ def standing_tombstone(
         if suppresses(TOMBSTONE_KIND, identity):
             return suppression_id(TOMBSTONE_KIND, identity)
     # THE COMPANION IS ASKED SECOND, so a listing both records could answer is
-    # reported under the tombstone a person actually wrote, and the identifier
-    # they are handed is the one whose revocation lifts both.
+    # reported under the tombstone a person actually wrote, whose revocation
+    # lifts both. A listing only the companion answers is handed the companion's
+    # identifier, and lifting that lifts the companion alone: the shape that was
+    # suppressed becomes acquirable and the credited spelling stays deleted.
+    #
+    # ``companions=False`` IS FOR A CALLER ABOUT TO CALL THE RECORD STALE. A
+    # companion has had its guest taken out, so it cannot say which credited row
+    # it stands for, and a held file is evidence against it only if it is that
+    # row. The verb's report over a MATCHED row cannot know that, so it does not
+    # ask, and stays silent rather than telling a person to lift a deletion the
+    # disk says nothing about.
+    if not companions:
+        return None
     for identity in wanted.uncredited_spellings:
         if suppresses(UNCREDITED_KIND, identity):
             return suppression_id(UNCREDITED_KIND, identity)

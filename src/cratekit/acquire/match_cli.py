@@ -549,13 +549,17 @@ def _warnings(
             # - Sun Path [Live]``, which is the case the extra spellings exist
             # for: a report narrower than the rule it reports on is silent on
             # exactly the rows the rule was widened to catch.
+            held = state is match.MatchState.MATCHED
             standing = match.standing_tombstone(
-                track.wanted, suppresses=suppresses, suppression_id=identify
+                track.wanted,
+                suppresses=suppresses,
+                suppression_id=identify,
+                # A HELD FILE CANNOT CALL A COMPANION STALE. See the argument.
+                companions=not held,
             )
             if standing is None or (track.match_id, standing) in seen:
                 continue
             seen.add((track.match_id, standing))
-            held = state is match.MatchState.MATCHED
             found.append(
                 {
                     "code": TOMBSTONE_OVER_OWNED if held else SUPPRESSED_WARNING,

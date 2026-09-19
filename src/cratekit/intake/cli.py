@@ -266,6 +266,11 @@ def _frozen(row: Wanted) -> dict[str, Any]:
         # question than the reader built, silently, on exactly the ambiguous
         # titles the field exists for.
         "other_reading": list(row.other_reading) if row.other_reading else None,
+        # AND WHETHER THE ROW BILLED A GUEST, for the same reason. The worker
+        # decides SUPPRESSED from this object, and a freeze that dropped the
+        # field would let a row crediting somebody in its artists list ask for
+        # the companion of a deletion that credited somebody else.
+        "several_artists": row.several_artists,
     }
 
 
@@ -335,6 +340,11 @@ def thawed(said: Mapping[str, Any]) -> Wanted:
         ref=str(said.get("ref") or ""),
         spelled=str(said.get("spelled") or ""),
         other_reading=reading,
+        # A PAYLOAD FROZEN BEFORE THE FIELD EXISTED DID NOT LOOK, so its absence
+        # reads as "may have billed several" and the companion is not asked.
+        # That costs a job queued by an older build one missed suppression, and
+        # the other default would let it withhold a track nobody deleted.
+        several_artists=bool(said.get("several_artists", True)),
     )
 
 
