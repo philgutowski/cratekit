@@ -277,15 +277,35 @@ def place_files(
         session_id=session_id,
     )
     placed = [replace(item, session_id=record.session_id) for item in placed]
+    # WHAT THE ROLLBACK MAY REMOVE IS DECIDED BEFORE THE WRITE. The write is a
+    # plain overwrite, and a file already here is an earlier run's intake file
+    # that run's steps still name, so a failure below must not take it away.
+    fresh = not destination.exists()
     wrote = False
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(bytes(content))
         wrote = True
+        session.mark_awaiting_import(
+            record,
+            session.pending_import(
+                record,
+                artifact=destination,
+                summary=(
+                    f"{len(placed)} file(s) are named in {destination.name}, "
+                    f"which rekordbox has not imported yet"
+                ),
+                verify_verb=VERIFY_VERB,
+                steps=import_steps(destination),
+            ),
+            cfg,
+        )
 
         # Recorded at the moment the placement is decided, not at the end of a
         # later verb. U19's ledger is the only subject the deferred-routing
-        # suite has.
+        # suite has. LAST, AND NOTHING FOLLOWS IT: the ledger has no way to
+        # withdraw an intent, so a step that could fail after this one would
+        # leave an abandoned run's tracks outstanding for ever.
         routing_pass.record_intents(
             cfg,
             [
@@ -301,29 +321,15 @@ def place_files(
                 for item in placed
             ],
         )
-        session.mark_awaiting_import(
-            record,
-            session.pending_import(
-                record,
-                artifact=destination,
-                summary=(
-                    f"{len(placed)} file(s) are named in {destination.name}, "
-                    f"which rekordbox has not imported yet"
-                ),
-                verify_verb=VERIFY_VERB,
-                steps=import_steps(destination),
-            ),
-            cfg,
-        )
     except BaseException:
         # THE CALL REFUSED, SO THE RUN IS GIVEN UP, AND THE RECORD SAYS SO.
         # Abandoning is the ungated close, which is what makes it reachable
-        # from here whatever state the ledger is in. The file goes too when
-        # this call wrote it: an intake file with no run behind it refuses the
-        # cutover precheck and no verb retires it. Both are attempts. The
-        # refusal being raised is the one the caller has to see, and a second
-        # failure while cleaning up must not replace it.
-        if wrote:
+        # from here whatever state the run or the ledger is in. The file goes
+        # too when this call made it: an intake file with no run behind it
+        # refuses the cutover precheck and no verb retires it. Both are
+        # attempts. The refusal being raised is the one the caller has to see,
+        # and a second failure while cleaning up must not replace it.
+        if wrote and fresh:
             with contextlib.suppress(OSError):
                 destination.unlink(missing_ok=True)
         with contextlib.suppress(Exception):

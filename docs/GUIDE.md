@@ -280,7 +280,10 @@ like, and the landing stops counting as unfinished. When any are missing it
 changes nothing and names them, so an export taken before the import, or an
 import that skipped a track, is never mistaken for a finished one. The importable
 file itself is refused as the export, since it names every landed track whether or
-not rekordbox imported it. Run with no landing waiting, it does nothing.
+not rekordbox imported it. Run with no landing waiting, it does nothing, and then
+it needs no `--export`. A landing made before this verb existed recorded no
+importable file, so its import is proven the same way and the file is yours to
+remove once it is.
 
 Until a tree has cut over, `crate route pending` has nothing it can place and
 says so. It does not confirm an import.

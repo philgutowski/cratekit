@@ -1524,8 +1524,8 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # U72. A folder under the CONFIGURED library that holds no audio, so
         # the verb refuses from the vocabulary before its gate is reached.
         "intake.land": [str(library / "Music"), "--export", str(library / "no-such.xml")],
-        # R-501. No intake run is waiting on a fresh install, so the verb looks
-        # at nothing, opens no export, and ends NO_OP from the vocabulary.
+        # R-501. An export that is not there, which the verb refuses from the
+        # vocabulary whether or not any run is waiting on one.
         "intake.imported": ["--export", str(library / "no-such.xml")],
         # U82. A real export document under the CONFIGURED library, named as an
         # intake file of a pass this fixture never ran. No playlist job spells

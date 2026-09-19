@@ -32,11 +32,13 @@ After a cutover ``route pending`` places the tracks and closes it.
 
 from __future__ import annotations
 
+import contextlib
+import os
 from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope
-from cratekit.core import config, locations, session, tree_registry
+from cratekit.core import config, naming, session, tree_registry
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
@@ -59,9 +61,12 @@ _ORIGIN = ("intake.imported",)
 def build_imported(parser, entry) -> None:
     parser.add_argument(
         "--export",
-        required=True,
+        default=None,
         metavar="XML",
-        help="a Fresh Export of the collection, taken after the import",
+        help=(
+            "a Fresh Export of the collection, taken after the import; needed "
+            "whenever a run is waiting on one"
+        ),
     )
     parser.add_argument(
         "--session",
@@ -114,7 +119,12 @@ def read_export(export: Path, waiting: list[session.SessionRecord]) -> set[str]:
                 export,
                 session_id=record.session_id,
             )
-    content = export.read_bytes()
+    try:
+        content = export.read_bytes()
+    except OSError as exc:
+        raise _refuse_export(
+            f"{export.name} could not be read ({exc.strerror or exc})", export
+        ) from exc
     if collection_xml.is_stub_listing(content):
         raise refuse(
             "intake-export-is-stub",
@@ -131,42 +141,61 @@ def read_export(export: Path, waiting: list[session.SessionRecord]) -> set[str]:
         )
     held: set[str] = set()
     for track in rbxml.collection_tracks(content):
-        location = rbxml.attributes(content, track).get("Location", "")
-        if not location:
-            continue
         try:
-            held.add(routing_pass.track_id(location))
-        except locations.LocationDecodeError:
-            # A row this build cannot decode names no file a run could have
-            # placed, since every placed Location was encoded by this build.
+            location = rbxml.attributes(content, track).get("Location", "")
+            if location:
+                held.add(routing_pass.track_id(location))
+        except ValueError:
+            # A row whose bytes or Location this build cannot decode, and both
+            # refusals are a ``ValueError``. SKIPPING IT CAN ONLY WITHHOLD A
+            # PROOF, never grant one: a landed track named by such a row reads
+            # as missing, and the run stays waiting.
             continue
     return held
+
+
+def _waiting(record: session.SessionRecord) -> bool:
+    """True for a run that still owes a proof of its import.
+
+    TWO SHAPES, AND THE SECOND IS EVERY LANDING MADE BEFORE R-501. Those runs
+    were left ``open`` with no pending action and nothing recorded, and they are
+    the population the finding was about. Such a run is told apart from a
+    destructive session in flight by holding no capture, and from a landing that
+    crashed by what the ledger holds for it, which :func:`settle` asks.
+    """
+    if record.state is session.SessionState.AWAITING_IMPORT:
+        return True
+    return (
+        record.state is session.SessionState.OPEN
+        and record.snapshot_path is None
+        and record.pending is None
+        and session.IMPORT_VERIFIED_KEY not in record.detail
+    )
 
 
 def _considered(
     cfg: config.Config, wanted: str | None
 ) -> tuple[list[session.SessionRecord], list[session.SessionRecord]]:
-    """The runs waiting on an import, and the proven ones whose file is still here."""
+    """The runs that owe a proof, and the proven ones with something left to do."""
     waiting: list[session.SessionRecord] = []
-    unretired: list[session.SessionRecord] = []
+    proven: list[session.SessionRecord] = []
     for record in session.records(cfg):
         if record.workflow != ingest.INTAKE_WORKFLOW:
             continue
         if wanted is not None and record.session_id != wanted:
             continue
-        if record.state is session.SessionState.AWAITING_IMPORT:
+        if _waiting(record):
             waiting.append(record)
-        elif _proven_artifact(record) is not None:
-            unretired.append(record)
-    if wanted is not None and not waiting and not unretired:
+        elif session.IMPORT_VERIFIED_KEY in record.detail:
+            proven.append(record)
+    if wanted is not None and not waiting and not proven:
         raise refuse(
             "intake-list-unusable",
-            f"no intake run {wanted} is waiting on an import or holds an intake "
-            f"file still to retire",
+            f"no intake run {wanted} is waiting on an import or was proven imported",
             origin=_ORIGIN,
             detail={"session_id": wanted},
         )
-    return waiting, unretired
+    return waiting, proven
 
 
 def _proven_artifact(record: session.SessionRecord) -> Path | None:
@@ -175,7 +204,7 @@ def _proven_artifact(record: session.SessionRecord) -> Path | None:
     if not isinstance(proven, dict) or not proven.get("artifact"):
         return None
     path = Path(str(proven["artifact"]))
-    return path if path.is_file() else None
+    return path if path.is_file() and not path.is_symlink() else None
 
 
 def retire(artifact: Path) -> Path | None:
@@ -186,8 +215,12 @@ def retire(artifact: Path) -> Path | None:
     name is checked against the suffixes the product writes before anything is
     renamed, and a link is refused rather than followed.
 
-    Never over another file: a batch name can be used again once its first
-    intake file is retired, so the second retirement takes the next free name.
+    NEVER OVER ANOTHER FILE, AND THAT IS CLAIMED, NOT CHECKED. A batch name can
+    be used again once its first intake file is retired, so a second retirement
+    takes the next free name. ``exists()`` and then ``rename`` is a race POSIX
+    loses silently, so the target is reserved with an exclusive create first
+    (:func:`cratekit.core.naming.claim_target`) and the rename lands on this
+    call's own empty claim.
     """
     if artifact.is_symlink() or not artifact.is_file():
         return None
@@ -200,18 +233,47 @@ def retire(artifact: Path) -> Path | None:
             detail={"artifact": str(artifact)},
         )
     target = artifact.with_name(artifact.name + RETIRED_SUFFIX)
-    count = 1
-    while target.exists() or target.is_symlink():
-        count += 1
-        target = artifact.with_name(f"{artifact.name}{RETIRED_SUFFIX}-{count}")
-    artifact.rename(target)
+    try:
+        count = 1
+        while not naming.claim_target(target):
+            count += 1
+            target = artifact.with_name(f"{artifact.name}{RETIRED_SUFFIX}-{count}")
+        try:
+            os.replace(artifact, target)
+        except OSError:
+            with contextlib.suppress(OSError):
+                target.unlink()
+            raise
+    except OSError as exc:
+        raise refuse(
+            "path-permission-denied" if isinstance(exc, PermissionError) else "intake-list-unusable",
+            f"{artifact.name} could not be renamed out of the way "
+            f"({exc.strerror or exc}), so nothing about its run was changed",
+            origin=_ORIGIN,
+            detail={"artifact": str(artifact)},
+        ) from exc
     return target
 
 
-def _landed(cfg: config.Config, session_id: str) -> tuple[routing_pass.RoutingIntent, ...]:
-    return tuple(
-        entry for entry in routing_pass.read(cfg).intents if entry.session_id == session_id
-    )
+def _close_if_nothing_is_owed(
+    record: session.SessionRecord, cfg: config.Config, ledger: routing_pass.Ledger
+) -> dict[str, Any]:
+    """Close a proven run that holds no deferred placement, and report a refusal.
+
+    A REFUSAL HERE IS REPORTED, NOT RAISED. By now the file is retired and the
+    proof recorded, both true, and the gated close can still refuse for a reason
+    of its own, the library volume or an open reconciliation. Raising would end
+    the verb over the runs it had not looked at yet and say nothing of what it
+    did. The run stays proven and open, and the next run of this verb tries the
+    close again.
+    """
+    if ledger.outstanding(record.session_id):
+        return {"closed": False}
+    try:
+        routing_pass.close_run(record, cfg)
+    except CratekitError as exc:
+        return {"closed": False, "close_refused": exc.cause.reason, "why": exc.cause.message}
+    return {"closed": True}
 
 
 def settle(
@@ -222,10 +284,12 @@ def settle(
     artifact = record.pending.artifact if record.pending is not None else None
     if artifact:
         item["intake_file"] = artifact
-    landed = _landed(cfg, record.session_id)
+    ledger = routing_pass.read(cfg)
+    landed = tuple(entry for entry in ledger.intents if entry.session_id == record.session_id)
     if not landed:
         # NOTHING RECORDED IS NOT NOTHING OWED. With no Location to look for,
-        # an export proves nothing about this run, so it is left as it is.
+        # an export proves nothing about this run, so it is left as it is. A
+        # landing that crashed before it recorded anything is this shape too.
         return {
             **item,
             "action": UNVERIFIABLE,
@@ -245,42 +309,86 @@ def settle(
     # waiting, so running this again does the whole thing again. The other order
     # would leave a proven run whose file nothing looks for any more.
     retired = retire(Path(artifact)) if artifact else None
+    if record.state is not session.SessionState.AWAITING_IMPORT:
+        # A run landed before R-501. It goes through the state it should have
+        # been left in, so there is one way out of waiting and not two. It
+        # recorded no intake file, so none is retired here: several intake files
+        # can name the same tracks, and which one was this run's is not known.
+        session.mark_awaiting_import(
+            record,
+            session.pending_import(
+                record,
+                artifact="",
+                summary="landed before its intake file was recorded",
+                verify_verb=ingest.VERIFY_VERB,
+            ),
+            cfg,
+        )
     session.mark_import_verified(record, cfg, evidence=f"fresh export {export.name}")
-    closed = False
-    if not routing_pass.read(cfg).outstanding(record.session_id):
-        routing_pass.close_run(record, cfg)
-        closed = True
     return {
         **item,
         "action": IMPORTED,
         "count": len(landed),
         "retired_to": str(retired) if retired is not None else None,
-        "closed": closed,
+        **_close_if_nothing_is_owed(record, cfg, ledger),
     }
+
+
+def finish(record: session.SessionRecord, cfg: config.Config) -> dict[str, Any] | None:
+    """What is left of a run proven earlier: its file, and its close. None for nothing.
+
+    PROVEN ELSEWHERE OR EARLIER. The routing pass reaching every row is stronger
+    evidence than an export, and it closes the run and leaves the file. A close
+    this verb was refused last time leaves the run open with nothing owed.
+    """
+    done: dict[str, Any] = {}
+    artifact = _proven_artifact(record)
+    retired = retire(artifact) if artifact is not None else None
+    if retired is not None:
+        done.update({"intake_file": str(artifact), "retired_to": str(retired)})
+    if not record.terminal:
+        closing = _close_if_nothing_is_owed(record, cfg, routing_pass.read(cfg))
+        if closing != {"closed": False}:
+            done.update(closing)
+    if not done:
+        return None
+    return {"session_id": record.session_id, "action": RETIRED, **done}
+
+
+def _no_export(waiting: list[session.SessionRecord]) -> CratekitError:
+    return refuse(
+        "library-export-unusable",
+        f"{len(waiting)} intake run(s) are waiting on an import, and proving one "
+        f"takes a collection export taken after it",
+        steps=(
+            "take a Fresh Export of the collection from rekordbox",
+            "run this again with --export and that file",
+        ),
+        origin=_ORIGIN,
+        detail={"sessions": [record.session_id for record in waiting]},
+    )
 
 
 def intake_imported(ctx) -> Envelope:
     cfg = intake_cli._load()
-    export = Path(ctx.args.export)
-    waiting, unretired = _considered(cfg, ctx.args.session)
+    export = Path(ctx.args.export) if ctx.args.export else None
+    if export is not None and not export.is_file():
+        # WHETHER OR NOT ANYTHING WILL READ IT. A mistyped path answered "nothing
+        # to do", which a person cannot tell from an export that was checked.
+        raise _refuse_export(f"no collection export at {export}", export)
+    waiting, proven = _considered(cfg, ctx.args.session)
+    if waiting and export is None:
+        raise _no_export(waiting)
     items: list[dict[str, Any]] = []
-    if waiting:
+    if waiting and export is not None:
         held = read_export(export, waiting)
         items.extend(settle(record, cfg, held, export) for record in waiting)
-    for record in unretired:
-        # PROVEN ELSEWHERE, by the routing pass reaching every row, which is
-        # stronger evidence than an export. Only the file is left to deal with.
-        artifact = _proven_artifact(record)
-        retired = retire(artifact) if artifact is not None else None
-        if retired is not None:
-            items.append(
-                {
-                    "session_id": record.session_id,
-                    "action": RETIRED,
-                    "intake_file": str(artifact),
-                    "retired_to": str(retired),
-                }
-            )
+    owed = [
+        record
+        for record, item in zip(waiting, items, strict=True)
+        if item["action"] in (NOT_IMPORTED, UNVERIFIABLE)
+    ]
+    items.extend(item for item in (finish(record, cfg) for record in proven) if item is not None)
     plan = intake_cli._plan(items, kind="imported")
     plan["totals"] = {
         "count": len(items),
@@ -289,31 +397,33 @@ def intake_imported(ctx) -> Envelope:
             for action in (IMPORTED, NOT_IMPORTED, UNVERIFIABLE, RETIRED)
         },
     }
-    if not items:
-        return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
-    owed = [
-        record
-        for record, item in zip(waiting, items, strict=False)
-        if item["action"] in (NOT_IMPORTED, UNVERIFIABLE)
-    ]
-    if not owed:
-        return ctx.envelope(data=plan, outcome=Outcome.OK)
     warnings = [
         {
             "code": item["action"],
             "message": (
                 f"run {item['session_id']}: {item['missing']} of {item['count']} "
-                f"landed track(s) are not in {export.name}"
+                f"landed track(s) are not in {export.name if export else 'the export'}"
                 if item["action"] == NOT_IMPORTED
                 else f"run {item['session_id']}: {item['why']}"
             ),
         }
         for item in items
         if item["action"] in (NOT_IMPORTED, UNVERIFIABLE)
+    ] + [
+        {
+            "code": item["close_refused"],
+            "message": f"run {item['session_id']} is proven and was not closed: {item['why']}",
+        }
+        for item in items
+        if "close_refused" in item
     ]
+    if not items:
+        return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
+    if not owed:
+        return ctx.envelope(data=plan, outcome=Outcome.OK, warnings=warnings)
     first = owed[0]
-    # The run's own action, persisted when it landed. A record somebody edited
-    # can be waiting with none, and the envelope still has to say what is owed.
+    # The run's own action, persisted when it landed. A run landed before R-501
+    # is waiting with none, and the envelope still has to say what is owed.
     pending = next(
         (record.pending for record in owed if record.pending is not None),
         None,
@@ -339,6 +449,7 @@ __all__ = [
     "RETIRED_SUFFIX",
     "UNVERIFIABLE",
     "build_imported",
+    "finish",
     "intake_imported",
     "read_export",
     "retire",

@@ -145,7 +145,12 @@ def _close_run(record, cfg: config.Config):
 
 #: What is recorded as the evidence when the routing pass is what proved an
 #: import. No verb is named, because the record outlives any one verb's name.
-PLACED_EVIDENCE = "the routing pass placed every track this run landed"
+#: It says what was seen and no more: a track a person acknowledged as gone
+#: reached no row, and the sentence does not claim it did.
+PLACED_EVIDENCE = (
+    "the routing pass reached a row for every track this run landed that nobody "
+    "acknowledged as gone"
+)
 
 
 def _close_if_settled(cfg: config.Config, session_id: str) -> None:
@@ -159,7 +164,7 @@ def _close_if_settled(cfg: config.Config, session_id: str) -> None:
             # close refuses that state. Here the pass has reached a row for
             # every track the run recorded, which is stronger proof of the
             # import than any export, so the proof is recorded and the close
-            # goes ahead. A run with NO recorded track proves nothing, and is
+            # goes ahead. A run with no ROUTED track proves nothing, and is
             # left for the close to refuse.
             session.mark_import_verified(record, cfg, evidence=PLACED_EVIDENCE)
         _close_run(record, cfg)
@@ -167,10 +172,20 @@ def _close_if_settled(cfg: config.Config, session_id: str) -> None:
 
 
 def _all_settled(cfg: config.Config, session_id: str) -> bool:
-    """True when the ledger holds at least one track for this run and none is outstanding."""
+    """True when nothing is outstanding for this run AND the pass reached a row for it.
+
+    SETTLED IS NOT IMPORTED. A track settles by being routed, which takes a
+    row, or by a person acknowledging it is gone, which takes none. A run whose
+    every track was acknowledged settled without any import, so at least one
+    routed track is required before the pass counts as proof of one.
+    """
     ledger = routing_pass.read(cfg)
-    recorded = [entry for entry in ledger.intents if entry.session_id == session_id]
-    return bool(recorded) and not ledger.outstanding(session_id)
+    routed = [
+        entry
+        for entry in ledger.intents
+        if entry.session_id == session_id and entry.state is routing_pass.TrackState.ROUTED
+    ]
+    return bool(routed) and not ledger.outstanding(session_id)
 
 
 def _reported(store, job) -> dict:

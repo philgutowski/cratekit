@@ -284,12 +284,34 @@ def test_a_run_the_ledger_names_no_file_for_is_left_alone(cfg, silence, export, 
 # ── The verb's own edges ────────────────────────────────────────────────────
 
 
-def test_nothing_waiting_is_a_no_op_that_never_opens_the_export(cfg, tmp_path):
-    code, result = _drive(["intake", "imported", "--export", str(tmp_path / "absent.xml")])
+def test_nothing_waiting_is_a_no_op_with_or_without_an_export(cfg, export):
+    for argv in (["intake", "imported"], ["intake", "imported", "--export", str(export)]):
+        code, result = _drive(argv)
 
-    assert code == int(ExitCode.OK), result
-    assert result["outcome"] == "no_op"
-    assert result["data"]["items"] == []
+        assert code == int(ExitCode.OK), result
+        assert result["outcome"] == "no_op"
+        assert result["data"]["items"] == []
+
+
+def test_an_export_that_is_not_there_is_refused_even_with_nothing_waiting(cfg, tmp_path):
+    """A mistyped path answered "nothing to do", which reads as "checked"."""
+    code, result = _drive(["intake", "imported", "--export", str(tmp_path / "typo.xml")])
+
+    assert result["cause"]["reason"] == "library-export-unusable", result
+    assert code != int(ExitCode.OK)
+
+
+def test_a_waiting_run_with_no_export_named_is_refused_and_says_what_to_pass(
+    cfg, silence, export
+):
+    _land(cfg, silence, export)
+    (record,) = session.records(cfg)
+
+    _, result = _drive(["intake", "imported"])
+
+    assert result["cause"]["reason"] == "library-export-unusable", result
+    assert result["cause"]["detail"]["sessions"] == [record.session_id]
+    assert _intake_file(cfg).is_file()
 
 
 def test_a_named_run_that_is_not_waiting_is_refused(cfg, silence, export):
@@ -476,7 +498,7 @@ def test_after_a_cutover_the_pass_placing_every_track_is_proof_and_closes_the_ru
 
     # The run is over and its file is still here. The verb retires it, with no
     # export to read because no run is waiting on one.
-    code, result = _drive(["intake", "imported", "--export", "unread.xml"])
+    code, result = _drive(["intake", "imported"])
     assert code == int(ExitCode.OK), result
     (item,) = result["data"]["items"]
     assert item["action"] == imported_cli.RETIRED
@@ -646,3 +668,184 @@ def test_the_retired_name_is_out_of_the_pending_scan_and_reads_back(cfg):
     assert retired is not None
     assert tree_registry.pending_intake_xml(cfg) == ()
     assert land_cli.unretired_name(retired.name) == written.name
+
+
+# ── What the review found ───────────────────────────────────────────────────
+
+
+def test_a_run_landed_before_the_fix_is_settled_too(cfg, silence, export, tmp_path):
+    """EVERY LANDING BEFORE R-501 IS THIS SHAPE: ``open``, no pending action, no
+    proof, its tracks in the ledger. It is the population the finding was about,
+    and a verb that looked only for ``awaiting-import`` would leave it where it was.
+    Its intake file was never recorded, so none is retired, and the item says so."""
+    _verified_snapshot(cfg)
+    _land(cfg, silence, export)
+    (record,) = session.records(cfg)
+    after = _export_after_import(tmp_path, _intake_file(cfg))
+    record.state = session.SessionState.OPEN
+    record.pending = None
+    session.write_record(record, cfg)
+    assert _refusal(cfg, export).cause.reason == "cutover-open-run"
+
+    code, not_yet = _drive(["intake", "imported", "--export", str(export)])
+    assert code == int(ExitCode.PENDING_HUMAN), not_yet
+    assert not_yet["data"]["items"][0]["action"] == imported_cli.NOT_IMPORTED
+    assert session.read_record(record.session_id, cfg).to_json() == record.to_json()
+
+    code, result = _drive(["intake", "imported", "--export", str(after)])
+
+    assert code == int(ExitCode.OK), result
+    (item,) = result["data"]["items"]
+    assert (item["action"], item["retired_to"]) == (imported_cli.IMPORTED, None)
+    assert session.owes_only_deferred_routing(session.read_record(record.session_id, cfg))
+    assert _refusal(cfg, after).cause.reason == "cutover-xml-pending"
+
+
+def test_an_open_run_holding_a_capture_is_never_taken_for_a_landing(cfg, silence, export, tmp_path):
+    _land(cfg, silence, export)
+    (record,) = session.records(cfg)
+    after = _export_after_import(tmp_path, _intake_file(cfg))
+    record.state = session.SessionState.OPEN
+    record.pending = None
+    record.snapshot_path = "/captures/one"
+    session.write_record(record, cfg)
+
+    code, result = _drive(["intake", "imported", "--export", str(after)])
+
+    assert (code, result["outcome"]) == (int(ExitCode.OK), "no_op")
+    assert session.read_record(record.session_id, cfg).to_json() == record.to_json()
+
+
+def test_tracks_acknowledged_as_gone_are_not_proof_of_an_import(cfg, silence, export):
+    """Settled is not imported: acknowledging takes no row."""
+    _land(cfg, silence, export)
+    (record,) = session.records(cfg)
+    routing_pass.acknowledge(
+        cfg,
+        [entry.track for entry in routing_pass.read(cfg).outstanding(record.session_id)],
+        session_id=record.session_id,
+        actor="a-person",
+    )
+    assert not routing_pass.read(cfg).outstanding(record.session_id)
+
+    with pytest.raises(CratekitError) as caught:
+        routing_cli._close_if_settled(cfg, record.session_id)
+
+    assert caught.value.cause.reason == "awaiting-import"
+    assert session.IMPORT_VERIFIED_KEY not in session.read_record(record.session_id, cfg).detail
+
+
+def test_a_refused_close_is_reported_and_tried_again_next_time(
+    cfg, silence, export, tmp_path, monkeypatch
+):
+    """The file is retired and the proof recorded by the time the gated close
+    can refuse, so the refusal is on the item and the next run closes it."""
+    _land(cfg, silence, export)
+    (record,) = session.records(cfg)
+    after = _export_after_import(tmp_path, _intake_file(cfg))
+    routing_pass.mark(
+        cfg,
+        [entry.track for entry in routing_pass.read(cfg).outstanding(record.session_id)],
+        routing_pass.TrackState.ROUTED,
+        session_id=record.session_id,
+    )
+
+    # A temporary folder is not the recorded volume, so the gated close refuses.
+    code, result = _drive(["intake", "imported", "--export", str(after)])
+
+    assert code == int(ExitCode.OK), result
+    (item,) = result["data"]["items"]
+    assert (item["action"], item["closed"]) == (imported_cli.IMPORTED, False)
+    assert item["close_refused"]
+    assert [w["code"] for w in result["warnings"]] == [item["close_refused"]]
+    assert not _intake_file(cfg).exists()
+    assert session.read_record(record.session_id, cfg).state is session.SessionState.OPEN
+
+    monkeypatch.setattr(
+        preflight, "default_identity_provider", lambda: (lambda _path: cfg.library.volume_id)
+    )
+    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    code, again = _drive(["intake", "imported"])
+
+    assert code == int(ExitCode.OK), again
+    (item,) = again["data"]["items"]
+    assert (item["action"], item["closed"]) == (imported_cli.RETIRED, True)
+    assert session.read_record(record.session_id, cfg).state is session.SessionState.CLOSED
+    assert _drive(["intake", "imported"])[1]["outcome"] == "no_op"
+
+
+def test_a_failed_call_leaves_an_earlier_runs_intake_file_alone(cfg, silence, export, monkeypatch):
+    """The write is an overwrite, and the file already there is one an earlier
+    run's steps still name."""
+    music = Path(cfg.library.root) / cfg.library.music_dir
+    music.mkdir(parents=True, exist_ok=True)
+    path = music / "One.flac"
+    shutil.copyfile(silence, path)
+    assert tags.write_tags(path, {"title": "One", "genre": "Deep House", "energylevel": 7})
+    destination = music / "One_inboxed.xml"
+    ingest.place_files([path], cfg=cfg, export=export, destination=destination)
+
+    def refusing(*args, **kwargs):
+        raise refuse("internal-error", "the ledger could not be written")
+
+    monkeypatch.setattr(routing_pass, "record_intents", refusing)
+    with pytest.raises(CratekitError):
+        ingest.place_files([path], cfg=cfg, export=export, destination=destination)
+
+    assert destination.is_file()
+    states = sorted(str(record.state) for record in session.records(cfg))
+    assert states == ["abandoned", "awaiting-import"]
+
+
+def test_a_failed_call_records_no_track_the_ledger_cannot_withdraw(
+    cfg, silence, export, monkeypatch
+):
+    """Nothing that can fail follows the ledger write, because an intent cannot
+    be taken back and an abandoned run's would be outstanding for ever."""
+    music = Path(cfg.library.root) / cfg.library.music_dir
+    music.mkdir(parents=True, exist_ok=True)
+    path = music / "One.flac"
+    shutil.copyfile(silence, path)
+    assert tags.write_tags(path, {"title": "One", "genre": "Deep House", "energylevel": 7})
+
+    def failing(*args, **kwargs):
+        raise refuse("internal-error", "the session log could not be written")
+
+    monkeypatch.setattr(session, "mark_awaiting_import", failing)
+    with pytest.raises(CratekitError):
+        ingest.place_files(
+            [path], cfg=cfg, export=export, destination=music / "One_inboxed.xml"
+        )
+
+    assert routing_pass.read(cfg).intents == ()
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.ABANDONED
+
+
+def test_a_retire_that_cannot_rename_is_a_refusal_and_changes_nothing(
+    cfg, silence, export, tmp_path, monkeypatch
+):
+    _land(cfg, silence, export)
+    after = _export_after_import(tmp_path, _intake_file(cfg))
+
+    def denied(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(imported_cli.os, "replace", denied)
+    _, result = _drive(["intake", "imported", "--export", str(after)])
+
+    assert result["cause"]["reason"] == "path-permission-denied", result
+    assert _intake_file(cfg).is_file()
+    assert not _intake_file(cfg).with_name(_intake_file(cfg).name + ".imported").exists()
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.AWAITING_IMPORT
+
+
+def test_doctor_reads_a_proven_run_as_proven_and_not_as_in_progress(cfg):
+    from cratekit.cli import doctor
+
+    proven = _verified(cfg)
+    in_flight = session.open_session(cfg, workflow=ingest.INTAKE_WORKFLOW)
+
+    assert "import proven" in doctor._open_state(session.read_record(proven.session_id, cfg))
+    assert doctor._open_state(in_flight) == "open"
