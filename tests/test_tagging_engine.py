@@ -643,3 +643,59 @@ def test_a_result_built_without_the_repair_does_not_claim_it_passed():
     assert tag.TagResult(path=Path("x.flac"), genre_written=None).art_repair == (
         art.REPAIR_UNCHECKED
     )
+
+
+def _noise_jpeg(width: int, height: int) -> bytes:
+    """Incompressible pixels, so the byte cap is really exceeded at native size."""
+    import random
+
+    from PIL import Image
+
+    rng = random.Random(84)
+    img = Image.frombytes("RGB", (width, height), rng.randbytes(width * height * 3))
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
+def test_a_picture_too_large_for_the_cap_at_native_size_is_shrunk_not_left_blank(
+    folder, silence
+):
+    """The review's finding: refusing it would leave the block blank for good.
+
+    The source system saved an over cap picture rather than none. Here it is
+    shrunk to fit inside the new art edge, keeping its shape, and never enlarged.
+    """
+    data = _noise_jpeg(1400, 1000)
+    with pytest.raises(art.ArtError):
+        art.to_cdj_jpeg(data, size=None)
+    path = place(folder, silence, "track")
+    plant(path, data)
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_FIXED
+    assert repair.detail == "1 of 1 pictures re-encoded, 1 shrunk to fit 800 pixels"
+    (block,) = blocks(path)
+    assert (block.width, block.height, block.depth) == (800, 571, 24)
+    assert len(block.data) <= art.ART_MAX_BYTES
+    assert decoded(block.data)[:3] == ("JPEG", (800, 571), False)
+
+
+def test_a_picture_inside_the_box_that_cannot_fit_is_an_error_and_is_never_enlarged(
+    folder, silence, monkeypatch
+):
+    path = place(folder, silence, "track")
+    plant(path, _jpeg(320, 200))
+    stored = blocks(path)[0].data
+
+    def never_fits(data, *, size=art.ART_SIZE, max_bytes=art.ART_MAX_BYTES):
+        raise art.ArtError("does not fit")
+
+    monkeypatch.setattr(art, "to_cdj_jpeg", never_fits)
+
+    repair = art.repair_in_place(path)
+
+    assert repair.status == art.REPAIR_ERROR
+    assert "too small to shrink" in repair.detail
+    assert blocks(path)[0].data == stored

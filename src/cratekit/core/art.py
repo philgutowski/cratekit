@@ -424,6 +424,42 @@ class ArtRepair:
     detail: str = ""
 
 
+def _repaired(data: bytes) -> tuple[CdjJpeg, bool]:
+    """``data`` as CDJ safe art at native resolution, or shrunk when it must be.
+
+    Native first, because upscaling only invents detail and a repair should not
+    lose any either. A picture that does not fit the byte cap even at the lowest
+    quality is then SHRUNK to fit inside :data:`ART_SIZE` on its longer edge,
+    keeping its shape. Refusing it instead would leave the block blank on a
+    player for good, which is worse than the source system, whose repair saved
+    an over cap picture rather than none. Never enlarged: a picture already
+    inside the box that does not fit has nothing a shrink can do for it.
+
+    The flag says whether it was shrunk, so the report can say so.
+    """
+    try:
+        return to_cdj_jpeg(data, size=None), False
+    except ArtError:
+        if _measure(data) is None:
+            raise
+    from PIL import Image, ImageOps
+
+    try:
+        with Image.open(io.BytesIO(data)) as source:
+            img = _flatten_to_rgb(ImageOps.exif_transpose(source))
+    except Exception as exc:  # noqa: BLE001 - Pillow raises many types on bad bytes
+        raise ArtError(f"the image bytes could not be decoded: {exc}") from exc
+    if max(img.size) <= ART_SIZE:
+        raise ArtError(
+            f"the picture does not fit in {ART_MAX_BYTES} bytes at {img.size[0]} by "
+            f"{img.size[1]} pixels, and it is too small to shrink"
+        )
+    img.thumbnail((ART_SIZE, ART_SIZE), Image.LANCZOS)
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")  # lossless, so the one lossy step is the encoder's
+    return to_cdj_jpeg(buffer.getvalue(), size=None), True
+
+
 def _needs_repair(block) -> bool:
     """The source system's test: a zeroed dimension, or not a baseline JPEG.
 
@@ -443,8 +479,10 @@ def repair_in_place(path: Path) -> ArtRepair:
     The vendored downloader embeds a picture block that declares a width,
     height and depth of zero, and the source system repaired exactly that. Every
     broken block is re-encoded at its NATIVE resolution, because upscaling only
-    invents detail, and its dimensions are measured from the new bytes. Its type
-    and description are kept, and so is every block that was sound, in order.
+    invents detail, and shrunk only when it cannot fit the byte cap otherwise,
+    see :func:`_repaired`. Its dimensions are measured from the new bytes. Its
+    type and description are kept, and so is every block that was sound, in
+    order.
 
     A FILE WITH SOUND ART IS NOT WRITTEN, so its bytes and its mtime are what
     they were. If any block cannot be repaired the result is ``error`` and
@@ -469,9 +507,11 @@ def repair_in_place(path: Path) -> ArtRepair:
     broken = [block for block in blocks if _needs_repair(block)]
     if not broken:
         return ArtRepair(REPAIR_OK)
+    shrunk = 0
     try:
         for block in broken:
-            cdj = to_cdj_jpeg(bytes(block.data), size=None)
+            cdj, was_shrunk = _repaired(bytes(block.data))
+            shrunk += was_shrunk
             block.data = cdj.data
             block.mime = JPEG_MIME
             block.width, block.height, block.depth = cdj.width, cdj.height, cdj.depth
@@ -485,7 +525,10 @@ def repair_in_place(path: Path) -> ArtRepair:
         tags._save(path, handle)
     except Exception as exc:  # noqa: BLE001 - one bad file must not abort a batch
         return ArtRepair(REPAIR_ERROR, f"the repaired art could not be saved: {exc}")
-    return ArtRepair(REPAIR_FIXED, f"{len(broken)} of {len(blocks)} pictures re-encoded")
+    detail = f"{len(broken)} of {len(blocks)} pictures re-encoded"
+    if shrunk:
+        detail += f", {shrunk} shrunk to fit {ART_SIZE} pixels"
+    return ArtRepair(REPAIR_FIXED, detail)
 
 
 __all__ = [
