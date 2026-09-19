@@ -5270,7 +5270,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # under, and no-identifier and not-asked, two of the four KINDS that verb
     # gives a release it could not read, which pick the step its failing line
     # ends in and are never a refusal's reason.
-    assert (len(literals), len(literals - set(causes))) == (427, 268), (
+    # Re-pinned on U77, 2026-09-19: 427 to 431 distinct, 268 to 272 non-keys.
+    # FOUR literals joined and NOTHING left, differenced over the branch's diff
+    # of `src` against `main` with `git grep` on `main` for each. None is a
+    # cause. All four are WARNING codes a landing gives a manifest's label row
+    # it filed under no label: label-row-incomplete, the row names no label or
+    # no year; label-row-unmatched, no file this run landed matches it;
+    # label-row-needs-review, the batch holds another version of it; and
+    # label-tree-unwritten, the disk refused the label's folder after the moves.
+    # Every refusal the landing raises reuses a slug the table already reserves.
+    assert (len(literals), len(literals - set(causes))) == (431, 272), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5704,7 +5713,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # label-approved. The also-holds-an-integer half stays 18, because the
     # module asks the hash for a six byte digest rather than slicing twelve
     # characters off a longer one, which was removed rather than argued.
-    assert (len(literal_holders), len(literal_both)) == (97, 18), (
+    # Re-pinned on U77, 2026-09-19: 97 to 98 holders. ONE module joined and
+    # none left. intake/land_cli.py held no cause literal on main, measured by
+    # `git grep` for a refusal there, and now names intake-list-unusable
+    # through cause.refuse for a manifest it cannot read before the gate.
+    # intake/landing.py was a holder already. The also-holds-an-integer half
+    # stays 18, measured by the same run: the manifest is fingerprinted whole
+    # and nothing is sliced off the digest.
+    assert (len(literal_holders), len(literal_both)) == (98, 18), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
