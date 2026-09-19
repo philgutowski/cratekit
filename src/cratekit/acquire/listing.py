@@ -467,6 +467,37 @@ def favorite_tracks(session: Any, **kwargs: Any) -> list[Any]:
     return paginate(_paged_caller(favorites, "tracks"), **_shape("favorite_tracks", **kwargs))
 
 
+def favorite_tracks_declared(session: Any, **kwargs: Any) -> tuple[list[Any], int | None]:
+    """:func:`favorite_tracks`, and the count the provider declared for them (R-504).
+
+    ENDING ON THE COUNT IS NOT THE SAME AS REACHING IT. The walk stops once the
+    offset passes the declared total, and every window it read left out the
+    hearts the provider will not serve, so the rows can come back short of the
+    count with nothing wrong in the walk at all. Measured shape: 197 declared,
+    12 unservable, 185 rows. This returns the count beside the rows so the
+    caller can compare them, which :func:`favorite_tracks` alone gives nobody
+    the means to do.
+
+    THE COUNT IS THE ONE THE WALK ENDED ON, recorded as the walk asked for it,
+    not a second request made afterwards, which could answer differently if a
+    heart landed in between. ``None`` where the provider published no usable
+    count, on the rule :func:`paginate` applies: a zero or negative total is
+    not trusted as a count.
+    """
+    favorites = session.user.favorites
+    count = kwargs.pop("declared_total", None) or _declared_count(favorites, "get_tracks_count")
+    answered: list[int | None] = []
+
+    def declared() -> int | None:
+        value = count()
+        answered.append(value)
+        return value
+
+    rows = favorite_tracks(session, declared_total=declared, **kwargs)
+    total = answered[-1] if answered else None
+    return rows, total if isinstance(total, int) and total > 0 else None
+
+
 def account_playlists(session: Any, **kwargs: Any) -> list[Any]:
     """Every playlist the listing exposes for this account, across pages.
 
@@ -588,6 +619,7 @@ __all__ = [
     "account_playlists",
     "artist_releases",
     "favorite_tracks",
+    "favorite_tracks_declared",
     "fetch_with_retry",
     "paginate",
     "playlist_tracks",

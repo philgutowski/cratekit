@@ -44,6 +44,7 @@ from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
     TRACK_SEARCH_PAGE,
     AccountPlaylist,
+    HeartsShortfall,
     ReleaseUnresolvable,
     Unread,
     missing_listing,
@@ -565,9 +566,14 @@ class TidalCatalogue:
     def favourite_tracks(self) -> tuple[Any, ...]:
         """The account's hearted tracks, through the one favourites listing.
 
-        ``listing.favorite_tracks`` ends on the provider's declared count and
-        raises ``ListingTruncated`` rather than returning what it collected, so
-        this read is complete or it raises. A client that cannot say who is
+        ``listing.favorite_tracks_declared`` ends on the provider's declared
+        count and raises ``ListingTruncated`` rather than returning what it
+        collected. ENDING ON THE COUNT IS NOT REACHING IT (R-504): the provider
+        leaves the hearts it will not serve out of every page while counting
+        them, so the rows are compared with the count here and a shortfall
+        raises :class:`HeartsShortfall` with the rows it did serve. A count the
+        provider did not publish leaves nothing to compare, and the rows are
+        returned as the walk found them. A client that cannot say who is
         logged in is REFUSED rather than read as an account with no hearts, for
         the reason :meth:`account_playlists` gives.
         """
@@ -577,7 +583,10 @@ class TidalCatalogue:
                 "the provider client did not expose the logged in account's "
                 "favourites, so its hearts cannot be listed"
             )
-        return tuple(listing.favorite_tracks(self._session))
+        rows, declared = listing.favorite_tracks_declared(self._session)
+        if declared is not None and len(rows) < declared:
+            raise HeartsShortfall(rows, declared)
+        return tuple(rows)
 
     def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
         """One release read again by identifier: its tracks, and its year.

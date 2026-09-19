@@ -1,0 +1,111 @@
+name = "r504-a"
+pass_kind = "light"
+
+# Table a of two for R-504, over the comparison itself: the listing that hands
+# back the declared count, the adapter that compares it with the rows, the seam
+# exception that carries the three numbers, and the boundary that keeps the
+# rows. Table b covers the verb and the sync check. Together they hold 22 rows
+# against the cap of 25 for the unit.
+
+[[rows]]
+id = "A1_lt_to_le"
+description = "Adapter compares with <= instead of <, so a listing that reached its count raises a shortfall of zero"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+old = '''        if declared is not None and len(rows) < declared:'''
+new = '''        if declared is not None and len(rows) <= declared:'''
+
+[[rows]]
+id = "A2_lt_to_gt"
+description = "Adapter compares the wrong way round, so a short listing returns and a long one raises"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+old = '''        if declared is not None and len(rows) < declared:'''
+new = '''        if declared is not None and len(rows) > declared:'''
+
+[[rows]]
+id = "A3_no_none_guard"
+description = "Adapter drops the guard for a count the provider did not publish"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+old = '''        if declared is not None and len(rows) < declared:'''
+new = '''        if len(rows) < declared:'''
+
+[[rows]]
+id = "A4_no_raise"
+description = "Adapter never raises the shortfall, which is the pre R-504 behaviour"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+old = '''            raise HeartsShortfall(rows, declared)'''
+new = '''            pass'''
+
+[[rows]]
+id = "A5_listing_no_count"
+description = "The listing hands back no count at all"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+old = '''    return rows, total if isinstance(total, int) and total > 0 else None'''
+new = '''    return rows, None'''
+
+[[rows]]
+id = "A6_listing_unrecorded"
+description = "The listing walks on the unrecorded count, so the one it ended on is never kept"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+old = '''    rows = favorite_tracks(session, declared_total=declared, **kwargs)'''
+new = '''    rows = favorite_tracks(session, declared_total=count, **kwargs)'''
+
+[[rows]]
+id = "A7_listing_nonpositive"
+description = "The listing trusts a zero or sentinel count and hands it back as a count"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+old = '''    return rows, total if isinstance(total, int) and total > 0 else None'''
+new = '''    return rows, total if isinstance(total, int) else None'''
+
+[[rows]]
+id = "A8_withheld_sign"
+description = "The seam subtracts the wrong way round, so the withheld count is negative"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+old = '''        return self.declared - self.listed'''
+new = '''        return self.listed - self.declared'''
+
+[[rows]]
+id = "A9_summary_reworded"
+description = "The seam's one spelling of the three numbers is reworded"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+old = '''            f"{self.withheld} withheld by the provider"'''
+new = '''            f"{self.withheld} held back by the provider"'''
+
+[[rows]]
+id = "A10_block_listed"
+description = "The report block carries the declared count where the listed count belongs"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+old = '''        return {"declared": self.declared, "listed": self.listed, "withheld": self.withheld}'''
+new = '''        return {"declared": self.declared, "listed": self.declared, "withheld": self.withheld}'''
+
+[[rows]]
+id = "A11_boundary_refuses"
+description = "The verb boundary no longer catches the shortfall, so it is refused as an unreadable listing"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''    except catalogue.HeartsShortfall as short:
+        return list(short.rows), short
+'''
+new = ""
+
+[[rows]]
+id = "A12_boundary_drops_short"
+description = "The verb boundary keeps the rows and drops the shortfall, passing the short listing off as the account"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        return list(short.rows), short'''
+new = '''        return list(short.rows), None'''
+
+[[dropped]]
+id = "A_answered_first"
+description = "Hand back answered[0] instead of answered[-1]"
+reason = "equivalent under this ladder: a failed count attempt raises before it is recorded, so only one answer is ever kept"

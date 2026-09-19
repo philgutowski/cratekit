@@ -1,0 +1,97 @@
+name = "r504-b"
+pass_kind = "light"
+
+# Table b of two for R-504, over where the shortfall reaches a person: the
+# intake verb's warning and progress block, and sync all's inbound block and
+# check. Table a holds 12 rows, this one 10, so the unit spends 22 of its 25.
+
+[[rows]]
+id = "B1_verb_drops_short"
+description = "intake playlist favorites lists the hearts and throws the shortfall away"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''            tracks, short = list_favorites(found)'''
+new = '''            tracks, short = list_favorites(found)[0], None'''
+
+[[rows]]
+id = "B2_list_favorites_drops_short"
+description = "list_favorites returns the rows and never the shortfall, for both callers"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''    return frozen_rows(_read_rows(rows, FAVORITES)), short'''
+new = '''    return frozen_rows(_read_rows(rows, FAVORITES)), None'''
+
+[[rows]]
+id = "B3_no_warning"
+description = "The verb carries no withheld warning, so the default human output says nothing"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''        warnings = (withheld_warning(short),) if short is not None else ()'''
+new = '''        warnings = ()'''
+
+[[rows]]
+id = "B4_no_progress_block"
+description = "The verb carries no shortfall block under progress"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''        extra = {"shortfall": short.block()} if short is not None else {}'''
+new = '''        extra = {}'''
+
+[[rows]]
+id = "B5_noop_silent"
+description = "Every heart withheld is the quiet no-op again, with no warning"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''                data=_no_op("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,
+                warnings=warnings,
+            )'''
+new = '''                data=_no_op("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,
+            )'''
+
+[[rows]]
+id = "B6_warning_reworded"
+description = "The warning names no numbers"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''            f"the account's hearts listed short: {short.summary()}. The provider "'''
+new = '''            f"the account's hearts listed short. The provider "'''
+
+[[rows]]
+id = "B7_sync_drops_short"
+description = "sync all lists the hearts and keeps no shortfall"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    inbound.shortfall = short'''
+new = '''    inbound.shortfall = None'''
+
+[[rows]]
+id = "B8_check_passes"
+description = "A short listing leaves the inbound check at its prior status instead of failing it"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        check["status"] = "fail"
+        if inbound.not_queued == playlists.Excluded.EMPTY:'''
+new = '''        if inbound.not_queued == playlists.Excluded.EMPTY:'''
+
+[[rows]]
+id = "B9_all_withheld_says_no_hearts"
+description = "Every heart withheld still reads as an account that lists no hearts"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''            check["detail"] = "not queued: the provider served none of the account's hearts"'''
+new = '''            pass'''
+
+[[rows]]
+id = "B10_check_no_numbers"
+description = "The inbound check fails without naming the three numbers"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''            f"; the listing came back short, {short.summary()}, which does not say which"'''
+new = '''            "; the listing came back short, which does not say which"'''
+
+[[dropped]]
+id = "B_block_shortfall_none"
+description = "The inbound block reports shortfall None whatever was kept"
+reason = "not run: B7 reaches the same block assertion and the check besides, so this row would measure a subset of B7"

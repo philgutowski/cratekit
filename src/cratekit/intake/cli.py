@@ -777,26 +777,8 @@ def is_favorites(reference: str) -> bool:
     return str(reference or "").strip().casefold() == FAVORITES
 
 
-def _playlist_rows(found: catalogue.Catalogue, reference: str) -> tuple[Wanted, ...]:
-    """List one playlist through a BOUND catalogue, as ``Wanted`` rows.
-
-    The listing and its failure boundary are the label verb's own, called
-    rather than copied, so ``label-playlist-unreadable`` means one thing and
-    carries one shape wherever a bound provider was asked about a playlist
-    and could not answer. What is this verb's is the reading of the rows.
-
-    THE RESERVED REFERENCE IS ASKED FIRST, before ``playlist_for`` could see
-    it. The hearts are read through the catalogue's own favourites listing and
-    then read, frozen and resolved exactly as a playlist's rows are, so owned,
-    offered and missing mean what they mean for any playlist. Ownership is the
-    match engine's one rule, not the source system's ISRC first rule, and a
-    heart the library lacks is not parked in a provider playlist: it is a
-    missing item, queued with its provider identifier.
-    """
-    if is_favorites(reference):
-        rows = label_cli.favourite_tracks_or_refuse(found, reference)
-    else:
-        rows = label_cli.playlist_tracks_or_refuse(found, reference)
+def _read_rows(rows: list, reference: str) -> tuple[Wanted, ...]:
+    """Provider rows as ``Wanted`` rows, refusing a list this verb cannot use."""
     try:
         return match.read_tidal_tracks(rows)
     except match.UnreadableList as exc:
@@ -806,11 +788,60 @@ def _playlist_rows(found: catalogue.Catalogue, reference: str) -> tuple[Wanted, 
 def list_playlist(found: catalogue.Catalogue, reference: str) -> dict[str, dict[str, Any]]:
     """One playlist's tracks, frozen and keyed by item, as a playlist job queues them.
 
+    The listing and its failure boundary are the label verb's own, called
+    rather than copied, so ``label-playlist-unreadable`` means one thing and
+    carries one shape wherever a bound provider was asked about a playlist
+    and could not answer. What is this verb's is the reading of the rows.
+
     PUBLIC because ``crate sync all`` lists each account playlist it sweeps
     through exactly this path, so a row this verb refuses is refused there too.
     An empty mapping is a playlist the provider listed with nothing in it.
+
+    A PLAYLIST ONLY. The reserved reference is :func:`list_favorites`, which
+    carries a count this shape has nowhere to put.
     """
-    return frozen_rows(_playlist_rows(found, reference))
+    return frozen_rows(_read_rows(label_cli.playlist_tracks_or_refuse(found, reference), reference))
+
+
+def list_favorites(
+    found: catalogue.Catalogue,
+) -> tuple[dict[str, dict[str, Any]], catalogue.HeartsShortfall | None]:
+    """The account's hearts, frozen as a playlist job queues them, and any shortfall.
+
+    The hearts are read through the catalogue's own favourites listing and
+    then read, frozen and resolved exactly as a playlist's rows are, so owned,
+    offered and missing mean what they mean for any playlist. Ownership is the
+    match engine's one rule, not the source system's ISRC first rule, and a
+    heart the library lacks is not parked in a provider playlist: it is a
+    missing item, queued with its provider identifier.
+
+    THE SHORTFALL RIDES BESIDE THE ROWS (R-504). The provider counts hearts it
+    will not serve, so the listing can hold fewer rows than the account
+    declares. What came back is listed, and the shortfall is returned for the
+    caller to report by count, because the job alone would resolve the short
+    listing as if it were the account.
+
+    PUBLIC because ``crate sync all`` lists the hearts through exactly this
+    path, so its inbound check and this verb report the same numbers.
+    """
+    rows, short = label_cli.favourite_tracks_or_refuse(found, FAVORITES)
+    return frozen_rows(_read_rows(rows, FAVORITES)), short
+
+
+#: The warning code a hearts listing carries when it came back short.
+HEARTS_WITHHELD = "intake-hearts-withheld"
+
+
+def withheld_warning(short: catalogue.HeartsShortfall) -> dict[str, str]:
+    """The words a person reads for a short hearts listing, one spelling of them."""
+    return {
+        "code": HEARTS_WITHHELD,
+        "message": (
+            f"the account's hearts listed short: {short.summary()}. The provider "
+            f"counts hearts it will not serve and does not say which, so the "
+            f"{short.withheld} withheld are in no report this job makes"
+        ),
+    }
 
 
 def queue_playlist(
@@ -867,9 +898,21 @@ def intake_playlist(ctx) -> Envelope:
         if hearts:
             reference = FAVORITES
         found = catalogue.resolve(cfg)
-        tracks = list_playlist(found, reference)
+        short = None
+        if hearts:
+            tracks, short = list_favorites(found)
+        else:
+            tracks = list_playlist(found, reference)
+        # A SHORT HEARTS LISTING IS SAID, whatever else the run does, and an
+        # empty one that the account says is not empty most of all (R-504).
+        extra = {"shortfall": short.block()} if short is not None else {}
+        warnings = (withheld_warning(short),) if short is not None else ()
         if not tracks:
-            return ctx.envelope(data=_no_op("no-tracks", source=reference), outcome=Outcome.NO_OP)
+            return ctx.envelope(
+                data=_no_op("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,
+                warnings=warnings,
+            )
         job = queue_playlist(
             store,
             cfg,
@@ -878,7 +921,7 @@ def intake_playlist(ctx) -> Envelope:
             tracks=tracks,
             source_id=FAVORITES_SOURCE_ID if hearts else None,
         )
-        return ctx.envelope(data=_reported(store, job))
+        return ctx.envelope(data=_reported(store, job, extra), warnings=warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -1029,6 +1072,7 @@ __all__ = [
     "CALLS",
     "FAVORITES",
     "FAVORITES_SOURCE_ID",
+    "HEARTS_WITHHELD",
     "INTAKE_KEYS",
     "SOURCE",
     "TRACKLISTS_DIR",
@@ -1049,6 +1093,7 @@ __all__ = [
     "intake_set",
     "is_favorites",
     "item_key",
+    "list_favorites",
     "list_playlist",
     "playlist_argv",
     "queue_playlist",
@@ -1057,4 +1102,5 @@ __all__ = [
     "set_argv",
     "thawed",
     "tracklist_name",
+    "withheld_warning",
 ]

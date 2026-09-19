@@ -601,12 +601,18 @@ class HeartsFavorites:
     ``endless`` serves a full window at every offset, which is what a provider
     whose offset parameter stopped advancing looks like, and is the shape that
     spends the listing's whole request budget.
+
+    ``unservable`` names hearts the provider COUNTS and leaves out of every
+    window it serves, which is the shape R-383 measured live: the window is cut
+    from the counted sequence and then filtered, so a page comes back short
+    and the walk still ends where the count says (R-504).
     """
 
-    def __init__(self, tracks, *, declared=None, endless=False) -> None:
+    def __init__(self, tracks, *, declared=None, endless=False, unservable=()) -> None:
         self._tracks = list(tracks)
         self.declared = len(self._tracks) if declared is None else declared
         self.endless = endless
+        self.unservable = set(unservable)
         self.pages: list[tuple[int, int]] = []
 
     def tracks(self, limit: int | None = None, offset: int = 0):
@@ -614,7 +620,8 @@ class HeartsFavorites:
         self.pages.append((size, offset))
         if self.endless:
             return self._tracks[:size]
-        return self._tracks[offset : offset + size]
+        window = self._tracks[offset : offset + size]
+        return [track for track in window if track.id not in self.unservable]
 
     def get_tracks_count(self) -> int:
         return self.declared
@@ -651,6 +658,102 @@ def test_a_hearts_listing_that_never_ends_raises_and_never_returns_a_short_one()
     assert excinfo.value.cause.reason == "label-playlist-unreadable"
     assert excinfo.value.cause.detail["kind"] == "ListingTruncated"
     assert excinfo.value.cause.detail["playlist"] == "favorites"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-504: a hearts listing shorter than the account declares is reported
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: The live shape R-383 measured and R-504 drove: 197 counted, 12 withheld.
+DECLARED_HEARTS = 197
+WITHHELD_IDS = frozenset(str(900 + n) for n in range(0, 197, 17))
+
+
+def withholding_favorites() -> HeartsFavorites:
+    hearts = [ProviderTrack(str(900 + n), f"Act {n}", f"Title {n}") for n in range(197)]
+    return HeartsFavorites(hearts, unservable=WITHHELD_IDS)
+
+
+def test_a_listing_short_of_the_declared_count_raises_the_shortfall_with_its_rows():
+    """The walk ends where the count says and the rows still come up short.
+    Before R-504 this returned 185 rows as the account and raised nothing."""
+    assert len(WITHHELD_IDS) == 12
+    favorites = withholding_favorites()
+    adapter = tidal_catalogue.TidalCatalogue(hearts_client(favorites))
+    with pytest.raises(catalogue.HeartsShortfall) as excinfo:
+        adapter.favourite_tracks()
+    short = excinfo.value
+    assert (short.declared, short.listed, short.withheld) == (197, 185, 12)
+    assert short.summary() == "197 declared, 185 listed, 12 withheld by the provider"
+    assert short.block() == {"declared": 197, "listed": 185, "withheld": 12}
+    served = [str(900 + n) for n in range(197) if str(900 + n) not in WITHHELD_IDS]
+    assert [track.id for track in short.rows] == served
+    assert len(favorites.pages) == 2, "the walk did not end on the declared count"
+
+
+def test_the_verb_boundary_keeps_the_rows_and_hands_back_the_shortfall():
+    """Not refused as an unreadable listing: the rows are hearts the provider
+    served, so they are listed, and the count withheld rides beside them."""
+    adapter = tidal_catalogue.TidalCatalogue(hearts_client(withholding_favorites()))
+    rows, short = label_cli.favourite_tracks_or_refuse(adapter, "favorites")
+    assert len(rows) == 185
+    assert short is not None and short.withheld == 12
+
+
+def test_a_complete_hearts_listing_reports_no_shortfall():
+    hearts = [ProviderTrack(str(500 + n), f"Act {n}", f"Title {n}") for n in range(120)]
+    adapter = tidal_catalogue.TidalCatalogue(hearts_client(HeartsFavorites(hearts)))
+    rows, short = label_cli.favourite_tracks_or_refuse(adapter, "favorites")
+    assert len(rows) == 120
+    assert short is None
+
+
+def test_a_listing_longer_than_its_count_is_not_a_shortfall():
+    """A heart added while the read is in progress can leave more rows than
+    the count the walk began on. That is not hearts withheld."""
+    hearts = [ProviderTrack(str(500 + n), f"Act {n}", f"Title {n}") for n in range(40)]
+    adapter = tidal_catalogue.TidalCatalogue(hearts_client(HeartsFavorites(hearts, declared=38)))
+    assert len(adapter.favourite_tracks()) == 40
+
+
+@pytest.mark.parametrize("declared", [0, -1, None])
+def test_a_count_the_provider_did_not_publish_leaves_nothing_to_compare(declared):
+    """A zero or sentinel count is not trusted as an end by the walk, and so is
+    not trusted as a total to fall short of either."""
+    hearts = [ProviderTrack(str(500 + n), f"Act {n}", f"Title {n}") for n in range(30)]
+    favorites = HeartsFavorites(hearts)
+    favorites.declared = declared
+    rows = tidal_catalogue.TidalCatalogue(hearts_client(favorites)).favourite_tracks()
+    assert len(rows) == 30
+    # THE LISTING SAYS SO TOO, rather than handing back a sentinel as a count.
+    assert listing.favorite_tracks_declared(hearts_client(favorites)) == (hearts, None)
+
+
+def test_the_listing_hands_back_the_count_the_walk_ended_on():
+    favorites = withholding_favorites()
+    rows, declared = listing.favorite_tracks_declared(hearts_client(favorites))
+    assert (len(rows), declared) == (185, 197)
+
+
+def test_intake_playlist_favorites_lists_what_came_back_and_names_the_shortfall(
+    cfg, monkeypatch
+):
+    """Driven through the real adapter and the real dispatcher."""
+    use_client(monkeypatch, hearts_client(withholding_favorites()))
+    record_session()
+    code, envelope = drive(["intake", "playlist", "favorites"])
+    assert code == int(ExitCode.OK), envelope
+    with jobs.open_store() as store:
+        items = jobs.items(store, envelope["data"]["job_id"])
+    assert len(items) == 185
+    assert not {item.item_id for item in items} & WITHHELD_IDS
+    assert envelope["data"]["progress"]["shortfall"] == {
+        "declared": 197,
+        "listed": 185,
+        "withheld": 12,
+    }
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == "intake-hearts-withheld"]
+    assert "197 declared, 185 listed, 12 withheld by the provider" in warning["message"]
 
 
 def test_a_client_that_exposes_no_favourites_refuses_rather_than_holding_no_hearts():

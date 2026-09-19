@@ -790,8 +790,17 @@ def playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> lis
         ) from exc
 
 
-def favourite_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> list:
+def favourite_tracks_or_refuse(
+    found: catalogue.Catalogue, reference: str
+) -> tuple[list, catalogue.HeartsShortfall | None]:
     """List the account's hearts, translating a provider failure at the same boundary.
+
+    Returns the rows and, when the listing came back shorter than the account
+    declares, the :class:`~cratekit.label.catalogue.HeartsShortfall` that says
+    by how much (R-504). A shortfall is not a failure to read: the rows it
+    carries are hearts the provider served, so they are listed, and the caller
+    reports the count withheld. It is caught BEFORE the broad translation
+    below, which would otherwise refuse it as an unreadable listing.
 
     THE SAME TRANSLATION AS :func:`playlist_tracks_or_refuse`, and for the same
     reasons: a ``CratekitError`` passes through so an adapter's own refusal keeps
@@ -805,7 +814,9 @@ def favourite_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> li
     refusal names the input the way the playlist refusal does.
     """
     try:
-        return list(found.favourite_tracks())
+        return list(found.favourite_tracks()), None
+    except catalogue.HeartsShortfall as short:
+        return list(short.rows), short
     except CratekitError:
         raise
     except Exception as exc:

@@ -5332,7 +5332,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the answers a pass paid for could not be kept. Every refusal the verb
     # raises reuses intake-list-unusable, library-volume-unmounted or a slug
     # recognition already reserves.
-    assert (len(literals), len(literals - set(causes))) == (449, 289), (
+    # Re-pinned on the residual finding "The hearts listing returns short with
+    # no error when the provider withholds unservable hearts", 2026-09-19: 449
+    # to 450 distinct, 289 to 290 non-keys. ONE literal joined and NOTHING left, differenced over the branch's diff
+    # of `src` against `main` with `git grep` on `main` for it. It is not a
+    # cause: intake-hearts-withheld is the WARNING code `intake playlist
+    # favorites` adds when the hearts listing came back short of the count the
+    # account declares, naming the three numbers. The listing still queues,
+    # so nothing refuses with it.
+    assert (len(literals), len(literals - set(causes))) == (450, 290), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

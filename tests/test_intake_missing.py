@@ -259,6 +259,87 @@ def test_a_job_with_nothing_missing_is_no_op_and_writes_nothing(cfg, library, mo
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# R-504: hearts the provider counts and does not serve
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class Withholding(StrictCatalogue):
+    """The seam answering as the adapter does when its listing came back
+    short of the account's declared count: the rows it served, and the count."""
+
+    def __init__(self, rows: list[Track], *, declared: int) -> None:
+        super().__init__(hearts=rows)
+        self.declared = declared
+
+    def favourite_tracks(self):
+        self.heart_listings += 1
+        raise catalogue.HeartsShortfall(self.hearts, self.declared)
+
+
+def withheld(envelope: dict) -> list[dict]:
+    return [w for w in envelope["warnings"] if w["code"] == "intake-hearts-withheld"]
+
+
+def test_a_short_hearts_listing_is_queued_and_says_by_how_much(cfg, library, monkeypatch):
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Withholding(hearts(), declared=7)))
+    code, envelope = drive(["intake", "playlist", "favorites"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    assert envelope["data"]["progress"]["shortfall"] == {
+        "declared": 7,
+        "listed": 5,
+        "withheld": 2,
+    }
+    (warning,) = withheld(envelope)
+    assert "7 declared, 5 listed, 2 withheld by the provider" in warning["message"]
+    with jobs.open_store() as store:
+        items = jobs.items(store, envelope["data"]["job_id"])
+    assert [item.item_id for item in items] == ["201", "202", "203", "204", "205"]
+
+    # WHAT CAME BACK IS STILL LISTED, through to the missing list.
+    mixed_library(library)
+    code, done = drive(resume_argv(envelope["data"]["job_id"]))
+    assert code == int(ExitCode.OK), done
+    code, listed = missing(envelope["data"]["job_id"])
+    assert code == int(ExitCode.OK), listed
+    assert listed["data"]["summary"]["written"] == 2
+
+
+def test_the_default_human_output_names_the_shortfall(cfg, library, monkeypatch):
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Withholding(hearts(), declared=7)))
+    code, text = human(["intake", "playlist", "favorites"])
+    assert code == int(ExitCode.OK), text
+    assert "warning [intake-hearts-withheld]:" in text
+    assert "7 declared, 5 listed, 2 withheld by the provider" in text
+
+
+def test_a_complete_hearts_listing_says_nothing_of_a_shortfall(cfg, library, monkeypatch):
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(StrictCatalogue(hearts=hearts())))
+    code, envelope = drive(["intake", "playlist", "favorites"])
+    assert code == int(ExitCode.OK), envelope
+    assert withheld(envelope) == []
+    assert "shortfall" not in envelope["data"]["progress"]
+
+
+def test_hearts_all_withheld_are_not_read_as_an_account_with_none(cfg, library, monkeypatch):
+    """Nothing to queue, and still not the quiet no-op an empty account gets."""
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Withholding([], declared=3)))
+    code, envelope = drive(["intake", "playlist", "favorites"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["progress"]["shortfall"] == {
+        "declared": 3,
+        "listed": 0,
+        "withheld": 3,
+    }
+    (warning,) = withheld(envelope)
+    assert "3 declared, 0 listed, 3 withheld by the provider" in warning["message"]
+    with jobs.open_store() as store:
+        assert list(jobs.list_jobs(store)) == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # What is refused
 # ═══════════════════════════════════════════════════════════════════════════
 
