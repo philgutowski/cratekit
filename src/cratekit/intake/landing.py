@@ -216,7 +216,7 @@ def lock_key(batch: str) -> str:
     A digest and not the name, because a batch name may hold anything a folder
     name can and may be as long as one, and the lock file's name gains a suffix.
     """
-    folded = unicodedata.normalize("NFC", unicodedata.normalize("NFC", batch).casefold())
+    folded = unicodedata.normalize("NFC", batch.casefold())
     return hashlib.sha256(folded.encode("utf-8")).hexdigest()
 
 

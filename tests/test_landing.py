@@ -714,12 +714,16 @@ def test_a_released_batch_lock_leaves_its_file_and_can_be_taken_again(cfg):
 
 
 def test_a_refusal_inside_the_batch_lock_releases_it(cfg):
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError) as excinfo:
         with landing.batch_lock(BATCH):
             raise RuntimeError("the landing failed")
 
     with landing.batch_lock(BATCH):
         pass
+    # KEPT ALIVE ACROSS THE SECOND TAKE, ON PURPOSE. The traceback holds the
+    # lock's own frame, so a release left to the collector has not happened yet
+    # and only the one in the ``finally`` lets the second take through.
+    assert excinfo.value.__traceback__ is not None
 
 
 def test_two_batch_names_are_held_together(cfg):
