@@ -4,7 +4,36 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-239, issue #156, `relay/156`, 2026-09-18.**
+**Last merged: U74, issue #119, `relay/119`, 2026-09-18.**
+`crate sync all` queues the account's hearts even when the outbound confirm is
+declined, which closes R-423. `SourceSpec` gained `inbound_key`, set to
+`intake.playlist` on the favourites spec alone, so the half runs only when the
+favourites module is enabled and the `PLANNERS` to `SPECS` pin did not move.
+`_plan_favorites` plans the half FIRST, into an `_Inbound` on the plan with its
+own queue callable, refusal and jobs, and then catches the outbound export
+refusal itself, because raising it to `_plan` built a fresh plan and dropped
+the read. The hearts are listed at plan time through `intake.cli.list_playlist`
+with the reserved reference and queued with the shared `run_id` and `source_id`
+favorites, exactly as `crate intake playlist favorites` queues them. An open
+hearts job for this library, from a pass or queued by hand, holds the half as
+`in-flight`; an empty listing is `empty`; both reuse `playlists.Excluded`, so
+no kebab literal was added and `tests/test_reserved_causes.py` did not move. A
+catalogue refusal is recorded against the half and the other sources run. The
+summary gains `favorites.inbound`, the checks gain `sync.favorites.inbound`,
+the gate screen gains `inbound`, the job counts toward `queued` and
+`sync.next`, and a hearts refusal joins the refusal list after the outbound
+one, so a declined pass it alone stopped is that refusal, not a no-op.
+`not_queued.favorites` is still the outbound half only. The unit's
+`/code-review` drove two findings, both fixed: the check said "not listed" over
+a queue refusal, and the gate screen said nothing about the read. Mutation
+tables `docs/mutation/u74.md` and `u74-b.md`, 24 of 24 killing, read in
+`u74-notes.md`. R-438 filed, not on the board: a full pass opens the catalogue
+twice. Issue 110, the board's record of R-423, closes by keyword in this
+branch's record commit when `main` is pushed. Owed to the `sync all` sitting: one live
+pass with the heart count compared against the account's 197. **Main's highest
+residual number is R-438.**
+
+**The session before: R-239, issue #156, `relay/156`, 2026-09-18.**
 Every open of the rekordbox database asks the file whether it needs the key,
 which closes R-239. `rb_writer.open_db` and `rb_writer.integrity_ok` default
 `unlock` to `None`, and `None` asks `unlock_needed(target)` just before the

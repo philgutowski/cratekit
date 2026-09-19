@@ -625,6 +625,18 @@ and `sync favorites` run what it queues. It declares no `long_running` and no
 *Avoid:* a composer that spells a source's payload again. Each source owns one
 `queue_sweep`, and the composer calls it.
 
+### Inbound half
+A source's read only half, declared as `inbound_key` on its spec. Favourites is
+the one source with one: its outbound half hearts local favourites on the account
+behind the confirmation, and its inbound half lists the account's hearts into the
+library as an `intake.playlist` job. `crate sync all` queues the inbound half
+whatever the confirmation's answer, because a read needs no consent a write does,
+and reports it apart, as `summary.favorites.inbound` and the
+`sync.favorites.inbound` check.
+
+*Avoid:* reading `not_queued.favorites` as the whole source. It is the outbound
+half's answer only.
+
 ### Hand off
 Carrying a decision recorded on one run to a new run owned by another verb, so
 that verb's queued job can resume. The dispatcher refuses a `--run` whose record

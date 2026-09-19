@@ -18063,6 +18063,23 @@ live read and one real `intake playlist favorites`, `intake missing`,
 `sync all` queueing the hearts, U74. Board issue 110 is left open for that
 sitting to close.
 
+**Closed 2026-09-18 on `relay/119`, U74.** `crate sync all` queues the
+account's hearts under `intake.playlist` with the pass's shared `run_id` and
+`source_id` favorites, only when the favourites module is enabled, and
+whatever the outbound confirmation's answer. A missing export no longer drops
+the read either. A catalogue refusal or an unreadable listing is reported for
+the hearts alone, in `summary.favorites.inbound` and a
+`sync.favorites.inbound` check, and the other sources still run. An open hearts
+job for this library, queued by a pass or by `crate intake playlist favorites`,
+holds the next pass. The job counts toward `sync.next`, so `crate intake
+missing --run` lists its missing hearts with the rest of the pass. Driven in
+`tests/test_sync_all.py`. Mutation tables `docs/mutation/u74.md` and
+`u74-b.md`, 24 of 24 killing, the author's. With the listing (U70), the list
+document (U69 and U73) and this, every step of the closing condition is built
+and driven on fakes, so the entry is closed and issue 110 closes with it. The
+live read, with the heart count compared against the account's 197, stays
+owed to the `sync all` sitting.
+
 ---
 
 ## R-424. `crate sync favorites` declares a local colour and tag write it never performs
@@ -18421,5 +18438,28 @@ which the brief named as a follow up rather than this unit's.
 
 **Closes when:** `_append_intake` and the tests pinning it are removed, or a
 caller that acquires is given it deliberately.
+
+---
+
+## R-438. `crate sync all` opens the provider catalogue twice in a full profile pass
+
+**Found:** 2026-09-18, by U74 on `relay/119`. Read, not driven.
+
+`label.catalogue.resolve` opens a fresh catalogue on every call through
+`tidal_catalogue.open_catalogue`, and it caches nothing. The favourites
+planner's hearts half and the playlists planner each call it, so a full
+profile pass opens two provider sessions where one would serve. A slim pass
+opens one, as before.
+
+**Measured cost:** unmeasured live. One extra session open per pass, before
+any listing, and it doubles the chance that a transient provider fault refuses
+one of the two sources.
+
+**Why not fixed here.** Sharing one catalogue across planners is a change to
+the composer's shape, and the brief scoped this unit to the favourites
+planner.
+
+**Closes when:** one pass resolves the catalogue once and hands it to every
+planner that reads it, or the cost is measured live and judged negligible.
 
 ---
