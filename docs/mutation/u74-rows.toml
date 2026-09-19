@@ -1,0 +1,121 @@
+name = "u74"
+pass_kind = "light"
+
+# U74's planner guards: the spec field, the open job selection, the listing and
+# the write half's refusal being caught where it no longer drops the read.
+# Batch A of two. Batch B is u74-b-rows.toml.
+
+[[rows]]
+id = "A1_no_inbound_key"
+description = "The favourites spec declares no read half, so sync all never lists the hearts"
+file = "src/cratekit/sync/sources.py"
+surface = "user"
+old = '''        inbound_key="intake.playlist",'''
+new = '''        inbound_key=None,'''
+
+[[rows]]
+id = "A2_wrong_inbound_key"
+description = "The read half is queued under intake.set, a key whose worker reads a tracklist, not a listing"
+file = "src/cratekit/sync/sources.py"
+surface = "user"
+old = '''        inbound_key="intake.playlist",'''
+new = '''        inbound_key="intake.set",'''
+
+[[rows]]
+id = "A3_handler_filter"
+description = "Drop the handler key filter, so an open outbound favourites job holds the hearts listing"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        if job.handler_key == handler_key
+        and (job.payload or {}).get("source_id") == intake_cli.FAVORITES_SOURCE_ID'''
+new = '''        if True
+        and (job.payload or {}).get("source_id") == intake_cli.FAVORITES_SOURCE_ID'''
+
+[[rows]]
+id = "A4_source_filter"
+description = "Drop the source_id filter, so an open playlists job holds the hearts listing"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        and (job.payload or {}).get("source_id") == intake_cli.FAVORITES_SOURCE_ID
+        and job.library_id == cfg.library.volume_id'''
+new = '''        and True
+        and job.library_id == cfg.library.volume_id'''
+
+[[rows]]
+id = "A5_library_filter"
+description = "Drop the library filter, so another library's open hearts job holds this one"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        and job.library_id == cfg.library.volume_id
+    )'''
+new = '''        and True
+    )'''
+
+[[rows]]
+id = "A6_open_filter"
+description = "Count a finished hearts job as open, so a failed job holds every later pass"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''                if job.is_open()
+            )'''
+new = '''                if True
+            )'''
+
+[[rows]]
+id = "A7_in_flight_guard"
+description = "Ignore an open hearts job, so every pass queues a second listing beside it"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        if in_flight:
+            inbound.not_queued'''
+new = '''        if False:
+            inbound.not_queued'''
+
+[[rows]]
+id = "A8_empty_guard"
+description = "Queue an empty hearts listing as a job, rather than reporting no hearts"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    if not tracks:
+        inbound.not_queued = playlists.Excluded.EMPTY'''
+new = '''    if False:
+        inbound.not_queued = playlists.Excluded.EMPTY'''
+
+[[rows]]
+id = "A9_listing_refusal_raised"
+description = "Raise a hearts listing refusal instead of recording it, so it ends the favourites source"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        inbound.refused, inbound.not_queued = exc.cause, exc.cause.reason
+        return inbound'''
+new = '''        raise'''
+
+[[rows]]
+id = "A10_export_refusal_raised"
+description = "Raise the write half's export refusal to _plan again, which drops the read half with it"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        plan.refused, plan.not_queued = exc.cause, exc.cause.reason
+        return plan'''
+new = '''        raise'''
+
+[[rows]]
+id = "A11_queue_not_bound"
+description = "Never bind the read half's queue callable, so a listed half queues nothing"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    inbound.queue = queue
+    return inbound'''
+new = '''    return inbound'''
+
+[[rows]]
+id = "A12_run_id_dropped"
+description = "Queue the hearts job without the shared run id, so intake missing --run cannot find it"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''                tracks=tracks,
+                run_id=run_id,
+                source_id=intake_cli.FAVORITES_SOURCE_ID,'''
+new = '''                tracks=tracks,
+                run_id=None,
+                source_id=intake_cli.FAVORITES_SOURCE_ID,'''

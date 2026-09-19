@@ -28,15 +28,30 @@ class SourceSpec:
     not built rather than queued as work nothing runs (R-203). The keys are
     pinned against the registry in ``tests/test_sync_all.py``, since this layer
     may not import it (KTD23).
+
+    ``inbound_key`` is the key a source's READ ONLY half queues under, when the
+    source has one (U74). Favourites writes hearts to the account behind a
+    confirmation and also reads the account's hearts into the library; the read
+    needs no consent, so ``crate sync all`` queues it whatever the confirmation's
+    answer. It is a field of the source rather than a source of its own, because
+    it is switched by the same module and ``PLANNERS`` is pinned to ``SPECS``.
     """
 
     source_id: str
     module_id: str | None = None
     handler_key: str | None = None
+    inbound_key: str | None = None
 
 
 SPECS: tuple[SourceSpec, ...] = (
-    SourceSpec("favorites", module_id="favorites", handler_key="sync.favorites"),
+    SourceSpec(
+        "favorites",
+        module_id="favorites",
+        handler_key="sync.favorites",
+        # THE HEARTS LISTING (U74), queued as ``crate intake playlist favorites``
+        # queues it, so the intake worker resolves each heart.
+        inbound_key="intake.playlist",
+    ),
     SourceSpec("labels", module_id="labels", handler_key="sync.labels"),
     # NO WORKER OF ITS OWN (U64). Each new account playlist is queued as the
     # job ``crate intake playlist`` queues, so the intake worker runs it.
