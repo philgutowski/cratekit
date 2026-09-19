@@ -8762,6 +8762,16 @@ and a sweep offers releases the library already holds. Reordering two steps that
 both filter on an empty set would change nothing. That is R-259, filed separately
 because satisfying this entry's closing condition would not close it.
 
+**Closed 2026-09-19 on `relay/161`, with R-259.** `LabelSource` takes an
+`owned` container and `list_recent` hands it to every label's
+`list_for_label`, where an owned release is skipped before the per label cap
+counts it, so owned is dropped before newest N and not after the increment has
+sliced. Driven through `LabelSource.list_recent` and `run.increment` at a limit
+of one, an owned newest release and an unowned older one:
+`test_an_owned_newest_release_does_not_hide_an_older_unowned_one` in
+`tests/modules/test_labels.py`. Row W2 of `docs/mutation/r259.md`, which stops
+`list_recent` passing the container, kills it.
+
 ---
 
 ## R-138. The 400 cap is albums, not tracks
@@ -13155,6 +13165,28 @@ Either is a unit, not a line in a worker.
 **Closes when:** the labels path is handed a real set of owned release
 identities, and a sweep of a label whose catalogue the library already holds
 offers nothing.
+
+**Closed 2026-09-19 on `relay/161`.** The producer is
+`label.sweep.OwnedReleases`, a container rather than a set, because a release
+is known only by the provider's identifier and nobody can list what is owned
+without reading every release. Membership reads the release's tracks through
+`Catalogue.release_tracks` and resolves each against the library index
+`match_cli.library_view` builds, the one `label approved` uses. Owned means the
+provider lists at least one track and every track resolves matched; no track,
+an unreadable row, another version, a release that is gone and a track read the
+provider could not answer all answer not owned, and the release is offered. The
+worker hands one instance to the source and to the increment, so each release
+is read once, and shares one library walk across a job's labels. Ownership is
+asked after verification now, so an unconfirmed release is never read and the
+"confirmed none" refusal counts what it counted before. Driven through the real
+dispatcher, queue and driver in section 12 of `tests/test_label_workers.py`:
+a label whose every track is held offers nothing and succeeds. Mutation tables
+`docs/mutation/r259.md` and `r259-b.md`, read in `r259-notes.md`.
+
+**The cost paragraph above overstates the recurrence, read and not driven.**
+`review.offer` returns the row already there for an identity and does not
+reopen a decided one, so an owned release cost one decline once, not one per
+sweep. What this closure trades that for is R-465.
 
 ---
 
@@ -19394,3 +19426,75 @@ gate holds reaches the list only through another intake verb.
 
 **Closes when:** a held release can be passed by a named act, or the decision
 that the gate outranks an acceptance is recorded.
+
+---
+
+## R-464. Harvest offers a label the registry already holds
+
+**Found:** 2026-09-19, on `relay/161`, looking one file over from R-259 for the
+same shape, METHOD's fifth pattern.
+
+`harvest.from_tracks` offers every confirmed label name into the label release
+queue and is handed nothing about the registry, and `label.cli.harvest_playlist`
+passes it nothing (`src/cratekit/label/harvest.py:111-144`). Driven on
+2026-09-19 through the real dispatcher with the fake catalogue: `Anjunadeep`
+added with `crate label registry add`, then `crate label harvest` over a
+playlist whose one track carries `2026 Anjunadeep`. Exit 0, and the queue held
+one `harvested-label` item named `Anjunadeep`.
+
+**Measured cost.** One review row per already registered label per harvest,
+which a person declines or accepts to no effect: `registry adopt` resolves a
+held name and does not file it twice (U100), so nothing is damaged. Harvest is
+run once per playlist, so the cost does not recur the way R-259's did. Below
+the board bar.
+
+**Closes when:** a harvest leaves a name the registry already resolves out of
+the queue, and says how many it left out.
+
+---
+
+## R-465. A label sweep reads the tracks of every owned release on every sweep
+
+**Found:** 2026-09-19, by `/code-review` on `relay/161`.
+
+`OwnedReleases` keeps its answers for one item and nothing across sweeps. An
+owned release does not count toward the per label cap, so a sweep of a label
+whose back catalogue the library holds verifies and then reads the tracks of
+every owned release it lists, on every sweep, an album read plus paged track
+reads each (`TidalCatalogue.release_tracks`). Before R-259 it verified them
+and offered them, and `review.offer` made the repeat offers free.
+
+**Measured cost.** Provider reads, against a rate limited endpoint; not
+measured against the live provider, which is attended. A read that fails is
+answered not owned and three in a row stop the asking, so an outage degrades
+to offering rather than refusing the label.
+
+**Options:** skip the ownership read for a release the label release queue
+already holds a decided item for, which is a local question and is exactly
+where the repeat offer used to be absorbed; or keep owned release identities
+across sweeps. The first is cheap and was not taken here because it changes
+what a declined release means to the sweep.
+
+**Closes when:** a release already owned, or already decided, is not read
+again on the next sweep.
+
+---
+
+## R-466. A release whose ownership could not be read is offered and nothing says why
+
+**Found:** 2026-09-19, on `relay/161`, choosing what a failed track read does.
+
+When `Catalogue.release_tracks` raises for a confirmed release, or after three
+such failures in a row, `OwnedReleases` answers not owned and the release is
+offered. The worker's envelope is exactly `job_state/1` (KTD7) and carries no
+warning, so a person reviewing it cannot tell an offer the library was checked
+for from one it was not. Offering is the conservative call: refusing withheld
+every new release on the label, which is what the first draft did and what
+`/code-review` flagged.
+
+**Measured cost.** None driven against the live provider. With the fake
+catalogue a release the library holds in full is offered when its read fails
+(`test_a_track_read_the_provider_could_not_answer_offers_the_release`).
+
+**Closes when:** an offer whose ownership was not read says so on the review
+item or the job, or the decision that it need not is recorded.
