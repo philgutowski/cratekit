@@ -17499,6 +17499,23 @@ progressive block (U84), and the registry summary still claims art. Whether a
 Pioneer player renders what this engine writes is unmeasured and owed to an
 attended sitting, one file on a real CDJ or XDJ.
 
+**Narrowed 2026-09-19 on `relay/129`, U84. The repair clause is closed.**
+`crate tag folder` now repairs art a FLAC already carries, in place and without
+the web, on every file it walks, tagged or not. `core/art.py`'s
+`repair_in_place` re-encodes any block declaring a zero width, height or depth,
+or holding data that is not a baseline JPEG, at native resolution, shrinking
+into the 800 pixel box only when the byte cap cannot be met otherwise, and
+fills the dimensions from the new bytes. `tagging/tag.py`'s `tag_one` calls it
+before the has-genre return, and the status reaches the item artifact as
+`art_repair` and the job summary as zero filled counts. Driven in
+`tests/test_tagging_engine.py` and `tests/test_tag_workers.py` on the vendored
+shape, a zeroed block built with mutagen, and measured in
+`docs/mutation/u84-a.md`, `u84-b.md` and `u84-a4.md`. **Still open:** `tag
+folder` fetches and embeds nothing for a file with no art (U85), the repair is
+FLAC only, which is parity, and the registry summary still claims art. Whether
+a Pioneer player renders the repaired block is unmeasured and owed to the same
+attended sitting.
+
 ---
 
 ## R-400. Nothing in the product can produce the list document `acquire download` reads
@@ -20001,3 +20018,48 @@ check, and the cost is a traceback where a refusal or a False was meant.
 
 **Closes when:** each reads its path once, as `sync.marks.require_output` does,
 or is recorded as not worth it.
+
+---
+
+## R-486. A retried tagging item reports its art as ok when the same job fixed it
+
+**Found:** 2026-09-19, on `relay/129`, U84, by `/code-review`.
+
+`tagging/tag.py`'s `tag_one` repairs a file's art first and saves it, then asks
+the catalogue for a genre. A catalogue nobody could read raises out of the
+item, by design, so the item fails with no artifact. The retry finds the art
+already sound and commits `art_repair: "ok"`, so the summary's `fixed` count
+misses a file this job rewrote and the artifact calls art sound that was
+broken when the job began.
+
+**Driven:** not driven end to end. Read from the source, and the order of the
+two steps in `tag_one` is what produces it.
+
+**Measured cost.** Nothing on disk is wrong: the art is repaired and says so.
+Only the count is low, and only for items that failed once on an unreadable
+catalogue and were retried.
+
+**Closes when:** a failed item's repair status survives to its retry, or the
+summary documents that `ok` means sound at the time of the committed attempt.
+
+---
+
+## R-487. A FLAC block declaring the wrong nonzero dimensions is read as sound
+
+**Found:** 2026-09-19, on `relay/129`, U84, while writing the repair's test.
+
+`core/art.py`'s `_needs_repair` follows the source system exactly: a block is
+broken when a declared dimension is zero or its data is not a baseline JPEG. A
+block declaring 1280 by 1280 over an 800 by 800 image passes both checks and
+is left alone. Whether a Pioneer player renders such a block is not known.
+
+**Driven:** not driven. No producer is known. The vendored downloader writes
+zeroes, which the repair catches, and U83's writer measures the bytes it
+writes.
+
+**Measured cost.** Unmeasured. It needs a third tool that fills the block from
+a figure other than the image, and a player that trusts the block over the
+image.
+
+**Closes when:** the repair compares declared dimensions with decoded ones and
+repairs a mismatch, or a player is shown to render such a block.

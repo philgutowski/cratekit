@@ -1,0 +1,72 @@
+{
+  "name": "u84-a4",
+  "pass_kind": "light",
+  "branch": "relay/129",
+  "head": "69aff7a",
+  "when": "2026-09-19 12:49 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8442,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/art.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/art.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "79d57c3058500eb1",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8442,
+    "baseline_collected": 8442,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A4_undecodable_is_broken",
+      "description": "Re-measure after the fix commit. Data that does not decode is read as sound, absence read as evidence of absence",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "35068ede4938edcf",
+      "subset": [
+        "tests/test_tagging_engine.py",
+        "tests/test_tag_workers.py",
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tagging_engine.py::test_an_undecodable_image_in_a_filled_block_is_an_error_not_ok[not-an-image]",
+        "tests/test_tagging_engine.py::test_an_undecodable_image_in_a_filled_block_is_an_error_not_ok[truncated-jpeg]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return measured is None or measured.format != \"JPEG\" or measured.progressive",
+      "new": "    return measured is not None and (measured.format != \"JPEG\" or measured.progressive)"
+    }
+  ],
+  "dropped": []
+}
