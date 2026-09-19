@@ -4924,7 +4924,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # as a library that already holds every approved release. It is the verb's
     # own and not in the reserved table. Population 159 to 160, non-reserved
     # 135 to 136, reserved half UNCHANGED at 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (160, 136, 24)
+    #
+    # Re-pinned on U80, 2026-09-19. ONE slug, named rather than counted:
+    # yt-dlp-missing, which ``acquire fallback`` raises when a second source
+    # search needs yt-dlp and the binaries module cannot resolve it, carrying
+    # that module's own remedy token and install hint. The reserved binary
+    # keys are remedy tokens and not declared reasons, so it follows
+    # rclone-missing and encoder-missing, and it is not in the reserved table.
+    # Population 160 to 161, non-reserved 136 to 137, reserved half UNCHANGED
+    # at 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (161, 137, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5298,7 +5307,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # and no-candidates is one of the seven STATES a searched row ends in.
     # Every refusal `intake missing --list` raises reuses intake-list-unusable,
     # unavailable-transient or library-volume-unmounted.
-    assert (len(literals), len(literals - set(causes))) == (442, 283), (
+    # Re-pinned on U80, 2026-09-19: 442 to 444 distinct, 283 to 284 non-keys.
+    # TWO literals joined and NOTHING left. yt-dlp-missing is the new cause,
+    # so it is a key. fallback-candidate is the KIND a second source question
+    # is offered under on the fallback-source queue, and it is not a cause.
+    # `acquire fallback` raises those, intake-list-unusable,
+    # unavailable-transient and library-volume-unmounted.
+    assert (len(literals), len(literals - set(causes))) == (444, 284), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5749,7 +5764,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # row count, compared with a length and never returned as a status.
     # Measured by listing this file's own holders on the branch and reading
     # label/catalogue.py's integer constants on main, which held none in range.
-    assert (len(literal_holders), len(literal_both)) == (98, 19), (
+    # Re-pinned on U80, 2026-09-19: 98 to 99 holders. ONE module joined and
+    # none left, and it is a new file. acquire/fallback_cli.py names
+    # library-volume-unmounted, unavailable-transient, intake-list-unusable
+    # and yt-dlp-missing through cause.refuse. acquire/fallback.py names no
+    # cause. Measured by listing this file's own holders on the
+    # branch. It holds no in-range integer, so the other half stays 19.
+    assert (len(literal_holders), len(literal_both)) == (99, 19), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
