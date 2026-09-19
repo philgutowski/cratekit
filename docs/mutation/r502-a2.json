@@ -1,0 +1,72 @@
+{
+  "name": "r502-a2",
+  "pass_kind": "light",
+  "branch": "relay/183",
+  "head": "f1ae176",
+  "when": "2026-09-19 19:03 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8763,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/missing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/missing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2362b860db919a83",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8763,
+    "baseline_collected": 8763,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G7_frozen_config",
+      "description": "Ask the library at the root the first job froze rather than the current configuration (the review's finding)",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0864955fda8cc290",
+      "subset": [
+        "tests/test_intake_missing.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing_search.py",
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.missing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 152,
+      "baseline_collected": 152,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_the_library_is_asked_where_it_is_now_not_where_the_job_froze_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    cfg = intake_cli._load()\n    music = Path(cfg.library.root) / cfg.library.music_dir",
+      "new": "    cfg = jobs.frozen_config(origins[0])\n    music = Path(cfg.library.root) / cfg.library.music_dir"
+    }
+  ],
+  "dropped": []
+}
