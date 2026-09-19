@@ -1,0 +1,150 @@
+name = "u88"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_zero_is_a_length"
+description = "_duration: a TotalTime of zero reads as a length rather than as unknown"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    return seconds if seconds > 0 else None'''
+new = '''    return seconds if seconds >= 0 else None'''
+
+[[rows]]
+id = "D2_prefix_digits"
+description = "_duration: match a leading run of digits instead of the whole value, so a fraction reaches int()"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''not _SECONDS.fullmatch(value.strip())'''
+new = '''not _SECONDS.match(value.strip())'''
+
+[[rows]]
+id = "D3_absent_attribute"
+description = "_duration: drop the absent attribute check, so a row with no TotalTime is read"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if value is None or not _SECONDS.fullmatch(value.strip()):'''
+new = '''    if not _SECONDS.fullmatch(value.strip()):'''
+
+[[rows]]
+id = "L1_bound_strict"
+description = "_long_tracks: a track of exactly the bound becomes a member"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        elif seconds > long_tracks.over_seconds and key not in members:'''
+new = '''        elif seconds >= long_tracks.over_seconds and key not in members:'''
+
+[[rows]]
+id = "L2_bound_coefficient"
+description = "_long_tracks: raise the bound by a minute over the declared value"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        elif seconds > long_tracks.over_seconds and key not in members:'''
+new = '''        elif seconds > long_tracks.over_seconds + 60 and key not in members:'''
+
+[[rows]]
+id = "L3_existing_members_replanned"
+description = "_long_tracks: drop the member exclusion, so the offered plan names tracks the playlist already holds"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        elif seconds > long_tracks.over_seconds and key not in members:'''
+new = '''        elif seconds > long_tracks.over_seconds:'''
+
+[[rows]]
+id = "L4_folder_warning_dropped"
+description = "_long_tracks: a root FOLDER of the playlist's name plans nothing and warns nothing"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        warnings.append({
+            "code": "route-write-skipped",
+            "message": f"the {long_tracks.display!r} playlist was not built: {held}",
+        })
+'''
+new = ""
+
+[[rows]]
+id = "L5_folder_refusal_bypassed"
+description = "_long_tracks: never take the refusal branch, so a root FOLDER is planned over and only the writer refuses"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if isinstance(held, str):
+        warnings.append({'''
+new = '''    if False:
+        warnings.append({'''
+
+[[rows]]
+id = "L7_apply_warning_unsurfaced"
+description = "route_inbox_export: the long track writer's own warning is never surfaced"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+tests = ["tests/test_routing_workers.py"]
+old = '''            [{"code": "route-write-skipped", "message": long_warning}]
+            if long_warning'''
+new = '''            [{"code": "route-write-skipped", "message": long_warning}]
+            if False'''
+
+[[rows]]
+id = "A1_long_alone_is_no_change"
+description = "apply_export: a run whose only change is the long track playlist writes no file"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if not report.inserted and not rated and not lengthened:'''
+new = '''    if not report.inserted and not rated:'''
+
+[[rows]]
+id = "A2_writer_called_with_nothing"
+description = "apply_export: call the long track writer even when nothing was planned"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if long_plan.keys and declared.long_tracks is not None:'''
+new = '''    if declared.long_tracks is not None:'''
+
+[[rows]]
+id = "I1_items_outside_intake"
+description = "plan_export: a long track outside the intake gets no item, so the digest omits its addition"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        for key in long_plan.keys
+        if key not in intake
+'''
+new = '''        for key in ()
+'''
+
+[[rows]]
+id = "I2_item_flag"
+description = "plan_export: an intake item never names the long track playlist"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''            "long_track": playlist if key in lengthy else "",'''
+new = '''            "long_track": "",'''
+
+[[rows]]
+id = "T1_unreadable_count"
+description = "route_inbox_export: the unreadable length count is reported as zero"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        duration_unreadable=long_plan.unreadable,'''
+new = '''        duration_unreadable=0,'''
+
+[[rows]]
+id = "P1_pending_summary"
+description = "_export_pending: the summary never names the long track additions"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        if lengthened
+        else ""'''
+new = '''        if False
+        else ""'''

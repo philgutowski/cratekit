@@ -1,0 +1,341 @@
+{
+  "name": "u88-b",
+  "pass_kind": "light",
+  "branch": "relay/133",
+  "head": "ad381d3",
+  "when": "2026-09-19 03:50 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7962,
+  "baseline_exit": 0,
+  "pytest_runs": 16,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/trees.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/trees.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "9e8e00259048efd9",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7962,
+    "baseline_collected": 7962,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "W1_replace_not_append",
+      "description": "add_to_root_playlist: write the new tracks alone, so the playlist's members are replaced",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b5c4369d6dbd8f09",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 78,
+      "baseline_collected": 78,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_track_is_never_removed_from_the_playlist",
+        "tests/test_routing_workers.py::test_the_add_only_writer_counts_each_new_track_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    warning = rbxml.insert_root_playlist(name, [*existing, *new], content)",
+      "new": "    warning = rbxml.insert_root_playlist(name, new, content)"
+    },
+    {
+      "id": "W2_nothing_new_still_writes",
+      "description": "add_to_root_playlist: drop the nothing new early return, so an unchanged playlist is rewritten",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6e069fe5cb7b8699",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7962,
+      "baseline_collected": 7962,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if not new:\n        return 0, None\n    warning = rbxml.insert_root_playlist",
+      "new": "    warning = rbxml.insert_root_playlist"
+    },
+    {
+      "id": "W3_dedupe",
+      "description": "add_to_root_playlist: drop the dedupe, so a repeated id or an existing member is added again",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "465d4eb5bd41371a",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 78,
+      "baseline_collected": 78,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_add_only_writer_counts_each_new_track_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if key not in held:",
+      "new": "        if True:"
+    },
+    {
+      "id": "W4_writer_warning_swallowed",
+      "description": "add_to_root_playlist: the insert writer's warning is dropped and the count reported as added",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "5f787e01395ff745",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 7962,
+      "baseline_collected": 7962,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if warning is not None:\n        return 0, warning\n    return len(new), None",
+      "new": "    return len(new), None"
+    },
+    {
+      "id": "X1_bound_below_one",
+      "description": "_build_long_tracks: accept a zero bound",
+      "file": "src/cratekit/core/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d6ce85ab7b81d5aa",
+      "subset": [
+        "tests/test_taxonomy.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 127,
+      "baseline_collected": 127,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy.py::test_a_long_track_bound_that_is_not_whole_positive_seconds_is_refused[0]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "or seconds < 1:",
+      "new": "or seconds < 0:"
+    },
+    {
+      "id": "X2_boolean_bound",
+      "description": "_build_long_tracks: accept a boolean bound, read as 1",
+      "file": "src/cratekit/core/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "acf4fe4559dbe5f2",
+      "subset": [
+        "tests/test_taxonomy.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 127,
+      "baseline_collected": 127,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy.py::test_a_long_track_bound_that_is_not_whole_positive_seconds_is_refused[True]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds < 1:",
+      "new": "    if not isinstance(seconds, int) or seconds < 1:"
+    },
+    {
+      "id": "X3_node_unvalidated",
+      "description": "build_taxonomy: the long track id and display are never validated",
+      "file": "src/cratekit/core/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d9eca560c3ede3f9",
+      "subset": [
+        "tests/test_taxonomy.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 127,
+      "baseline_collected": 127,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy.py::test_a_half_declared_long_track_playlist_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if long_tracks is not None:\n        declared_nodes.append((Node(long_tracks.id, long_tracks.display), \"long_tracks\"))\n",
+      "new": ""
+    },
+    {
+      "id": "X4_truthiness_not_presence",
+      "description": "_build_long_tracks: key on truthiness, so an empty [long_tracks] table reads as no section",
+      "file": "src/cratekit/core/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4a6ec1a376406707",
+      "subset": [
+        "tests/test_taxonomy.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 127,
+      "baseline_collected": 127,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy.py::test_a_half_declared_long_track_playlist_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if \"long_tracks\" not in data:",
+      "new": "    if not data.get(\"long_tracks\"):"
+    },
+    {
+      "id": "X5_default_coefficient",
+      "description": "DEFAULT_LONG_TRACK_SECONDS: a minute over the source system's twenty minutes",
+      "file": "src/cratekit/core/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6c1a417bd67c6ae5",
+      "subset": [
+        "tests/test_taxonomy.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 127,
+      "baseline_collected": 127,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy.py::test_a_long_track_playlist_with_no_bound_takes_the_source_systems"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DEFAULT_LONG_TRACK_SECONDS = 1200",
+      "new": "DEFAULT_LONG_TRACK_SECONDS = 1260"
+    },
+    {
+      "id": "X6_template_bound",
+      "description": "the shipped template: a bound of twenty two minutes instead of twenty",
+      "file": "src/cratekit/templates/taxonomy.default.toml",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a4631f7ae6b7602c",
+      "subset": [
+        "tests/test_taxonomy.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 127,
+      "baseline_collected": 127,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_track_of_exactly_the_bound_is_not_a_member",
+        "tests/test_routing_workers.py::test_the_long_track_values_the_tests_expect_are_the_shipped_declaration",
+        "tests/test_taxonomy.py::test_the_long_track_playlist_is_declared_in_the_shipped_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "over_seconds = 1200",
+      "new": "over_seconds = 1320"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "L6_whole_collection",
+      "description": "_long_tracks: read the intake keys alone instead of the whole collection",
+      "reason": "no single string revert expresses it; test_a_long_track_alone_is_a_change_and_writes_a_file and the one hour extra row in every long track test pin the whole collection read directly"
+    }
+  ]
+}
