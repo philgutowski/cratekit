@@ -104,12 +104,17 @@ def vocal_cut(cfg: config.Config) -> float:
     # AttributeError, which energy's tuple carries for its ``.items()`` call,
     # has no producer here. json.loads accepts NaN and Infinity, and a NaN cut
     # makes every ``voxlevel < cut`` false, which would tag every scored track
-    # as vox, so a threshold that is not finite is unreadable too.
+    # as vox, so a threshold that is not finite is unreadable too. A JSON
+    # boolean would read as a cut of 1.0 and an integer too large for a float
+    # raises OverflowError, and both are refused for the same reason.
     try:
-        threshold = float(json.loads(path.read_text(encoding="utf-8"))["threshold"])
+        raw = json.loads(path.read_text(encoding="utf-8"))["threshold"]
+        if isinstance(raw, bool):
+            raise TypeError(f"threshold {raw} is a boolean, not a number")
+        threshold = float(raw)
         if not math.isfinite(threshold):
             raise ValueError(f"threshold {threshold} is not a finite number")
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:
         raise refuse(
             "vocal-calibration-unreadable",
             f"this library's vocal calibration at {path} could not be read "

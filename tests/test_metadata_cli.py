@@ -129,8 +129,21 @@ def test_a_present_vocal_calibration_is_its_own_threshold(tmp_path):
         '{"threshold": null}',
         '{"threshold": NaN}',
         '{"threshold": Infinity}',
+        '{"threshold": 1' + "0" * 400 + "}",
+        '{"threshold": true}',
     ],
-    ids=["truncated", "empty", "list", "no-key", "text", "null", "nan", "infinity"],
+    ids=[
+        "truncated",
+        "empty",
+        "list",
+        "no-key",
+        "text",
+        "null",
+        "nan",
+        "infinity",
+        "overflow",
+        "boolean",
+    ],
 )
 def test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting(tmp_path, text):
     """R-342: a corrupt calibration is not an absent one, so it is never the default cut."""
