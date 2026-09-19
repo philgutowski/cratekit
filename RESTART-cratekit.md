@@ -4,7 +4,32 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U88, issue #133, `relay/133`, 2026-09-18.**
+**Last merged: R-316, issue #107, `relay/107`, 2026-09-19.**
+A declared vocal sub-playlist that a run did not derive is now said on the
+envelope. A confirmed `crate route inbox` and a driven `crate rebuild --job` or
+`crate route resort --job` carry a `vocal-dimension-not-compared` warning,
+`{code, message}`, beside any `config-drift` warning. The shipped taxonomy
+declares `with_vox` as additive and nothing reads a vocal calibration, so on
+this build that warning is on every such run. The inbox apply keeps the gaps
+`declared_membership` returns instead of dropping them, and the plan totals do
+not change. The resumes cannot read the rebuild's report, because `handle`
+still returns None and nothing persists it, so they ask
+`rebuild.governed_not_compared()`, which applies `not_derived` to the shipped
+taxonomy with no threshold. `not_derived` is the rule `derive_from_taxonomy`
+now calls, and `not_compared_warnings` is the one wording. R-443 records that
+choice and when it stops holding. A queue-only answer and a job finished on
+entry carry no vocal warning. The export route is unchanged, since it already
+reports the gaps as `totals.not_derived`, and a warning there would read as
+`route-blocked`. Nothing derives vocals. The unit's `/code-review` found no
+defect, and its one aside became a docstring correction. 10 new tests in
+`tests/test_routing_workers.py`, and the kebab literal pin in
+`tests/test_reserved_causes.py` moved 420 to 421. Mutation table
+`docs/mutation/r316.md`, 14 of 14 killing, the first row restoring the dropped
+gaps. R-443 filed, not on the board. Battery on the recorded tree: ruff clean,
+`scan_repo.py` exit 0, pytest 7971 passed and 1 skipped in 59 seconds.
+**Main's highest residual number is R-443.**
+
+**The session before: U88, issue #133, `relay/133`, 2026-09-18.**
 `crate route inbox --export X` now builds the "Sets and Long Tracks" playlist
 as it files and rates, which closes R-406. Every collection track, not only
 the intake, whose `TotalTime` is over the bound is added to one playlist that
@@ -1306,9 +1331,9 @@ learning. Four are worth knowing before touching routing again:
   over the refusal inside it, measured over the full suite twice. Nothing in the
   repository produces a colliding destination set. The extraction into
   `plan_destinations` is what made that measurable; the gap predates it.
-- **R-316.** Neither worker derives the vocal dimension and neither reports the
-  gap the engine hands them, so a library with vocal playlists declared gets a
-  clean job and an unfiled dimension.
+- **R-316, closed 2026-09-19.** Neither worker derives the vocal dimension,
+  and both now report the gap as a `vocal-dimension-not-compared` warning.
+  Deriving it is still open.
 - **R-313.** `route.unplaced` declares `writes` and `destructive` and only
   reports, so a person is told to close rekordbox for a read.
 

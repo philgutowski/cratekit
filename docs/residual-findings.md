@@ -14583,6 +14583,22 @@ to run.
 which is the wording `handlers.drift_warnings` already establishes for
 "something about this run is not what you would assume".
 
+**Closed 2026-09-19 on `relay/107`, issue 107.** A confirmed `crate route
+inbox` keeps the gaps `declared_membership` returns for every native tree and
+carries a `vocal-dimension-not-compared` warning, `{code, message}`, with the
+plan totals unchanged. `crate rebuild --job` and `crate route resort --job`
+carry the same warning on the branch that drove the job, beside any
+`config-drift` warning. A queue-only answer and a job already finished on
+entry carry none. `handle` still returns None. The rule is
+`rebuild.not_derived`, which `derive_from_taxonomy` now calls, and the wording
+is `rebuild.not_compared_warnings`, one for all three surfaces. How the
+resumes learn the gap differs from the brief, and R-443 records that. The
+export route is untouched: it already reports the gaps in its totals as
+`not_derived`, and a warning there would turn a run with nothing to route into
+`route-blocked`. Nothing derives vocals and no threshold is passed. Driven by
+the R-316 section of `tests/test_routing_workers.py`. Mutation table
+`docs/mutation/r316.md`, 14 of 14 killing.
+
 ---
 
 ## R-317. A confirmed intake plan does not say which trees it will be written into
@@ -18644,5 +18660,45 @@ track there that nothing keeps.
 
 **Closes when:** the pass removes stale members while keeping a person's
 choices, or the decision to only add is confirmed at an attended sitting.
+
+---
+
+## R-443. The rebuild resume asks the engine for the vocal gap rather than reading the report the rebuild made
+
+**Found:** 2026-09-19, R-316 on `relay/107`, as a decision the brief did not
+foresee.
+
+The brief for R-316 told `_resume` to read `not_compared` from "the
+ConvergenceReport the rebuild already wrote". Nothing persists that report.
+`rebuild_governed_tree` returns a `RebuildReport` to `handle`, the brief
+forbids changing `handle`'s None return, and the driver keeps no per item
+result, so by the time `_resume` holds the envelope the report is gone.
+
+Two ways remained. Run `report_convergence` again over each item's tree after
+the job, which opens the database a second time, walks and reads the tags of
+every file in the music directory, and can refuse after a job that succeeded.
+Or ask the engine the same question with no input and output at all, since the
+gap depends on the declaration and the threshold and never on the library.
+The second was taken: `rebuild.governed_not_compared()` applies
+`not_derived`, the rule `derive_from_taxonomy` itself calls, to the shipped
+taxonomy with no threshold, the two inputs `rebuild_governed_tree` derives
+with. `test_the_gap_rule_is_the_derivations_own` pins the agreement.
+
+**Measured cost:** none today. It becomes a cost the day a worker hands
+`rebuild_governed_tree` a threshold or a taxonomy other than the shipped one,
+because `governed_not_compared` would then still answer for the defaults. The
+day either changes, the warning has to come from what the item actually
+derived, which means a place for a worker to leave it.
+
+A second, smaller shape of the same choice: the warning is added whenever the
+resume drove the job, so a job still open on entry whose every item was
+already done gets the warning from a pass that compared nothing. The state is
+unusual and was not driven.
+
+**Why not fixed here.** Either fix changes `handle`'s return or `jobs.drive`,
+both out of the brief's scope.
+
+**Closes when:** the vocal gap on a resume comes from the derivation that ran,
+or the decision is confirmed at an attended sitting.
 
 ---
