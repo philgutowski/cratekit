@@ -68,8 +68,9 @@ another) are filed, and none is on the board: R-489 could meet the bar and
 says a producer has to be driven first. `CONCEPTS.md` gains Provider
 candidate. The guide and the intake skill describe the route. **Owed to an
 attended sitting:** one real typed tracklist, which is also the first live call
-of `search_tracks` and R-488's measurement. Battery on the recorded tree: see
-the line this unit's record commit carries below.
+of `search_tracks` and R-488's measurement. Battery on the recorded tree: ruff
+clean, `scan_repo.py` exit 0, pytest 8503 passed and 1 skipped in 71 seconds,
+and no test of this unit's among the ten slowest.
 **Main's highest residual number is R-491.**
 
 **The session before: U84, issue #129, `relay/129`, 2026-09-19.**
