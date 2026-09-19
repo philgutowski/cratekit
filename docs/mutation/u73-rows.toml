@@ -1,0 +1,84 @@
+name = "u73"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_blank_run"
+description = "Drop the refusal of a blank --run, so a blank run is compared as it stands"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if not run_id.strip():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A2_library_filter"
+description = "Drop the library half of the run selection, so the run alone picks jobs"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''and job.library_id == library_id'''
+new = '''and True'''
+
+[[rows]]
+id = "A3_run_filter"
+description = "Drop the run half of the selection, so every intake job for the library is listed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''(job.payload or {}).get(RUN_ID) == run_id'''
+new = '''True'''
+
+[[rows]]
+id = "A4_intake_key_filter"
+description = "Drop the intake handler key filter, so a labels or favourites job in the run is selected"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            if job.handler_key in intake_cli.INTAKE_KEYS'''
+new = '''            if True'''
+
+[[rows]]
+id = "A5_oldest_first"
+description = "Reverse the job order, newest first, so first source wins picks the later playlist"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''key=lambda job: (job.created, job.job_id),'''
+new = '''key=lambda job: (job.created, job.job_id), reverse=True,'''
+
+[[rows]]
+id = "A7_open_refuses"
+description = "Drop the refusal of a run holding an open job"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if still_open:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A8_failed_refuses"
+description = "Drop the refusal of a run holding a failed or cancelled job"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if unfinished and not skip_failed:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A9_skip_failed_ignored"
+description = "Ignore --skip-failed, so a failed job refuses the run whatever the flag says"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if unfinished and not skip_failed:'''
+new = '''    if unfinished:'''
+
+[[rows]]
+id = "A10_every_job_skipped"
+description = "Drop the refusal of a run whose every job failed, left to the layer after it"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if not kept:'''
+new = '''    if False:'''
+
+[[dropped]]
+id = "A6_tie_break"
+description = "Drop job_id from the sort key, leaving created alone"
+reason = "the tie break only matters for two jobs created in the same timestamp, which the fixture cannot produce without faking the clock; A5 measures the order itself"
+
+[[dropped]]
+id = "A11_sync_run_dest"
+description = "Write --run into dest run, colliding with the dispatcher's global --run"
+reason = "a one site mutation cannot express it, since the handler reads the new dest by name; every run test drives the collision's absence, and the first build measured it failing eleven tests before the dest was separated"

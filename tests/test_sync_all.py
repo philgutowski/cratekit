@@ -203,6 +203,10 @@ def test_a_full_pass_queues_each_source_under_its_own_key_with_one_run(
     # PLAYLISTS IS CORE, so every profile enables it and every pass names it.
     # No provider session is stored here, so it refuses for itself.
     assert summary["not_queued"] == {"playlists": "credential-missing"}
+    # A LABELS AND A FAVOURITES JOB ARE NOT INTAKE JOBS, so the pass names no
+    # ``intake missing --run``, which would find nothing of theirs to list.
+    assert summary["next"] is None
+    assert "sync.next" not in {c["key"] for c in passed["data"]["checks"]}
 
 
 def test_the_gate_refusal_has_queued_nothing_and_says_what_would_be(
@@ -590,7 +594,7 @@ def test_a_refusal_part_way_through_the_playlists_keeps_the_filed_ones_named(
     assert [j["job_id"] for j in summary["jobs"]] == [job.job_id]
     assert summary["not_queued"]["playlists"] == "internal-error"
     assert [row["job_id"] for row in summary["playlists"]["queued"]] == [job.job_id]
-    (check,) = passed["data"]["checks"]
+    (check,) = [c for c in passed["data"]["checks"] if c["title"] == "playlists"]
     assert check["status"] == "fail" and job.job_id in check["detail"]
 
 
@@ -917,6 +921,84 @@ def test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acqu
     lowered = text.lower()
     for claim in ("downloaded", "library holds", "in your library", "acquired the"):
         assert claim not in lowered, text
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3d. The pass names its next step, U73
+#
+# A pass ends in one list, one download and one landed file (R29). The pass
+# itself queues and stops, so what it owes a person is the command that turns
+# its intake jobs into that one list, in the output a person reads by default.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_default_output_of_a_pass_that_queued_intake_jobs_names_the_run_verb(
+    slim, monkeypatch
+):
+    del slim
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), _tracks("101")),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    code, text = _run_human(["sync", "all"])
+    assert code == int(ExitCode.OK), text
+    (run_id,) = {job.payload["run_id"] for job in _playlist_jobs()}
+    (line,) = [row for row in text.splitlines() if "sync.next:" in row]
+    assert f"crate intake missing --run {run_id}" in line, text
+    assert "2 intake job(s)" in line, text
+
+
+def test_the_json_summary_carries_the_same_command(slim, monkeypatch):
+    del slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["data"]["summary"]["next"] == f"crate intake missing --run {passed['run_id']}"
+
+
+def test_a_pass_that_queued_no_intake_job_names_no_run_verb(slim, monkeypatch):
+    """``intake missing --run`` refuses a run with no intake job, so naming it
+    here would send a person to a refusal."""
+    del slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Counted Empty", tracks=0), _tracks()))
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["data"]["summary"]["next"] is None
+    assert "sync.next" not in {c["key"] for c in passed["data"]["checks"]}
+
+
+def test_a_pass_through_to_one_list_holds_a_shared_track_once_with_both_playlists(
+    slim, monkeypatch
+):
+    """The producer is the pass: two playlists sharing a track, both jobs run
+    by the real worker, then the verb the pass named. One list, one row for the
+    shared track, both playlists in its provenance."""
+    import json
+
+    del slim
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), _tracks("101", "102")),
+        (_playlist("pl-b", "Peak"), _tracks("102", "201")),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    for job in _playlist_jobs():
+        code, resumed = drive(cli_jobs.argv_for(job))
+        assert code == int(ExitCode.OK), resumed
+        assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+
+    command = passed["data"]["summary"]["next"].split()
+    assert command[:3] == ["crate", "intake", "missing"]
+    code, listed = drive(command[1:])
+    assert code == int(ExitCode.OK), listed
+    summary = listed["data"]["summary"]
+    body = json.loads(Path(summary["list"]).read_text())
+    assert sorted(track["id"] for track in body["tracks"]) == ["101", "102", "201"]
+    rows = json.loads(Path(summary["manifest"]).read_text())["rows"]
+    assert sorted(rows["102"]["source_refs"]) == ["pl-a", "pl-b"]
+    assert (rows["101"]["source_ref"], rows["201"]["source_ref"]) == ("pl-a", "pl-b")
 
 
 def test_the_block_says_what_swept_means_whatever_the_pass_found():

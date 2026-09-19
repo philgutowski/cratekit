@@ -1,0 +1,50 @@
+name = "u73-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C3_next_only_with_intake_jobs"
+description = "Name intake missing --run on every pass, including one that queued no intake job"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    if not filed:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C4_next_counts_intake_jobs_only"
+description = "Count every filed job as an intake job when deciding to name the run verb"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''if job.handler_key in intake_cli.INTAKE_KEYS]'''
+new = '''if True]'''
+
+[[rows]]
+id = "C5_next_check_row"
+description = "Keep the command in the summary and drop the check row the human output prints"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        checks.append(step["check"])'''
+new = '''        pass'''
+
+[[rows]]
+id = "C6_landing_hint_export"
+description = "Reword the landing hint without the --export intake land requires"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''f"--export XML --name {name}, XML being a Fresh Export of the collection"'''
+new = '''f"--name {name}"'''
+
+[[rows]]
+id = "C7_sample_missing_not_listed"
+description = "Existing U69 guard, sampled: drop the refusal of missing tracks none of which can be listed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if missing and not listed:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C8_sample_reports_by_id"
+description = "Existing U69 guard, sampled: drop the reports by identifier comparison every run job also passes through"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if sorted(reported) != sorted(wanted):'''
+new = '''    if False:'''
