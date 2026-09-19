@@ -1,0 +1,129 @@
+name = "u103-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_read_serves_only_answers"
+description = "Drop the reader's rule that only a match or a miss is served from a cache document"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''            if classify(payload)[0] not in _KEPT_OUTCOMES:
+                continue
+            answers[offset] = payload'''
+new = '''            answers[offset] = payload'''
+
+[[rows]]
+id = "A2_write_keeps_only_answers"
+description = "Drop the writer's rule that only a match or a miss is kept, removed alone so the reader's copy of the rule is not what is measured"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''                    for offset in sorted(merged)
+                    if classify(merged[offset])[0] in _KEPT_OUTCOMES'''
+new = '''                    for offset in sorted(merged)'''
+
+[[rows]]
+id = "A3_document_must_carry_its_plan"
+description = "Stop checking that a cache document carries the plan it was asked for"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''        if document.get("version") != CACHE_VERSION or document.get("plan") != plan.material():'''
+new = '''        if document.get("version") != CACHE_VERSION:'''
+
+[[rows]]
+id = "A5_offset_must_be_planned"
+description = "Serve a kept answer at an offset the plan never asked for"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''            if offset not in planned or not isinstance(payload, dict):'''
+new = '''            if not isinstance(payload, dict):'''
+
+[[rows]]
+id = "A6_digest_in_the_key"
+description = "Take the recording's content digest out of the key material, so a changed file keeps its old key"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''            "digest": self.digest,
+            "offsets": list(self.offsets),'''
+new = '''            "digest": "",
+            "offsets": list(self.offsets),'''
+
+[[rows]]
+id = "A7_offsets_in_the_key"
+description = "Take the offsets out of the key material, so a changed chunk plan keeps its old key"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''            "offsets": list(self.offsets),
+            "chunk_s": self.chunk_s,'''
+new = '''            "offsets": [],
+            "chunk_s": self.chunk_s,'''
+
+[[rows]]
+id = "A8_paid_answers_are_kept"
+description = "Stop recording a paid answer for the cache, so nothing a pass paid for is kept"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''            paid[offset] = payload or {}
+'''
+new = ""
+
+[[rows]]
+id = "A9_refresh_reads_nothing_kept"
+description = "Let a refreshing pass read the kept answers anyway"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    kept = kept_in.read(plan) if plan is not None and not refresh else {}'''
+new = '''    kept = kept_in.read(plan) if plan is not None else {}'''
+
+[[rows]]
+id = "A10_write_is_a_merge"
+description = "Replace the cache document with this pass's answers instead of laying them over what is kept"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''            merged = {**self.read(plan), **answers}'''
+new = '''            merged = dict(answers)'''
+
+[[rows]]
+id = "A11_monthly_bound_reads_what_is_owed"
+description = "Check the monthly bound against the whole grid instead of the chunks still owed"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''        assert_within(spend, planned=len(owed), used_this_month=counter.used(month))'''
+new = '''        assert_within(spend, planned=len(offsets), used_this_month=counter.used(month))'''
+
+[[rows]]
+id = "A12_no_credential_when_nothing_is_owed"
+description = "Retrieve the credentials and check the bound even when every chunk is kept"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    if owed:
+        assert_within(spend, planned=len(owed), used_this_month=counter.used(month))'''
+new = '''    if True:
+        assert_within(spend, planned=len(owed), used_this_month=counter.used(month))'''
+
+[[rows]]
+id = "A16_per_run_bound_reads_the_grid"
+description = "Drop the per run bound over the whole grid, leaving only the check over what is owed"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    assert_within(Budget(per_run=spend.per_run), planned=planned, used_this_month=0)
+'''
+new = ""
+
+[[dropped]]
+id = "A4_cache_version"
+description = "Stop checking the cache document's version"
+reason = "ranked below the cap: same guard line as A3, and one version exists, so nothing reachable writes another"
+
+[[dropped]]
+id = "A13_cached_count"
+description = "Report zero chunks served from the cache"
+reason = "ranked below the cap: a count, and the note built from it is measured by C6 in table b"
+
+[[dropped]]
+id = "A14_unwritten_only_when_paid"
+description = "Report the digest failure reason even when nothing was paid for"
+reason = "ranked below the cap: a pass that paid nothing over an unreadable recording raises before it returns, so the input is not reachable"
+
+[[dropped]]
+id = "A17_write_lock"
+description = "Write the cache document without its sibling lock"
+reason = "ranked below the cap: the only test that could see it asserts the lock file exists, which pins the file and not the exclusion, so the row would measure the wrong thing; recorded as a residual instead"
