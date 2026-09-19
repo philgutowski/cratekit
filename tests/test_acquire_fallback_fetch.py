@@ -550,7 +550,18 @@ def test_a_missing_yt_dlp_parks_the_job_rather_than_failing_every_item(
     assert only_item(job_id).state is jobs.ItemState.PENDING
 
 
-@pytest.mark.parametrize("url", ["file:///etc/hosts", "-o/tmp/x", "https://"])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/hosts",
+        "-o/tmp/x",
+        "https://",
+        # A HOST IS NOT A WEB ADDRESS. Both have one, and neither is a page the
+        # tool should be handed (u81-a row W2 read zero until these joined).
+        "file://localhost/etc/hosts",
+        "ftp://uploads.example/track.mp3",
+    ],
+)
 def test_an_accepted_option_that_is_not_a_web_address_is_never_handed_to_the_tool(
     permissive, tmp_path, monkeypatch, url
 ):
@@ -564,6 +575,33 @@ def test_an_accepted_option_that_is_not_a_web_address_is_never_handed_to_the_too
     item = only_item(job_id)
     assert item.cause is not None and item.cause.reason == "unavailable-permanent"
     assert fake.calls == []
+
+
+def test_a_row_naming_no_artist_and_no_title_is_refused_before_a_download(
+    permissive, monkeypatch
+):
+    """Driven through a job queued by hand, because the list reader was not
+    shown to produce such a row: the reachability from a list is unmeasured.
+    What is measured is that the worker never commits a nameless file."""
+    fake = bind(monkeypatch, FakeFetcher())
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="acquire.fallback-fetch",
+            payload={
+                fallback_cli.LIST: "/nowhere/unlisted.txt",
+                fallback_cli.ROWS: {"nameless": {"artist": " ", "title": "", "url": UPLOAD}},
+            },
+            cfg=permissive,
+            item_ids=("nameless",),
+        )
+
+    run(job.job_id)
+
+    item = only_item(job.job_id)
+    assert item.cause is not None and item.cause.reason == "unavailable-permanent"
+    assert fake.calls == []
+    assert not any(staging(permissive).glob("*.mp3"))
 
 
 def test_the_stem_is_the_rows_and_carries_no_path_separator():
