@@ -1351,3 +1351,34 @@ def test_a_release_unread_on_another_label_does_not_stop_this_label_being_judged
     assert "901" not in listed_ids(envelope)
     assert [one["release_id"] for one in envelope["data"]["summary"]["held"]] == ["r-hh"]
     assert envelope["data"]["summary"]["ungated"] == []
+
+
+def test_a_release_with_no_genre_is_not_counted_in_its_labels_share(cfg, library, monkeypatch):
+    releases: dict = {}
+    house_label(cfg, releases)
+    accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
+    releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
+    accepted(cfg, "r-none", label_id="tide-works", label_name="Tide Works")
+    releases["r-none"] = ([Track("902", "Lumen Drift", "Iron")], 2024)
+    bind(monkeypatch, StrictCatalogue(releases=releases))
+
+    _code, envelope = approved()
+
+    assert "902" in listed_ids(envelope)
+    assert envelope["data"]["summary"]["ungated"] == ["r-none"]
+    assert "1 of the 11 release(s) with a genre" in check(envelope, "held.r-hh")["detail"]
+    assert envelope["data"]["summary"]["held"][0]["classified"] == 11
+
+
+def test_a_genre_on_a_mapping_row_is_read_like_one_on_an_object(cfg, library, monkeypatch):
+    releases: dict = {}
+    house_label(cfg, releases)
+    accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
+    row = {"id": "901", "name": "Corner Talk", "artist": {"name": "Mira Vale"}, "genre": "Hip Hop"}
+    releases["r-hh"] = ([row], 2024)
+    bind(monkeypatch, StrictCatalogue(releases=releases))
+
+    _code, envelope = approved()
+
+    assert "901" not in listed_ids(envelope)
+    assert [one["genre"] for one in envelope["data"]["summary"]["held"]] == ["Hip Hop"]
