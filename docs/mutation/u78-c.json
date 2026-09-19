@@ -1,0 +1,332 @@
+{
+  "name": "u78-c",
+  "pass_kind": "light",
+  "branch": "relay/123",
+  "head": "4ee1a9d",
+  "when": "2026-09-19 11:28 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8380,
+  "baseline_exit": 0,
+  "pytest_runs": 14,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/listdoc.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/listdoc.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "e2581e4c659b66ad",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8380,
+    "baseline_collected": 8380,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_readback_identity",
+      "description": "The text line read back compares only that one track came back, not which",
+      "file": "src/cratekit/acquire/listdoc.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5264304572dd272a",
+      "subset": [
+        "tests/test_listdoc.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 111,
+      "baseline_collected": 111,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_isrc.py::test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_written",
+        "tests/test_listdoc.py::test_a_row_that_would_read_back_as_another_track_is_refused_by_position[leading-ordinal]",
+        "tests/test_listdoc.py::test_a_row_that_would_read_back_as_another_track_is_refused_by_position[separator-in-artist]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(again) != 1 or (again[0].recording, again[0].version_key) != (\n        wanted.recording,\n        wanted.version_key,\n    ):",
+      "new": "    if len(again) != 1:"
+    },
+    {
+      "id": "C2_readback_count",
+      "description": "The text line read back no longer requires exactly one track, so a line read as a comment passes",
+      "file": "src/cratekit/acquire/listdoc.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "804520e14df06ccf",
+      "subset": [
+        "tests/test_listdoc.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 111,
+      "baseline_collected": 111,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_listdoc.py::test_a_row_that_would_read_back_as_another_track_is_refused_by_position[read-as-a-comment]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(again) != 1 or (again[0].recording, again[0].version_key) != (",
+      "new": "    if again and (again[0].recording, again[0].version_key) != ("
+    },
+    {
+      "id": "C3_dedupe_lines",
+      "description": "The same line twice is written twice",
+      "file": "src/cratekit/acquire/listdoc.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "43cb00d8dba4db49",
+      "subset": [
+        "tests/test_listdoc.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 111,
+      "baseline_collected": 111,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_listdoc.py::test_the_same_line_twice_is_written_once_under_its_first_reason"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if line in seen:\n            continue\n        seen.add(line)",
+      "new": "        seen.add(line)"
+    },
+    {
+      "id": "C4_reason_one_row",
+      "description": "A reason carrying a line break is written as it stands, so the text reader refuses the whole file",
+      "file": "src/cratekit/acquire/listdoc.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8897344ebb9e95a5",
+      "subset": [
+        "tests/test_listdoc.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 111,
+      "baseline_collected": 111,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_listdoc.py::test_a_reason_carrying_a_line_break_stays_one_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        tracks.extend((f\"# {' '.join(str(entry.reason).split())}\", line))",
+      "new": "        tracks.extend((f\"# {entry.reason}\", line))"
+    },
+    {
+      "id": "C5_unlisted_checked_first",
+      "description": "The unlisted file is written over whatever is there, after the list, rather than checked with the other two",
+      "file": "src/cratekit/acquire/listdoc.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7acdd8838d1ea1d7",
+      "subset": [
+        "tests/test_listdoc.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 111,
+      "baseline_collected": 111,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_isrc.py::test_a_different_file_at_the_unlisted_path_refuses_before_the_list_is_written",
+        "tests/test_listdoc.py::test_a_row_that_would_read_back_as_another_track_is_refused_by_position[leading-ordinal]",
+        "tests/test_listdoc.py::test_a_row_that_would_read_back_as_another_track_is_refused_by_position[read-as-a-comment]",
+        "tests/test_listdoc.py::test_a_row_that_would_read_back_as_another_track_is_refused_by_position[separator-in-artist]",
+        "tests/test_listdoc.py::test_an_existing_different_unlisted_file_refuses_before_either_half_is_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        files.append((unlisted_path, _encoded(text_document(handed))))\n    pending = [(path, payload) for path, payload in files if not _unchanged(path, payload)]\n    for path, payload in pending:\n        config.atomic_write_bytes(payload, path)",
+      "new": "    pending = [(path, payload) for path, payload in files if not _unchanged(path, payload)]\n    for path, payload in pending:\n        config.atomic_write_bytes(payload, path)\n    if handed:\n        config.atomic_write_bytes(_encoded(text_document(handed)), unlisted_path)"
+    },
+    {
+      "id": "D1_not_found_answer",
+      "description": "The adapter no longer reads a not found as the empty answer, so it climbs the ladder and raises",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eaf91e8a53d0db09",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 124,
+      "baseline_collected": 124,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_isrc_filed_under_nothing_is_an_empty_answer_asked_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                return tuple(lookup(wanted) or ())\n            except Exception as exc:\n                if _gone(exc):\n                    return ()\n                raise",
+      "new": "                return tuple(lookup(wanted) or ())\n            except Exception:\n                raise"
+    },
+    {
+      "id": "D2_blank_isrc",
+      "description": "A blank ISRC is sent to the provider",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "c64e3a0691c47ab2",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 124,
+      "baseline_collected": 124,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_no_isrc_is_refused_before_the_provider_is_asked[   ]",
+        "tests/test_label_tidal_catalogue.py::test_no_isrc_is_refused_before_the_provider_is_asked[None]",
+        "tests/test_label_tidal_catalogue.py::test_no_isrc_is_refused_before_the_provider_is_asked[]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not wanted:\n            raise ValueError(\"no ISRC was given to look up\")",
+      "new": ""
+    },
+    {
+      "id": "D3_no_lookup_method",
+      "description": "A client with no ISRC lookup climbs the whole ladder before failing",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "66a3e34a1e308fe8",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 124,
+      "baseline_collected": 124,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_client_with_no_isrc_lookup_refuses_at_once_and_never_climbs_the_ladder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not callable(lookup):\n            # A client without the method cannot be asked, and waiting on the\n            # ladder cannot grow one.\n            raise LookupError(\"the provider client exposes no ISRC lookup\")",
+      "new": ""
+    },
+    {
+      "id": "E2_emitter_checks_rows",
+      "description": "Existing guard sample: the emitter no longer reads each listed row back through the reader",
+      "file": "src/cratekit/acquire/listdoc.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae75e4993e60432a",
+      "subset": [
+        "tests/test_listdoc.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_listdoc.py::test_a_row_the_reader_would_refuse_is_refused_by_the_emitter[no-artist]",
+        "tests/test_listdoc.py::test_a_row_the_reader_would_refuse_is_refused_by_the_emitter[no-title]",
+        "tests/test_listdoc.py::test_a_row_the_reader_would_refuse_is_refused_by_the_emitter[only-a-version]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        _checked(track, position)",
+      "new": ""
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D4_none_answer",
+      "description": "The adapter's 'or ()' over a None answer from the client",
+      "reason": "ranked below the cap: the installed client returns a list or raises, never None, so the input has no producer to drive"
+    },
+    {
+      "id": "A8_out_dir_first",
+      "description": "The --out check moved after the provider reads",
+      "reason": "ranked below the cap: costs lookups on a refused run, never a wrong file, and the refusal itself is U69's measured guard"
+    }
+  ]
+}

@@ -120,7 +120,7 @@ class ReleaseUnresolvable(LookupError):
 class Catalogue(Protocol):
     """Every provider read the product makes through this seam, and nothing more.
 
-    SEVEN MEMBERS BECAUSE THERE ARE SEVEN CALL SITES, and the protocol is the list
+    EIGHT MEMBERS BECAUSE THERE ARE EIGHT CALL SITES, and the protocol is the list
     rather than a description of a provider. A method nobody calls is a method an
     adapter has to implement for no reason, and it is the shape by which a seam
     stops being a seam and becomes a client library.
@@ -223,6 +223,24 @@ class Catalogue(Protocol):
         never that nobody could ask. The year is ``None`` when the provider dates
         the release with nothing this seam can read as a year, which is unknown
         and is carried as unknown rather than guessed.
+        """
+
+    def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
+        """Every provider track the catalogue files under one ISRC.
+
+        Consumed by ``intake.missing_cli``, which names a missing row that
+        carries no provider identifier, a recognised set track, by its ISRC. The
+        caller lists the row only when the answer holds exactly ONE distinct
+        identifier, because one ISRC is commonly on the provider several times,
+        a single, an album cut and a compilation (R-356), and which release is
+        downloaded is not something the ISRC decides. The rows carry at least
+        ``id``.
+
+        An empty tuple means the provider answered and files no track under the
+        code. RAISES when the provider could not answer, never a short or empty
+        stand-in, on the same contract as the reads above: an outage read as
+        "no track" would hand a nameable row on as unnameable, and one read as a
+        short answer could turn two releases into one and list a guess.
         """
 
 

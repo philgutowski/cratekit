@@ -1777,3 +1777,78 @@ def test_the_adapter_and_the_verb_meet_over_a_gone_release(cfg, monkeypatch, pau
 
     assert isinstance(outcome, approved_cli._Failed)
     assert outcome.kind == approved_cli.GONE
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U78: the tracks one ISRC is filed under
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class IsrcClient(FakeClient):
+    """Answers ``get_tracks_by_isrc`` from a script of answers and exceptions."""
+
+    def __init__(self, *answers: Any) -> None:
+        super().__init__()
+        self.answers = list(answers)
+        self.isrc_reads: list[str] = []
+
+    def get_tracks_by_isrc(self, isrc: str) -> Any:
+        self.isrc_reads.append(isrc)
+        answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+def test_an_isrc_answers_every_track_filed_under_it(pauses):
+    tracks = [ProviderTrack("9001", "A", "B"), ProviderTrack("9002", "A", "B")]
+    client = IsrcClient(tracks)
+
+    found = tidal_catalogue.TidalCatalogue(client).tracks_for_isrc("QZAAA2600001")
+
+    assert [track.id for track in found] == ["9001", "9002"]
+    assert client.isrc_reads == ["QZAAA2600001"]
+    assert pauses == []
+
+
+def test_an_isrc_filed_under_nothing_is_an_empty_answer_asked_once(pauses):
+    client = IsrcClient(ObjectNotFound("no track"))
+
+    assert tidal_catalogue.TidalCatalogue(client).tracks_for_isrc("QZAAA2600001") == ()
+    assert client.isrc_reads == ["QZAAA2600001"]
+    assert pauses == []
+
+
+def test_a_rate_limited_isrc_read_waits_and_is_asked_again(pauses):
+    client = IsrcClient(TooManyRequests("slow down"), [ProviderTrack("9001", "A", "B")])
+
+    found = tidal_catalogue.TidalCatalogue(client).tracks_for_isrc("QZAAA2600001")
+
+    assert [track.id for track in found] == ["9001"]
+    assert pauses == [1.0]
+
+
+def test_invalid_isrc_is_not_read_as_no_track_since_the_client_hides_outages_behind_it(pauses):
+    """At 0.8.11 the client raises ``InvalidISRC`` for every HTTP error but 404
+    and 429, a server error and a rejected session among them."""
+    client = IsrcClient(tidalapi.exceptions.InvalidISRC())
+
+    with pytest.raises(tidalapi.exceptions.InvalidISRC):
+        tidal_catalogue.TidalCatalogue(client).tracks_for_isrc("QZAAA2600001")
+
+    assert len(client.isrc_reads) == 6
+    assert pauses == [1.0, 2.0, 4.0, 8.0, 16.0]
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_no_isrc_is_refused_before_the_provider_is_asked(blank, pauses):
+    client = IsrcClient([])
+    with pytest.raises(ValueError):
+        tidal_catalogue.TidalCatalogue(client).tracks_for_isrc(blank)
+    assert client.isrc_reads == []
+
+
+def test_a_client_with_no_isrc_lookup_refuses_at_once_and_never_climbs_the_ladder(pauses):
+    with pytest.raises(LookupError):
+        tidal_catalogue.TidalCatalogue(FakeClient()).tracks_for_isrc("QZAAA2600001")
+    assert pauses == []

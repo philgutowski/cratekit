@@ -17559,6 +17559,19 @@ set door, and composing acquisition spends real downloads, so it is attended.
 
 **Closes when:** a resolved set produces something `acquire download` reads.
 
+**Closed 2026-09-19 on `relay/123`, U78.** `crate intake missing --job JOB`
+over a finished `intake set` job now writes the list `acquire download` reads.
+Each missing row with no provider id is asked of the catalogue by ISRC through
+the new `Catalogue.tracks_for_isrc`, and a row whose ISRC the provider files
+under exactly one distinct id is listed with that id. Every other row, no ISRC,
+a malformed one, none filed, several filed (R-356), is written to
+`intake-JOB.unlisted.json`, a text list `match run` reads, with its reason, and
+reported as a failing check. Driven through a real set job over the recognition
+fakes and a fake catalogue. What the source system also did and this does not,
+the set spliced into the library as its own playlist in play order, is R-475.
+**Owed to an attended sitting:** one real set, identified, listed, downloaded
+and landed, which is also the first attended sitting `intake set` has had.
+
 ---
 
 ## R-402. A label is discovered, verified and reviewed, and never enters the library
@@ -19719,3 +19732,125 @@ files.
 **Closes when:** the verbs that call the writer (U84, U85) report a failure
 count with a cause a user can act on, or the shared convention in `tags` and
 `art` is changed in one place.
+
+---
+
+## R-475. A set's tracks are not spliced into the library as the set's own playlist in play order
+
+**Found:** 2026-09-19, on `relay/123`, U78, recorded by the brief's decision.
+
+`dj-pipeline full` ended with the set in the library as one playlist in play
+order, `DJ_setid/setid.py:554-562`. U78 makes a set's missing tracks
+downloadable and lands them as an ordinary intake batch through `intake land`.
+Nothing records the order the tracks were played in against the landed files,
+and no verb writes a playlist for the set.
+
+**Measured cost.** A DJ who wants the set as a playlist builds it by hand. Not
+measured live; `intake set` has had no attended sitting.
+
+**Closes when:** a set's landing writes one playlist in play order holding the
+owned and the newly landed tracks, or the person decides parity does not need it.
+
+---
+
+## R-476. A repeat listing of the same job refuses when the provider's ISRC answer changed
+
+**Found:** 2026-09-19, on `relay/123`, U78, by the built in code review.
+
+`intake missing` names its files after the job or the run, and `listdoc.write`
+refuses a file of that name holding other bytes. Before U78 those bytes came
+from the job's committed reports alone. Now they also come from the provider:
+a row one ISRC named is listed, and the same row after the provider files a
+second release under that ISRC is handed on. The second run then refuses
+`intake-list-unusable`. The order of identifiers inside a reason is sorted, so
+provider order alone cannot cause it, pinned by
+`test_the_order_the_provider_answers_in_does_not_change_the_files`. The trap is
+the one filed at
+`docs/solutions/integration-issues/a-list-named-from-its-identifiers-meets-the-emitters-whole-file-comparison.md`.
+
+**Measured cost.** A refused repeat run whose remedy, move the files aside, is
+stated and works. How often the provider's answer for one ISRC changes is not
+measured.
+
+**Closes when:** the list's name carries a digest of what it lists, as
+`label approved` does, or a repeat run is decided to replace its own earlier
+files.
+
+---
+
+## R-477. `TidalAccount.match_track` reads `InvalidISRC` as no match, and the client raises it for outages
+
+**Found:** 2026-09-19, on `relay/123`, U78, hunting the same shape one file over.
+
+`modules/outbound/tidal_account.py:75` puts `InvalidISRC` in `NOT_FOUND_NAMES`,
+so an ISRC lookup that raised it is answered as no match and never retried.
+tidalapi 0.8.11's `get_tracks_by_isrc` catches every `HTTPError` the request
+layer re-raises, which is every status but 404 and 429, and raises
+`InvalidISRC`. A server error or a rejected session on that endpoint is
+therefore reported as an unmatched row. Driven with a client raising the
+library's own `InvalidISRC`: `match_track` returned None after one call, no
+retry. The client's behaviour was read from its source at 0.8.11 and not
+driven against the live endpoint.
+
+**Measured cost.** Outbound hearts and exports report a track unmatched over a
+lookup that failed, a clean report over state the product could not read, and
+the track is not hearted. U78's own adapter member does not share it:
+`tracks_for_isrc` treats only `ObjectNotFound` as an answer and pins
+`InvalidISRC` climbing the ladder.
+
+**Closes when:** `match_track` treats `InvalidISRC` on a well formed ISRC as a
+failure that climbs the retry ladder, and a test pins it.
+
+---
+
+## R-478. A handed on row that cannot be spelled as an `Artist - Title` line is in no file
+
+**Found:** 2026-09-19, on `relay/123`, U78, by the built in code review.
+
+An artist carrying the text separator, a leading ordinal or a leading `#` reads
+back from a text line as another track or as none, so `listdoc.text_line`
+refuses it and `intake missing` names the row on a failing
+`intake.missing.unwritable` check and in the summary with `in_file` false,
+rather than refusing the whole verb, which was the review's driven finding. When
+no row at all is written the verb refuses.
+
+**Measured cost.** The row is on the screen and in the envelope and in no file,
+so it is carried forward by hand. How many real artist names take one of those
+shapes is not measured.
+
+**Closes when:** the text list can quote a line, or such rows go to a document
+that carries artist and title as fields.
+
+---
+
+## R-479. A well formed ISRC the provider rejects refuses the whole listing after the retry ladder
+
+**Found:** 2026-09-19, on `relay/123`, U78, planning the adapter member.
+
+The client raises `InvalidISRC` for a malformed code and for an outage alike
+(R-477), and `tracks_for_isrc` treats it as a failure, so it climbs the ladder,
+31 seconds, and `intake missing` refuses `unavailable-transient`. The verb keeps
+malformed codes from being asked by checking the twelve character shape first.
+If the provider answers 400 to a code of the right shape, every run refuses.
+
+**Measured cost.** Unmeasured: whether the provider rejects a well formed ISRC
+was not observed.
+
+**Closes when:** a live lookup of an unknown but well formed ISRC is observed at
+an attended sitting and the adapter's reading of the answer is pinned to it.
+
+---
+
+## R-480. The handed on text list carries no ISRC field
+
+**Found:** 2026-09-19, on `relay/123`, U78, writing the text list.
+
+A text list row is one `Artist - Title` string, so a handed on row's ISRC
+survives only inside the reason comment, and `match run` over the file builds
+its acquisition options without the `BY_ISRC` one.
+
+**Measured cost.** Maintainer facing: the rows were handed on because the ISRC
+could not name one track, so the option would name several.
+
+**Closes when:** the text list gains a field for it, or never.
+

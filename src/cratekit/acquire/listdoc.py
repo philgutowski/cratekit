@@ -30,6 +30,11 @@ all. It comes back in ``unlisted``, because the download verb refuses a list
 holding one such row, and a list that quietly dropped it would report every
 item done over a list it did not finish.
 
+``<name>.unlisted.json`` is the third file, written only for the rows a caller
+hands on (U78): a TEXT origin list document of ``Artist - Title`` lines, each
+under a ``#`` row saying why the provider could not name it exactly. The text
+reader skips the ``#`` rows, so ``match run`` reads the file as it stands.
+
 The emitter writes a file and stops. Nothing here composes ``acquire download``,
 so nothing here can spend a download.
 """
@@ -48,6 +53,9 @@ from cratekit.core import config
 #: The two file names a list called ``name`` occupies.
 LIST_SUFFIX = ".list.json"
 MANIFEST_SUFFIX = ".manifest.json"
+
+#: The third, the text list of the rows the provider cannot name exactly (U78).
+UNLISTED_SUFFIX = ".unlisted.json"
 
 #: The version of the provenance sidecar. :func:`read_manifest` refuses any
 #: other, whole, the way ``read_list`` refuses the list's own. So a bump here
@@ -114,18 +122,33 @@ class Provenance:
 
 
 @dataclass(frozen=True, slots=True)
+class HandedOn:
+    """A row the provider cannot name exactly, and the sentence that says why.
+
+    U78. It is written to the TEXT list beside the provider document, never
+    into it, so a person or ``match run`` can take it further by hand. The
+    reason travels as a ``#`` row above the track, which the text reader skips.
+    """
+
+    row: Row
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class Written:
     """What :func:`write` did.
 
     Both paths are ``None`` when nothing was listable and nothing was written,
     which is how an empty result says so rather than leaving an empty document
-    somebody would read as a list that was all owned.
+    somebody would read as a list that was all owned. ``unlisted_path`` is the
+    text list of the rows handed on, ``None`` when none was.
     """
 
     list_path: Path | None
     manifest_path: Path | None
     listed: tuple[str, ...]
     unlisted: tuple[Row, ...]
+    unlisted_path: Path | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +309,68 @@ def document(rows: Iterable[Row]) -> tuple[dict[str, Any], tuple[str, ...], tupl
     return body, tuple(listed), tuple(unlisted)
 
 
+#: What a text line puts between the artist and the title, the separator the
+#: text reader splits on.
+_SEPARATOR = " - "
+
+
+def _line(row: Row) -> str:
+    title = row.title.strip()
+    if row.version.strip():
+        title = f"{title} ({row.version.strip()})"
+    return f"{row.artist.strip()}{_SEPARATOR}{title}"
+
+
+def text_line(row: Row) -> str:
+    """The ``Artist - Title`` line for one row, or a refusal if it re-reads wrong.
+
+    EVERY LINE IS READ BACK BY THE TEXT READER, on this module's rule that the
+    emitter is stricter than the reader. A line is ``Artist - Title``, so an
+    artist spelled with that separator inside it, a leading ordinal, or a
+    leading ``#`` reads back as a different track or as none. The reader would
+    not refuse that, it would match the wrong thing, so it is refused here, and
+    a caller can ask before it writes, one row at a time.
+    """
+    line = _line(row)
+    try:
+        wanted = match.read_row(
+            {"artist": row.artist, "title": row.title, "version": row.version},
+            origin=match.TIDAL,
+            position=1,
+        )
+        again = match.read_text_rows([line])
+    except match.UnreadableList as exc:
+        raise ListDocRefused(f"{line!r} cannot be written as a text line: {exc}") from exc
+    if len(again) != 1 or (again[0].recording, again[0].version_key) != (
+        wanted.recording,
+        wanted.version_key,
+    ):
+        raise ListDocRefused(f"{line!r} would read back as another track, or as none")
+    return line
+
+
+def text_document(handed_on: Iterable[HandedOn]) -> dict[str, Any]:
+    """The TEXT list document for the rows handed on, reasons as ``#`` rows.
+
+    THE SAME LINE TWICE IS WRITTEN ONCE, first reason wins, because a set plays
+    one track twice and ``match run`` would ask about it twice. A row
+    :func:`text_line` refuses is refused here by position, so a caller that did
+    not ask first writes nothing rather than a line that matches another track.
+    """
+    tracks: list[str] = []
+    seen: set[str] = set()
+    for position, entry in enumerate(handed_on, start=1):
+        try:
+            line = text_line(entry.row)
+        except ListDocRefused as exc:
+            raise ListDocRefused(f"handed on row {position}: {exc}", position=position) from exc
+        if line in seen:
+            continue
+        seen.add(line)
+        tracks.extend((f"# {' '.join(str(entry.reason).split())}", line))
+    return {"list": LIST_VERSION, "origin": match.TEXT, "tracks": tracks}
+
+
 # ---------------------------------------------------------------------------
 # The files
 # ---------------------------------------------------------------------------
@@ -374,31 +459,37 @@ def write(
     name: str,
     rows: Iterable[Row],
     provenance: Provenance | Mapping[str, Provenance],
+    *,
+    handed_on: Iterable[HandedOn] = (),
 ) -> Written:
     """Write ``<name>.list.json`` and its manifest into ``directory``, or nothing.
 
-    EVERY CHECK BEFORE EITHER WRITE. A refused row, a missing provenance and an
+    EVERY CHECK BEFORE ANY WRITE. A refused row, a missing provenance and an
     existing file holding something else all refuse with nothing written, so a
     refusal never leaves one half of the pair behind. The manifest is written
     first, so a list on disk always has its provenance beside it; a crash
     between the two leaves a manifest the next identical write completes.
+
+    ``handed_on`` rows go to ``<name>.unlisted.json``, a text list, and are held
+    to the same rule: that file is checked with the other two and written last.
     """
     name = _checked_name(name)
     body, listed, unlisted = document(rows)
-    if not listed:
-        return Written(None, None, (), unlisted)
-    list_path = Path(directory) / f"{name}{LIST_SUFFIX}"
-    manifest_path = Path(directory) / f"{name}{MANIFEST_SUFFIX}"
-    list_bytes = _encoded(body)
-    manifest_bytes = _encoded(manifest(list_path.name, body, provenance))
-    pending = [
-        (path, payload)
-        for path, payload in ((manifest_path, manifest_bytes), (list_path, list_bytes))
-        if not _unchanged(path, payload)
-    ]
+    handed = tuple(handed_on)
+    files: list[tuple[Path, bytes]] = []
+    list_path = manifest_path = unlisted_path = None
+    if listed:
+        list_path = Path(directory) / f"{name}{LIST_SUFFIX}"
+        manifest_path = Path(directory) / f"{name}{MANIFEST_SUFFIX}"
+        files.append((manifest_path, _encoded(manifest(list_path.name, body, provenance))))
+        files.append((list_path, _encoded(body)))
+    if handed:
+        unlisted_path = Path(directory) / f"{name}{UNLISTED_SUFFIX}"
+        files.append((unlisted_path, _encoded(text_document(handed))))
+    pending = [(path, payload) for path, payload in files if not _unchanged(path, payload)]
     for path, payload in pending:
         config.atomic_write_bytes(payload, path)
-    return Written(list_path, manifest_path, listed, unlisted)
+    return Written(list_path, manifest_path, listed, unlisted, unlisted_path)
 
 
 # ---------------------------------------------------------------------------

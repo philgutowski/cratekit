@@ -615,6 +615,38 @@ class TidalCatalogue:
         tracks = listing.playlist_tracks(album, shape="release_tracks", sleep=_pause)
         return tuple(tracks), _year(album)
 
+    def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
+        """The provider's tracks for one ISRC, on the one retry ladder.
+
+        ONLY A NOT FOUND IS AN ANSWER. The client answers an ISRC it files no
+        track under by raising ``ObjectNotFound``, and that is returned as the
+        empty tuple, once and never retried. Everything else climbs the ladder
+        and is re-raised, INCLUDING ``InvalidISRC``: at 0.8.11 the client folds
+        every HTTP error except 404 and 429 into that one class, a server error
+        and a rejected session among them, so reading it as "no track" would
+        read an outage as an answer. A malformed code is the caller's to keep
+        from asking, and ``intake.missing_cli`` checks the shape first.
+        """
+        wanted = str(isrc or "").strip()
+        if not wanted:
+            raise ValueError("no ISRC was given to look up")
+        lookup = getattr(self._session, "get_tracks_by_isrc", None)
+        if not callable(lookup):
+            # A client without the method cannot be asked, and waiting on the
+            # ladder cannot grow one.
+            raise LookupError("the provider client exposes no ISRC lookup")
+
+        def attempt(limit: int, offset: int) -> tuple[Any, ...]:
+            del limit, offset
+            try:
+                return tuple(lookup(wanted) or ())
+            except Exception as exc:
+                if _gone(exc):
+                    return ()
+                raise
+
+        return listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
+
 
 def open_catalogue() -> TidalCatalogue:
     """A catalogue over a freshly logged in client, from the stored session."""

@@ -404,7 +404,14 @@ def test_a_missing_row_from_no_provider_is_reported_unlisted_as_a_failing_check(
     assert "[FAIL] intake.missing.unlisted: 1 missing track(s)" in text
     _code, envelope = missing(job_id)
     assert envelope["data"]["summary"]["unlisted_tracks"] == [
-        {"artist": "Kite Harbor", "title": "Low Tide Signal"}
+        {
+            "artist": "Kite Harbor",
+            "title": "Low Tide Signal",
+            "isrc": None,
+            "why": missing_cli.NO_ISRC,
+            "reason": "it carries no ISRC, so the provider cannot be asked for it exactly",
+            "in_file": True,
+        }
     ]
 
 
@@ -423,11 +430,13 @@ def test_a_succeeded_job_with_no_items_is_refused_not_listed_empty(cfg, library)
     assert "has no items" in envelope["cause"]["message"]
 
 
-def test_missing_tracks_none_of_which_can_be_listed_refuse_rather_than_no_op(
+def test_missing_tracks_none_of_which_can_be_listed_write_the_unlisted_list_not_a_no_op(
     cfg, library, monkeypatch
 ):
-    """The review's second finding, driven: a no-op here reads, to a person and
-    to a script, exactly like a job where everything was owned."""
+    """The review's second finding of U69, restated by U78. A no-op here would
+    read, to a person and to a script, exactly like a job where everything was
+    owned. Before U78 it refused; now the track is handed on to a text list, so
+    the verb has written something to act on and says so."""
     job_id = finished(monkeypatch, [Track("205", "Kite Harbor", "Low Tide Signal")])
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
@@ -439,12 +448,16 @@ def test_missing_tracks_none_of_which_can_be_listed_refuse_rather_than_no_op(
 
     code, envelope = missing(job_id)
 
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["message"].startswith("1 missing track(s) and none carries")
-    assert envelope["cause"]["detail"]["unlisted_tracks"] == [
-        {"artist": "Kite Harbor", "title": "Low Tide Signal"}
-    ]
-    assert not lists_dir(library).exists()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    summary = envelope["data"]["summary"]
+    assert (summary["list"], summary["written"], summary["unlisted"]) == (None, 0, 1)
+    handed = lists_dir(library) / f"intake-{job_id}.unlisted.json"
+    assert summary["unlisted_list"] == str(handed)
+    assert summary["unlisted_next"] == f"crate match run {handed}"
+    assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
+    read = match_cli.read_list(handed)
+    assert [(one.artist, one.title) for one in read] == [("Kite Harbor", "Low Tide Signal")]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -641,6 +654,29 @@ def test_skip_failed_over_nothing_missing_refuses_rather_than_a_clean_no_op(cfg,
     assert broken in envelope["cause"]["message"]
     assert envelope["cause"]["detail"]["failed"] == [broken]
     assert not lists_dir(library).exists()
+
+
+def test_skip_failed_over_tracks_only_handed_on_writes_them_rather_than_refusing(cfg, library):
+    """U78's mutation row B4. The finished job's one missing track has no
+    provider id and no ISRC, so it is handed on to the text list. That is a file
+    to act on, and the pass must not be refused as though nothing was missing."""
+    kept = finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+    fail(broken)
+    with jobs.open_store() as store:
+        job = jobs.get(store, kept)
+        item = jobs.items(store, kept)[0]
+    path = artifacts.final_path(intake_cli.ARTIFACTS, jobs.frozen_config(job), kept, item.ordinal)
+    report = json.loads(path.read_text())
+    report["track"] = {**report["track"], "origin": "text", "ref": ""}
+    path.write_text(json.dumps(report))
+
+    code, envelope = run_missing("--skip-failed")
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["unlisted"], summary["skipped"]) == (0, 1, [broken])
+    assert Path(summary["unlisted_list"]).is_file()
 
 
 def test_a_run_with_nothing_missing_and_nothing_skipped_is_a_no_op(cfg, library):

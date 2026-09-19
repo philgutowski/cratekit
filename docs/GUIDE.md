@@ -160,8 +160,17 @@ staging, or into the folder you name with `--out`, and prints the path and the
 exact `acquire download` command to run next. Only missing tracks are listed.
 Owned tracks, tracks offered for review, and tracks you deleted on purpose are
 counted and left out. A job that is still running, failed or was cancelled is
-refused rather than listed in part. A missing track the provider cannot be
-asked for is reported as a failing line, never dropped in silence.
+refused rather than listed in part.
+
+A finished `intake set` job lists the same way. A track recognised in a set
+carries no provider id, so the verb asks the provider for its ISRC and lists the
+track only when exactly one provider track carries that code. A track with no
+ISRC, or one the provider files under no track or under several (a single, an
+album cut and a compilation often share one), is never guessed at. It is
+written to `intake-JOB_ID.unlisted.json` beside the list, with the reason above
+each line, and reported as a failing line. That file is a text list, so
+`crate match run` reads it as it stands. If the provider cannot be reached the
+verb refuses and writes nothing; run it again later.
 
 A `crate sync all` pass queues one playlist job per new playlist, and its output
 ends with the command that lists the whole pass at once:

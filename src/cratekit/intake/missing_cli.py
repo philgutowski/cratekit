@@ -17,10 +17,10 @@ every track, so it is refused rather than listed. A succeeded job is listed only
 when every one of its items has exactly one readable report, compared by item
 identifier and not by count, because ``artifacts.committed`` skips a report it
 cannot parse and a count that happened to match would hide which one it
-skipped. A missing row the provider cannot be asked for comes back unlisted and
-the report says how many, as a failing check rather than a quiet omission, and a
-job whose missing rows are ALL like that is refused, because a no-op there reads
-exactly like a job where everything was owned.
+skipped. A missing row the provider cannot name is written to the unlisted text
+list below and the report says how many, as a failing check rather than a quiet
+omission, so a job whose missing rows are ALL like that still writes a file and
+never reads as a job where everything was owned.
 
 ``--run RUN_ID`` is the same list for a whole ``crate sync all`` pass (U73). A
 pass queues one intake job per new playlist under one run, and R29 says a run
@@ -34,25 +34,40 @@ as the pass, and a failed or cancelled job is named and refused unless
 check. A track two playlists share is one row, taken from the first job, and the
 manifest keeps every playlist it came from.
 
-Not gated and not destructive: it writes two new files, and
-:func:`listdoc.write` refuses rather than replaces a file that holds anything
-else, so it cannot overwrite somebody's list. Nothing here composes ``acquire
-download``, so nothing here can spend a download.
+A ROW WITH NO PROVIDER IDENTIFIER IS NAMED BY ITS ISRC OR HANDED ON, NEVER
+GUESSED (U78, R-401). A recognised set track carries no provider identifier, so
+before anything is written each such row is asked of the catalogue by ISRC, one
+question per distinct code, and only when there is such a row at all. Exactly
+one distinct identifier lists the row. No ISRC, a malformed one, an ISRC the
+provider files nothing under, and one it files several tracks under (R-356, the
+common case and not the rare one) all hand the row on to ``<name>.unlisted.json``,
+a text list ``match run`` reads, with the reason above each line. A provider
+that could not answer refuses the whole verb before any file is written, because
+a partial answer would hand on a row that could have been named.
+
+Not gated and not destructive: it writes new files, and :func:`listdoc.write`
+refuses rather than replaces a file that holds anything else, so it cannot
+overwrite somebody's list. Nothing here composes ``acquire download``, so
+nothing here can spend a download.
 """
 
 from __future__ import annotations
 
+import re
 import shlex
 from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from cratekit.acquire import listdoc
+from cratekit.acquire import listdoc, match
 from cratekit.cli.output import Envelope
 from cratekit.core import artifacts, jobs
-from cratekit.core.cause import Outcome, refuse
+from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
+from cratekit.core.exit_codes import Remedy
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import land_cli
+from cratekit.label import catalogue
 
 #: The payload key ``crate sync all`` stamps each job it queues with.
 RUN_ID = "run_id"
@@ -62,8 +77,7 @@ RUN_ID = "run_id"
 SYNCED_SUFFIX = "_synced"
 
 #: What the provenance sidecar says a listed row came from, by the job's key.
-#: A set job never reaches the sidecar today, because a recognised track carries
-#: no provider identifier and so is never listed, but it is not a playlist.
+#: A set job reaches the sidecar through a row its ISRC named (U78).
 PROVENANCE_SOURCE: Mapping[str, str] = {"intake.playlist": "playlist", "intake.set": "set"}
 
 #: The folder under download staging a list lands in when ``--out`` is not given.
@@ -73,6 +87,26 @@ LISTS_DIR = "lists"
 #: other is refused, because a state this verb cannot read is a track it cannot
 #: say is or is not missing.
 _WORDS = frozenset({"owned", "offered", "suppressed", "missing"})
+
+#: Twelve characters: country, registrant, year, designation. Hyphens and
+#: spaces are presentation and are folded away before the shape is asked, and a
+#: code of any other shape is never sent to the provider.
+_ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
+
+#: Why a row was handed on rather than listed, one word a script can switch on.
+NO_ISRC = "none"
+MALFORMED = "malformed"
+UNKNOWN = "unknown"
+SEVERAL = "several"
+UNREADABLE = "unreadable"
+
+
+@dataclass(frozen=True, slots=True)
+class _Unnamed:
+    """A row the provider cannot name exactly: the word, and the sentence."""
+
+    why: str
+    reason: str
 
 
 def build_missing(parser, entry) -> None:
@@ -222,6 +256,92 @@ def _source_ref(job: jobs.Job) -> str | None:
 
 
 
+def _isrc_of(wanted: match.Wanted) -> str:
+    return re.sub(r"[\s-]", "", str(wanted.isrc or "")).upper()
+
+
+def _ids_or_unnamed(code: str, tracks: tuple[Any, ...]) -> tuple[str, ...] | _Unnamed:
+    """The distinct identifiers an answer holds, or why they cannot be trusted.
+
+    A TRACK WITH NO IDENTIFIER IS NOT DROPPED. Dropped, an answer of one named
+    track and one unnamed would read as one identifier and list a guess.
+    """
+    ids = [str(getattr(track, "id", "") or "").strip() for track in tracks]
+    if any(not one for one in ids):
+        return _Unnamed(
+            UNREADABLE,
+            f"the provider answered ISRC {code} with a track carrying no identifier, "
+            f"so the answer cannot be read as one track",
+        )
+    return tuple(dict.fromkeys(ids))
+
+
+def _named_by_isrc(wanted: list[match.Wanted]) -> list[str | _Unnamed]:
+    """Each row's one provider identifier, or why the provider cannot name it.
+
+    THE CATALOGUE IS RESOLVED ONLY WHEN A ROW CAN BE ASKED ABOUT, so a job whose
+    rows all lack an ISRC spends no login and refuses over no missing
+    credential. It is looked up on the module at call time, the contract
+    ``label/catalogue.py`` states, which is what lets a suite substitute it.
+    Every code is asked once, however many rows carry it, and every answer is
+    in hand before the caller writes anything.
+    """
+    codes = [_isrc_of(one) for one in wanted]
+    askable = list(dict.fromkeys(code for code in codes if _ISRC.fullmatch(code)))
+    answers: dict[str, tuple[str, ...] | _Unnamed] = {}
+    if askable:
+        found = catalogue.resolve(intake_cli._load())
+        for code in askable:
+            try:
+                tracks = tuple(found.tracks_for_isrc(code))
+            except CratekitError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - refused whole, never swallowed
+                raise refuse(
+                    "unavailable-transient",
+                    f"the streaming provider could not answer for ISRC {code} ({exc}), "
+                    f"so the missing tracks it would name cannot be sorted into listed "
+                    f"and handed on; nothing was written",
+                    remedy=Remedy.RETRY_LATER,
+                    scope=Scope.RUN,
+                    origin=("intake.missing",),
+                    detail={"isrc": code},
+                ) from exc
+            answers[code] = _ids_or_unnamed(code, tracks)
+    named: list[str | _Unnamed] = []
+    for one, code in zip(wanted, codes, strict=True):
+        answer = answers.get(code)
+        if not code:
+            named.append(
+                _Unnamed(NO_ISRC, "it carries no ISRC, so the provider cannot be asked for it exactly")
+            )
+        elif answer is None:
+            named.append(
+                _Unnamed(
+                    MALFORMED,
+                    f"its ISRC {one.isrc!r} is not a well formed ISRC, so the provider was not asked",
+                )
+            )
+        elif isinstance(answer, _Unnamed):
+            named.append(answer)
+        elif len(answer) == 1:
+            named.append(answer[0])
+        elif not answer:
+            named.append(_Unnamed(UNKNOWN, f"the provider files no track under ISRC {code}"))
+        else:
+            # SORTED, so the order the provider happened to answer in never
+            # changes the file's bytes and turns a repeat run into a refusal.
+            named.append(
+                _Unnamed(
+                    SEVERAL,
+                    f"the provider files {len(answer)} tracks under ISRC {code} "
+                    f"({', '.join(sorted(answer))}), and which release to download is "
+                    f"not something the ISRC decides",
+                )
+            )
+    return named
+
+
 def _run_jobs_or_refuse(
     store, run_id: str, *, skip_failed: bool
 ) -> tuple[list[jobs.Job], list[jobs.Job]]:
@@ -350,7 +470,7 @@ def _listed(
     run skipped, whose tracks nothing resolved.
     """
     counts = {word: 0 for word in _WORDS}
-    missing = []
+    missing: list[match.Wanted] = []
     origins: list[jobs.Job] = []
     for job, reports in found:
         for report in reports:
@@ -359,34 +479,68 @@ def _listed(
                 missing.append(intake_cli.thawed(report["track"]))
                 origins.append(job)
     written = listdoc.Written(None, None, (), ())
+    handed: list[tuple[listdoc.Row, match.Wanted, _Unnamed]] = []
+    unwritable: list[tuple[listdoc.Row, _Unnamed]] = []
+    by_isrc = 0
     if missing:
+        # THE FOLDER BEFORE THE PROVIDER, so a bad --out spends no lookup.
         out = _out_dir(ctx, subject)
-        rows = listdoc.rows_of(missing)
+        rows = list(listdoc.rows_of(missing))
+        bare = [n for n, row in enumerate(rows) if not str(row.ref or "").strip()]
+        unnamed: set[int] = set()
+        if bare:
+            for n, answer in zip(bare, _named_by_isrc([missing[n] for n in bare]), strict=True):
+                if isinstance(answer, _Unnamed):
+                    unnamed.add(n)
+                    handed.append((rows[n], missing[n], answer))
+                else:
+                    rows[n] = replace(rows[n], ref=answer)
+                    by_isrc += 1
+        kept = [n for n in range(len(rows)) if n not in unnamed]
+        listed_rows = tuple(rows[n] for n in kept)
+        writable = []
+        for row, _wanted, why in handed:
+            try:
+                listdoc.text_line(row)
+            except listdoc.ListDocRefused:
+                # ONE ROW IS NOT THE LIST. Refusing here would withhold every
+                # track the provider did name, on every run and in any folder,
+                # so the row is named on its own failing check instead.
+                unwritable.append((row, why))
+                continue
+            writable.append(listdoc.HandedOn(row, why.reason))
         try:
-            written = listdoc.write(out, name, rows, _provenance(rows, origins))
+            written = listdoc.write(
+                out,
+                name,
+                listed_rows,
+                _provenance(listed_rows, [origins[n] for n in kept]),
+                handed_on=writable,
+            )
         except listdoc.ListDocRefused as exc:
             raise _unusable(
                 str(exc), "move the file aside or name another folder with --out",
                 **subject,
             ) from exc
     listed = len(written.listed)
-    unlisted = len(written.unlisted)
-    if missing and not listed:
-        # MISSING TRACKS AND NOTHING TO LIST IS NOT NOTHING TO DO. Reported as a
+    unlisted = len(handed)
+    in_file = unlisted - len(unwritable)
+    if missing and not listed and not in_file:
+        # MISSING TRACKS AND NOTHING WRITTEN IS NOT NOTHING TO DO. Reported as a
         # no-op it would read, to a person and to a script, exactly like a job
         # where everything was owned, and the tracks would be dropped.
         raise _unusable(
-            f"{unlisted} missing track(s) and none carries a provider identifier, so "
-            f"there is nothing acquire download could be asked for; nothing was written",
-            "acquire download refuses a row with no provider id, so find these "
-            "tracks on the provider, add them to a playlist, and run intake "
-            "playlist on it",
+            f"{unlisted} missing track(s), none the provider can name exactly and "
+            f"none writable as an 'Artist - Title' line, so nothing was written",
+            "find these tracks on the provider by hand, add them to a playlist, "
+            "and run intake playlist on it",
             unlisted_tracks=[
-                {"artist": row.artist, "title": row.title} for row in written.unlisted
+                {"artist": row.artist, "title": row.title, "reason": why.reason}
+                for row, why in unwritable
             ],
             **subject,
         )
-    if left_out and not listed:
+    if left_out and not listed and not unlisted:
         # NOTHING LISTED WITH JOBS LEFT OUT IS NOT A PASS WITH NOTHING MISSING.
         # The skipped jobs' tracks were never resolved, and a no-op would tell a
         # person and a script that the pass needs no download.
@@ -404,14 +558,22 @@ def _listed(
         if written.list_path is not None
         else None
     )
+    handed_command = (
+        shlex.join(["crate", "match", "run", str(written.unlisted_path)])
+        if written.unlisted_path is not None
+        else None
+    )
+    if listed:
+        said = f"{listed} missing track(s) written to {written.list_path}; next: {command}{after}"
+    elif in_file:
+        said = (
+            f"nothing listed for download: the missing tracks were handed on to "
+            f"{written.unlisted_path}; next: {handed_command}"
+        )
+    else:
+        said = f"nothing listed: no track in this {'run' if 'run_id' in subject else 'job'} is missing"
     checks = [
-        _check(
-            "written",
-            "ok" if listed else "info",
-            f"{listed} missing track(s) written to {written.list_path}; next: {command}{after}"
-            if listed
-            else f"nothing listed: no track in this {'run' if 'run_id' in subject else 'job'} is missing",
-        ),
+        _check("written", "ok" if listed else "info", said),
         _check("owned", "info", f"{counts['owned']} already in the library, not listed"),
         _check(
             "offered",
@@ -421,11 +583,27 @@ def _listed(
         ),
         _check("suppressed", "info", f"{counts['suppressed']} deleted on purpose, not listed"),
         _check(
+            "isrc",
+            "info",
+            f"{by_isrc} missing track(s) with no provider identifier named by ISRC and listed",
+        ),
+        _check(
             "unlisted",
             "fail" if unlisted else "ok",
-            f"{unlisted} missing track(s) carry no provider identifier and are NOT in the list"
+            f"{unlisted} missing track(s) the provider cannot name exactly are NOT in the "
+            f"download list; {in_file} of them are in {written.unlisted_path} with the "
+            f"reason, for: {handed_command}"
             if unlisted
             else "every missing track is in the list",
+        ),
+        _check(
+            "unwritable",
+            "fail" if unwritable else "ok",
+            f"{len(unwritable)} of them cannot be written as an 'Artist - Title' line "
+            f"and are in no file: "
+            + "; ".join(f"{row.artist} - {row.title} ({why.reason})" for row, why in unwritable)
+            if unwritable
+            else "every track handed on is in the text list",
         ),
         *checks,
     ]
@@ -439,14 +617,27 @@ def _listed(
         "owned": counts["owned"],
         "offered": counts["offered"],
         "suppressed": counts["suppressed"],
+        "by_isrc": by_isrc,
         "unlisted": unlisted,
+        "unlisted_list": (
+            str(written.unlisted_path) if written.unlisted_path is not None else None
+        ),
+        "unlisted_next": handed_command,
         "unlisted_tracks": [
-            {"artist": row.artist, "title": row.title} for row in written.unlisted
+            {
+                "artist": row.artist,
+                "title": row.title,
+                "isrc": wanted.isrc,
+                "why": why.why,
+                "reason": why.reason,
+                "in_file": not any(row is gone for gone, _why in unwritable),
+            }
+            for row, wanted, why in handed
         ],
     }
     return ctx.envelope(
         data={"checks": checks, "summary": summary},
-        outcome=Outcome.OK if listed else Outcome.NO_OP,
+        outcome=Outcome.OK if listed or unlisted else Outcome.NO_OP,
     )
 
 
@@ -527,9 +718,14 @@ def intake_missing(ctx) -> Envelope:
 
 __all__ = [
     "LISTS_DIR",
+    "MALFORMED",
+    "NO_ISRC",
     "PROVENANCE_SOURCE",
     "RUN_ID",
+    "SEVERAL",
     "SYNCED_SUFFIX",
+    "UNKNOWN",
+    "UNREADABLE",
     "build_missing",
     "intake_missing",
     "synced_name",

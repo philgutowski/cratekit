@@ -1,0 +1,32 @@
+name = "u78-d"
+pass_kind = "light"
+
+[[rows]]
+id = "A4_cratekit_error_passthrough_again"
+description = "A product refusal raised by the catalogue is relabelled unavailable-transient"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''            except CratekitError:
+                raise
+            except Exception as exc:'''
+new = '''            except Exception as exc:'''
+
+[[rows]]
+id = "B2_nothing_written_no_op_again"
+description = "Missing tracks with nothing at all written no longer refuse, and read as a job where everything was owned"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if missing and not listed and not in_file:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B4_left_out_handed_only_again"
+description = "A run whose finished jobs only handed tracks on, with jobs skipped, refuses instead of writing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''    if left_out and not listed and not unlisted:'''
+new = '''    if left_out and not listed:'''
+

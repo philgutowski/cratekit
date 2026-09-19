@@ -10,7 +10,7 @@ consumers arrive here in one branch. One copy means a method the real
 place rather than absent in three.
 
 **IT REFUSES ANYTHING OUTSIDE THE PROTOCOL, AND THAT IS A GUARD RATHER THAN
-TIDINESS.** ``label.catalogue.Catalogue`` declares seven reads and no write at
+TIDINESS.** ``label.catalogue.Catalogue`` declares eight reads and no write at
 all: no playlist create, no heart, no follow. :class:`StrictCatalogue` raises on
 any other attribute, so a worker that reached for one fails the suite instead of
 failing silently against a fake permissive enough to answer.
@@ -42,6 +42,7 @@ PROTOCOL_METHODS = frozenset(
         "account_playlists",
         "favourite_tracks",
         "release_tracks",
+        "tracks_for_isrc",
     }
 )
 
@@ -199,6 +200,7 @@ class FakeCatalogue:
         account: list[Any] | None = None,
         hearts: list[Any] | None = None,
         releases: dict[str, tuple[list[Any], int | None]] | None = None,
+        isrcs: dict[str, list[Any]] | None = None,
     ) -> None:
         self.artists = dict(artists or {})
         self.playlists = dict(playlists or {})
@@ -215,6 +217,11 @@ class FakeCatalogue:
         #: which is the only thing the seam is handed about a release.
         self.releases = dict(releases or {})
         self.releases_asked_for: list[str] = []
+        #: The provider tracks filed under each ISRC. An ISRC absent here is one
+        #: the provider answers with no track, which is an answer and not a
+        #: failure; :class:`UnreadableCatalogue` is the failure.
+        self.isrcs = dict(isrcs or {})
+        self.isrcs_asked_for: list[str] = []
         self.asked_for: list[str] = []
         self.playlists_asked_for: list[str] = []
 
@@ -268,6 +275,10 @@ class FakeCatalogue:
             # release the provider has nothing for, and never an empty listing.
             raise ReleaseUnresolvable(f"no catalogue release {release_id!r}") from exc
         return tuple(tracks), year
+
+    def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
+        self.isrcs_asked_for.append(isrc)
+        return tuple(self.isrcs.get(isrc, ()))
 
     def check_label(self, name: str) -> dict:
         if self.known_labels is not None and name not in self.known_labels:
@@ -327,6 +338,10 @@ class UnreadableCatalogue(FakeCatalogue):
     def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
         self.releases_asked_for.append(release_id)
         raise RuntimeError(f"the catalogue could not read the release {release_id!r}")
+
+    def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
+        self.isrcs_asked_for.append(isrc)
+        raise RuntimeError(f"the catalogue could not look up the ISRC {isrc!r}")
 
 
 class VerificationOutage(FakeCatalogue):
