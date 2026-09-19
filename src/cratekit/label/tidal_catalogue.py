@@ -403,6 +403,13 @@ class TidalCatalogue:
             except CratekitError:
                 raise
             except Exception as exc:  # noqa: BLE001 - one artist's listing, not the session
+                # A HELD ARTIST IS NOT RECORDED. The roster lists every held
+                # artist again when it is built, and that read is the one the
+                # crawl uses: it succeeds and this record would be stale, or it
+                # fails and refuses the label. Only an artist discovery alone
+                # would have added is lost here.
+                if str(getattr(artist, "id", "") or artist_id) in held_ids:
+                    continue
                 unread.append(
                     Unread(
                         artist=str(getattr(artist, "name", "") or artist_id),

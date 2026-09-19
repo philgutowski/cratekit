@@ -1371,6 +1371,42 @@ def test_a_rate_limit_during_discovery_climbs_the_ladder_before_it_is_recorded(
     ]
 
 
+def test_a_held_artist_rate_limited_during_discovery_is_not_recorded_as_unread(
+    cfg, monkeypatch
+):
+    """Review finding: the roster reads a held artist again, and that read is the one used."""
+    del cfg
+
+    class LimitedForOneLadder(ProviderArtist):
+        """429 on every attempt discovery's ladder makes, then answers the roster."""
+
+        def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Release]:
+            if len(self.asked) <= listing.DEFAULT_MAX_RETRIES:
+                self.asked.append(("get_albums", limit or 0, offset))
+                raise TooManyRequests("slow down")
+            return super().get_albums(limit, offset)
+
+    own = LimitedForOneLadder(
+        "Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1"
+    )
+    compilation = Release(
+        "va1", copyright=HARBOUR, artists=[Named("Harbour Lights", identity="1")]
+    )
+    client = FakeClient(artists=[own], albums=[compilation])
+    monkeypatch.setattr(tidal_catalogue, "_pause", lambda seconds: None)
+
+    roster = tidal_catalogue.TidalCatalogue(client).artist_for(
+        labels.LabelEntry(label_id="harbour-lights", name="Harbour Lights")
+    )
+
+    # Discovery spent a whole ladder on it, then the roster read a page and the
+    # empty page after it.
+    albums_asked = [call for call in own.asked if call[0] == "get_albums"]
+    assert len(albums_asked) == (listing.DEFAULT_MAX_RETRIES + 1) + 2
+    assert roster.unread == ()
+    assert [release.id for release in listing.artist_releases(roster)] == ["own1"]
+
+
 def test_a_roster_member_missing_one_listing_fails_the_sweep_and_names_it(cfg, monkeypatch):
     """R-261: a client exposing one of two listings used to report a complete crawl."""
     del cfg
