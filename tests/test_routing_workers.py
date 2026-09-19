@@ -350,22 +350,33 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     sharing one name is a log that cannot answer the only question it is for.
     """
     from cratekit.cli import rebuild as rebuild_verb
-    from cratekit.write import routing_cli
+    from cratekit.write import metadata_cli, routing_cli
 
     seen: list[tuple[str, str]] = []
+    cuts: list[tuple[object, object]] = []
+    frozen = object()
 
-    def spy(cfg, *, tree_id, workflow, **rest):
-        # NO DEFAULT ON ``workflow``. A spy that supplied one would answer the
-        # question for a worker that named nothing, which is the half this test
-        # exists to tell apart.
+    def spy(cfg, *, tree_id, workflow, vocal_threshold, **rest):
+        # NO DEFAULT ON ``workflow`` OR ``vocal_threshold``. A spy that supplied
+        # one would answer the question for a worker that named nothing, which
+        # is the half this test exists to tell apart.
         del cfg, rest
         seen.append((tree_id, workflow))
+        cuts.append(vocal_threshold)
+
+    def loader(cfg):
+        # U89: the cut each worker hands the engine is the one loader's answer
+        # over the configuration the worker was handed, and nothing else.
+        assert cfg is frozen
+        return 7.5
 
     monkeypatch.setattr(rebuild, "rebuild_governed_tree", spy)
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", loader)
     item = jobs.Item(job_id="j", item_id=TREE_ID, ordinal=0, state=jobs.ItemState.PENDING)
-    assert rebuild_verb.handle(object(), item, None) is None
-    assert routing_cli.handle_resort(object(), item, None) is None
+    assert rebuild_verb.handle(object(), item, frozen) is None
+    assert routing_cli.handle_resort(object(), item, frozen) is None
 
+    assert cuts == [7.5, 7.5]
     assert [tree for tree, _ in seen] == [TREE_ID, TREE_ID]
     workflows = [workflow for _, workflow in seen]
     assert workflows == [rebuild.REBUILD_WORKFLOW, routing_cli.RESORT_WORKFLOW]
@@ -1101,8 +1112,9 @@ def test_the_gap_rule_is_the_derivations_own():
     truth = [rebuild.Truth(location="/x/a.flac", genre=None, energy=None, voxlevel=None)]
     _placements, gaps = rebuild.derive_from_taxonomy(shipped, truth, vocal_threshold=None)
     assert gaps == (rebuild.VOCAL_DIMENSION,)
-    assert rebuild.governed_not_compared() == gaps
+    assert rebuild.governed_not_compared(None) == gaps
     assert rebuild.derive_from_taxonomy(shipped, truth, vocal_threshold=0.5)[1] == ()
+    assert rebuild.governed_not_compared(0.5) == ()
 
 
 def test_the_warning_code_is_the_locked_spelling():
@@ -2263,3 +2275,330 @@ def test_the_add_only_writer_counts_each_new_track_once():
     before = bytes(content)
     assert trees.add_to_root_playlist(LONG_PLAYLIST, ["7", "5"], content) == (0, None)
     assert bytes(content) == before
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U89: the routing passes read the calibrated cut and fill "with vox"
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Every routing caller passed ``vocal_threshold=None``, so the vocal rollout
+# ended at tags: calibrate, file, and nothing landed under "with vox" (R-276,
+# R-417). Every test below writes a calibration file where the one loader reads
+# it, drives the shipped command line, and reads the database or the written
+# file back. The cut of 5.0 is spelled here, not read from anywhere, and the
+# readings either side of it, 6 and 4, are the brief's.
+
+CUT = 5.0
+
+
+def _calibrate(cfg: config.Config, text: str) -> Path:
+    from cratekit.write import metadata_cli
+
+    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _calibrated(cfg: config.Config) -> Path:
+    return _calibrate(cfg, json.dumps({"threshold": CUT, "method": "otsu"}))
+
+
+def _vox_display() -> str:
+    from cratekit.write import trees
+
+    return taxonomy.default_taxonomy().sub_class(trees.VOX_SUB_CLASS).display
+
+
+def _vox_nodes(cfg: config.Config, root_id: str) -> list[rebuild.TreeNode]:
+    """Every vocal sub-playlist under the governed root, read back from the file."""
+    handle = rb_writer.open_db(Path(cfg.library.db_path), cfg=cfg)
+    try:
+        return [
+            node
+            for node in rebuild.read_tree(handle, root_id)
+            if node.playlist_display == _vox_display()
+        ]
+    finally:
+        rb_writer.close_db(handle)
+
+
+def _vox_members(cfg: config.Config, root_id: str) -> set[str]:
+    return {cid for node in _vox_nodes(cfg, root_id) for cid in node.content_ids}
+
+
+@pytest.fixture
+def vox_levels(monkeypatch) -> dict[str, int]:
+    """Voxlevel readings served from the file NAME, set by each test.
+
+    Patched at the tag reader, as ``tagged`` patches genre and energy, so the
+    reader the routing derivation calls is the one that runs.
+    """
+    from cratekit.core import tags
+
+    levels: dict[str, int] = {}
+    monkeypatch.setattr(tags, "read_vox_from_file", lambda path: levels.get(Path(path).name))
+    return levels
+
+
+def test_the_loader_says_absent_as_none_and_the_tagging_cut_still_defaults(tmp_path):
+    """One loader, two answers over it: routing needs None, My Tags the default."""
+    from cratekit.write import metadata_cli
+
+    cfg = config.from_dict(valid_data(tmp_path / "library"))
+    assert metadata_cli.load_vocal_threshold(cfg) is None
+    assert metadata_cli.vocal_cut(cfg) == metadata_cli.DEFAULT_VOCAL_THRESHOLD
+    _calibrated(cfg)
+    assert metadata_cli.load_vocal_threshold(cfg) == CUT
+    assert metadata_cli.vocal_cut(cfg) == CUT
+
+
+@pytest.mark.parametrize("level, filed", [(6, True), (4, False)], ids=["above", "below"])
+def test_a_calibrated_inbox_files_a_track_over_the_cut_under_with_vox(
+    acknowledged, native, vox_levels, level, filed
+):
+    _calibrated(acknowledged)
+    vox_levels[ARRIVED] = level
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert _membership(acknowledged, native) == {"2"}
+    assert _vox_members(acknowledged, native) == ({"2"} if filed else set())
+    assert _vocal_warnings(applied) == [], (
+        "the dimension was compared and the warning still says it was not"
+    )
+
+
+def test_an_uncalibrated_inbox_warns_and_files_nothing_under_with_vox(
+    acknowledged, native, vox_levels
+):
+    vox_levels[ARRIVED] = 60
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert _membership(acknowledged, native) == {"2"}
+    assert _vox_members(acknowledged, native) == set()
+    assert len(_vocal_warnings(applied)) == 1, applied["warnings"]
+
+
+def test_a_corrupt_calibration_refuses_the_inbox_and_writes_nothing(
+    acknowledged, native, vox_levels
+):
+    _calibrate(acknowledged, '{"threshold": 5.')
+    vox_levels[ARRIVED] = 6
+    code, refused = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "vocal-calibration-unreadable", refused
+    assert _membership(acknowledged, native) == set()
+
+
+def test_a_second_calibrated_inbox_creates_no_second_vocal_sub(acknowledged, native, vox_levels):
+    _calibrated(acknowledged)
+    vox_levels[ARRIVED] = 6
+    for _ in range(2):
+        code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+        assert code == int(ExitCode.OK), applied
+    nodes = _vox_nodes(acknowledged, native)
+    assert len(nodes) == 1, [(node.folder_display, node.playlist_id) for node in nodes]
+    assert nodes[0].content_ids == frozenset({"2"})
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
+@pytest.mark.parametrize("level, filed", [(6, True), (4, False)], ids=["above", "below"])
+def test_a_calibrated_resume_files_under_with_vox_and_does_not_warn(
+    acknowledged, native, vox_levels, argv, level, filed
+):
+    job_id = _drive(argv)[1]["data"]["job_id"]
+    _calibrated(acknowledged)
+    vox_levels[SHELVED] = level
+    code, done = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert [item.state for item in _items(job_id)] == [jobs.ItemState.DONE]
+    assert _vox_members(acknowledged, native) == ({"1"} if filed else set())
+    assert _vocal_warnings(done) == [], (
+        "the resume said the vocal dimension was not compared over a job that compared it"
+    )
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
+def test_a_corrupt_calibration_refuses_the_resume_before_any_item_runs(
+    acknowledged, native, vox_levels, argv
+):
+    job_id = _drive(argv)[1]["data"]["job_id"]
+    _calibrate(acknowledged, "")
+    vox_levels[SHELVED] = 6
+    code, refused = _drive([*argv, "--job", job_id])
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "vocal-calibration-unreadable", refused
+    assert [item.state for item in _items(job_id)] == [jobs.ItemState.PENDING]
+    assert _membership(acknowledged, native) == set()
+
+
+def test_a_worker_driven_without_the_resume_refuses_a_corrupt_calibration(
+    acknowledged, native, vox_levels
+):
+    """The worker reads the cut itself, so ``job resume`` cannot slip past it."""
+    from cratekit.cli import rebuild as rebuild_verb
+    from cratekit.core.cause import CratekitError
+
+    _calibrate(acknowledged, '{"threshold": NaN}')
+    vox_levels[SHELVED] = 6
+    item = jobs.Item(job_id="j", item_id=TREE_ID, ordinal=0, state=jobs.ItemState.PENDING)
+    with pytest.raises(CratekitError) as caught:
+        rebuild_verb.handle(object(), item, acknowledged)
+    assert caught.value.cause.reason == "vocal-calibration-unreadable"
+    assert _membership(acknowledged, native) == set()
+
+
+def test_converge_compares_the_vocal_sub_once_calibrated(acknowledged, native, vox_levels):
+    from cratekit.cli import converge
+
+    vox_levels[SHELVED] = 6
+    code, before = _drive(["converge"])
+    assert code == int(ExitCode.OK), before
+    job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
+    _calibrated(acknowledged)
+    _drive(["rebuild", "--actor", "a-person", "--job", job_id])
+    assert _vox_members(acknowledged, native) == {"1"}
+
+    code, after = _drive(["converge"])
+    assert code == int(ExitCode.OK), after
+    (check,) = [c for c in after["data"]["checks"] if c["key"] == f"tree.{TREE_ID}"]
+    assert check["status"] == converge.MATCHING, check
+    assert "not compared" not in check["detail"], check
+
+
+def test_a_corrupt_calibration_is_converge_not_comparing_rather_than_a_match(
+    acknowledged, native
+):
+    from cratekit.cli import converge
+
+    _calibrate(acknowledged, '{"method": "otsu"}')
+    code, envelope = _drive(["converge"])
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == f"tree.{TREE_ID}"]
+    assert check["status"] == converge.NOT_COMPARED, check
+    assert "vocal calibration" in check["detail"], check
+
+
+# The export medium. Track 11 is Deep House at energy 2, track 12 Deep House at
+# energy 5, track 13 Tech House at energy 8 (EXPORT_TRACKS).
+
+
+@pytest.fixture
+def voiced(tagged, monkeypatch) -> dict[str, int]:
+    """``tagged``, with voxlevel readings served from the file name as well."""
+    from cratekit.core import tags
+
+    del tagged
+    levels: dict[str, int] = {}
+    monkeypatch.setattr(tags, "read_vox_from_file", lambda path: levels.get(Path(path).name))
+    return levels
+
+
+def _export_vox(document: bytes, folder: str) -> tuple[str, ...] | None:
+    """What one folder's vocal sub holds in a written file, None when it has none."""
+    import xml.etree.ElementTree as ET
+
+    declared = taxonomy.default_taxonomy()
+    root = ET.fromstring(document)
+    tree = next(
+        node for node in root.find("PLAYLISTS")[0] if node.get("Name") == declared.tree.display
+    )
+    bucket = next(node for node in tree if node.get("Name") == folder)
+    subs = [node for node in bucket if node.get("Name") == _vox_display()]
+    if not subs:
+        return None
+    (playlist,) = subs
+    return tuple(track.get("Key") for track in playlist.findall("TRACK"))
+
+
+def test_a_calibrated_export_files_over_the_cut_and_not_under_it(configured, voiced, tmp_path):
+    _calibrated(configured)
+    voiced["Low Track.flac"] = 6
+    voiced["Mid Track.flac"] = 4
+    export = _write_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    totals = envelope["data"]["totals"]
+    assert totals["not_derived"] == []
+    assert totals["vox_created"] == [f"Deep House/{_vox_display()}", f"Tech House/{_vox_display()}"]
+    written = _routed(export).read_bytes()
+    assert _export_vox(written, "Deep House") == ("11",)
+    assert _export_vox(written, "Tech House") == ()
+    # Still filed by energy as well: the vocal sub is additive.
+    assert _sub_keys(written, "Deep House", "Low") == ("11",)
+    assert _sub_keys(written, "Deep House", "Med") == ("12",)
+    offered = {item["track_id"]: item["vocal"] for item in envelope["data"]["items"]}
+    assert offered == {
+        "11": f"Deep House/{_vox_display()}",
+        "12": "",
+        "13": "",
+        "": "",
+    }
+    created = [item["destination"] for item in envelope["data"]["items"] if not item["track_id"]]
+    assert created == totals["vox_created"]
+    assert "vocal sub-playlist" in envelope["pending_human_action"]["summary"]
+
+
+def test_an_uncalibrated_export_creates_no_vocal_sub_and_names_the_gap(
+    configured, voiced, tmp_path
+):
+    voiced["Low Track.flac"] = 60
+    export = _write_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    totals = envelope["data"]["totals"]
+    assert totals["not_derived"] == [rebuild.VOCAL_DIMENSION]
+    assert totals["vox_created"] == []
+    written = _routed(export).read_bytes()
+    assert _export_vox(written, "Deep House") is None
+    assert _export_vox(written, "Tech House") is None
+
+
+def test_a_corrupt_calibration_refuses_the_export_before_the_plan(configured, voiced, tmp_path):
+    _calibrate(configured, '{"threshold": true}')
+    export = _write_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "vocal-calibration-unreadable", envelope
+    assert not _routed(export).exists()
+
+
+def test_the_export_vocal_subs_are_created_once(configured, voiced, tmp_path):
+    """A second run over its own output creates none and has nothing to route."""
+    _calibrated(configured)
+    voiced["Low Track.flac"] = 6
+    export = _write_export(configured, tmp_path / "exports")
+    _apply_export(export)
+    first = _routed(export)
+    written = first.read_bytes()
+    assert written.count(f'Name="{_vox_display()}"'.encode()) == 2
+
+    code, again = _apply_export(first)
+    assert code == int(ExitCode.OK), again
+    totals = again["data"]["totals"]
+    assert totals["vox_created"] == []
+    assert totals["inserted"] == 0
+    assert totals["reason"] == "nothing-to-route"
+    assert [item for item in again["data"]["items"] if not item["track_id"]] == []
+
+
+def test_vocal_subs_alone_are_a_change_and_write_a_file(configured, voiced, tmp_path):
+    """Every track already filed, and the subs still missing: the file carries them."""
+    _calibrated(configured)
+    export = _write_export(configured, tmp_path / "exports")
+    _apply_export(export)
+    filed = _routed(export)
+    without = filed.read_bytes().replace(
+        f'Name="{_vox_display()}"'.encode(), b'Name="Removed Sub"'
+    )
+    bare = tmp_path / "again" / "library_FRESH.xml"
+    bare.parent.mkdir()
+    bare.write_bytes(without)
+    code, envelope = _apply_export(bare)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["inserted"] == 0
+    assert len(envelope["data"]["totals"]["vox_created"]) == 2
+    assert _routed(bare).is_file()
