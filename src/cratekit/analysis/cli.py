@@ -910,8 +910,10 @@ def _previous_vocal_cut(cfg: config.Config) -> tuple[float | None, str]:
 
     Read through the one reader. An unreadable file is reported rather than
     refused, because writing a new cut over it is the remedy that refusal
-    names. A file the account cannot open still refuses, under its own slug,
-    since the write that follows would fail on the same permission.
+    names. A file the account cannot open still refuses: ``cause.classified``
+    turns a refusal chained from a PermissionError into
+    ``path-permission-denied`` at the raise, so it is not the slug caught here,
+    and a cut is never written over a file nobody could read (driven, U90).
     """
     from cratekit.write import metadata_cli
 

@@ -1147,6 +1147,21 @@ def test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_
     assert metadata_cli.load_vocal_threshold(cfg) == 5.0
 
 
+def test_a_calibration_the_account_cannot_read_refuses_and_is_not_replaced(cfg):
+    """Not the unreadable slug the hand cut writes over: a permission refusal."""
+    path = analysis_cli.vocal_calibration_path(cfg)
+    config._mkdir_private(path.parent)
+    path.write_text('{"threshold": 9.0, "method": "otsu"}', encoding="utf-8")
+    path.chmod(0)
+    try:
+        code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
+    finally:
+        path.chmod(0o600)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "path-permission-denied"
+    assert metadata_cli.load_vocal_threshold(cfg) == 9.0
+
+
 def test_a_hand_cut_refuses_with_the_library_away(cfg):
     shutil.rmtree(cfg.library.root)
     code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
