@@ -1,0 +1,45 @@
+name = "r500-a"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_no_refusal"
+description = "Drop the refusal over dark rows in _referenced, so an unmapped row contributes only a key nothing matches and the file it names is renamed (R-500 as filed)"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''    if dark:
+        raise _unmapped_refusal(dark)
+'''
+new = ""
+
+[[rows]]
+id = "G2_existence_half_dropped"
+description = "Drop the existence half of dark, so every unmapped row refuses, including a row whose recorded file is on this machine (the first cut the review rejected)"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):'''
+new = '''        elif resolved.resolution is locations.Resolution.UNMAPPED:'''
+
+[[rows]]
+id = "G3_unmapped_half_dropped"
+description = "Drop the UNMAPPED half of dark, so any unresolved row whose text is not a file here refuses, a streaming pseudo-location included"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):'''
+new = '''        elif not os.path.exists(decoded):'''
+
+[[rows]]
+id = "G4_lexists"
+description = "Ask whether the recorded NAME exists rather than whether it reaches a file, so a link to nothing reads as a row that answered"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''not os.path.exists(decoded):'''
+new = '''not os.path.lexists(decoded):'''
+
+[[rows]]
+id = "G5_recorded_key_dropped"
+description = "Drop the as recorded key. The existence rule rests on it: an unmapped row whose file exists is excused BECAUSE this key protects the file"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''        keys.add(_key(decoded))
+'''
+new = ""

@@ -1,0 +1,62 @@
+name = "r500-c"
+pass_kind = "light"
+
+[[rows]]
+id = "G11_prefix_cap_halved"
+description = "Halve the cap on the detail's prefix list, a coefficient"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''            "unmapped_prefixes": prefixes[:20],'''
+new = '''            "unmapped_prefixes": prefixes[:10],'''
+
+[[rows]]
+id = "G12_remedy_run_doctor"
+description = "Carry the deletion pass's run-doctor token, which sends a caller to a report no check of which reads the prefix map"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''        remedy=Remedy.FIX_CONFIG_VALUES,'''
+new = '''        remedy=Remedy.RUN_DOCTOR,'''
+
+[[rows]]
+id = "G13_exit_code"
+description = "Map the new reason to LIBRARY_UNREADABLE, the code of the verb's other refusal, though the library read cleanly"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/test_reserved_causes.py"]
+old = '''        "collection-row-unmapped": ExitCode.PRECONDITION,'''
+new = '''        "collection-row-unmapped": ExitCode.LIBRARY_UNREADABLE,'''
+
+[[rows]]
+id = "G14_located_skips_the_decode"
+description = "trees.located resolves the raw recorded value without decoding it, the shared locate step both writers and this verb now call"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+old = '''    decoded = locations.location_to_path(str(recorded))
+    return decoded,'''
+new = '''    decoded = str(recorded)
+    return decoded,'''
+
+[[rows]]
+id = "G15_other_host_refuses"
+description = "Existing U67 guard, sampled: a row naming another host raises out of the verb rather than being passed over"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''        except locations.LocationDecodeError:
+            continue'''
+new = '''        except locations.LocationDecodeError:
+            raise'''
+
+[[dropped]]
+id = "D1_prefix_none_filter"
+description = "Drop the `if prefix` filter on the grouped prefixes"
+reason = "unreachable by construction rather than untested: leading_prefix answers None only for a path with no leading slash, and such a path resolves NOT_A_PATH and is never dark. It stays as the type's guard, since sorted over None and str raises"
+
+[[dropped]]
+id = "D2_prefixes_unsorted"
+description = "Replace sorted over the prefix set with list"
+reason = "a set's order is per process, so the row would measure hash seeding rather than the suite, and a death would not repeat"
+
+[[dropped]]
+id = "D3_empty_value_skip"
+description = "Drop the skip over a row with no recorded path, an existing U67 line"
+reason = "outside the round's diff and below the sample: an empty value resolves NOT_A_PATH, adds the key of the empty string, and can neither refuse nor match a candidate"
