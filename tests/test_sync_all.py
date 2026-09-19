@@ -203,6 +203,10 @@ def test_a_full_pass_queues_each_source_under_its_own_key_with_one_run(
     # PLAYLISTS IS CORE, so every profile enables it and every pass names it.
     # No provider session is stored here, so it refuses for itself.
     assert summary["not_queued"] == {"playlists": "credential-missing"}
+    # A LABELS AND A FAVOURITES JOB ARE NOT INTAKE JOBS, so the pass names no
+    # ``intake missing --run``, which would find nothing of theirs to list.
+    assert summary["next"] is None
+    assert "sync.next" not in {c["key"] for c in passed["data"]["checks"]}
 
 
 def test_the_gate_refusal_has_queued_nothing_and_says_what_would_be(

@@ -701,6 +701,22 @@ def test_another_librarys_job_in_the_same_run_is_not_this_librarys_to_list(cfg, 
     assert [t["id"] for t in body["tracks"]] == ["204"]
 
 
+def test_a_job_of_another_verb_in_the_same_run_is_not_listed(cfg, library):
+    """A full pass queues a labels and a favourites job under the same run. Left
+    OPEN here, so a selection that took every job in the run refuses the run."""
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store, handler_key="sync.labels", payload={"run_id": RUN}, cfg=cfg,
+            item_ids=("some-label",),
+        )
+
+    code, envelope = run_missing()
+
+    assert code == int(ExitCode.OK), envelope
+    assert len(envelope["data"]["summary"]["jobs"]) == 1
+
+
 def test_a_job_queued_by_hand_is_not_part_of_any_run(cfg, library, monkeypatch):
     finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
     queued(monkeypatch, hearts())
