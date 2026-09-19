@@ -11,6 +11,18 @@ ONLY MISSING IS LISTED. An owned track is held, an offered one is a question a
 person has not answered, and a suppressed one is a track somebody deleted on
 purpose. Listing any of those would spend a download on an answer nobody gave.
 
+MISSING WHEN THE JOB RAN IS ASKED AGAIN AT LISTING TIME (R-502). A report's
+state was fixed when the job ran, and the second listing of a job whose tracks
+were since downloaded and landed handed a person the same download again. Each
+missing row is asked of the library and the tombstone store once more, through
+the consult the worker used, against the configuration the job froze, and a row
+that is now held, deleted on purpose or a question for a person is counted
+under ``since`` and neither listed nor handed on. The reports are not
+rewritten. A rerun over a library that gained nothing writes the same bytes;
+one that gained every row writes nothing and names no download; one that gained
+some writes a shorter list, which the emitter refuses over the job's earlier
+list of the same name, and the refusal says so.
+
 A PARTIAL LIST THAT READS AS COMPLETE IS THE DEFECT THIS FILE IS SHAPED
 AGAINST. A job that is still open, failed or was cancelled has not resolved
 every track, so it is refused rather than listed. A succeeded job is listed only
@@ -119,6 +131,14 @@ LISTS_DIR = "lists"
 #: other is refused, because a state this verb cannot read is a track it cannot
 #: say is or is not missing.
 _WORDS = frozenset({"owned", "offered", "suppressed", "missing"})
+
+#: What a row its job resolved missing has become since, by the summary key it
+#: is counted under. A row still missing has no key: it is listed as before.
+_SINCE: Mapping[match.MatchState, str] = {
+    match.MatchState.MATCHED: "owned_since",
+    match.MatchState.SUPPRESSED: "suppressed_since",
+    match.MatchState.NEEDS_REVIEW: "offered_since",
+}
 
 #: Twelve characters: country, registrant, year, designation. Hyphens and
 #: spaces are presentation and are folded away before the shape is asked, and a
@@ -296,19 +316,36 @@ def _out_dir(ctx, subject: Mapping[str, Any]) -> Path:
     return out
 
 
-def _written_or_refuse(out: Path, name: str, rows, provenance, subject, handed_on=()):
+def _written_or_refuse(
+    out: Path, name: str, rows, provenance, subject, handed_on=(), gained: int = 0
+):
     """The emitter's write, with both of its failures as this verb's refusal.
 
     A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL, as it is
     ``label approved``'s. The emitter converts what it reads and lets a failed
     write through, and left alone that reaches a person as an internal error
     telling them to report a defect over a folder they cannot write to.
+
+    ``gained`` is how many rows the library answered since the job ran. A list
+    that shrank by them is refused over the earlier list of the same name, and
+    without that said the refusal reads as somebody else's file in the way.
     """
     try:
         return listdoc.write(out, name, rows, provenance, handed_on=handed_on)
     except listdoc.ListDocRefused as exc:
+        why = (
+            (
+                f"if it is this list's earlier copy: {gained} track(s) it names are no "
+                f"longer missing, so this list is shorter than that one",
+            )
+            if gained
+            else ()
+        )
         raise _unusable(
-            str(exc), "move the file aside or name another folder with --out", **subject
+            str(exc),
+            *why,
+            "move the file aside or name another folder with --out",
+            **subject,
         ) from exc
     except OSError as exc:
         raise _unusable(
@@ -547,6 +584,73 @@ def _provenance(
     }
 
 
+def _still_missing(
+    missing: list[match.Wanted], origins: list[jobs.Job], subject: Mapping[str, Any]
+) -> tuple[list[match.Wanted], list[jobs.Job], dict[str, int]]:
+    """The rows still missing now, their jobs, and what the rest became since.
+
+    THE WORKER'S CONSULT, NOT A SECOND OPINION. Each row is resolved as
+    :func:`cratekit.intake.cli.resolve_track` resolves it: the library view
+    ``match_cli.library_view`` builds, against the configuration the job froze,
+    then a question the library raises goes through ``adjudicate``, so an
+    answer a person already gave decides it. Without that step a row a person
+    answered as a different track would read here as a fresh question and drop
+    out of the list for ever. One view per frozen configuration and verb, so a
+    run whose jobs share one walks the library once.
+
+    AN ABSENT LIBRARY IS NOT AN EMPTY ONE. Every row would recheck missing and
+    the list would read as asked again when it was not, so every library is
+    asked to be there before any is walked.
+    """
+    groups: dict[tuple[str, str], list[int]] = {}
+    for n, job in enumerate(origins):
+        groups.setdefault((job.config_fingerprint, job.handler_key), []).append(n)
+    frozen = {key: jobs.frozen_config(origins[at[0]]) for key, at in groups.items()}
+    for cfg in frozen.values():
+        music = Path(cfg.library.root) / cfg.library.music_dir
+        if not music.is_dir():
+            raise refuse(
+                "library-volume-unmounted",
+                f"this library's music folder {str(music)!r} is not there, so no "
+                f"track the job found missing can be asked again whether it is held "
+                f"now; nothing was written",
+                remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+                origin=("intake.missing",),
+                detail={"music": str(music), **subject},
+            )
+    now: dict[int, match.TrackMatch] = {}
+    for (fingerprint, handler_key), at in groups.items():
+        cfg = frozen[(fingerprint, handler_key)]
+        index, suppresses, identify = match_cli.library_view(cfg)
+        found = [
+            match.resolve_one(missing[n], index, suppresses=suppresses, suppression_id=identify)
+            for n in at
+        ]
+        asked = [k for k, one in enumerate(found) if one.state is match.MatchState.NEEDS_REVIEW]
+        if asked:
+            with review.open_store(cfg) as items:
+                answered = match_cli.adjudicate(
+                    items,
+                    match.MatchResult(matches=tuple(found[k] for k in asked)),
+                    handler_key=handler_key,
+                    suppresses=suppresses,
+                    suppression_id=identify,
+                )
+            for k, one in zip(asked, answered.matches, strict=True):
+                found[k] = one
+        for n, one in zip(at, found, strict=True):
+            now[n] = one
+    since = dict.fromkeys(_SINCE.values(), 0)
+    kept: list[int] = []
+    for n in range(len(missing)):
+        one = now[n]
+        if one.state is match.MatchState.MISSING:
+            kept.append(n)
+        else:
+            since[_SINCE[one.state]] += 1
+    return [missing[n] for n in kept], [origins[n] for n in kept], since
+
+
 def _listed(
     ctx,
     found: list[tuple[jobs.Job, tuple[dict[str, Any], ...]]],
@@ -577,9 +681,16 @@ def _listed(
     handed: list[tuple[listdoc.Row, match.Wanted, _Unnamed]] = []
     unwritable: list[tuple[listdoc.Row, _Unnamed]] = []
     by_isrc = 0
+    since = dict.fromkeys(_SINCE.values(), 0)
+    out: Path | None = None
     if missing:
-        # THE FOLDER BEFORE THE PROVIDER, so a bad --out spends no lookup.
+        # THE FOLDER BEFORE THE LIBRARY WALK AND THE PROVIDER, so a bad --out
+        # spends neither.
         out = _out_dir(ctx, subject)
+        missing, origins, since = _still_missing(missing, origins, subject)
+        counts["missing"] = len(missing)
+    gained = sum(since.values())
+    if missing:
         rows = list(listdoc.rows_of(missing))
         bare = [n for n, row in enumerate(rows) if not str(row.ref or "").strip()]
         unnamed: set[int] = set()
@@ -611,6 +722,7 @@ def _listed(
             _provenance(listed_rows, [origins[n] for n in kept]),
             subject,
             handed_on=writable,
+            gained=gained,
         )
     listed = len(written.listed)
     unlisted = len(handed)
@@ -663,6 +775,11 @@ def _listed(
             f"nothing listed for download: the missing tracks were handed on to "
             f"{written.unlisted_path}; next: {handed_command}"
         )
+    elif gained:
+        said = (
+            f"nothing listed: every track this {'run' if 'run_id' in subject else 'job'} "
+            f"found missing is in the library, deleted on purpose or offered for review since"
+        )
     else:
         said = f"nothing listed: no track in this {'run' if 'run_id' in subject else 'job'} is missing"
     checks = [
@@ -675,6 +792,14 @@ def _listed(
             f"see: crate review list",
         ),
         _check("suppressed", "info", f"{counts['suppressed']} deleted on purpose, not listed"),
+        _check(
+            "since",
+            "info",
+            f"{gained} track(s) missing when the job ran are not listed, asked again now: "
+            f"{since['owned_since']} in the library since, {since['suppressed_since']} "
+            f"deleted on purpose since, {since['offered_since']} held in another version "
+            f"since and offered for review",
+        ),
         _check(
             "isrc",
             "info",
@@ -710,6 +835,7 @@ def _listed(
         "owned": counts["owned"],
         "offered": counts["offered"],
         "suppressed": counts["suppressed"],
+        **since,
         "by_isrc": by_isrc,
         "unlisted": unlisted,
         "unlisted_list": (

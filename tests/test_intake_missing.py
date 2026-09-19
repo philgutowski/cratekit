@@ -224,14 +224,161 @@ def test_the_written_list_is_accepted_and_downloaded_by_acquire(cfg, library, mo
 
 
 def test_a_second_run_is_the_same_list_and_not_a_refusal(cfg, library, monkeypatch):
+    """A library that gained nothing since the first listing writes the same
+    BYTES, which is what lets the emitter recognise the list rather than refuse
+    it (R-476's comparison), and the recheck counts nothing as changed."""
     mixed_library(library)
     job_id = finished(monkeypatch, hearts())
     _code, first = missing(job_id)
+    paths = [Path(first["data"]["summary"][key]) for key in ("list", "manifest")]
+    before = [path.read_bytes() for path in paths]
 
     code, again = missing(job_id)
 
     assert code == int(ExitCode.OK), again
-    assert again["data"]["summary"]["list"] == first["data"]["summary"]["list"]
+    summary = again["data"]["summary"]
+    assert summary["list"] == first["data"]["summary"]["list"]
+    assert [path.read_bytes() for path in paths] == before
+    assert (summary["written"], summary["missing"]) == (2, 2)
+    assert (summary["owned_since"], summary["suppressed_since"], summary["offered_since"]) == (0, 0, 0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-502: a missing row is asked again at listing time
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_rows_acquired_since_the_job_are_not_listed_and_name_no_download(cfg, library, monkeypatch):
+    """R-502 as driven: two missing rows listed, downloaded and landed, then the
+    same job listed again. It used to answer ``missing 2, written 2`` and the
+    same ``next`` line, and the download fetched both again."""
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    _code, first = missing(job_id)
+    listed = Path(first["data"]["summary"]["list"])
+    before = listed.read_bytes()
+    owned(library, "Lumen Drift - Salt Road.flac")
+    owned(library, "Kite Harbor - Low Tide Signal.flac")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["missing"], summary["owned_since"]) == (0, 0, 2)
+    assert (summary["owned"], summary["offered"]) == (2, 1), "the job's own answers are kept"
+    assert (summary["list"], summary["next"]) == (None, None)
+    checks = {check["title"]: check for check in envelope["data"]["checks"]}
+    assert "crate acquire download" not in checks["written"]["detail"]
+    assert "2 in the library since" in checks["since"]["detail"]
+    assert listed.read_bytes() == before, "the earlier list is not this verb's to remove"
+
+
+def test_one_row_acquired_since_leaves_the_other_listed(cfg, library, monkeypatch, tmp_path):
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    owned(library, "Lumen Drift - Salt Road.flac")
+
+    code, envelope = missing(job_id, "--out", str(tmp_path / "fresh"))
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["missing"], summary["owned_since"]) == (1, 1, 1)
+    assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["205"]
+    assert set(json.loads(Path(summary["manifest"]).read_text())["rows"]) == {"205"}
+
+
+def test_a_shorter_rerun_over_the_jobs_earlier_list_refuses_and_says_why(cfg, library, monkeypatch):
+    """The list's name is fixed by the job, so a rerun that lists fewer rows
+    meets the first run's bytes. That is R-476's name, out of scope here; the
+    refusal says the rows were gained rather than read as a stranger's file."""
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    _code, first = missing(job_id)
+    listed = Path(first["data"]["summary"]["list"])
+    before = listed.read_bytes()
+    owned(library, "Lumen Drift - Salt Road.flac")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    steps = " ".join(envelope["cause"]["remediation"]["steps"])
+    assert "1 track(s) it names are no longer missing" in steps
+    assert listed.read_bytes() == before
+
+
+def test_a_row_tombstoned_since_the_job_is_not_listed_and_counted_suppressed(
+    cfg, library, monkeypatch
+):
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    tombstone(cfg, "Kite Harbor", "Low Tide Signal")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["suppressed_since"], summary["suppressed"]) == (1, 1, 0)
+    assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["204"]
+
+
+def test_a_row_held_in_another_version_since_is_offered_not_listed(cfg, library, monkeypatch):
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    owned(library, "Lumen Drift - Salt Road (Someone Remix).flac")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["offered_since"]) == (1, 1)
+    assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["205"]
+
+
+def test_a_row_a_person_answered_as_another_track_stays_listed(cfg, library, monkeypatch):
+    """THE ANSWER DECIDES, as it did in the worker. The library still holds
+    another version, so the recheck alone asks the question again; without the
+    answer read back the row would drop out of every later list for good."""
+    mixed_library(library)
+    asked = finished(monkeypatch, [Track("202", "Nova Reef", "Tide")])
+    with jobs.open_store() as store:
+        (report,) = missing_cli.job_reports(store, jobs.get(store, asked))
+    assert report["state"] == "offered"
+    code, answered = drive(["review", "resolve", report["review_item"], "--verdict", "rejected"])
+    assert code == int(ExitCode.OK), answered
+    job_id = finished(monkeypatch, [Track("202", "Nova Reef", "Tide")])
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["missing"], summary["offered_since"]) == (1, 1, 0)
+    assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["202"]
+
+
+def test_an_unmounted_library_refuses_rather_than_reading_every_row_missing(
+    cfg, library, monkeypatch
+):
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    (library / "Music").rename(library / "Music-away")
+
+    code, envelope = missing(job_id)
+
+    assert envelope["cause"]["reason"] == "library-volume-unmounted", (code, envelope)
+    assert not lists_dir(library).exists()
+
+
+def test_a_job_with_nothing_missing_does_not_need_the_library(cfg, library, monkeypatch):
+    owned(library, "Aurora Bloom - Sun Path.flac")
+    job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path")])
+    (library / "Music").rename(library / "Music-away")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
 
 
 def test_out_overrides_the_folder(cfg, library, monkeypatch, tmp_path):
@@ -696,6 +843,36 @@ def test_a_run_list_is_one_file_a_second_listing_reproduces(cfg, library):
     assert sorted(p.name for p in lists_dir(library).iterdir()) == [
         RUN_LIST, RUN_LIST.replace(".list.json", ".manifest.json"),
     ]
+
+
+def test_a_run_asks_each_missing_row_again_as_a_job_does(cfg, library):
+    """R-502 over ``--run``: the same recheck, per row, across every job. The
+    track the two playlists share was acquired, so it drops from both."""
+    shared = Track("204", "Lumen Drift", "Salt Road")
+    finished_in_run(cfg, "pl-a", [Track("205", "Kite Harbor", "Low Tide Signal"), shared])
+    finished_in_run(cfg, "pl-b", [shared, Track("206", "Sable Cove", "Quiet Pier")])
+    owned(library, "Lumen Drift - Salt Road.flac")
+    tombstone(cfg, "Sable Cove", "Quiet Pier")
+
+    code, envelope = run_missing()
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["missing"]) == (1, 1)
+    assert (summary["owned_since"], summary["suppressed_since"]) == (2, 1)
+    assert [t["id"] for t in json.loads(Path(summary["list"]).read_text())["tracks"]] == ["205"]
+    assert "land what it downloads" in {c["title"]: c for c in envelope["data"]["checks"]}["written"]["detail"]
+
+
+def test_a_run_whose_rows_were_all_acquired_since_names_no_download(cfg, library):
+    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    owned(library, "Lumen Drift - Salt Road.flac")
+
+    code, envelope = run_missing()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert (envelope["data"]["summary"]["next"], envelope["data"]["summary"]["owned_since"]) == (None, 1)
 
 
 def test_the_default_human_output_names_the_list_the_download_and_the_landing(cfg, library):
