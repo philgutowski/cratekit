@@ -442,6 +442,36 @@ def clear_tags(path: Path, fields: Sequence[str]) -> bool:
         return False
 
 
+def strip_tags(path: Path) -> bool:
+    """Remove EVERY tag block ``path`` carries, known field or not.
+
+    FOR A FILE THIS PRODUCT DID NOT TAG AND WILL TAG FROM SCRATCH, and for
+    nothing else. :func:`clear_tags` removes only fields the table names, and
+    the table has no tempo field on purpose, so a tempo frame somebody else
+    wrote is exactly the one thing it cannot reach. A second source upload is
+    that file: an uploader's container can carry a BPM frame, the download tool
+    keeps it whenever the upload is already in the target format, and adding
+    the row's artist and title on top would commit it (R17). Stripping the
+    whole block first is the only way the table's refusal to name a tempo
+    becomes a file that carries none.
+
+    Container dispatch goes through ``_open`` like every other writer here, so
+    an ID3 chunk inside WAV or AIFF is removed by the class that accounts for
+    the chunk, never by a bare ID3 stream writer. Returns True on success and
+    False on any failure, matching its siblings.
+    """
+    dialect_of(path.suffix.lower())
+    try:
+        handle = _open(path)
+        if handle.tags is None:
+            return True
+        handle.delete()
+        return True
+    except Exception as exc:  # noqa: BLE001 - one bad file must not abort a batch
+        log.debug("tag strip failed for %s: %s", path, exc)
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Reading
 # ---------------------------------------------------------------------------

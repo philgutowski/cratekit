@@ -1,0 +1,399 @@
+# Mutation table: u81-fetch-b
+
+Measured by `scripts/mutate.py` on 2026-09-19 15:11 UTC, branch `relay/126` at `3fa8429`. Pass kind: light.
+
+Baseline: green, 8626 collected. pytest invocations for this batch: 18.
+
+Environment: inherited from the calling shell, then added to. Added: PYTHONDONTWRITEBYTECODE=1; PYTHONPATH (the plugin's temp directory, prepended); MUTATE_REPORT_PATH (the plugin's output file). Removed: PYTEST_ADDOPTS (an inherited value would edit the command after the driver built it); PYTEST_XDIST_WORKER (the reporting plugin reads it to tell a worker from the controller, so a driver started from inside a parallel worker would hand its child a controller that believes it is a worker and writes no report; xdist sets it afresh in each worker the child starts); PYTEST_XDIST_WORKER_COUNT (the same inherited worker identity, scrubbed with it); PYTEST_XDIST_TESTRUNUID (the same inherited worker identity, scrubbed with it). Nothing else was scrubbed, because a hand built environment is how a missing binary reddens a baseline and every row after it.
+
+Null control `NULL_CONTROL`: killed 0, collected 8626 against 8626. The control is a semantically empty change, so a zero here is what makes every other number in this table believable.
+
+## Summary
+
+| id | file | surface | subset | collected | kills | status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `W2_scheme_half_rerun` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 34 | 2 | killed |
+| `W4_empty_stem_rerun` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 34 | 1 | killed |
+| `Q1_provider_route_fetched_lossy` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 34 | 1 | killed |
+| `Q2_state_not_checked` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 8626 | 0 (promoted) | zero |
+| `Q3_empty_queue` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 34 | 4 | killed |
+| `Q4_title_loses_version` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 34 | 6 | killed |
+| `Q5_owned_row_fetched` | `src/cratekit/acquire/fallback_cli.py` | user | 2 file(s) | 70 | 3 | killed |
+| `Y1_no_option_terminator` | `src/cratekit/acquire/fallback.py` | user | 1 file(s) | 34 | 1 | killed |
+| `Y2_metadata_kept_on_convert` | `src/cratekit/acquire/fallback.py` | user | 1 file(s) | 34 | 1 | killed |
+| `Y3_failed_exit_is_a_file` | `src/cratekit/acquire/fallback.py` | user | 1 file(s) | 34 | 1 | killed |
+| `L1_two_files_first_wins` | `src/cratekit/acquire/fallback.py` | user | 1 file(s) | 34 | 1 | killed |
+| `L2_any_suffix` | `src/cratekit/acquire/fallback.py` | user | 1 file(s) | 34 | 1 | killed |
+| `S1_strip_does_nothing` | `src/cratekit/core/tags.py` | user | 1 file(s) | 34 | 2 | killed |
+
+## Zero rows and what they owe
+
+- `Q2_state_not_checked` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
+
+## Considered and dropped
+
+METHOD caps a light pass at 25 rows. These were ranked below the cap and NOT measured. They are not coverage.
+
+- `D1_resume_argv_list`: fetch_argv drops the frozen list path from the resume argv Dropped because: ranked below the cap: with --job the list is never read, so the path is cosmetic on the resume and a zero here would be maintainer facing
+- `D2_stem_limit`: Halve STEM_LIMIT Dropped because: ranked below the cap: a length coefficient on a name the naming stage rewrites; the test pins 120 exactly and the row would be a certain kill
+- `D3_url_named`: Drop the not said.url half of the accepted check Dropped because: ranked below the cap: settled() never returns ACCEPTED without a URL, so the half is belt and braces over an unreachable input
+- `D4_strip_early_return`: Remove the tags is None early return in strip_tags Dropped because: ranked below the cap: an optimisation; mutagen's delete on an untagged file is a no op
+- `D5_fetch_timeout`: Halve FETCH_TIMEOUT_SECONDS Dropped because: ranked below the cap: an unmeasured coefficient carried in the record as owed to the attended download
+
+## Row definitions
+
+### `W2_scheme_half_rerun`
+
+Re-run of W2: the web address check keeps only its host half
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_an_accepted_option_that_is_not_a_web_address_is_never_handed_to_the_tool[file://localhost/etc/hosts]`
+  - `tests/test_acquire_fallback_fetch.py::test_an_accepted_option_that_is_not_a_web_address_is_never_handed_to_the_tool[ftp://uploads.example/track.mp3]`
+
+Old text:
+
+```
+    if where.scheme not in ("http", "https") or not where.netloc:
+```
+
+New text:
+
+```
+    if not where.netloc:
+```
+
+### `W4_empty_stem_rerun`
+
+Re-run of W4: a row naming no artist and no title is fetched and committed
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_row_naming_no_artist_and_no_title_is_refused_before_a_download`
+
+Old text:
+
+```
+    if not stem:
+        raise refuse(
+```
+
+New text:
+
+```
+    if False:
+        raise refuse(
+```
+
+### `Q1_provider_route_fetched_lossy`
+
+A row with a provider route is queued for a lossy second source download anyway
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_row_with_a_provider_route_is_not_fetched_lossy`
+
+Old text:
+
+```
+        if provider_routed(items, one):
+            continue
+        said = fallback.settled(items, one)
+```
+
+New text:
+
+```
+        said = fallback.settled(items, one)
+```
+
+### `Q2_state_not_checked`
+
+The accepted state is not checked, only that a chosen upload is named
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 8626 against a baseline of 8626
+- Kills: 0 (zero)
+- Promoted: subset killed 0, full suite killed 0
+- Note: confirmed on the full suite
+
+Old text:
+
+```
+        if said is None or said.state != fallback.ACCEPTED or not said.url:
+```
+
+New text:
+
+```
+        if said is None or not said.url:
+```
+
+### `Q3_empty_queue`
+
+A list with nothing accepted queues a job anyway instead of reporting a no-op
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 4 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_row_the_library_already_holds_is_not_fetched`
+  - `tests/test_acquire_fallback_fetch.py::test_a_row_with_a_provider_route_is_not_fetched_lossy`
+  - `tests/test_acquire_fallback_fetch.py::test_an_acceptance_naming_no_upload_of_several_is_not_queued`
+  - `tests/test_acquire_fallback_fetch.py::test_nothing_accepted_queues_nothing_and_says_so`
+
+Old text:
+
+```
+    if not rows:
+        return ctx.envelope(
+```
+
+New text:
+
+```
+    if False:
+        return ctx.envelope(
+```
+
+### `Q4_title_loses_version`
+
+The frozen title is the bare title and not the listed one, so the version is dropped from the name and the tag
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 6 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_lossy_file_lands_marked`
+  - `tests/test_acquire_fallback_fetch.py::test_a_tempo_the_upload_carried_is_never_committed`
+  - `tests/test_acquire_fallback_fetch.py::test_an_existing_output_is_refused_without_a_download`
+  - `tests/test_acquire_fallback_fetch.py::test_an_output_that_appears_during_the_download_is_refused_not_replaced`
+  - `tests/test_acquire_fallback_fetch.py::test_artist_and_title_tags_come_from_the_row_not_the_upload_page`
+  - `tests/test_acquire_fallback_fetch.py::test_one_item_per_accepted_row_keyed_on_its_review_item`
+
+Old text:
+
+```
+            {"artist": one.artist, "title": one.listed, "url": said.url},
+```
+
+New text:
+
+```
+            {"artist": one.artist, "title": one.title, "url": said.url},
+```
+
+### `Q5_owned_row_fetched`
+
+Existing guard, moved into missing_rows: a row the library holds is not counted owned and is fetched
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`, `tests/test_acquire_fallback.py`
+- Collected: 70 against a baseline of 70
+- Kills: 3 (killed)
+- Killed:
+  - `tests/test_acquire_fallback.py::test_an_owned_row_is_never_searched`
+  - `tests/test_acquire_fallback.py::test_no_binary_is_needed_when_nothing_is_searched`
+  - `tests/test_acquire_fallback_fetch.py::test_a_row_the_library_already_holds_is_not_fetched`
+
+Old text:
+
+```
+        if one.state is match.MatchState.MATCHED:
+            counts["owned"] += 1
+```
+
+New text:
+
+```
+        if False:
+            counts["owned"] += 1
+```
+
+### `Y1_no_option_terminator`
+
+The address is passed without the option terminator in front of it
+
+- File: `src/cratekit/acquire/fallback.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_extracts_mp3_drops_upload_metadata_and_ends_on_the_address`
+
+Old text:
+
+```
+            "--",
+            url,
+```
+
+New text:
+
+```
+            url,
+```
+
+### `Y2_metadata_kept_on_convert`
+
+The metadata drop is not passed to the conversion step
+
+- File: `src/cratekit/acquire/fallback.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_extracts_mp3_drops_upload_metadata_and_ends_on_the_address`
+
+Old text:
+
+```
+            "--postprocessor-args",
+            "ExtractAudio:-map_metadata -1",
+
+```
+
+New text:
+
+```
+(empty)
+```
+
+### `Y3_failed_exit_is_a_file`
+
+A download exiting nonzero is read as a landing whenever it left a file
+
+- File: `src/cratekit/acquire/fallback.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_never_reads_a_failure_as_a_file[nonzero]`
+
+Old text:
+
+```
+        if done.returncode != 0:
+            said = (done.stderr or "").strip().splitlines()
+            raise FallbackUnavailable(
+                f"the download failed
+```
+
+New text:
+
+```
+        if False:
+            said = (done.stderr or "").strip().splitlines()
+            raise FallbackUnavailable(
+                f"the download failed
+```
+
+### `L1_two_files_first_wins`
+
+A download that left two MP3 files hands the first one on as the track
+
+- File: `src/cratekit/acquire/fallback.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_never_reads_a_failure_as_a_file[two]`
+
+Old text:
+
+```
+    if len(found) != 1:
+```
+
+New text:
+
+```
+    if len(found) == 0:
+```
+
+### `L2_any_suffix`
+
+The landing is not required to be MP3, so an unconverted upload is handed on
+
+- File: `src/cratekit/acquire/fallback.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_never_reads_a_failure_as_a_file[not-mp3]`
+
+Old text:
+
+```
+            if one.is_file() and one.suffix.lower() == FETCH_SUFFIX
+```
+
+New text:
+
+```
+            if one.is_file()
+```
+
+### `S1_strip_does_nothing`
+
+strip_tags reports success and removes nothing, so an upload's tempo frame survives
+
+- File: `src/cratekit/core/tags.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 34 against a baseline of 34
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_tempo_the_upload_carried_is_never_committed`
+  - `tests/test_acquire_fallback_fetch.py::test_strip_tags_empties_an_id3_chunk_inside_a_container_and_keeps_the_audio`
+
+Old text:
+
+```
+        handle.delete()
+        return True
+```
+
+New text:
+
+```
+        return True
+```
+

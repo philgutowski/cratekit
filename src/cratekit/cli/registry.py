@@ -1087,6 +1087,29 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted", "binary.yt-dlp"),
     ),
     Entry(
+        name="acquire.fallback-fetch",
+        summary=(
+            "download the second source candidates accepted in review into staging, "
+            "marked lossy and tagged from the list's row"
+        ),
+        module="cratekit.acquire.fallback_cli",
+        builder="build_fetch",
+        handler_key="acquire.fallback-fetch",
+        feature_rows=(7,),
+        argv_builder="fetch_argv",
+        long_running=True,
+        # U81. It resolves the list exactly as ``acquire.fallback`` does, and
+        # that resolution raises a version question into the match queue.
+        adjudicates=True,
+        emits=frozenset({"job_state"}),
+        output_schema="job_state/1",
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("library.mounted", "binary.yt-dlp", "binary.ffmpeg"),
+        # No gate, for the reason ``acquire.download`` declares none: it adds
+        # files into download staging, and every upload was chosen in review.
+    ),
+    Entry(
         name="match.run",
         summary="resolve an external list against the library: matched, needs review, or missing",
         module="cratekit.acquire.match_cli",

@@ -1,0 +1,374 @@
+# Mutation table: u81-fetch-a
+
+Measured by `scripts/mutate.py` on 2026-09-19 15:04 UTC, branch `relay/126` at `a0e8f7c`. Pass kind: light.
+
+Baseline: green, 8623 collected. pytest invocations for this batch: 17.
+
+Environment: inherited from the calling shell, then added to. Added: PYTHONDONTWRITEBYTECODE=1; PYTHONPATH (the plugin's temp directory, prepended); MUTATE_REPORT_PATH (the plugin's output file). Removed: PYTEST_ADDOPTS (an inherited value would edit the command after the driver built it); PYTEST_XDIST_WORKER (the reporting plugin reads it to tell a worker from the controller, so a driver started from inside a parallel worker would hand its child a controller that believes it is a worker and writes no report; xdist sets it afresh in each worker the child starts); PYTEST_XDIST_WORKER_COUNT (the same inherited worker identity, scrubbed with it); PYTEST_XDIST_TESTRUNUID (the same inherited worker identity, scrubbed with it). Nothing else was scrubbed, because a hand built environment is how a missing binary reddens a baseline and every row after it.
+
+Null control `NULL_CONTROL`: killed 0, collected 8623 against 8623. The control is a semantically empty change, so a zero here is what makes every other number in this table believable.
+
+## Summary
+
+| id | file | surface | subset | collected | kills | status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `W1_strict_not_refused` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 1 | killed |
+| `W2_scheme_half` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 8623 | 0 (promoted) | zero |
+| `W3_host_half` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 1 | killed |
+| `W4_empty_stem` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 8623 | 0 (promoted) | zero |
+| `W5_pre_download_exists` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 1 | killed |
+| `W6_post_landing_exists` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 1 | killed |
+| `W7_final_unmarked` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 4 | killed |
+| `W8_upload_tags_kept` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 1 | killed |
+| `W9_row_tags_not_written` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 2 | killed |
+| `W10_untaggable_committed` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 1 | killed |
+| `W11_missing_tool_fails_items` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 1 | killed |
+| `W12_download_failure_not_retryable` | `src/cratekit/acquire/fallback_cli.py` | user | 1 file(s) | 31 | 1 | killed |
+
+## Zero rows and what they owe
+
+- `W2_scheme_half` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
+- `W4_empty_stem` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
+
+## Row definitions
+
+### `W1_strict_not_refused`
+
+The strict policy refusal before the download is removed, so a lossy upload is fetched under strict
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_strict_policy_refuses_that_item_before_anything_downloads`
+
+Old text:
+
+```
+    if not decision.permitted:
+        raise refuse(
+            "lossy-refused",
+```
+
+New text:
+
+```
+    if False:
+        raise refuse(
+            "lossy-refused",
+```
+
+### `W2_scheme_half`
+
+The web address check keeps only its host half, so any scheme with a host is handed to the tool
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 8623 against a baseline of 8623
+- Kills: 0 (zero)
+- Promoted: subset killed 0, full suite killed 0
+- Note: confirmed on the full suite
+
+Old text:
+
+```
+    if where.scheme not in ("http", "https") or not where.netloc:
+```
+
+New text:
+
+```
+    if not where.netloc:
+```
+
+### `W3_host_half`
+
+The web address check keeps only its scheme half, so an address with no host is handed to the tool
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_an_accepted_option_that_is_not_a_web_address_is_never_handed_to_the_tool[https://]`
+
+Old text:
+
+```
+    if where.scheme not in ("http", "https") or not where.netloc:
+```
+
+New text:
+
+```
+    if where.scheme not in ("http", "https"):
+```
+
+### `W4_empty_stem`
+
+A row naming no artist and no title is fetched and committed as a bare suffix
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 8623 against a baseline of 8623
+- Kills: 0 (zero)
+- Promoted: subset killed 0, full suite killed 0
+- Note: confirmed on the full suite
+
+Old text:
+
+```
+    if not stem:
+        raise refuse(
+```
+
+New text:
+
+```
+    if False:
+        raise refuse(
+```
+
+### `W5_pre_download_exists`
+
+The name already taken is no longer checked before the download, so one is spent on it
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_an_existing_output_is_refused_without_a_download`
+
+Old text:
+
+```
+    if expected.exists():
+        raise _exists(expected, detail)
+```
+
+New text:
+
+```
+    if False:
+        raise _exists(expected, detail)
+```
+
+### `W6_post_landing_exists`
+
+A file that appeared during the download is no longer checked, so the engine commits over it
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_an_output_that_appears_during_the_download_is_refused_not_replaced`
+
+Old text:
+
+```
+    if final.exists():
+        raise _exists(final, detail)
+```
+
+New text:
+
+```
+    if False:
+        raise _exists(final, detail)
+```
+
+### `W7_final_unmarked`
+
+The committed name ignores the policy decision and is never marked
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 4 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_lossy_file_lands_marked`
+  - `tests/test_acquire_fallback_fetch.py::test_a_tempo_the_upload_carried_is_never_committed`
+  - `tests/test_acquire_fallback_fetch.py::test_an_output_that_appears_during_the_download_is_refused_not_replaced`
+  - `tests/test_acquire_fallback_fetch.py::test_artist_and_title_tags_come_from_the_row_not_the_upload_page`
+
+Old text:
+
+```
+        Path(stem + landed.suffix), marker, required=decision.marker_required
+```
+
+New text:
+
+```
+        Path(stem + landed.suffix), marker, required=False
+```
+
+### `W8_upload_tags_kept`
+
+The upload's own tag block is not stripped before the row's artist and title are written
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_tempo_the_upload_carried_is_never_committed`
+
+Old text:
+
+```
+        written = tags.strip_tags(landed) and tags.write_tags(
+```
+
+New text:
+
+```
+        written = tags.write_tags(
+```
+
+### `W9_row_tags_not_written`
+
+The row's artist and title are never written, so the file carries no name at all
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_tempo_the_upload_carried_is_never_committed`
+  - `tests/test_acquire_fallback_fetch.py::test_artist_and_title_tags_come_from_the_row_not_the_upload_page`
+
+Old text:
+
+```
+            landed, {"artist": artist or None, "title": title or None}
+```
+
+New text:
+
+```
+            landed, {"artist": None, "title": None}
+```
+
+### `W10_untaggable_committed`
+
+A landing that could not be tagged from its row is committed anyway
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_file_that_cannot_be_tagged_from_its_row_is_not_committed`
+
+Old text:
+
+```
+    if not written:
+        raise refuse(
+            "unavailable-transient",
+            untagged,
+```
+
+New text:
+
+```
+    if False:
+        raise refuse(
+            "unavailable-transient",
+            untagged,
+```
+
+### `W11_missing_tool_fails_items`
+
+A missing yt-dlp fails the item instead of parking the job, so every later item fails the same way
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_missing_yt_dlp_parks_the_job_rather_than_failing_every_item`
+
+Old text:
+
+```
+        raise jobs.Parked(
+            _binary_refusal(
+                exc,
+                detail,
+                said="A second source download runs it, so the job is parked with this "
+                "item not downloaded.",
+                origin=FETCH_ORIGIN,
+            ).cause
+        ) from exc
+```
+
+New text:
+
+```
+        raise _binary_refusal(
+                exc,
+                detail,
+                said="A second source download runs it, so the job is parked with this "
+                "item not downloaded.",
+                origin=FETCH_ORIGIN,
+        ) from exc
+```
+
+### `W12_download_failure_not_retryable`
+
+A failed download is refused as final rather than retryable
+
+- File: `src/cratekit/acquire/fallback_cli.py`
+- Surface: user
+- Subset: explicit subset from the row
+- Ran: `tests/test_acquire_fallback_fetch.py`
+- Collected: 31 against a baseline of 31
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_acquire_fallback_fetch.py::test_a_failed_download_is_transient_and_stays_retryable`
+
+Old text:
+
+```
+            f"queued",
+            remedy=Remedy.RETRY_LATER,
+            scope=Scope.ITEM,
+            retryable=True,
+```
+
+New text:
+
+```
+            f"queued",
+            remedy=Remedy.RETRY_LATER,
+            scope=Scope.ITEM,
+            retryable=False,
+```
+

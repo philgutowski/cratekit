@@ -5313,7 +5313,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # is offered under on the fallback-source queue, and it is not a cause.
     # `acquire fallback` raises those, intake-list-unusable,
     # unavailable-transient and library-volume-unmounted.
-    assert (len(literals), len(literals - set(causes))) == (444, 284), (
+    # Re-pinned on U81, 2026-09-19: 444 to 446 distinct, 284 to 286 non-keys.
+    # TWO literals joined and NOTHING left, differenced over the branch's diff
+    # of `src` against `main` with `git grep` on `main` for each. Neither is a
+    # cause. fallback-fetch is the verb word in `acquire fallback-fetch`'s
+    # resume argv, and nothing-accepted is the job state it reports when no
+    # row of the list has an accepted second source candidate. Every refusal
+    # the fetch raises reuses lossy-refused, output-exists,
+    # unavailable-transient, unavailable-permanent or yt-dlp-missing.
+    assert (len(literals), len(literals - set(causes))) == (446, 286), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

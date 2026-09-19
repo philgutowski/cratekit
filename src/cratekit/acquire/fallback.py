@@ -26,7 +26,13 @@ so "the search failed" can never read as "nothing was found". That is why the
 subprocess is run WITHOUT ``--ignore-errors``, which the source system passed:
 it turns a failed search into an empty answer at exit zero.
 
-Layer: modules. Nothing here writes a file or downloads anything.
+THE DOWNLOAD HALF IS A SECOND SEAM (U81). :class:`FallbackFetcher` saves one
+accepted upload into one directory, and :class:`YtDlpFetcher` is the shipped
+one, run through an injectable runner exactly as the searcher is. What the
+download is FOR, the lossless policy, the marker and the tags, is decided by
+the worker in :mod:`cratekit.acquire.fallback_cli` and not here.
+
+Layer: modules. Nothing here writes a file except the fetcher's download.
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from pathlib import Path
 from typing import Any, Protocol
 
 from cratekit.acquire import match
@@ -219,6 +226,138 @@ class YtDlpSearcher:
 def yt_dlp_searcher() -> YtDlpSearcher:
     """The shipped searcher, or :class:`binaries.BinaryNotFound` naming the fix."""
     return YtDlpSearcher(binaries.resolve(BINARY))
+
+
+# ---------------------------------------------------------------------------
+# The download half (U81)
+# ---------------------------------------------------------------------------
+
+#: What an accepted upload is saved as. The source system forced MP3 at the
+#: best variable quality for two reasons that both still hold: a second source
+#: is lossy whatever it serves, so nothing is lost that was there, and one
+#: container keeps every fetched file on the ID3 path the later stages read.
+#: It also makes the lossy marker literally true of every file this lands.
+FETCH_SUFFIX = ".mp3"
+
+#: Seconds one download may take. A long upload at a slow edge is minutes, and
+#: a download that never ends holds the job's claim for ever.
+FETCH_TIMEOUT_SECONDS = 900
+
+
+class FallbackFetcher(Protocol):
+    """The download seam. One upload into one empty directory, or :class:`FallbackUnavailable`.
+
+    What lands is named for nothing in particular. The name the file is
+    committed under is the ROW's, decided by the worker, so an upload title
+    never becomes a file name and never becomes a tag.
+    """
+
+    def fetch(self, url: str, directory: Path) -> Path: ...
+
+
+#: The stem a download is saved under inside its own staging directory. Fixed
+#: rather than built from the row, because ``yt-dlp`` reads its output name as a
+#: template, and a title holding a percent sign would be read as a field.
+FETCH_STEM = "fetched"
+
+
+class YtDlpFetcher:
+    """The shipped fetcher: ``yt-dlp`` extracting the audio as MP3 into one directory.
+
+    ``run`` is ``subprocess.run`` in production and a fake in every test.
+    """
+
+    def __init__(
+        self,
+        binary: str,
+        *,
+        run: Callable[..., Any] = subprocess.run,
+        timeout: float = FETCH_TIMEOUT_SECONDS,
+    ) -> None:
+        self.binary = binary
+        self._run = run
+        self._timeout = timeout
+
+    def argv(self, url: str, directory: Path) -> list[str]:
+        # THE UPLOAD'S OWN METADATA IS DROPPED, ``-map_metadata -1``, when the
+        # tool converts. It does not convert an upload already in the target
+        # format, so this is not the guard against a tempo frame (R17): the
+        # worker strips every tag the landing carries before it writes the
+        # row's artist and title. ``--`` keeps the address from ever reading as an option,
+        # and ``--no-playlist`` keeps a track page that is also a set page from
+        # fetching the set.
+        return [
+            self.binary,
+            "--no-playlist",
+            "--no-warnings",
+            "--extract-audio",
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            "0",
+            "--postprocessor-args",
+            "ExtractAudio:-map_metadata -1",
+            "--output",
+            str(directory / f"{FETCH_STEM}.%(ext)s"),
+            "--",
+            url,
+        ]
+
+    def fetch(self, url: str, directory: Path) -> Path:
+        argv = self.argv(url, directory)
+        try:
+            done = self._run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout,
+                env=binaries.subprocess_env(),
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise FallbackUnavailable(
+                f"the download did not finish within {self._timeout:g} seconds"
+            ) from exc
+        except OSError as exc:
+            raise FallbackUnavailable(f"{BINARY} could not be started ({exc})") from exc
+        if done.returncode != 0:
+            said = (done.stderr or "").strip().splitlines()
+            raise FallbackUnavailable(
+                f"the download failed with exit status {done.returncode}"
+                + (f" ({said[-1]})" if said else "")
+            )
+        return landed_in(directory)
+
+
+def landed_in(directory: Path) -> Path:
+    """The one MP3 a download left in its directory, or :class:`FallbackUnavailable`.
+
+    AN EXIT OF ZERO IS NOT A FILE. A tool that reports success and leaves no
+    MP3, or leaves two, has not said which bytes are the track, and a guess
+    would commit a partial or an intermediate as it. The directory is the
+    item's own and is cleared before every attempt, so anything in it is this
+    attempt's.
+    """
+    found = (
+        sorted(
+            one for one in directory.iterdir()
+            if one.is_file() and one.suffix.lower() == FETCH_SUFFIX
+        )
+        if directory.is_dir()
+        else []
+    )
+    if len(found) != 1:
+        there = sorted(one.name for one in directory.iterdir()) if directory.is_dir() else []
+        raise FallbackUnavailable(
+            f"the download reported success and left {len(found)} {FETCH_SUFFIX} file(s)"
+            + (f" (the folder holds: {', '.join(there)})" if there else "")
+        )
+    return found[0]
+
+
+def yt_dlp_fetcher() -> YtDlpFetcher:
+    """The shipped fetcher, or :class:`binaries.BinaryNotFound` naming the fix."""
+    return YtDlpFetcher(binaries.resolve(BINARY))
 
 
 def query(wanted: match.Wanted) -> str:
@@ -466,6 +605,9 @@ def propose(
 __all__ = [
     "ACCEPTED",
     "BINARY",
+    "FETCH_STEM",
+    "FETCH_SUFFIX",
+    "FETCH_TIMEOUT_SECONDS",
     "KIND",
     "LIKELY_MIX_SECONDS",
     "MIX_FACTOR",
@@ -482,18 +624,22 @@ __all__ = [
     "YOUTUBE",
     "Answer",
     "Candidate",
+    "FallbackFetcher",
     "FallbackSearcher",
     "FallbackUnavailable",
     "Hit",
     "Proposal",
+    "YtDlpFetcher",
     "YtDlpSearcher",
     "identity",
     "item_id",
+    "landed_in",
     "propose",
     "query",
     "ranked",
     "score",
     "search_all",
     "settled",
+    "yt_dlp_fetcher",
     "yt_dlp_searcher",
 ]

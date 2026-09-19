@@ -1,0 +1,454 @@
+{
+  "name": "u81-fetch-b",
+  "pass_kind": "light",
+  "branch": "relay/126",
+  "head": "3fa8429",
+  "when": "2026-09-19 15:11 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8626,
+  "baseline_exit": 0,
+  "pytest_runs": 18,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/fallback_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/fallback_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2ed7b7369de6c2e3",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8626,
+    "baseline_collected": 8626,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "W2_scheme_half_rerun",
+      "description": "Re-run of W2: the web address check keeps only its host half",
+      "file": "src/cratekit/acquire/fallback_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a29c0898d92344ae",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_an_accepted_option_that_is_not_a_web_address_is_never_handed_to_the_tool[file://localhost/etc/hosts]",
+        "tests/test_acquire_fallback_fetch.py::test_an_accepted_option_that_is_not_a_web_address_is_never_handed_to_the_tool[ftp://uploads.example/track.mp3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if where.scheme not in (\"http\", \"https\") or not where.netloc:",
+      "new": "    if not where.netloc:"
+    },
+    {
+      "id": "W4_empty_stem_rerun",
+      "description": "Re-run of W4: a row naming no artist and no title is fetched and committed",
+      "file": "src/cratekit/acquire/fallback_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a1e2ffd270d8dc71",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_a_row_naming_no_artist_and_no_title_is_refused_before_a_download"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not stem:\n        raise refuse(",
+      "new": "    if False:\n        raise refuse("
+    },
+    {
+      "id": "Q1_provider_route_fetched_lossy",
+      "description": "A row with a provider route is queued for a lossy second source download anyway",
+      "file": "src/cratekit/acquire/fallback_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "870411ea75d6dcd4",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_a_row_with_a_provider_route_is_not_fetched_lossy"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if provider_routed(items, one):\n            continue\n        said = fallback.settled(items, one)",
+      "new": "        said = fallback.settled(items, one)"
+    },
+    {
+      "id": "Q2_state_not_checked",
+      "description": "The accepted state is not checked, only that a chosen upload is named",
+      "file": "src/cratekit/acquire/fallback_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9a083603bd4f5c1e",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 8626,
+      "baseline_collected": 8626,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        if said is None or said.state != fallback.ACCEPTED or not said.url:",
+      "new": "        if said is None or not said.url:"
+    },
+    {
+      "id": "Q3_empty_queue",
+      "description": "A list with nothing accepted queues a job anyway instead of reporting a no-op",
+      "file": "src/cratekit/acquire/fallback_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c2f23579773a4064",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_a_row_the_library_already_holds_is_not_fetched",
+        "tests/test_acquire_fallback_fetch.py::test_a_row_with_a_provider_route_is_not_fetched_lossy",
+        "tests/test_acquire_fallback_fetch.py::test_an_acceptance_naming_no_upload_of_several_is_not_queued",
+        "tests/test_acquire_fallback_fetch.py::test_nothing_accepted_queues_nothing_and_says_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not rows:\n        return ctx.envelope(",
+      "new": "    if False:\n        return ctx.envelope("
+    },
+    {
+      "id": "Q4_title_loses_version",
+      "description": "The frozen title is the bare title and not the listed one, so the version is dropped from the name and the tag",
+      "file": "src/cratekit/acquire/fallback_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4c31a18b59c8b3e5",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_a_lossy_file_lands_marked",
+        "tests/test_acquire_fallback_fetch.py::test_a_tempo_the_upload_carried_is_never_committed",
+        "tests/test_acquire_fallback_fetch.py::test_an_existing_output_is_refused_without_a_download",
+        "tests/test_acquire_fallback_fetch.py::test_an_output_that_appears_during_the_download_is_refused_not_replaced",
+        "tests/test_acquire_fallback_fetch.py::test_artist_and_title_tags_come_from_the_row_not_the_upload_page",
+        "tests/test_acquire_fallback_fetch.py::test_one_item_per_accepted_row_keyed_on_its_review_item"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            {\"artist\": one.artist, \"title\": one.listed, \"url\": said.url},",
+      "new": "            {\"artist\": one.artist, \"title\": one.title, \"url\": said.url},"
+    },
+    {
+      "id": "Q5_owned_row_fetched",
+      "description": "Existing guard, moved into missing_rows: a row the library holds is not counted owned and is fetched",
+      "file": "src/cratekit/acquire/fallback_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eaed08ba22f8a76f",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py",
+        "tests/test_acquire_fallback.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback.py::test_an_owned_row_is_never_searched",
+        "tests/test_acquire_fallback.py::test_no_binary_is_needed_when_nothing_is_searched",
+        "tests/test_acquire_fallback_fetch.py::test_a_row_the_library_already_holds_is_not_fetched"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if one.state is match.MatchState.MATCHED:\n            counts[\"owned\"] += 1",
+      "new": "        if False:\n            counts[\"owned\"] += 1"
+    },
+    {
+      "id": "Y1_no_option_terminator",
+      "description": "The address is passed without the option terminator in front of it",
+      "file": "src/cratekit/acquire/fallback.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "842d142456e8b383",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_extracts_mp3_drops_upload_metadata_and_ends_on_the_address"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"--\",\n            url,",
+      "new": "            url,"
+    },
+    {
+      "id": "Y2_metadata_kept_on_convert",
+      "description": "The metadata drop is not passed to the conversion step",
+      "file": "src/cratekit/acquire/fallback.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "35b98d23501e5971",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_extracts_mp3_drops_upload_metadata_and_ends_on_the_address"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"--postprocessor-args\",\n            \"ExtractAudio:-map_metadata -1\",\n",
+      "new": ""
+    },
+    {
+      "id": "Y3_failed_exit_is_a_file",
+      "description": "A download exiting nonzero is read as a landing whenever it left a file",
+      "file": "src/cratekit/acquire/fallback.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f48869f278cca1b2",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_never_reads_a_failure_as_a_file[nonzero]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if done.returncode != 0:\n            said = (done.stderr or \"\").strip().splitlines()\n            raise FallbackUnavailable(\n                f\"the download failed",
+      "new": "        if False:\n            said = (done.stderr or \"\").strip().splitlines()\n            raise FallbackUnavailable(\n                f\"the download failed"
+    },
+    {
+      "id": "L1_two_files_first_wins",
+      "description": "A download that left two MP3 files hands the first one on as the track",
+      "file": "src/cratekit/acquire/fallback.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7880a513197241e3",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_never_reads_a_failure_as_a_file[two]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(found) != 1:",
+      "new": "    if len(found) == 0:"
+    },
+    {
+      "id": "L2_any_suffix",
+      "description": "The landing is not required to be MP3, so an unconverted upload is handed on",
+      "file": "src/cratekit/acquire/fallback.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c6a63326c2ac6509",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_the_shipped_fetcher_never_reads_a_failure_as_a_file[not-mp3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if one.is_file() and one.suffix.lower() == FETCH_SUFFIX",
+      "new": "            if one.is_file()"
+    },
+    {
+      "id": "S1_strip_does_nothing",
+      "description": "strip_tags reports success and removes nothing, so an upload's tempo frame survives",
+      "file": "src/cratekit/core/tags.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "19e366fd574e4685",
+      "subset": [
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_a_tempo_the_upload_carried_is_never_committed",
+        "tests/test_acquire_fallback_fetch.py::test_strip_tags_empties_an_id3_chunk_inside_a_container_and_keeps_the_audio"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        handle.delete()\n        return True",
+      "new": "        return True"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_resume_argv_list",
+      "description": "fetch_argv drops the frozen list path from the resume argv",
+      "reason": "ranked below the cap: with --job the list is never read, so the path is cosmetic on the resume and a zero here would be maintainer facing"
+    },
+    {
+      "id": "D2_stem_limit",
+      "description": "Halve STEM_LIMIT",
+      "reason": "ranked below the cap: a length coefficient on a name the naming stage rewrites; the test pins 120 exactly and the row would be a certain kill"
+    },
+    {
+      "id": "D3_url_named",
+      "description": "Drop the not said.url half of the accepted check",
+      "reason": "ranked below the cap: settled() never returns ACCEPTED without a URL, so the half is belt and braces over an unreachable input"
+    },
+    {
+      "id": "D4_strip_early_return",
+      "description": "Remove the tags is None early return in strip_tags",
+      "reason": "ranked below the cap: an optimisation; mutagen's delete on an untagged file is a no op"
+    },
+    {
+      "id": "D5_fetch_timeout",
+      "description": "Halve FETCH_TIMEOUT_SECONDS",
+      "reason": "ranked below the cap: an unmeasured coefficient carried in the record as owed to the attended download"
+    }
+  ]
+}

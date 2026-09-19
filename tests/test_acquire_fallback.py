@@ -224,7 +224,8 @@ def test_an_accepted_upload_is_reported_with_its_url_and_not_searched(
     assert again.calls == []
     assert envelope["data"]["summary"]["accepted"] == 1
     assert "https://youtube.example/4" in checks(envelope)["accepted"]["detail"]
-    assert "nothing in this build downloads" in checks(envelope)["accepted"]["detail"]
+    assert "crate acquire fallback-fetch" in checks(envelope)["accepted"]["detail"]
+    assert envelope["data"]["summary"]["fetch_next"] == f"crate acquire fallback-fetch {path}"
 
 
 def test_an_acceptance_naming_no_upload_of_several_stalls(cfg, library, tmp_path, monkeypatch):
