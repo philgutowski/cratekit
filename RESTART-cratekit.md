@@ -4,7 +4,38 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U73, issue #118, `relay/118`, 2026-09-18.**
+**Last merged: R-239, issue #156, `relay/156`, 2026-09-18.**
+Every open of the rekordbox database asks the file whether it needs the key,
+which closes R-239. `rb_writer.open_db` and `rb_writer.integrity_ok` default
+`unlock` to `None`, and `None` asks `unlock_needed(target)` just before the
+binding is constructed. No caller in `src` names an answer, and
+`test_no_caller_in_src_answers_the_key_question_for_itself` in
+`tests/test_rb_writer_db.py` walks the source and refuses one, exempting by
+shape only `integrity_ok` forwarding its own argument. Five verb sites passed
+`unlock=False` and failed at the open on every real, encrypted library:
+`route inbox`, `route unplaced`, `route pending`, `rebuild` and `converge`, and
+`converge` answered "not compared" for every native tree. The session read-back
+and the snapshot capture check used the old `True` default and failed on a
+plain database; both now ask. `deletion.cli._needs_unlock` is gone. **The suite
+now builds an ENCRYPTED disposable database**, `_encrypt_in_place` in
+`tests/test_rb_writer_db.py`, through `sqlcipher3` and the binding's own key,
+and a test proves it refuses to open with the key withheld. Driven on it through
+the command line, `route inbox`, `route unplaced`, a queued `rebuild` and
+`route resort`, and `converge` each failed before the fix and pass after it.
+`tests/test_routing_workers.py` no longer patches `integrity_ok` to
+`unlock=False`, since that patch refuses an encrypted capture; other write
+suites still carry it harmlessly. `tests/test_reserved_causes.py` re-pinned the
+also-holds-an-integer half 19 to 18, holders still 96, because
+`deletion/cli.py` lost its bare 16. Mutation tables `docs/mutation/r239-a.md`
+and `r239-b.md`, 21 rows, 20 killing, read in `r239-notes.md`; the zero is the
+unreadable file branch of the probe, maintainer facing. The learning is
+`docs/solutions/integration-issues/an-encrypted-library-can-be-built-in-the-suite-so-the-key-path-needs-no-real-snapshot.md`.
+No residual filed. Owed to an attended sitting: one read verb, `route unplaced`
+or `converge`, run against the live library to see it open. Battery on the
+recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 7876 passed and 1
+skipped in 55 seconds. **Main's highest residual number is R-437.**
+
+**The session before: U73, issue #118, `relay/118`, 2026-09-18.**
 `crate intake missing --run RUN_ID` writes ONE list for a whole `sync all`
 pass, which closes R-403 and records R-130 as superseded. `--job` and `--run`
 are a required exclusive pair, and `--run` writes dest `sync_run`, because the
