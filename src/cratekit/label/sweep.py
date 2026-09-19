@@ -233,6 +233,17 @@ def _crawl_or_refuse(entry: registry.LabelEntry, artist: Any) -> list[Any]:
         ) from exc
 
 
+#: The library as the match engine sees it: the index and the tombstone view.
+#: What :func:`cratekit.acquire.match_cli.library_view` returns.
+LibraryView = tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]
+
+#: How many release track reads IN A ROW may fail before the rest of a label's
+#: releases are not asked. Three, on ``label.approved_cli.OUTAGE_AFTER``'s
+#: reasoning: one is a bad release, two a coincidence, and each has already
+#: spent a full retry ladder by the time it is counted.
+OUTAGE_AFTER = 3
+
+
 class OwnedReleases:
     """The release identities the library already holds, asked one at a time.
 
@@ -256,22 +267,36 @@ class OwnedReleases:
     person one decline, and a release wrongly called owned is music they never
     see and nothing tells them about.
 
-    A PROVIDER THAT COULD NOT ANSWER IS A LOOKUP FAILURE, on the rule
-    :meth:`LabelSource._artist_for` states for the whole source: one unreadable
-    label refuses the source rather than being reported as swept, and the next
-    run re-lists from scratch. Offering instead would spend a retry ladder per
-    release on a provider that is down. A ``CratekitError`` passes through
-    unchanged, as at the other seam boundaries in this module.
+    A TRACK READ THE PROVIDER COULD NOT ANSWER IS NOT OWNED, and the release is
+    offered. This is not the rule the listing and the verifier keep, where one
+    unreadable label refuses the source, and the difference is deliberate: by
+    the time this is asked the label was listed and the release confirmed, so
+    the sweep has real offers in hand, and refusing would withhold every new
+    release on the label over a question whose worst answer is one extra row a
+    person declines. Before R-259 every release took that path. :data:`OUTAGE_AFTER`
+    failures in a row stop the asking, so a provider that is down costs three
+    retry ladders and not one per release. A ``CratekitError`` passes through
+    unchanged, as at the other seam boundaries in this module, because an
+    expired session names an act the person can take.
 
     THE LIBRARY IS WALKED ONCE, AND ONLY WHEN A RELEASE HAS TRACKS TO RESOLVE.
     A label whose confirmed releases all turn out gone never walks it.
+    ``library`` lets the worker share one walk across every label in a job.
     """
 
-    def __init__(self, cfg: config.Config, catalogue: Catalogue) -> None:
+    def __init__(
+        self,
+        cfg: config.Config,
+        catalogue: Catalogue,
+        *,
+        library: Callable[[], LibraryView] | None = None,
+    ) -> None:
         self.cfg = cfg
         self.catalogue = catalogue
-        self._view: tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]] | None = None
+        self._library_of = library
+        self._view: LibraryView | None = None
         self._answers: dict[str, bool] = {}
+        self._failed_in_a_row = 0
 
     def __contains__(self, identity: object) -> bool:
         if not isinstance(identity, str) or not identity:
@@ -280,24 +305,29 @@ class OwnedReleases:
             self._answers[identity] = self._holds(identity)
         return self._answers[identity]
 
-    def _library(self) -> tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]:
+    def _library(self) -> LibraryView:
         if self._view is None:
-            self._view = match_cli.library_view(self.cfg)
+            if self._library_of is not None:
+                self._view = self._library_of()
+            else:
+                self._view = match_cli.library_view(self.cfg)
         return self._view
 
     def _holds(self, release_id: str) -> bool:
+        if self._failed_in_a_row >= OUTAGE_AFTER:
+            return False
         try:
             rows, _year = self.catalogue.release_tracks(release_id)
         except CratekitError:
             raise
         except ReleaseUnresolvable:
+            # THE PROVIDER ANSWERED, so the run of failures is broken.
+            self._failed_in_a_row = 0
             return False
-        except Exception as exc:
-            raise run.LookupFailure(
-                f"the catalogue could not read the tracks of release {release_id!r} "
-                f"({type(exc).__name__}: {exc}), so whether the library already "
-                f"holds it is not known; that is not a release with nothing owned"
-            ) from exc
+        except Exception:  # noqa: BLE001 - not owned, and the release is offered
+            self._failed_in_a_row += 1
+            return False
+        self._failed_in_a_row = 0
         if not rows:
             return False
         try:

@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Container, Sequence
 from pathlib import Path
 
+from cratekit.acquire import match_cli
 from cratekit.cli.output import Envelope
 from cratekit.core import config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
@@ -1009,6 +1010,30 @@ def run_increment(
     )
 
 
+#: The library view of the one job being driven, keyed by the job and the
+#: music folder it reads. One sweep job carries one item per favourite label,
+#: and a view per item walked the whole music volume once per label. The job
+#: driver runs a job's items one after another in one process, so a view built
+#: for the first label is still the library for the last. Holding one job's
+#: view and no other keeps a long lived process from carrying a stale library
+#: into a later job.
+_JOB_LIBRARY: dict[tuple[str, str], sweep.LibraryView] = {}
+
+
+def _job_library(job, cfg: config.Config) -> Callable[[], sweep.LibraryView]:
+    """The library view for ``job``, walked on first use and once per job."""
+    key = (str(job.job_id), str(cfg.library.root / cfg.library.music_dir))
+
+    def view() -> sweep.LibraryView:
+        held = _JOB_LIBRARY.get(key)
+        if held is None:
+            _JOB_LIBRARY.clear()
+            held = _JOB_LIBRARY[key] = match_cli.library_view(cfg)
+        return held
+
+    return view
+
+
 def handle(job, item, cfg) -> jobs.Produced | None:
     """Sweep one queued favourite label. The per item worker behind BOTH keys.
 
@@ -1084,7 +1109,7 @@ def handle(job, item, cfg) -> jobs.Produced | None:
     # resolved so an unbound build's refusal costs nothing it did not already.
     with review.open_store(cfg) as store:
         found = catalogue.resolve(cfg)
-        owned = sweep.OwnedReleases(cfg, found)
+        owned = sweep.OwnedReleases(cfg, found, library=_job_library(job, cfg))
         source = sweep.LabelSource(
             cfg,
             registry=labels.Registry(labels={entry.label_id: entry}),

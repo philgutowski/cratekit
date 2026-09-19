@@ -47,6 +47,7 @@ from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
+from cratekit.label.catalogue import ReleaseUnresolvable
 from tests.cli_drive import drive
 from tests.label_fakes import (
     FakeCatalogue,
@@ -2057,24 +2058,102 @@ class TracksSessionExpired(FakeCatalogue):
         )
 
 
-def test_a_track_read_the_provider_could_not_answer_fails_the_item_as_a_lookup(
+def test_a_track_read_the_provider_could_not_answer_offers_the_release(
     installed, monkeypatch
 ):
-    """The fifth provider read on this path takes the vocabulary the other four use.
+    """Not owned, offered, and the rest of the label is still swept.
 
-    Not owned and offered, which would spend a retry ladder per release on a
-    provider that is down, and not an internal error telling a person to file
-    a defect over an outage.
+    The listing and the verifier refuse the whole source when the provider
+    cannot answer. This read comes after both have succeeded, so the sweep has
+    new releases in hand, and refusing would withhold all of them over a
+    question whose worst answer is one row a person declines. The library holds
+    every track here, so an offer can only come from the failed read.
     """
     register(LABELS[0])
-    bind(monkeypatch, tracked(cls=TracksOutage))
+    hold(
+        installed,
+        "Aurora Bloom - Sun Path.flac",
+        "Nova Reef - Tide.flac",
+        "Mira Vale - Glass Hour.flac",
+    )
+    fake = bind(monkeypatch, tracked(cls=TracksOutage))
     job_id = queued_job(["sync", "labels"])
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    code, resumed = drive(["sync", "labels", "--job", job_id])
 
-    assert code != int(ExitCode.OK), failed
-    assert item_causes(job_id) == {SLUGS[0]: "sync-source-lookups-failed"}
-    assert offers(installed) == {}
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
+    assert sorted(fake.releases_asked_for) == ["hf-1", "hf-2"]
+
+
+def test_three_failed_track_reads_in_a_row_stop_the_asking(installed, monkeypatch):
+    """A provider that is down costs three retry ladders, not one per release."""
+    register(LABELS[0])
+    many = [FakeRelease(f"hf-{n}") for n in range(1, 6)]
+    fake = bind(
+        monkeypatch, TracksOutage(artists={SLUGS[0]: FakePagedArtist(many)})
+    )
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert len(fake.releases_asked_for) == 3, fake.releases_asked_for
+    assert sorted(offers(installed)) == [f"hf-{n}" for n in range(1, 6)]
+
+
+def test_a_release_that_is_gone_breaks_the_run_of_failed_reads(installed, monkeypatch):
+    """Gone is the provider answering, so it resets the count as a read does."""
+
+    class Alternating(FakeCatalogue):
+        def release_tracks(self, release_id: str):
+            self.releases_asked_for.append(release_id)
+            if release_id in {"hf-3", "hf-6"}:
+                raise ReleaseUnresolvable(f"no catalogue release {release_id!r}")
+            raise RuntimeError("the provider answered 503 after the retry ladder")
+
+    register(LABELS[0])
+    many = [FakeRelease(f"hf-{n}") for n in range(1, 8)]
+    fake = bind(monkeypatch, Alternating(artists={SLUGS[0]: FakePagedArtist(many)}))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert len(fake.releases_asked_for) == 7, fake.releases_asked_for
+
+
+def test_a_sweep_of_two_labels_walks_the_library_once(installed, monkeypatch):
+    """One view per job. A view per item walked the whole music volume per label."""
+    from cratekit.acquire import match_cli
+
+    register(LABELS[0], LABELS[1])
+    walks: list[object] = []
+    real_view = match_cli.library_view
+
+    def counted_view(cfg):
+        walks.append(cfg)
+        return real_view(cfg)
+
+    monkeypatch.setattr(match_cli, "library_view", counted_view)
+    bind(
+        monkeypatch,
+        FakeCatalogue(
+            artists={
+                slug: FakePagedArtist([FakeRelease(one) for one in RELEASES[slug]])
+                for slug in SLUGS[:2]
+            },
+            releases={**TRACKS, "ot-1": ([Row("31", "Lumen Drift", "Salt Road")], 2024)},
+        ),
+    )
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert len(walks) == 1, len(walks)
+    assert set(offers(installed)) == {"hf-1", "hf-2", "ot-1"}
 
 
 def test_a_refusal_the_track_read_raises_in_kind_keeps_its_own_reason(
