@@ -20641,6 +20641,35 @@ total and carries the difference to the verb as a failing check or a warning
 naming the count, and the contract says what the read can and cannot
 promise.
 
+**CLOSED 2026-09-19 on `relay/185`.** Every half of the closing line is built
+and driven. `listing.favorite_tracks_declared` returns the rows with the count
+the walk ended on, recorded as the walk asked for it rather than read again,
+and `None` where the provider published no usable count. The adapter compares
+them and a short listing raises the new seam exception
+`catalogue.HeartsShortfall`, carrying the rows it did serve and the count, with
+one spelling of the numbers, "197 declared, 185 listed, 12 withheld by the
+provider". An exception and not a second return shape, so a caller that does
+not know it still fails closed as an unreadable listing.
+`favourite_tracks_or_refuse` catches it first and returns the rows beside it.
+`crate intake playlist favorites` queues what came back and carries an
+`intake-hearts-withheld` warning naming the three numbers and a `shortfall`
+block under `progress`, and a listing where EVERY heart was withheld is a
+no-op that still warns rather than reading as an account with none. `crate
+sync all`'s inbound block gains `shortfall`, and its check fails naming the
+same numbers, including over an empty listing, where it used to say the
+account lists no hearts. The seam contract now says the read promises every
+heart the provider serves and raises when that is fewer than it counts.
+Nothing pads the listing or guesses which hearts were withheld. Driven with a
+fake shaped as R-383 measured the provider, 197 counted and 12 left out of the
+pages, through the real adapter and the real dispatcher in
+`tests/test_label_tidal_catalogue.py`, and at the seam in
+`tests/test_intake_missing.py` and `tests/test_sync_all.py`. Mutation tables
+`docs/mutation/r504-a.md` and `r504-b.md`, 22 rows, 22 killing, the author's
+own. **Still open:** the job the short listing queues does not carry the
+count, so `intake missing` over it says nothing of the withheld hearts; the
+warning says so in its own words. R-423 still owes the live count, and R-516
+records the decision to fail the check rather than warn.
+
 ---
 
 ## R-505. One unreadable heart refuses the whole hearts listing on every run
@@ -20926,3 +20955,67 @@ identify as a failure would now stop on a set holding a version question.
 
 **Closes when:** the human renderer renders a match payload and a note that is
 not a warning has a channel, and a person says whether identify should gate.
+
+---
+
+## R-515. A playlist or release listing returns short with no error when the provider withholds unservable tracks
+
+**Found:** 2026-09-19, on `relay/185` while closing R-504, hunting the same
+shape one file over.
+
+`listing.playlist_tracks` ends on `num_tracks`, which counts tracks the
+provider will not serve, and each window leaves those tracks out, which is
+the argument its own docstring makes for the declared total stop rule. It
+compares nothing with that count. Driven at the listing: a playlist declaring
+10 with 2 left out of its window returned 8 rows and raised nothing. Three
+readers take it: `harvest.playlist_tracks`, which `intake playlist <id>`, the
+`sync all` playlists sweep and `label harvest` list through, the adapter's
+`release_tracks`, and the outbound account's playlist read.
+
+**Measured cost:** driven at the listing and NOT at the verb. By the same path
+R-504 had, `intake playlist <id>` would report owned, offered and missing over
+the short listing as if it were the playlist, and the withheld tracks would
+appear nowhere. How often a real playlist holds a track the account cannot
+play was not measured. The outbound `has_heart` reads the hearts through
+`listing.favorite_tracks` without the comparison R-504 added, so a withheld
+heart reads as not hearted there; whether a sweep can reach such a track was
+not measured either.
+
+**Meets the board bar**, (b), a clean report over state the tool could not
+read. **Its issue is owed**, since a Relay session cannot file one after the
+merge that carries this entry.
+
+**Closes when:** the playlist and release reads compare their rows with the
+declared count and carry a shortfall to each verb that lists through them, as
+R-504 does for the hearts, or an attended sitting shows the provider never
+withholds from a playlist.
+
+---
+
+## R-516. The hearts inbound check fails on every pass while the provider withholds any heart
+
+**Found:** 2026-09-19, the code review on `relay/185`, not driven against a
+live account.
+
+R-504's brief asked for a failing check, and `sync all`'s `favorites inbound`
+row now fails whenever the hearts listing comes back short, with no remedy,
+since nothing a person does makes the provider serve an unplayable track. The
+review's point: if the live account permanently holds hearts the provider will
+not serve, which R-383's 197 against the pages suggests, that row fails on
+every pass and never clears, and a row that always fails teaches a person to
+ignore the rows that fail for a reason, such as a listing that could not be
+read at all. `intake playlist favorites` carries the same fact as a warning on
+an ok run, so the two verbs grade it differently.
+
+The options were a fail as briefed, a note, which renders as `note` and is
+easy to miss over a listing that is not the account, or a fail only when the
+count withheld grows past what the last pass saw, which needs a remembered
+count this unit does not keep. The brief's fail was kept as the conservative
+one, since the cost R-504 records is a report that passes off a short listing
+as the account.
+
+**Measured cost:** none measured. The live count is R-423's.
+
+**Closes when:** a person says whether a steady withholding should fail the
+row, note it, or fail only when it changes, and the check does that.
+

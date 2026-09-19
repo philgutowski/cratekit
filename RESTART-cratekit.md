@@ -4,7 +4,38 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U103, issue #148, `relay/148`, 2026-09-19.**
+**Last merged: R-504, issue #185, `relay/185`, 2026-09-19.**
+A hearts listing shorter than the account declares is reported, which CLOSES
+R-504. `listing.favorite_tracks_declared(session)` returns the rows and the
+count the walk ended on, recorded through the `declared_total` callable rather
+than asked again, `None` for a zero or sentinel count. The adapter's
+`favourite_tracks` compares them and raises the new seam exception
+`catalogue.HeartsShortfall(rows, declared)`, with `listed`, `withheld`,
+`summary()` ("197 declared, 185 listed, 12 withheld by the provider") and
+`block()`. It is an exception and not a return shape so an unaware caller
+fails closed as `label-playlist-unreadable`; no fake had to change.
+`label_cli.favourite_tracks_or_refuse` now returns `(rows, shortfall | None)`.
+`intake_cli.list_favorites(found)` is the hearts path and returns
+`(tracks, shortfall)`, and `list_playlist` is playlists only. `intake playlist
+favorites` queues what came back, warns `intake-hearts-withheld`
+(`HEARTS_WITHHELD`, `withheld_warning`) and carries `shortfall` under
+`progress`, and an all withheld listing is a no-op that still warns. `sync
+all`'s inbound block gains `shortfall` and its check FAILS naming the same
+numbers, over an empty listing too. `/code-review` found no correctness bug
+and one design point, that the row fails on every pass for a steady
+withholding, recorded as R-516 with the brief's fail kept. Collected **8696**,
+17 of them this unit's; the battery on the committed tree was **8695 passed
+and 1 skipped**, ruff and the scan clean. The kebab literal population in
+`tests/test_reserved_causes.py` was re-pinned 449 to 450 for the one warning
+code. Mutation tables `docs/mutation/r504-a.md` and `r504-b.md`, 22 rows under
+the cap, 22 killing, the author's own; one row in each was considered and
+dropped with its reason, and B5 was refused once as ambiguous and widened.
+R-515 (a playlist or release listing returns short the same way, driven at the
+listing only, meets the board bar, **its issue is owed**) and R-516 are filed.
+**Owed to an attended sitting:** R-423's live hearts count. **Main's highest
+residual number is R-516.**
+
+**The session before: U103, issue #148, `relay/148`, 2026-09-19.**
 `crate intake identify` asks the library, writes its tracklist, and recognition
 is paid for once, which CLOSES R-422 and NARROWS R-304. The resolve step is
 shared: `match_cli.resolve_list(cfg, wanted, handler_key=, run_id=)` is the

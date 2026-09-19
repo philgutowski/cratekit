@@ -217,6 +217,16 @@ favourites. The outbound direction, hearting local favourites on the account, is
 placeholder playlist: a heart the library lacks is a missing item carrying its
 provider identifier.
 
+### Withheld
+A track the provider COUNTS in a collection and leaves out of every page it
+serves, usually because the account cannot play it. The count and the pages
+disagree by exactly these, so a listing that ended where the count says can
+still hold fewer rows. Since R-504 the hearts listing compares the two and
+reports "N declared, M listed, K withheld by the provider" rather than passing
+the short listing off as the account. Which tracks were withheld is never
+known and never guessed. A playlist's listing has the same shape and does not
+compare yet, which is R-515.
+
 ### Recognition cache
 What the identification service already answered about a recording, since
 U103, kept so that `crate intake identify` followed by `crate intake set`
