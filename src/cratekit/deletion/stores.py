@@ -108,6 +108,44 @@ def version_of(row: RemovedRow) -> dict[str, str]:
     return tombstone.version_identity(artist=row.artist, title=title)
 
 
+def uncredited_version_of(row: RemovedRow) -> dict[str, str] | None:
+    """This row's identity with its featured credits taken out, or None (R-431).
+
+    THE COMPANION A PROVIDER ROW CAN REACH. A source that carries its version in
+    its own field spells ``Sun Path`` and ``Nightwave Remix`` and never the
+    guest, so a row recorded as ``sun path (feat. mira) (nightwave remix)`` is
+    addressed by nothing that source composes, and the consulter cannot put back
+    a credit it was never handed. So the agreement runs the way
+    :func:`version_of` says it always does: the RECORDER produces the string the
+    consulter will be handed, and here that is the verbatim identity with the
+    credit groups out of it.
+
+    BUILT ON TOP OF :func:`version_of` AND NEVER INSIDE IT. The stripping reads
+    the identity that function returned, so the column rules, the remixer
+    spelling and the fold are decided once, and the identity stamp, which walks
+    everything ``version_of`` reaches, does not move for a change that moves no
+    verbatim identity.
+
+    None when the row carries no bracketed credit, which is almost every row,
+    and then nothing extra is recorded. See ``tombstone.uncredited_title`` for
+    the two titles that answers for and ``tombstone.KIND_VERSION_UNCREDITED``
+    for why the companion has a kind of its own.
+    """
+    verbatim = version_of(row)
+    stripped = tombstone.uncredited_title(verbatim["title"])
+    if not stripped:
+        return None
+    return tombstone.version_identity(artist=verbatim["artist"], title=stripped)
+
+
+#: The payload field on a companion record naming the tombstone it was written
+#: beside. A LOOKUP, for the reason :func:`tombstone_predicate` gives: a
+#: revocation that found the companion by recomputing it would stop finding it
+#: the day the stripping rule changed, and a companion nothing can find is a
+#: suppression nobody can lift.
+CREDITED_ID_FIELD = "credited_id"
+
+
 #: The payload field carrying the composition rules a tombstone's identity was
 #: written under. Named once, because the writer and the reader are two functions
 #: in this file and a field spelled twice is a stamp that stops being read.
@@ -858,7 +896,7 @@ def record_tombstone(
     measures and :func:`tombstone_predicate` for the one question it decides.
     """
     store = tombstones(cfg)
-    return store.record(
+    recorded = store.record(
         kind=tombstone.KIND_VERSION,
         identity=version_of(row),
         payload={
@@ -899,11 +937,106 @@ def record_tombstone(
         },
         actor=actor,
     )
+    # THE COMPANION IS WRITTEN AFTER THE TOMBSTONE, so an interruption between
+    # the two leaves a deletion that is recorded and a provider shape that still
+    # misses, which is the state every build before this one was in. The other
+    # order leaves a companion naming a tombstone that does not exist.
+    #
+    # WRITTEN EVEN WHEN THE TOMBSTONE ALREADY STOOD, because ``record`` is
+    # idempotent on both, and a tombstone an earlier build wrote gains its
+    # companion the next time the same deletion is recorded rather than never.
+    uncredited = uncredited_version_of(row)
+    if uncredited is not None:
+        store.record(
+            kind=tombstone.KIND_VERSION_UNCREDITED,
+            identity=uncredited,
+            payload={
+                "artist": row.artist,
+                "title": row.title,
+                "version": row.version,
+                CREDITED_ID_FIELD: recorded.suppression_id,
+            },
+            actor=actor,
+        )
+    return recorded
+
+
+def _companions_of(
+    credited: review.Suppression, records: tuple[review.Suppression, ...]
+) -> tuple[str, ...]:
+    """The live companions one credited tombstone accounts for.
+
+    FOUND TWO WAYS, BECAUSE EACH WAY ALONE LOSES ONE. The pointer finds the
+    companion this record wrote whatever the stripping rule has become since.
+    It does not find the companion a SECOND credited deletion landed on: two
+    rows crediting two guests strip to one identity, ``record`` is idempotent,
+    and the companion keeps naming whichever row arrived first. So the identity
+    is stripped again as well, and the two answers are joined.
+    """
+    found = {
+        record.suppression_id
+        for record in records
+        if record.kind == tombstone.KIND_VERSION_UNCREDITED
+        and record.suppressing
+        and record.payload.get(CREDITED_ID_FIELD) == credited.suppression_id
+    }
+    stripped = _stripped_id(credited)
+    if stripped is not None:
+        found |= {
+            record.suppression_id
+            for record in records
+            if record.suppression_id == stripped and record.suppressing
+        }
+    return tuple(sorted(found))
+
+
+def _stripped_id(credited: review.Suppression) -> str | None:
+    """The companion identifier a stored tombstone strips to, or None."""
+    identity = credited.identity or {}
+    stripped = tombstone.uncredited_title(str(identity.get("title") or ""))
+    if not stripped:
+        return None
+    return review.suppression_id_for(
+        tombstone.STORE_KEY,
+        tombstone.KIND_VERSION_UNCREDITED,
+        tombstone.version_identity(artist=str(identity.get("artist") or ""), title=stripped),
+    )
 
 
 def revoke_tombstone(cfg: config.Config, suppression_id: str, *, actor: str) -> review.Suppression:
-    """Lift a tombstone, making that version acquirable again (R36)."""
+    """Lift a tombstone, making that version acquirable again (R36).
+
+    **AND ITS COMPANION WITH IT, OR REVOCABLE STOPS BEING TRUE (R-431).** A
+    credited deletion is two records, and lifting only the one a person named
+    leaves the provider shape suppressed by a record they were never shown as
+    part of it. That is the one way door this module's first paragraph rejects.
+
+    THE COMPANION STAYS WHILE ANOTHER LIVE TOMBSTONE STILL STRIPS TO IT. Two
+    deleted rows crediting two guests share one companion, and lifting it with
+    the first would re-acquire the second, which nobody lifted.
+
+    THE COMPANION IS LIFTED FIRST. There is no transaction across the two
+    writes, so the order chooses the half done state: a companion lifted beside
+    a standing tombstone misses one shape and reports it, and asking again
+    finishes the job. The other order strands a suppression.
+
+    A companion named directly is lifted alone, which is a person narrowing a
+    deletion to the spelling that carried the credit, and is theirs to do.
+    """
     store = tombstones(cfg)
+    records = store.suppressions(include_revoked=True)
+    named = next((one for one in records if one.suppression_id == suppression_id), None)
+    if named is not None and named.kind == tombstone.KIND_VERSION:
+        still_credited = {
+            _stripped_id(other)
+            for other in records
+            if other.kind == tombstone.KIND_VERSION
+            and other.suppressing
+            and other.suppression_id != suppression_id
+        }
+        for companion in _companions_of(named, records):
+            if companion not in still_credited:
+                store.revoke(companion, actor=actor)
     return store.revoke(suppression_id, actor=actor)
 
 
@@ -996,6 +1129,7 @@ def summarize(record: review.Suppression) -> Mapping[str, Any]:
 
 
 __all__ = [
+    "CREDITED_ID_FIELD",
     "IDENTITY_SCHEME_FIELD",
     "ambiguous_versions",
     "decline_predicate",
@@ -1012,5 +1146,6 @@ __all__ = [
     "suppressed_version",
     "tombstone_predicate",
     "tombstones",
+    "uncredited_version_of",
     "version_of",
 ]

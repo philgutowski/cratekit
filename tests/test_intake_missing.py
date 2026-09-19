@@ -559,22 +559,38 @@ def test_a_track_deleted_on_purpose_is_suppressed_and_not_listed(cfg, library, m
     assert [t["id"] for t in body["tracks"]] == ["205"]
 
 
-def test_a_deleted_track_the_tombstone_consult_cannot_reach_is_listed_as_recorded(
+def test_a_deleted_track_whose_row_kept_a_credit_is_suppressed_and_not_listed(
     cfg, library, monkeypatch
 ):
-    """R-431, PINNED SO IT IS SEEN TO CLOSE. The library row kept a featured
-    credit the provider never spells, the shape ``UNRECONCILED`` names in
-    ``tests/test_match_states.py`` and R-69 records. Before this unit a miss
-    here reported plain missing and led nowhere. Now it leads to a download of
-    a track somebody deleted. This test failing is the residual closing."""
+    """R-431, CLOSED. The library row kept a featured credit the provider never
+    spells, which R-69 records. This test used to pin the defect, the heart
+    written to the list whose next command downloads it, so that the day it
+    closed would fail a test. The recorder now writes a companion with the
+    credit out and the engine asks for it, so the heart resolves suppressed at
+    ``intake playlist`` and this verb has nothing to list."""
     tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
     job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path", version="Nightwave Remix")])
 
     _code, envelope = missing(job_id)
 
     summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["suppressed"]) == (0, 1)
+    assert summary["list"] is None
+    assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
+
+
+def test_a_deleted_credited_row_never_withholds_another_remix_of_the_recording(
+    cfg, library, monkeypatch
+):
+    """The companion names one VERSION. A heart for a different remix of the
+    same recording is still missing and still listed, because nobody deleted it."""
+    tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
+    job_id = finished(monkeypatch, [Track("202", "Aurora Bloom", "Sun Path", version="Daybreak Remix")])
+
+    _code, envelope = missing(job_id)
+
+    summary = envelope["data"]["summary"]
     assert (summary["written"], summary["suppressed"]) == (1, 0)
-    assert match_cli.TOMBSTONE_STORE == "tombstones"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
