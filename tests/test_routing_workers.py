@@ -1834,6 +1834,9 @@ def test_a_second_run_over_its_own_output_adds_nothing(configured, tagged, tmp_p
     assert (totals["inserted"], totals["long_tracks"]) == (0, 0)
     assert totals["reason"] == "nothing-to-route"
     assert envelope["warnings"] == []
+    assert all(item["long_track"] == "" for item in envelope["data"]["items"]), (
+        "the offered plan names a member the playlist already holds as an addition"
+    )
     assert sorted(path.name for path in first.parent.iterdir()) == listing
     assert first.read_bytes() == before
 
