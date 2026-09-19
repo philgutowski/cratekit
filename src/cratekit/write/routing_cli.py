@@ -473,7 +473,9 @@ def apply_export(
     return destination, report
 
 
-def _export_pending(run_id: str, destination: Path, inserted: int) -> PendingHumanAction:
+def _export_pending(
+    run_id: str, verb: str, destination: Path, inserted: int
+) -> PendingHumanAction:
     return PendingHumanAction(
         kind="rekordbox_import",
         id=new_pending_id(run_id),
@@ -483,8 +485,9 @@ def _export_pending(run_id: str, destination: Path, inserted: int) -> PendingHum
         ),
         # THIS VERB IS ITS OWN CHECK. Over a fresh export taken after the import,
         # a second run inserts nothing, and that is the only reading in this
-        # build that the import happened.
-        verify_verb="route.inbox",
+        # build that the import happened. Named by the caller from its registry
+        # entry, because this layer may not spell a verb (KTD23).
+        verify_verb=verb,
         artifact=str(destination),
         steps=(
             f"import {destination} into rekordbox as a rekordbox xml library and "
@@ -572,7 +575,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         data=data,
         outcome=Outcome.PENDING,
         code=ExitCode.PENDING_HUMAN,
-        pending=_export_pending(ctx.run.run_id, destination, report.inserted),
+        pending=_export_pending(ctx.run.run_id, ctx.entry.name, destination, report.inserted),
         warnings=warnings,
     )
 

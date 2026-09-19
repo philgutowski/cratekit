@@ -94,7 +94,7 @@ tests = ["tests/test_routing_workers.py"]
 surface = "user"
 old = '''        outcome=Outcome.PENDING,
         code=ExitCode.PENDING_HUMAN,
-        pending=_export_pending(ctx.run.run_id, destination, report.inserted),'''
+        pending=_export_pending(ctx.run.run_id, ctx.entry.name, destination, report.inserted),'''
 new = '''        outcome=Outcome.OK,'''
 
 [[rows]]

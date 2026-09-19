@@ -1188,6 +1188,9 @@ def test_an_export_inbox_lands_each_track_in_its_declared_sub(configured, tagged
     pending = envelope["pending_human_action"]
     assert pending["kind"] == "rekordbox_import"
     assert pending["artifact"] == str(_routed(export))
+    assert pending["verify_verb"] == "route.inbox", (
+        "the import check is not the verb that proves it by inserting nothing"
+    )
 
 
 def test_an_export_sub_that_does_not_exist_is_a_warning_and_nothing_is_created(
