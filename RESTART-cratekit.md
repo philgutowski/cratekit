@@ -4,7 +4,40 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U74, issue #119, `relay/119`, 2026-09-18.**
+**Last merged: U86, issue #131, `relay/131`, 2026-09-18.**
+`crate route inbox --export X` files the INBOX playlist of a fresh export on a
+library whose routing tree has not cut over, which closes R-416 for the INBOX
+half. It writes `<X stem>_routed.xml` beside X, atomically, never in place,
+through `trees.apply_playlist_changes`, the non creating writer and now its
+first caller, over the governed routing tree. The intake is the export's
+intake folder, a direct child of the playlist root, not the disk folder. The
+routing decision is the native path's: `rebuild.read_truth` reads each file the
+export's Location names, through the prefix map, and `derive_from_taxonomy`
+places it, so the file's genre wins over the export's `Genre` attribute. A
+routing tree that has cut over refuses `tree-unconverged` before the plan is
+offered, and the emitter guard refuses it again behind that. An absent library
+root refuses `library-volume-unmounted`, an absent intake folder
+`intake-flow-absent`. A key with no collection row, a Location naming no file
+here, and a skipped write are warnings, and the track is not routed. A run
+that inserted nothing writes no file; it answers `nothing-to-route` only when
+it left no warning, and `route-blocked` otherwise, because `nothing-to-route`
+is what the pending action's check reads. A written file ends PENDING with a
+`rekordbox_import` action whose verify verb is `route.inbox` itself, taken from
+the registry entry since the write layer may not spell a verb. Without
+`--export` the `no-native-tree` answer now carries a warning naming
+`--export`. The registry entry writes `xml` as well. The unit's `/code-review`
+drove one finding, fixed: a run whose every write was skipped answered
+`nothing-to-route`. The same shape one step earlier, every file unreadable, was
+found by the author and fixed. `tests/test_reserved_causes.py` re-pinned 413 to
+419 distinct, 257 to 263 non-keys, none a cause. 18 tests in
+`tests/test_routing_workers.py`. Mutation tables `docs/mutation/u86.md` and
+`u86-b.md`, 19 of 24 killing, the five zeros maintainer rows, read in
+`u86-notes.md`. R-439 and R-440 filed, not on the board. Owed to an attended
+sitting: one routed file imported into rekordbox. Battery on the recorded
+tree: ruff clean, `scan_repo.py` exit 0, pytest 7913 passed and 1 skipped in
+59 seconds. **Main's highest residual number is R-440.**
+
+**The session before: U74, issue #119, `relay/119`, 2026-09-18.**
 `crate sync all` queues the account's hearts even when the outbound confirm is
 declined, which closes R-423. `SourceSpec` gained `inbound_key`, set to
 `intake.playlist` on the favourites spec alone, so the half runs only when the

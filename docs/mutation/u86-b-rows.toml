@@ -1,0 +1,131 @@
+name = "u86-b"
+pass_kind = "light"
+
+# U86 adds `route inbox --export`, the first caller of the export medium
+# routing writer. Scoped to the guards this unit wrote in
+# `write/routing_cli.py`, plus the one choice of writer the brief made. The
+# subset is the routing worker suite, where every test of the new path lives.
+# A zero on the subset is promoted to the full suite by the driver.
+
+[[rows]]
+id = "E13_absolute_only"
+description = "Drop the absolute path condition on a candidate"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "maintainer"
+old = '''        if candidate and candidate.startswith("/") and Path(candidate).is_file():'''
+new = '''        if candidate and Path(candidate).is_file():'''
+
+[[rows]]
+id = "E14_non_creating_writer"
+description = "Use the creating writer, so a sub the curated tree lacks is invented"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    report = trees.apply_playlist_changes(plan, buffer, tree=tree)'''
+new = '''    report = trees.apply_unplaced_changes(plan, buffer, tree=tree)'''
+
+[[rows]]
+id = "E15_nothing_inserted_nothing_written"
+description = "Write the output file even when nothing was inserted"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    if not report.inserted:
+        return None, report'''
+new = ''
+
+[[rows]]
+id = "E16_never_in_place"
+description = "Write the output over the export it read"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    destination = export.with_name(export.stem + ROUTED_SUFFIX)'''
+new = '''    destination = export'''
+
+[[rows]]
+id = "E17_blocked_reason"
+description = "Answer nothing-to-route for a run that left warnings behind"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    elif warnings:
+        reason = "route-blocked"'''
+new = '''    elif False:
+        reason = "route-blocked"'''
+
+[[rows]]
+id = "E18_blocked_reason_narrow"
+description = "Answer route-blocked only for writer warnings, the pre fix shape"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    elif warnings:
+        reason = "route-blocked"'''
+new = '''    elif report.warnings:
+        reason = "route-blocked"'''
+
+[[rows]]
+id = "E19_writer_warnings_carried"
+description = "Drop the writer's warnings from the envelope"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''        *({"code": "route-write-skipped", "message": text} for text in report.warnings),'''
+new = ''
+
+[[rows]]
+id = "E20_apply_gate"
+description = "Write whatever the person answered at the apply gate"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    option = _apply_gate(ctx, offered)
+    if option != "apply":'''
+new = '''    option = _apply_gate(ctx, offered)
+    if False:'''
+
+[[rows]]
+id = "E21_pending_action"
+description = "End a written run as OK with no pending import"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''        outcome=Outcome.PENDING,
+        code=ExitCode.PENDING_HUMAN,
+        pending=_export_pending(ctx.run.run_id, ctx.entry.name, destination, report.inserted),'''
+new = '''        outcome=Outcome.OK,'''
+
+[[rows]]
+id = "E22_export_remedy"
+description = "Drop the warning that names --export on the database path"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''            if result["reason"] == "no-native-tree"'''
+new = '''            if False'''
+
+[[rows]]
+id = "E23_export_branch"
+description = "Ignore --export and take the disk folder path"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    if ctx.args.export:
+        return route_inbox_export(ctx, cfg, Path(ctx.args.export))'''
+new = ''
+
+[[rows]]
+id = "E24_intake_direct_child"
+description = "Find the intake folder anywhere below ROOT instead of as its direct child"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "maintainer"
+old = '''    node = rbxml.direct_child(content, root, display, rbxml.FOLDER_TYPE)'''
+new = '''    node = rbxml.find_node(content, display, start=root.body_start, node_type=rbxml.FOLDER_TYPE)'''
+
+[[dropped]]
+id = "E25_atomic_write"
+description = "Write the output with a plain write_bytes instead of atomically"
+reason = "no test can observe atomicity short of killing the process mid write; the property belongs to config.atomic_write_bytes and its own suite"

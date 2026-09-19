@@ -1,0 +1,123 @@
+name = "u86"
+pass_kind = "light"
+
+# U86 adds `route inbox --export`, the first caller of the export medium
+# routing writer. Scoped to the guards this unit wrote in
+# `write/routing_cli.py`, plus the one choice of writer the brief made. The
+# subset is the routing worker suite, where every test of the new path lives.
+# A zero on the subset is promoted to the full suite by the driver.
+
+[[rows]]
+id = "E1_native_tree_refusal"
+description = "Drop the verb's up front refusal of a routing tree that has cut over"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    if registry.is_database_native(declared.tree.id):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E2_governed_tree"
+description = "Hand the export writer an ungoverned tree, so the emitter guard is never armed"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    report = trees.apply_playlist_changes(plan, buffer, tree=tree)'''
+new = '''    report = trees.apply_playlist_changes(plan, buffer, tree=rbxml.Tree(display=tree.display))'''
+
+[[rows]]
+id = "E3_mount_guard"
+description = "Drop the refusal of a library whose root is not there"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    if not Path(cfg.library.root).is_dir():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E4_export_absent"
+description = "Drop the refusal of an export path that is not a file"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    if not export.is_file():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E5_no_playlists_section"
+description = "Drop the refusal of a document with no PLAYLISTS section"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "maintainer"
+old = '''    if rbxml.playlists_start(content) == -1:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E6_intake_absent"
+description = "Read an absent intake folder as an empty one instead of refusing"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    if not isinstance(node, rbxml.NodeSpan):
+        why = node if isinstance(node, str) else f"no folder named {display!r} sits under ROOT"'''
+new = '''    if not isinstance(node, rbxml.NodeSpan):
+        return []
+        why = node if isinstance(node, str) else f"no folder named {display!r} sits under ROOT"'''
+
+[[rows]]
+id = "E7_playlist_type_only"
+description = "Read track keys off every node under the intake folder, folders included"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "maintainer"
+old = '''        if child.node_type != rbxml.PLAYLIST_TYPE:
+            continue'''
+new = ''
+
+[[rows]]
+id = "E8_first_seen_dedupe"
+description = "Keep a key the intake folder names twice"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "maintainer"
+old = '''            if key not in seen:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "E9_row_absent"
+description = "Treat an intake key with no collection row as a row with no Location"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''        row = by_id.get(key)'''
+new = '''        row = by_id.get(key, {})'''
+
+[[rows]]
+id = "E10_unreadable_not_routed"
+description = "Route a track whose file could not be found, through the fallback"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''        if path is None:
+            warnings.append({'''
+new = '''        if False:
+            warnings.append({'''
+
+[[rows]]
+id = "E11_is_file"
+description = "Accept a candidate path without asking whether it is a file"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''        if candidate and candidate.startswith("/") and Path(candidate).is_file():'''
+new = '''        if candidate and candidate.startswith("/"):'''
+
+[[rows]]
+id = "E12_prefix_map"
+description = "Ignore the prefix map and try the recorded path alone"
+file = "src/cratekit/write/routing_cli.py"
+tests = ["tests/test_routing_workers.py"]
+surface = "user"
+old = '''    for candidate in (resolved.path, decoded):'''
+new = '''    for candidate in (decoded,):'''
+

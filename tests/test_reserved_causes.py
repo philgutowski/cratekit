@@ -5205,7 +5205,20 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # is not a cause: resolved-not-acquired, the token every playlists block
     # carries under swept_means to say a recorded playlist had its tracks
     # resolved and none acquired. Nothing refuses with it.
-    assert (len(literals), len(literals - set(causes))) == (413, 257), (
+    # Re-pinned on U86, 2026-09-18: 413 to 419 distinct, 257 to 263 non-keys.
+    # SIX literals joined and NOTHING left, differenced over the branch's diff
+    # of `src` against `main` with `git grep` on `main` for each, which removes
+    # no kebab literal. None is a cause: inbox-export, the plan KIND the export
+    # route digests its items under so its decision cannot answer the disk
+    # folder's; nothing-to-route and route-blocked, the two plan reasons beside
+    # inbox-empty for a run that inserted nothing and so wrote no file, the
+    # first because nothing needed routing and the second because every write
+    # was skipped; and track-row-absent, track-file-unreadable and
+    # route-write-skipped, the three WARNING codes for an intake key with no
+    # collection row, a Location naming no file here, and a write the tree
+    # could not take. Every refusal the export route raises reuses a slug the
+    # table already reserves.
+    assert (len(literals), len(literals - set(causes))) == (419, 263), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
