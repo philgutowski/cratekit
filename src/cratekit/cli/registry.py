@@ -1114,9 +1114,11 @@ ENTRIES: tuple[Entry, ...] = (
         # Declaring otherwise told a person to close rekordbox before a read. The
         # source's ``dj-sort-unplaced`` moved tracks, and that act is
         # ``route.inbox`` here. The volume stays: the tree registry the report
-        # walks from is a state file on the library root.
+        # walks from is a state file on the library root. The pins stay too,
+        # because the writer checks the binding pin on every open, a read
+        # included, so a drifted binding refuses this report as well.
         taxonomy_terms=("genre_energy",),
-        doctor_checks=("library.mounted",),
+        doctor_checks=("library.mounted", "rekordbox.pins"),
     ),
     Entry(
         name="route.resort",

@@ -31,8 +31,9 @@ names which of the three failed. Ask the health check rather than opening the
 application to look, since opening it is the condition that makes the verb
 refuse.
 
-`route unplaced` is the exception. It only reads, so it needs the library
-mounted and nothing else, and it is safe to run with rekordbox open.
+`route unplaced` is the exception. It only reads, so it is safe to run with
+rekordbox open. It still needs the library mounted and the pins intact, since
+the database is read through the same pinned binding.
 
 ```bash
 crate doctor
