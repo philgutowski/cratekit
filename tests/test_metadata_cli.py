@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -155,6 +156,22 @@ def test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting(tmp_path
         metadata_cli.vocal_cut(cfg)
     assert caught.value.cause.reason == "vocal-calibration-unreadable"
     assert caught.value.cause.detail["calibration"] == str(path)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file with no permissions")
+def test_a_vocal_calibration_this_account_cannot_read_refuses(tmp_path):
+    from cratekit.core.cause import CratekitError
+
+    cfg = config.from_dict(valid_data(tmp_path / "library"))
+    path = _vocal_calibration(cfg, '{"threshold": 37.5}')
+    path.chmod(0)
+    try:
+        with pytest.raises(CratekitError) as caught:
+            metadata_cli.vocal_cut(cfg)
+    finally:
+        path.chmod(0o600)
+    assert caught.value.cause.reason == "vocal-calibration-unreadable"
+    assert caught.value.cause.detail["kind"] == "PermissionError"
 
 
 def test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing(ready):
