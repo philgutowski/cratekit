@@ -876,6 +876,38 @@ def test_a_failure_after_an_earlier_merge_writes_nothing():
     assert bytes(work) == held, "the first year's merge survived a refusal"
 
 
+def test_a_caller_naming_one_playlist_twice_gets_one_on_the_creating_write():
+    """The payload that started R-129 carried a label's subtree twice.
+
+    The merge path would find the first copy again and extend it, so only the
+    write that CREATES the folder can emit the pair as two siblings, and that is
+    the path driven here.
+    """
+    out, warning = _catalog(
+        _fresh_xml(), "Kompakt", [("Kompakt 2025", [1]), ("Kompakt 2025", [2, 1])]
+    )
+    assert warning is None
+    assert out.count(rbxml.name_marker("Kompakt 2025")) == 1
+    assert b'<NODE Name="Kompakt" Type="0" Count="1">' in out
+    assert b'Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">' in out
+    assert re.findall(rb'<TRACK Key="(\d+)"/>', out) == [b"1", b"2"]
+
+
+def test_a_held_playlist_with_no_entry_count_refuses_rather_than_guessing_one():
+    held = _labels_doc(
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="1">',
+            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0">',
+            '            <TRACK Key="7"/>',
+            "          </NODE>",
+            "        </NODE>",
+        ]
+    )
+    out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [8])])
+    assert warning is not None and "Entries" in warning and "'Kompakt 2025'" in warning
+    assert out == held
+
+
 _SHARED_LINES = {
     "folder close": (
         [
