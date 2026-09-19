@@ -268,7 +268,9 @@ crate route pending
 to a new folder under your music folder, named for the run unless you pass
 `--name`, and the importable file is written beside the library as
 `NAME_inboxed.xml`. It never replaces a file already in the library: a file whose
-name is taken stays in staging and the run says so. Staging has to be on the same
+name is taken stays in staging and the run says so. Two landings under one
+`--name` never run at once: the second is refused with nothing moved, and it can
+be run again when the first has finished. Staging has to be on the same
 volume as the library, because a move there is a rename and a copy is refused. The
 run ends waiting on you, naming the file to import.
 

@@ -23,6 +23,13 @@ exists is refused alone and never overwritten. A failure after the first move
 leaves the moved files where they are, because they are in the library now and
 owned, and the refusal names them. No failure leaves an intake file behind.
 
+ONE LANDING PER BATCH NAME AT A TIME, AND THE CALLER HOLDS THE LOCK (R-432).
+"Refused alone and never overwritten" is a check followed by a rename, and
+``os.replace`` takes an occupied name without a word, so the promise holds only
+while nothing else writes into the batch folder. :func:`batch_lock` is that
+exclusion. It is the caller's to hold across :func:`apply`, because the verb
+owns the run and what a refused run is told, and :func:`apply` does not take it.
+
 A MANIFEST FILES LABEL TRACKS, IN THE SAME FILE. ``acquire download`` stamps no
 provider id on a file, so a landed file is tied to its manifest row by the
 product's own match rule, :func:`match.resolve_one`, over an index of the batch
@@ -43,11 +50,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import unicodedata
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 from cratekit.acquire import listdoc, match, match_cli
-from cratekit.core import config, tags, taxonomy, tree_registry
+from cratekit.core import config, jobs, tags, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.naming import AUDIO_EXTS, NameTemplate
 from cratekit.intake import collection_xml, ingest
@@ -186,6 +196,68 @@ def _check_batch(batch: str) -> None:
             origin=_ORIGIN,
             detail={"batch": batch},
         )
+
+
+#: The state entry holding one lock file per batch name.
+LOCK_KEY = "landing_locks"
+
+
+def lock_key(batch: str) -> str:
+    """The name a batch's lock file goes by, one per FOLDER and not per spelling.
+
+    ``Deep House`` and ``deep house`` are one folder on the case insensitive
+    volumes a library commonly sits on, and so are the composed and decomposed
+    spellings of an accented name. A lock keyed on the text as typed would hand
+    each spelling its own lock over the same folder. On a volume that does tell
+    them apart this refuses two landings that could have run together, which
+    costs a retry and no file.
+
+    A digest and not the name, because a batch name may hold anything a folder
+    name can and may be as long as one, and the lock file's name gains a suffix.
+    """
+    folded = unicodedata.normalize("NFC", unicodedata.normalize("NFC", batch).casefold())
+    return hashlib.sha256(folded.encode("utf-8")).hexdigest()
+
+
+@contextmanager
+def batch_lock(batch: str) -> Iterator[Path]:
+    """Hold the one landing per batch name lock, or refuse without waiting.
+
+    The window this closes is R-432: :func:`apply` asks whether a target is
+    free and then renames over it, and it checks the intake file absent long
+    before ``place_files`` overwrites it. Neither can be made atomic on the
+    volume, since exFAT has no hard link and Python exposes no exclusive
+    rename, so two landings into one batch folder are kept apart instead.
+
+    ON THE LOCAL STATE DISK, NOT THE LIBRARY VOLUME, for the reason the state
+    entry gives. The primitive is :func:`jobs.driver_lock` and not a second
+    one: non blocking, released by the kernel when the holder dies, and never
+    unlinked. A held name is ``job-driver-held``, whose remedy is to wait for
+    the holder, with the batch named here and the holder named in ``inner``.
+    """
+    key = lock_key(batch)
+    root = config.state_path(LOCK_KEY)
+    lock = jobs.driver_lock(key, root=root)
+    # Entered by hand so only the TAKING is translated. A ``with`` around the
+    # yield would also catch a held job lock raised by whatever the caller runs
+    # under this one, and report it as a second landing.
+    try:
+        path = lock.__enter__()
+    except jobs.DriverHeld as exc:
+        raise refuse(
+            "job-driver-held",
+            f"another landing under the batch name {batch!r} is running, so "
+            f"nothing was moved; two landings into one batch folder can replace "
+            f"each other's files",
+            retryable=True,
+            origin=_ORIGIN,
+            detail={"batch": batch, "lock": str(jobs.lock_path(key, root=root))},
+            inner=exc.cause,
+        ) from None
+    try:
+        yield path
+    finally:
+        lock.__exit__(None, None, None)
 
 
 def plan(folder: Path, cfg: config.Config, batch: str) -> Plan:
@@ -776,7 +848,8 @@ def apply(
         final = target / item.name
         # Asked again at the move, not only in the pass above. Between the
         # two a file of that name can arrive, and os.replace would take its
-        # place without a word. The window left is residual R-432.
+        # place without a word. The window after THIS check is closed by the
+        # caller holding ``batch_lock``, not here (R-432).
         occupied = _occupied(item, final)
         if occupied is not None:
             refused.append(occupied)
