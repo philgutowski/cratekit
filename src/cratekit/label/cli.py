@@ -50,17 +50,46 @@ def _reported(store, job) -> dict:
     }
 
 
+def positive_limit(text: str) -> int:
+    """Parse ``--track-limit``, refusing zero and negatives AT THE PARSER.
+
+    ``registry.effective_limit`` reads a limit below one as the default, so a
+    zero stored here would be a confident answer to a question nobody asked.
+    Raising ``ValueError`` is what argparse turns into its own usage error.
+    """
+    value = int(text)
+    if value < 1:
+        raise ValueError(f"{text!r} is not a positive track limit")
+    return value
+
+
 def build_registry(parser, entry) -> None:
     parser.add_argument(
         "action",
         nargs="?",
         default="list",
-        choices=("list", "add", "remove", "rename"),
-        help="list (default), add, remove, or rename a favourite label",
+        choices=("list", "add", "set", "remove", "rename"),
+        help="list (default), add, set fields on, remove, or rename a favourite label",
     )
     parser.add_argument("name", nargs="?", help="display name or identifier")
     parser.add_argument("--to", dest="new_name", default=None, help="new display name")
     parser.add_argument("--match", default=None, help="copyright match needle")
+    parser.add_argument(
+        "--track-limit",
+        dest="track_limit",
+        type=positive_limit,
+        default=None,
+        metavar="N",
+        help="newest N tracks to take from this label",
+    )
+    parser.add_argument(
+        "--seed",
+        dest="seeds",
+        action="append",
+        default=None,
+        metavar="VALUE",
+        help="seed artist, a name or id:<digits>; repeat for more, replaces the held list",
+    )
     parser.set_defaults(_handler=registry_cmd)
 
 
@@ -109,6 +138,18 @@ def label_import_argv(job) -> list[str]:
     return ["label", "import", name, "--job", job.job_id]
 
 
+def _detail(entry: labels.LabelEntry) -> str:
+    """The identifier, then every field a person set, so ``list`` shows them."""
+    parts = [entry.label_id]
+    if entry.match:
+        parts.append(f"match {entry.match!r}")
+    if entry.track_limit is not None:
+        parts.append(f"track limit {entry.track_limit}")
+    if entry.seed_artists:
+        parts.append("seeds " + " | ".join(entry.seed_artists))
+    return ", ".join(parts)
+
+
 def _checks_for(held: labels.Registry) -> list[dict]:
     if not held.labels:
         return [
@@ -125,22 +166,37 @@ def _checks_for(held: labels.Registry) -> list[dict]:
             "key": f"labels.{entry.label_id}",
             "title": entry.name,
             "status": "ok",
-            "detail": entry.label_id,
+            "detail": _detail(entry),
             "remedy": None,
         }
         for entry in held.labels.values()
     ]
 
 
+def _labels_json(held: labels.Registry) -> list[dict]:
+    """Every held field, for a reader that is not a person."""
+    return [entry.to_json() for entry in held.labels.values()]
+
+
 def registry_cmd(ctx) -> Envelope:
     store = labels.RegistryStore()
     action = ctx.args.action
+    seeds = ctx.args.seeds
+    track_limit = ctx.args.track_limit
+    if action not in ("add", "set") and (seeds is not None or track_limit is not None):
+        raise refuse(
+            "label-name-invalid",
+            f"label registry {action} does not set --seed or --track-limit, "
+            f"and ignoring them would report a change that was never written",
+            steps=("use label registry set, or add, to change those fields",),
+            origin=("label.cli",),
+        )
     if action == "list":
         held = store.load()
         return ctx.envelope(
             data={
                 "checks": _checks_for(held),
-                "summary": {"count": len(held.labels)},
+                "summary": {"count": len(held.labels), "labels": _labels_json(held)},
             }
         )
     name = ctx.args.name
@@ -152,12 +208,39 @@ def registry_cmd(ctx) -> Envelope:
             origin=("label.cli",),
         )
     if action == "add":
-        label_id = store.add(name, match=ctx.args.match)
+        label_id = store.add(
+            name,
+            match=ctx.args.match,
+            seed_artists=tuple(seeds or ()),
+            track_limit=track_limit,
+        )
         held = store.load()
         return ctx.envelope(
             data={
                 "checks": _checks_for(held),
                 "summary": {"added": label_id, "count": len(held.labels)},
+            }
+        )
+    if action == "set":
+        if ctx.args.match is None and seeds is None and track_limit is None:
+            raise refuse(
+                "label-name-invalid",
+                "label registry set needs a field to change, and a set that "
+                "changed nothing would report an edit that never happened",
+                steps=("pass --track-limit, --seed, or --match",),
+                origin=("label.cli",),
+            )
+        edited = store.edit(
+            name,
+            match=ctx.args.match,
+            seed_artists=seeds,
+            track_limit=track_limit,
+        )
+        held = store.load()
+        return ctx.envelope(
+            data={
+                "checks": _checks_for(held),
+                "summary": {"updated": edited.label_id, "count": len(held.labels)},
             }
         )
     if action == "remove":
