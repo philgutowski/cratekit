@@ -22,6 +22,7 @@ Layer: write.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,7 @@ from cratekit.core import (
     snapshot,
     tags,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import routing_pass, trees
 
@@ -89,15 +90,40 @@ def vocal_tag_values(
 
 
 def vocal_cut(cfg: config.Config) -> float:
-    """The with-vox threshold, from the library's vocal calibration if present."""
+    """The with-vox threshold, from the library's vocal calibration if present.
+
+    A MISSING file is the default cut. An UNREADABLE one refuses, because a
+    corrupt calibration and an absent one are different states, and folding the
+    first into the second tags a whole library from a cut nobody fitted. This
+    mirrors ``energy.load_calibration``.
+    """
     path = config.state_path(STATE_KEY_VOCAL_CALIBRATION, cfg)
     if not path.is_file():
         return DEFAULT_VOCAL_THRESHOLD
+    # A list, string or null payload raises TypeError at the subscript, so
+    # AttributeError, which energy's tuple carries for its ``.items()`` call,
+    # has no producer here. json.loads accepts NaN and Infinity, and a NaN cut
+    # makes every ``voxlevel < cut`` false, which would tag every scored track
+    # as vox, so a threshold that is not finite is unreadable too.
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        return float(payload["threshold"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return DEFAULT_VOCAL_THRESHOLD
+        threshold = float(json.loads(path.read_text(encoding="utf-8"))["threshold"])
+        if not math.isfinite(threshold):
+            raise ValueError(f"threshold {threshold} is not a finite number")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise refuse(
+            "vocal-calibration-unreadable",
+            f"this library's vocal calibration at {path} could not be read "
+            f"({type(exc).__name__}: {exc}), so no with-vox cut can be taken from it",
+            steps=(
+                "calibrate again over a folder holding both vocal and "
+                "instrumental tracks, which rewrites it",
+                f"or delete {path} to tag from the default cut of "
+                f"{DEFAULT_VOCAL_THRESHOLD}",
+            ),
+            origin=_ORIGIN,
+            detail={"calibration": str(path), "kind": type(exc).__name__},
+        ) from exc
+    return threshold
 
 
 def _prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:

@@ -99,6 +99,66 @@ def test_vocal_tag_values_are_empty_below_the_cut():
     assert metadata_cli.vocal_tag_values(90, "U", 12.0) == ["vox"]
 
 
+def _vocal_calibration(cfg, text: str) -> Path:
+    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_an_absent_vocal_calibration_is_the_default_cut(tmp_path):
+    cfg = config.from_dict(valid_data(tmp_path / "library"))
+    assert not config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg).exists()
+    assert metadata_cli.vocal_cut(cfg) == 12.0
+
+
+def test_a_present_vocal_calibration_is_its_own_threshold(tmp_path):
+    cfg = config.from_dict(valid_data(tmp_path / "library"))
+    _vocal_calibration(cfg, '{"threshold": 37.5, "method": "otsu"}')
+    assert metadata_cli.vocal_cut(cfg) == 37.5
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"threshold": 37.',
+        "",
+        '["threshold", 37.5]',
+        '{"method": "otsu"}',
+        '{"threshold": "high"}',
+        '{"threshold": null}',
+        '{"threshold": NaN}',
+        '{"threshold": Infinity}',
+    ],
+    ids=["truncated", "empty", "list", "no-key", "text", "null", "nan", "infinity"],
+)
+def test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting(tmp_path, text):
+    """R-342: a corrupt calibration is not an absent one, so it is never the default cut."""
+    from cratekit.core.cause import CratekitError
+
+    cfg = config.from_dict(valid_data(tmp_path / "library"))
+    path = _vocal_calibration(cfg, text)
+    with pytest.raises(CratekitError) as caught:
+        metadata_cli.vocal_cut(cfg)
+    assert caught.value.cause.reason == "vocal-calibration-unreadable"
+    assert caught.value.cause.detail["calibration"] == str(path)
+
+
+def test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing(ready):
+    cfg, audio, db_path = ready
+    del audio
+    _vocal_calibration(cfg, '{"threshold": 37.')
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "vocal-calibration-unreadable"
+
+    db = rb_writer.open_db(db_path, unlock=False, cfg=cfg)
+    try:
+        assert metadata_cli.VALUE_VOX not in [tag.Name for tag in db.get_my_tag()]
+    finally:
+        rb_writer.close_db(db)
+
+
 def test_the_plan_names_existing_rows_and_writes_nothing(ready):
     cfg, audio, db_path = ready
     del audio

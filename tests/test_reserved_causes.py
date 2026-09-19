@@ -4901,7 +4901,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the refusal carries whichever one happened as its inner cause and its
     # remedy. The outer slug says what the verb could not do, which is the same
     # sentence whichever way the open failed.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (157, 133, 24)
+    #
+    # Re-pinned for "A corrupt vocal calibration is read as the default cut",
+    # 2026-09-18. ONE slug, named rather than counted:
+    # vocal-calibration-unreadable, which the My Tags verb raises when the
+    # vocal calibration exists and cannot be read, so a corrupt file is never
+    # read as the default cut. It is not in the reserved table, exactly as its
+    # sibling energy-calibration-unreadable is not. Population 157 to 158,
+    # non-reserved 133 to 134, reserved half UNCHANGED at 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (158, 134, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5218,7 +5226,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # collection row, a Location naming no file here, and a write the tree
     # could not take. Every refusal the export route raises reuses a slug the
     # table already reserves.
-    assert (len(literals), len(literals - set(causes))) == (419, 263), (
+    # Re-pinned for "A corrupt vocal calibration is read as the default cut",
+    # 2026-09-18: 419 to 420 distinct, non-keys UNCHANGED at 263. The one that
+    # joined is vocal-calibration-unreadable, a KEY, named at the population
+    # assertion above. Nothing left.
+    assert (len(literals), len(literals - set(causes))) == (420, 263), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
