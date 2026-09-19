@@ -725,6 +725,8 @@ def test_a_count_the_provider_did_not_publish_leaves_nothing_to_compare(declared
     favorites.declared = declared
     rows = tidal_catalogue.TidalCatalogue(hearts_client(favorites)).favourite_tracks()
     assert len(rows) == 30
+    # THE LISTING SAYS SO TOO, rather than handing back a sentinel as a count.
+    assert listing.favorite_tracks_declared(hearts_client(favorites)) == (hearts, None)
 
 
 def test_the_listing_hands_back_the_count_the_walk_ended_on():
