@@ -4,7 +4,57 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U78, issue #123, `relay/123`, 2026-09-19.**
+**Last merged: U82, issue #127, `relay/127`, 2026-09-19.**
+A landed sync pass can mark the playlists it finished, which discharges the
+production half of R-358 and closes R-397 and R-398. `crate sync mark --xml X`
+is `src/cratekit/sync/mark_cli.py`, registry entry `sync.mark`, appended at the
+end of the tuple, `plan/1`, writes `remote`, destructive, one EXPLICIT gate
+`sync.mark.confirm` with apply and abort and `digest_source="plan"`. X is the
+intake file `intake land` wrote under the name `intake missing --run` printed.
+The pass is found by that name: the playlist jobs whose own run spells it, on
+this library. A playlist is planned only when its job SUCCEEDED and every track
+its reports call `offered` or `missing` resolves now in `acquire match`'s
+library view, counted `landed` when the intake file names the file, `owned`
+when it does not, and `suppressed` when it has since been deleted on purpose.
+One track outstanding leaves the playlist alone with the track named. The
+other reasons a playlist is left out are `already-marked`, `not-listed`,
+`job-unfinished` and `reports-unreadable`. The answered run marks through
+`mark_swept` with a new `only` set, whose recheck against a second listing
+skips a playlist that changed, reported `changed-since-plan`. A rename that
+fails part way refuses naming what was already renamed: a refusal the account
+raised keeps its reason, anything else is `internal-error`. An intake file of
+no pass on this library is a gated plan of nothing, NO_OP under the warning
+`sync-mark-no-pass`, decided before the account is listed, which is what lets
+conformance 3 drive the verb on an empty install. **THE BRIEF NAMED THE
+MANIFEST AND THE UNIT READS THE INTAKE REPORTS INSTEAD.** `/code-review` drove a
+playlist marked over a track the pass had offered for review: the manifest is
+a download list and drops offered rows and handed on rows. Filed under
+`docs/solutions/integration-issues/`. The verb takes no `--manifest`.
+`sync/marks.py`'s file check is one `os.stat` in `require_output`, every
+`OSError` is `sync-marks-blocked`, and a permission error is re-slugged
+`path-permission-denied` by `core.cause`. `playlists.marking_sweep` builds the
+sweep WITHOUT reconciling, so the cursor is read, never written, and its policy
+is unchanged. `playlists.playlist_of` and `missing_cli.job_reports` are new
+public names. The name ban guard over `sync/cli.py` is deleted and replaced by
+one that binds the account and asserts a pass renames nothing. A pass still
+says `"mark": "unbound"`, R-481. `/code-review` raised ten findings, all
+applied in whole or in part in one fix round. 37 new test cases by collected
+count, 8383 to 8420: 30 in the new `tests/test_sync_mark.py` and 7 that
+`tests/test_cli_contract.py` parametrizes over the new verb.
+`tests/test_reserved_causes.py` re-pinned to 440 kebab literals, 281 non-keys
+and 98 literal holders. Mutation tables `docs/mutation/u82-a.md` to `u82-d.md`,
+25 rows at the cap plus one re-measure, 24 killed on the first pass and the one
+zero killed after a test, read in `u82-notes.md`. R-481 to R-485 are filed.
+**R-482 meets the board bar and its issue is owed**, to be filed after this
+merge lands on `main`: a track accepted through review still holds its
+playlist's mark back, because the mark resolves without the review store.
+**Owed to an attended sitting:** the first live rename, which is Phillip's. No
+rename has been made on a real account by this product. Battery on the
+recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 8419 passed and 1
+skipped in 63 seconds, and no test of this unit's among the ten slowest.
+**Main's highest residual number is R-485.**
+
+**The session before: U78, issue #123, `relay/123`, 2026-09-19.**
 A finished `intake set` job now lists its missing tracks for download, which
 closes R-401. `crate intake missing --job JOB` asks the catalogue, through a new
 eighth `Catalogue` member `tracks_for_isrc(isrc)`, about every missing row that

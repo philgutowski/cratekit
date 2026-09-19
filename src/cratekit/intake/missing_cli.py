@@ -229,6 +229,15 @@ def _reports_or_refuse(store, job: jobs.Job) -> tuple[dict[str, Any], ...]:
     return reports
 
 
+def job_reports(store, job: jobs.Job) -> tuple[dict[str, Any], ...]:
+    """A finished intake job's committed reports, one per item, or the refusal.
+
+    The public face of the reader above, for a verb that asks what a job's
+    tracks resolved to without listing them. ``crate sync mark`` is the caller.
+    """
+    return _reports_or_refuse(store, job)
+
+
 def _out_dir(ctx, subject: Mapping[str, Any]) -> Path:
     given = ctx.args.out
     if given:
@@ -728,5 +737,6 @@ __all__ = [
     "UNREADABLE",
     "build_missing",
     "intake_missing",
+    "job_reports",
     "synced_name",
 ]

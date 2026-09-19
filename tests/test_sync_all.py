@@ -1010,29 +1010,33 @@ def test_the_block_says_what_swept_means_whatever_the_pass_found():
     assert playlists.said({}) is None, "a block carrying no token was given words"
 
 
-def test_the_pass_composes_no_mark_step_while_no_sweep_writes_an_importable_file():
-    """DELETE THIS GUARD WHEN THE LIVE HALF OF R-358 IS DONE, and not before.
+def test_a_pass_renames_nothing_even_over_a_recorded_playlist_with_its_file_landed(
+    slim, monkeypatch
+):
+    """THE ACT AND NOT A NAME (R-397). The mark is ``crate sync mark``'s, behind
+    its own explicit gate, and a pass is ungated for playlists, so a pass that
+    renamed anything would be a write to the account nobody was asked about.
 
-    ``mark_swept`` exists and ``sync.cli`` deliberately does not call it. That is
-    the whole of the code half: the seam is built and the first live rename is an
-    attended act, so a session that wires the mark step into the production pass
-    unattended trips this rather than renaming somebody's playlists.
+    This replaces a guard that parsed ``sync/cli.py`` for two banned symbols,
+    which forbade one spelling of the mark step and not the step. Here the
+    account seam is bound and every condition a mark needs is met, a recorded
+    playlist still listed under its own name and an importable file beside the
+    library, and the pass is run again. Whatever a future pass calls its mark
+    step, a rename shows up on the account.
     """
-    banned = {"mark_swept", "rename_playlist"}
-    named: set[str] = set()
-    for node in ast.walk(ast.parse(SRC.read_text(encoding="utf-8"))):
-        # EVERY WAY THE NAME CAN ARRIVE, not only ``playlists.mark_swept(...)``.
-        # An attribute scan alone is walked straight past by a plain
-        # ``from cratekit.sync.playlists import mark_swept`` and a bare call,
-        # which is the shape a session wiring this up is most likely to write.
-        if isinstance(node, ast.Attribute):
-            named.add(node.attr)
-        elif isinstance(node, ast.Name):
-            named.add(node.id)
-        elif isinstance(node, ast.ImportFrom):
-            named.update(alias.asname or alias.name for alias in node.names)
-    assert named, "the scan read no names at all"
-    assert sorted(named & banned) == []
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    _recording_pass(slim, fake)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    (Path(slim.library.root) / "pass_synced_inboxed.xml").write_text(
+        "<COLLECTION/>", encoding="utf-8"
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    block = passed["data"]["summary"]["playlists"]
+    assert block["excluded"]["pl-a"]["reason"] == "recorded"
+    assert (block["mark"], block["marked"]) == (playlists.MARK_UNBOUND, [])
+    assert account.renamed == []
 
 
 def test_the_block_tells_a_mark_that_ran_apart_from_a_mark_that_never_ran():

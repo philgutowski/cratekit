@@ -1,0 +1,108 @@
+name = "u82-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_a_tombstoned_track_is_settled"
+description = "_settle: drop the suppressed branch, so a track deleted on purpose since the pass holds its playlist back for ever"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''            elif found.state is match.MatchState.SUPPRESSED:'''
+new = '''            elif False:'''
+
+[[rows]]
+id = "C2_one_outstanding_track_holds_the_playlist"
+description = "_settle: never set the outstanding reason, so a playlist with a track still not in the library is planned for the prefix"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''        if entry.outstanding:
+            entry.reason = ROWS_OUTSTANDING'''
+new = '''        if False:
+            entry.reason = ROWS_OUTSTANDING'''
+
+[[rows]]
+id = "C3_landed_is_told_from_owned"
+description = "_settle: call every matched track landed, so the screen credits this landing with files it did not bring"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''                entry.settled[LANDED if held & named else OWNED] += 1'''
+new = '''                entry.settled[LANDED] += 1'''
+
+[[rows]]
+id = "C4_an_abort_renames_nothing"
+description = "sync_mark: stop reading the answer, so abort renames exactly what apply would"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''    if option != "apply" or not planned:'''
+new = '''    if not planned:'''
+
+[[rows]]
+id = "C5_the_engine_is_told_which_are_finished"
+description = "sync_mark: hand the engine no only set, so every pending playlist of the account is renamed, the ones this plan held back included"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''            only=frozenset(planned),'''
+new = '''            only=None,'''
+
+[[rows]]
+id = "C6_the_digest_covers_the_file"
+description = "_payload: leave the intake file's size and time out of the digest, so an answer survives the file being rewritten"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''        "xml_size": seen.st_size,
+        "xml_mtime_ns": seen.st_mtime_ns,'''
+new = ''''''
+
+[[rows]]
+id = "C7_the_digest_covers_the_marks"
+description = "_payload: leave the planned renames out of the digest, so an answer to a plan of one rename carries out a plan of two"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''        "marks": sorted((item["id"], item["to"]) for item in items if item["action"] == MARK),'''
+new = '''        "marks": [],'''
+
+[[rows]]
+id = "C8_a_failure_names_what_was_marked"
+description = "sync_mark: re-raise the failure as it came, so the playlists already renamed are named nowhere"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''        raise _failed_part_way(exc, landed, sweep.names(), planned) from exc'''
+new = '''        raise'''
+
+[[rows]]
+id = "C9_the_accounts_reason_is_kept"
+description = "_failed_part_way: treat a refusal the account raised as a defect, so a provider timeout is reported as internal-error"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''    if isinstance(exc, CratekitError):
+        cause = exc.cause'''
+new = '''    if False:
+        cause = exc.cause'''
+
+[[dropped]]
+id = "C10_nothing_asks_means_no_walk"
+description = "_settle: drop the early return when no playlist is left to settle"
+reason = "ranked below the cap: a cost in minutes and never a wrong rename, and test_the_library_is_not_walked_when_no_playlist_is_left_to_settle drives it"
+
+[[dropped]]
+id = "C11_a_file_of_no_pass_stops_before_the_listing"
+description = "sync_mark: drop the no pass branch"
+reason = "ranked below the cap: row B3 mutates the comparison that feeds it, and the no pass test asserts the listing count"
+
+[[dropped]]
+id = "C12_a_changed_playlist_is_reported_skipped"
+description = "sync_mark: report every planned item as marked whatever landed"
+reason = "ranked below the cap: a report over a rename that did not happen, driven by test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said"
+
+[[dropped]]
+id = "C13_the_gate_is_explicit_and_the_write_is_declared"
+description = "registry: drop explicit from the gate, or remote from writes"
+reason = "static declarations, asserted literally by test_the_verb_declares_one_remote_write_behind_an_explicit_gate and held by conformance 3"

@@ -1,0 +1,69 @@
+{
+  "name": "u82-d",
+  "pass_kind": "light",
+  "branch": "relay/127",
+  "head": "f9f1f1f",
+  "when": "2026-09-19 12:19 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8420,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/mark_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/mark_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "513fcfd8a68d8fe9",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8420,
+    "baseline_collected": 8420,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B2_paths_compared_resolved_again",
+      "description": "The zero of u82-b re-measured after test_a_library_reached_through_a_link_still_reads_its_files_as_landed. _comparable: compare the spelled path and not the resolved one",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "679509e10aa46d14",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_library_reached_through_a_link_still_reads_its_files_as_landed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return locations.norm_for_compare(str(Path(path).resolve()))",
+      "new": "    return locations.norm_for_compare(str(path))"
+    }
+  ],
+  "dropped": []
+}

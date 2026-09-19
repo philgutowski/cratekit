@@ -1,0 +1,11 @@
+name = "u82-d"
+pass_kind = "light"
+
+[[rows]]
+id = "B2_paths_compared_resolved_again"
+description = "The zero of u82-b re-measured after test_a_library_reached_through_a_link_still_reads_its_files_as_landed. _comparable: compare the spelled path and not the resolved one"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''    return locations.norm_for_compare(str(Path(path).resolve()))'''
+new = '''    return locations.norm_for_compare(str(path))'''

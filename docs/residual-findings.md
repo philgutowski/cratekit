@@ -16236,6 +16236,23 @@ therefore still reports `"mark": "unbound"`, a guard in `tests/test_sync_all.py`
 holds that, and the first live rename is Phillip's to make. The two findings the
 code half left behind are R-397 and R-398.
 
+**THE PRODUCTION HALF IS DISCHARGED, 2026-09-19 on `relay/127`, U82, AND THE
+ENTRY IS NARROWED TO THE ONE LIVE ACT.** `crate sync mark --xml X` is
+`mark_swept`'s production caller, in `src/cratekit/sync/mark_cli.py`. It is
+handed the intake file `intake land` wrote for a pass, finds the pass by the
+name that file carries, plans a rename only for a playlist whose job succeeded
+and whose every offered or missing track now resolves in the library, stops at
+the explicit gate `sync.mark.confirm`, and marks through `mark_swept` with the
+set narrowed by a new `only`. `marking_sweep` builds the sweep without
+reconciling, so the cursor is read and never written and its policy is as it
+was. **The brief named the manifest as the input and the unit departed from
+it**, after `/code-review` drove a playlist marked over a track the pass had
+OFFERED for review: the manifest is derived from the intake reports and drops
+offered rows and handed on rows, so the verb reads the reports. The departure
+can only mark fewer playlists. A pass still reports `"mark": "unbound"`, which
+is R-481. **What is still open is the first live rename, which is attended and
+Phillip's**: no rename has been made on a real account by this product.
+
 ---
 
 ## R-359. A playlist is recorded as swept once its tracks are resolved, not once they are acquired
@@ -17375,6 +17392,14 @@ guard starts describing its own fixture.
 is the same moment, or the production path gains a declared mark step the guard
 can ask about by role instead of by name.
 
+**CLOSED 2026-09-19 on `relay/127`, U82, by the second condition.** The name ban
+is deleted. The mark step is now a declared verb with its own explicit gate, so
+what is left to hold is that the ungated pass never renames, and
+`tests/test_sync_all.py::test_a_pass_renames_nothing_even_over_a_recorded_playlist_with_its_file_landed`
+holds that by the act: it binds the account seam, meets every condition a mark
+needs, runs the pass and asserts nothing was renamed, whatever a future mark
+step is called.
+
 ---
 
 ## R-398. The deferred mark's file check can raise a bare OSError between two syscalls
@@ -17409,6 +17434,17 @@ answer is a `try` around the `stat` or a single `os.stat` read.
 **Closes when:** the file check reads the path once, or a caller exists that can
 reach the window and the decision is recorded that a raw `OSError` is the right
 answer there.
+
+**CLOSED 2026-09-19 on `relay/127`, U82, by the first condition.**
+`marks.require_output` makes one `os.stat` and answers all three questions from
+it, and every `OSError` out of it is the `sync-marks-blocked` refusal. A
+`PermissionError` is chained as the cause, so `core.cause` re-slugs it
+`path-permission-denied`, which is a declared refusal with the remedy that
+works and is asserted. Row `A1_stat_oserror_is_the_refusal` in
+`docs/mutation/u82-a.md` kills 4. The same two read shape stands at four other
+sites, which is R-485.
+
+---
 
 ## R-399. `crate tag folder` writes genre and no album art, and nothing else in the product writes any
 
@@ -19854,3 +19890,114 @@ could not name one track, so the option would name several.
 
 **Closes when:** the text list gains a field for it, or never.
 
+---
+
+## R-481. A pass still reports the mark as unbound now that a verb binds it
+
+**Found:** 2026-09-19, on `relay/127`, U82, deciding what the pass should say.
+
+`sync.playlists.report` puts `"mark": "unbound"` on every playlists block, and
+that was the whole truth while nothing could mark. `crate sync mark` now can.
+The value is still true of the PASS, which resolves tracks, writes no importable
+file and renames nothing, and a guard holds that by the act. It no longer says
+where the mark went.
+
+**The conservative call made here.** Leave the token. It is asserted in
+`tests/test_sync_all.py` and read by whatever consumes `summary.playlists`, and
+a new word for the same fact is a schema change the brief did not ask for. The
+options are a new token such as `deferred`, or a `sync.next` style line naming
+`crate sync mark` once a pass has recorded a playlist.
+
+**Measured cost.** Wording. A person reading the block is not told the verb
+exists. GUIDE names it in the acquisition walkthrough.
+
+**Closes when:** the block or a check beside it names the verb, or the token is
+decided to stand.
+
+---
+
+## R-482. A track accepted through review still holds its playlist's mark back
+
+**Found:** 2026-09-19, on `relay/127`, U82, fixing `/code-review`'s first finding.
+
+`sync.mark_cli._settle` resolves every offered or missing track with
+`match.resolve_one` over `match_cli.library_view`, which is the library and the
+tombstones. It does not run `match_cli.adjudicate`, so the review store is never
+consulted. A track the pass OFFERED, which a person has since accepted as the
+record they own, still resolves `needs_review`, is reported outstanding, and its
+playlist is never planned.
+
+**Driven:** the offered half, by
+`test_a_track_the_pass_offered_for_review_holds_its_playlist_back`. The accepted
+verdict half was read and not driven.
+
+**Why not fixed here.** `adjudicate` files review items as it reads, and a verb
+that stops at a gate having written to the review queue on the way has moved
+state for an answer of abort. Reading verdicts without filing needs a seam the
+review engine does not expose yet.
+
+**Measured cost.** Errs toward not renaming. The playlist stays unprefixed on
+the account, so the source system offers it again, which is R-358's original
+cost for that one playlist. **Meets the board bar, (c), and its issue is owed**,
+to be filed after this merge is on `main`.
+
+**Closes when:** `_settle` reads an accepted verdict as settled without filing
+anything, and a test drives the accepted half.
+
+---
+
+## R-483. A pass that found nothing missing can never be marked
+
+**Found:** 2026-09-19, on `relay/127`, U82, reading what `sync mark` needs.
+
+The mark waits for an importable file, which is `sync/marks.py`'s rule. A pass
+whose every track was already owned lists nothing, downloads nothing and lands
+nothing, so no intake file carries its name and `crate sync mark` has nothing to
+be handed. Its playlists are recorded in the cursor and never prefixed.
+
+**Measured cost.** The source system sweeps those playlists again and finds
+every track owned, so the cost is a repeated listing and no download. Not
+observed live.
+
+**Closes when:** a pass with nothing owed may be marked without a file, which is
+a change to the rule in `sync/marks.py` and therefore a decision, or never.
+
+---
+
+## R-484. A mistyped intake file name is a gated no-op and not a refusal
+
+**Found:** 2026-09-19, on `relay/127`, U82, meeting conformance 3.
+
+An intake file whose name no playlist job on this library spells is a plan of
+nothing: the explicit gate is asked and the run ends NO_OP under the warning
+`sync-mark-no-pass`. That is `intake land`'s precedent for an empty folder and
+is what lets conformance 3 drive the verb on an empty install. It also means a
+landing made under a `--name` other than the one `intake missing --run` printed
+is answered at a gate before the person learns the file matched nothing, since
+the gate screen says so and the refusal it replaced said so sooner.
+
+**Measured cost.** One wasted answer. Nothing is renamed.
+
+**Closes when:** the verb takes the run identifier as well as the file, or
+never.
+
+---
+
+## R-485. Four more file checks read one path twice with a window between
+
+**Found:** 2026-09-19, on `relay/127`, U82, looking for R-398's shape one file
+over, as METHOD asks after a fix.
+
+`modules/tools/mastering.py:672`, `core/tree_registry.py:795` and
+`analysis/vocals.py:82` and `:90` each test `is_file()` or `exists()` and then
+call `stat()` on the same path. A file removed between the two raises a bare
+`FileNotFoundError` out of the second. Found by one grep over `src` for the two
+calls on one line, so a check split across lines was not counted.
+
+**Driven:** not driven. Read only, and none is this unit's to change.
+
+**Measured cost.** Unmeasured. Each needs a second writer removing the file mid
+check, and the cost is a traceback where a refusal or a False was meant.
+
+**Closes when:** each reads its path once, as `sync.marks.require_output` does,
+or is recorded as not worth it.

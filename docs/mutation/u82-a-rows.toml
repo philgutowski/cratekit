@@ -1,0 +1,87 @@
+name = "u82-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_stat_oserror_is_the_refusal"
+description = "require_output: stop turning an OSError out of the one stat into sync-marks-blocked, so a file gone at that moment is a bare FileNotFoundError again, which is R-398"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''    except OSError as exc:
+        raise _blocked(local_output, exc.strerror or type(exc).__name__) from exc'''
+new = '''    except ZeroDivisionError as exc:
+        raise _blocked(local_output, exc.strerror or type(exc).__name__) from exc'''
+
+[[rows]]
+id = "A2_a_folder_is_not_a_file"
+description = "require_output: drop the regular file check, so a folder named like the intake file counts as the importable file"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''    if not stat.S_ISREG(found.st_mode):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A3_an_empty_file_is_not_proof"
+description = "require_output: drop the empty file check, so a zero byte file lets the renames through"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''    if found.st_size == 0:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A4_engine_checks_the_file"
+description = "apply_deferred: drop the call to require_output, so the engine renames with no importable file at all"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''    require_output(local_output)
+    applied: list[str] = []'''
+new = '''    applied: list[str] = []'''
+
+[[rows]]
+id = "A5_only_narrows"
+description = "pending_marks: drop the only filter, so every recorded playlist is pending whatever the caller named"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''        and (only is None or identity in only)'''
+new = ''''''
+
+[[rows]]
+id = "A6_an_empty_only_is_nothing"
+description = "pending_marks: read only by truth and not by None, so an empty set, which is no finished playlist, marks every pending one"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''        and (only is None or identity in only)'''
+new = '''        and (not only or identity in only)'''
+
+[[rows]]
+id = "A7_mark_swept_hands_only_through"
+description = "mark_swept: stop handing only to pending_marks, so the verb's finished set is ignored at the one place it is applied"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''        pending_marks(sweep, only=only),'''
+new = '''        pending_marks(sweep),'''
+
+[[rows]]
+id = "A8_marking_sweep_reads_finished_jobs"
+description = "marking_sweep: drop the union with the completed jobs, so recorded is the cursor alone and the ordinary sequence, where nothing reconciles between the pass and the mark, finds nothing to mark"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_sync_all.py"]
+old = '''    held.update(completed(source_jobs(store, cfg, handler_key=handler_key)))'''
+new = '''    pass'''
+
+[[dropped]]
+id = "A9_recheck_skips"
+description = "apply_deferred: drop the recheck skip"
+reason = "an existing guard already measured in docs/mutation/r358.md, and this unit drives it again through the verb in C rows"
+
+[[dropped]]
+id = "A10_a_swept_name_is_not_pending"
+description = "pending_marks: drop the already prefixed skip"
+reason = "an existing guard measured in docs/mutation/r358.md; the verb decides the same fact earlier and that decision is row B4"
