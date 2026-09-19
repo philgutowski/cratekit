@@ -967,6 +967,7 @@ def test_queueing_a_playlist_lists_it_through_the_catalogue_and_keys_items_by_pr
     assert frozen["102"] == {
         "artist": "Nova Reef", "title": "Tide", "version": "", "key": None, "isrc": "X2",
         "origin": match.TIDAL, "ref": "102", "spelled": "Tide", "other_reading": None,
+        "several_artists": False,
     }
     assert resume_argv(job_id) == ["intake", "playlist", "pl-1", "--job", job_id]
 

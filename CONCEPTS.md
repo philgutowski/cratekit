@@ -245,6 +245,22 @@ or another regional host is a different plan and misses. A path, a size and a
 modification time are deliberately not in it, because none is unique to the
 audio.
 
+### Companion
+The second record the deletion pass writes beside the tombstone of a library row
+whose title carried a featured credit: the same deleted version, addressed with
+the bracketed credit groups taken out, under a kind of its own,
+`version-uncredited`. It exists because a provider that carries its version in
+its own field never spells the guest, so it cannot compose the string the
+tombstone is addressed by.
+
+A companion is not a looser tombstone. It has had its guest taken out, so it
+cannot say which guest the deleted row credited, and only a listing that was
+seen to credit nobody may ask for one: no bracketed credit, one billed artist,
+and read from a real listing, never built by hand. A row with no credit has no
+companion. Recording a credited deletion writes both records in one write and
+lifting the tombstone lifts both in one write, and a companion two deletions
+share stays until the last of them is lifted.
+
 ## Verification
 
 ### Guard

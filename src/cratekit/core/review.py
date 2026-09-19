@@ -79,7 +79,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import canonical_json, timestamp
 from cratekit.core import config
@@ -1973,12 +1973,22 @@ class DecisionStore:
         identity: Mapping[str, Any],
         payload: Mapping[str, Any] | None = None,
         actor: str,
+        beside: Sequence[tuple[str, Mapping[str, Any], Mapping[str, Any]]] = (),
     ) -> Suppression:
         """Suppress something, idempotently, and return the record.
 
         Re-recording an already suppressed thing changes nothing, including its
         timestamp. Re-recording a REVOKED one re-suppresses it, which is the only
         way a person changes their mind back.
+
+        ``beside`` IS FOR ONE DECISION THAT IS SEVERAL RECORDS, each a (kind,
+        identity, payload). They are written IN THE SAME WRITE as this record and
+        ONLY WHEN THIS RECORD IS WRITTEN. One write, because a caller that undoes
+        its work when this raises would otherwise be left with the first record
+        standing and the thing it suppresses put back. Only then, because a
+        record that already stood is a decision already taken, and a companion a
+        person has since lifted on its own must not come back behind their back.
+        A companion that already stands is left exactly as it is.
 
         THE WHOLE CYCLE IS UNDER THE LOCK. The read decides what the write
         contains, so a lock taken around only the write protects nothing: the
@@ -2001,15 +2011,42 @@ class DecisionStore:
                 recorded=timestamp(),
             )
             recorded[identifier] = suppression
+            for other_kind, other_identity, other_payload in beside:
+                other_id = suppression_id_for(self.key, other_kind, other_identity)
+                standing = recorded.get(other_id)
+                if standing is not None and standing.suppressing:
+                    continue
+                recorded[other_id] = Suppression(
+                    suppression_id=other_id,
+                    kind=normalize_kind(other_kind),
+                    identity=normalize_identity(other_identity),
+                    payload=dict(other_payload or {}),
+                    actor=actor,
+                    recorded=suppression.recorded,
+                )
             self._write(recorded)
             return suppression
 
-    def revoke(self, suppression_id: str, *, actor: str) -> Suppression:
+    def revoke(
+        self,
+        suppression_id: str,
+        *,
+        actor: str,
+        also: Callable[[Suppression, Mapping[str, Suppression]], Iterable[str]] | None = None,
+    ) -> Suppression:
         """Lift a suppression, keeping the record of it having existed.
 
         Under the lock for the same reason ``record`` is, and the cost of losing
         one is worse: a dropped revocation leaves a suppression standing forever,
         and nothing ever offers the thing again, so nobody finds out.
+
+        ``also`` NAMES THE OTHER RECORDS THAT GO WITH THIS ONE, and it is asked
+        UNDER THE LOCK, with the records this write is about to replace. A caller
+        that read the store, decided, and then revoked twice would be deciding
+        from a set another process may have added to in between, which is the
+        read outside the lock ``record`` argues against. They are lifted in the
+        same write, so there is no half lifted state to be interrupted in. An
+        identifier it names that is unknown or already lifted is passed over.
         """
         with self._locked():
             recorded = self._read()
@@ -2025,18 +2062,28 @@ class DecisionStore:
                 )
             if not existing.suppressing:
                 return existing
-            revoked = Suppression(
-                suppression_id=existing.suppression_id,
-                kind=existing.kind,
-                identity=existing.identity,
-                payload=existing.payload,
-                actor=existing.actor,
-                recorded=existing.recorded,
-                revoked=True,
-                revoked_at=timestamp(),
-                revoked_by=actor,
-            )
+            lifted_at = timestamp()
+
+            def lifted(one: Suppression) -> Suppression:
+                return Suppression(
+                    suppression_id=one.suppression_id,
+                    kind=one.kind,
+                    identity=one.identity,
+                    payload=one.payload,
+                    actor=one.actor,
+                    recorded=one.recorded,
+                    revoked=True,
+                    revoked_at=lifted_at,
+                    revoked_by=actor,
+                )
+
+            with_it = tuple(also(existing, dict(recorded))) if also is not None else ()
+            revoked = lifted(existing)
             recorded[suppression_id] = revoked
+            for other_id in with_it:
+                other = recorded.get(other_id)
+                if other is not None and other.suppressing:
+                    recorded[other_id] = lifted(other)
             self._write(recorded)
             return revoked
 

@@ -1157,7 +1157,13 @@ def revoke(cfg: config.Config, suppression_id: str, *, actor: str) -> review.Sup
             if record.suppression_id == suppression_id:
                 if held.key == tombstone.DECLINE_STORE_KEY:
                     _reopen_review_item(cfg, record, actor=actor)
-                return held.revoke(suppression_id, actor=actor)
+                    return held.revoke(suppression_id, actor=actor)
+                # THROUGH THE STORES MODULE AND NOT THE STORE, because a credited
+                # tombstone has a companion and lifting one without the other
+                # leaves the version suppressed (R-431). The tombstones are still
+                # read FIRST, so lifting one never depends on the declines store
+                # being readable.
+                return stores.revoke_tombstone(cfg, suppression_id, actor=actor)
     # Neither store holds it. The refusal comes from the store rather than being
     # written here, so a person gets the same sentence whichever way they arrive
     # at an identifier that resolves nowhere.

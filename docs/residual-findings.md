@@ -4896,6 +4896,13 @@ which is now enough on this side, or the deletion pass records a second identity
 with credits stripped and this side consults it, which is a decision belonging to
 whoever owns the tombstone identity rather than to this unit.
 
+**CLOSED 2026-09-19 on `relay/179`, by the second of the two, with R-431.** The
+deletion pass records a companion with the credit groups out, under its own
+kind, and this side asks for it only from a listing that spelled no credit and
+billed one artist. `UNRECONCILED` is empty. The verbatim consult still cannot
+reach that row and is pinned not to. R-519 records the listings the guards turn
+away.
+
 ---
 
 ## R-70. The two tombstone derivations are reconciled only at merge
@@ -18841,6 +18848,58 @@ side can reach, R-72's closing condition, which also retires R-69's
 each missing row sharing an artist and recording with a tombstone rather
 than listing it.
 
+**CLOSED 2026-09-19 on `relay/179`, by the first of the two.** The second was
+weighed and not taken: `intake missing` only reads the states `intake playlist`
+committed, so a review step at the list verb would have left the intake report
+itself saying missing, which is the false statement this entry is about.
+
+`deletion.stores.record_tombstone` now writes a COMPANION beside the tombstone
+of any row whose composed title carries a bracketed credit: the same identity
+with the credit groups taken out by `core.tombstone.uncredited_title`, under a
+kind of its own, `version-uncredited`. `match.standing_tombstone` asks under
+that kind second, through `Wanted.uncredited_spellings`. Driven end to end with
+the real recorder: the heart spelled `Sun Path` and `Nightwave Remix` resolves
+SUPPRESSED at `intake playlist`, and `intake missing` writes no list. The pin
+flipped and was renamed
+`test_a_deleted_track_whose_row_kept_a_credit_is_suppressed_and_not_listed`.
+`UNRECONCILED` is empty, and
+`test_the_verbatim_consult_alone_still_misses_the_credited_row` pins that the
+verbatim consult did NOT widen to get there.
+
+**It widens nothing the engine did not already call one version, measured.**
+While the credited row is held, the listing that spelled no guest resolves
+`matched`, `exact`, because a credit names a performer and comes off the
+matching title. `test_the_companion_reaches_exactly_what_ownership_reached`
+drives both sides of the deletion.
+
+**What keeps it out of the over eager direction, each guard removable alone and
+each killing in `docs/mutation/r431-a.md` and `r431-b.md`, 25 of 25.** A row
+with no credit writes no companion, so a deletion of the plain record withholds
+nothing. The companion has its own kind, so the label sweep,
+`suppressed_version` and `tombstone_predicate` cannot land on it. And "this
+listing spelled no credit" has to be something the `Wanted` saw: one that
+spelled a bracketed credit, one built by hand, which the verb builds from a
+held file whose credits the index already took off, and one whose provider row
+billed more than one artist all ask nothing. That last field travels through
+the intake freeze, and a payload frozen before it existed reads as billed.
+
+**Revocable stays true of a deletion that is two records.** Recording is one
+store write and so is lifting, through `DecisionStore.record(beside=)` and
+`DecisionStore.revoke(also=)`, because the deletion pass puts the file back
+when the record raises. Two deleted rows crediting two guests share one
+companion, and it stays until the last of them is lifted, decided by a pointer
+on each tombstone first and by stripping second.
+
+**The identity stamp did not move.** `uncredited_version_of` sits on top of
+`version_of` and is not reachable from it, so `is2_5b356bbb451de9cc` still
+holds and no record this build wrote falls to the row lookup.
+
+**The code review raised ten findings.** Eight held and were fixed, among them
+the two writes, the lift decided outside the lock, and the three consult
+guards above. Two are recorded, R-517 and R-518. What the guards cost is R-519,
+and R-71's index side and R-72's unenumerated shapes stay open as they were,
+argued here and not driven.
+
 ---
 
 ## R-432. The landing engine checks a target is free and then replaces it, and a file can arrive between the two
@@ -21019,3 +21078,147 @@ as the account.
 **Closes when:** a person says whether a steady withholding should fail the
 row, note it, or fail only when it changes, and the check does that.
 
+---
+
+## R-517. A credited tombstone written before the companion existed still misses the provider shape
+
+**Found:** 2026-09-19, the code review on `relay/179`, and driven:
+`test_a_tombstone_that_already_stood_gains_no_companion`.
+
+R-431 closed by having the recorder write a companion beside a credited
+tombstone. The companion is written in the same write as the tombstone and
+only when the tombstone is, so a tombstone that already stands gains nothing
+when the same deletion is recorded again. And a deletion run does not record
+it again anyway: `tombstone_predicate` reads the standing record as "a run
+already recorded this" and retires the row. So every credited deletion made
+before this build keeps R-431's cost in full. The provider shape resolves
+missing, `intake missing` lists it, and the next download fetches back a file
+somebody removed.
+
+**Why not fixed there.** The other rule, write the companion whenever it is
+absent, brings back a companion a person lifted on its own the next time a
+duplicate row of that version is deleted, behind their back, which the review
+also raised and which is driven in
+`test_a_companion_lifted_alone_does_not_come_back_behind_a_persons_back`. And
+a read that repairs the store is a read that can fail while a person is only
+asking a question, which `tombstone_predicate` argues. What is missing is a
+deliberate backfill.
+
+**Measured cost:** board bar (a) and (b), for each credited tombstone already
+in a store. How many the live store holds was not counted, since a session
+does not read it.
+
+**Meets the board bar. Its issue is owed**, since METHOD files an issue after
+the merge that carries the entry and a Relay session exits before that merge.
+
+**Closes when:** a verb, a backfill flag on `crate tombstone list` or a step
+of `crate doctor`, walks the standing `version` records, writes the companion
+each one strips to where none has ever existed, stamps the pointer, and says
+how many it wrote. A companion that exists and was lifted is left lifted.
+
+---
+
+## R-518. The label sweep asks the tombstone store under the verbatim kind only
+
+**Found:** 2026-09-19, the code review on `relay/179`. Read, not driven.
+
+`label/sweep.py` builds its own consult, `tombstone.version_identity` over a
+release's artist and title under `KIND_VERSION`, and never asks for a
+companion. A release a label crawl returns as `Aurora Bloom` and `Sun Path
+(Nightwave Remix)`, against a deleted library row that kept `(feat. Mira)`,
+would miss and be queued, which is R-431's cost arriving by the other
+entrance. `test_a_companion_is_never_the_answer_to_a_verbatim_lookup` pins the
+miss on purpose: the sweep has no notion of whether a release spelled a credit
+or billed a guest, and asking without those two guards is the over eager
+direction.
+
+**Measured cost:** unmeasured. A release is an album or a single, its title is
+rarely a track's title with a mix name, and no producer of the colliding shape
+was driven. It does not meet the board bar until one is.
+
+**Closes when:** the sweep is driven with a single whose title is the stripped
+title of a credited deletion, and either it asks for the companion behind the
+same two guards `Wanted.uncredited_spellings` holds, or the drive shows the
+shape does not arrive.
+
+---
+
+## R-519. A listing that names a guest anywhere cannot reach the companion of the deletion crediting that same guest
+
+**Found:** 2026-09-19, on `relay/179`, as the cost of R-431's guards. Driven
+in the refusing direction only.
+
+A companion has had its guest taken out, so it cannot say which guest the
+deleted row credited, and a listing that names any guest is therefore turned
+away from it: a bracketed credit in the title, or a provider row billing more
+than one artist. That is right when the guest differs and a miss when it is
+the same one. The shapes that still resolve missing and are listed for
+download:
+
+- the provider bills `[Aurora Bloom, Mira]` with the title `Sun Path` and no
+  credit in it, and the library row read `Sun Path (feat. Mira) (Nightwave
+  Remix)`;
+- the provider spells `(feat. Mira)` and the library row spelled `(ft. Mira)`
+  or `[feat. Mira]`, so the verbatim consult misses on the spelling and the
+  companion is not asked;
+- the library row spelled its credit with no bracket, `Sun Path feat. Mira`,
+  which `uncredited_title` leaves alone, so no companion is written at all;
+- a payload the intake froze before `several_artists` existed, which thaws as
+  billed.
+
+Each is a missed suppression that is reported, the direction `tombstone_fold`
+accepts, and each is R-431's own cost for the row it happens to.
+
+**Measured cost:** board bar (a) and (b) where it lands. How often a provider
+bills a guest without spelling it in the title was not measured, and the live
+account is not a session's to read.
+
+**Closes when:** the companion carries the folded names of the guests it
+dropped, and the consult asks for it from a listing whose own guests, read
+from its title and its artists list, fold to the same names. Or an attended
+sitting counts the hearts that bill a guest and shows the share is small
+enough to leave.
+
+---
+
+## R-520. `tests/test_deletion.py` fails one test on some full parallel runs
+
+**Found:** 2026-09-19, on `relay/179`. The same family as R-470.
+
+Two of six full `pytest` runs on this branch reported one failure, each time
+a different test of `tests/test_deletion.py` that opens a real disposable
+database: `test_delete_review_trashes_a_confirmed_file`, which exited 10
+where it expects 0, and `test_the_real_binding_answers_the_version_columns_too`,
+which reddened `scripts/mutate.py`'s baseline and refused table b once. Both
+pass alone, the file passed three times in a row under `-n auto` beside
+`tests/test_rebuild.py`, and the other four full runs were green. Whether
+`main` does the same was not measured, since a Relay session does not leave
+its branch.
+
+**Measured cost.** Maintainer facing: a red battery over a sound tree, and a
+refused mutation batch. The cause was not investigated.
+
+**Closes when:** the state those tests race on under `-n auto` is found and
+isolated, which R-470's closing line may already cover.
+
+---
+
+## R-521. A stale credited tombstone over a file that is held again leaves no trace for a listing that spelled no credit
+
+**Found:** 2026-09-19, on `relay/179`, as the cost of one of the code review's
+fixes. Read, not driven.
+
+`crate match run` reports a tombstone standing over a MATCHED row as stale.
+It no longer asks for a companion there, because a companion cannot say which
+credited row it stands for, and a held `(feat. Zed)` cut was reported as proof
+that the deletion of the `(feat. Mira)` cut was stale. The price is the honest
+case: the Mira cut is deleted, acquired again by hand and held, and a listing
+spelling no guest matches it. Nothing says a tombstone stands over it. A
+listing that spells the credit still reports it, and so does the deletion
+pass.
+
+**Measured cost:** maintainer facing, a missing advisory. Nothing is withheld
+or fetched because of it.
+
+**Closes when:** R-519's closing condition lands, since a companion that knows
+its guests can be compared with the held file's own.

@@ -149,6 +149,24 @@ DECLINE_STORE_KEY = "declines"
 #: The kind a tombstone carries: one deleted version of one recording.
 KIND_VERSION = "version"
 
+#: The kind the COMPANION of a credited tombstone carries: the same deleted
+#: version, addressed with its featured credits taken out (R-431).
+#:
+#: A SECOND KIND AND NOT A SECOND SPELLING UNDER :data:`KIND_VERSION`, and the
+#: difference is the whole safety argument. A provider that carries its version
+#: in its own field spells ``Sun Path`` and ``Nightwave Remix`` and never the
+#: guest, so the row ``Sun Path (feat. Mira) (Nightwave Remix)`` was recorded
+#: under a string that source cannot compose: the version reported missing and
+#: the next download fetched back a file somebody removed on purpose. Recording
+#: the stripped title under :data:`KIND_VERSION` would close that and open the
+#: direction this module calls the worse one, because every verbatim lookup
+#: would then land on it, including a consult nobody narrowed. Under its own
+#: kind it is reachable only by a consulter that asks for it by name, and the
+#: acquisition side asks only for a listing that spelled NO credit at all. So a
+#: listing crediting somebody else never reaches it, and a deletion of the plain
+#: record writes no companion and can withhold nothing.
+KIND_VERSION_UNCREDITED = "version-uncredited"
+
 #: The kind a decline carries. It is a ROW's file rather than a version, and that
 #: difference is the point. Declining is "leave this file where it is", which is a
 #: decision about one library row; tombstoning is "never acquire this again",
@@ -514,6 +532,42 @@ def _is_a_credit(group: str) -> bool:
     return bool(words) and words[0] in _CREDIT_MARKERS
 
 
+def uncredited_title(title: str) -> str:
+    """``title`` with every bracketed credit group taken out, or ``""``.
+
+    EMPTY MEANS THERE IS NO COMPANION TO RECORD, and it is answered for two
+    different titles on purpose. A title carrying no credit strips to itself,
+    and a companion equal to the verbatim identity would be a second record
+    saying what the first already says. A title that is NOTHING BUT a credit
+    strips to the empty string, and an identity with an empty title collapses
+    every such row by one artist onto one record. Both are refused here, where
+    the recorder cannot forget to ask.
+
+    ONLY A BRACKETED GROUP WHOSE FIRST WORD IS A MARKER, which is
+    :func:`_is_a_credit` and nothing wider. ``Sun Path feat. Mira`` keeps its
+    guest, because taking an unbracketed credit out means deciding where it
+    ends, and a wrong guess removes a word of the title. That shape stays a
+    missed suppression, which is the cheap direction.
+
+    NOT REACHABLE FROM ``deletion.stores.version_of`` AND IT MUST STAY THAT WAY.
+    The identity stamp walks everything that function reaches, so a call from
+    there would move the stamp and send every record this build wrote to the
+    row lookup for a change that moves no verbatim identity.
+    """
+    dropped = False
+
+    def keep_or_drop(found: re.Match[str]) -> str:
+        nonlocal dropped
+        group = found.group(1) if found.group(1) is not None else found.group(2)
+        if _is_a_credit(group):
+            dropped = True
+            return " "
+        return found.group(0)
+
+    stripped = _SPACING.sub(" ", _BRACKETED.sub(keep_or_drop, str(title))).strip()
+    return stripped if dropped else ""
+
+
 def remixer_title(title: str, remixer: str) -> str:
     """The title a PROVIDER spells, for a producer holding a bare REMIXER name.
 
@@ -781,6 +835,7 @@ __all__ = [
     "DECLINE_STORE_KEY",
     "KIND_REMOVED_FILE",
     "KIND_VERSION",
+    "KIND_VERSION_UNCREDITED",
     "REMIX_DESIGNATION",
     "STORE_KEY",
     "VERSION_WORDS",
@@ -790,6 +845,7 @@ __all__ = [
     "reads_as_version",
     "remixer_title",
     "removed_file_identity",
+    "uncredited_title",
     "version_identity",
     "version_title",
 ]

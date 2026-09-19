@@ -80,6 +80,7 @@ RESIDUALS: tuple[str, ...] = (
     "A question answered on one machine does not settle a different question "
     "about the same line",
     "One vocabulary lives in two files until the domain module merges",
+    "A deleted track the tombstone consult cannot reach is listed for download",
 )
 
 
@@ -338,7 +339,8 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
     source spelled the version separately, so the two can agree as functions and
     still be handed different strings for one record. That is not hypothetical.
     It is what a provider row does for six of the seven spellings below, and one
-    of the six it still cannot reach at all.
+    of the six it reaches only through the companion the recorder writes for a
+    credited row, never under the tombstone's own kind.
 
     So the second check is over the RECORDING PATH: for every rekordbox row shape,
     the identity U24's recorder would write, composed by its OWN
@@ -362,6 +364,7 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
     from cratekit.core import tombstone
 
     assert match.TOMBSTONE_KIND == tombstone.KIND_VERSION
+    assert match.UNCREDITED_KIND == tombstone.KIND_VERSION_UNCREDITED
     assert match_cli.TOMBSTONE_STORE == tombstone.STORE_KEY
     for given, _expected in FOLD_PINS:
         assert match.tombstone_fold(given) == tombstone.fold(given)
@@ -391,19 +394,34 @@ def test_the_two_copies_of_the_tombstone_identity_agree_once_both_exist():
             f"U24's version_title moved on {title!r} with {version!r}; this "
             f"file's imitation and its recorded literals both need re-measuring"
         )
-    # THE DERIVATION, end to end.
+    # THE DERIVATION, end to end, over BOTH records the recorder writes: the
+    # tombstone under its verbatim identity, and the companion a credited row
+    # gains with its credit groups out. A listing reaches a deletion when either
+    # consult does, which is what ``standing_tombstone`` asks.
+    for row in REKORDBOX_ROWS:
+        composed = tombstone.version_title(row[0], row[1])
+        assert u24_uncredited("Aurora Bloom", row[0], row[1]) == (
+            tombstone.version_identity(
+                artist="Aurora Bloom", title=tombstone.uncredited_title(composed)
+            )
+            if tombstone.uncredited_title(composed)
+            else None
+        ), "the imitation of the companion in this file has drifted from the real one"
     missed = tuple(
         (row[0], wanted.origin)
         for row in REKORDBOX_ROWS
         for wanted in every_reader_on(row)
-        if tombstone.version_identity(
-            artist="Aurora Bloom", title=tombstone.version_title(row[0], row[1])
+        if not reaches(
+            wanted,
+            tombstone.version_identity(
+                artist="Aurora Bloom", title=tombstone.version_title(row[0], row[1])
+            ),
+            u24_uncredited("Aurora Bloom", row[0], row[1]),
         )
-        not in wanted.suppression_spellings
     )
     assert missed == UNRECONCILED, (
-        "a library row spelling this side cannot address changed, so either a "
-        "tombstone became invisible or the featured-credit residual is now stale"
+        "a library row spelling this side cannot address changed, so a tombstone "
+        "became invisible"
     )
 
 
@@ -488,15 +506,20 @@ REKORDBOX_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
 )
 
 #: THE DERIVATIONS THAT DO NOT RECONCILE, named rather than left to a silent
-#: miss. A featured credit is dropped from the matching title because it names a
-#: performer, so a source that never spelled it cannot put it back, and the
-#: library row that kept it is unreachable from a provider row. Recorded in
-#: docs/residual-findings.md under "A provider row cannot address a library row
-#: that kept a featured credit". Every other pair reconciles, and this tuple
-#: going empty or growing is a change somebody has to make on purpose.
-UNRECONCILED: tuple[tuple[str, str], ...] = (
-    ("Sun Path (feat. Mira) (Nightwave Remix)", match.TIDAL),
-)
+#: miss, AND EMPTY ON PURPOSE. It held one entry, ``("Sun Path (feat. Mira)
+#: (Nightwave Remix)", match.TIDAL)``: a featured credit is dropped from the
+#: matching title because it names a performer, so a source that never spelled it
+#: cannot put it back, and the library row that kept it was unreachable from a
+#: provider row. Recorded in docs/residual-findings.md under "A provider row
+#: cannot address a library row that kept a featured credit". It went empty when
+#: the recorder began writing a companion with the credit groups out, which the
+#: residual titled "A deleted track the tombstone consult cannot reach is listed
+#: for download" records. The verbatim consult STILL cannot reach that row, and
+#: ``test_the_verbatim_consult_alone_still_misses_the_credited_row`` pins that,
+#: so this tuple being empty says the companion is doing the work and not that
+#: the verbatim consult widened. Growing it is a change somebody has to make on
+#: purpose.
+UNRECONCILED: tuple[tuple[str, str], ...] = ()
 
 
 #: U24's ``core.tombstone`` bracket and credit vocabulary, written out
@@ -654,6 +677,38 @@ def u24_records(artist: str, row_title: str, row_version: str = "") -> dict[str,
         "artist": u24_fold(artist),
         "title": u24_fold(u24_version_title(row_title, row_version)),
     }
+
+
+def u24_uncredited(artist: str, row_title: str, row_version: str = "") -> dict[str, str] | None:
+    """The COMPANION the recorder writes beside a credited tombstone, or None.
+
+    ``deletion.stores.uncredited_version_of`` written out INDEPENDENTLY, for the
+    reason :func:`u24_fold` gives. The composed title with every bracketed group
+    whose first word is a credit marker taken out, folded. None when nothing was
+    taken out, and None when nothing was left.
+    """
+    dropped: list[str] = []
+
+    def keep_or_drop(found: re.Match[str]) -> str:
+        group = found.group(1) if found.group(1) is not None else found.group(2)
+        if u24_is_a_credit(group):
+            dropped.append(group)
+            return " "
+        return found.group(0)
+
+    stripped = u24_fold(U24_BRACKETED.sub(keep_or_drop, u24_version_title(row_title, row_version)))
+    if not dropped or not stripped:
+        return None
+    return {"artist": u24_fold(artist), "title": stripped}
+
+
+def reaches(
+    wanted: match.Wanted, verbatim: dict[str, str], companion: dict[str, str] | None
+) -> bool:
+    """Whether either consult ``standing_tombstone`` makes lands on this deletion."""
+    return verbatim in wanted.suppression_spellings or (
+        companion is not None and companion in wanted.uncredited_spellings
+    )
 
 
 def every_reader_on(row: tuple[str, str, str, str, str]) -> tuple[match.Wanted, ...]:
@@ -1009,9 +1064,61 @@ def test_every_row_spelling_is_addressed_from_every_reader_or_is_a_named_gap():
         (row[0], wanted.origin)
         for row in REKORDBOX_ROWS
         for wanted in every_reader_on(row)
-        if u24_records("Aurora Bloom", row[0], row[1]) not in wanted.suppression_spellings
+        if not reaches(
+            wanted,
+            u24_records("Aurora Bloom", row[0], row[1]),
+            u24_uncredited("Aurora Bloom", row[0], row[1]),
+        )
     )
     assert missed == UNRECONCILED
+
+
+def test_the_verbatim_consult_alone_still_misses_the_credited_row():
+    """WHAT ``UNRECONCILED`` GOING EMPTY DOES NOT MEAN.
+
+    The provider row still cannot address the credited library row under the
+    tombstone's own kind, because it was never handed the credit. That miss is
+    the conservative direction and it is kept: what closed the residual titled
+    "A deleted track the tombstone consult cannot reach is listed for download"
+    is a second record on the recorder's side, not a wider consult on this one.
+    A literal on every side, so a verbatim consult that started composing from
+    the stripped title fails here by name.
+    """
+    provider = match.read_tidal_tracks(
+        [{"title": "Sun Path", "version": "Nightwave Remix", "artist": {"name": "Aurora Bloom"}}]
+    )[0]
+    credited = {"artist": "aurora bloom", "title": "sun path (feat. mira) (nightwave remix)"}
+    assert credited not in provider.suppression_spellings
+    assert {"artist": "aurora bloom", "title": "sun path (nightwave remix)"} in (
+        provider.uncredited_spellings
+    )
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        "Sun Path (feat. Zed) (Nightwave Remix)",
+        "Sun Path (Nightwave Remix) (feat. Zed)",
+        "Sun Path [ft. Zed] [Nightwave Remix]",
+        "Sun Path (with Zed) - Nightwave Remix",
+    ],
+)
+def test_a_listing_that_spelled_a_credit_never_asks_for_a_companion(listed):
+    """THE GUARD ON THE CONSULTING SIDE, in every reader that can spell a credit.
+
+    A companion is a credited deletion with the guest taken out, so it cannot
+    say WHICH guest. A listing crediting Zed that asked under it would be
+    withheld by a deletion of the recording crediting Mira, which is the over
+    eager direction. So a listing that spelled any credit asks nothing.
+    """
+    for wanted in (
+        match.read_text_lines(f"Aurora Bloom - {listed}\n")[0],
+        match.read_spotify_items([{"name": listed, "artists": [{"name": "Aurora Bloom"}]}])[0],
+        match.read_tidal_tracks(
+            [{"title": listed, "version": "", "artist": {"name": "Aurora Bloom"}}]
+        )[0],
+    ):
+        assert wanted.uncredited_spellings == ()
 
 
 def test_the_recorder_and_the_consulter_compose_the_same_string():
@@ -3799,6 +3906,210 @@ def test_a_deletion_of_the_plain_record_never_withholds_the_credited_one(
     _code, still = drive(["match", "run", plain])
     assert still["data"]["missing"] == []
     assert [w["code"] for w in still["warnings"]] == [match_cli.SUPPRESSED_WARNING]
+
+
+def deleted(cfg, title: str, *, version: str = "", content_id: str = "9001"):
+    """A deletion recorded by the REAL recorder, companion and all."""
+    from cratekit.deletion import stores
+    from cratekit.deletion.library import RemovedRow
+
+    return stores.record_tombstone(
+        cfg,
+        RemovedRow(
+            content_id=content_id, recorded="2026-09-19", sequence=1, size=None,
+            artist="Aurora Bloom", title=title, version=version,
+        ),
+        actor="deletion",
+    )
+
+
+@pytest.mark.parametrize(
+    "row_title,row_version",
+    [
+        ("Sun Path (feat. Mira) (Nightwave Remix)", ""),
+        ("Sun Path (Nightwave Remix) (feat. Mira)", ""),
+        ("Sun Path [ft. Mira] [Nightwave Remix]", ""),
+        ("Sun Path (feat. Mira)", "Nightwave Remix"),
+    ],
+)
+def test_a_credited_deletion_suppresses_the_listing_that_never_spelled_the_credit(
+    cfg, music, tmp_path, row_title, row_version
+):
+    """THE SHAPE THE VERBATIM CONSULT CANNOT REACH, driven from the real recorder.
+
+    The residual titled "A deleted track the tombstone consult cannot reach is
+    listed for download" measured this reporting MISSING, which the list verb
+    then handed to a download. The listing names the version and no guest, the
+    way a provider with a version field spells it.
+    """
+    from cratekit.core import tombstone
+
+    written = deleted(cfg, row_title, version=row_version)
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Nightwave Remix)\n", "provider.txt")
+    code, envelope = drive(["match", "run", path])
+
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["missing"] == []
+    warnings = [w for w in envelope["warnings"] if w["code"] == match_cli.SUPPRESSED_WARNING]
+    assert len(warnings) == 1
+    store = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg)
+    by_id = {record.suppression_id: record for record in store.suppressions()}
+    standing = by_id[warnings[0]["suppression"]]
+    assert standing.kind == tombstone.KIND_VERSION_UNCREDITED
+    assert standing.payload["credited_id"] == written.suppression_id
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        "Sun Path (feat. Zed) (Nightwave Remix)",
+        "Sun Path (Daybreak Remix)",
+        "Sun Path",
+    ],
+)
+def test_a_credited_deletion_withholds_nothing_but_its_own_version(
+    cfg, music, tmp_path, listed
+):
+    """THE OVER EAGER DIRECTION, asserted against the real recorder.
+
+    Another guest, another remix, and the bare recording are three things nobody
+    deleted. Each stays missing, with no warning, under a standing companion.
+    """
+    deleted(cfg, "Sun Path (feat. Mira) (Nightwave Remix)")
+    path = write_list(tmp_path, f"Aurora Bloom - {listed}\n", "other.txt")
+    _code, envelope = drive(["match", "run", path])
+
+    assert len(envelope["data"]["missing"]) == 1
+    assert envelope["warnings"] == []
+
+
+def test_a_provider_row_crediting_somebody_else_is_not_withheld(cfg):
+    """The same guard through the reader that carries its version in a field."""
+    deleted(cfg, "Sun Path (feat. Mira) (Nightwave Remix)")
+    suppresses, identify = match_cli.suppression_view(
+        review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg)
+    )
+    other, same = match.read_tidal_tracks(
+        [
+            {"title": "Sun Path (feat. Zed)", "version": "Nightwave Remix",
+             "artist": {"name": "Aurora Bloom"}},
+            {"title": "Sun Path", "version": "Nightwave Remix",
+             "artist": {"name": "Aurora Bloom"}},
+        ]
+    )
+    assert match.standing_tombstone(other, suppresses=suppresses, suppression_id=identify) is None
+    assert match.standing_tombstone(same, suppresses=suppresses, suppression_id=identify)
+
+
+def test_a_listing_both_records_answer_is_reported_under_the_tombstone(cfg, music, tmp_path):
+    """The plain cut and the credited cut were both deleted, so the listing that
+    spelled no credit is answered by a tombstone AND by a companion. It is
+    reported under the tombstone, the record a person wrote for that row."""
+    plain = deleted(cfg, "Sun Path (Nightwave Remix)", content_id="9002")
+    deleted(cfg, "Sun Path (feat. Mira) (Nightwave Remix)")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Nightwave Remix)\n", "both.txt")
+    _code, envelope = drive(["match", "run", path])
+    assert [w["suppression"] for w in envelope["warnings"]] == [plain.suppression_id]
+
+
+def test_a_provider_row_billing_a_guest_in_its_artists_never_asks_for_a_companion():
+    """A CREDIT WITH NOTHING IN THE TITLE TO SHOW IT. The reader keeps the first
+    artist and drops the rest, so a row billing Zed beside the main artist reads
+    exactly like the row that credits nobody, and would be withheld by a deletion
+    of the recording that credits Mira. Under ``artists`` and under ``artist``,
+    as mappings and as strings, because those are one shape spelled four ways."""
+    solo, *billed = match.read_tidal_tracks(
+        [
+            {"title": "Sun Path", "version": "Nightwave Remix",
+             "artists": [{"name": "Aurora Bloom"}]},
+            {"title": "Sun Path", "version": "Nightwave Remix",
+             "artists": [{"name": "Aurora Bloom"}, {"name": "Zed"}]},
+            {"title": "Sun Path", "version": "Nightwave Remix",
+             "artists": ["Aurora Bloom", "Zed"]},
+            {"title": "Sun Path", "version": "Nightwave Remix",
+             "artist": ["Aurora Bloom", "Zed"]},
+        ]
+    )
+    assert {"artist": "aurora bloom", "title": "sun path (nightwave remix)"} in (
+        solo.uncredited_spellings
+    )
+    assert [one.uncredited_spellings for one in billed] == [(), (), ()]
+    # A blank entry is not a second artist, and a bare string is a list of one.
+    padded, bare = match.read_tidal_tracks(
+        [
+            {"title": "Sun Path", "version": "", "artists": [{"name": "Aurora Bloom"}, {"name": " "}]},
+            {"title": "Sun Path", "version": "", "artists": "Aurora Bloom, Zed"},
+        ]
+    )
+    assert padded.uncredited_spellings and bare.uncredited_spellings
+
+
+def test_a_wanted_nobody_read_from_a_listing_never_asks_for_a_companion():
+    """BUILT BY HAND MEANS NOBODY LOOKED. The verb builds one from a held file,
+    whose title the index has already taken the credits off, so "no credit in
+    it" is an absence of looking and not an absence of credits."""
+    by_hand = match.Wanted(artist="Aurora Bloom", title="Sun Path", version="Nightwave Remix")
+    assert by_hand.suppression_spellings
+    assert by_hand.uncredited_spellings == ()
+
+
+def test_a_held_file_crediting_somebody_else_never_calls_the_companion_stale(
+    cfg, music, tmp_path
+):
+    """THE REPORT THAT WOULD TELL A PERSON TO LIFT A DELETION THE DISK SAYS
+    NOTHING ABOUT. The Mira cut was deleted and the Zed cut is held. A companion
+    has had its guest taken out, so it cannot say which of the two it stands
+    for, and neither the matched row nor the offered file may report it as a
+    stale record over a held file."""
+    deleted(cfg, "Sun Path (feat. Mira) (Nightwave Remix)")
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (feat. Zed) (Nightwave Remix)")
+    body = "Aurora Bloom - Sun Path (Nightwave Remix)\nAurora Bloom - Sun Path (Daybreak Remix)\n"
+    _code, envelope = drive(["match", "run", write_list(tmp_path, body, "zed.txt")])
+
+    assert [one["version"] for one in envelope["data"]["matched"]] == ["Nightwave Remix"]
+    assert [one["version"] for one in envelope["data"]["needs_review"]] == ["Daybreak Remix"]
+    assert [w for w in envelope["warnings"] if w["code"] == match_cli.TOMBSTONE_OVER_OWNED] == []
+
+
+def test_a_deletion_of_the_plain_record_writes_no_companion(cfg, music, tmp_path):
+    """THE GUARD ON THE RECORDING SIDE. One deletion of a row with no credit is
+    one record, so there is nothing under the companion kind for anything to
+    reach, and the credited listing stays missing as it always did."""
+    deleted(cfg, "Sun Path (Nightwave Remix)")
+    store = review.DecisionStore(match_cli.TOMBSTONE_STORE, cfg)
+    assert [record.kind for record in store.suppressions()] == [match.TOMBSTONE_KIND]
+
+    credited = write_list(
+        tmp_path, "Aurora Bloom - Sun Path (feat. Mira) (Nightwave Remix)\n", "credited.txt"
+    )
+    _code, envelope = drive(["match", "run", credited])
+    assert len(envelope["data"]["missing"]) == 1
+    assert envelope["warnings"] == []
+
+
+def test_the_companion_reaches_exactly_what_ownership_reached(cfg, music, tmp_path):
+    """THE CLAIM THAT THIS WIDENS NOTHING, measured rather than argued.
+
+    While the credited row is HELD, the listing that never spelled the guest
+    resolves matched, because a credit names a performer and comes off the
+    matching title. So the engine already calls the two one version, and the
+    companion makes the deleted state agree with the held one. A different remix
+    is a question while held, never a match, and plain missing once deleted.
+    """
+    body = "Aurora Bloom - Sun Path (Nightwave Remix)\nAurora Bloom - Sun Path (Daybreak Remix)\n"
+    held = hold(music, "08A - 124 - Aurora Bloom - Sun Path (feat. Mira) (Nightwave Remix)")
+    _code, while_held = drive(["match", "run", write_list(tmp_path, body, "held.txt")])
+    assert [(one["version"], one["why"]) for one in while_held["data"]["matched"]] == [
+        ("Nightwave Remix", "exact")
+    ]
+    assert [one["version"] for one in while_held["data"]["needs_review"]] == ["Daybreak Remix"]
+
+    held.unlink()
+    deleted(cfg, "Sun Path (feat. Mira) (Nightwave Remix)")
+    _code, once_deleted = drive(["match", "run", write_list(tmp_path, body, "deleted.txt")])
+    assert [one["version"] for one in once_deleted["data"]["missing"]] == ["Daybreak Remix"]
+    assert once_deleted["data"]["matched"] == []
+    assert [w["code"] for w in once_deleted["warnings"]] == [match_cli.SUPPRESSED_WARNING]
 
 
 @pytest.mark.parametrize(
