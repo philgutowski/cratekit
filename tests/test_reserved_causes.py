@@ -5623,7 +5623,9 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Differenced as SETS by re-deriving this module's own predicate over the
     # working tree and over main's src extracted into a scratch directory. The
     # also-holds-an-integer half stays 19, measured by the same run.
-    # Re-pinned on R-239, 2026-09-18: holders stay 96, and the also-holds-an-
+    # Re-pinned 2026-09-18 by the unit that gave the encryption probe one
+    # spelling ("Three spellings of the encryption probe, and two of them are
+    # wrong on a real library"): holders stay 96, and the also-holds-an-
     # integer half moves 19 to 18. ONE module left it and none joined:
     # deletion/cli.py held the integers 0 and 16 on main and holds only 0 now,
     # because its private copy of the encryption probe, which sliced the first
