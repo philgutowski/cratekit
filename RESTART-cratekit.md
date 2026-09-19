@@ -32,7 +32,8 @@ became R-445, not on the board. R-443 is narrowed to its taxonomy half.
 now assert the threshold. Mutation table `docs/mutation/u89.md`, 21 of 23
 killing; E6 was then killed by a new test, confirmed in `u89-e6.md`; R2 is a
 maintainer zero. **Owed to an attended sitting:** one filing pass on the live
-library after a calibration. Battery on the recorded tree: see the merge.
+library after a calibration. Battery on the recorded tree: ruff clean,
+`scan_repo.py` exit 0, pytest 7997 passed and 1 skipped in 63 seconds.
 **Main's highest residual number is R-445.**
 
 **The session before: R-313, issue #106, `relay/106`, 2026-09-19.**
