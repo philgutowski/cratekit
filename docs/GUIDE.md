@@ -398,11 +398,14 @@ moves only after a pass in which every item finished, so a partial failure is
 covered again next time. The favourites source needs the export, because it never
 reads the live database, and it asks one gate before anything is queued.
 
-Favourites are meant to move both ways and never remove. Hearts on the account
-become a colour, a Favorite tag and playlist membership locally, and coloured
-tracks are hearted back on the account. Nothing un-hearts or un-colours. At the
-last live sitting the hearting half worked and the colour write was still
-unbound, so read what the run reports it did.
+`crate sync favorites` hearts the library's own favourites on the account, and
+that is the whole of what it writes. It reads the favourites playlist out of a
+collection export, matches each track on the service, and hearts the ones the
+account does not already hold. It changes nothing in the library: no colour, no
+Favorite tag and no playlist membership is written locally, and the run says so
+in its own report. Hearts the library does not own reach it the other way, through
+`crate intake playlist favorites`, which queues them for acquisition. Nothing
+un-hearts or un-colours, on either side.
 
 ### Publish a playlist
 

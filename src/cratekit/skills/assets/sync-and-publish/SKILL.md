@@ -90,10 +90,12 @@ one of them should move a cursor.
 
 ## Favourites move both ways, and neither way removes
 
-`crate sync favorites` is two halves. Locally it colours, tags, and places the
-hearted tracks the library already holds, and acquires the ones it does not into
-the same shared intake file. Remotely it hearts the local favourites back on the
-account.
+`crate sync favorites` is the outbound half. It reads the favourites playlist out
+of a collection export and hearts each matched track on the account. It writes
+nothing in the library: no colour, no Favorite tag and no playlist membership,
+and every pass says so in its own report. The inbound half is
+`crate intake playlist favorites`, which resolves the account's hearts against
+the library and queues the ones it does not own for acquisition.
 
 ```bash
 crate sync favorites
