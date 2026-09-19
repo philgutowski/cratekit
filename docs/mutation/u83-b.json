@@ -1,0 +1,428 @@
+{
+  "name": "u83-b",
+  "pass_kind": "light",
+  "branch": "relay/128",
+  "head": "f112147",
+  "when": "2026-09-19 10:49 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8350,
+  "baseline_exit": 0,
+  "pytest_runs": 16,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/art.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/art.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "79d57c3058500eb1",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8350,
+    "baseline_collected": 8350,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "W1_undecodable_guard",
+      "description": "The writer's refusal of undecodable bytes is dropped, so they go on toward the file",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "80ebfd9c773da3ff",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_an_unreadable_image_fails_and_leaves_the_file_untouched[.aiff]",
+        "tests/test_art.py::test_an_unreadable_image_fails_and_leaves_the_file_untouched[.flac]",
+        "tests/test_art.py::test_an_unreadable_image_fails_and_leaves_the_file_untouched[.m4a]",
+        "tests/test_art.py::test_an_unreadable_image_fails_and_leaves_the_file_untouched[.mp3]",
+        "tests/test_art.py::test_an_unreadable_image_fails_and_leaves_the_file_untouched[.wav]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if measured is None:\n        raise ArtError(\"the picture bytes could not be decoded, so nothing was written\")\n",
+      "new": ""
+    },
+    {
+      "id": "W2_format_guard",
+      "description": "The writer accepts a picture that is not a JPEG",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c58605badd575b41",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_a_png_is_refused_and_the_file_untouched"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if measured.format != \"JPEG\":",
+      "new": "    if False:"
+    },
+    {
+      "id": "W3_progressive_guard",
+      "description": "The writer accepts a progressive JPEG",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0980e2cb87f234d1",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_a_progressive_jpeg_is_refused_and_the_file_untouched"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if measured.progressive:",
+      "new": "    if False:"
+    },
+    {
+      "id": "W4_rgb_guard",
+      "description": "The writer accepts a greyscale or CMYK JPEG",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f33f4bc7bc72465d",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_a_jpeg_that_is_not_rgb_is_refused_and_the_file_untouched[CMYK]",
+        "tests/test_art.py::test_a_jpeg_that_is_not_rgb_is_refused_and_the_file_untouched[L]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if measured.mode != \"RGB\":",
+      "new": "    if False:"
+    },
+    {
+      "id": "W5_cap_guard",
+      "description": "The writer accepts a picture over the byte cap",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1e8a064fca86b7eb",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_a_picture_over_the_cap_is_refused_and_the_file_untouched",
+        "tests/test_art.py::test_the_writer_default_cap_is_the_encoder_default_cap"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(jpeg) > max_bytes:",
+      "new": "    if False:"
+    },
+    {
+      "id": "W5b_cap_inclusive",
+      "description": "The writer's cap becomes exclusive while the encoder's stays inclusive, so a picture encoded exactly to the cap is refused",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1d16d425a69f2159",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_a_picture_over_the_cap_is_refused_and_the_file_untouched"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(jpeg) > max_bytes:",
+      "new": "    if len(jpeg) >= max_bytes:"
+    },
+    {
+      "id": "W6_flac_block_width",
+      "description": "The FLAC block declares width zero, the vendored downloader's defect",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "197a981220a5cb3f",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_a_written_cover_reads_back_with_its_measurements[.flac]",
+        "tests/test_art.py::test_the_flac_block_carries_nonzero_width_height_and_depth"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            block.width = measured.width",
+      "new": "            block.width = 0"
+    },
+    {
+      "id": "W8_flac_clear_pictures",
+      "description": "The FLAC writer appends instead of replacing",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "717f7025a1d800ce",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_a_flac_picture_of_another_type_is_replaced_too",
+        "tests/test_art.py::test_a_second_write_replaces_the_picture_rather_than_appending[.flac]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            handle.clear_pictures()\n",
+      "new": ""
+    },
+    {
+      "id": "W9_id3_delall",
+      "description": "The ID3 writer stops clearing pictures other tools embedded under another description",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8cc64047a4dde8b6",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_an_id3_picture_another_tool_embedded_is_replaced_too[.aiff]",
+        "tests/test_art.py::test_an_id3_picture_another_tool_embedded_is_replaced_too[.mp3]",
+        "tests/test_art.py::test_an_id3_picture_another_tool_embedded_is_replaced_too[.wav]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            handle.tags.delall(\"APIC\")\n",
+      "new": ""
+    },
+    {
+      "id": "W10_id3_add_tags",
+      "description": "The ID3 branch skips add_tags on a file with no tag yet, the step whose absence pushes a caller toward a bare ID3 object",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2dc4c02445547110",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 13,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_a_chunk_container_never_receives_a_bare_id3_stream[.aiff-FORM]",
+        "tests/test_art.py::test_a_chunk_container_never_receives_a_bare_id3_stream[.wav-RIFF]",
+        "tests/test_art.py::test_a_picture_over_the_cap_is_refused_and_the_file_untouched",
+        "tests/test_art.py::test_a_second_write_replaces_the_picture_rather_than_appending[.aiff]",
+        "tests/test_art.py::test_a_second_write_replaces_the_picture_rather_than_appending[.wav]",
+        "tests/test_art.py::test_a_written_cover_reads_back_with_its_measurements[.aiff]",
+        "tests/test_art.py::test_a_written_cover_reads_back_with_its_measurements[.wav]",
+        "tests/test_art.py::test_an_art_write_leaves_the_decoded_audio_unchanged[.aiff]",
+        "tests/test_art.py::test_an_art_write_leaves_the_decoded_audio_unchanged[.wav]",
+        "tests/test_art.py::test_the_id3_frame_is_a_front_cover_jpeg[.aiff]",
+        "tests/test_art.py::test_the_id3_frame_is_a_front_cover_jpeg[.wav]",
+        "tests/test_art.py::test_the_written_picture_is_the_bytes_that_were_given[.aiff]",
+        "tests/test_art.py::test_the_written_picture_is_the_bytes_that_were_given[.wav]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                # and saved against them. add_tags() is the container's own way.\n                handle.add_tags()",
+      "new": "                # and saved against them. add_tags() is the container's own way.\n                pass"
+    },
+    {
+      "id": "W11_save_seam",
+      "description": "The writer saves with mutagen directly rather than through tags._save, losing the MP3 ID3v1 trailer",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5381b8466ce41351",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 8350,
+      "baseline_collected": 8350,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        tags._save(path, handle)",
+      "new": "        handle.save()"
+    },
+    {
+      "id": "W12_container_refusal",
+      "description": "A container with no verified picture handling is no longer refused",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3235317914e27eef",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_a_container_without_verified_picture_handling_raises[.ogg]",
+        "tests/test_art.py::test_a_container_without_verified_picture_handling_raises[.opus]",
+        "tests/test_art.py::test_a_container_without_verified_picture_handling_raises[.xyz]",
+        "tests/test_art.py::test_a_container_without_verified_picture_handling_raises[]",
+        "tests/test_art.py::test_the_container_check_comes_before_the_image_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if suffix not in ART_SUFFIXES:",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "W7_flac_block_depth",
+      "description": "The FLAC block declares depth zero",
+      "reason": "ranked below the cap: same guard family as W6, asserted by the same test"
+    },
+    {
+      "id": "W13_mp4_format",
+      "description": "The MP4 cover is declared PNG",
+      "reason": "ranked below the cap: a constant asserted directly by one test"
+    },
+    {
+      "id": "W14_apic_type",
+      "description": "The APIC frame is typed Other instead of front cover",
+      "reason": "ranked below the cap: a constant asserted directly by one parametrized test"
+    }
+  ]
+}

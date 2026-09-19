@@ -4,7 +4,45 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-261 with R-393, issue #162, `relay/162`, 2026-09-19.**
+**Last merged: U83, issue #128, `relay/128`, 2026-09-19.**
+The product has an art engine and no verb calls it yet. New `core/art.py` sits
+beside `core/tags.py` and borrows its `_open` and `_save`, so both writers
+classify containers through one table. Nothing was added to `tags.FIELDS`.
+`to_cdj_jpeg(data, *, size=800, max_bytes=450_000)` returns a baseline RGB
+JPEG with the dimensions Pillow reads back, at 800 by 800 or at native
+resolution when `size=None`. It applies an EXIF orientation and flattens
+transparency onto white first, and it raises `ArtError` rather than return
+bytes over the cap. `write_front_cover(path, jpeg, *, max_bytes)` checks the
+bytes BEFORE opening the file, refusing anything undecodable, not JPEG,
+progressive, not RGB, or over the cap, so a refused write never touches the
+audio file. It fills the FLAC block's width, height and depth from Pillow,
+goes through `add_tags()` on AIFF and WAV, removes every existing picture, and
+saves through `tags._save`. `read_pictures(path)` reports what a player is
+told, a FLAC block's declared dimensions with zeroes kept, plus `progressive`,
+`decoded` and the `format` Pillow measured beside the claimed `mime`. A file
+that could not be read raises `UnreadableFile`, which is not an `ArtError`.
+Ogg, Opus and unknown suffixes raise `tags.UnsupportedContainer`. While
+building, the suite caught a ladder that stepped 88, 83 and on to 53 then 48
+and never tried the floor of 50. `/code-review` raised ten findings: seven
+fixed, two declined with the reason in the fix commit, one filed as R-473.
+83 new test cases by collected count, 8267 to 8350, all in
+`tests/test_art.py`. Mutation tables `docs/mutation/u83-a.md`, `u83-b.md` and
+`u83-c.md`: 25 rows, 24 killed on the first pass and the save seam at zero,
+because a lone ID3v1 trailer survives any save. The fixture was rebuilt with
+both tags disagreeing and the row re-measured as killed, and
+`docs/solutions/workflow-issues/` carries that trap. Six rows logged as
+dropped. **R-399 is narrowed, not closed**: U84 (the repair pass) and U85 (the
+fetch and the verb) still owe everything a user sees. R-471 (a non square
+cover is stretched), R-472 (every picture type is removed), R-473 (a native
+resolution picture over the cap is refused) and R-474 (failures return a
+quiet False, as `write_tags` does) are filed, and none meets the board bar
+while no verb calls the engine. **Owed to an attended sitting:** one file
+written by this engine, shown on a real CDJ or XDJ. Battery on the recorded
+tree: ruff clean, `scan_repo.py` exit 0, pytest 8349 passed and 1 skipped, and
+no test of this unit's among the ten slowest.
+**Main's highest residual number is R-474.**
+
+**The session before: R-261 with R-393, issue #162, `relay/162`, 2026-09-19.**
 A label sweep that could not read part of a label's catalogue now says so
 instead of reporting a complete crawl. Two skips were silent before: a client
 artist exposing `get_albums` and not `get_ep_singles` (R-261), and a discovered

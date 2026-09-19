@@ -1,0 +1,69 @@
+{
+  "name": "u83-c",
+  "pass_kind": "light",
+  "branch": "relay/128",
+  "head": "1ce71a5",
+  "when": "2026-09-19 10:54 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8350,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/art.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/art.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "79d57c3058500eb1",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8350,
+    "baseline_collected": 8350,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "W11_save_seam_remeasured",
+      "description": "W11 again, after the fixture was rebuilt. Table B measured it at zero because a lone ID3v1 trailer survives a bare mutagen save. The fixture now carries a v2 genre outside the v1 list beside a v1 genre byte, the only state a bare save destroys",
+      "file": "src/cratekit/core/art.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3f4af5e3229aa1be",
+      "subset": [
+        "tests/test_art.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_art.py::test_an_mp3_id3v1_trailer_survives_the_write"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        tags._save(path, handle)",
+      "new": "        handle.save()"
+    }
+  ],
+  "dropped": []
+}

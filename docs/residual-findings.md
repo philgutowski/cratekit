@@ -17449,6 +17449,20 @@ repair pass over already acquired files.
 covered, and a repair pass exists for files already carrying a zeroed block, or
 the registry summary stops claiming art.
 
+**Narrowed 2026-09-19 on `relay/128`, U83. The engine exists and no verb calls
+it.** `core/art.py` holds the re-encoder and the per container reader and
+writer: `to_cdj_jpeg` makes a baseline RGB JPEG under a byte cap, 800 by 800 or
+native resolution, `write_front_cover` embeds it in FLAC, MP3, AIFF, WAV and
+M4A with the FLAC block's width, height and depth measured by Pillow, and
+`read_pictures` reports a zeroed block as zeroes and a progressive picture as
+progressive. Driven in `tests/test_art.py` on ffmpeg synthesized containers, 25
+of 25 guards killed across `docs/mutation/u83-a.md`, `u83-b.md` and `u83-c.md`.
+**Still open, all of what a user sees:** `tag folder` fetches and embeds
+nothing (U85), no repair pass runs over files already carrying a zeroed or
+progressive block (U84), and the registry summary still claims art. Whether a
+Pioneer player renders what this engine writes is unmeasured and owed to an
+attended sitting, one file on a real CDJ or XDJ.
+
 ---
 
 ## R-400. Nothing in the product can produce the list document `acquire download` reads
@@ -19619,3 +19633,89 @@ The cause was not investigated.
 
 **Closes when:** the shared state the file's tests race on under `-n auto` is
 found and isolated, or the file is pinned to one worker.
+
+---
+
+## R-471. The art encoder stretches a non square image to the square instead of cropping or padding it
+
+**Found:** 2026-09-19, on `relay/128`, U83, as a decision taken from the source
+system rather than measured.
+
+`core/art.py::to_cdj_jpeg` resizes any image to `size` by `size`, so a 1200 by
+1000 cover comes out 800 by 800 with its content squeezed by a sixth. That is
+what `DJ_tagging/tag_new_tracks.py:152-153` does, and parity was the
+conservative call for an unattended unit. The options are a centre crop, which
+loses the edges, a pad onto a flat colour, which keeps everything and adds
+bars, or the stretch as shipped.
+
+**Measured cost.** None measured. How many covers the providers return non
+square was not counted, and nothing calls the encoder yet.
+
+**Closes when:** Phillip picks one of the three, or the share of non square
+covers from a real tagging run is counted and is small enough to leave.
+
+---
+
+## R-472. `write_front_cover` removes every embedded picture, not only a previous front cover
+
+**Found:** 2026-09-19, on `relay/128`, U83, as a decision taken from the source
+system rather than measured.
+
+The FLAC branch calls `clear_pictures()`, the ID3 branch `delall("APIC")`, and
+the MP4 branch replaces `covr` whole. A back cover, an artist photo or a label
+logo another tagger embedded is deleted by an art write and nothing reports it.
+That is the source system's behaviour, `tag_new_tracks.py:183` and `:211`, and
+it is what makes a second write a replacement. It is also the safer reading for
+a player, since a progressive or zeroed picture of another type left in the
+file may be the one a CDJ picks up. Both halves are unmeasured.
+
+**Measured cost.** None measured. Reachable only once U84 or U85 calls the
+writer. `tests/test_art.py` pins the behaviour in both directions, so a change
+to keep other picture types is a visible edit and not a drift.
+
+**Closes when:** a CDJ is shown a file with a good front cover and a bad picture
+of another type and the result is recorded, or the deletion is reported by the
+verb that performs it.
+
+---
+
+## R-473. At native resolution the art encoder refuses a picture that misses the cap at the quality floor
+
+**Found:** 2026-09-19, on `relay/128`, U83, by the built in code review, and
+left to the repair unit by the brief's own decision.
+
+`to_cdj_jpeg(data, size=None)` keeps the native resolution, which is what a
+repair of art already in a file wants. If the picture is still over `max_bytes`
+at quality 50 it raises `ArtError` rather than returning bytes over the cap. At
+800 by 800 that is close to unreachable. At 3000 by 3000 it is not: the review
+drove a noise image that size and it was refused, and whether a real cover that
+size fits in 450,000 bytes at quality 50 was NOT measured. A refused repair
+leaves the file with the blank rendering art it had.
+
+**Measured cost.** None on a real cover. No caller exists until U84.
+
+**Closes when:** U84 decides what a repair does on that refusal, a downscale
+toward 800, a larger cap passed to both the encoder and the writer, or a named
+line in its report, and drives it on a large real cover.
+
+---
+
+## R-474. The art writer and reader inherit `write_tags`' quiet failure reporting
+
+**Found:** 2026-09-19, on `relay/128`, U83, by the built in code review.
+
+`write_front_cover` catches every exception from the open, the edit and the
+save, logs it at debug, and returns False, exactly as `tags.write_tags` does. A
+read only volume, a mutagen API change and one awkward file are the same False
+to a caller, and nothing above debug says which. The review also named the
+reader's full Pillow decode of every picture, kept on purpose because a
+truncated picture opens cleanly and fails only on load, as a cost on a library
+wide sweep: not measured on a library.
+
+**Measured cost.** Maintainer facing until a verb calls the writer. Then it is
+the caller's report that decides whether 500 False results read as 500 awkward
+files.
+
+**Closes when:** the verbs that call the writer (U84, U85) report a failure
+count with a cause a user can act on, or the shared convention in `tags` and
+`art` is changed in one place.

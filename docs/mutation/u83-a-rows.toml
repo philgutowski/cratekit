@@ -1,0 +1,138 @@
+name = "u83-a"
+pass_kind = "light"
+
+[[rows]]
+id = "E1_baseline_flag"
+description = "The encoder emits a progressive JPEG, the kind a Pioneer player renders blank"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''quality=quality, optimize=True, progressive=False)'''
+new = '''quality=quality, optimize=True, progressive=True)'''
+
+[[rows]]
+id = "E2_quality_floor"
+description = "Lower the quality floor from 50 to 45, a realistic nearby value"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''ART_MIN_QUALITY = 50'''
+new = '''ART_MIN_QUALITY = 45'''
+
+[[rows]]
+id = "E3_ladder_ends_on_floor"
+description = "The ladder loses its last rung, so quality 50 is never tried, the defect the suite caught while building"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    return [*rungs, ART_MIN_QUALITY]'''
+new = '''    return rungs'''
+
+[[rows]]
+id = "E4_cap_inclusive"
+description = "The encoder's cap comparison becomes exclusive"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''        if len(encoded) <= max_bytes:'''
+new = '''        if len(encoded) < max_bytes:'''
+
+[[rows]]
+id = "E5_over_cap_refusal"
+description = "A picture that cannot fit comes back over the cap, as the source system returned it, instead of raising"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    raise ArtError(
+        f"the image does not fit'''
+new = '''    return CdjJpeg(encoded, img.size[0], img.size[1], 24)
+    raise ArtError(
+        f"the image does not fit'''
+
+[[rows]]
+id = "E6_exif_orientation"
+description = "The encoder stops applying the EXIF orientation before the re-encode drops the tag"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''_flatten_to_rgb(ImageOps.exif_transpose(source))'''
+new = '''_flatten_to_rgb(source)'''
+
+[[rows]]
+id = "E7_flatten_transparency"
+description = "Transparency is no longer composited, a plain mode conversion exposes what lies under it"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    if not has_alpha:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "E9_resize"
+description = "New art is no longer resized to the 800 pixel square"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''    if size is not None and img.size != (size, size):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E10_reported_dimensions"
+description = "The encoder reports width and height transposed"
+file = "src/cratekit/core/art.py"
+surface = "maintainer"
+tests = ["tests/test_art.py"]
+old = '''return CdjJpeg(encoded, measured.width, measured.height, measured.depth)'''
+new = '''return CdjJpeg(encoded, measured.height, measured.width, measured.depth)'''
+
+[[rows]]
+id = "R1_flac_declared_dimensions"
+description = "The reader reports a FLAC picture's decoded size instead of what the block declares, hiding a zeroed block"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''_picture(pic.mime, bytes(pic.data), (pic.width, pic.height, pic.depth))'''
+new = '''_picture(pic.mime, bytes(pic.data), None)'''
+
+[[rows]]
+id = "R2_unreadable_is_not_art_error"
+description = "A file that could not be read raises the image verdict again instead of its own class"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''        raise UnreadableFile(f"could not read'''
+new = '''        raise ArtError(f"could not read'''
+
+[[rows]]
+id = "R3_unknown_depth_default"
+description = "An unlisted Pillow mode measures as a guessed 24 again instead of 0"
+file = "src/cratekit/core/art.py"
+surface = "maintainer"
+tests = ["tests/test_art.py"]
+old = '''depth=_DEPTH_BY_MODE.get(img.mode, 0),'''
+new = '''depth=_DEPTH_BY_MODE.get(img.mode, 24),'''
+
+[[rows]]
+id = "R4_full_decode"
+description = "The measure drops its full decode, so a truncated picture that opens cleanly reads as decoded"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py"]
+old = '''            img.load()
+'''
+new = ''''''
+
+[[dropped]]
+id = "E8_flatten_colour"
+description = "Flatten onto black instead of white"
+reason = "ranked below the cap: same guard family as E7, and the same test asserts the white"
+
+[[dropped]]
+id = "R5_format_passthrough"
+description = "EmbeddedPicture.format always None"
+reason = "ranked below the cap: a plain field copy, asserted directly by three reader tests"
+
+[[dropped]]
+id = "R6_mp4_png_mime"
+description = "The MP4 cover format map names PNG as image/jpeg"
+reason = "ranked below the cap: a read only label on a container the source system wrote JPEG into"
