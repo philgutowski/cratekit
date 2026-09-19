@@ -41,6 +41,8 @@ Layer: write.
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -421,12 +423,86 @@ def _ratings(
     return plan
 
 
+#: A ``TotalTime`` this pass will read as a length: digits and nothing else.
+_SECONDS = re.compile(r"[0-9]+")
+
+
+def _duration(row: dict[str, str]) -> int | None:
+    """A collection row's length in whole seconds, or None when it has none.
+
+    ``TotalTime`` IS SECONDS. The export fixture carries ``TotalTime="300"`` for
+    a five minute track, and :mod:`cratekit.intake.collection_xml` writes a
+    file's ``duration_s`` into the same attribute.
+
+    NOTHING IS GUESSED. An absent attribute, one that is not a whole number, and
+    zero are all None: zero is what that same emitter writes for a length it
+    never measured, so it is "unknown", not "short".
+    """
+    value = row.get("TotalTime")
+    if value is None or not _SECONDS.fullmatch(value.strip()):
+        return None
+    seconds = int(value.strip())
+    return seconds if seconds > 0 else None
+
+
+@dataclass(frozen=True)
+class LongPlan:
+    """What the pass adds to the long track playlist, and what it could not read.
+
+    ``keys`` excludes every track the playlist already holds, so a second run
+    over its own output plans nothing. ``unreadable`` counts the rows skipped
+    for having no readable length.
+    """
+
+    keys: tuple[str, ...] = ()
+    unreadable: int = 0
+
+
+def _long_tracks(
+    declared: taxonomy.Taxonomy,
+    content: bytes,
+    by_id: dict[str, dict[str, str]],
+    warnings: list[dict[str, str]],
+) -> LongPlan:
+    """Every collection track over the declared length that the playlist lacks.
+
+    THE WHOLE COLLECTION, not the intake folder, as the source system read it:
+    a set imported before this pass existed is still a set.
+
+    A FOLDER of the playlist's name under the root is a warning and nothing is
+    planned. The writer would refuse it anyway, and planning over it would offer
+    a write that cannot happen. The warning keeps the run from answering
+    ``nothing-to-route``, the answer the import check reads as done.
+    """
+    long_tracks = declared.long_tracks
+    if long_tracks is None:
+        return LongPlan()
+    held = trees.root_playlist_members(content, long_tracks.display)
+    if isinstance(held, str):
+        warnings.append({
+            "code": "route-write-skipped",
+            "message": f"the {long_tracks.display!r} playlist was not built: {held}",
+        })
+        return LongPlan()
+    members = set(held)
+    keys: list[str] = []
+    unreadable = 0
+    for key, row in by_id.items():
+        seconds = _duration(row)
+        if seconds is None:
+            unreadable += 1
+        elif seconds > long_tracks.over_seconds and key not in members:
+            keys.append(key)
+    return LongPlan(tuple(keys), unreadable)
+
+
 def plan_export(
     cfg: config.Config, export: Path
 ) -> tuple[
     bytes,
     dict[tuple[str, str], list[str]],
     dict[str, int],
+    LongPlan,
     list[dict[str, str]],
     list[dict[str, str]],
     tuple[str, ...],
@@ -434,8 +510,8 @@ def plan_export(
     """Read one fresh export and decide where each intake track goes.
 
     Returns the export's bytes, the plan the bridge writer takes, the star
-    ratings to fill, the items a person is shown, the warnings, and the
-    dimensions not derived.
+    ratings to fill, the long track additions, the items a person is shown, the
+    warnings, and the dimensions not derived.
 
     THE ROUTING DECISION IS THE NATIVE PATH'S, called rather than restated. The
     readings come from :func:`cratekit.write.rebuild.read_truth`, the placements
@@ -499,17 +575,28 @@ def plan_export(
             plan.setdefault((folder, sub), []).append(key)
             destined[key] = f"{folder}/{sub}"
     ratings = _ratings(declared, placements, readings, files, by_id)
-    # The rating rides the item, so it is inside the digest a person approves:
-    # a rating write nobody was shown is a write nobody agreed to.
+    long_plan = _long_tracks(declared, content, by_id, warnings)
+    lengthy = set(long_plan.keys)
+    playlist = declared.long_tracks.display if declared.long_tracks else ""
+    # The rating and the long track playlist ride the item, so both are inside
+    # the digest a person approves: a write nobody was shown is a write nobody
+    # agreed to. A long track outside the intake gets an item of its own.
     items = [
         {
             "track_id": key,
             "destination": destined.get(key, ""),
             "rating": str(ratings[key]) if key in ratings else "",
+            "long_track": playlist if key in lengthy else "",
         }
         for key in keys
     ]
-    return content, plan, ratings, items, warnings, gaps
+    intake = set(keys)
+    items += [
+        {"track_id": key, "destination": "", "rating": "", "long_track": playlist}
+        for key in long_plan.keys
+        if key not in intake
+    ]
+    return content, plan, ratings, long_plan, items, warnings, gaps
 
 
 def apply_export(
@@ -518,11 +605,14 @@ def apply_export(
     content: bytes,
     plan: dict[tuple[str, str], list[str]],
     ratings: dict[str, int],
-) -> tuple[Path | None, trees.RouteReport, int]:
+    long_plan: LongPlan = LongPlan(),
+) -> tuple[Path | None, trees.RouteReport, int, int, str | None]:
     """Write the plan into a copy of the export, beside it, never in place.
 
-    Returns the file written or None, the membership report, and how many star
-    ratings the writer actually set, which is its count and not the plan's.
+    Returns the file written or None, the membership report, how many star
+    ratings the writer actually set, how many tracks the long track playlist
+    gained, and the warning its writer gave. Both counts are the writers' and
+    not the plan's.
 
     THE MEDIUM FOLLOWS THE REGISTRY. The tree is the governed routing tree, so
     the emitter guard in :func:`cratekit.write.rbxml.splice_into_subplaylist`
@@ -540,29 +630,49 @@ def apply_export(
     NOTHING CHANGED IS NOTHING WRITTEN. A file identical in every routed byte
     to the export would still be a file somebody is told to import. A track
     already filed and still unrated is a change, so a pass that only rates
-    writes a file.
+    writes a file, and so is a long track the playlist lacks.
+
+    THE LONG TRACK PLAYLIST IS WRITTEN LAST and ONCE, add only, as the source
+    system wrote it after the ratings. It is a direct child of the playlist
+    root and no tree, so no registry answer governs it.
     """
     declared = taxonomy.default_taxonomy()
     tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
     buffer = bytearray(content)
     report = trees.apply_playlist_changes(plan, buffer, tree=tree)
     rated = trees.apply_rating_changes(ratings, buffer)
-    if not report.inserted and not rated:
-        return None, report, rated
+    lengthened, long_warning = 0, None
+    if long_plan.keys and declared.long_tracks is not None:
+        lengthened, long_warning = trees.add_to_root_playlist(
+            declared.long_tracks.display, long_plan.keys, buffer
+        )
+    if not report.inserted and not rated and not lengthened:
+        return None, report, rated, lengthened, long_warning
     destination = export.with_name(export.stem + ROUTED_SUFFIX)
     config.atomic_write_bytes(bytes(buffer), destination)
-    return destination, report, rated
+    return destination, report, rated, lengthened, long_warning
 
 
 def _export_pending(
-    run_id: str, verb: str, destination: Path, inserted: int, rated: int
+    run_id: str,
+    verb: str,
+    destination: Path,
+    inserted: int,
+    rated: int,
+    lengthened: int = 0,
+    playlist: str = "",
 ) -> PendingHumanAction:
+    added = (
+        f", and {lengthened} long track(s) were added to the {playlist!r} playlist"
+        if lengthened
+        else ""
+    )
     return PendingHumanAction(
         kind="rekordbox_import",
         id=new_pending_id(run_id),
         summary=(
             f"{inserted} track(s) were routed and {rated} unrated track(s) were "
-            f"given a star rating from energy in {destination.name}, which "
+            f"given a star rating from energy{added} in {destination.name}, which "
             f"rekordbox has not imported yet"
         ),
         # THIS VERB IS ITS OWN CHECK. Over a fresh export taken after the import,
@@ -573,9 +683,11 @@ def _export_pending(
         artifact=str(destination),
         steps=(
             f"import {destination} into rekordbox as a rekordbox xml library and "
-            f"import the routing tree and the tracks' ratings from it",
+            f"import the routing tree, the tracks' ratings and any root playlist "
+            f"this run added tracks to from it",
             "then export the collection again and run route inbox --export with "
-            "that file, which routes and rates nothing once the import has landed",
+            "that file, which routes, rates and adds nothing once the import has "
+            "landed",
         ),
     )
 
@@ -613,7 +725,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             origin=("routing_cli",),
             detail={"root": str(cfg.library.root), "export": str(export)},
         )
-    content, plan, ratings, items, warnings, gaps = plan_export(cfg, export)
+    content, plan, ratings, long_plan, items, warnings, gaps = plan_export(cfg, export)
     offered = _plan(items, kind="inbox-export")
     option = _apply_gate(ctx, offered)
     if option != "apply":
@@ -622,7 +734,9 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             outcome=Outcome.NO_OP,
             warnings=warnings,
         )
-    destination, report, rated = apply_export(cfg, export, content, plan, ratings)
+    destination, report, rated, lengthened, long_warning = apply_export(
+        cfg, export, content, plan, ratings, long_plan
+    )
     # ONE CODE FOR EVERY SKIPPED WRITE, because the writer reports a missing
     # tree, a missing genre folder and a missing sub as sentences and the
     # sentence already names which. A code naming only the sub would call an
@@ -630,6 +744,11 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     warnings = [
         *warnings,
         *({"code": "route-write-skipped", "message": text} for text in report.warnings),
+        *(
+            [{"code": "route-write-skipped", "message": long_warning}]
+            if long_warning
+            else []
+        ),
     ]
     # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND. It is the answer the
     # pending action names as proof an import landed, so a run whose every write
@@ -650,6 +769,8 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         reason=reason,
         inserted=report.inserted,
         rated=rated,
+        long_tracks=lengthened,
+        duration_unreadable=long_plan.unreadable,
         created=list(report.created),
         output=None if destination is None else str(destination),
         not_derived=list(gaps),
@@ -661,7 +782,13 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         outcome=Outcome.PENDING,
         code=ExitCode.PENDING_HUMAN,
         pending=_export_pending(
-            ctx.run.run_id, ctx.entry.name, destination, report.inserted, rated
+            ctx.run.run_id,
+            ctx.entry.name,
+            destination,
+            report.inserted,
+            rated,
+            lengthened,
+            declared.long_tracks.display if declared.long_tracks else "",
         ),
         warnings=warnings,
     )

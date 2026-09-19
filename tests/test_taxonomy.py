@@ -177,6 +177,51 @@ def test_a_half_declared_catalog_tree_is_refused_as_strictly_as_a_mandatory_one(
     assert any("[catalog] display" in p for p in empty)
 
 
+def test_the_long_track_playlist_is_declared_in_the_shipped_default(default):
+    """U88: the source system's separation of sets from tracks, as data."""
+    assert default.long_tracks is not None
+    assert default.long_tracks.id and default.long_tracks.display
+    assert default.long_tracks.over_seconds == 1200
+
+
+def test_a_template_declaring_no_long_track_playlist_loads_clean(default_raw):
+    data = mutated(default_raw, lambda d: d.pop("long_tracks"))
+    assert build_taxonomy(data).long_tracks is None
+
+
+def test_a_long_track_playlist_with_no_bound_takes_the_source_systems(default_raw):
+    data = mutated(default_raw, lambda d: d["long_tracks"].pop("over_seconds"))
+    assert build_taxonomy(data).long_tracks.over_seconds == 1200
+
+
+def test_a_half_declared_long_track_playlist_is_refused(default_raw):
+    def no_display(d):
+        d["long_tracks"]["display"] = ""
+
+    def bad_id(d):
+        d["long_tracks"]["id"] = d["long_tracks"]["display"]
+
+    def not_a_table(d):
+        d["long_tracks"] = "Sets"
+
+    assert any("[long_tracks] display" in p for p in problems_from(default_raw, no_display))
+    assert any("[long_tracks] id" in p for p in problems_from(default_raw, bad_id))
+    assert any("[long_tracks] must be a table" in p for p in problems_from(default_raw, not_a_table))
+    empty = problems_from(default_raw, lambda d: d.__setitem__("long_tracks", {}))
+    assert any("[long_tracks] id" in p for p in empty)
+    assert any("[long_tracks] display" in p for p in empty)
+
+
+@pytest.mark.parametrize("bound", [True, 0, -5, "1200", 1200.5])
+def test_a_long_track_bound_that_is_not_whole_positive_seconds_is_refused(default_raw, bound):
+    """A boolean, zero or a negative bound would put every track in the playlist."""
+
+    def mutate(d):
+        d["long_tracks"]["over_seconds"] = bound
+
+    assert any("[long_tracks] over_seconds" in p for p in problems_from(default_raw, mutate))
+
+
 def test_a_duplicate_bucket_id_is_refused(default_raw):
     def mutate(d):
         d["bucket"][1]["id"] = d["bucket"][0]["id"]

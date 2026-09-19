@@ -1067,18 +1067,25 @@ GRID_TOKENS = ("<TEMPO", "Battito", "Metro=", "Inizio=", "AverageBpm=", "Bpm=")
 
 
 def _export_track(
-    tid: str, location: str, *, analyzed: bool = False, rating: str | None = None
+    tid: str,
+    location: str,
+    *,
+    analyzed: bool = False,
+    rating: str | None = None,
+    seconds: str | None = None,
 ) -> list[str]:
     """One multi line collection row, the real export shape, optionally analysed.
 
     ``rating`` None leaves the ``Rating`` attribute out, which U86's tests were
     written against and which the rating pass does not plan for (U87). A real
-    export always carries one, so every U87 test passes it.
+    export always carries one, so every U87 test passes it. ``seconds`` None
+    leaves ``TotalTime`` out the same way (U88).
     """
     bpm = "124.00" if analyzed else "0.00"
     rated = "" if rating is None else f' Rating="{rating}"'
+    length = "" if seconds is None else f' TotalTime="{seconds}"'
     lines = [
-        f'    <TRACK TrackID="{tid}" Name="Track {tid}" Artist="A" Genre="Ignored"',
+        f'    <TRACK TrackID="{tid}" Name="Track {tid}" Artist="A" Genre="Ignored"{length}',
         f'           AverageBpm="{bpm}"{rated} Location="{location}">',
     ]
     if analyzed:
@@ -1108,6 +1115,8 @@ def _write_export(
     ratings: dict[str, str] | None = None,
     folders: tuple[tuple[str, tuple[str, ...]], ...] | None = None,
     analyzed: tuple[str, ...] = ("11",),
+    lengths: dict[str, str] | None = None,
+    root_extra: tuple[str, ...] = (),
 ) -> Path:
     """A fresh export: a collection, an INBOX batch, and the routing tree.
 
@@ -1116,13 +1125,16 @@ def _write_export(
     as unreadable rather than routed to a fallback.
 
     ``ratings`` maps a track id to the ``Rating`` its row carries; a track it
-    does not name carries none. ``folders`` replaces the two genre folders.
+    does not name carries none. ``lengths`` does the same for ``TotalTime``,
+    over extra rows as well. ``folders`` replaces the two genre folders.
+    ``root_extra`` is more children of the playlist root, after the two trees.
     """
     from cratekit.core import locations
     from tests.xml_fixtures import _xml_doc
 
     inbox = tuple(tracks) if inbox is None else inbox
     ratings = ratings or {}
+    lengths = lengths or {}
     if folders is None:
         folders = (("Deep House", subs), ("Tech House", subs))
     music = Path(cfg.library.root) / "Music"
@@ -1132,10 +1144,16 @@ def _write_export(
         if tid != missing_file:
             path.write_bytes(b"")
         rows += _export_track(
-            tid, locations.location_url(path), analyzed=tid in analyzed, rating=ratings.get(tid)
+            tid,
+            locations.location_url(path),
+            analyzed=tid in analyzed,
+            rating=ratings.get(tid),
+            seconds=lengths.get(tid),
         )
     for tid in extra_rows:
-        rows += _export_track(tid, locations.location_url(music / f"{tid}.flac"))
+        rows += _export_track(
+            tid, locations.location_url(music / f"{tid}.flac"), seconds=lengths.get(tid)
+        )
     count = len(tracks) + len(extra_rows)
     declared = taxonomy.default_taxonomy()
     batch = [
@@ -1153,6 +1171,7 @@ def _write_export(
             f'      <NODE Type="0" Name="{declared.tree.display}" Count="{len(folders)}">',
             *(line for name, held in folders for line in _routing_folder(name, held)),
             "      </NODE>",
+            *root_extra,
         ],
     )
     folder.mkdir(parents=True, exist_ok=True)
@@ -1722,3 +1741,246 @@ def test_two_rows_naming_one_file_are_both_rated(configured, tagged, tmp_path):
     assert set(_sub_keys(written, "Tech House", "High")) == {"21", "23", "26"}
     rated = _ratings_of(written)
     assert (rated["21"], rated["26"]) == (FIVE_STARS, FIVE_STARS)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U88: the export filing pass builds the long track playlist
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The source system put every collection track over twenty minutes into one
+# root playlist on every sort. The name and the bound are literals here, checked
+# against the shipped template's raw TOML, so the expectation is not the loader
+# asked twice. Every test reads the OUTPUT FILE with a real XML parser.
+
+LONG_PLAYLIST = "Sets and Long Tracks"
+TWENTY_FIVE_MINUTES = "1500"
+NINETEEN_MINUTES = "1140"
+
+
+def _root_child(document: bytes, name: str):
+    """The direct child of the playlist root named ``name``, or None."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(document).find("PLAYLISTS")[0]
+    found = [node for node in root if node.get("Name") == name]
+    assert len(found) <= 1, f"{len(found)} root children are named {name!r}"
+    return found[0] if found else None
+
+
+def _long_members(document: bytes) -> tuple[str, ...] | None:
+    """What the root long track playlist holds, or None when there is none."""
+    node = _root_child(document, LONG_PLAYLIST)
+    if node is None:
+        return None
+    assert node.get("Type") == "1", "the long track node is not a playlist"
+    keys = tuple(track.get("Key") for track in node.findall("TRACK"))
+    assert int(node.get("Entries")) == len(keys), "the entry count disagrees"
+    return keys
+
+
+def _long_export(cfg: config.Config, folder: Path, **overrides) -> Path:
+    """EXPORT_TRACKS at 25, 19 and 5 minutes, plus a one hour set outside the
+    intake, which the playlist takes because it reads the whole collection."""
+    lengths = {"11": TWENTY_FIVE_MINUTES, "12": NINETEEN_MINUTES, "13": "300", "31": "3600"}
+    options = {"lengths": lengths, "extra_rows": ("31",)}
+    return _write_export(cfg, folder, **(options | overrides))
+
+
+def test_the_long_track_values_the_tests_expect_are_the_shipped_declaration():
+    import tomllib
+
+    import cratekit
+
+    template = Path(cratekit.__file__).parent / "templates" / "taxonomy.default.toml"
+    raw = tomllib.loads(template.read_text(encoding="utf-8"))["long_tracks"]
+    assert raw["display"] == LONG_PLAYLIST
+    assert raw["over_seconds"] == 1200
+    declared = taxonomy.default_taxonomy().long_tracks
+    assert (declared.display, declared.over_seconds) == (LONG_PLAYLIST, 1200)
+
+
+def test_a_25_minute_track_is_a_member_and_a_19_minute_one_is_not(
+    configured, tagged, tmp_path
+):
+    export = _long_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    totals = envelope["data"]["totals"]
+    assert (totals["inserted"], totals["long_tracks"]) == (3, 2)
+    assert _long_members(_routed(export).read_bytes()) == ("11", "31")
+    assert LONG_PLAYLIST in envelope["pending_human_action"]["summary"]
+
+
+def test_a_track_of_exactly_the_bound_is_not_a_member(configured, tagged, tmp_path):
+    """The source system's bound is strict: over twenty minutes, not twenty."""
+    export = _long_export(
+        configured, tmp_path / "exports", lengths={"11": "1200", "12": "1201"}, extra_rows=()
+    )
+    _apply_export(export)
+    assert _long_members(_routed(export).read_bytes()) == ("12",)
+
+
+def test_a_second_run_over_its_own_output_adds_nothing(configured, tagged, tmp_path):
+    """Idempotent, and it is still the answer the import check reads as done."""
+    export = _long_export(configured, tmp_path / "exports")
+    _apply_export(export)
+    first = _routed(export)
+    before = first.read_bytes()
+    listing = sorted(path.name for path in first.parent.iterdir())
+
+    code, envelope = _apply_export(first)
+    assert code == int(ExitCode.OK), envelope
+    totals = envelope["data"]["totals"]
+    assert (totals["inserted"], totals["long_tracks"]) == (0, 0)
+    assert totals["reason"] == "nothing-to-route"
+    assert envelope["warnings"] == []
+    assert sorted(path.name for path in first.parent.iterdir()) == listing
+    assert first.read_bytes() == before
+
+
+def test_a_long_track_alone_is_a_change_and_writes_a_file(configured, tagged, tmp_path):
+    """An empty intake and one set the playlist lacks is still a file to import,
+    or a set imported before this pass existed is never separated."""
+    export = _long_export(configured, tmp_path / "exports", inbox=())
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    totals = envelope["data"]["totals"]
+    assert (totals["inserted"], totals["long_tracks"]) == (0, 2)
+    assert _long_members(_routed(export).read_bytes()) == ("11", "31")
+
+
+def test_no_long_track_builds_no_empty_playlist(configured, tagged, tmp_path):
+    export = _long_export(configured, tmp_path / "exports", lengths={"31": "300"})
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["long_tracks"] == 0
+    assert _long_members(_routed(export).read_bytes()) is None
+
+
+def test_a_track_is_never_removed_from_the_playlist(configured, tagged, tmp_path):
+    """Add only. A member with no collection row and a member now under the
+    bound are both kept, and the new member goes after them."""
+    existing = (
+        f'      <NODE Name="{LONG_PLAYLIST}" Type="1" KeyType="0" Entries="2">',
+        '        <TRACK Key="77"/>',
+        '        <TRACK Key="12"/>',
+        "      </NODE>",
+    )
+    export = _long_export(configured, tmp_path / "exports", root_extra=existing)
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["long_tracks"] == 2
+    assert _long_members(_routed(export).read_bytes()) == ("77", "12", "11", "31")
+
+
+def test_a_same_named_playlist_inside_a_folder_is_not_hijacked(configured, tagged, tmp_path):
+    nested = (
+        '      <NODE Type="0" Name="Archive" Count="1">',
+        f'        <NODE Name="{LONG_PLAYLIST}" Type="1" KeyType="0" Entries="1">',
+        '          <TRACK Key="99"/>',
+        "        </NODE>",
+        "      </NODE>",
+    )
+    export = _long_export(configured, tmp_path / "exports", root_extra=nested)
+    _apply_export(export)
+    written = _routed(export).read_bytes()
+    assert _long_members(written) == ("11", "31")
+    archive = _root_child(written, "Archive")
+    inner = [node for node in archive if node.get("Name") == LONG_PLAYLIST]
+    assert len(inner) == 1
+    assert [track.get("Key") for track in inner[0].findall("TRACK")] == ["99"]
+    assert inner[0].get("Entries") == "1"
+
+
+def test_a_root_folder_of_that_name_is_a_warning_and_is_not_replaced(
+    configured, tagged, tmp_path
+):
+    """The writer replaces by name, so a folder standing there is refused, and a
+    run left with nothing else to do is blocked, never already filed."""
+    folder = (
+        f'      <NODE Type="0" Name="{LONG_PLAYLIST}" Count="1">',
+        '        <NODE Name="Kept" Type="1" KeyType="0" Entries="1">',
+        '          <TRACK Key="99"/>',
+        "        </NODE>",
+        "      </NODE>",
+    )
+    export = _long_export(configured, tmp_path / "exports", root_extra=folder)
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["long_tracks"] == 0
+    skipped = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
+    assert any(LONG_PLAYLIST in message for message in skipped), envelope["warnings"]
+    written = _routed(export).read_bytes()
+    node = _root_child(written, LONG_PLAYLIST)
+    assert node.get("Type") == "0"
+    assert [t.get("Key") for t in node.find("NODE").findall("TRACK")] == ["99"]
+
+    code, again = _apply_export(_routed(export))
+    assert code == int(ExitCode.OK), again
+    assert again["data"]["totals"]["reason"] == "route-blocked"
+
+
+def test_a_missing_duration_is_counted_not_guessed(configured, tagged, tmp_path):
+    """Absent, empty, zero, a word and a fraction are all unreadable lengths."""
+    lengths = {"12": "", "13": "0", "31": "abc", "32": "1500.5", "33": "3600"}
+    export = _long_export(
+        configured, tmp_path / "exports", lengths=lengths, extra_rows=("31", "32", "33")
+    )
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    totals = envelope["data"]["totals"]
+    assert totals["duration_unreadable"] == 5
+    assert totals["long_tracks"] == 1
+    assert _long_members(_routed(export).read_bytes()) == ("33",)
+
+
+def test_the_offered_plan_names_each_long_track_before_anything_is_written(
+    configured, tagged, tmp_path
+):
+    export = _long_export(configured, tmp_path / "exports")
+    code, envelope = _drive(
+        ["-d", "route.inbox.apply=abort", "route", "inbox", "--export", str(export)]
+    )
+    assert code == int(ExitCode.OK), envelope
+    offered = {item["track_id"]: item["long_track"] for item in envelope["data"]["items"]}
+    assert offered == {"11": LONG_PLAYLIST, "12": "", "13": "", "31": LONG_PLAYLIST}
+    assert not _routed(export).exists()
+
+
+def test_a_template_declaring_no_long_track_playlist_builds_none(
+    configured, tagged, tmp_path, monkeypatch
+):
+    import dataclasses
+
+    shipped = taxonomy.default_taxonomy()
+    monkeypatch.setattr(
+        taxonomy, "default_taxonomy", lambda: dataclasses.replace(shipped, long_tracks=None)
+    )
+    export = _long_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["long_tracks"] == 0
+    assert _long_members(_routed(export).read_bytes()) is None
+    assert all(item["long_track"] == "" for item in envelope["data"]["items"])
+
+
+def test_the_add_only_writer_counts_each_new_track_once():
+    """Directly on the writer: a repeated id and an existing member add nothing."""
+    from cratekit.write import trees
+    from tests.xml_fixtures import _xml_doc
+
+    content = bytearray(
+        _xml_doc(
+            collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
+            root_children=[
+                f'      <NODE Name="{LONG_PLAYLIST}" Type="1" KeyType="0" Entries="1">',
+                '        <TRACK Key="5"/>',
+                "      </NODE>",
+            ],
+        )
+    )
+    assert trees.add_to_root_playlist(LONG_PLAYLIST, ["5", "6", "6", "7"], content) == (2, None)
+    assert _long_members(bytes(content)) == ("5", "6", "7")
+    before = bytes(content)
+    assert trees.add_to_root_playlist(LONG_PLAYLIST, ["7", "5"], content) == (0, None)
+    assert bytes(content) == before
