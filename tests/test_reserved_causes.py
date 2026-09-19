@@ -4909,7 +4909,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # read as the default cut. It is not in the reserved table, exactly as its
     # sibling energy-calibration-unreadable is not. Population 157 to 158,
     # non-reserved 133 to 134, reserved half UNCHANGED at 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (158, 134, 24)
+    #
+    # Re-pinned on U90, 2026-09-19. ONE slug, named rather than counted:
+    # vocal-cut-out-of-range, which the calibrate verb raises when a cut set by
+    # hand falls outside the presence score's range or is not a number, so no
+    # cut that files everything or nothing under with vox is written. It is the
+    # verb's own and not in the reserved table. Population 158 to 159,
+    # non-reserved 134 to 135, reserved half UNCHANGED at 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (159, 135, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5238,7 +5245,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # vocal-dimension-not-compared, the WARNING code the inbox apply and the
     # rebuild and resort resumes carry when the declared vocal sub-playlist was
     # not derived. Nothing refuses with it.
-    assert (len(literals), len(literals - set(causes))) == (421, 264), (
+    # Re-pinned on U90, 2026-09-19: 421 to 422 distinct, non-keys UNCHANGED at
+    # 264. The one that joined is vocal-cut-out-of-range, a KEY, named at the
+    # population assertion above. Nothing left.
+    assert (len(literals), len(literals - set(causes))) == (422, 264), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
