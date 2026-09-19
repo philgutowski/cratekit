@@ -516,6 +516,18 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             origin=("routing_cli",),
             detail={"tree_id": declared.tree.id, "export": str(export)},
         )
+    if not Path(cfg.library.root).is_dir():
+        # THE SOURCE SYSTEM'S MOUNT GUARD. With the volume gone every Location
+        # names nothing, every track warns, and a plan that routed nothing
+        # would be the only thing a person saw.
+        raise refuse(
+            "library-volume-unmounted",
+            f"this library's root {cfg.library.root!r} is not there, so no track "
+            f"the export names can be read",
+            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+            origin=("routing_cli",),
+            detail={"root": str(cfg.library.root), "export": str(export)},
+        )
     content, plan, items, warnings, gaps = plan_export(cfg, export)
     offered = _plan(items, kind="inbox-export")
     option = _apply_gate(ctx, offered)
@@ -534,13 +546,13 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         *warnings,
         *({"code": "route-write-skipped", "message": text} for text in report.warnings),
     ]
-    # "NOTHING TO ROUTE" ONLY WHEN NO WRITE WAS REFUSED. It is the answer the
+    # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND. It is the answer the
     # pending action names as proof an import landed, so a run whose every write
-    # was skipped must not give it: that is a file nobody could route into, not
-    # a library already filed.
+    # was skipped, or whose every track could not be read, must not give it:
+    # that is a run that could not route, not a library already filed.
     if destination is not None:
         reason = None
-    elif report.warnings:
+    elif warnings:
         reason = "route-blocked"
     else:
         reason = "nothing-to-route"

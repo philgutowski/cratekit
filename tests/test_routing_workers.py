@@ -1304,6 +1304,29 @@ def test_an_export_with_no_routing_tree_is_blocked_not_already_filed(
     assert not _routed(export).exists()
 
 
+def test_an_export_whose_every_file_is_unreadable_is_blocked_not_already_filed(
+    configured, tagged, tmp_path
+):
+    """Every track left behind at the read is the same shape one step earlier."""
+    export = _write_export(configured, tmp_path / "exports", inbox=("11",), missing_file="11")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["inserted"] == 0
+    assert envelope["data"]["totals"]["reason"] == "route-blocked"
+    assert not _routed(export).exists()
+
+
+def test_an_export_route_on_an_unmounted_library_refuses(configured, tagged, tmp_path):
+    export = _write_export(configured, tmp_path / "exports")
+    import shutil
+
+    shutil.rmtree(configured.library.root)
+    code, envelope = _apply_export(export)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "library-volume-unmounted"
+    assert not _routed(export).exists()
+
+
 def test_a_declined_export_route_writes_nothing(configured, tagged, tmp_path):
     export = _write_export(configured, tmp_path / "exports")
     code, envelope = _drive(
