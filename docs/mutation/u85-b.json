@@ -1,0 +1,337 @@
+{
+  "name": "u85-b",
+  "pass_kind": "light",
+  "branch": "relay/130",
+  "head": "f6a0d0a",
+  "when": "2026-09-19 14:39 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8583,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/searchers.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/searchers.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "e7735273798e5987",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8583,
+    "baseline_collected": 8583,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_beatport_resized",
+      "description": "The Beatport release image URL is asked for at the size the payload named, not the source edge",
+      "file": "src/cratekit/tagging/searchers.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "84ab0d8e6e42f22c",
+      "subset": [
+        "tests/test_catalogue_searcher.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.searchers",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 113,
+      "baseline_collected": 113,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_catalogue_searcher.py::test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge",
+        "tests/test_catalogue_searcher.py::test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return _BEATPORT_IMAGE_SIZE.sub(f\"image_size/{edge}x{edge}/\", uri)",
+      "new": "    return uri"
+    },
+    {
+      "id": "B2_edge_coefficient",
+      "description": "The Beatport edge drops from 1400 to 1200",
+      "file": "src/cratekit/tagging/searchers.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "bd5a92b1d0a89994",
+      "subset": [
+        "tests/test_catalogue_searcher.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.searchers",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 113,
+      "baseline_collected": 113,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_catalogue_searcher.py::test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge",
+        "tests/test_catalogue_searcher.py::test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "BEATPORT_IMAGE_EDGE = 1400",
+      "new": "BEATPORT_IMAGE_EDGE = 1200"
+    },
+    {
+      "id": "B3_picture_off_the_winning_row",
+      "description": "The picture is read off the loop's last row rather than the winning row, the wrong cover hazard",
+      "file": "src/cratekit/tagging/searchers.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7e1c9a9668182db8",
+      "subset": [
+        "tests/test_catalogue_searcher.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.searchers",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 113,
+      "baseline_collected": 113,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_catalogue_searcher.py::test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return best\n\n\ndef _search_beatport(",
+      "new": "    return best and _Pick(best.genre, _beatport_art(track))\n\n\ndef _search_beatport("
+    },
+    {
+      "id": "B4_only_web_addresses",
+      "description": "A payload value that is not an http or https URL becomes a GET",
+      "file": "src/cratekit/tagging/searchers.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a7b17119a2b04392",
+      "subset": [
+        "tests/test_catalogue_searcher.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.searchers",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 113,
+      "baseline_collected": 113,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_catalogue_searcher.py::test_a_release_picture_that_is_not_a_web_address_is_no_picture[file:///etc/passwd]",
+        "tests/test_catalogue_searcher.py::test_a_release_picture_that_is_not_a_web_address_is_no_picture[javascript:alert(1)]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return text if text.startswith((\"https://\", \"http://\")) else \"\"",
+      "new": "    return text"
+    },
+    {
+      "id": "B5_bandcamp_original_size",
+      "description": "The Bandcamp picture is asked for at the thumbnail size the page named",
+      "file": "src/cratekit/tagging/searchers.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fe5ae3e46baab410",
+      "subset": [
+        "tests/test_catalogue_searcher.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.searchers",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 113,
+      "baseline_collected": 113,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_catalogue_searcher.py::test_a_bandcamp_listing_picture_is_asked_for_at_its_original_size",
+        "tests/test_catalogue_searcher.py::test_a_bandcamp_listing_with_a_genre_and_no_picture_reads_the_track_pages_og_image"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return _BC_IMAGE_SIZE.sub(\"_10.jpg\", _web_url(found.group(1)))",
+      "new": "    return _web_url(found.group(1))"
+    },
+    {
+      "id": "B6_bandcamp_page_for_art",
+      "description": "A listing with a genre and no picture never reads the track page's og:image",
+      "file": "src/cratekit/tagging/searchers.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d2c06d5f67d2f929",
+      "subset": [
+        "tests/test_catalogue_searcher.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.searchers",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 113,
+      "baseline_collected": 113,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_catalogue_searcher.py::test_a_bandcamp_listing_with_a_genre_and_no_picture_reads_the_track_pages_og_image"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not genre or not art_url:",
+      "new": "        if not genre:"
+    },
+    {
+      "id": "B7_listing_genre_wins",
+      "description": "The track page's tags overwrite a genre the listing already gave",
+      "file": "src/cratekit/tagging/searchers.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f26e21971782689c",
+      "subset": [
+        "tests/test_catalogue_searcher.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.searchers",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 113,
+      "baseline_collected": 113,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_catalogue_searcher.py::test_a_bandcamp_listing_with_a_genre_and_no_picture_reads_the_track_pages_og_image"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "genre = genre or _bandcamp_tag(",
+      "new": "genre = _bandcamp_tag("
+    },
+    {
+      "id": "B8_hit_carries_the_url",
+      "description": "The resolved hit drops the matched row's picture URL",
+      "file": "src/cratekit/tagging/searchers.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b6caf17d0a9a88a2",
+      "subset": [
+        "tests/test_catalogue_searcher.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.searchers",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 113,
+      "baseline_collected": 113,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_catalogue_searcher.py::test_a_bandcamp_listing_picture_is_asked_for_at_its_original_size",
+        "tests/test_catalogue_searcher.py::test_a_bandcamp_listing_with_a_genre_and_no_picture_reads_the_track_pages_og_image",
+        "tests/test_catalogue_searcher.py::test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge",
+        "tests/test_catalogue_searcher.py::test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        art_url=outcome.art_url,\n",
+      "new": ""
+    },
+    {
+      "id": "B9_image_fetch_paced",
+      "description": "The image fetch skips the pace wait, so a folder opens with a burst of picture requests",
+      "file": "src/cratekit/tagging/searchers.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1d47fabb90a1b9f5",
+      "subset": [
+        "tests/test_catalogue_searcher.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.tagging.searchers",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 113,
+      "baseline_collected": 113,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_catalogue_searcher.py::test_the_image_fetch_is_paced_and_answers_the_bytes"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    def fetch_image(url: str) -> bytes | None:\n        pacer.wait()\n",
+      "new": "    def fetch_image(url: str) -> bytes | None:\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D3_image_response_none_guard",
+      "description": "Drop the response is None branch in default_image_fetch",
+      "reason": "it only adds the debug log line; getattr on None already answers None, so it is maintainer facing and ranked below the cap"
+    },
+    {
+      "id": "D4_image_bytes_coercion",
+      "description": "Return the response content uncoerced",
+      "reason": "a real response's content is already bytes; no producer of another type was found, ranked below the cap"
+    }
+  ]
+}

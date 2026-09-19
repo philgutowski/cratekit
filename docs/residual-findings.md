@@ -17530,6 +17530,26 @@ FLAC only, which is parity, and the registry summary still claims art. Whether
 a Pioneer player renders the repaired block is unmeasured and owed to the same
 attended sitting.
 
+**CLOSED 2026-09-19 on `relay/130`, U85.** `crate tag folder` now fetches and
+embeds art for a file carrying no picture, so the registry summary at
+`cli/registry.py` "tag a folder of audio with genre and album art" is true.
+`SearchHit.art`, the bytes field nothing read, is gone and `SearchHit.art_url`
+replaces it, carried off the SAME best scored row as the genre: Beatport's
+`release.release_image_uri` resized to 1400, Bandcamp's listing image or the
+track page's `og:image` at `_10`, and nothing from Traxsource, which is parity.
+`tagging/tag.py:tag_one` searches unless a file has both a genre and a picture,
+embeds through `core/art.py`'s `to_cdj_jpeg` and `write_front_cover` only when
+the file has no picture at all, and reports `art_fetch` as `embedded`,
+`present`, `unavailable`, `error` or `unchecked`. A failed fetch or bytes that
+are not an image are `unavailable` and never fail the item. The worker binds
+`searchers.for_images()` at call time, and the summary counts every status.
+Driven against fakes in `tests/test_tagging_engine.py`,
+`tests/test_catalogue_searcher.py` and `tests/test_tag_workers.py`, 23 of 25
+guards killed across `docs/mutation/u85-a.md` and `u85-b.md`, the two zeros
+maintainer facing. **Owed to an attended sitting, and not what closes this:**
+one live folder run, because payload drift cannot be seen from fixtures
+(R-495), and one file shown on a real CDJ or XDJ.
+
 ---
 
 ## R-400. Nothing in the product can produce the list document `acquire download` reads
@@ -20282,3 +20302,67 @@ every run, so the row blocks the rows after it. Unmeasured.
 **Closes when:** one attended search is run, the U80 brief's owed item, with
 one row that has uploads and one that has none.
 
+
+---
+
+## R-495. The picture URLs `tag folder` reads were never read off a live catalogue page
+
+**Found:** 2026-09-19, on `relay/130`, U85.
+
+`tagging/searchers.py` reads a Beatport cover from `release.release_image_uri`
+and rewrites its `image_size/NxN/` segment to 1400, and a Bandcamp cover from a
+listing `<img src="https://f4.bcbits.com/img/...">` or a track page `og:image`
+meta tag, rewritten to `_10.jpg`. Every one of those shapes is read from the
+source system's `DJ_tagging/scrape.py:289-291` and `:415-417` and `:479-480`,
+and none was driven against a page served today.
+
+**Driven:** no. The unit lands against synthetic pages by the brief's
+decision, and a live call is attended.
+
+**Measured cost.** If the field moved, every Beatport hit names no picture and
+every file it matches reports `art_fetch` `unavailable` with "beatport named no
+picture for the track", which is honest but embeds nothing. Unmeasured.
+
+**Closes when:** one attended `crate tag folder` run over a few new files, the
+U85 brief's owed item, shows `embedded` from Beatport and from Bandcamp.
+
+---
+
+## R-496. The image fetch reads a response of any size into memory
+
+**Found:** 2026-09-19, on `relay/130`, U85.
+
+`searchers.default_image_fetch` takes `response.content` whole. A URL a
+payload names that answers with something far larger than a cover is read in
+full before `to_cdj_jpeg` refuses it. The source system's `download_art` did
+the same.
+
+**Driven:** no. No producer of an oversized answer was found; catalogue covers
+are hundreds of kilobytes.
+
+**Measured cost.** Unmeasured. Memory for one item, then `unavailable`.
+
+**Closes when:** the fetch streams with a byte ceiling, or a drive shows no
+catalogue URL can answer that way.
+
+---
+
+## R-497. A tagged file whose track names no picture is searched again on every run
+
+**Found:** 2026-09-19, on `relay/130`, U85.
+
+The brief's decision makes art and genre independent needs, so a file with a
+genre and no picture is searched. When the catalogue that carries it names no
+picture, a Traxsource match for example, the file still has no picture after
+the run and the next run searches it again, up to four paced touches each
+time. The source system behaved the same way.
+
+**Driven:** in part. `tests/test_tagging_engine.py` drives a tagged file with
+no picture being searched. The repeat on the next run is read from the code:
+nothing records that the answer named no picture.
+
+**Measured cost.** Time: about one to six seconds of pacing per such file per
+run. Nothing is written wrongly.
+
+**Closes when:** a decline is remembered per file, or a person accepts the
+cost as parity.
