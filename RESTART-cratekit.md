@@ -23,7 +23,12 @@ and through `cli.run` in the default human mode. Mutation table
 non-keys, for the one new token. No residual filed. The one other surface
 that reads the cursor, the doctor's `source.playlists.watermark` row, prints
 counts and a time and never the word swept, so it claims no acquisition.
-**Main's highest residual number is R-434.**
+R-435 filed, maintainer facing and not on the board: one full parallel run
+errored in the setup of a real database deletion test this branch does not
+touch, then passed alone, on the next full run, and on three runs of its file.
+Battery on the recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 7813
+passed and 1 skipped in 48 seconds. **Main's highest residual number is
+R-435.**
 
 **The session before: U71, issue #116, `relay/116`, 2026-09-18.**
 The landing engine, `src/cratekit/intake/landing.py`, moves acquired files

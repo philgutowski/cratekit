@@ -18257,3 +18257,26 @@ files.
 carrying the marker, or `place_files` takes the flag per file.
 
 ---
+
+## R-435. A real database deletion test errored once in setup under the parallel suite
+
+**Found:** 2026-09-18, by the battery on `relay/104`. Seen once, not reproduced.
+
+One full parallel run reported
+`tests/test_deletion.py::test_a_whole_run_against_a_real_database_changes_not_one_byte_of_it`
+as an ERROR, which is a fixture failing rather than an assertion, beside 7812
+passes. The same test passed alone, the next full run was 7813 passed, and
+three runs of the whole file under `-n auto` were 316 passed each. The branch
+touches nothing that test or its fixtures import. The error text was cut off
+by a `tail` and was not captured, so the cause is unmeasured; the worker's log
+carried pyrekordbox's missing Pioneer app directory warning, which is normal
+for these fixtures and is not shown to be the cause.
+
+**Measured cost:** one red battery in three full runs on this branch. A runner
+gate that meets it refuses a clean merge.
+
+**Closes when:** the error is captured with its traceback and its fixture is
+made independent of whatever it shares, or enough full runs pass to call it
+gone.
+
+---
