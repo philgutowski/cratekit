@@ -893,12 +893,16 @@ ENTRIES: tuple[Entry, ...] = (
         name="intake.missing",
         summary=(
             "write the list acquire download reads from the missing tracks of a "
-            "finished intake job or a whole sync pass"
+            "finished intake job, a whole sync pass, or a text list searched on "
+            "the provider"
         ),
         module="cratekit.intake.missing_cli",
         builder="build_missing",
         handler_key="intake.missing",
         feature_rows=(3, 35),
+        # U79. ``--list`` offers provider candidates, and a version question the
+        # library raises, into the review queue under this verb's own key.
+        adjudicates=True,
         # ``diagnostic/1`` because the default human renderer shows checks and
         # nothing else, and the one thing a person needs from this verb is the
         # list's path and the command that downloads it (R-400).

@@ -167,7 +167,7 @@ def test_the_unlisted_file_round_trips_through_read_list_with_its_reasons(
     assert raw["tracks"][2].startswith("# it carries no ISRC")
     check = {c["key"]: c for c in envelope["data"]["checks"]}["intake.missing.unlisted"]
     assert check["status"] == "fail"
-    assert f"crate match run {handed}" in check["detail"]
+    assert f"crate intake missing --list {handed}" in check["detail"]
 
 
 def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(
@@ -183,7 +183,7 @@ def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(
     assert fake.isrcs_asked_for == [NONE_FILED]
     assert (summary["list"], summary["written"]) == (None, 0)
     assert [t["why"] for t in summary["unlisted_tracks"]] == [missing_cli.UNKNOWN]
-    assert summary["unlisted_next"] == f"crate match run {summary['unlisted_list']}"
+    assert summary["unlisted_next"] == f"crate intake missing --list {summary['unlisted_list']}"
 
 
 def test_an_isrc_is_folded_before_it_is_asked_and_a_malformed_one_is_never_asked(

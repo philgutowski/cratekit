@@ -5290,7 +5290,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # sync-mark-no-pass and sync-mark-changed-since-plan are WARNING codes.
     # Every refusal the verb raises reuses sync-marks-blocked or
     # internal-error, or passes on the reason the account's own failure carried.
-    assert (len(literals), len(literals - set(causes))) == (440, 281), (
+    # Re-pinned on U79, 2026-09-19: 440 to 442 distinct, 281 to 283 non-keys.
+    # TWO literals joined and NOTHING left, differenced over the branch's diff
+    # of `src` against `main` with `git grep` on `main` for each. Neither is a
+    # cause, and both are `intake.candidates`'s. provider-candidate is the KIND
+    # a provider search question is offered under on the version-match queue,
+    # and no-candidates is one of the seven STATES a searched row ends in.
+    # Every refusal `intake missing --list` raises reuses intake-list-unusable,
+    # unavailable-transient or library-volume-unmounted.
+    assert (len(literals), len(literals - set(causes))) == (442, 283), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5730,7 +5738,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # changed, held that slug on main already. The also-holds-an-integer half
     # stays 18, measured by the same run: the new module slices by a length it
     # takes from a constant and holds no in-range integer of its own.
-    assert (len(literal_holders), len(literal_both)) == (98, 18), (
+    # Re-pinned on U79, 2026-09-19: 98 to 99 holders. ONE module joined and
+    # none left, and it is a new file. intake/candidates.py holds the review
+    # kind provider-candidate and the row state no-candidates. The
+    # also-holds-an-integer half stays 18, measured by the same run: the offer
+    # limit is spelled as twice the library's approximate limit, which is what
+    # its comment says it is, rather than as a ten of its own.
+    assert (len(literal_holders), len(literal_both)) == (99, 18), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

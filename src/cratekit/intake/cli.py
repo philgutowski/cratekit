@@ -244,6 +244,16 @@ def _frozen(row: Wanted) -> dict[str, Any]:
     }
 
 
+def frozen(row: Wanted) -> dict[str, Any]:
+    """The public face of the freeze, for a module that stores a track elsewhere.
+
+    ``intake.candidates`` keeps a provider candidate on a review option and
+    reads it back through :func:`thawed`, so one freeze serves both and a field
+    added to it reaches both.
+    """
+    return _frozen(row)
+
+
 def frozen_rows(rows: tuple[Wanted, ...]) -> dict[str, dict[str, Any]]:
     """The items, as the listing identifies them, in order and folded once.
 
@@ -811,6 +821,7 @@ __all__ = [
     "build_identify",
     "build_playlist",
     "build_set",
+    "frozen",
     "frozen_rows",
     "handle",
     "intake_file",

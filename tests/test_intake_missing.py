@@ -454,7 +454,7 @@ def test_missing_tracks_none_of_which_can_be_listed_write_the_unlisted_list_not_
     assert (summary["list"], summary["written"], summary["unlisted"]) == (None, 0, 1)
     handed = lists_dir(library) / f"intake-{job_id}.unlisted.json"
     assert summary["unlisted_list"] == str(handed)
-    assert summary["unlisted_next"] == f"crate match run {handed}"
+    assert summary["unlisted_next"] == f"crate intake missing --list {handed}"
     assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
     read = match_cli.read_list(handed)
     assert [(one.artist, one.title) for one in read] == [("Kite Harbor", "Low Tide Signal")]

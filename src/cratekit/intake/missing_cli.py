@@ -45,6 +45,19 @@ a text list ``match run`` reads, with the reason above each line. A provider
 that could not answer refuses the whole verb before any file is written, because
 a partial answer would hand on a row that could have been named.
 
+``--list PATH`` IS THE ROUTE FOR A ROW NOTHING NAMES EXACTLY (U79, R-302). The
+input is the unlisted text list above, or any list ``match run`` reads: a typed
+tracklist, a transcribed screenshot. Every row is resolved against the library
+first, exactly as ``match run`` resolves it, so an owned track, a track held in
+another version and a track deleted on purpose are never searched for. A row
+that is still missing and carries no identifier is asked by ISRC when it has
+one, and otherwise handed to :mod:`cratekit.intake.candidates`, where a search
+is a proposal and never a pick: exactly one candidate matching under the
+product's own fold is listed, anything else is offered for review with its
+candidates, and an accepted candidate is listed by the next run. Nothing is
+ever listed from a fuzzy score. The list is named for the input with
+``-found`` after it, so it never collides with the job's own list.
+
 Not gated and not destructive: it writes new files, and :func:`listdoc.write`
 refuses rather than replaces a file that holds anything else, so it cannot
 overwrite somebody's list. Nothing here composes ``acquire download``, so
@@ -60,13 +73,13 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from cratekit.acquire import listdoc, match
+from cratekit.acquire import listdoc, match, match_cli
 from cratekit.cli.output import Envelope
-from cratekit.core import artifacts, jobs
+from cratekit.core import artifacts, jobs, review
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.intake import candidates, land_cli
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import land_cli
 from cratekit.label import catalogue
 
 #: The payload key ``crate sync all`` stamps each job it queues with.
@@ -79,6 +92,16 @@ SYNCED_SUFFIX = "_synced"
 #: What the provenance sidecar says a listed row came from, by the job's key.
 #: A set job reaches the sidecar through a row its ISRC named (U78).
 PROVENANCE_SOURCE: Mapping[str, str] = {"intake.playlist": "playlist", "intake.set": "set"}
+
+#: What the sidecar says a row named from a list somebody already had came from.
+LIST_SOURCE = "list"
+
+#: What follows the input's name in the name of the list ``--list`` writes.
+FOUND_SUFFIX = "-found"
+
+#: The suffixes an input list's file name may end in, longest first, taken off
+#: before the list written from it is named.
+_LIST_SUFFIXES = (listdoc.UNLISTED_SUFFIX, listdoc.LIST_SUFFIX, ".json", ".txt")
 
 #: The folder under download staging a list lands in when ``--out`` is not given.
 LISTS_DIR = "lists"
@@ -126,6 +149,16 @@ def build_missing(parser, entry) -> None:
         default=None,
         metavar="RUN_ID",
         help="the sync all pass whose intake jobs to list as one",
+    )
+    chosen.add_argument(
+        "--list",
+        dest="text_list",
+        default=None,
+        metavar="PATH",
+        help=(
+            "a text list, the unlisted list of an earlier run or any tracklist, "
+            "whose missing tracks to find on the provider and list"
+        ),
     )
     parser.add_argument(
         "--skip-failed",
@@ -567,8 +600,11 @@ def _listed(
         if written.list_path is not None
         else None
     )
+    # THE ROUTE, NOT THE SORT. ``match run`` sorts these rows into owned, review
+    # and missing and stops, and a missing text row can never be downloaded, so
+    # naming it here sent a person to a dead end (R-415). ``--list`` searches.
     handed_command = (
-        shlex.join(["crate", "match", "run", str(written.unlisted_path)])
+        shlex.join(["crate", "intake", "missing", "--list", str(written.unlisted_path)])
         if written.unlisted_path is not None
         else None
     )
@@ -650,6 +686,288 @@ def _listed(
     )
 
 
+def found_name(path: Path) -> str:
+    """The name of the list written from the text list at ``path``.
+
+    The input's own name with its list suffix off and ``-found`` after it, so
+    ``intake-J.unlisted.json`` writes ``intake-J-found.list.json`` beside the
+    job's ``intake-J.list.json`` and never onto it. A character a file name
+    should not carry becomes a hyphen, and a name with nothing left is
+    ``tracklist``.
+    """
+    stem = path.name
+    for suffix in _LIST_SUFFIXES:
+        if stem.lower().endswith(suffix) and len(stem) > len(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("-.")
+    return f"{stem or 'tracklist'}{FOUND_SUFFIX}"
+
+
+def _searched(
+    cfg, wanted: list[match.Wanted]
+) -> list[candidates.Answer]:
+    """One search answer per row, every one in hand before anything is offered.
+
+    THE CATALOGUE IS RESOLVED ONLY WHEN A ROW HAS TO BE SEARCHED FOR, looked up
+    on the module at call time as ``_named_by_isrc`` does. A provider that could
+    not answer refuses the whole verb, with no item offered and no file written:
+    a partial pass would report the unasked rows as having no candidate.
+    """
+    if not wanted:
+        return []
+    found = catalogue.resolve(cfg)
+    answers: list[candidates.Answer] = []
+    for one in wanted:
+        try:
+            rows = tuple(found.search_tracks(one.artist, candidates.query_title(one)))
+        except CratekitError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - refused whole, never swallowed
+            raise refuse(
+                "unavailable-transient",
+                f"the streaming provider could not answer a search for "
+                f"{one.artist} - {one.listed} ({exc}), so the missing tracks cannot "
+                f"be sorted into listed and offered; nothing was offered and "
+                f"nothing was written",
+                remedy=Remedy.RETRY_LATER,
+                scope=Scope.RUN,
+                origin=("intake.missing",),
+                detail={"artist": one.artist, "title": one.listed},
+            ) from exc
+        answers.append(candidates.read_answer(one, rows))
+    return answers
+
+
+def _missing_for_list(ctx, given: str) -> Envelope:
+    """List what a text list's missing rows can be named as, and offer the rest."""
+    path = Path(given).expanduser().absolute()
+    subject = {"list_in": str(path)}
+    cfg = intake_cli._load()
+    wanted = match_cli.read_list(path)
+    music = Path(cfg.library.root) / cfg.library.music_dir
+    if not music.is_dir():
+        # AN ABSENT LIBRARY IS NOT AN EMPTY ONE. The index of a folder that is
+        # not there holds nothing, every row would resolve missing, and this
+        # verb would list for download every track the library already holds.
+        raise refuse(
+            "library-volume-unmounted",
+            f"this library's music folder {str(music)!r} is not there, so no row of "
+            f"the list can be told from a track the library already holds",
+            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+            origin=("intake.missing",),
+            detail={"music": str(music), **subject},
+        )
+    index, suppresses, identify = match_cli.library_view(cfg)
+    resolved = match.resolve_all(wanted, index, suppresses=suppresses, suppression_id=identify)
+    if resolved.of(match.MatchState.NEEDS_REVIEW):
+        with review.open_store(cfg) as items:
+            resolved = match_cli.adjudicate(
+                items,
+                resolved,
+                handler_key=ctx.entry.handler_key,
+                suppresses=suppresses,
+                suppression_id=identify,
+            )
+    counts = {word: 0 for word in _WORDS}
+    missing: list[match.Wanted] = []
+    seen: set[str] = set()
+    for settled in resolved.matches:
+        if settled.state is match.MatchState.MATCHED:
+            counts["owned"] += 1
+        elif settled.state is match.MatchState.NEEDS_REVIEW:
+            counts["offered"] += 1
+        elif settled.state is match.MatchState.SUPPRESSED:
+            counts["suppressed"] += 1
+        else:
+            counts["missing"] += 1
+            # THE SAME LINE TWICE IS ONE ROW, on the match identifier.
+            if settled.match_id not in seen:
+                seen.add(settled.match_id)
+                missing.append(settled.wanted)
+
+    named: list[match.Wanted] = []
+    by_isrc = 0
+    proposals: list[candidates.Proposal] = []
+    out: Path | None = None
+    if missing:
+        # THE FOLDER BEFORE THE PROVIDER, so a bad --out spends no lookup.
+        out = _out_dir(ctx, subject)
+        bare = [one for one in missing if not str(one.ref or "").strip()]
+        named = [one for one in missing if str(one.ref or "").strip()]
+        unnamed: list[match.Wanted] = []
+        for one, answer in zip(bare, _named_by_isrc(bare), strict=True):
+            if isinstance(answer, _Unnamed):
+                unnamed.append(one)
+            else:
+                named.append(replace(one, ref=answer))
+                by_isrc += 1
+        if unnamed:
+            # THE QUEUE BEFORE THE PROVIDER, and every answer before any offer.
+            # A row already answered, or already in front of a person, spends no
+            # search, and a provider that fails part way leaves nothing offered.
+            with review.open_store(cfg) as items:
+                held = [candidates.settled(items, one) for one in unnamed]
+            unasked = [one for one, said in zip(unnamed, held, strict=True) if said is None]
+            answers = iter(_searched(cfg, unasked))
+            with review.open_store(cfg) as items:
+                for one, said in zip(unnamed, held, strict=True):
+                    proposals.append(
+                        said
+                        if said is not None
+                        else candidates.propose(
+                            items, one, next(answers), handler_key=ctx.entry.handler_key
+                        )
+                    )
+
+    in_library: list[candidates.Proposal] = []
+    for one in proposals:
+        if one.state not in candidates.NAMED or one.track is None:
+            continue
+        if one.state == candidates.ACCEPTED:
+            # AN ACCEPTED CANDIDATE IS ASKED OF THE LIBRARY AS ITSELF. The row it
+            # answers stays missing for ever when the candidate is another
+            # spelling or another version of it, so without this every later run
+            # of the same list would list, and download, the same track again.
+            now = match.resolve_one(
+                one.track, index, suppresses=suppresses, suppression_id=identify
+            )
+            if now.state in (match.MatchState.MATCHED, match.MatchState.SUPPRESSED):
+                in_library.append(one)
+                continue
+        named.append(one.track)
+    held_ids = {id(one) for one in in_library}
+
+    written = listdoc.Written(None, None, (), ())
+    if named:
+        rows = listdoc.rows_of(named)
+        provenance = {
+            str(row.ref).strip(): listdoc.Provenance(source=LIST_SOURCE, source_ref=str(path))
+            for row in rows
+        }
+        try:
+            written = listdoc.write(out, found_name(path), rows, provenance)
+        except listdoc.ListDocRefused as exc:
+            raise _unusable(
+                str(exc), "move the file aside or name another folder with --out", **subject
+            ) from exc
+    listed = len(written.listed)
+
+    def of(*states: str) -> list[candidates.Proposal]:
+        return [one for one in proposals if one.state in states and id(one) not in held_ids]
+
+    by_search = len(of(candidates.LISTED))
+    by_review = len(of(candidates.ACCEPTED))
+    asked = of(*candidates.ASKED)
+    unfound = of(candidates.NO_CANDIDATES, candidates.REJECTED, candidates.STALLED)
+    if unfound and not listed and not asked:
+        # MISSING TRACKS, NOTHING WRITTEN AND NOTHING ASKED IS NOT NOTHING TO DO.
+        # A no-op would read exactly like a list the library already holds.
+        raise _unusable(
+            f"{len(unfound)} missing track(s) and the provider has a route to none of "
+            f"them, so nothing was written and nothing is waiting in review: "
+            + "; ".join(f"{one.wanted.artist} - {one.wanted.listed}: {one.reason}" for one in unfound),
+            "find these tracks on the provider by hand, add them to a playlist, "
+            "and run intake playlist on it",
+            "a rejected or stalled row is asked again after: crate review clear ITEM_ID",
+            tracks=[one.to_json() for one in unfound],
+            **subject,
+        )
+    command = (
+        shlex.join(["crate", "acquire", "download", str(written.list_path)])
+        if written.list_path is not None
+        else None
+    )
+    again = shlex.join(["crate", "intake", "missing", "--list", str(path)])
+    review_command = f"crate review list --queue {candidates.QUEUE} --kind {candidates.KIND}"
+    if listed:
+        said = f"{listed} missing track(s) written to {written.list_path}; next: {command}"
+    elif asked:
+        said = (
+            f"nothing listed yet: {len(asked)} row(s) are waiting in review; answer "
+            f"them, then run: {again}"
+        )
+    else:
+        said = "nothing listed: no track in this list is missing"
+    checks = [
+        _check("written", "ok" if listed else "info", said),
+        _check("owned", "info", f"{counts['owned']} already in the library, not listed"),
+        _check(
+            "offered",
+            "info",
+            f"{counts['offered']} held in another version, offered for review and not "
+            f"listed until answered; see: crate review list",
+        ),
+        _check("suppressed", "info", f"{counts['suppressed']} deleted on purpose, not listed"),
+        _check(
+            "isrc",
+            "info",
+            f"{by_isrc} missing track(s) with no provider identifier named by ISRC and listed",
+        ),
+        _check(
+            "search",
+            "info",
+            f"{by_search} missing track(s) named by the one exact candidate a provider "
+            f"search held, and listed",
+        ),
+        _check(
+            "accepted",
+            "info",
+            f"{by_review} missing track(s) listed as the candidate accepted in review"
+            + (
+                f"; {len(in_library)} more accepted candidate(s) are already in the "
+                f"library or were deleted on purpose, and are not listed again"
+                if in_library
+                else ""
+            ),
+        ),
+        _check(
+            "candidates",
+            "fail" if asked else "ok",
+            f"{len(asked)} missing track(s) have provider candidates and no exact one "
+            f"to list, so they are offered for review and NOT in the list: "
+            + "; ".join(f"{one.wanted.artist} - {one.wanted.listed} ({one.item_id})" for one in asked)
+            + f"; see: {review_command}; then run: {again}"
+            if asked
+            else "no missing track is waiting on a provider candidate",
+        ),
+        _check(
+            "unfound",
+            "fail" if unfound else "ok",
+            f"{len(unfound)} missing track(s) have no route to a download and are NOT "
+            f"in the list: "
+            + "; ".join(f"{one.wanted.artist} - {one.wanted.listed}: {one.reason}" for one in unfound)
+            if unfound
+            else "every missing track is listed or waiting in review",
+        ),
+    ]
+    summary = {
+        **subject,
+        "list": str(written.list_path) if written.list_path is not None else None,
+        "manifest": str(written.manifest_path) if written.manifest_path is not None else None,
+        "next": command,
+        "written": listed,
+        "missing": counts["missing"],
+        "owned": counts["owned"],
+        "offered": counts["offered"],
+        "suppressed": counts["suppressed"],
+        "by_isrc": by_isrc,
+        "by_search": by_search,
+        "by_review": by_review,
+        "in_library": len(in_library),
+        "candidates_offered": len(asked),
+        "unfound": len(unfound),
+        "review_next": review_command if asked else None,
+        "rows": [
+            {**one.to_json(), "in_library": id(one) in held_ids} for one in proposals
+        ],
+    }
+    return ctx.envelope(
+        data={"checks": checks, "summary": summary},
+        outcome=Outcome.OK if listed or asked else Outcome.NO_OP,
+    )
+
+
 def synced_name(run_id: str) -> str:
     """The name a run's list and its landed batch share, colons removed."""
     return f"{land_cli.default_name(run_id)}{SYNCED_SUFFIX}"
@@ -703,6 +1021,15 @@ def intake_missing(ctx) -> Envelope:
     """List the missing tracks of one finished intake job or one sync pass, or say why not."""
     if ctx.args.sync_run is not None:
         return _missing_for_run(ctx, str(ctx.args.sync_run))
+    if ctx.args.text_list is not None:
+        if ctx.args.skip_failed:
+            raise _unusable(
+                "--skip-failed leaves failed jobs out of a run's list and means "
+                "nothing for a text list",
+                "drop --skip-failed",
+                list=str(ctx.args.text_list),
+            )
+        return _missing_for_list(ctx, str(ctx.args.text_list))
     if ctx.args.skip_failed:
         # A FLAG THAT WOULD MEAN NOTHING IS REFUSED, not ignored. One job that
         # failed is refused either way, and a person who asked to skip it would
@@ -726,7 +1053,9 @@ def intake_missing(ctx) -> Envelope:
 
 
 __all__ = [
+    "FOUND_SUFFIX",
     "LISTS_DIR",
+    "LIST_SOURCE",
     "MALFORMED",
     "NO_ISRC",
     "PROVENANCE_SOURCE",
@@ -736,6 +1065,7 @@ __all__ = [
     "UNKNOWN",
     "UNREADABLE",
     "build_missing",
+    "found_name",
     "intake_missing",
     "job_reports",
     "synced_name",

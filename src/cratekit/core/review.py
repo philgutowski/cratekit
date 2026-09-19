@@ -129,6 +129,14 @@ class Queue(StrEnum):
 
     #: R11's third state. A candidate that is a DIFFERENT version of the wanted
     #: recording: a remix, an edit, a live take, a clean cut.
+    #:
+    #: TWO KINDS SHARE IT since U79, and they are told apart by kind and never
+    #: by payload. ``version-match`` asks about a copy the LIBRARY holds.
+    #: ``provider-candidate`` asks which track the PROVIDER's text search found
+    #: is the wanted recording, which is the question the legacy file this
+    #: surface was ported from asked, so it is the same surface and not a new
+    #: one. Each kind has one producer and one reader, and neither reads the
+    #: other's items.
     VERSION_MATCH = "version-match"
 
     #: A candidate from somewhere other than the configured provider, offered
