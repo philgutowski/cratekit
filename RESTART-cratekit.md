@@ -4,7 +4,51 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U85, issue #130, `relay/130`, 2026-09-19.**
+**Last merged: U81, issue #126, `relay/126`, 2026-09-19.**
+Accepted second source candidates download, which CLOSES R-404: the one
+sanctioned lossy exception is an act again and not only a marker.
+`crate acquire fallback-fetch PATH` is a new queued verb in
+`acquire/fallback_cli.py`, registry entry `acquire.fallback-fetch`,
+`job_state/1`, long running, `argv_builder="fetch_argv"`, `adjudicates`,
+writes files, destructive, no gate (the `acquire.download` argument), doctor
+checks `library.mounted`, `binary.yt-dlp`, `binary.ffmpeg`, and bound in
+`cli/handlers.py` to `fallback_cli:handle_fetch`. It resolves the list through
+`missing_rows`, now shared with `acquire fallback`, and `accepted_rows` queues
+one item per row whose `fallback-candidate` is ACCEPTED, keyed on the review
+item id, with artist, listed title and URL frozen under `ROWS`. Owned rows,
+provider routed rows (`provider_routed`, factored out) and unanswered,
+rejected or stalled rows are not queued; nothing accepted is a `no_op` with
+state `nothing-accepted`. The worker: strict policy refuses `lossy-refused`
+before any download; a non web address or a nameless row is
+`unavailable-permanent`; the name is the ROW's, `Artist - Title [marker].mp3`
+through `fetch_stem` and `acquire_cli.marked_name`, and a taken name is
+`output-exists` before the download and after it; the download lands in
+`acquire_cli.staging_dir` through the `FallbackFetcher` seam in
+`acquire/fallback.py` (`YtDlpFetcher`, MP3 at quality 0, a fixed `fetched`
+stem, `--` before the URL); `checked_landing`; then the NEW
+`core.tags.strip_tags` removes every tag the upload carried before
+`write_tags` writes artist and title from the row; a missing yt-dlp PARKS the
+job; a failed fetch or an untaggable file is `unavailable-transient`. **The
+code review's one finding was fixed:** yt-dlp does not run its audio
+postprocessor on an upload already in MP3, so `-map_metadata -1` never
+stripped an uploader's TBPM; `strip_tags` is the guard now, and
+`docs/solutions/integration-issues/yt-dlp-skips-its-audio-postprocessor-when-the-upload-is-already-the-target-format.md`
+records why. `acquire fallback`'s accepted check names the fetch command and
+its summary gains `fetch_next`. Collected **8626**, main's 8583 plus 34 in the
+new `tests/test_acquire_fallback_fetch.py` and 9 conformance cases for the new
+verb; the battery on the committed tree was **8625 passed and 1 skipped** in 65
+seconds, ruff and the scan clean. Mutation tables `docs/mutation/u81-fetch-a.md`
+and `u81-fetch-b.md`, 25 rows at the cap, run in the foreground under Relay;
+two zeros got tests and were re-run killing, and Q2's zero was fixed by
+removing the covering URL half and NOT re-measured, read in
+`u81-fetch-notes.md`. **The `u81` mutation prefix was already R-322's**, so
+this unit's files are `u81-fetch-*` and R-322's `u81-notes.md` is unchanged.
+R-498 (the real tool never ran) and R-499 (no per row purchase link override)
+are filed, and neither meets the board bar. **Owed to an attended sitting:**
+one real fallback download, R-498. **Main's highest residual number is
+R-499.**
+
+**The session before: U85, issue #130, `relay/130`, 2026-09-19.**
 `crate tag folder` fetches and embeds album art for a file carrying no
 picture, which CLOSES R-399: the registry's "genre and album art" is now true.
 `tagging/tag.py`: `SearchHit.art`, the bytes field nothing read, is gone and
