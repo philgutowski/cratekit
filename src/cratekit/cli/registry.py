@@ -1383,7 +1383,7 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="label.registry",
-        summary="list, add, and remove favourite labels",
+        summary="list, add, and remove favourite labels, and adopt accepted harvested ones",
         module="cratekit.label.cli",
         builder="build_registry",
         handler_key="label.registry",

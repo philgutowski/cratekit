@@ -205,6 +205,23 @@ def empty() -> Registry:
     return Registry(labels={})
 
 
+@dataclass(frozen=True, slots=True)
+class Adopted:
+    """What :meth:`RegistryStore.adopt` did with one offered name.
+
+    ``added`` is False when the registry already held the label, and then
+    ``held_name`` is the display name it is held under, which may be a
+    different spelling of the offered one. ``refused`` carries the reason a name
+    could not become an entry at all, and then ``label_id`` is empty.
+    """
+
+    name: str
+    label_id: str
+    added: bool
+    held_name: str | None = None
+    refused: str | None = None
+
+
 class RegistryStore:
     """Locked read-modify-write over the installation-scoped intent file."""
 
@@ -252,7 +269,13 @@ class RegistryStore:
             self.path,
         )
 
-    def update(self, mutator: Callable[[dict[str, LabelEntry]], None]) -> Registry:
+    def update(self, mutator: Callable[[dict[str, LabelEntry]], bool | None]) -> Registry:
+        """Locked read, modify, write. A mutator returning ``False`` writes nothing.
+
+        The opt out is for a caller that may find nothing to change. A rewrite is
+        not free even when the entries are equal: ``recognize`` drops a record it
+        cannot read, so saving what it loaded discards that record from the file.
+        """
         lock = config._exclusive_lock(self.lock_path)
         try:
             lock.__enter__()
@@ -269,9 +292,10 @@ class RegistryStore:
             ) from exc
         try:
             current = dict(self.load().labels)
-            mutator(current)
+            changed = mutator(current)
             held = Registry(labels=current)
-            self._write(held)
+            if changed is not False:
+                self._write(held)
             return held
         finally:
             lock.__exit__(None, None, None)
@@ -310,6 +334,57 @@ class RegistryStore:
 
         self.update(mutate)
         return label_id
+
+    def adopt(self, names: Sequence[str]) -> tuple[Adopted, ...]:
+        """Add each name the registry does not already hold, under one lock.
+
+        NOT :meth:`add`, which re-adds by identifier and overwrites the display
+        name a person chose. A name is PRESENT when it resolves the way every
+        other verb resolves one: by identifier, by folded display name, then by
+        its slug. The fold is what R-381 makes load bearing. A label carried over
+        as ``Sueño`` under the source system's identifier ``sueno`` slugs to
+        ``sue-o`` today, so a check on the slug alone would file a second entry
+        for it, with watermarks nobody can see from the first.
+
+        Resolution is against the registry AS IT STANDS INSIDE THE LOCK, entries
+        this call has already added included, so two spellings of one label in
+        one batch add it once, and a concurrent add is seen rather than doubled.
+        A name that yields no identifier is refused on its own and the rest
+        still land.
+        """
+        results: list[Adopted] = []
+
+        def mutate(current: dict[str, LabelEntry]) -> bool:
+            results.clear()
+            for raw in names:
+                name = str(raw).strip()
+                try:
+                    label_id = slug(name)
+                except CratekitError as exc:
+                    results.append(
+                        Adopted(name=name, label_id="", added=False, refused=exc.cause.reason)
+                    )
+                    continue
+                held = Registry(labels=current).resolve(name)
+                if held is not None:
+                    results.append(
+                        Adopted(
+                            name=name,
+                            label_id=held.label_id,
+                            added=False,
+                            held_name=held.name,
+                        )
+                    )
+                    continue
+                current[label_id] = LabelEntry(label_id=label_id, name=name)
+                results.append(Adopted(name=name, label_id=label_id, added=True))
+            # NOTHING ADDED, NOTHING WRITTEN, so a second run leaves the file
+            # byte for byte as it found it. See :meth:`update` for why a rewrite
+            # of equal entries is not harmless.
+            return any(result.added for result in results)
+
+        self.update(mutate)
+        return tuple(results)
 
     def edit(
         self,

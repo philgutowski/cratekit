@@ -34,6 +34,67 @@ class HarvestReport:
     dropped: tuple[HarvestDrop, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class Decided:
+    """The harvest's items on the queue, split by what a person decided.
+
+    ``accepted`` pairs each accepted item's identifier with the label name it
+    names. ``nameless`` is the accepted items that name no label at all, kept
+    so they are reported rather than skipped. An item whose stored verdict this
+    build cannot read counts as OPEN, the direction ``review`` argues for
+    everywhere: undecided rather than decided the wrong way.
+    """
+
+    accepted: tuple[tuple[str, str], ...]
+    nameless: tuple[str, ...]
+    rejected: int
+    still_open: int
+
+
+def _text(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
+
+
+def decided(store: review.ReviewStore) -> Decided:
+    """Every harvested label on the queue, in queue order, split by verdict.
+
+    The name is read from the item's IDENTITY before its payload, as
+    ``label approved`` reads a release: the identity is what harvest keyed the
+    item on, and an item that arrived through ``review import`` carries none,
+    so the payload's copy is what is left.
+    """
+    page = review.list_items(
+        store,
+        queue=str(Queue.LABEL_RELEASE),
+        kinds=(KIND,),
+        include_resolved=True,
+        limit=None,
+    )
+    accepted: list[tuple[str, str]] = []
+    nameless: list[str] = []
+    rejected = still_open = 0
+    for item in page.items:
+        if item.verdict is review.Verdict.ACCEPTED:
+            identity = review.identity_of(store, item.item_id) or {}
+            name = _text(identity.get("name")) or _text(item.payload.get("name"))
+            if name is None:
+                nameless.append(item.item_id)
+            else:
+                accepted.append((item.item_id, name))
+        elif item.verdict is review.Verdict.REJECTED:
+            rejected += 1
+        else:
+            still_open += 1
+    return Decided(
+        accepted=tuple(accepted),
+        nameless=tuple(nameless),
+        rejected=rejected,
+        still_open=still_open,
+    )
+
+
 def labels_from_copyright(track: Any) -> tuple[str, ...]:
     """Pull a label name off a copyright or label credit, if one is there."""
     text = getattr(track, "copyright", None) or getattr(track, "label", None) or ""
