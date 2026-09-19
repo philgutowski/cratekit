@@ -2,13 +2,13 @@
   "name": "r504-b",
   "pass_kind": "light",
   "branch": "relay/185",
-  "head": "27a22e1",
-  "when": "2026-09-19 17:48 UTC",
+  "head": "2aad62d",
+  "when": "2026-09-19 17:53 UTC",
   "valid": true,
   "invalid_reason": "",
   "baseline_collected": 8696,
   "baseline_exit": 0,
-  "pytest_runs": 13,
+  "pytest_runs": 5,
   "control": {
     "id": "NULL_CONTROL",
     "description": "Automatic control: append a comment line to src/cratekit/intake/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
@@ -204,7 +204,7 @@
       "kind": "mutation",
       "surface": "user",
       "pairs_with": null,
-      "fingerprint": "4fb4e48499713224",
+      "fingerprint": "7b242386d2172734",
       "subset": [
         "tests/intake/test_workers.py",
         "tests/test_acquire_fallback.py",
@@ -217,20 +217,22 @@
         "tests/test_sync_mark.py"
       ],
       "subset_reason": "test files importing cratekit.intake.cli",
-      "status": "refused",
-      "deaths": 0,
-      "collected": 0,
+      "status": "killed",
+      "deaths": 1,
+      "collected": 494,
       "baseline_collected": 494,
       "collect_drift": false,
       "collect_errors": [],
-      "killed": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_hearts_all_withheld_are_not_read_as_an_account_with_none"
+      ],
       "promoted": false,
       "subset_deaths": null,
-      "note": "old text appears 2 times in the target, so the site is ambiguous. Widen the old text with surrounding lines until it is unique.",
-      "runs": 0,
+      "note": "",
+      "runs": 1,
       "head_verified": true,
-      "old": "                outcome=Outcome.NO_OP,\n                warnings=warnings,\n            )",
-      "new": "                outcome=Outcome.NO_OP,\n            )"
+      "old": "                data=_no_op(\"no-tracks\", source=reference, **extra),\n                outcome=Outcome.NO_OP,\n                warnings=warnings,\n            )",
+      "new": "                data=_no_op(\"no-tracks\", source=reference, **extra),\n                outcome=Outcome.NO_OP,\n            )"
     },
     {
       "id": "B6_warning_reworded",
