@@ -4,7 +4,48 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-432, issue #180, `relay/180`, 2026-09-19.**
+**Last merged: R-424, issue #111, `relay/111`, 2026-09-19.**
+`crate sync favorites` now declares only the remote heart it performs, which
+CLOSES R-424. The honest report arm, as the card's recorded decision directed:
+the local write was NOT built. The entry declares `writes={"remote"}` alone.
+`db_tree` and `db_metadata` stood for a colour, a Favorite tag and a playlist
+membership the handler never writes, since it passes `colors=None` on every
+path; there is no document beside the export, so no `xml`; and the outbound
+write ledger is not `files`, because `export.playlist` writes that same ledger
+through the same shell and has always declared `remote` alone. The cloud sync
+decision went with the database surfaces, and so did `rekordbox.closed` and
+`rekordbox.pins`, driven: a sweep hearts both rows with rekordbox and its agent
+reported running and with `rb_writer.open_db` replaced by a raise.
+`library.mounted` stays, because the ledger is library scoped. The summary no
+longer says "both ways", the inbound half being `crate intake playlist
+favorites` since U70. The always empty `colored` key is gone from each item
+report; in its place a standing warning, `favorites-local-write-unbound`,
+spelled once in `favorites/cli.py` and carried by the verb's queueing branch,
+its resume through `shell.resume`'s new `standing` argument, and
+`sync/cli._plan_favorites`. It is a warning because the default renderer prints
+a verb's outcome, its warnings and its run id and nothing of its payload.
+`docs/GUIDE.md` and the shipped `sync-and-publish` skill asset both promised
+the colour, the tag and the membership; both now describe the outbound half,
+and the asset gained the `--export` its example always needed.
+**The code review raised five findings, all five applied**, the largest that
+both documents claimed every pass reports the sentence while `crate job resume`
+spawns the child detached and its report goes to the job log. Collected
+**8865** and 1 skipped, 10 of them new, two driving the DEFAULT human renderer
+rather than the json helper the rest of `tests/test_outbound_workers.py` uses.
+Mutation table `docs/mutation/r424.md`: 12 rows, the author's own, 11 killed,
+null control zero, 2 considered rows logged as dropped and NOT MEASURED. The
+one zero was the GUARD's fault and not the filter's, a `sync all` test that
+raised before it reached the loop it asserted over; repaired, re-measured by
+hand, it kills. One row reported 20 kills that are not its own, all in
+`tests/test_rebuild.py`, the parallel flake, recorded as a third sighting on
+R-520; that row is really a maintainer facing zero. The learning is filed under
+`docs/solutions/workflow-issues/`.
+Filed: R-536 and R-537. Neither meets the board bar. R-536 is a person's to
+decide: `destructive=True` stays on a verb that writes only an add-only remote
+surface, and `export.playlist`, its sibling, has never declared it.
+**Main's highest residual number is R-537.**
+
+**The session before: R-432, issue #180, `relay/180`, 2026-09-19.**
 Two landings under one batch name can no longer take each other's files or
 intake file, which CLOSES R-432. `crate intake land` holds
 `landing.batch_lock` across the whole of `landing.apply`, after the gate and

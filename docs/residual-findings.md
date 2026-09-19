@@ -21432,6 +21432,20 @@ zero. Four full suite runs on that branch outside the driver were green. The
 error text was not captured, since the driver records node ids and not
 tracebacks. So the family is wider than `tests/test_deletion.py`.
 
+**Seen a third time 2026-09-19, on `relay/111`, in the same file as the
+second.** Mutation table `r424`'s `B4_warning_copied` row is a promoted zero:
+it killed nothing on its own subset, and its full suite run reported 20 kills,
+every one of them in `tests/test_rebuild.py`, which that branch does not touch
+and which has no path to the line the row mutated. This time the null control
+did NOT fire, so the batch was not declared invalid and the number was
+reported as that row's. Driven afterwards: the same mutation applied to the
+same site with `PYTHONDONTWRITEBYTECODE=1` set leaves `tests/test_rebuild.py`
+passing 103, and so does the restored file, and the branch's own full battery
+is green at 8865. So this family can also present as a plausible looking death
+count on an unrelated row rather than as a refused batch, which is the worse
+shape: a batch that refuses is noticed, and a row that reports 20 deaths on a
+line nothing guards reads as coverage.
+
 **Seen a third time 2026-09-19 on `relay/180`.** The null control of mutation
 table `r432-a` killed 20 on its full suite run, every one in
 `tests/test_rebuild.py`, which that branch does not touch, and the batch was
