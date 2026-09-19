@@ -98,7 +98,8 @@ def _checked_seeds(seed_artists: Sequence[str]) -> tuple[str, ...]:
     return tuple(check_seed(seed) for seed in seed_artists)
 
 
-def _folded(name: str) -> str:
+def _name_key(name: str) -> str:
+    """NFC then casefold. Not ``rbxml._folded``, which is NFC and never case."""
     return unicodedata.normalize("NFC", name.strip()).casefold()
 
 
@@ -154,9 +155,9 @@ class Registry:
         return self.labels.get(label_id)
 
     def by_name(self, name: str) -> LabelEntry | None:
-        wanted = _folded(name)
+        wanted = _name_key(name)
         for entry in self.labels.values():
-            if _folded(entry.name) == wanted:
+            if _name_key(entry.name) == wanted:
                 return entry
         return None
 
