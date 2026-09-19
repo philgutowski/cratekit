@@ -124,6 +124,50 @@ class ReleaseUnresolvable(LookupError):
     """
 
 
+class HeartsShortfall(Exception):
+    """The hearts listing came back shorter than the account declares (R-504).
+
+    DECLARED ON THE SEAM, because it is the one failure of
+    :meth:`Catalogue.favourite_tracks` that still carries an answer. The
+    provider counts hearts it will not serve and leaves them out of every page,
+    so the listing can end where the count says and still hold fewer rows. The
+    rows that did come back are real hearts and ride on the exception, so a
+    caller that knows this class lists them and reports the difference.
+
+    AN EXCEPTION AND NOT A SECOND RETURN SHAPE, so a caller that does not know
+    this class fails closed. ``label.cli.favourite_tracks_or_refuse`` refuses
+    anything it does not recognise as an unreadable listing, which is what a
+    short listing passed off as the account would otherwise be.
+
+    Which hearts were withheld is not known and is not guessed at. Only the
+    count is.
+    """
+
+    def __init__(self, rows: Any, declared: int) -> None:
+        self.rows = tuple(rows)
+        self.declared = declared
+        super().__init__(self.summary())
+
+    @property
+    def listed(self) -> int:
+        return len(self.rows)
+
+    @property
+    def withheld(self) -> int:
+        return self.declared - self.listed
+
+    def summary(self) -> str:
+        """The three numbers as a person reads them, one spelling everywhere."""
+        return (
+            f"{self.declared} declared, {self.listed} listed, "
+            f"{self.withheld} withheld by the provider"
+        )
+
+    def block(self) -> dict[str, int]:
+        """The three numbers as a report carries them."""
+        return {"declared": self.declared, "listed": self.listed, "withheld": self.withheld}
+
+
 class Catalogue(Protocol):
     """Every provider read the product makes through this seam, and nothing more.
 
@@ -207,11 +251,17 @@ class Catalogue(Protocol):
         Consumed by ``intake.cli`` for the reserved reference ``favorites``,
         which resolves the account's hearts against the library the way a
         playlist's tracks are resolved. The rows are the shape
-        ``match.read_tidal_tracks`` reads. RAISES when the listing cannot be read
-        in full, on the same contract as the reads above: a short listing would
-        report hearts the library lacks as absent from the account, so no page
-        shape may end it early, and an empty tuple means the account has no
-        hearts, never that nobody could ask.
+        ``match.read_tidal_tracks`` reads. RAISES when the listing cannot be read,
+        on the same contract as the reads above: no page shape may end it early,
+        and an empty tuple means the account has no hearts, never that nobody
+        could ask.
+
+        WHAT THE READ CAN PROMISE is every heart the provider serves, and that
+        is not always every heart the account holds. The provider counts hearts
+        it will not serve and leaves them out of the pages. When the rows come
+        back fewer than that count, this RAISES :class:`HeartsShortfall` carrying
+        the rows and the count, so the difference is reported rather than passed
+        off as the account. A tuple returned is a listing that reached the count.
         """
 
     def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
@@ -370,6 +420,7 @@ __all__ = [
     "ADAPTER_MODULE",
     "AccountPlaylist",
     "Catalogue",
+    "HeartsShortfall",
     "ReleaseUnresolvable",
     "TRACK_SEARCH_PAGE",
     "Unread",

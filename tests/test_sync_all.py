@@ -1305,7 +1305,7 @@ def test_an_abort_still_queues_the_hearts_listing_under_the_shared_run(
     assert job.payload[intake_cli.SOURCE] == intake_cli.FAVORITES
     # EXACTLY WHAT ``crate intake playlist favorites`` QUEUES, read through the
     # same listing path, so the worker cannot tell the two apart.
-    assert job.payload[intake_cli.TRACKS] == intake_cli.list_playlist(fake, intake_cli.FAVORITES)
+    assert job.payload[intake_cli.TRACKS] == intake_cli.list_favorites(fake)[0]
     assert len(_items(job.job_id)) == 3
 
     summary = passed["data"]["summary"]
@@ -1316,6 +1316,7 @@ def test_an_abort_still_queues_the_hearts_listing_under_the_shared_run(
         "job_ids": [job.job_id],
         "not_queued": None,
         "open_jobs": [],
+        "shortfall": None,
     }
     assert ("favorites", job.job_id, INTAKE_PLAYLIST) in {
         (j["source"], j["job_id"], j["handler_key"]) for j in summary["jobs"]
@@ -1455,6 +1456,77 @@ def test_an_account_with_no_hearts_queues_nothing_for_them(installed, monkeypatc
     assert block["hearts"] == 0 and block["not_queued"] == "empty"
     check = _inbound_check(passed)
     assert check["status"] == "info" and "no hearts" in check["detail"]
+
+
+class ShortHearts(FakeCatalogue):
+    """The seam answering as the adapter does when the provider counted hearts
+    it did not serve (R-504): the rows it served, and the count."""
+
+    def __init__(self, rows: list[Track], *, declared: int) -> None:
+        super().__init__(hearts=rows)
+        self.declared = declared
+
+    def favourite_tracks(self):
+        self.heart_listings += 1
+        raise catalogue.HeartsShortfall(self.hearts, self.declared)
+
+
+def test_a_short_hearts_listing_is_queued_and_fails_the_inbound_check_by_count(
+    installed, monkeypatch
+):
+    del installed
+    register(LABELS[0])
+    bind_hearts(monkeypatch, ShortHearts(_hearts("301", "302", "303"), declared=5))
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    (job,) = _hearts_jobs()
+    assert len(_items(job.job_id)) == 3
+    block = _inbound(passed)
+    assert block["hearts"] == 3 and block["not_queued"] is None
+    assert block["shortfall"] == {"declared": 5, "listed": 3, "withheld": 2}
+    check = _inbound_check(passed)
+    assert check["status"] == "fail"
+    assert job.job_id in check["detail"]
+    assert "5 declared, 3 listed, 2 withheld by the provider" in check["detail"]
+
+
+def test_hearts_all_withheld_are_not_reported_as_an_account_with_none(installed, monkeypatch):
+    del installed
+    register(LABELS[0])
+    bind_hearts(monkeypatch, ShortHearts([], declared=4))
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert _hearts_jobs() == []
+    block = _inbound(passed)
+    assert block["not_queued"] == "empty"
+    assert block["shortfall"] == {"declared": 4, "listed": 0, "withheld": 4}
+    check = _inbound_check(passed)
+    assert check["status"] == "fail"
+    assert "no hearts" not in check["detail"]
+    assert "4 declared, 0 listed, 4 withheld by the provider" in check["detail"]
+
+
+def test_a_complete_hearts_listing_carries_no_shortfall(installed, monkeypatch):
+    del installed
+    register(LABELS[0])
+    bind_hearts(monkeypatch)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert _inbound(passed)["shortfall"] is None
+    check = _inbound_check(passed)
+    assert check["status"] == "ok" and "withheld" not in check["detail"]
+
+
+def test_the_human_output_prints_the_inbound_shortfall(installed, monkeypatch):
+    del installed
+    register(LABELS[0])
+    bind_hearts(monkeypatch, ShortHearts(_hearts("301", "302", "303"), declared=5))
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["sync", "all"], stdout=out, stderr=err)
+    text = out.getvalue() + err.getvalue()
+    assert code == int(ExitCode.OK), text
+    assert "[FAIL] sync.favorites.inbound:" in text
+    assert "5 declared, 3 listed, 2 withheld by the provider" in text
 
 
 def test_an_open_hearts_job_is_not_queued_twice(installed, monkeypatch):

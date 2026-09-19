@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.cli.output import Envelope
 from cratekit.core import config, jobs, profiles
@@ -55,6 +55,11 @@ from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.outbound import source as outbound_source
 from cratekit.sync import sources
+
+if TYPE_CHECKING:
+    # A NAME FOR THE ANNOTATION ONLY, so the label package is still imported
+    # when the profile enables a source that reads it and not before.
+    from cratekit.label.catalogue import HeartsShortfall
 
 #: The gate this verb declares. Looked up on ``ctx.entry.gates`` by this name,
 #: since the registry that declares it is above this layer.
@@ -136,6 +141,9 @@ class _Inbound:
     hearts: int | None = None
     #: The open jobs already listing the hearts, when that is why none was queued.
     open_jobs: tuple[str, ...] = ()
+    #: The count the provider declared and did not serve, when the listing came
+    #: back short of it (R-504). None for a listing that reached its count.
+    shortfall: HeartsShortfall | None = None
 
     def block(self) -> dict[str, Any]:
         return {
@@ -144,6 +152,7 @@ class _Inbound:
             "job_ids": [job.job_id for job in self.filed],
             "not_queued": self.not_queued,
             "open_jobs": list(self.open_jobs),
+            "shortfall": self.shortfall.block() if self.shortfall is not None else None,
         }
 
 
@@ -235,11 +244,12 @@ def _plan_inbound(spec: sources.SourceSpec, cfg: config.Config) -> _Inbound:
         if in_flight:
             inbound.not_queued, inbound.open_jobs = playlists.Excluded.IN_FLIGHT, in_flight
             return inbound
-        tracks = intake_cli.list_playlist(catalogue.resolve(cfg), intake_cli.FAVORITES)
+        tracks, short = intake_cli.list_favorites(catalogue.resolve(cfg))
     except CratekitError as exc:
         inbound.refused, inbound.not_queued = exc.cause, exc.cause.reason
         return inbound
     inbound.hearts = len(tracks)
+    inbound.shortfall = short
     if not tracks:
         inbound.not_queued = playlists.Excluded.EMPTY
         return inbound
@@ -495,6 +505,18 @@ def _inbound_check(plan: _Plan, inbound: _Inbound) -> dict[str, Any]:
     else:
         check["status"] = "info"
         check["detail"] = "not queued: the account lists no hearts"
+    short = inbound.shortfall
+    if short is not None:
+        # A SHORT LISTING FAILS THE CHECK WHATEVER WAS QUEUED (R-504). The job
+        # resolves the rows that came back as if they were the account, and the
+        # withheld hearts are in no report it makes, so this row is the one
+        # place a person is told the listing is not the account.
+        check["status"] = "fail"
+        if inbound.not_queued == playlists.Excluded.EMPTY:
+            check["detail"] = "not queued: the provider served none of the account's hearts"
+        check["detail"] += (
+            f"; the listing came back short, {short.summary()}, which does not say which"
+        )
     return check
 
 
