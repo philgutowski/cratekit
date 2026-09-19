@@ -296,6 +296,30 @@ def _out_dir(ctx, subject: Mapping[str, Any]) -> Path:
     return out
 
 
+def _written_or_refuse(out: Path, name: str, rows, provenance, subject, handed_on=()):
+    """The emitter's write, with both of its failures as this verb's refusal.
+
+    A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL, as it is
+    ``label approved``'s. The emitter converts what it reads and lets a failed
+    write through, and left alone that reaches a person as an internal error
+    telling them to report a defect over a folder they cannot write to.
+    """
+    try:
+        return listdoc.write(out, name, rows, provenance, handed_on=handed_on)
+    except listdoc.ListDocRefused as exc:
+        raise _unusable(
+            str(exc), "move the file aside or name another folder with --out", **subject
+        ) from exc
+    except OSError as exc:
+        raise _unusable(
+            f"the list could not be written ({type(exc).__name__}: "
+            f"{exc.strerror or exc}); nothing acquire download could read was left behind",
+            "name another folder with --out, or make this one writable",
+            path=str(exc.filename or ""),
+            **subject,
+        ) from exc
+
+
 def _check(key: str, status: str, detail: str) -> dict[str, Any]:
     return {"key": f"intake.missing.{key}", "title": key, "status": status,
             "detail": detail, "remedy": None}
@@ -580,19 +604,14 @@ def _listed(
                 unwritable.append((row, why))
                 continue
             writable.append(listdoc.HandedOn(row, why.reason))
-        try:
-            written = listdoc.write(
-                out,
-                name,
-                listed_rows,
-                _provenance(listed_rows, [origins[n] for n in kept]),
-                handed_on=writable,
-            )
-        except listdoc.ListDocRefused as exc:
-            raise _unusable(
-                str(exc), "move the file aside or name another folder with --out",
-                **subject,
-            ) from exc
+        written = _written_or_refuse(
+            out,
+            name,
+            listed_rows,
+            _provenance(listed_rows, [origins[n] for n in kept]),
+            subject,
+            handed_on=writable,
+        )
     listed = len(written.listed)
     unlisted = len(handed)
     in_file = unlisted - len(unwritable)
@@ -913,12 +932,9 @@ def _missing_for_list(ctx, given: str) -> Envelope:
             str(row.ref).strip(): listdoc.Provenance(source=LIST_SOURCE, source_ref=str(path))
             for row in rows
         }
-        try:
-            written = listdoc.write(out, found_name(path, rows, provenance), rows, provenance)
-        except listdoc.ListDocRefused as exc:
-            raise _unusable(
-                str(exc), "move the file aside or name another folder with --out", **subject
-            ) from exc
+        written = _written_or_refuse(
+            out, found_name(path, rows, provenance), rows, provenance, subject
+        )
     listed = len(written.listed)
 
     def of(*states: str) -> list[candidates.Proposal]:

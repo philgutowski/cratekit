@@ -701,6 +701,40 @@ def test_the_found_list_is_named_for_its_input(given, named):
     assert re.fullmatch(re.escape(named) + r"-[0-9a-f]{12}", name), name
 
 
+def test_a_folder_that_cannot_be_written_is_a_refusal_and_not_an_internal_error(
+    cfg, library, tmp_path, monkeypatch
+):
+    path = tracklist(tmp_path, "Nova Reef - Tide")
+    bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)]}))
+    out = tmp_path / "sealed"
+    out.mkdir()
+    out.chmod(0o500)
+    try:
+        code, envelope = found(path, "--out", str(out))
+    finally:
+        out.chmod(0o700)
+
+    # A PERMISSION FAILURE KEEPS ITS OWN SLUG, as it does under label approved.
+    assert code != int(ExitCode.INTERNAL), envelope
+    assert envelope["cause"]["reason"] == "path-permission-denied"
+
+
+def test_a_disk_that_refuses_the_write_is_this_verbs_refusal(cfg, library, tmp_path, monkeypatch):
+    path = tracklist(tmp_path, "Nova Reef - Tide")
+    bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)]}))
+
+    def full(*_args, **_kwargs):
+        raise OSError(28, "No space left on device", str(tmp_path / "x.list.json"))
+
+    monkeypatch.setattr(listdoc, "write", full)
+
+    code, envelope = found(path)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert "could not be written" in envelope["cause"]["message"]
+
+
 def test_skip_failed_means_nothing_for_a_list_and_is_refused(cfg, library, tmp_path):
     code, envelope = found(tracklist(tmp_path, "Aurora Bloom - Sun Path"), "--skip-failed")
 
