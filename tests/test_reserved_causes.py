@@ -5340,7 +5340,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # favorites` adds when the hearts listing came back short of the count the
     # account declares, naming the three numbers. The listing still queues,
     # so nothing refuses with it.
-    assert (len(literals), len(literals - set(causes))) == (450, 290), (
+    # Re-pinned on the residual finding "A deleted track the tombstone consult
+    # cannot reach is listed for download", 2026-09-19: 450 to 451 distinct, 290
+    # to 291 non-keys. ONE literal joined and NOTHING left, differenced over the
+    # branch's diff of `src` against `main` with `git grep` on `main` for it. It
+    # is not a cause: version-uncredited is the KIND the deletion pass records
+    # the companion of a credited tombstone under, spelled once in
+    # `core.tombstone` and once in `acquire.match`. Nothing refuses with it.
+    assert (len(literals), len(literals - set(causes))) == (451, 291), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
