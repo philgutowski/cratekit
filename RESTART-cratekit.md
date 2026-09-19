@@ -28,15 +28,18 @@ tag refuses rather than writing inside it. Still no caller in `src`, and that
 is U77's work. The unit's `/code-review` drove one finding and it is fixed: a
 new year was placed by the caller's own list alone, so the folder holding 2025
 and the caller naming 2026 and 2024 wrote 2025, 2026, 2024. The hunt afterward
-found the same first of two locate in the five other writers, R-454. 16 new test
-cases, 15 in `tests/test_rbxml.py` and 1 in `tests/test_xml_splice_golden.py`.
+found the same first of two locate in the five other writers, R-454. 15 new test
+cases, 14 in `tests/test_rbxml.py` and 1 in `tests/test_xml_splice_golden.py`.
 The rerun test in `tests/test_tree_writer.py` now says merged. Mutation tables
 `docs/mutation/u76-a.md`, `u76-b.md` and `u76-zeros.md`, 25 rows, 23 killed on
 the first run and both zeros killed by a new test each, read in
 `u76-notes.md`. R-129 is narrowed to its snapshot time reading. R-453 and R-454
 are filed, and neither is on the board: R-453 closes only at an attended
 sitting, and R-454 was not driven. **Owed to an attended sitting:** R-453's two
-imports into a scratch copy. **Main's highest residual number is R-454.**
+imports into a scratch copy. Battery on the recorded tree: ruff clean,
+`scan_repo.py` exit 0, pytest 8122 passed and 1 skipped in 58 seconds, and no
+test of this unit's among the ten slowest. **Main's highest residual number is
+R-454.**
 
 **The session before: U75, issue #120, `relay/120`, 2026-09-19.**
 `crate label approved` turns the label releases accepted in review into the
