@@ -186,6 +186,20 @@ def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:
             detail={"root": str(root)},
         )
     staging = Path(cfg.paths.download_staging).resolve()
+    source = folder.resolve()
+    in_staging = source == staging or staging in source.parents
+    owned = root.resolve()
+    if not in_staging and (source == owned or owned in source.parents):
+        # A folder the library already owns is referenced by the collection,
+        # and moving it strands every one of those rows. Staging configured
+        # inside the library root is still staging, so it is let through.
+        raise refuse(
+            "intake-list-unusable",
+            f"{folder} is inside the library at {root} and outside download "
+            f"staging, so its files are already owned and nothing was moved",
+            origin=_ORIGIN,
+            detail={"folder": str(folder), "root": str(root)},
+        )
     resolved = target.resolve()
     if resolved == staging or staging in resolved.parents:
         raise refuse(
@@ -256,6 +270,28 @@ def _unplaceable(path: Path) -> Refused | None:
     )
 
 
+def _occupied(item: Path, final: Path) -> Refused | None:
+    """A target that already holds something, which is never replaced."""
+    if not (final.exists() or final.is_symlink()):
+        return None
+    return Refused(
+        path=item,
+        reason="output-exists",
+        sentence=(
+            f"{final} already exists, so {item.name} was left in staging and "
+            f"the library copy was not replaced"
+        ),
+    )
+
+
+def _remove_if_empty(folder: Path) -> None:
+    """Take back a batch folder this call made and put nothing in."""
+    try:
+        folder.rmdir()
+    except OSError:
+        pass
+
+
 def _moved_detail(moved: list[Moved], refused: list[Refused]) -> dict:
     return {
         "moved": [str(item.target) for item in moved],
@@ -311,31 +347,40 @@ def apply(
     refused: list[Refused] = []
     movable: list[Path] = []
     for item in plan.items:
-        blocked = _unplaceable(item)
+        blocked = _unplaceable(item) or _occupied(item, target / item.name)
         if blocked is not None:
             refused.append(blocked)
         else:
             movable.append(item)
+    if not movable:
+        # Before the batch folder is made, so a batch where nothing lands
+        # leaves nothing in the library, not even an empty folder.
+        raise refuse(
+            "intake-list-unusable",
+            f"no file in {plan.folder} could land, so nothing was moved and no "
+            f"intake file was written: "
+            + "; ".join(entry.sentence for entry in refused),
+            origin=_ORIGIN,
+            detail=_moved_detail([], refused),
+        )
 
+    made = not target.exists()
     target.mkdir(parents=True, exist_ok=True)
     moved: list[Moved] = []
     for item in movable:
         final = target / item.name
-        if final.exists() or final.is_symlink():
-            refused.append(
-                Refused(
-                    path=item,
-                    reason="output-exists",
-                    sentence=(
-                        f"{final} already exists, so {item.name} was left in "
-                        f"staging and the library copy was not replaced"
-                    ),
-                )
-            )
+        # Asked again at the move, not only in the pass above. Between the
+        # two a file of that name can arrive, and os.replace would take its
+        # place without a word. The window left is residual R-432.
+        occupied = _occupied(item, final)
+        if occupied is not None:
+            refused.append(occupied)
             continue
         try:
             os.replace(item, final)
         except OSError as exc:
+            if made and not moved:
+                _remove_if_empty(target)
             raise refuse(
                 _reason_for(exc),
                 f"{item.name} could not be moved to {final} ({exc.strerror or exc}); "
@@ -346,9 +391,12 @@ def apply(
         moved.append(Moved(source=item, target=final))
 
     if not moved:
+        if made:
+            _remove_if_empty(target)
         raise refuse(
             "intake-list-unusable",
-            f"no file in {plan.folder} could land, so no intake file was written: "
+            f"no file in {plan.folder} could land, so nothing was moved and no "
+            f"intake file was written: "
             + "; ".join(entry.sentence for entry in refused),
             origin=_ORIGIN,
             detail=_moved_detail(moved, refused),

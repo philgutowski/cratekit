@@ -493,3 +493,111 @@ def test_a_refusal_from_place_files_keeps_its_own_reason(
     assert cause.reason == "intake-list-unusable"
     assert cause.inner is not None
     assert "A.flac" in cause.message
+
+
+def test_a_batch_where_nothing_lands_leaves_no_batch_folder(
+    cfg, silence, export, monkeypatch
+):
+    """The review's shape: every file refused, and the batch folder did not
+    exist before the call. The earlier test made that folder itself, so it
+    could never see one left behind."""
+    _stage(cfg, silence, "Nowhere.flac", genre="Nowhere Genre")
+    monkeypatch.setattr(ingest, "decide_placement", lambda meta: None)
+    target = Path(cfg.library.root) / cfg.library.music_dir / BATCH
+
+    with pytest.raises(CratekitError) as excinfo:
+        landing.apply(
+            landing.plan(_staging(cfg), cfg, BATCH),
+            cfg=cfg,
+            export=export,
+            destination=_destination(cfg),
+        )
+
+    assert excinfo.value.cause.reason == "intake-list-unusable"
+    assert "crate tag folder" in excinfo.value.cause.message
+    assert not target.exists()
+    assert not _destination(cfg).exists()
+
+
+def test_a_first_move_that_fails_leaves_no_batch_folder(
+    cfg, silence, export, monkeypatch
+):
+    _stage(cfg, silence, "A.flac")
+    planned = landing.plan(_staging(cfg), cfg, BATCH)
+
+    def replace(src, _dst):
+        raise PermissionError(13, "Permission denied", str(src))
+
+    monkeypatch.setattr(landing.os, "replace", replace)
+    with pytest.raises(CratekitError) as excinfo:
+        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
+
+    assert excinfo.value.cause.detail["moved"] == []
+    assert "nothing was moved" in excinfo.value.cause.message
+    assert not (Path(cfg.library.root) / cfg.library.music_dir / BATCH).exists()
+
+
+def test_a_file_arriving_between_the_passes_is_not_replaced(
+    cfg, silence, export, monkeypatch
+):
+    """The check is asked again at the move. A file of the same name that
+    appears after the first pass is refused, not overwritten."""
+    _stage(cfg, silence, "A.flac")
+    _stage(cfg, silence, "B.flac")
+    target = Path(cfg.library.root) / cfg.library.music_dir / BATCH
+    real = os.replace
+
+    def replace(src, dst):
+        result = real(src, dst)
+        if Path(src).name == "A.flac":
+            (target / "B.flac").write_bytes(b"arrived in between")
+        return result
+
+    monkeypatch.setattr(landing.os, "replace", replace)
+    result = landing.apply(
+        landing.plan(_staging(cfg), cfg, BATCH),
+        cfg=cfg,
+        export=export,
+        destination=_destination(cfg),
+    )
+
+    assert (target / "B.flac").read_bytes() == b"arrived in between"
+    assert [entry.path.name for entry in result.refused] == ["B.flac"]
+    assert (_staging(cfg) / "B.flac").is_file()
+
+
+def test_a_folder_the_library_already_owns_is_refused(cfg, silence, export):
+    owned = Path(cfg.library.root) / cfg.library.music_dir / "OldBatch"
+    owned.mkdir(parents=True)
+    kept = owned / "Owned.flac"
+    shutil.copyfile(silence, kept)
+
+    with pytest.raises(CratekitError) as excinfo:
+        landing.apply(
+            landing.plan(owned, cfg, BATCH),
+            cfg=cfg,
+            export=export,
+            destination=_destination(cfg),
+        )
+
+    assert excinfo.value.cause.reason == "intake-list-unusable"
+    assert "already owned" in excinfo.value.cause.message
+    assert kept.is_file()
+    assert not (owned.parent / BATCH).exists()
+
+
+def test_staging_configured_inside_the_library_still_lands(cfg, silence, export):
+    downloads = Path(cfg.library.root) / "Downloads"
+    downloads.mkdir()
+    inside = replace(cfg, paths=replace(cfg.paths, download_staging=downloads))
+    shutil.copyfile(silence, downloads / "One.flac")
+
+    result = landing.apply(
+        landing.plan(downloads, inside, BATCH),
+        cfg=inside,
+        export=export,
+        destination=_destination(cfg),
+    )
+
+    assert [item.target.name for item in result.moved] == ["One.flac"]
+    assert not (downloads / "One.flac").exists()
