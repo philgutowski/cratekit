@@ -1,0 +1,108 @@
+name = "u99-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_parser_limit_floor"
+description = "positive_limit: accept zero at the parser, so --track-limit 0 reaches the store"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''    if value < 1:
+        raise ValueError(f"{text!r} is not a positive track limit")'''
+new = '''    if value < 0:
+        raise ValueError(f"{text!r} is not a positive track limit")'''
+
+[[rows]]
+id = "B2_field_flag_guard"
+description = "registry_cmd: drop the refusal of a field flag on list, remove or rename, so it is silently ignored"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''    if action not in ("add", "set") and any(given is not None for given in fields_given):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B3_field_flag_guard_match"
+description = "registry_cmd: leave --match out of the field flag guard, the review's fix round"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''    fields_given = (seeds, track_limit, ctx.args.match)'''
+new = '''    fields_given = (seeds, track_limit)'''
+
+[[rows]]
+id = "B4_set_needs_a_field"
+description = "registry_cmd: drop the refusal of set with no field, so it reports an edit that changed nothing"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''        if ctx.args.match is None and seeds is None and track_limit is None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B5_add_drops_seeds"
+description = "registry_cmd add: pass no seeds to the store, so --seed on add is accepted and never written"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''            seed_artists=tuple(seeds or ()),'''
+new = '''            seed_artists=(),'''
+
+[[rows]]
+id = "B6_add_drops_limit"
+description = "registry_cmd add: pass no track limit to the store, so --track-limit on add is accepted and never written"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''            seed_artists=tuple(seeds or ()),
+            track_limit=track_limit,'''
+new = '''            seed_artists=tuple(seeds or ()),
+            track_limit=None,'''
+
+[[rows]]
+id = "B7_set_drops_seeds"
+description = "registry_cmd set: pass no seeds to edit, so set --seed reports an edit and writes nothing"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''            seed_artists=seeds,
+            track_limit=track_limit,'''
+new = '''            seed_artists=None,
+            track_limit=track_limit,'''
+
+[[rows]]
+id = "B8_list_json_empty"
+description = "registry_cmd list: report an empty summary.labels, so a reader that is not a person sees no fields"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''"labels": _labels_json(held)},'''
+new = '''"labels": []},'''
+
+[[rows]]
+id = "B9_detail_drops_seeds"
+description = "_detail: leave the seeds out of the check detail a person reads"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''        parts.append("seeds " + " | ".join(entry.seed_artists))'''
+new = '''        pass'''
+
+[[dropped]]
+id = "B10_detail_drops_limit"
+description = "_detail: leave the track limit out of the check detail"
+reason = "same guard family as B9, pinned by the same exact detail assertion"
+
+[[dropped]]
+id = "B11_detail_drops_match"
+description = "_detail: leave the match needle out of the check detail"
+reason = "the needle was already settable before this unit; B9 measures the detail assertion"
+
+[[rows]]
+id = "A6r_store_limit_floor"
+description = "check_track_limit: accept zero, measured again after the store level test the A6 zero bought"
+file = "src/cratekit/label/registry.py"
+surface = "maintainer"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''or limit < 1:'''
+new = '''or limit < 0:'''

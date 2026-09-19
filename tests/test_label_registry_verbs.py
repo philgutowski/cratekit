@@ -181,6 +181,25 @@ def test_a_track_limit_below_one_refuses_at_the_parser(installed, limit):
     assert intent_bytes() is None
 
 
+@pytest.mark.parametrize("limit", [0, -1, True])
+def test_the_store_refuses_a_limit_below_one_from_a_python_caller(installed, limit):
+    """The parser guards the verb. This guards the store, which the fourth
+    attended sitting carried 47 labels through directly."""
+    del installed
+    from cratekit.core.cause import CratekitError
+    from cratekit.label import registry as labels
+
+    store = labels.RegistryStore()
+    with pytest.raises(CratekitError) as added:
+        store.add("Kompakt", track_limit=limit)
+    assert added.value.cause.reason == "label-name-invalid"
+    store.add("Kompakt")
+    with pytest.raises(CratekitError) as edited:
+        store.edit("kompakt", track_limit=limit)
+    assert edited.value.cause.reason == "label-name-invalid"
+    assert store.load().by_id("kompakt").track_limit is None
+
+
 def test_set_with_no_field_refuses_rather_than_reporting_an_edit(installed):
     del installed
     ok(["add", "Kompakt", "--track-limit", "40"])
