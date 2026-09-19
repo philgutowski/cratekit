@@ -49,6 +49,7 @@ Layer: modules.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import unicodedata
 from contextlib import contextmanager
@@ -203,7 +204,7 @@ LOCK_KEY = "landing_locks"
 
 
 def lock_key(batch: str) -> str:
-    """The name a batch's lock file goes by, one per FOLDER and not per spelling.
+    """The name a batch's lock file goes by, one per NAME and not per spelling.
 
     ``Deep House`` and ``deep house`` are one folder on the case insensitive
     volumes a library commonly sits on, and so are the composed and decomposed
@@ -219,6 +220,17 @@ def lock_key(batch: str) -> str:
     return hashlib.sha256(folded.encode("utf-8")).hexdigest()
 
 
+def _holder(path: Path) -> str:
+    """Who holds a lock, from what the holder wrote in it. Never the liveness
+    test, which is the kernel's, and a holder caught between taking the lock
+    and writing its name is simply not known."""
+    try:
+        holder = json.loads(path.read_text(encoding="utf-8"))
+        return f"pid {holder['pid']}, since {holder['acquired']}"
+    except (OSError, ValueError, TypeError, KeyError):
+        return "holder unknown"
+
+
 @contextmanager
 def batch_lock(batch: str) -> Iterator[Path]:
     """Hold the one landing per batch name lock, or refuse without waiting.
@@ -232,8 +244,21 @@ def batch_lock(batch: str) -> Iterator[Path]:
     ON THE LOCAL STATE DISK, NOT THE LIBRARY VOLUME, for the reason the state
     entry gives. The primitive is :func:`jobs.driver_lock` and not a second
     one: non blocking, released by the kernel when the holder dies, and never
-    unlinked. A held name is ``job-driver-held``, whose remedy is to wait for
-    the holder, with the batch named here and the holder named in ``inner``.
+    unlinked. A held name is ``job-driver-held``, the existing cause for one
+    holder at a time, said in this engine's words and not the job engine's:
+    a landing has no job and no driver, and the key is a digest nobody typed.
+
+    WAITING IS NOT THE WHOLE REMEDY, so the steps say the rest. A first
+    landing that succeeds leaves an intake file under the name, and the second
+    is then refused by :func:`apply` over that file however long it waited.
+
+    WHAT IT DOES NOT HOLD, each recorded against R-432's closure. The key is
+    the NAME and not the folder, so one name in two libraries on one machine
+    waits on itself, which refuses a landing that was safe and never admits one
+    that was not. Two landings of ONE staging folder under two names are not
+    kept apart. A platform with no ``fcntl`` gets no lock at all, because the
+    primitive proceeds unlocked there. And one small file per batch name stays
+    behind for good, since unlinking a lock file races its live holder.
     """
     key = lock_key(batch)
     root = config.state_path(LOCK_KEY)
@@ -243,16 +268,22 @@ def batch_lock(batch: str) -> Iterator[Path]:
     # under this one, and report it as a second landing.
     try:
         path = lock.__enter__()
-    except jobs.DriverHeld as exc:
+    except jobs.DriverHeld:
+        held = jobs.lock_path(key, root=root)
+        who = _holder(held)
         raise refuse(
             "job-driver-held",
-            f"another landing under the batch name {batch!r} is running, so "
-            f"nothing was moved; two landings into one batch folder can replace "
-            f"each other's files",
+            f"another landing under the batch name {batch!r} is running ({who}), "
+            f"so nothing was moved; two landings into one batch folder can "
+            f"replace each other's files",
+            steps=(
+                "wait for that landing to finish, then run this one again",
+                "if that landing succeeded its intake file now holds the name, "
+                "so land this folder under another --name",
+            ),
             retryable=True,
             origin=_ORIGIN,
-            detail={"batch": batch, "lock": str(jobs.lock_path(key, root=root))},
-            inner=exc.cause,
+            detail={"batch": batch, "lock": str(held), "holder": who},
         ) from None
     try:
         yield path

@@ -658,11 +658,32 @@ def test_a_held_batch_name_refuses_a_second_holder_and_names_the_batch(cfg):
     cause = excinfo.value.cause
     assert cause.reason == "job-driver-held"
     assert cause.retryable is True
-    assert cause.detail == {"batch": BATCH, "lock": str(held)}
+    assert cause.detail["batch"] == BATCH
+    assert cause.detail["lock"] == str(held)
+    assert cause.detail["holder"].startswith(f"pid {os.getpid()}, since ")
     assert BATCH in cause.message
-    # The holder is named by the primitive that knows it, not restated here.
-    assert cause.inner is not None
-    assert f"pid {os.getpid()}" in cause.inner.message
+    assert f"pid {os.getpid()}" in cause.message
+    # Said in this engine's words. A landing has no job and no driver, and the
+    # lock's key is a digest nobody typed.
+    assert cause.inner is None
+    assert "job" not in cause.message
+    assert landing.lock_key(BATCH) not in cause.message
+    # Waiting is half the remedy: a first landing that succeeds keeps the name.
+    assert cause.remediation.remedy is None
+    assert len(cause.remediation.steps) == 2
+    assert "--name" in cause.remediation.steps[1]
+
+
+def test_a_holder_that_has_not_written_its_name_yet_is_unknown(cfg, monkeypatch):
+    """The name inside the file is for the message and is never the liveness
+    test, so a lock held over an empty file still refuses."""
+    with landing.batch_lock(BATCH) as held:
+        held.write_text("", encoding="utf-8")
+        with pytest.raises(CratekitError) as excinfo:
+            with landing.batch_lock(BATCH):
+                raise AssertionError("two holders of one batch name")
+    assert excinfo.value.cause.reason == "job-driver-held"
+    assert excinfo.value.cause.detail["holder"] == "holder unknown"
 
 
 def test_the_batch_lock_is_on_the_state_disk_and_never_under_the_library(cfg):

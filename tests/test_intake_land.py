@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -561,7 +562,9 @@ def test_a_second_landing_under_a_held_batch_name_refuses_and_moves_nothing(
     cause = envelope["cause"]
     assert cause["reason"] == "job-driver-held"
     assert cause["retryable"] is True
-    assert cause["detail"] == {"batch": BATCH, "lock": str(held)}
+    assert cause["detail"]["batch"] == BATCH
+    assert cause["detail"]["lock"] == str(held)
+    assert len(cause["remediation"]["steps"]) == 2
     assert _staged_names(cfg) == ["One.flac", "Two.flac"]
     assert not _music(cfg, BATCH).exists()
     assert not _intake(cfg, BATCH).exists()
@@ -690,6 +693,28 @@ def test_the_lock_is_released_when_the_engine_fails_with_no_refusal(
     assert code == int(ExitCode.PENDING_HUMAN), envelope
 
 
+def test_a_lock_directory_this_account_cannot_write_refuses_by_name_and_moves_nothing(
+    cfg, silence, export
+):
+    """Driven, not argued: the lock is taken before the first move, so a state
+    directory that refuses leaves staging whole, and the dispatcher names the
+    path and the permission instead of an internal error."""
+    _stage(cfg, silence, "One.flac")
+    state = config.installation_state_dir()
+    state.mkdir(parents=True, exist_ok=True)
+    os.chmod(state, 0o500)
+    try:
+        code, envelope = _drive(_answered(export, "--name", BATCH))
+    finally:
+        os.chmod(state, 0o700)
+
+    cause = envelope["cause"]
+    assert cause["reason"] == "path-permission-denied", envelope
+    assert cause["detail"]["path"].endswith("landing_locks")
+    assert _staged_names(cfg) == ["One.flac"]
+    assert not _music(cfg, BATCH).exists()
+
+
 def test_a_landing_under_another_batch_name_lands_while_one_is_held(cfg, silence, export):
     _stage(cfg, silence, "One.flac")
 
@@ -727,7 +752,7 @@ def test_a_landing_in_another_process_refuses_this_one_until_it_ends(cfg, silenc
         code, envelope = _drive(_answered(export, "--name", BATCH))
 
         assert code == int(ExitCode.LIBRARY_BUSY), envelope
-        assert f"pid {holder.pid}" in envelope["cause"]["inner"]["message"]
+        assert f"pid {holder.pid}" in envelope["cause"]["message"]
         assert _staged_names(cfg) == ["One.flac"]
 
         holder.kill()
