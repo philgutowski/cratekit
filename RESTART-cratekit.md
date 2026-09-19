@@ -4,7 +4,35 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U72, issue #117, `relay/117`, 2026-09-18.**
+**Last merged: U73, issue #118, `relay/118`, 2026-09-18.**
+`crate intake missing --run RUN_ID` writes ONE list for a whole `sync all`
+pass, which closes R-403 and records R-130 as superseded. `--job` and `--run`
+are a required exclusive pair, and `--run` writes dest `sync_run`, because the
+dispatcher's global `--run` reads `args.run` to load a gate run and a
+subcommand flag of that name hands it a sync run. The jobs are the intake jobs
+whose payload `run_id` is the run AND whose `library_id` is this library's.
+Any open job refuses the run, naming each with its resume command. A failed or
+cancelled job is named and refuses unless `--skip-failed`, which lists the rest
+and reports the skipped as a failing `intake.missing.skipped` check; a run whose
+every job was skipped, or whose skip leaves nothing listed, refuses rather than
+reading as a no-op. `--skip-failed` with `--job` refuses. Missing rows are
+unioned oldest job first into one `listdoc.write` named `<run without
+colons>_synced`, first source wins, and `listdoc.Provenance` gained
+`source_refs`, written to a manifest entry ONLY when an id came from more than
+one reference, so a single source manifest keeps its earlier bytes and a repeat
+listing is not refused. The output names the download and `intake land --export
+XML --name <run>_synced`. `crate sync all` ends with one `sync.next` info check
+naming `crate intake missing --run RUN_ID` whenever the pass filed an intake
+job, and `summary.next` carries the same command or None. `_append_intake` is
+left unreachable, R-437, maintainer facing and not on the board. Mutation tables
+`docs/mutation/u73.md`, `u73-b.md`, `u73-c.md`, 22 rows, 21 killing, read in
+`u73-notes.md`. `tests/test_reserved_causes.py` did not move: no new kebab
+literal. Owed to an attended sitting: one `sync all` through to a landed
+`_synced` intake file. Battery on the recorded tree: ruff clean, `scan_repo.py`
+exit 0, pytest 7858 passed and 1 skipped in 56 seconds. **Main's highest
+residual number is R-437.**
+
+**The session before: U72, issue #117, `relay/117`, 2026-09-18.**
 `crate intake land [FOLDER] --export XML [--name NAME]` lands a staged batch,
 which closes R-413. It is `src/cratekit/intake/land_cli.py`, registry entry
 `intake.land`, appended at the end of the tuple, `plan/1`, writes `xml` and
