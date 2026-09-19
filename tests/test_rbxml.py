@@ -34,10 +34,11 @@ a memory of them. Every assertion below is now armed.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from cratekit.core.locations import location_to_path, location_url
 from cratekit.write import rbxml
-from tests.xml_fixtures import _no_bare_lf, _routing_xml, _xml_doc
+from tests.xml_fixtures import _fresh_xml, _no_bare_lf, _routing_xml, _xml_doc
 
 # ── escaping ─────────────────────────────────────────────────────────────────
 
@@ -581,6 +582,285 @@ def test_insert_then_remove_round_trips():
     assert bytes(content) != base
     rbxml.remove_folder_node(content, "Progressive House")
     assert bytes(content) == base
+
+
+# ── the catalog writer merges, and refuses a duplicated sibling (R-129) ─────
+
+_LABELS = rbxml.Tree(display="Record Labels")
+
+
+def _labels_doc(children: list[str]) -> bytes:
+    """A document whose catalog tree holds ``children``, lines at their real indent.
+
+    The tree's count is its direct children, the lines opening a node at the
+    label folder's indent, not the lines handed in.
+    """
+    count = sum(1 for line in children if line.startswith("        <NODE"))
+    return _xml_doc(
+        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
+        root_children=[
+            f'      <NODE Name="Record Labels" Type="0" Count="{count}">',
+            *children,
+            "      </NODE>",
+        ],
+    )
+
+
+def _catalog(content: bytes, label: str, pairs) -> tuple[bytes, str | None]:
+    work = bytearray(content)
+    warning = rbxml.insert_catalog_folder(work, label, pairs, tree=_LABELS)
+    return bytes(work), warning
+
+
+def test_a_catalog_written_twice_is_byte_identical_to_written_once():
+    """R-129's failure was a second import doubling every playlist in the folder.
+
+    Both halves of the writer are driven: the first write CREATES the tree, and
+    the second reaches the merge, so the property is the merge's, not the
+    creation path's being skipped.
+    """
+    pairs = [("Kompakt 2025", [1, 2]), ("Kompakt 2024", [3])]
+    once, warning = _catalog(_fresh_xml(), "Kompakt", pairs)
+    assert warning is None
+    assert once.count(rbxml.name_marker("Kompakt")) == 1
+    twice, warning = _catalog(once, "Kompakt", pairs)
+    assert warning is None
+    assert twice == once
+    thrice, _ = _catalog(twice, "Kompakt", list(reversed(pairs)))
+    assert thrice == once, "the order the years arrive in wrote bytes"
+
+
+def test_a_second_write_with_one_new_year_adds_that_playlist_and_nothing_else():
+    """One new playlist, in newest first order, and every other byte as it was."""
+    once, _ = _catalog(
+        _fresh_xml(), "Kompakt", [("Kompakt 2025", [1, 2]), ("Kompakt 2023", [5])]
+    )
+    assert b'<NODE Name="Kompakt" Type="0" Count="2">' in once
+
+    twice, warning = _catalog(
+        once,
+        "Kompakt",
+        [("Kompakt 2025", [1, 2]), ("Kompakt 2024", [3]), ("Kompakt 2023", [5])],
+    )
+    assert warning is None
+    block = (
+        b'          <NODE Name="Kompakt 2024" Type="1" KeyType="0" Entries="1">\r\n'
+        b'            <TRACK Key="3"/>\r\n'
+        b"          </NODE>\r\n"
+    )
+    anchor = b'          <NODE Name="Kompakt 2023"'
+    expected = once.replace(anchor, block + anchor).replace(
+        b'<NODE Name="Kompakt" Type="0" Count="2">', b'<NODE Name="Kompakt" Type="0" Count="3">'
+    )
+    assert twice == expected
+    assert _no_bare_lf(twice)
+
+
+def test_a_new_year_lands_first_or_last_by_the_callers_order():
+    """Newest first holds at both ends, not only between two held years."""
+    once, _ = _catalog(_fresh_xml(), "Kompakt", [("Kompakt 2025", [1])])
+    out, warning = _catalog(
+        once,
+        "Kompakt",
+        [("Kompakt 2026", [9]), ("Kompakt 2025", [1]), ("Kompakt 2022", [4])],
+    )
+    assert warning is None
+    at = [out.find(rbxml.name_marker(f"Kompakt {year}")) for year in (2026, 2025, 2022)]
+    assert -1 not in at and at == sorted(at)
+    assert b'<NODE Name="Kompakt" Type="0" Count="3">' in out
+
+
+def test_track_ids_are_deduplicated_inside_a_playlist():
+    """Against the batch itself, against the members held, and across two pairs.
+
+    A member the playlist already holds stays exactly where it was, including a
+    duplicate the document already carried: a merge that rewrote a person's
+    playlist is the replace this writer stopped doing.
+    """
+    once, _ = _catalog(_fresh_xml(), "Kompakt", [("Kompakt 2025", [1, 1, 2])])
+    assert b'Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">' in once
+    assert once.count(b'<TRACK Key="1"/>') == 1
+
+    twice, warning = _catalog(
+        once, "Kompakt", [("Kompakt 2025", [2, 3, 3]), ("Kompakt 2025", [1, 4])]
+    )
+    assert warning is None
+    assert b'Name="Kompakt 2025" Type="1" KeyType="0" Entries="4">' in twice
+    assert rbxml.name_marker("Kompakt 2025") in twice
+    assert twice.count(rbxml.name_marker("Kompakt 2025")) == 1
+    keys = re.findall(rb'<TRACK Key="(\d+)"/>', twice)
+    assert keys == [b"1", b"2", b"3", b"4"]
+
+    held = _labels_doc(
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="1">',
+            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">',
+            '            <TRACK Key="7"/>',
+            '            <TRACK Key="7"/>',
+            "          </NODE>",
+            "        </NODE>",
+        ]
+    )
+    out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [7, 8])])
+    assert warning is None
+    assert re.findall(rb'<TRACK Key="(\d+)"/>', out) == [b"7", b"7", b"8"]
+    assert b'Entries="3">' in out
+
+
+def test_a_playlist_that_gains_nothing_is_left_byte_identical():
+    held = _labels_doc(
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="1">',
+            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">',
+            '            <TRACK Key="7"/>',
+            "          </NODE>",
+            "        </NODE>",
+        ]
+    )
+    out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [7])])
+    assert warning is None
+    assert out == held
+
+
+def test_a_similarly_named_sibling_folder_is_untouched():
+    """A longer name, and a name differing only by case, are other labels.
+
+    Nothing recorded says rekordbox merges two folders that differ only by case,
+    so neither is merged into: the write creates its own folder and both
+    neighbours keep every byte.
+    """
+    neighbours = [
+        '        <NODE Name="Kompakt Extra" Type="0" Count="1">',
+        '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">',
+        '            <TRACK Key="7"/>',
+        "          </NODE>",
+        "        </NODE>",
+        '        <NODE Name="KOMPAKT" Type="0" Count="1">',
+        '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">',
+        '            <TRACK Key="8"/>',
+        "          </NODE>",
+        "        </NODE>",
+    ]
+    held = _labels_doc(neighbours)
+    out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [1])])
+    assert warning is None
+    kept = "\r\n".join(neighbours).encode()
+    assert kept in out, "a neighbouring folder's bytes changed"
+    assert out.count(rbxml.name_marker("Kompakt")) == 1
+    assert b'<NODE Name="Record Labels" Type="0" Count="3">' in out
+
+
+def test_a_name_drawn_two_ways_in_unicode_is_one_folder():
+    """A composed and a decomposed spelling are the same name, so they merge."""
+    decomposed = unicodedata.normalize("NFD", "Café Records")
+    composed = unicodedata.normalize("NFC", "Café Records")
+    assert decomposed != composed
+    held = _labels_doc(
+        [
+            f'        <NODE Name="{decomposed}" Type="0" Count="1">',
+            f'          <NODE Name="{decomposed} 2025" Type="1" KeyType="0" Entries="1">',
+            '            <TRACK Key="7"/>',
+            "          </NODE>",
+            "        </NODE>",
+        ]
+    )
+    out, warning = _catalog(held, composed, [(f"{composed} 2025", [7, 8])])
+    assert warning is None
+    assert out.count(b'Type="0" Count="1">') == 2, "a second folder was written"
+    assert b'Entries="2">' in out
+    assert composed.encode() not in out, "the held spelling was not kept"
+
+
+def test_self_closed_folder_and_playlist_are_merged_into():
+    """rekordbox exports a childless node self closed, with no body to write into."""
+    held = _labels_doc(
+        ['        <NODE Name="Kompakt" Type="0" Count="0"/>'],
+    )
+    out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [1])])
+    assert warning is None
+    assert out.count(rbxml.name_marker("Kompakt")) == 1
+    assert (
+        b'        <NODE Name="Kompakt" Type="0" Count="1">\r\n'
+        b'          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">\r\n'
+        b'            <TRACK Key="1"/>\r\n'
+        b"          </NODE>\r\n"
+        b"        </NODE>\r\n"
+    ) in out
+    assert _no_bare_lf(out)
+
+    empty = _labels_doc(
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="1">',
+            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="0"/>',
+            "        </NODE>",
+        ]
+    )
+    out, warning = _catalog(empty, "Kompakt", [("Kompakt 2025", [1])])
+    assert warning is None
+    assert (
+        b'          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">\r\n'
+        b'            <TRACK Key="1"/>\r\n'
+        b"          </NODE>\r\n"
+    ) in out
+    assert _no_bare_lf(out)
+
+
+def test_two_siblings_of_one_name_refuse_and_write_nothing():
+    """The fourth answer, at each of the three levels the writer reaches.
+
+    Merging into the first of two would leave the second standing in a document
+    rekordbox then doubles again on import, which is how 3,072 copies happened.
+    """
+    two_folders = _labels_doc(
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="0"/>',
+            '        <NODE Name="Kompakt" Type="0" Count="0"/>',
+        ]
+    )
+    two_playlists = _labels_doc(
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="2">',
+            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="0"/>',
+            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="0"/>',
+            "        </NODE>",
+        ]
+    )
+    two_trees = _xml_doc(
+        collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
+        root_children=[
+            '      <NODE Name="Record Labels" Type="0" Count="0"/>',
+            '      <NODE Name="Record Labels" Type="0" Count="0"/>',
+        ],
+    )
+    for document, what in (
+        (two_folders, "folders named 'Kompakt'"),
+        (two_playlists, "playlists named 'Kompakt 2025'"),
+        (two_trees, "folders named 'Record Labels'"),
+    ):
+        work = bytearray(document)
+        warning = rbxml.insert_catalog_folder(
+            work, "Kompakt", [("Kompakt 2025", [1])], tree=_LABELS
+        )
+        assert warning is not None and f"2 {what}" in warning, warning
+        assert bytes(work) == document, f"a refusal over two {what} wrote bytes"
+
+
+def test_a_failure_after_an_earlier_merge_writes_nothing():
+    """The first year merges, the second meets a folder of its name, nothing lands."""
+    held = _labels_doc(
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="2">',
+            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="0"/>',
+            '          <NODE Name="Kompakt 2024" Type="0" Count="0"/>',
+            "        </NODE>",
+        ]
+    )
+    work = bytearray(held)
+    warning = rbxml.insert_catalog_folder(
+        work, "Kompakt", [("Kompakt 2025", [1]), ("Kompakt 2024", [2])], tree=_LABELS
+    )
+    assert warning is not None and "a folder named 'Kompakt 2024'" in warning
+    assert bytes(work) == held, "the first year's merge survived a refusal"
 
 
 # ── location round-trip ──────────────────────────────────────────────────────

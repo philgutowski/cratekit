@@ -63,6 +63,7 @@ pins the two equal.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Iterable, Iterator, Sequence
@@ -1588,12 +1589,99 @@ def _catalog_block(
     """
     out = [folder_open(folder_name, len(playlists), indent)]
     for name, track_ids in playlists:
-        ids = list(track_ids)
-        out.append(playlist_open(name, len(ids), indent + INDENT_STEP))
-        out.append(track_key_lines(ids, indent + 2 * INDENT_STEP))
-        out.append(node_close(indent + INDENT_STEP))
+        out.append(_catalog_playlist(name, track_ids, indent + INDENT_STEP))
     out.append(node_close(indent))
     return "".join(out)
+
+
+def _catalog_playlist(name: str, track_ids: Sequence[object], indent: int) -> str:
+    """One populated playlist node at ``indent``, every line CRLF terminated."""
+    ids = list(track_ids)
+    return (
+        playlist_open(name, len(ids), indent)
+        + track_key_lines(ids, indent + INDENT_STEP)
+        + node_close(indent)
+    )
+
+
+def _folded(name: str) -> str:
+    """A node name in the form two sibling names are compared in.
+
+    Canonical Unicode equivalence and nothing wider. A label name arrives from a
+    provider and a folder name from an export, and one ``Café`` composed and one
+    decomposed are the same name drawn two ways, so treating them as two would
+    write the second folder the duplicate guard below exists to refuse. Case is
+    NOT folded: nothing recorded says rekordbox merges two folders that differ
+    only by case, and merging them here would pour one label into another's
+    folder on a guess (R-453).
+    """
+    return unicodedata.normalize("NFC", name)
+
+
+def _sole_child(
+    content: bytes, parent: NodeSpan, name: str, node_type: str
+) -> NodeSpan | str | None:
+    """The ONE direct child of ``parent`` named ``name``, of that type, or a warning.
+
+    :func:`direct_child`'s three answers plus a fourth, and the fourth is R-129.
+    Importing a folder that already exists makes rekordbox merge it by name and
+    append every child as a new row, so a document holding two siblings of one
+    name doubles on each import that names their parent. That is how nine label
+    year playlists reached 3,072 copies each. A writer that merged into the first
+    of two leaves the second standing and reports success over a document that
+    will do it again, so two of a name refuse and the document is left for a
+    person to repair.
+    """
+    wanted = _folded(name)
+    matches = [child for child in child_nodes(content, parent) if _folded(child.name) == wanted]
+    if not matches:
+        return None
+    for child in matches:
+        if child.node_type != node_type:
+            return (
+                f"a {_type_name(child.node_type)} named {name!r} is already there, and "
+                f"this writer emits a {_type_name(node_type)}; replacing one with the "
+                f"other would delete everything the existing node holds"
+            )
+    if len(matches) > 1:
+        return (
+            f"{len(matches)} {_type_name(node_type)}s named {name!r} already sit side "
+            f"by side under {parent.name!r}; rekordbox merges an imported folder by "
+            f"name and appends every child it carries, so this document would "
+            f"duplicate them again on import. Remove the extra copies first"
+        )
+    return matches[0]
+
+
+def _merged_pairs(
+    playlists: Sequence[tuple[str, Sequence[object]]],
+) -> list[tuple[str, list]]:
+    """The caller's playlists with one entry per name and each id listed once.
+
+    The payload that started R-129 carried a label's subtree twice. A caller that
+    names one playlist twice is asking for one playlist, so the two are joined in
+    the order they were given, the first spelling of the name kept, rather than
+    emitted as the sibling pair the guard above refuses in a document.
+    """
+    order: list[str] = []
+    joined: dict[str, tuple[str, list]] = {}
+    for name, track_ids in playlists:
+        key = _folded(name)
+        if key not in joined:
+            joined[key] = (name, [])
+            order.append(key)
+        joined[key][1].extend(track_ids)
+    return [(joined[key][0], dedupe_track_ids(joined[key][1])) for key in order]
+
+
+def _starts_its_line(content: bytes, line_at: int, tag_at: int) -> bool:
+    """Whether only indentation stands between a line's start and a tag on it.
+
+    Every merge below writes whole lines at a line start. When a tag shares its
+    line with something else, that line start belongs to the something else, and
+    a write there lands inside it.
+    """
+    return bytes(content[line_at:tag_at]).strip(b" ") == b""
 
 
 def insert_catalog_folder(
@@ -1618,20 +1706,41 @@ def insert_catalog_folder(
       folder sits at the bottom of the tree is ordered two ways at once. This
       preserves the byte layout the system being replaced produced, which a
       golden pins.
-    * **An existing folder of that name is REPLACED IN PLACE**, so a re-crawl
-      refreshes a label rather than growing a second copy of it, and refreshing
-      does not reshuffle a tree the user reads. The system being replaced always
-      inserted, so its second run duplicated the whole label and its first run's
-      tracks stayed behind in the stale copy. No golden covers that path, because
-      that system had no test that ran twice.
+    * **An existing folder of that name is MERGED INTO, never appended beside
+      and never replaced** (R-129). A playlist it already holds keeps every
+      member and gains only the ids it lacks; a playlist it lacks is added. So
+      writing the same catalog twice leaves the document byte for byte as the
+      first write left it, and a re-crawl that found one new year adds one
+      playlist and touches nothing else. The system being replaced always
+      inserted, so its second run duplicated the whole label.
+    * **Two siblings of one name refuse**, at each of the three levels this
+      writes: the tree under the root, the folder under the tree, and each
+      playlist under the folder. See :func:`_sole_child`.
     * **The tree's own node is created when it is missing**, as the playlist
       root's first child. A catalog tree is not a taxonomy tree: nobody's setup
       created it, and the first write is the thing that brings it into existence.
 
+    Names are compared through :func:`_folded`. Track ids are deduplicated
+    inside each playlist, against themselves and against the members it holds.
+
     Returns a warning naming what stopped it, or None on success. A failure
-    writes nothing at all.
+    writes nothing at all: every edit is made on a copy that replaces the
+    document only once the last one has landed.
     """
     _refuse_wrong_medium(tree)
+    work = bytearray(content)
+    warning = _write_catalog(work, folder_name, _merged_pairs(playlists), tree)
+    if warning is None:
+        content[:] = work
+    return warning
+
+
+def _write_catalog(
+    content: bytearray,
+    folder_name: str,
+    pairs: Sequence[tuple[str, Sequence[object]]],
+    tree: Tree | None,
+) -> str | None:
     if playlists_span(content) is None:
         return f"{PLAYLISTS_SECTION} section not found"
     root = root_node(content)
@@ -1650,13 +1759,13 @@ def insert_catalog_folder(
             return inferred
         parent = inferred
     else:
-        found = direct_child(content, root, tree.display, FOLDER_TYPE)
+        found = _sole_child(content, root, tree.display, FOLDER_TYPE)
         if isinstance(found, str):
             return found
         if found is None:
             block = (
                 folder_open(tree.display, 1, indent_at(1))
-                + _catalog_block(folder_name, playlists, indent_at(2))
+                + _catalog_block(folder_name, pairs, indent_at(2))
                 + node_close(indent_at(1))
             )
             at = _first_child_offset(content, root)
@@ -1673,27 +1782,116 @@ def insert_catalog_folder(
     if parent.self_closing:
         return f"cannot find close tag for folder: {parent.name}"
 
-    existing = direct_child(content, parent, folder_name, FOLDER_TYPE)
+    existing = _sole_child(content, parent, folder_name, FOLDER_TYPE)
     if isinstance(existing, str):
         return existing
-
-    block = _catalog_block(folder_name, playlists, indent_at(parent.depth + 1)).encode("utf-8")
     if existing is not None:
-        # Replaced across its own lines, trailing break included, so the block
-        # that lands is exactly as line terminated as the one that left. The
-        # count does not move: one child went out and one came in.
-        start = existing.line_start
-        end = existing.close_end
-        if bytes(content[end : end + len(CRLF)]) == CRLF:
-            end += len(CRLF)
-        content[start:end] = bytearray(block)
-        return None
+        return _merge_catalog(content, existing, pairs)
 
+    block = _catalog_block(folder_name, pairs, indent_at(parent.depth + 1)).encode("utf-8")
     at = _first_child_offset(content, parent)
     if at is None:
         return f"the folder {parent.name!r} is not line terminated"
     content[at:at] = bytearray(block)
     _bump_count(content, parent, +1)
+    return None
+
+
+def _merge_catalog(
+    content: bytearray,
+    folder: NodeSpan,
+    pairs: Sequence[tuple[str, Sequence[object]]],
+) -> str | None:
+    """Merge the pairs into a folder the document already holds, in place.
+
+    Every edit lands after the folder's own open tag, so that tag's offset stays
+    valid across all of them and the folder is re-read from it after each one,
+    rather than trusting spans the previous edit has moved.
+    """
+    if not _starts_its_line(content, folder.line_start, folder.tag_start):
+        return f"the folder {folder.name!r} does not start its own line"
+    indent = folder.indent + INDENT_STEP
+    if folder.self_closing:
+        # An empty folder exported self closed has nothing to keep and no body to
+        # write into, so it is opened first and then merged into like any other.
+        content[folder.tag_end - 1 : folder.tag_end + 1] = bytearray(
+            b">" + CRLF + b" " * folder.indent + _NODE_CLOSE
+        )
+
+    created = 0
+    for position, (name, track_ids) in enumerate(pairs):
+        here = node_at(content, folder.tag_start, depth=folder.depth)
+        if here is None:  # pragma: no cover - the folder was bounded a moment ago
+            return f"the folder {folder.name!r} is no longer terminated"
+        playlist = _sole_child(content, here, name, PLAYLIST_TYPE)
+        if isinstance(playlist, str):
+            return playlist
+        if playlist is not None:
+            warning = _extend_playlist(content, playlist, track_ids)
+            if warning is not None:
+                return warning
+            continue
+
+        # Before the first sibling a LATER pair names, so a folder read newest
+        # first stays newest first when a year arrives between two it holds.
+        # With no later sibling present, last.
+        anchor = None
+        for later, _ in pairs[position + 1 :]:
+            found = _sole_child(content, here, later, PLAYLIST_TYPE)
+            if isinstance(found, str):
+                return found
+            if found is not None:
+                anchor = found
+                break
+        if anchor is not None:
+            at = anchor.line_start
+            if not _starts_its_line(content, at, anchor.tag_start):
+                return f"the playlist {anchor.name!r} does not start its own line"
+        else:
+            at = line_start(content, here.close_start)
+            if not _starts_its_line(content, at, here.close_start):
+                return f"the close tag of folder {folder.name!r} does not start its own line"
+        content[at:at] = bytearray(_catalog_playlist(name, track_ids, indent).encode("utf-8"))
+        created += 1
+
+    if created:
+        here = node_at(content, folder.tag_start, depth=folder.depth)
+        if here is None:  # pragma: no cover - the folder was bounded a moment ago
+            return f"the folder {folder.name!r} is no longer terminated"
+        _bump_count(content, here, created)
+    return None
+
+
+def _extend_playlist(
+    content: bytearray, playlist: NodeSpan, track_ids: Sequence[object]
+) -> str | None:
+    """Add the ids a playlist does not already hold, and move its entry count.
+
+    Its members stay exactly as they are, duplicates the document already had
+    included, because a merge that rewrote a person's playlist would be the
+    replace this writer stopped doing.
+    """
+    fresh = dedupe_track_ids(track_ids, track_keys(content, playlist))
+    if not fresh:
+        return None
+    if not _starts_its_line(content, playlist.line_start, playlist.tag_start):
+        return f"the playlist {playlist.name!r} does not start its own line"
+    entries = attribute_span(content, "Entries", start=playlist.tag_start, end=playlist.tag_end)
+    if entries is None:
+        return f"Entries attr not found for playlist {playlist.name!r}"
+    total = _read_int(content, entries) + len(fresh)
+    lines = track_key_lines(fresh, playlist.indent + INDENT_STEP).encode("utf-8")
+    # Insert FIRST, then patch the count, which sits before every insert point.
+    if playlist.self_closing:
+        content[playlist.tag_end - 1 : playlist.tag_end + 1] = bytearray(
+            b">" + CRLF + lines + b" " * playlist.indent + _NODE_CLOSE
+        )
+    else:
+        at = line_start(content, playlist.close_start)
+        if not _starts_its_line(content, at, playlist.close_start):
+            return f"the close tag of playlist {playlist.name!r} does not start its own line"
+        content[at:at] = bytearray(lines)
+    content[entries[0] : entries[1]] = str(total).encode("utf-8")
     return None
 
 

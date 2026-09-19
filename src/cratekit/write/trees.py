@@ -616,6 +616,11 @@ def insert_record_labels_tree(
     the declared taxonomy, and a taxonomy that declares none refuses by name
     rather than inventing a folder in somebody's library from a default they
     never saw.
+
+    A source whose folder the document already holds is MERGED INTO, which is
+    :func:`rbxml.insert_catalog_folder`'s rule and not this function's, so no
+    caller can forget it: writing the same source twice writes the same bytes,
+    and a document already holding two folders of its name refuses (R-129).
     """
     active = taxonomy.default_taxonomy() if declared is None else declared
     if tree is None:
