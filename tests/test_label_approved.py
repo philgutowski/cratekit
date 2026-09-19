@@ -874,23 +874,29 @@ def test_the_same_tracks_with_a_corrected_year_take_a_new_name_and_are_not_refus
 
 
 def test_a_folder_the_account_cannot_write_keeps_the_permission_refusal_and_its_path(
-    cfg, library, tmp_path, monkeypatch
+    cfg, library, monkeypatch
 ):
     """The cause constructor reclassifies a refusal raised FROM a permission
-    error, so this verb's catch must not flatten the better answer."""
+    error, so this verb's catch must not flatten the better answer. Built by
+    raising the error rather than by chmod, which a suite run as root defeats:
+    ``docs/solutions`` records both halves of that."""
+    import errno
+
+    from cratekit.acquire import listdoc
+
     accepted(cfg, "r-1")
     bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
-    locked = tmp_path / "locked"
-    locked.mkdir()
-    locked.chmod(0o500)
-    try:
-        code, envelope = approved("--out", str(locked / "lists"))
-    finally:
-        locked.chmod(0o700)
+
+    def denied(payload, path):
+        raise PermissionError(errno.EACCES, "Permission denied", str(path))
+
+    monkeypatch.setattr(listdoc.config, "atomic_write_bytes", denied)
+
+    code, envelope = approved()
 
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "path-permission-denied"
-    assert str(locked) in envelope["cause"]["detail"]["path"]
+    assert str(lists_dir(library)) in envelope["cause"]["detail"]["path"]
 
 
 def test_a_write_the_disk_refuses_is_the_verbs_refusal_and_not_an_internal_error(
