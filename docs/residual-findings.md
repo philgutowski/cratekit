@@ -14401,6 +14401,22 @@ needed is the attended run.
 
 **Closes when:** identification can resume from the answers already paid for.
 
+**Narrowed 2026-09-19 on `relay/148`, U103. A pass that RAISES now keeps what it
+paid for, and a process that DIES does not.** U103's brief put resumable spend
+out of scope, and the code review then showed the cheap half of it was a
+`finally` block over a cache the unit had already built: `acrcloud.identify`
+fills `paid` as each answer arrives and writes it to the recognition cache on
+the way out whether the pass returned or raised. So the spend refusal on the
+two hundredth chunk this entry names, the streak stop, a carve failure and an
+unclassifiable answer all keep their answers, and the next pass pays only for
+the chunks still owed. Driven in
+`test_a_pass_that_raised_keeps_what_it_had_already_paid_for`. **Still open:** a
+crash, a kill or a power loss between the first answer and that one write
+loses the pass, because nothing is written per chunk. Closing it is one locked
+merge per answer, which is a millisecond against a network round trip, and it
+was left because the unit's brief drew the line there and the attended run is
+still the honest measurement of how often a pass dies rather than raises.
+
 ---
 
 ## R-305. The per drive library view is a module global standing in for a setup seam the job engine lacks
@@ -18523,6 +18539,40 @@ and doubled recognition spend on the ordinary two step use.
 **Closes when:** identify consults the library and writes its tracklist, and a
 second pass over an unchanged recording spends nothing.
 
+**CLOSED 2026-09-19 on `relay/148`, U103.** The (read) line was confirmed in
+plan mode before anything was built on it. All three halves are closed and
+each is driven in `tests/intake/test_workers.py` through the real dispatcher.
+(1) `intake identify` resolves its rows through `match_cli.resolve_list`, the
+body of `match_list` lifted out and called by both verbs, so an owned track is
+`matched`, a version the library may hold is offered to the review queue under
+the verb's own key and reported `needs_review`, and an open question is a
+pending action exactly as it is for `match run`. The registry entry is
+`adjudicates` and its doctor checks gain `library.mounted`. (2) The tracklist
+is written as `<stem>-<twelve digest characters>.tracklist.txt` into `--out`,
+defaulting to `tracklists` under download staging, and `match_cli.read_list`
+reads it back row for row. `match/1` is closed at three arrays, so the path
+rides a `tracklist-written` note on the warnings channel. (3) Recognition
+answers are kept at the transport boundary in the new declared state entry
+`identify_cache`, one document per recording, named by a sha256 over the
+recording's bytes and the whole chunk plan, offsets, chunk length, interval,
+sample rate and host. Only a match or a miss is kept, in both directions, so a
+chunk that got no answer is paid for again and nothing else is. The second of
+identify then set makes zero transport calls, writes nothing to the ledger and
+never retrieves a credential, and a changed file, a changed plan or another
+host misses. `--refresh` on both verbs pays for every chunk again, and a pass
+that read kept answers says how many on a `recognition-cached` note. The code
+review raised ten findings and eight were applied, among them an absent music
+folder refused BEFORE the spend (its empty index had reproduced this entry's
+own false "missing" by unplugging a drive) and a tracklist named by stem alone
+that a recorder calling every set REC001 would have overwritten. Mutation
+tables `docs/mutation/u103-a.md` and `u103-b.md`, 25 of 25 killing, the
+author's tables and not independent ones; table a's one first pass zero got a
+test and was re-run killing. R-512, R-513 and R-514 are what this unit found
+and did not fix. **Owed to an attended sitting:** one real identify then set
+over a real recording, which is where the second pass is shown to cost nothing
+on the account's own counter and where the kept raw answers meet a real
+answer's shape.
+
 ---
 
 ## R-423. The inbound half of `dj-favorites` is not ported: hearts on the account never reach the library
@@ -20778,3 +20828,101 @@ was not checked. R-477 records that two ISRC readers disagree, not this.
 **Closes when:** the adapter reads the open API answer itself, or counts the
 ids before the per id reads, so a dropped id is seen and the row is handed on
 as several, or an attended sitting shows the case does not occur.
+
+---
+
+## R-512. An absent music folder is read as an empty library by `match run` and by the intake worker, so every owned track reports missing with a clean exit
+
+**Found:** 2026-09-19, at U103's code review. DRIVEN on both producers.
+
+`match.index_library` guards its walk with `if root.is_dir()` and returns an
+empty index when the folder is not there. `match_cli.library_view` hands that
+index on with nothing said. Two shipped paths resolve against it. `match run`
+over a one line list whose track the library holds reported `[1, 0, 0]`,
+matched, needs review, missing, and after the music folder was removed
+reported `[0, 0, 1]` with outcome ok, exit 0 and no warning. An `intake set`
+job queued over three identified tracks and resumed with the music folder
+gone ended `succeeded`, exit 0, `owned 0, offered 0, missing 3`. The producer
+is an external library volume that is not mounted, which is the ordinary state
+of a laptop away from its drive. `intake missing --list`, `acquire fallback`
+and, since U103, `intake identify` each refuse this state as
+`library-volume-unmounted` in their own verb, which is three copies of a check
+the shared view does not make.
+
+**Measured cost:** the product says something false, board bar (b). Every
+owned track in a list is reported missing, and the next step reads `missing`
+and acquires it again. Not measured against a real unmounted volume, where
+the library ROOT is absent and `config.load` may refuse first; the drive
+removed the music folder under a root that was there.
+
+**Why not fixed here.** Outside U103's brief, and the fix belongs in
+`match_cli.library_view`, which eight call sites in seven modules share
+(`git grep` on this branch: `fallback_cli`, `match_cli`, `intake/cli`,
+`missing_cli`, `label/approved_cli`, `label/cli`, `label/sweep`,
+`sync/mark_cli`), so it is a unit with its own table rather than a line in
+somebody else's. The label and sync callers were NOT driven.
+
+**Closes when:** the shared view refuses an absent music folder once, the
+three verb level copies call it, and `match run` and the intake worker are
+driven refusing. **An issue is owed for this entry**, since it meets the board
+bar and a Relay session cannot file one after the merge that carries it.
+
+---
+
+## R-513. The recognition cache key leaves out the account, the cache is never evicted, and its lock is pinned by a file and not by an exclusion
+
+**Found:** 2026-09-19, during U103 and at its code review.
+
+Three facts about `intake/acrcloud.py`'s `RecognitionCache`, none driven
+against a real account. (1) The key is the recording's bytes and the chunk
+plan, host included, and NOT the access key. A person who points the same host
+at a second project with a different catalogue bucket is served the first
+project's answers. It was left out on purpose: putting it in means retrieving
+the credential before the cache is read, and a fully kept pass would prompt
+the keychain to spend nothing. `--refresh` is the way out. (2) Nothing evicts a
+document. One is about a megabyte for a two hour set, written 0600 under the
+installation state directory, so the cost is disk and is measured in sets
+identified. (3) Mutation row A17, the cache write without its sibling lock,
+was DROPPED from table a rather than run, because the only test that could see
+it asserts the lock file exists, which pins the file and not the exclusion.
+The merge itself is measured, row A10, one death.
+
+**Measured cost:** none measured. (1) is a stale tracklist for somebody who
+changes ACRCloud project and does not pass `--refresh`, which nobody using
+this product is known to do.
+
+**Closes when:** the key carries something that names the account without
+retrieving a secret, or the attended binding shows one project per host is
+the only case; and a test holds the lock from a second process and shows the
+writer waits.
+
+---
+
+## R-514. `intake identify` names its tracklist on the warnings channel, and goes pending where `intake set` does not
+
+**Found:** 2026-09-19, during U103. Two decisions a session made because
+nobody could be asked, recorded with the options.
+
+(1) `match/1` is closed at three arrays and `payload_problems` refuses an
+undeclared field, so the tracklist's path has no field to ride in. The options
+were a fourth field, which moves the schema fingerprint and every `match`
+consumer, a move of the verb to `diagnostic/1` on `intake missing`'s
+precedent, which breaks whoever reads identify's three arrays, or a note on
+the warnings channel. The third was taken as the conservative one. The human
+renderer prints it as `warning [tracklist-written]`, and it prints nothing
+else of a match payload, so a person at a terminal sees a warning that is not
+one and no tracks at all. The same is true of `recognition-cached`.
+
+(2) The brief said identify resolves "with the same rule `intake set` uses".
+The engine rule is the same, one `library_view`, `resolve_one` per row,
+`adjudicate`. What differs is the exit: the intake worker reports an offered
+track and ends ok, and identify now ends PENDING_HUMAN over an open version
+question, because it shares `match run`'s whole step and R11's argument, that
+a caller reading `missing` next never learns four tracks were a version away
+from owned, applies to identify's caller as it does to match's.
+
+**Measured cost:** none measured. A script that treated a non zero exit from
+identify as a failure would now stop on a set holding a version question.
+
+**Closes when:** the human renderer renders a match payload and a note that is
+not a warning has a channel, and a person says whether identify should gate.
