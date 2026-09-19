@@ -321,49 +321,53 @@ def _line(row: Row) -> str:
     return f"{row.artist.strip()}{_SEPARATOR}{title}"
 
 
+def text_line(row: Row) -> str:
+    """The ``Artist - Title`` line for one row, or a refusal if it re-reads wrong.
+
+    EVERY LINE IS READ BACK BY THE TEXT READER, on this module's rule that the
+    emitter is stricter than the reader. A line is ``Artist - Title``, so an
+    artist spelled with that separator inside it, a leading ordinal, or a
+    leading ``#`` reads back as a different track or as none. The reader would
+    not refuse that, it would match the wrong thing, so it is refused here, and
+    a caller can ask before it writes, one row at a time.
+    """
+    line = _line(row)
+    try:
+        wanted = match.read_row(
+            {"artist": row.artist, "title": row.title, "version": row.version},
+            origin=match.TIDAL,
+            position=1,
+        )
+        again = match.read_text_rows([line])
+    except match.UnreadableList as exc:
+        raise ListDocRefused(f"{line!r} cannot be written as a text line: {exc}") from exc
+    if len(again) != 1 or (again[0].recording, again[0].version_key) != (
+        wanted.recording,
+        wanted.version_key,
+    ):
+        raise ListDocRefused(f"{line!r} would read back as another track, or as none")
+    return line
+
+
 def text_document(handed_on: Iterable[HandedOn]) -> dict[str, Any]:
     """The TEXT list document for the rows handed on, reasons as ``#`` rows.
 
     THE SAME LINE TWICE IS WRITTEN ONCE, first reason wins, because a set plays
-    one track twice and ``match run`` would ask about it twice.
-
-    EVERY LINE IS READ BACK BY THE TEXT READER BEFORE ANYTHING IS WRITTEN, on
-    this module's rule that the emitter is stricter than the reader. A line is
-    ``Artist - Title``, so an artist spelled with that separator inside it, or a
-    leading ordinal, reads back as a different track. The reader would not
-    refuse that, it would match the wrong thing, so it is refused here by
-    position instead.
+    one track twice and ``match run`` would ask about it twice. A row
+    :func:`text_line` refuses is refused here by position, so a caller that did
+    not ask first writes nothing rather than a line that matches another track.
     """
     tracks: list[str] = []
     seen: set[str] = set()
     for position, entry in enumerate(handed_on, start=1):
-        line = _line(entry.row)
+        try:
+            line = text_line(entry.row)
+        except ListDocRefused as exc:
+            raise ListDocRefused(f"handed on row {position}: {exc}", position=position) from exc
         if line in seen:
             continue
-        reason = " ".join(str(entry.reason).split())
-        try:
-            wanted = match.read_row(
-                {"artist": entry.row.artist, "title": entry.row.title, "version": entry.row.version},
-                origin=match.TIDAL,
-                position=position,
-            )
-            again = match.read_text_rows([line])
-        except match.UnreadableList as exc:
-            raise ListDocRefused(
-                f"handed on row {position} cannot be written as a text line: {exc}",
-                position=position,
-            ) from exc
-        if len(again) != 1 or (again[0].recording, again[0].version_key) != (
-            wanted.recording,
-            wanted.version_key,
-        ):
-            raise ListDocRefused(
-                f"handed on row {position}, {line!r}, would read back as another "
-                f"track, so it cannot be written as a text line",
-                position=position,
-            )
         seen.add(line)
-        tracks.extend((f"# {reason}", line))
+        tracks.extend((f"# {' '.join(str(entry.reason).split())}", line))
     return {"list": LIST_VERSION, "origin": match.TEXT, "tracks": tracks}
 
 

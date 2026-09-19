@@ -316,3 +316,53 @@ def test_a_second_run_over_the_same_answers_is_not_refused(
 
     assert again[0] == int(ExitCode.OK), again[1]
     assert again[1]["data"]["summary"] == first[1]["data"]["summary"]
+
+
+def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_written(
+    cfg, library, recognised, monkeypatch  # noqa: F811
+):
+    """The review's first finding, driven: one handed on row whose artist
+    carries the line separator used to refuse the whole verb, every track
+    named by ISRC with it, under a remedy that could not work."""
+    job_id = finished_set(
+        library,
+        recognised,
+        monkeypatch,
+        hit("Aurora Bloom", "Sun Path", isrc=ONE),
+        hit("Kite - Harbor", "Low Tide Signal"),
+        hit("Mira Vale", "Glass Hour"),
+    )
+    bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001")]}))
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert summary["written"] == 1
+    assert [(t["artist"], t["why"]) for t in summary["unlisted_tracks"]] == [
+        ("Kite - Harbor", missing_cli.NO_ISRC),
+        ("Mira Vale", missing_cli.NO_ISRC),
+    ]
+    assert [t["in_file"] for t in summary["unlisted_tracks"]] == [False, True]
+    read = match_cli.read_list(Path(summary["unlisted_list"]))
+    assert [(one.artist, one.title) for one in read] == [("Mira Vale", "Glass Hour")]
+    check = {c["key"]: c for c in envelope["data"]["checks"]}["intake.missing.unwritable"]
+    assert check["status"] == "fail"
+    assert "Kite - Harbor - Low Tide Signal" in check["detail"]
+
+
+def test_the_order_the_provider_answers_in_does_not_change_the_files(
+    cfg, library, recognised, monkeypatch  # noqa: F811
+):
+    """The review's second finding, the half that is this unit's to fix: the
+    reason names the identifiers, and in provider order a reshuffled answer
+    would turn a repeat run into a refusal."""
+    job_id = finished_set(library, recognised, monkeypatch, hit("Nova Reef", "Tide", isrc=TWO))
+    bind(monkeypatch, FakeCatalogue(isrcs={TWO: [FakeTrack("9003"), FakeTrack("9002")]}))
+    first = missing(job_id)
+    bind(monkeypatch, FakeCatalogue(isrcs={TWO: [FakeTrack("9002"), FakeTrack("9003")]}))
+
+    again = missing(job_id)
+
+    assert again[0] == int(ExitCode.OK), again[1]
+    assert "(9002, 9003)" in first[1]["data"]["summary"]["unlisted_tracks"][0]["reason"]

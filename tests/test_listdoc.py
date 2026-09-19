@@ -478,8 +478,9 @@ def test_a_reason_carrying_a_line_break_stays_one_row(tmp_path):
     [
         Row(ref="", artist="Kite - Shore", title="Unlisted"),
         Row(ref="", artist="12. Kite Shore", title="Unlisted"),
+        Row(ref="", artist="#1 Kite Shore", title="Unlisted"),
     ],
-    ids=["separator-in-artist", "leading-ordinal"],
+    ids=["separator-in-artist", "leading-ordinal", "read-as-a-comment"],
 )
 def test_a_row_that_would_read_back_as_another_track_is_refused_by_position(tmp_path, row):
     with pytest.raises(listdoc.ListDocRefused) as refused:

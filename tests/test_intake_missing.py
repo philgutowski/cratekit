@@ -410,6 +410,7 @@ def test_a_missing_row_from_no_provider_is_reported_unlisted_as_a_failing_check(
             "isrc": None,
             "why": missing_cli.NO_ISRC,
             "reason": "it carries no ISRC, so the provider cannot be asked for it exactly",
+            "in_file": True,
         }
     ]
 

@@ -329,12 +329,14 @@ def _named_by_isrc(wanted: list[match.Wanted]) -> list[str | _Unnamed]:
         elif not answer:
             named.append(_Unnamed(UNKNOWN, f"the provider files no track under ISRC {code}"))
         else:
+            # SORTED, so the order the provider happened to answer in never
+            # changes the file's bytes and turns a repeat run into a refusal.
             named.append(
                 _Unnamed(
                     SEVERAL,
                     f"the provider files {len(answer)} tracks under ISRC {code} "
-                    f"({', '.join(answer)}), and which release to download is not "
-                    f"something the ISRC decides",
+                    f"({', '.join(sorted(answer))}), and which release to download is "
+                    f"not something the ISRC decides",
                 )
             )
     return named
@@ -478,6 +480,7 @@ def _listed(
                 origins.append(job)
     written = listdoc.Written(None, None, (), ())
     handed: list[tuple[listdoc.Row, match.Wanted, _Unnamed]] = []
+    unwritable: list[tuple[listdoc.Row, _Unnamed]] = []
     by_isrc = 0
     if missing:
         # THE FOLDER BEFORE THE PROVIDER, so a bad --out spends no lookup.
@@ -495,13 +498,24 @@ def _listed(
                     by_isrc += 1
         kept = [n for n in range(len(rows)) if n not in unnamed]
         listed_rows = tuple(rows[n] for n in kept)
+        writable = []
+        for row, _wanted, why in handed:
+            try:
+                listdoc.text_line(row)
+            except listdoc.ListDocRefused:
+                # ONE ROW IS NOT THE LIST. Refusing here would withhold every
+                # track the provider did name, on every run and in any folder,
+                # so the row is named on its own failing check instead.
+                unwritable.append((row, why))
+                continue
+            writable.append(listdoc.HandedOn(row, why.reason))
         try:
             written = listdoc.write(
                 out,
                 name,
                 listed_rows,
                 _provenance(listed_rows, [origins[n] for n in kept]),
-                handed_on=[listdoc.HandedOn(row, why.reason) for row, _wanted, why in handed],
+                handed_on=writable,
             )
         except listdoc.ListDocRefused as exc:
             raise _unusable(
@@ -510,6 +524,22 @@ def _listed(
             ) from exc
     listed = len(written.listed)
     unlisted = len(handed)
+    in_file = unlisted - len(unwritable)
+    if missing and not listed and not in_file:
+        # MISSING TRACKS AND NOTHING WRITTEN IS NOT NOTHING TO DO. Reported as a
+        # no-op it would read, to a person and to a script, exactly like a job
+        # where everything was owned, and the tracks would be dropped.
+        raise _unusable(
+            f"{unlisted} missing track(s), none the provider can name exactly and "
+            f"none writable as an 'Artist - Title' line, so nothing was written",
+            "find these tracks on the provider by hand, add them to a playlist, "
+            "and run intake playlist on it",
+            unlisted_tracks=[
+                {"artist": row.artist, "title": row.title, "reason": why.reason}
+                for row, why in unwritable
+            ],
+            **subject,
+        )
     if left_out and not listed and not unlisted:
         # NOTHING LISTED WITH JOBS LEFT OUT IS NOT A PASS WITH NOTHING MISSING.
         # The skipped jobs' tracks were never resolved, and a no-op would tell a
@@ -535,9 +565,9 @@ def _listed(
     )
     if listed:
         said = f"{listed} missing track(s) written to {written.list_path}; next: {command}{after}"
-    elif unlisted:
+    elif in_file:
         said = (
-            f"nothing listed for download: every missing track was handed on to "
+            f"nothing listed for download: the missing tracks were handed on to "
             f"{written.unlisted_path}; next: {handed_command}"
         )
     else:
@@ -561,10 +591,19 @@ def _listed(
             "unlisted",
             "fail" if unlisted else "ok",
             f"{unlisted} missing track(s) the provider cannot name exactly are NOT in the "
-            f"download list; each is in {written.unlisted_path} with the reason, for: "
-            f"{handed_command}"
+            f"download list; {in_file} of them are in {written.unlisted_path} with the "
+            f"reason, for: {handed_command}"
             if unlisted
             else "every missing track is in the list",
+        ),
+        _check(
+            "unwritable",
+            "fail" if unwritable else "ok",
+            f"{len(unwritable)} of them cannot be written as an 'Artist - Title' line "
+            f"and are in no file: "
+            + "; ".join(f"{row.artist} - {row.title} ({why.reason})" for row, why in unwritable)
+            if unwritable
+            else "every track handed on is in the text list",
         ),
         *checks,
     ]
@@ -591,6 +630,7 @@ def _listed(
                 "isrc": wanted.isrc,
                 "why": why.why,
                 "reason": why.reason,
+                "in_file": not any(row is gone for gone, _why in unwritable),
             }
             for row, wanted, why in handed
         ],
