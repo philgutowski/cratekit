@@ -5198,7 +5198,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # collection-unreadable, name apply's refusal over a collection it could
     # not read. The plan's two action values, rename and referenced, are not
     # kebab shaped and do not enter this population.
-    assert (len(literals), len(literals - set(causes))) == (412, 256), (
+    # Re-pinned on R-359, 2026-09-18: 412 to 413 distinct, 256 to 257
+    # non-keys. ONE literal joined and NOTHING left, differenced over the
+    # branch's diff of `src` against `main`, which removes no kebab literal. It
+    # is not a cause: resolved-not-acquired, the token every playlists block
+    # carries under swept_means to say a recorded playlist had its tracks
+    # resolved and none acquired. Nothing refuses with it.
+    assert (len(literals), len(literals - set(causes))) == (413, 257), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
