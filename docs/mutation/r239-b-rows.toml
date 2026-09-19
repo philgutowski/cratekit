@@ -1,0 +1,159 @@
+name = "r239-b"
+pass_kind = "light"
+
+# Each fixed call site put back to the answer it gave, or a site that asked
+# given the defect's answer. Batch B of two; batch A is r239-a-rows.toml. Every
+# row here is expected to die on the source guard; which BEHAVIOUR tests also
+# die is the finer measurement, read from the node ids in the sidecar.
+
+[[rows]]
+id = "S1_inbox_key_off"
+description = "route inbox's open, apply_inbox, passes unlock=False again"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+    skipped = 0
+    handle = rb_writer.open_db(cfg=cfg)
+'''
+new = '''
+    skipped = 0
+    handle = rb_writer.open_db(cfg=cfg, unlock=False)
+'''
+
+[[rows]]
+id = "S2_unplaced_key_off"
+description = "route unplaced's open, unplaced_items, passes unlock=False again"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+        return [], {"compared": False, "reason": "no-native-tree", "collection": 0}
+    handle = rb_writer.open_db(cfg=cfg)
+'''
+new = '''
+        return [], {"compared": False, "reason": "no-native-tree", "collection": 0}
+    handle = rb_writer.open_db(cfg=cfg, unlock=False)
+'''
+
+[[rows]]
+id = "S3_resort_key_off"
+description = "route resort's worker open, route_pending, passes unlock=False again"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+    declared = taxonomy.default_taxonomy()
+    handle = rb_writer.open_db(cfg=cfg)
+'''
+new = '''
+    declared = taxonomy.default_taxonomy()
+    handle = rb_writer.open_db(cfg=cfg, unlock=False)
+'''
+
+[[rows]]
+id = "S4_rebuild_key_off"
+description = "rebuild_governed_tree passes unlock=False again"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''    handle = rb_writer.open_db(cfg=cfg)'''
+new = '''    handle = rb_writer.open_db(cfg=cfg, unlock=False)'''
+
+[[rows]]
+id = "S5_converge_key_off"
+description = "converge passes unlock=False again, so every native tree reads not compared on a real library"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''            handle = rb_writer.open_db(cfg=cfg)'''
+new = '''            handle = rb_writer.open_db(cfg=cfg, unlock=False)'''
+
+[[rows]]
+id = "S6_delete_key_off"
+description = "delete review's open passes unlock=False"
+file = "src/cratekit/deletion/cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''    return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)'''
+new = '''    return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg, unlock=False)'''
+
+[[rows]]
+id = "S7_metadata_key_off"
+description = "mytags' open passes unlock=False"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+        require_closed=writing,
+        cfg=cfg,
+'''
+new = '''
+        require_closed=writing,
+        unlock=False,
+        cfg=cfg,
+'''
+
+[[rows]]
+id = "S8_naming_key_off"
+description = "the naming verb's collection read passes unlock=False"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+            require_closed=False,
+            cfg=cfg,
+'''
+new = '''
+            require_closed=False,
+            unlock=False,
+            cfg=cfg,
+'''
+
+[[rows]]
+id = "S9_adopt_reader_key_off"
+description = "the adoption collection reader passes unlock=False"
+file = "src/cratekit/adopt/collection.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+        check_app_version=False,
+        cfg=cfg,
+'''
+new = '''
+        check_app_version=False,
+        unlock=False,
+        cfg=cfg,
+'''
+
+[[rows]]
+id = "S10_adopt_apply_key_off"
+description = "adopt apply's write open passes unlock=False"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+        require_closed=True,
+        cfg=cfg,
+    )
+'''
+new = '''
+        require_closed=True,
+        unlock=False,
+        cfg=cfg,
+    )
+'''
+
+[[rows]]
+id = "S11_readback_key_on"
+description = "the session read-back pins the old True default, which a plain database cannot open under"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''    open_fresh = reopen or (lambda: rb_writer.open_db(cfg=cfg))'''
+new = '''    open_fresh = reopen or (lambda: rb_writer.open_db(cfg=cfg, unlock=True))'''
+
+[[dropped]]
+id = "G_guard_itself"
+description = "The source guard and its forward exemption live in tests, and mutate.py mutates src only"
+reason = "their refusals are driven by the literal source tests instead, five spellings and two exemption shapes"
