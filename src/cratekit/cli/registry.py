@@ -1066,6 +1066,27 @@ ENTRIES: tuple[Entry, ...] = (
         # U42 LANDED IT, beside the verb above and for the same reason.
     ),
     Entry(
+        name="acquire.fallback",
+        summary=(
+            "search SoundCloud and YouTube for a list's missing tracks and offer "
+            "what they hold for review; downloads nothing"
+        ),
+        module="cratekit.acquire.fallback_cli",
+        builder="build",
+        handler_key="acquire.fallback",
+        feature_rows=(7,),
+        # U80. Second source candidates go into the fallback source queue, and
+        # a version question the library raises into the match queue, both
+        # under this verb's own key.
+        adjudicates=True,
+        # ``diagnostic/1`` for the reason ``intake.missing`` gives: what a
+        # person needs is which rows were offered and where to answer them.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # NO WRITE SURFACE: it writes review items and nothing else.
+        doctor_checks=("library.mounted", "binary.yt-dlp"),
+    ),
+    Entry(
         name="match.run",
         summary="resolve an external list against the library: matched, needs review, or missing",
         module="cratekit.acquire.match_cli",

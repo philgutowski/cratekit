@@ -141,6 +141,10 @@ class Queue(StrEnum):
 
     #: A candidate from somewhere other than the configured provider, offered
     #: because the wanted recording is not available there at all.
+    #:
+    #: ONE KIND since U80, ``fallback-candidate``: which SoundCloud or YouTube
+    #: upload, if any, is the wanted recording. Its producer is
+    #: ``crate acquire fallback`` and each option is the upload's page URL.
     FALLBACK_SOURCE = "fallback-source"
 
     #: A proposed genre value for a track, which decides where the routing tree
@@ -332,7 +336,10 @@ SURFACES: tuple[Surface, ...] = (
             "An OUTPUT, and specifically a WORK queue rather than a review queue: "
             "the fallback pass reads it and produces candidates. A machine "
             "consumes it, so making a person adjudicate it would insert a "
-            "decision where there is no question yet."
+            "decision where there is no question yet. The pass is "
+            "acquire.fallback since U80, and its input is the unlisted text "
+            "list rather than this file; the candidates it produces are the "
+            "adjudicated half, on the fallback-source queue."
         ),
     ),
     Surface(

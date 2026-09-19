@@ -4,7 +4,57 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U79, issue #124, `relay/124`, 2026-09-19.**
+**Last merged: U80, issue #125, `relay/125`, 2026-09-19.**
+A track the provider does not carry gets second source candidates, which closes
+R-404's search half. `crate acquire fallback PATH` is `acquire/fallback_cli.py`,
+registry entry `acquire.fallback`, `diagnostic/1`, `adjudicates`, no write
+surface, doctor checks `library.mounted` and `binary.yt-dlp`. PATH is the
+unlisted text list or any list `match run` reads. Rows are resolved against the
+library exactly as `intake missing --list` resolves them. A row carrying the
+provider's own id (`missing_cli.provider_ref`, public now) or with a provider
+candidate waiting or accepted in review is NOT searched and is counted
+`provider_routed`. Every other missing row is searched on SoundCloud and then
+YouTube through the `FallbackSearcher` protocol in the new `acquire/fallback.py`.
+The shipped `YtDlpSearcher` runs yt-dlp in flat playlist mode through an
+injectable runner, WITHOUT `--ignore-errors`, so a nonzero exit, a timeout or a
+program that cannot start is `FallbackUnavailable` and never an empty answer.
+**NO TEST RUNS YT-DLP**: the suite binds `fallback_cli.searcher` to a fake and
+drives the shipped searcher through a fake runner. The score is the source
+system's, half similarity and half word coverage over `match.fold`, with a mix
+over 900 seconds scaled by 0.4. It orders the screen and drops nothing. Ranked
+candidates are offered on the `fallback-source` queue under the NEW KIND
+`fallback-candidate`, one item per row keyed on the folded artist, title and
+version, each option an upload page URL. Nothing is picked and nothing
+downloads. The queue is read before any search. Rows are offered as their
+answers arrive, so a failed search refuses `unavailable-transient` naming every
+item already offered this run. A missing yt-dlp refuses under the NEW CAUSE
+`yt-dlp-missing`, carrying the binaries module's own remedy token and install
+hint, and only when a row needs a search. **THE TRAP:** the reserved binary keys
+(`install-binary` and its three siblings) are remedy tokens and not declared
+reasons, so a refusal spelled with one exits 1 as an internal error. Filed under
+`docs/solutions/integration-issues/`. No candidate anywhere refuses
+`intake-list-unusable`. An accepted upload is reported with its URL, and the
+verb says nothing downloads it yet. **`/code-review` raised two findings, both
+driven red and fixed** in one round: a row carrying the provider's own id was
+searched on a second source, and a track typed with and without a key was
+searched twice, because rows were deduplicated on the match id and the item
+is keyed without the key. The same dedupe shape one file over, in
+`intake missing --list`, is R-493. 43 new test cases by collected count, 8504
+to 8547: 36 in the new `tests/test_acquire_fallback.py` and 7 that
+`tests/test_cli_contract.py` parametrizes over the new verb.
+`tests/test_reserved_causes.py` re-pinned: causes 160 to 161 and non-reserved
+136 to 137, kebab literals 442 to 444 with 283 to 284 non-keys, holders 98 to
+99. Mutation tables `docs/mutation/u80.md` and `u80-b.md`, 25 rows at the cap,
+22 killed on the first pass and the three zeros killed after a test each, six
+rows logged as dropped. R-404 is narrowed to its download half, which is the
+act and the lossy marking. R-492, R-493 and R-494 are filed, and none is on
+the board. **Owed to an attended sitting:** one real search, one row with
+uploads and one with none, which is R-494's measurement. Battery on the
+recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 8546 passed and 1
+skipped in 76 seconds, and no test of this unit's among the ten slowest.
+**Main's highest residual number is R-494.**
+
+**The session before: U79, issue #124, `relay/124`, 2026-09-19.**
 A row nothing names exactly has a route to a download, which closes R-415 and
 narrows R-302 to its registry flags. `crate intake missing --list PATH` is a
 third chooser beside `--job` and `--run`. PATH is the unlisted list a set job

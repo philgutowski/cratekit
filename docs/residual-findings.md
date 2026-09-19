@@ -17799,6 +17799,32 @@ too; the gap is the acquisition pass, not the queue.
 **Closes when:** a track the configured adapter cannot supply has a route to a
 second source that respects the lossless policy's marking rules.
 
+**Narrowed 2026-09-19 on `relay/125`, U80. The search half is closed and the
+download half is open.** `crate acquire fallback PATH` reads the unlisted text
+list, or any list `match run` reads, resolves every row against the library,
+and searches SoundCloud and then YouTube through a `FallbackSearcher` for each
+row still missing. The shipped searcher is `acquire/fallback.py`'s
+`YtDlpSearcher`, yt-dlp in flat playlist mode through an injectable runner,
+which no test runs. Ranked candidates are offered on the `fallback-source`
+queue under the kind `fallback-candidate`, one item per row, each option an
+upload page URL, and none is picked. A row carrying the provider's own id, or
+waiting on or accepted as a provider candidate, is not searched. A second run
+searches nothing it already offered. A failed search refuses
+`unavailable-transient` naming every item already offered, a missing yt-dlp
+refuses `yt-dlp-missing` with the install hint, and no candidate anywhere
+refuses rather than reading as nothing to do. Driven in
+`tests/test_acquire_fallback.py`, 25 rows in `docs/mutation/u80.md`, all
+killed after `u80-b.md`.
+
+What is still open is the act and the marking. An accepted candidate is
+reported with its URL and nothing downloads it, so the verb says "nothing in
+this build downloads them yet" on every run that holds one. The source
+system's `--apply` downloaded bestaudio into the set's download folder with
+clean tags from the row, and the lossy marker at `core/naming.py:141` and
+`:285` is still the downstream half that download has to reach. The source
+system's `URL` column override, a lossless purchase link forced per row, has no
+counterpart either.
+
 ---
 
 ## R-405. No verb writes a star rating, so a sorted library is an unrated one
@@ -20183,3 +20209,76 @@ catalogue is resolved once, which the fix round did.
 
 **Closes when:** a sitting measures a real tracklist and the time is accepted,
 or the searches are bounded or batched.
+
+---
+
+## R-492. A row the provider's text search would list is still searched on a second source
+
+**Found:** 2026-09-19, on `relay/125`, U80, by the unit's `/code-review`.
+
+`acquire fallback` skips a row carrying the provider's own id and a row whose
+provider candidate is waiting or accepted in review. A row `intake missing
+--list` lists WITHOUT a person, one exact provider candidate, leaves no queue
+trace, and neither does a bare row with a well formed ISRC the provider would
+name. Handed the original tracklist rather than what the provider could not
+route, the verb searches those rows on SoundCloud and YouTube and offers
+uploads beside a lossless download.
+
+**Driven:** the provider id half, yes, and fixed, in
+`test_a_row_the_provider_names_by_id_is_not_searched`. The exact search half
+and the ISRC half, no: telling them apart here needs the provider asked again,
+a login on every run, which the unit declined.
+
+**Measured cost.** Extra review items a person has to reject. Nothing
+downloads from this queue yet, so nothing lossy lands. The module docstring
+tells a person to run `intake missing --list` first.
+
+**Closes when:** `intake missing --list` writes the rows it could not route to
+a list of their own and this verb reads that, or the download half of R-404
+refuses a row the provider carries.
+
+---
+
+## R-493. `intake missing --list` searches one track twice when it is typed with and without a key
+
+**Found:** 2026-09-19, on `relay/125`, U80, the hunt for the review's second
+finding one file over.
+
+`missing_cli._missing_for_list` deduplicates missing rows on
+`TrackMatch.match_id`, which carries the musical key, while
+`candidates.identity`, the question's key, carries artist, title and version
+only. The same shape was fixed in `acquire fallback` this unit, driven there in
+`test_one_track_with_and_without_a_key_is_searched_once`.
+
+**Driven:** no, in `intake missing`. Read only.
+
+**Measured cost.** Unmeasured. Read from the code: one extra provider search
+and a row reported twice in `rows` under one item id. `review.offer` is
+idempotent, so no second item.
+
+**Closes when:** the list verb deduplicates on the question's identity, or a
+drive shows the doubled row is not produced by any list a person writes.
+
+---
+
+## R-494. The second source search was never run against the real program
+
+**Found:** 2026-09-19, on `relay/125`, U80.
+
+Everything `YtDlpSearcher` assumes about yt-dlp is read from the source system
+and never driven here: the flat mode `--print` shape, that a search with no
+hits exits zero with nothing printed, that a network failure exits nonzero
+once `--ignore-errors` is gone, and the 180 second timeout. The score's
+weights, `LIKELY_MIX_SECONDS` and `MIX_FACTOR` are the source system's, and
+`SEARCH_LIMIT` of 4 a platform is too.
+
+**Driven:** no. The suite drives the searcher through a fake runner only, by
+the brief's decision.
+
+**Measured cost.** If a search with no hits exits nonzero, every row with no
+upload reads as an outage and the verb refuses `unavailable-transient` on it
+every run, so the row blocks the rows after it. Unmeasured.
+
+**Closes when:** one attended search is run, the U80 brief's owed item, with
+one row that has uploads and one that has none.
+

@@ -1522,6 +1522,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # release. PRECONDITION on ``intake-list-unusable``'s argument: the
         # command line was fine and what it points at is the problem.
         "label-list-unusable": ExitCode.PRECONDITION,
+        # U80. ``acquire fallback`` needed ``yt-dlp`` for a second source search
+        # and the binaries module could not resolve it. The same condition as
+        # the reserved ``install-binary``, re-raised in this verb's vocabulary
+        # exactly as ``rclone-missing`` and ``encoder-missing`` are, because
+        # the reserved binary keys are remedy tokens and not declared reasons.
+        # The refusal carries the binaries module's own remedy token, so a
+        # broken override still says fix the override rather than install.
+        "yt-dlp-missing": ExitCode.PRECONDITION,
     }
 )
 
