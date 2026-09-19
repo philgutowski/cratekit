@@ -1913,6 +1913,9 @@ def test_a_root_folder_of_that_name_is_a_warning_and_is_not_replaced(
     assert envelope["data"]["totals"]["long_tracks"] == 0
     skipped = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
     assert any(LONG_PLAYLIST in message for message in skipped), envelope["warnings"]
+    assert all(item["long_track"] == "" for item in envelope["data"]["items"]), (
+        "the offered plan names additions the writer will refuse"
+    )
     written = _routed(export).read_bytes()
     node = _root_child(written, LONG_PLAYLIST)
     assert node.get("Type") == "0"
