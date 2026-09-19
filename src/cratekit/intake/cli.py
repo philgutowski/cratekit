@@ -51,7 +51,7 @@ from cratekit.acquire.match import Wanted
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import artifacts, config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import normalize, pipeline, recognize
 from cratekit.label import catalogue
 from cratekit.label import cli as label_cli
@@ -166,6 +166,15 @@ def build_set(parser, entry) -> None:
 
 def build_identify(parser, entry) -> None:
     parser.add_argument("source", help=_SOURCE_HELP)
+    parser.add_argument(
+        "--out",
+        default=None,
+        metavar="DIR",
+        help=(
+            "folder the tracklist is written into; defaults to a tracklists "
+            "folder under download staging"
+        ),
+    )
     parser.set_defaults(_handler=intake_identify)
 
 
@@ -492,7 +501,7 @@ def intake_set(ctx) -> Envelope:
         frozen = _recording_or_refuse(str(ctx.args.source))
         recognize.assert_recognition_ready()
         result = pipeline.identify_only(frozen)
-        warnings = _coverage_or_refuse(result, frozen)
+        warnings = _coverage_or_refuse(result, frozen) + _cache_notes(result)
         tracks = frozen_rows(result.rows)
         if not tracks:
             return ctx.envelope(
@@ -524,21 +533,141 @@ def intake_set(ctx) -> Envelope:
         )
 
 
-def intake_identify(ctx) -> Envelope:
-    recognize.assert_recognition_ready()
-    source = _recording_or_refuse(str(ctx.args.source))
-    result = pipeline.identify_only(source)
-    warnings = _coverage_or_refuse(result, source)
-    return ctx.envelope(
-        data={
-            "matched": [],
-            "needs_review": [],
-            "missing": [
-                {"artist": row.artist, "title": row.title, "ref": row.ref}
-                for row in result.rows
-            ],
+#: The folder under download staging a tracklist lands in when ``--out`` is
+#: not given, and what a tracklist's file name ends in. A text file of
+#: 'Artist - Title' lines, which is the door ``acquire match`` and ``intake
+#: missing --list`` both read.
+TRACKLISTS_DIR = "tracklists"
+TRACKLIST_SUFFIX = ".tracklist.txt"
+
+#: The two notes identification adds on the envelope's warnings channel. The
+#: ``match`` surface is closed at three arrays, so the file this verb wrote has
+#: no field to ride in, and the channel is the one a person is shown.
+TRACKLIST_WRITTEN = "tracklist-written"
+CACHE_UNWRITTEN = "recognition-cache-unwritten"
+
+
+def _cache_notes(result: pipeline.IdentifyResult) -> tuple[dict[str, str], ...]:
+    """Say so when what this pass paid for could not be kept.
+
+    The pass succeeded and its rows are good. What is lost is the promise that
+    the next pass over the same recording is free, and a person who is about
+    to run ``intake set`` on it is owed that before the second bill.
+    """
+    if not result.cache_unwritten:
+        return ()
+    return (
+        {
+            "code": CACHE_UNWRITTEN,
+            "message": (
+                f"the {result.calls} recognition answer(s) this pass paid for could "
+                f"not be kept ({result.cache_unwritten}), so another pass over this "
+                f"recording pays for them again"
+            ),
         },
-        warnings=warnings,
+    )
+
+
+def _tracklist_dir(cfg: config.Config, given: str | None, source: Path) -> Path:
+    """Where the tracklist goes, checked BEFORE the spend.
+
+    A path that exists and is not a folder is refused here, while the refusal
+    is still free. Whether the folder can be written is only known by writing.
+    """
+    if given:
+        out = Path(str(given)).expanduser().absolute()
+    else:
+        out = cfg.paths.download_staging / TRACKLISTS_DIR
+    if out.exists() and not out.is_dir():
+        raise _unusable(
+            f"{out} exists and is not a folder, so no tracklist can be written into "
+            f"it; nothing was sent",
+            "name a folder with --out",
+            out=str(out),
+            source=str(source),
+        )
+    return out
+
+
+def _tracklist_written(
+    out: Path, source: Path, result: pipeline.IdentifyResult
+) -> dict[str, str]:
+    """Write the tracklist and return the note that names it.
+
+    REPLACED, NOT REFUSED, when the file already holds something else. A
+    tracklist is derived from the recording, and a second identification that
+    filled a gap is the better reading of the same recording.
+
+    A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL, and it arrives
+    after the spend, so it says whether the answers were kept: when they were,
+    running again with another folder costs nothing.
+    """
+    path = out / f"{source.stem}{TRACKLIST_SUFFIX}"
+    try:
+        config._mkdir_private(out)
+        config.atomic_write_bytes(result.tracklist.encode("utf-8"), path)
+    except OSError as exc:
+        kept = (
+            "the recognition answers could not be kept either, so running again pays again"
+            if result.cache_unwritten
+            else "the recognition answers were kept, so running again spends nothing"
+        )
+        raise _unusable(
+            f"the tracklist could not be written to {path} ({type(exc).__name__}: "
+            f"{exc.strerror or exc}); {kept}",
+            "name another folder with --out, or make this one writable",
+            path=str(path),
+            source=str(source),
+        ) from exc
+    return {
+        "code": TRACKLIST_WRITTEN,
+        "message": f"{len(result.rows)} identified track(s) written in order to {path}",
+    }
+
+
+def intake_identify(ctx) -> Envelope:
+    """Identify the recording, write its tracklist, and ask the library about it.
+
+    IDENTIFICATION ALONE USED TO REPORT EVERY TRACK MISSING (R-422). It had the
+    rows and never asked the library, so an owned record and an unowned one
+    read the same. The rows now go through ``match_cli.resolve_list``, the one
+    spelling of that question, under this verb's own key: owned is
+    ``matched``, a version the library may already hold is OFFERED to the
+    review queue and reported under ``needs_review``, and the rest is
+    ``missing``. An open version question is a pending action, exactly as it
+    is for ``acquire match`` over a typed list.
+
+    THE ORDER IS THE SPEND ORDER. The configuration, the recording, the gate
+    and the tracklist folder are all settled while a refusal is free. Then the
+    identifier runs, which is the paid step and which pays nothing for a chunk
+    the recognition cache already holds, so ``intake set`` after this verb
+    costs no calls. The tracklist is written before the library is walked, so
+    a library that cannot be read does not take the tracklist with it.
+
+    NOTHING IDENTIFIED WRITES NO TRACKLIST and walks no library, because there
+    is nothing to write and nothing to ask.
+    """
+    cfg = _load()
+    source = _recording_or_refuse(str(ctx.args.source))
+    recognize.assert_recognition_ready()
+    out = _tracklist_dir(cfg, ctx.args.out, source)
+    result = pipeline.identify_only(source)
+    warnings = _coverage_or_refuse(result, source) + _cache_notes(result)
+    if not result.rows:
+        return ctx.envelope(
+            data=match.MatchResult(matches=()).payload(), warnings=warnings
+        )
+    written = _tracklist_written(out, source, result)
+    resolved = match_cli.resolve_list(
+        cfg, result.rows, handler_key=ctx.entry.handler_key, run_id=ctx.run.run_id
+    )
+    pending = resolved.pending
+    return ctx.envelope(
+        data=resolved.result.payload(),
+        outcome=Outcome.PENDING if pending is not None else Outcome.OK,
+        code=ExitCode.PENDING_HUMAN if pending is not None else ExitCode.OK,
+        pending=pending,
+        warnings=(written, *warnings, *resolved.warnings),
     )
 
 
@@ -810,11 +939,15 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 __all__ = [
     "ARTIFACTS",
+    "CACHE_UNWRITTEN",
     "CALLS",
     "FAVORITES",
     "FAVORITES_SOURCE_ID",
     "INTAKE_KEYS",
     "SOURCE",
+    "TRACKLISTS_DIR",
+    "TRACKLIST_SUFFIX",
+    "TRACKLIST_WRITTEN",
     "TRACKS",
     "UNREACHED",
     "build_file",

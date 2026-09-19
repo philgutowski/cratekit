@@ -257,8 +257,236 @@ def test_identify_only_reports_the_same_coverage_rule(cfg, library, recognised):
     recognised.answers[:] = [hit("Aurora Bloom", "Sun Path"), ConnectionError("down"), miss()]
     code, envelope = drive(["intake", "identify", str(recording(library))])
     assert code == int(ExitCode.OK), envelope
-    assert [w["code"] for w in envelope["warnings"]] == ["recognition-incomplete"]
+    assert [w["code"] for w in envelope["warnings"]] == [
+        intake_cli.TRACKLIST_WRITTEN,
+        "recognition-incomplete",
+    ]
     assert [row["title"] for row in envelope["data"]["missing"]] == ["Sun Path"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U103: identification asks the library, writes its tracklist, and is paid once
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def tracklist_note(envelope: dict) -> dict:
+    notes = [w for w in envelope["warnings"] if w["code"] == intake_cli.TRACKLIST_WRITTEN]
+    assert len(notes) == 1, envelope["warnings"]
+    return notes[0]
+
+
+def test_identify_reports_an_owned_track_owned_an_offered_one_offered_and_the_rest_missing(
+    cfg, library, recognised
+):
+    """R-422. The library is asked, under this verb's own key."""
+    three_tracks(recognised)
+    held = owned(library, "Aurora Bloom - Sun Path.flac")
+    owned(library, "Nova Reef - Tide (Someone Remix).flac")
+
+    code, envelope = drive(["intake", "identify", str(recording(library))])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["outcome"] == str(Outcome.PENDING)
+    data = envelope["data"]
+    assert [row["title"] for row in data["matched"]] == ["Sun Path"]
+    assert data["matched"][0]["paths"] == [str(held)]
+    assert [row["title"] for row in data["needs_review"]] == ["Tide"]
+    assert [row["title"] for row in data["missing"]] == ["Glass Hour"]
+    with review.open_store(cfg) as items:
+        page = review.list_items(items, handler_key="intake.identify")
+    assert [item.item_id for item in page.items] == [data["needs_review"][0]["review_item"]]
+    assert envelope["pending_human_action"]["kind"] == "review"
+
+
+def test_identify_with_nothing_to_ask_a_person_is_an_ok_exit(cfg, library, recognised):
+    three_tracks(recognised)
+    owned(library, "Aurora Bloom - Sun Path.flac")
+    code, envelope = drive(["intake", "identify", str(recording(library))])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["pending_human_action"] is None
+    assert len(envelope["data"]["matched"]) == 1
+    assert len(envelope["data"]["missing"]) == 2
+
+
+def test_identify_is_declared_adjudicating_because_it_offers_under_its_own_key():
+    from cratekit.cli import registry
+
+    assert registry.entry("intake.identify").adjudicates
+
+
+def test_identify_writes_the_tracklist_naming_every_identified_row_in_order(
+    cfg, library, recognised
+):
+    three_tracks(recognised)
+    path = recording(library, "friday night.mp3")
+
+    code, envelope = drive(["intake", "identify", str(path)])
+
+    assert code == int(ExitCode.OK), envelope
+    written = cfg.paths.download_staging / intake_cli.TRACKLISTS_DIR / "friday night.tracklist.txt"
+    assert written.read_text(encoding="utf-8") == (
+        "Aurora Bloom - Sun Path\nNova Reef - Tide\nMira Vale - Glass Hour\n"
+    )
+    note = tracklist_note(envelope)
+    assert str(written) in note["message"]
+    assert "3 identified" in note["message"]
+
+
+def test_the_tracklist_is_a_list_the_match_verb_reads_back_row_for_row(cfg, library, recognised):
+    """The file is a door, not a souvenir: what identify wrote, match reads."""
+    from cratekit.acquire import match_cli
+
+    recognised.answers[:] = [
+        hit("Aurora Bloom", "Sun Path (Dub Mix)", isrc="X1"),
+        hit("Nova Reef", "Tide", isrc="X2"),
+        miss(),
+    ]
+    out = library / "lists"
+    code, envelope = drive(["intake", "identify", str(recording(library)), "--out", str(out)])
+    assert code == int(ExitCode.OK), envelope
+    rows = match_cli.read_list(out / "set.tracklist.txt")
+    assert [(row.artist, row.title, row.version) for row in rows] == [
+        ("Aurora Bloom", "Sun Path", "Dub Mix"),
+        ("Nova Reef", "Tide", ""),
+    ]
+
+
+def test_a_tracklist_folder_that_is_a_file_is_refused_before_any_spend(cfg, library, recognised):
+    three_tracks(recognised)
+    blocker = library / "not-a-folder"
+    blocker.write_text("x")
+    code, envelope = drive(
+        ["intake", "identify", str(recording(library)), "--out", str(blocker)]
+    )
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert recognised.requests == [], "the refusal was paid for"
+    assert recognised.ledger.used() == 0
+
+
+def test_a_tracklist_that_cannot_be_written_refuses_and_says_the_answers_were_kept(
+    cfg, library, recognised, monkeypatch
+):
+    three_tracks(recognised)
+    real = config.atomic_write_bytes
+
+    def failing(payload, path, **kwargs):
+        if str(path).endswith(intake_cli.TRACKLIST_SUFFIX):
+            raise PermissionError(13, "Permission denied", str(path))
+        return real(payload, path, **kwargs)
+
+    monkeypatch.setattr(config, "atomic_write_bytes", failing)
+    path = recording(library)
+    code, envelope = drive(["intake", "identify", str(path)])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    # The constructor reclassifies a refusal chained from a permission error,
+    # and keeps the site's own slug beside it.
+    assert envelope["cause"]["reason"] == "path-permission-denied"
+    assert envelope["cause"]["detail"]["declared_reason"] == "intake-list-unusable"
+    assert "spends nothing" in envelope["cause"]["message"]
+    monkeypatch.setattr(config, "atomic_write_bytes", real)
+    code, envelope = drive(["intake", "identify", str(path)])
+    assert code == int(ExitCode.OK), envelope
+    assert len(recognised.requests) == 3, "the promise in the refusal was false"
+
+
+def test_nothing_identified_writes_no_tracklist_and_reports_three_empty_arrays(
+    cfg, library, recognised
+):
+    recognised.answers[:] = [miss(), miss(), miss()]
+    code, envelope = drive(["intake", "identify", str(recording(library))])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"] == {"matched": [], "needs_review": [], "missing": []}
+    assert not (cfg.paths.download_staging / intake_cli.TRACKLISTS_DIR).exists()
+    assert [w["code"] for w in envelope["warnings"]] == []
+
+
+def test_a_second_identify_over_the_same_recording_makes_zero_transport_calls(
+    cfg, library, recognised
+):
+    """The brief's scenario, asserted on the fake transport, the ledger and
+    the tracklist, which the second pass still writes from kept answers."""
+    three_tracks(recognised)
+    path = recording(library)
+    first_code, first = drive(["intake", "identify", str(path)])
+    assert len(recognised.requests) == 3
+
+    second_code, second = drive(["intake", "identify", str(path)])
+
+    assert (first_code, second_code) == (int(ExitCode.OK), int(ExitCode.OK))
+    assert len(recognised.requests) == 3, "the second pass reached the transport"
+    assert recognised.ledger.used() == 3, "the second pass was counted as spend"
+    assert second["data"] == first["data"]
+
+
+def test_identify_then_set_pays_for_recognition_once_and_the_job_says_it_cost_nothing(
+    cfg, library, recognised
+):
+    """The ordinary two step use. ``intake set`` reads the cache identify wrote."""
+    three_tracks(recognised)
+    path = recording(library)
+    drive(["intake", "identify", str(path)])
+
+    job_id, envelope = queued_set(path)
+
+    assert len(recognised.requests) == 3, "intake set paid for the recording again"
+    assert recognised.ledger.used() == 3
+    assert envelope["data"]["progress"]["calls"] == 0
+    frozen = job_of(job_id).payload[intake_cli.TRACKS]
+    assert [said["title"] for said in frozen.values()] == ["Sun Path", "Tide", "Glass Hour"]
+
+
+def test_a_changed_recording_misses_the_cache_and_is_paid_for(cfg, library, recognised):
+    three_tracks(recognised)
+    path = recording(library)
+    drive(["intake", "identify", str(path)])
+    path.write_bytes(b"ID3 and then a different set entirely")
+    recognised.answers[:] = [hit("Other Act", "Other Record"), miss(), miss()]
+
+    code, envelope = drive(["intake", "identify", str(path)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert len(recognised.requests) == 6, "a changed file was served the old answers"
+    assert [row["title"] for row in envelope["data"]["missing"]] == ["Other Record"]
+
+
+def test_a_gap_is_paid_for_again_and_nothing_else_is(cfg, library, recognised):
+    """A chunk that got no answer is never kept, so the second pass fills it."""
+    recognised.answers[:] = [
+        hit("Aurora Bloom", "Sun Path", isrc="X1"),
+        ConnectionError("down"),
+        miss(),
+    ]
+    path = recording(library)
+    _, first = drive(["intake", "identify", str(path)])
+    assert "recognition-incomplete" in [w["code"] for w in first["warnings"]]
+    recognised.answers[:] = [hit("Nova Reef", "Tide", isrc="X2")]
+
+    code, second = drive(["intake", "identify", str(path)])
+
+    assert code == int(ExitCode.OK), second
+    assert len(recognised.requests) == 4
+    assert recognised.requests[-1].sample == b"chunk@25", "the wrong chunk was paid for"
+    assert "recognition-incomplete" not in [w["code"] for w in second["warnings"]]
+    assert [row["title"] for row in second["data"]["missing"]] == ["Sun Path", "Tide"]
+
+
+def test_answers_that_could_not_be_kept_are_said_on_both_verbs(
+    cfg, library, recognised, monkeypatch
+):
+    three_tracks(recognised)
+
+    def failing(self, plan, answers):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(acrcloud.RecognitionCache, "write", failing)
+    path = recording(library)
+    code, envelope = drive(["intake", "identify", str(path)])
+    assert code == int(ExitCode.OK), envelope
+    assert intake_cli.CACHE_UNWRITTEN in [w["code"] for w in envelope["warnings"]]
+    three_tracks(recognised)
+    _, queued = queued_set(path)
+    assert intake_cli.CACHE_UNWRITTEN in [w["code"] for w in queued["warnings"]]
 
 
 def test_a_repeated_recording_in_one_set_is_one_item_per_play_and_one_per_fold(

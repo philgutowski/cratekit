@@ -43,6 +43,14 @@ class Identified:
     answer at all. The last one is the one a report has to carry, because a
     set where most chunks were never answered is not a set nobody recognised,
     and the two look identical as a tuple of rows.
+
+    ``calls`` is what THIS pass paid for. ``cached`` is how many of the chunks
+    were answered from the recognition cache instead, so a second pass over an
+    unchanged recording reads ``calls`` of zero and ``cached`` equal to
+    ``chunks``. ``cache_unwritten`` is empty unless the answers this pass paid
+    for could not be kept, and then it says why: the pass still succeeded, and
+    the next one over the same recording will pay again, which a person is
+    owed the chance to know before it happens.
     """
 
     rows: tuple[Wanted, ...]
@@ -50,6 +58,8 @@ class Identified:
     chunks: int = 0
     misses: int = 0
     unreached: int = 0
+    cached: int = 0
+    cache_unwritten: str = ""
 
 
 #: An identifier answers with an :class:`Identified`, or with the bare rows

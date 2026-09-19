@@ -30,7 +30,9 @@ from cratekit.intake.recognize import Identifier
 class IdentifyResult:
     """Identification-only output: a tracklist, the Wanted rows behind it, and
     what finding them cost. The counts are the identifier's own, carried
-    through so a verb can say whether the coverage was complete."""
+    through so a verb can say whether the coverage was complete, how much of
+    it was answered from the recognition cache, and whether what this pass
+    paid for could be kept."""
 
     rows: tuple[Wanted, ...]
     tracklist: str
@@ -38,6 +40,8 @@ class IdentifyResult:
     chunks: int = 0
     misses: int = 0
     unreached: int = 0
+    cached: int = 0
+    cache_unwritten: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +67,8 @@ def identify_only(
         chunks=found.chunks,
         misses=found.misses,
         unreached=found.unreached,
+        cached=found.cached,
+        cache_unwritten=found.cache_unwritten,
     )
 
 

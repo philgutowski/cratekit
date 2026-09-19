@@ -65,9 +65,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from cratekit.acquire import match
 from cratekit.cli import output
@@ -858,6 +859,51 @@ def library_view(cfg: config.Config) -> tuple[match.LibraryIndex, Callable[..., 
     return index, suppresses, identify
 
 
+@dataclass(frozen=True, slots=True)
+class ListResolved:
+    """One list resolved against the library, with what the envelope carries."""
+
+    result: match.MatchResult
+    pending: PendingHumanAction | None
+    warnings: tuple[dict[str, str], ...]
+
+
+def resolve_list(
+    cfg: config.Config,
+    wanted: Sequence[match.Wanted],
+    *,
+    handler_key: str,
+    run_id: str,
+) -> ListResolved:
+    """Resolve ``wanted`` against the library and offer what needs a person.
+
+    THE ONE SPELLING OF "WHAT DOES THE LIBRARY SAY ABOUT THIS LIST". This verb
+    reads a list off disk and ``intake identify`` hears one in a recording, and
+    the question after that is the same question: the library view, the
+    resolution, the offer to the review queue under the asking verb's own key,
+    the pending action and the warnings. A second copy of these steps is how
+    identification came to report every owned track missing: it had the rows
+    and never asked.
+    """
+    index, suppresses, identify = library_view(cfg)
+    result = match.resolve_all(
+        wanted, index, suppresses=suppresses, suppression_id=identify
+    )
+    with review.open_store(cfg) as items:
+        result = adjudicate(
+            items,
+            result,
+            handler_key=handler_key,
+            suppresses=suppresses,
+            suppression_id=identify,
+        )
+    return ListResolved(
+        result=result,
+        pending=_pending(result, run_id=run_id),
+        warnings=_warnings(result, suppresses=suppresses, identify=identify),
+    )
+
+
 def match_list(ctx: Any) -> Envelope:
     """The handler. NOT called ``run``: ``cli.run`` is the dispatcher.
 
@@ -867,25 +913,16 @@ def match_list(ctx: Any) -> Envelope:
     """
     cfg = _load()
     wanted = read_list(Path(ctx.args.list))
-    index, suppresses, identify = library_view(cfg)
-    result = match.resolve_all(
-        wanted, index, suppresses=suppresses, suppression_id=identify
+    resolved = resolve_list(
+        cfg, wanted, handler_key=ctx.entry.handler_key, run_id=ctx.run.run_id
     )
-    with review.open_store(cfg) as items:
-        result = adjudicate(
-            items,
-            result,
-            handler_key=ctx.entry.handler_key,
-            suppresses=suppresses,
-            suppression_id=identify,
-        )
-    pending = _pending(result, run_id=ctx.run.run_id)
+    pending = resolved.pending
     return ctx.envelope(
-        data=result.payload(),
+        data=resolved.result.payload(),
         outcome=Outcome.PENDING if pending is not None else Outcome.OK,
         code=ExitCode.PENDING_HUMAN if pending is not None else ExitCode.OK,
         pending=pending,
-        warnings=_warnings(result, suppresses=suppresses, identify=identify),
+        warnings=resolved.warnings,
     )
 
 
@@ -894,6 +931,7 @@ __all__ = [
     "CLEAR_VERB",
     "LIST_KEYS",
     "LIST_VERSION",
+    "ListResolved",
     "QUEUE",
     "READING_UNSETTLED",
     "REVIEW_VERB",
@@ -908,5 +946,6 @@ __all__ = [
     "library_view",
     "match_list",
     "read_list",
+    "resolve_list",
     "suppression_view",
 ]
