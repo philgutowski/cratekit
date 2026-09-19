@@ -129,7 +129,6 @@ def _recorded(cfg: config.Config) -> tuple[str, ...]:
         handle = rb_writer.open_db(
             target,
             require_closed=False,
-            unlock=rb_writer.unlock_needed(target),
             cfg=cfg,
         )
         try:

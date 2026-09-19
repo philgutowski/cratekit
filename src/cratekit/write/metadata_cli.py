@@ -126,7 +126,6 @@ def _open(cfg: config.Config, *, writing: bool) -> Any:
     return rb_writer.open_db(
         target,
         require_closed=writing,
-        unlock=rb_writer.unlock_needed(target),
         cfg=cfg,
     )
 

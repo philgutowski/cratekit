@@ -14,7 +14,8 @@ otherwise a synthetic file is built), so the battery runs either way.
 
 UNLOCK. A live rekordbox database is encrypted and needs the key. The
 synthetic fixture is plain SQLite and the canary cannot read it with the key
-on. The header tells the two apart, so the same handler opens both.
+on. ``open_db`` reads the header and tells the two apart, so the same handler
+opens both; this module kept its own copy of that probe until R-239.
 
 Layer note: MODULES. Same shape as ``tombstone_cli``: it imports
 ``cratekit.cli.output`` and nothing else from the command-line layer.
@@ -22,7 +23,6 @@ Layer note: MODULES. Same shape as ``tombstone_cli``: it imports
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
@@ -30,8 +30,6 @@ from cratekit.core import config, rb_writer, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
 from cratekit.deletion import run
-
-_SQLITE_HEADER = b"SQLite format 3"
 
 
 def _load() -> config.Config:
@@ -49,17 +47,8 @@ def _load() -> config.Config:
         ) from exc
 
 
-def _needs_unlock(path: Path) -> bool:
-    """True when the file is encrypted, so the binding must supply the key."""
-    try:
-        return not path.read_bytes()[:16].startswith(_SQLITE_HEADER)
-    except OSError:
-        return True
-
-
 def _open(cfg: config.Config) -> Any:
-    target = rb_writer.live_db_path(cfg)
-    return rb_writer.open_db(target, unlock=_needs_unlock(target), cfg=cfg)
+    return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
 
 
 def _plan_digest(found: run.Plan) -> str:

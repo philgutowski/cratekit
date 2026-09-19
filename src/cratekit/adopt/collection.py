@@ -168,9 +168,9 @@ def read_collection(cfg: config.Config) -> tuple[CollectionRow, ...]:
     this call should not have to go and find that out, and the mutation table
     records that no row covers it for the same reason.
 
-    THE KEY IS ASKED FOR RATHER THAN ASSUMED. A real library is encrypted and a
-    disposable one is not, and either constant answer fails somewhere; see
-    :func:`cratekit.core.rb_writer.unlock_needed`.
+    THE KEY IS ASKED FOR RATHER THAN ASSUMED, by ``open_db`` itself. A real
+    library is encrypted and a disposable one is not, and either constant answer
+    fails somewhere; see :func:`cratekit.core.rb_writer.unlock_needed`.
 
     THE HANDLE IS CLOSED BEFORE THIS RETURNS, in a ``finally``, through
     ``close_db`` rather than the binding's own close. That function's docstring
@@ -188,7 +188,6 @@ def read_collection(cfg: config.Config) -> tuple[CollectionRow, ...]:
         target,
         require_closed=False,
         check_app_version=False,
-        unlock=rb_writer.unlock_needed(target),
         cfg=cfg,
     )
     try:

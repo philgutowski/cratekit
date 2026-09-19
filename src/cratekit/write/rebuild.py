@@ -1682,7 +1682,7 @@ def rebuild_governed_tree(
     """
     entries = tree_registry.read(cfg)
     declared = taxonomy.default_taxonomy()
-    handle = rb_writer.open_db(cfg=cfg, unlock=False)
+    handle = rb_writer.open_db(cfg=cfg)
     try:
         known = {str(row.ID) for row in handle.get_playlist()}
         rows = list(routing_pass.content_rows(handle))

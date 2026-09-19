@@ -220,7 +220,7 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
     declared = taxonomy.default_taxonomy()
     added = 0
     skipped = 0
-    handle = rb_writer.open_db(cfg=cfg, unlock=False)
+    handle = rb_writer.open_db(cfg=cfg)
     try:
         known = {str(row.ID) for row in handle.get_playlist()}
         rows = list(routing_pass.content_rows(handle))
@@ -329,7 +329,7 @@ def unplaced_items(cfg: config.Config) -> tuple[list[dict[str, str]], dict[str, 
     native = _native_trees(entries)
     if not native:
         return [], {"compared": False, "reason": "no-native-tree", "collection": 0}
-    handle = rb_writer.open_db(cfg=cfg, unlock=False)
+    handle = rb_writer.open_db(cfg=cfg)
     try:
         known = {str(row.ID) for row in handle.get_playlist()}
         rows = list(routing_pass.content_rows(handle))
@@ -507,7 +507,7 @@ def route_pending(ctx) -> Envelope:
         return ctx.envelope(data=_plan(items, kind="pending"), outcome=Outcome.OK)
 
     declared = taxonomy.default_taxonomy()
-    handle = rb_writer.open_db(cfg=cfg, unlock=False)
+    handle = rb_writer.open_db(cfg=cfg)
     try:
         known = {str(row.ID) for row in handle.get_playlist()}
         rows = list(routing_pass.content_rows(handle))

@@ -134,6 +134,49 @@ def _build_disposable_database(db_path: Path, *, with_tag_category: bool = True)
     conn.close()
 
 
+def _encrypt_in_place(db_path: Path) -> None:
+    """Encrypt a disposable database with the key the binding itself supplies.
+
+    THE SHAPE A REAL LIBRARY HAS, built without touching one. Every other
+    database in this suite is plain, so an open that never asks for the key
+    passes against all of them and fails against every real machine, which is
+    R-239. The key is the binding's own default rather than anything read from
+    an installation, so the file opens exactly when the binding is asked to
+    unlock it.
+
+    The plain file is folded out of WAL first so no sidecar of the plaintext is
+    left beside the encrypted copy, then the copy is put back into WAL, the mode
+    the real database runs in.
+    """
+    from pyrekordbox.db6.database import BLOB
+    from pyrekordbox.utils import deobfuscate
+    from sqlcipher3 import dbapi2
+
+    plain = sqlite3.connect(db_path)
+    plain.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    plain.execute("PRAGMA journal_mode=DELETE")
+    plain.close()
+
+    key = deobfuscate(BLOB)
+    encrypted = db_path.with_name(db_path.name + ".encrypting")
+    conn = dbapi2.connect(str(db_path))
+    try:
+        conn.execute(f"ATTACH DATABASE '{encrypted}' AS encrypted KEY '{key}'")
+        conn.execute("SELECT sqlcipher_export('encrypted')")
+        conn.execute("DETACH DATABASE encrypted")
+    finally:
+        conn.close()
+    os.replace(encrypted, db_path)
+
+    conn = dbapi2.connect(str(db_path))
+    try:
+        conn.execute(f"PRAGMA key = '{key}'")
+        conn.execute("PRAGMA journal_mode=WAL")
+    finally:
+        conn.close()
+    assert W.unlock_needed(db_path), "the encrypted copy still carries a plain header"
+
+
 @pytest.fixture
 def library(tmp_path, monkeypatch):
     """A temporary library root, with configuration pointing at it."""
@@ -315,6 +358,176 @@ def test_the_schema_pin_can_be_forced_for_a_deliberate_revalidation(database, cl
         valid_data(path.parent.parent, rekordbox={"pinned_db_version": "5999"})
     )
     W.close_db(W.open_db(path, unlock=unlock, cfg=cfg, force_schema=True))
+
+
+# ---------------------------------------------------------------------------
+# R-239: the key is asked of the file, by the opener, for every caller
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("encrypted", [True, False], ids=["encrypted", "plain"])
+def test_an_open_that_names_no_key_opens_either_kind_of_database(
+    library, cloud_sync_off, encrypted
+):
+    """The opener answers the question itself, so no caller can answer it wrong.
+
+    A real library is encrypted and every disposable database is plain. Both
+    constant answers fail one of the two, which is how five verb sites came to
+    pass ``unlock=False`` and fail at the open on every real machine.
+    """
+    path = library / "db" / "master.db"
+    _build_disposable_database(path)
+    if encrypted:
+        _encrypt_in_place(path)
+    db = W.open_db(path)
+    try:
+        assert {row.ID for row in db.get_content()} == {"1", "2"}
+    finally:
+        W.close_db(db)
+
+
+def test_an_encrypted_database_does_not_open_with_the_key_withheld(library, cloud_sync_off):
+    """The fixture is what it claims to be: the binding cannot read it without the key.
+
+    Without this, the test above could pass against a file that was never
+    encrypted, and would then say nothing about a real library.
+    """
+    path = library / "db" / "master.db"
+    _build_disposable_database(path)
+    _encrypt_in_place(path)
+    with pytest.raises(W.RekordboxUnavailable):
+        W.close_db(W.open_db(path, unlock=False))
+
+
+@pytest.mark.parametrize("encrypted", [True, False], ids=["encrypted", "plain"])
+def test_a_snapshot_check_that_names_no_key_verifies_either_kind(
+    library, tmp_path, cloud_sync_off, encrypted
+):
+    """The same question one call over, where the constant was ``True``.
+
+    ``snapshot`` calls ``integrity_ok`` with no argument, so a plain database
+    failed its capture check and an encrypted one passed; the suite patched the
+    check to ``unlock=False`` in every file that wrote.
+    """
+    path = library / "db" / "master.db"
+    _build_disposable_database(path)
+    if encrypted:
+        _encrypt_in_place(path)
+    snapshot = W.snapshot_db(path, stamp="s", root=tmp_path / "snaps")
+    assert W.integrity_ok(snapshot) is True
+
+
+def _unlock_arguments(tree) -> list[tuple[int, str]]:
+    """Every call in ``tree`` to an opener that passes ``unlock=`` itself.
+
+    Matched on the called name's last attribute, so ``rb_writer.open_db``,
+    ``W.open_db`` and a bare ``open_db`` are all seen. A ``**kwargs`` call counts,
+    because it can carry the argument unseen.
+    """
+    import ast
+
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+        if name not in {"open_db", "integrity_ok"}:
+            continue
+        if any(kw.arg == "unlock" or kw.arg is None for kw in node.keywords):
+            found.append((node.lineno, name))
+    return found
+
+
+def _forwarded_lines(tree) -> set[int]:
+    """The lines where ``integrity_ok`` passes its own ``unlock`` to ``open_db``.
+
+    Exactly that shape and nowhere else: a call inside the ``integrity_ok``
+    definition whose ``unlock`` keyword is the bare name ``unlock``. A literal
+    answer typed anywhere in ``rb_writer``, including inside ``integrity_ok``,
+    is not a forward and is refused like any other.
+    """
+    import ast
+
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.FunctionDef) and node.name == "integrity_ok"):
+            continue
+        for call in ast.walk(node):
+            if not isinstance(call, ast.Call):
+                continue
+            if any(
+                kw.arg == "unlock" and isinstance(kw.value, ast.Name) and kw.value.id == "unlock"
+                for kw in call.keywords
+            ):
+                lines.add(call.lineno)
+    return lines
+
+
+def test_no_caller_in_src_answers_the_key_question_for_itself():
+    """R-239's closing condition as a guard: one function answers, every open asks.
+
+    The single exemption is ``integrity_ok`` forwarding its own argument to
+    ``open_db`` inside ``rb_writer``, which is the question passed through rather
+    than answered, and it is matched by shape rather than by file.
+    """
+    import ast
+
+    root = Path(W.__file__).resolve().parents[1]
+    problems = []
+    scanned = 0
+    forwards = 0
+    for source in sorted(root.rglob("*.py")):
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        scanned += 1
+        forwarded = _forwarded_lines(tree) if source.name == "rb_writer.py" else set()
+        for line, name in _unlock_arguments(tree):
+            if line in forwarded:
+                forwards += 1
+                continue
+            problems.append(f"{source.relative_to(root)}:{line}: {name}(unlock=...)")
+    assert scanned > 100, f"scanned {scanned} files; the walk is not reaching src"
+    assert forwards == 1, f"expected integrity_ok's one forward, found {forwards}"
+    assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def integrity_ok(snapshot, *, unlock=None):\n    open_db(snapshot, unlock=False)\n",
+        "def other(path, *, unlock=None):\n    open_db(path, unlock=unlock)\n",
+    ],
+    ids=["literal-inside-integrity-ok", "forward-outside-integrity-ok"],
+)
+def test_the_forward_exemption_admits_only_integrity_ok_passing_its_own_argument(source):
+    import ast
+
+    tree = ast.parse(source)
+    assert _unlock_arguments(tree)
+    assert _forwarded_lines(tree) == set()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "rb_writer.open_db(cfg=cfg, unlock=False)",
+        "open_db(path, unlock=True)",
+        "W.integrity_ok(snapshot, unlock=False)",
+        "rb_writer.open_db(path, **options)",
+    ],
+)
+def test_the_key_guard_sees_each_spelling_of_an_answered_question(source):
+    """The guard's own refusals, driven with literal sources, so the scan above
+    cannot be green because the walk stopped recognising a call."""
+    import ast
+
+    assert _unlock_arguments(ast.parse(source))
+
+
+def test_the_key_guard_accepts_an_open_that_asks():
+    import ast
+
+    assert _unlock_arguments(ast.parse("rb_writer.open_db(cfg=cfg)")) == []
 
 
 # ---------------------------------------------------------------------------
