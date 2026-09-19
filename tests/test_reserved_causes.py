@@ -5248,7 +5248,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-pinned on U90, 2026-09-19: 421 to 422 distinct, non-keys UNCHANGED at
     # 264. The one that joined is vocal-cut-out-of-range, a KEY, named at the
     # population assertion above. Nothing left.
-    assert (len(literals), len(literals - set(causes))) == (422, 264), (
+    # Re-pinned on U91, 2026-09-19: 422 to 423 distinct, 264 to 265 non-keys.
+    # ONE literal joined and NOTHING left, differenced over the branch's diff of
+    # `src` against `main` with `git grep` on `main` for each. It is not a
+    # cause: unplaced-export, the plan KIND the unplaced sweep digests its items
+    # under, beside inbox-export. The sweep's one new refusal reuses
+    # governed-tree-absent, which the table already reserves.
+    assert (len(literals), len(literals - set(causes))) == (423, 265), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

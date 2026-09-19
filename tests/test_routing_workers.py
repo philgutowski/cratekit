@@ -34,7 +34,10 @@ THE FOUR CLAIMS, and where each is proved:
    -> ``test_unplaced_declares_no_write_and_needs_only_what_a_read_needs``,
       ``test_doctor_does_not_ask_for_rekordbox_closed_for_the_unplaced_report``,
       ``test_unplaced_reports_with_rekordbox_open_and_writes_nothing`` and
-      ``test_unplaced_still_refuses_on_a_drifted_binding_so_doctor_keeps_the_pins``
+      ``test_unplaced_still_refuses_on_a_drifted_binding_so_doctor_keeps_the_pins``.
+   U91 gave the act back on the export medium, and the U91 section at the end
+   of this file drives it, starting at
+   ``test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created``
 
 WHAT IS SUPPLEMENTED. Binding the first caller in ``src`` to an engine makes
 this unit the owner of that engine's unreviewed failure paths, which is the
@@ -595,9 +598,12 @@ def test_unplaced_declares_no_write_and_needs_only_what_a_read_needs():
     because the tree registry the report walks from is a state file on the
     library root. The pins stay, because the binding pin is checked on a read as
     well, which the drifted binding drive below proves.
+
+    U91 added ``xml`` and nothing else: ``--export`` writes a new file beside an
+    export, and no database surface is written on either path.
     """
     entry = registry.entry("route.unplaced")
-    assert entry.writes == frozenset(), entry.writes
+    assert entry.writes == frozenset({"xml"}), entry.writes
     assert entry.destructive is False
     assert entry.doctor_checks == ("library.mounted", "rekordbox.pins"), entry.doctor_checks
     assert entry.gates == (), [spec.name for spec in entry.gates]
@@ -2659,3 +2665,349 @@ def test_a_folder_the_vocal_writer_cannot_serve_is_a_warning_and_the_rest_are_se
     assert envelope["data"]["totals"]["vox_created"] == [f"Tech House/{vox}"]
     messages = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
     assert any(vox in m for m in messages), messages
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U91: route unplaced --export places what the routing tree does not hold
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The source system's ``dj-sort-unplaced`` read a fresh export, routed every
+# collection track no playlist under the routing tree held, created a sub where
+# the bucket had none, and wrote a new file to import. Every test goes through
+# the shipped command line and reads the OUTPUT FILE back.
+
+
+def _placed_folder(
+    name: str, subs: tuple[str, ...], held: dict[tuple[str, str], tuple[str, ...]]
+) -> list[str]:
+    """One genre folder whose subs hold the keys ``held`` names for them."""
+    lines = [f'        <NODE Type="0" Name="{name}" Count="{len(subs)}">']
+    for sub in subs:
+        keys = held.get((name, sub), ())
+        if not keys:
+            lines.append(f'          <NODE Name="{sub}" Type="1" KeyType="0" Entries="0"/>')
+            continue
+        lines.append(
+            f'          <NODE Name="{sub}" Type="1" KeyType="0" Entries="{len(keys)}">'
+        )
+        lines += [f'            <TRACK Key="{key}"/>' for key in keys]
+        lines.append("          </NODE>")
+    lines.append("        </NODE>")
+    return lines
+
+
+def _unplaced_export(
+    cfg: config.Config,
+    folder: Path,
+    *,
+    held: dict[tuple[str, str], tuple[str, ...]] | None = None,
+    folders: tuple[tuple[str, tuple[str, ...]], ...] | None = None,
+    intake: tuple[str, ...] = (),
+    missing_file: str | None = None,
+    root_extra: tuple[str, ...] = (),
+) -> Path:
+    """A fresh export whose routing tree already holds ``held`` and nothing else.
+
+    Every track is a real file under the library, as in ``_write_export``, and
+    track 11 is analysed, so its row carries an average tempo and a tempo
+    element the sweep must leave byte for byte.
+    """
+    from cratekit.core import locations
+    from tests.xml_fixtures import _xml_doc
+
+    held = held or {}
+    if folders is None:
+        folders = (("Deep House", ("Low", "Med")), ("Tech House", ("Low", "Med")))
+    music = Path(cfg.library.root) / "Music"
+    rows: list[str] = []
+    for tid, (name, *_rest) in EXPORT_TRACKS.items():
+        path = music / name
+        if tid != missing_file:
+            path.write_bytes(b"")
+        rows += _export_track(tid, locations.location_url(path), analyzed=tid == "11")
+    declared = taxonomy.default_taxonomy()
+    document = _xml_doc(
+        collection=[
+            f'  <COLLECTION Entries="{len(EXPORT_TRACKS)}">', *rows, "  </COLLECTION>"
+        ],
+        root_children=[
+            f'      <NODE Type="0" Name="{declared.intake.display}" Count="1">',
+            '        <NODE Name="2026-09-19 batch" Type="1" KeyType="0" '
+            f'Entries="{len(intake)}">',
+            *(f'          <TRACK Key="{key}"/>' for key in intake),
+            "        </NODE>",
+            "      </NODE>",
+            f'      <NODE Type="0" Name="{declared.tree.display}" Count="{len(folders)}">',
+            *(line for name, subs in folders for line in _placed_folder(name, subs, held)),
+            "      </NODE>",
+            *root_extra,
+        ],
+    )
+    folder.mkdir(parents=True, exist_ok=True)
+    export = folder / "library_FRESH.xml"
+    export.write_bytes(document)
+    return export
+
+
+def _placed(export: Path) -> Path:
+    return export.with_name(export.stem + "_placed.xml")
+
+
+def _sweep(export: Path) -> tuple[int, dict]:
+    return _drive(["route", "unplaced", "--export", str(export)])
+
+
+def test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created(
+    configured, tagged, tmp_path
+):
+    """The creating writer: Tech House has no High, so the sweep makes one."""
+    export = _unplaced_export(configured, tmp_path / "exports")
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["outcome"] == str(Outcome.PENDING)
+    totals = envelope["data"]["totals"]
+    assert totals["applied"] is True
+    assert totals["inserted"] == 3
+    assert totals["created"] == ["Tech House/High"]
+    assert totals["output"] == str(_placed(export))
+
+    written = _placed(export).read_bytes()
+    for tid, (_name, _genre, _energy, (folder, sub)) in EXPORT_TRACKS.items():
+        assert _sub_keys(written, folder, sub) == (tid,), (
+            f"track {tid} did not land in {folder}/{sub} alone"
+        )
+    assert {
+        item["track_id"]: item["destination"] for item in envelope["data"]["items"]
+    } == {tid: f"{folder}/{sub}" for tid, (*_, (folder, sub)) in EXPORT_TRACKS.items()}
+
+    pending = envelope["pending_human_action"]
+    assert pending["kind"] == "rekordbox_import"
+    assert pending["artifact"] == str(_placed(export))
+    assert pending["verify_verb"] == "route.unplaced"
+    assert "1 sub-playlist(s) were created" in pending["summary"]
+    assert export.read_bytes() != written, "the export itself was the file written"
+
+
+def test_a_placed_track_is_untouched_even_where_the_declaration_would_not_put_it(
+    configured, tagged, tmp_path
+):
+    """Placed means held anywhere under the tree, not held where the rule says.
+
+    Track 11 routes to Deep House/Low and a person filed it in Med by hand. The
+    sweep leaves it there and does not add a second copy under Low.
+    """
+    export = _unplaced_export(
+        configured, tmp_path / "exports", held={("Deep House", "Med"): ("11",)}
+    )
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["inserted"] == 2
+    assert [item["track_id"] for item in envelope["data"]["items"]] == ["12", "13"]
+    written = _placed(export).read_bytes()
+    assert _sub_keys(written, "Deep House", "Low") == ()
+    assert _sub_keys(written, "Deep House", "Med") == ("11", "12")
+
+
+def test_a_track_held_only_in_a_vocal_sub_is_placed(configured, tagged, tmp_path):
+    """Any sub under the tree places a track, the vocal sub included."""
+    vox = _vox_display()
+    export = _unplaced_export(
+        configured,
+        tmp_path / "exports",
+        folders=(("Deep House", ("Low", "Med")), ("Tech House", ("Low", vox))),
+        held={("Tech House", vox): ("13",)},
+    )
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert "13" not in {item["track_id"] for item in envelope["data"]["items"]}
+    assert envelope["data"]["totals"]["created"] == []
+    assert b'Name="High"' not in _placed(export).read_bytes()
+
+
+def test_a_track_held_only_outside_the_tree_is_unplaced(configured, tagged, tmp_path):
+    """The intake folder and a root playlist are not the routing tree."""
+    export = _unplaced_export(
+        configured,
+        tmp_path / "exports",
+        intake=("12",),
+        root_extra=(
+            '      <NODE Name="Warm up" Type="1" KeyType="0" Entries="1">',
+            '        <TRACK Key="11"/>',
+            "      </NODE>",
+        ),
+        held={("Tech House", "Low"): ("13",)},
+    )
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert [item["track_id"] for item in envelope["data"]["items"]] == ["11", "12"]
+    written = _placed(export).read_bytes()
+    assert _sub_keys(written, "Deep House", "Low") == ("11",)
+    assert _sub_keys(written, "Deep House", "Med") == ("12",)
+
+
+def test_without_the_flag_nothing_is_written_and_the_answer_names_the_flag(
+    configured, tagged, tmp_path
+):
+    """The report R-313 made stays a report, and says which medium places."""
+    export = _unplaced_export(configured, tmp_path / "exports")
+    before = {path.name: path.read_bytes() for path in export.parent.iterdir()}
+    code, envelope = _drive(["route", "unplaced"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.NO_OP)
+    assert envelope["data"]["totals"]["compared"] is False
+    assert [w["code"] for w in envelope["warnings"]] == ["no-native-tree"]
+    assert "route unplaced --export" in envelope["warnings"][0]["message"]
+    assert {path.name: path.read_bytes() for path in export.parent.iterdir()} == before
+
+
+def test_no_tempo_or_bpm_attribute_differs_after_the_sweep(configured, tagged, tmp_path):
+    """Never write a beat grid: every grid token the export held comes back as it was."""
+    import re
+
+    export = _unplaced_export(configured, tmp_path / "exports")
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    grid = re.compile(rb'<TEMPO[^>]*>|\b(?:AverageBpm|Bpm|Inizio|Metro|Battito)="[^"]*"')
+    before = grid.findall(export.read_bytes())
+    assert before, "the fixture carries no grid, so this compares nothing"
+    assert grid.findall(_placed(export).read_bytes()) == before
+
+
+def test_a_second_sweep_over_its_own_output_places_nothing(configured, tagged, tmp_path):
+    """Idempotent, and a sweep that placed nothing writes no file to import."""
+    export = _unplaced_export(configured, tmp_path / "exports")
+    _sweep(export)
+    first = _placed(export)
+    before = sorted(path.name for path in first.parent.iterdir())
+    code, envelope = _sweep(first)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.NO_OP)
+    totals = envelope["data"]["totals"]
+    assert totals["inserted"] == 0
+    assert totals["reason"] == "nothing-to-route"
+    assert totals["output"] is None
+    assert sorted(path.name for path in first.parent.iterdir()) == before
+
+
+def test_an_unreadable_track_is_a_warning_and_the_rest_are_placed(
+    configured, tagged, tmp_path
+):
+    export = _unplaced_export(configured, tmp_path / "exports", missing_file="13")
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["inserted"] == 2
+    assert [w["code"] for w in envelope["warnings"]] == ["track-file-unreadable"]
+    assert b'Name="High"' not in _placed(export).read_bytes()
+
+
+def test_a_sweep_that_could_place_nothing_is_blocked_not_done(configured, tagged, tmp_path):
+    """The one unplaced track cannot be read, so nothing is written, and the
+    answer must not be the ``nothing-to-route`` the import check reads as done."""
+    export = _unplaced_export(
+        configured,
+        tmp_path / "exports",
+        held={("Deep House", "Low"): ("11",), ("Deep House", "Med"): ("12",)},
+        missing_file="13",
+    )
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.NO_OP)
+    assert envelope["data"]["totals"]["reason"] == "route-blocked"
+    assert not _placed(export).exists()
+
+
+def test_a_missing_genre_folder_is_a_skipped_write_and_no_folder_is_invented(
+    configured, tagged, tmp_path
+):
+    """The creating writer makes a sub, never a genre folder."""
+    export = _unplaced_export(
+        configured, tmp_path / "exports", folders=(("Deep House", ("Low", "Med")),)
+    )
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["inserted"] == 2
+    messages = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
+    assert any("Tech House" in message for message in messages), messages
+    assert b'Name="Tech House"' not in _placed(export).read_bytes()
+
+
+def test_a_cut_over_tree_refuses_the_sweep_and_writes_nothing(configured, tagged, tmp_path):
+    _cut_over_routing_tree(configured)
+    export = _unplaced_export(configured, tmp_path / "exports")
+    code, envelope = _sweep(export)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "tree-unconverged"
+    assert "route unplaced without --export" in " ".join(envelope["cause"]["remediation"]["steps"])
+    assert not _placed(export).exists()
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [b'Type="0" Name="Elsewhere"', b'Type="1" Name="{tree}"'],
+    ids=["absent", "a-playlist-of-that-name"],
+)
+def test_an_export_with_no_routing_tree_refuses(configured, tagged, tmp_path, replacement):
+    """Every track would read as unplaced and every write be skipped."""
+    display = taxonomy.default_taxonomy().tree.display
+    export = _unplaced_export(configured, tmp_path / "exports")
+    export.write_bytes(
+        export.read_bytes().replace(
+            f'Type="0" Name="{display}"'.encode(),
+            replacement.replace(b"{tree}", display.encode()),
+        )
+    )
+    code, envelope = _sweep(export)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "governed-tree-absent"
+    assert not _placed(export).exists()
+
+
+def test_an_unmounted_library_refuses_the_sweep(configured, tagged, tmp_path, monkeypatch):
+    export = _unplaced_export(configured, tmp_path / "exports")
+    real = Path.is_dir
+    root = Path(configured.library.root)
+    monkeypatch.setattr(Path, "is_dir", lambda self: False if self == root else real(self))
+    code, envelope = _sweep(export)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "library-volume-unmounted"
+    assert not _placed(export).exists()
+
+
+def test_the_sweep_runs_with_rekordbox_open_and_opens_no_database(
+    configured, tagged, tmp_path, monkeypatch
+):
+    """The export medium writes a new file, so rekordbox running costs nothing."""
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
+
+    def no_open(*args, **kwargs):
+        raise AssertionError("the export sweep opened the database")
+
+    monkeypatch.setattr(rb_writer, "open_db", no_open)
+    export = _unplaced_export(configured, tmp_path / "exports")
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert not session.lock_path(configured).exists()
+
+
+def test_a_calibrated_vocal_track_lands_in_a_vocal_sub_the_sweep_creates(
+    configured, voiced, tmp_path
+):
+    """Over the cut, a track files under its energy sub and the vocal sub, and
+    the creating writer makes the vocal sub where the folder has none."""
+    _calibrated(configured)
+    voiced["Top Track.flac"] = 6
+    vox = _vox_display()
+    export = _unplaced_export(
+        configured,
+        tmp_path / "exports",
+        folders=(("Deep House", ("Low", "Med")), ("Tech House", ("Low", "Med", "High"))),
+    )
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["created"] == [f"Tech House/{vox}"]
+    written = _placed(export).read_bytes()
+    assert _sub_keys(written, "Tech House", "High") == ("13",)
+    assert _sub_keys(written, "Tech House", vox) == ("13",)
+    vocal = {item["track_id"]: item["vocal"] for item in envelope["data"]["items"]}
+    assert vocal == {"11": "", "12": "", "13": f"Tech House/{vox}"}

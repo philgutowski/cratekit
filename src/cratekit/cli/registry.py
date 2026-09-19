@@ -1100,7 +1100,8 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="route.unplaced",
-        summary="find tracks in the collection that no governed tree places",
+        summary="find tracks in the collection that no governed tree places, "
+        "or place an export's with --export",
         module="cratekit.write.routing_cli",
         builder="build_unplaced",
         handler_key="route.unplaced",
@@ -1108,15 +1109,19 @@ ENTRIES: tuple[Entry, ...] = (
         source_scripts=("dj-sort-unplaced",),
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        # A REPORT, NOT A WRITE (R-313). The handler opens the database without
-        # write intent, takes no session and writes nothing, so it declares no
-        # write surface, is not destructive and names no cloud-sync decision.
-        # Declaring otherwise told a person to close rekordbox before a read. The
-        # source's ``dj-sort-unplaced`` moved tracks, and that act is
-        # ``route.inbox`` here. The volume stays: the tree registry the report
-        # walks from is a state file on the library root. The pins stay too,
+        # THE DATABASE IS ONLY READ (R-313). Without ``--export`` the handler
+        # opens it without write intent, takes no session and writes nothing,
+        # so no database surface is declared, the verb is not destructive and
+        # it names no cloud-sync decision. Declaring otherwise told a person to
+        # close rekordbox before a read. U91 gave the source's
+        # ``dj-sort-unplaced`` act back on the export medium: ``--export``
+        # writes a NEW file beside the export, never the export and never the
+        # database, so ``xml`` is the one surface. The volume stays: the tree
+        # registry the report walks from is a state file on the library root,
+        # and the sweep reads the files the export names. The pins stay too,
         # because the writer checks the binding pin on every open, a read
-        # included, so a drifted binding refuses this report as well.
+        # included, so a drifted binding refuses the report as well.
+        writes=frozenset({"xml"}),
         taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted", "rekordbox.pins"),
     ),

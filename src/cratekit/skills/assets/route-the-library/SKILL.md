@@ -31,9 +31,10 @@ names which of the three failed. Ask the health check rather than opening the
 application to look, since opening it is the condition that makes the verb
 refuse.
 
-`route unplaced` is the exception. It only reads, so it is safe to run with
-rekordbox open. It still needs the library mounted and the pins intact, since
-the database is read through the same pinned binding.
+`route unplaced` is the exception. It only reads the database, so it is safe to
+run with rekordbox open. It still needs the library mounted and the pins intact,
+since the database is read through the same pinned binding. With `--export` it
+writes a new file beside the export and opens no database at all.
 
 ```bash
 crate doctor
@@ -102,6 +103,32 @@ reports tracks the governed trees do not cover, a count you can bound. Converge
 asks, per tree, whether declared membership matches what the database actually
 holds. A library can be fully covered and still unconverged, so read the one
 that matches the question you have.
+
+## Placing what nothing places, through an export
+
+On a library whose routing tree has not cut over to the database, the report
+above compares nothing and says so. The act is on the export instead:
+
+```bash
+crate route unplaced --export /path/to/collection.xml
+```
+
+Every collection track that no playlist under the routing tree holds is routed
+by the same decision the intake sweep makes, and the result is written to
+`collection_placed.xml` beside the export. The export itself and the database
+are never written, so this is safe with rekordbox open and asks no question
+first. The file is the review: nothing reaches the library until you import it.
+
+A track filed anywhere under the tree is left where it is, even in a sub the
+rules would not pick. A bucket with no sub yet gets one, and the answer lists
+every sub it created. A missing genre folder is a warning, never invented. A
+track whose file is not on this machine is a warning and is not placed. Ratings
+are not set here; `route inbox --export` rates the intake.
+
+The run ends waiting on the import. Import the file as a rekordbox xml library,
+import the routing tree from it, then export again and run the same command on
+the new export. It places nothing once the import has landed, and that is the
+check.
 
 ## Resort queues rather than sweeps
 
