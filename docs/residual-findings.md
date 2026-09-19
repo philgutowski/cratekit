@@ -17740,6 +17740,27 @@ the author's table, not an independent one. **Still open:** no verb calls
 `landing.apply`, so a person still cannot land a downloaded batch. That is the
 verb unit. R-432, R-433 and R-434 are what the engine leaves for it.
 
+**Closed 2026-09-18 on `relay/117`, U72.** `crate intake land [FOLDER]
+--export XML [--name NAME]`, `src/cratekit/intake/land_cli.py`, registry entry
+`intake.land`, `plan/1`, one confirm gate `intake.land.confirm` with apply and
+abort and `digest_source="plan"`. The folder defaults to download staging and
+the batch name to the run id without its colons. The intake file is
+`library.root / NAME_inboxed.xml`. The first run stops at the gate with the
+files, the batch folder and the intake file on the gate screen, and moves
+nothing. The digest covers the folder, the batch, the target, the intake file,
+the export and the engine's fingerprint, so a recorded answer is stale for any
+other plan. An answered run lands through `landing.apply` and ends PENDING with
+a `rekordbox_import` action naming the intake file, verified by
+`route.pending`, blocking nothing. A file the engine refused is a warning. An
+empty folder is a plan of nothing and a NO_OP, on the `name apply` and `route
+inbox` precedent, because conformance 3 drives every gated verb to OK on an
+empty library. Driven in `tests/test_intake_land.py` through `cli.run` in both
+output modes against real tagged FLAC containers. GUIDE's acquisition
+walkthrough names the step. Mutation tables `docs/mutation/u72.md` and
+`u72-b.md`, 24 rows, all killing, the author's own. Owed to an attended
+sitting: one real staged batch landed and its intake file imported into
+rekordbox, which is the same sitting U71 owes.
+
 ---
 
 ## R-414. The rating planner puts an export scale value into a database field
@@ -18205,6 +18226,15 @@ owns the job and its resume.
 across the moves, or the move uses an exclusive rename where the volume
 supports one.
 
+**Reachable since 2026-09-18, `relay/117`, U72.** `crate intake land` calls
+`landing.apply` and holds no lock, so the window is now a shipped verb's. It is
+narrowed and not closed: the batch name defaults to the run id, unique per run,
+so two landings meet in one batch folder only when a person passes the same
+`--name` to both and both reach their moves at the same moment. The same window
+covers the intake file, which the engine checks absent before the first move and
+`place_files` then writes with a plain overwrite. Still not measured. It meets the
+board bar, since a landed file can be overwritten, and is issue #180.
+
 ---
 
 ## R-433. `place_files` leaves its intake session record open, on success and on every refusal after it opens
@@ -18278,5 +18308,35 @@ gate that meets it refuses a clean merge.
 **Closes when:** the error is captured with its traceback and its fixture is
 made independent of whatever it shares, or enough full runs pass to call it
 gone.
+
+---
+
+## R-436. A landed batch names `route pending` as its import check, and on a library with no database native tree that verb answers OK without reading anything
+
+**Found:** 2026-09-18, by U72 on `relay/117`, choosing the pending action's
+`verify_verb`. Read, not driven.
+
+`crate intake land` ends with a `rekordbox_import` pending action whose
+`verify_verb` is `route.pending`, the choice the brief made, because that verb
+closes the intake session `place_files` opens once the session's routing intents
+settle, `write/routing_cli.py` `_close_if_settled`. But `route_pending` returns
+OK before it opens anything when no tree is database native,
+`write/routing_cli.py:503-507`, and every library is in that state until a tree
+is cut over, which is U29 and attended. So before cutover the verb named as the
+proof of an import answers OK whether or not the import happened, and the intake
+session stays open.
+
+**Measured cost:** not measured. Whether any surface reads a pending action's
+`verify_verb` and treats its OK as the action done was not traced. The human
+output prints the verb name as `verify: route.pending`, driven.
+
+**Why not fixed here.** `route pending`'s semantics before cutover are U19's
+and U29's, and the brief fixed the verify verb unless an established import
+check existed. None does, `core/session.py` `pending_import` takes the verb as
+a parameter.
+
+**Closes when:** an import check exists that reads the collection for the
+landed Locations and the pending action names it, or `route pending` refuses or
+says so when no tree is database native.
 
 ---

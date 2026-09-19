@@ -166,22 +166,35 @@ asked for is reported as a failing line, never dropped in silence.
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
 is not blocked, and `crate acquire audit` reports files that break the lossless
-policy. What arrived then needs tagging, naming and filing, in this order.
-`tag folder` writes genre and album art to the files only. `name apply` rebuilds
-filenames from your template. `route inbox` files the intake folder into your
-taxonomy, and `route pending` files the rest once you have imported.
+policy. What arrived then needs tagging, naming, landing and filing, in this
+order. `tag folder` writes genre and album art to the files only. `name apply`
+rebuilds filenames from your template. `intake land` moves the staged files into
+your library and writes one importable file naming every one of them, which you
+import into rekordbox. `route inbox` files the intake folder into your taxonomy,
+and `route pending` files the landed tracks once the import has made their rows.
 
 ```bash
 crate tag folder /path/to/staging
-crate name apply
+crate name apply --root /path/to/staging
+crate intake land --export /path/to/collection-export.xml
 crate route inbox
 crate route pending
 ```
 
-`name apply` and `route inbox` each build a plan and stop at a gate before they
-write. Run once to read the plan, then answer the gate. See "Answering a gate".
-A plan is bound to the folder as it was, so if a file lands between reading the
-plan and answering, the answer is refused as stale and you plan again.
+`intake land` reads download staging unless you name another folder. The files go
+to a new folder under your music folder, named for the run unless you pass
+`--name`, and the importable file is written beside the library as
+`NAME_inboxed.xml`. It never replaces a file already in the library: a file whose
+name is taken stays in staging and the run says so. Staging has to be on the same
+volume as the library, because a move there is a rename and a copy is refused. The
+run ends waiting on you, naming the file to import, and `crate route pending` is
+what confirms the import was done.
+
+`name apply`, `intake land` and `route inbox` each build a plan and stop at a
+gate before they write. Run once to read the plan, then answer the gate. See
+"Answering a gate". A plan is bound to the folder as it was, so if a file lands
+between reading the plan and answering, the answer is refused as stale and you
+plan again.
 
 ### Follow record labels
 
@@ -353,6 +366,7 @@ the same gate with nothing recorded and refuses again. Gates you will meet:
 |---|---|---|
 | `route.inbox.apply` | apply | `route inbox` |
 | `name.apply.confirm` | apply | `name apply` |
+| `intake.land.confirm` | apply | `intake land` |
 | `tag.retag.confirm` | apply | `tag retag` |
 | `sync.favorites.confirm` | sync | `sync favorites` |
 | `sync.all.favorites.confirm` | sync | `sync all` |

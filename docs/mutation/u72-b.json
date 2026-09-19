@@ -1,0 +1,409 @@
+{
+  "name": "u72-b",
+  "pass_kind": "light",
+  "branch": "relay/117",
+  "head": "7550904",
+  "when": "2026-09-19 00:54 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7837,
+  "baseline_exit": 0,
+  "pytest_runs": 17,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/land_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/land_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "0f9fcd4ebf849887",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7837,
+    "baseline_collected": 7837,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M13_verify_verb",
+      "description": "The pending import is verified by route inbox instead of route pending",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ddc77c4e8aa9e779",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_an_answered_run_lands_the_batch_and_names_the_xml_in_human_output",
+        "tests/test_intake_land.py::test_the_landed_envelope_carries_an_import_that_blocks_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "VERIFY_VERB = \"route.pending\"",
+      "new": "VERIFY_VERB = \"route.inbox\""
+    },
+    {
+      "id": "M14_pending_kind",
+      "description": "The pending action is an external step rather than a rekordbox import",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a87456719e06a17a",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_the_landed_envelope_carries_an_import_that_blocks_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        kind=\"rekordbox_import\",",
+      "new": "        kind=\"external_step\","
+    },
+    {
+      "id": "M15_pending_artifact",
+      "description": "The pending action names no file",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "28cf9d10ffa68ee2",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_the_folder_defaults_to_staging_and_the_name_to_the_run",
+        "tests/test_intake_land.py::test_the_landed_envelope_carries_an_import_that_blocks_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        artifact=str(destination),",
+      "new": "        artifact=None,"
+    },
+    {
+      "id": "M16_no_pending",
+      "description": "A landed run ends OK with no pending action",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "02257a4c29cbf97b",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_a_refused_file_is_a_warning_a_person_reads",
+        "tests/test_intake_land.py::test_an_answered_run_lands_the_batch_and_names_the_xml_in_human_output",
+        "tests/test_intake_land.py::test_the_folder_defaults_to_staging_and_the_name_to_the_run",
+        "tests/test_intake_land.py::test_the_landed_envelope_carries_an_import_that_blocks_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        outcome=Outcome.PENDING,\n        code=ExitCode.PENDING_HUMAN,\n        pending=_pending(ctx.run.run_id, landed, target),",
+      "new": "        outcome=Outcome.OK,"
+    },
+    {
+      "id": "M17_no_warnings",
+      "description": "A file the engine refused is not a warning",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "069574df703fca5f",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_a_refused_file_is_a_warning_a_person_reads"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            {\"code\": entry.reason, \"message\": entry.sentence} for entry in landed.refused",
+      "new": "            {\"code\": entry.reason, \"message\": entry.sentence} for entry in ()"
+    },
+    {
+      "id": "M18_refused_unmarked",
+      "description": "The payload marks every planned item landed, refused ones included",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4460c8e6409c839c",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_the_refused_item_is_marked_in_the_plan_payload"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        entry = refused.get(item[\"from\"])",
+      "new": "        entry = None"
+    },
+    {
+      "id": "M19_gate_context",
+      "description": "The gate carries no shown context",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3cce97b0cc8f641a",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_an_empty_staging_folder_is_a_plan_of_nothing_and_makes_nothing",
+        "tests/test_intake_land.py::test_the_first_run_stops_at_the_gate_and_moves_nothing",
+        "tests/test_intake_land.py::test_the_gate_screen_a_person_reads_names_the_files_and_the_intake_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        context=_shown(planned, target=target, destination=destination),",
+      "new": "        context=None,"
+    },
+    {
+      "id": "M20_shown_files",
+      "description": "The gate context lists no file names",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fdbd4b95e50b6f1a",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_the_first_run_stops_at_the_gate_and_moves_nothing",
+        "tests/test_intake_land.py::test_the_gate_screen_a_person_reads_names_the_files_and_the_intake_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"files\": [item.name for item in planned.items],",
+      "new": "        \"files\": [],"
+    },
+    {
+      "id": "M21_empty_to_engine",
+      "description": "An empty folder goes to the engine, which refuses it",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e671061f93fe556d",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_an_empty_staging_folder_is_a_plan_of_nothing_and_makes_nothing",
+        "tests/test_intake_land.py::test_staging_holding_only_lists_and_dotfiles_is_a_plan_of_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if folder.is_dir() and not landing.listing(folder):",
+      "new": "    if False:"
+    },
+    {
+      "id": "M22_listing_without_isdir",
+      "description": "The empty check lists a folder that may not exist",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2e561d7f2a492952",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_a_folder_that_is_not_there_is_refused_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if folder.is_dir() and not landing.listing(folder):",
+      "new": "    if not landing.listing(folder):"
+    },
+    {
+      "id": "M23_listing_unfiltered",
+      "description": "The engine's public listing returns every entry, not only audio",
+      "file": "src/cratekit/intake/landing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6ed9d2af8b12396c",
+      "subset": [
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.landing",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 7837,
+      "baseline_collected": 7837,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_staging_holding_only_lists_and_dotfiles_is_a_plan_of_nothing"
+      ],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    return _list(folder)\n\n\ndef _digest(",
+      "new": "    return tuple(folder.iterdir())\n\n\ndef _digest("
+    },
+    {
+      "id": "M24_name_ignored",
+      "description": "The --name a person passes is ignored and the run id is used",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ebd0ed41b421b1d0",
+      "subset": [
+        "tests/test_intake_land.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.land_cli",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land.py::test_a_refused_file_is_a_warning_a_person_reads",
+        "tests/test_intake_land.py::test_an_answer_given_for_one_batch_name_is_stale_for_another",
+        "tests/test_intake_land.py::test_an_answered_run_lands_the_batch_and_names_the_xml_in_human_output",
+        "tests/test_intake_land.py::test_the_first_run_stops_at_the_gate_and_moves_nothing",
+        "tests/test_intake_land.py::test_the_gate_screen_a_person_reads_names_the_files_and_the_intake_file",
+        "tests/test_intake_land.py::test_the_landed_envelope_carries_an_import_that_blocks_nothing",
+        "tests/test_intake_land.py::test_the_refused_item_is_marked_in_the_plan_payload"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    batch = ctx.args.name if ctx.args.name is not None else default_name(ctx.run.run_id)",
+      "new": "    batch = default_name(ctx.run.run_id)"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "M25_option_equals_abort",
+      "description": "Write the branch as option == 'abort' rather than option != 'apply'",
+      "reason": "equivalent under the two declared options, so no test can kill it; the branch direction is argued in route inbox and not repeated here"
+    }
+  ]
+}

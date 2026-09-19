@@ -1,0 +1,111 @@
+name = "u72-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M13_verify_verb"
+description = "The pending import is verified by route inbox instead of route pending"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''VERIFY_VERB = "route.pending"'''
+new = '''VERIFY_VERB = "route.inbox"'''
+
+[[rows]]
+id = "M14_pending_kind"
+description = "The pending action is an external step rather than a rekordbox import"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        kind="rekordbox_import",'''
+new = '''        kind="external_step",'''
+
+[[rows]]
+id = "M15_pending_artifact"
+description = "The pending action names no file"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        artifact=str(destination),'''
+new = '''        artifact=None,'''
+
+[[rows]]
+id = "M16_no_pending"
+description = "A landed run ends OK with no pending action"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        outcome=Outcome.PENDING,
+        code=ExitCode.PENDING_HUMAN,
+        pending=_pending(ctx.run.run_id, landed, target),'''
+new = '''        outcome=Outcome.OK,'''
+
+[[rows]]
+id = "M17_no_warnings"
+description = "A file the engine refused is not a warning"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''            {"code": entry.reason, "message": entry.sentence} for entry in landed.refused'''
+new = '''            {"code": entry.reason, "message": entry.sentence} for entry in ()'''
+
+[[rows]]
+id = "M18_refused_unmarked"
+description = "The payload marks every planned item landed, refused ones included"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        entry = refused.get(item["from"])'''
+new = '''        entry = None'''
+
+[[rows]]
+id = "M19_gate_context"
+description = "The gate carries no shown context"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        context=_shown(planned, target=target, destination=destination),'''
+new = '''        context=None,'''
+
+[[rows]]
+id = "M20_shown_files"
+description = "The gate context lists no file names"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        "files": [item.name for item in planned.items],'''
+new = '''        "files": [],'''
+
+[[rows]]
+id = "M21_empty_to_engine"
+description = "An empty folder goes to the engine, which refuses it"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    if folder.is_dir() and not landing.listing(folder):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M22_listing_without_isdir"
+description = "The empty check lists a folder that may not exist"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    if folder.is_dir() and not landing.listing(folder):'''
+new = '''    if not landing.listing(folder):'''
+
+[[rows]]
+id = "M23_listing_unfiltered"
+description = "The engine's public listing returns every entry, not only audio"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    return _list(folder)
+
+
+def _digest('''
+new = '''    return tuple(folder.iterdir())
+
+
+def _digest('''
+
+[[rows]]
+id = "M24_name_ignored"
+description = "The --name a person passes is ignored and the run id is used"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    batch = ctx.args.name if ctx.args.name is not None else default_name(ctx.run.run_id)'''
+new = '''    batch = default_name(ctx.run.run_id)'''
+
+[[dropped]]
+id = "M25_option_equals_abort"
+description = "Write the branch as option == 'abort' rather than option != 'apply'"
+reason = "equivalent under the two declared options, so no test can kill it; the branch direction is argued in route inbox and not repeated here"
