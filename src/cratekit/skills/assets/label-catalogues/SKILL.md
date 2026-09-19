@@ -169,14 +169,25 @@ and the same recording arriving a second time from another accepted release.
 
 There is no handed off state. Ownership is the record, so run it as often as
 you like: a track that has landed since the last run resolves owned and drops
-out. The list's name carries a digest of the track identifiers it lists, so the
-same work rewrites the same file and different work never collides with an
+out. The list's name carries a digest of everything it writes, rows and
+provenance alike, so the same work rewrites the same file and any other work,
+a corrected year included, takes a new name rather than colliding with an
 earlier list.
+
+Owned means landed, not listed and not staged. A list written before its tracks
+landed is superseded by the next one, which holds everything the earlier one
+did that is still owed. Download the newest list and ignore the older ones,
+because downloading both fetches the shared tracks twice and nothing marks the
+older list as spent.
 
 A release the provider no longer has is a failing line naming the release and
 the `crate review clear` that revokes its acceptance, and the other releases
-still list. A release the provider could not answer for is a failing line that
-says to run again. If no release could be read at all, or nothing was listed
+still list. An accepted item that names no release at all is settled the same
+way. A release the provider could not answer for is a failing line that says to
+run again, and after three such failures in a row the remaining releases are
+reported as not asked rather than each spending a full retry wait on a provider
+that is down. A single track row the provider returned in a shape that cannot
+be read is a failing line of its own, and the rest of that release still lists. If no release could be read at all, or nothing was listed
 while some could not be read, it refuses with `label-list-unusable` rather than
 report a clean no-op, because that would read as a library that already holds
 everything. A release with no readable year is listed, reported as undated, and

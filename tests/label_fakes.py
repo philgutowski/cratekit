@@ -29,6 +29,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from cratekit.label.catalogue import ReleaseUnresolvable
+
 #: Every method the ``Catalogue`` protocol declares. Derived once here rather
 #: than remembered at each assertion site.
 PROTOCOL_METHODS = frozenset(
@@ -262,9 +264,9 @@ class FakeCatalogue:
         try:
             tracks, year = self.releases[release_id]
         except KeyError as exc:
-            # A LookupError, which is the protocol's contract for a release the
-            # provider has nothing for, and never an empty listing.
-            raise LookupError(f"no catalogue release {release_id!r}") from exc
+            # The seam's own exception, which is the protocol's contract for a
+            # release the provider has nothing for, and never an empty listing.
+            raise ReleaseUnresolvable(f"no catalogue release {release_id!r}") from exc
         return tuple(tracks), year
 
     def check_label(self, name: str) -> dict:

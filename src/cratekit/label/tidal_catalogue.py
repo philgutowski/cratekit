@@ -38,11 +38,10 @@ from urllib.parse import urlsplit
 import tidalapi
 
 from cratekit.acquire import listing, provider_session
-from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core.cause import CratekitError
 from cratekit.label import harvest, registry
 from cratekit.label import verify as label_verify
-from cratekit.label.catalogue import AccountPlaylist
+from cratekit.label.catalogue import AccountPlaylist, ReleaseUnresolvable
 
 #: A provider playlist identifier. The provider mints playlists as UUIDs, so a
 #: reference that is not one cannot name a playlist and is refused before a
@@ -94,17 +93,6 @@ class LabelUnresolvable(LookupError):
     """
 
 
-class ReleaseUnresolvable(LookupError):
-    """A release identifier the provider has nothing for, or none at all.
-
-    PERMANENT, and raised without a retry. A release a label withdrew does not
-    come back because somebody waited, so the album read classifies the
-    provider's answer FIRST and leaves the retry ladder to the failures waiting
-    can change. R-380 is what the other order costs: a permanent failure that
-    reports itself as transient and resumable.
-    """
-
-
 #: What the retry ladder waits with, read off the module AT CALL TIME. The
 #: ladder's own default is bound when that function is defined, so a suite
 #: could not otherwise drive a retry here without sleeping for real.
@@ -118,11 +106,18 @@ _GONE = object()
 def _gone(exc: BaseException) -> bool:
     """Whether a failure is the provider saying the release does not exist.
 
-    The acquisition adapter's own rule, called rather than copied: only an
-    explicit not found answer is permanent, by class name, by a 404 status or
-    by the text, and everything else is a failure waiting might change.
+    BY CLASS NAME OR BY STATUS, AND NEVER BY THE TEXT. The acquisition adapter's
+    classifier also reads "404" and "not found" out of the message, which is
+    right for a downloader's output and wrong here: the client's HTTP errors
+    carry the request URL, the URL carries the release identifier, and an
+    identifier such as 24040417 holds the digits 404. A rejected session on that
+    release would then be answered once, as gone, and a person would be told to
+    revoke an acceptance over a login problem. A release that is gone is
+    PERMANENT and is never retried, because R-380 is what the other order costs.
     """
-    return classify_unavailable(exc) is TrackOutcome.UNAVAILABLE_PERMANENT
+    if "notfound" in type(exc).__name__.lower():
+        return True
+    return getattr(getattr(exc, "response", None), "status_code", None) == 404
 
 
 def _year(release: Any) -> int | None:

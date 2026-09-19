@@ -21,9 +21,12 @@ THERE IS NO HANDED OFF STATE, and that is what makes a second run safe.
 Ownership is the record. A track downloaded and landed since the last run
 resolves owned and is left out, so the verb may be run after every review
 sitting and lists only what is still owed. The list's name carries a digest of
-the identifiers it lists: the same work writes the same bytes to the same name,
-which the emitter recognises, and different work takes a different name rather
-than meeting the emitter's refusal to replace a file holding something else.
+WHAT IT WRITES, the rows and their provenance and not the identifiers alone:
+the same work writes the same bytes to the same name, which the emitter
+recognises, and any other work, a corrected year included, takes a different
+name rather than meeting the emitter's refusal to replace a file holding
+something else. A list written before its tracks landed is superseded by the
+next one, which holds everything the earlier one did that is still owed.
 
 ONLY MISSING IS LISTED, on the rule ``intake missing`` states. A track the
 library holds in another version is a question, offered into the match queue
@@ -34,12 +37,20 @@ from, is listed once under the first.
 
 A RELEASE THAT CANNOT BE READ IS NAMED AND THE REST STILL LIST. One withdrawn
 release among ninety must not hold the other eighty nine, so it becomes a
-failing check carrying its identifier and the step that settles it. What is
-refused outright is a run that read NO release, or listed nothing while some
-could not be read, because reported as a no-op either reads exactly like a
-library that already holds everything. A ``CratekitError`` from the seam passes
-through untouched: an expired session fails every release the same way, and the
-act it names is the person's to take once.
+failing check carrying its identifier and the step that settles it, and the
+step differs by KIND: a release that is gone, or an item naming no release, is
+settled by revoking the acceptance, and only a provider that did not answer is
+settled by asking again. What is refused outright is a run that read NO release,
+or listed nothing while some could not be read, because reported as a no-op
+either reads exactly like a library that already holds everything. A
+``CratekitError`` from the seam passes through untouched: an adapter that knows
+the session expired names an act that is the person's to take once.
+
+A PROVIDER THAT HAS STOPPED ANSWERING IS NOT ASKED NINETY TIMES. Every failed
+read has already climbed the listing module's retry ladder, 31 seconds of
+waiting, so :data:`OUTAGE_AFTER` failures in a row end the asking and the
+releases left are reported as not asked. An answer, or a release that is gone,
+which is an answer too, resets the count.
 
 Not gated and not destructive: it writes two new files and the emitter refuses
 rather than replaces. Nothing here composes ``acquire download``, so nothing
@@ -48,8 +59,11 @@ here can spend a download.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import json
 import shlex
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -69,6 +83,17 @@ PROVENANCE_SOURCE = "label"
 
 #: What every list this verb writes is named after, before the digest.
 LIST_PREFIX = "label-approved"
+
+#: How many provider failures IN A ROW end the asking. Three, because one is a
+#: bad release and two is a coincidence, and each has already cost a full retry
+#: ladder by the time it is counted.
+OUTAGE_AFTER = 3
+
+#: The four ways an accepted release yields no tracks, by what settles each.
+GONE = "gone"
+NO_IDENTIFIER = "no-identifier"
+PROVIDER = "provider"
+NOT_ASKED = "not-asked"
 
 #: How many bytes of digest a list's name carries, as twice that many hex
 #: characters. Six bytes is 48 bits, and a collision costs a refusal to replace
@@ -117,8 +142,26 @@ class _Release:
 @dataclass(frozen=True, slots=True)
 class _Failed:
     release: _Release
-    gone: bool
+    kind: str
     why: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "release_id": self.release.release_id,
+            "item_id": self.release.item_id,
+            "kind": self.kind,
+            "gone": self.kind == GONE,
+            "why": self.why,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class _Read:
+    """One release the provider answered for: its readable rows, and the rest."""
+
+    wanted: tuple[match.Wanted, ...]
+    year: int | None
+    unreadable: tuple[str, ...]
 
 
 def _text(value: Any) -> str | None:
@@ -174,9 +217,7 @@ def _queued(items: review.ReviewStore) -> tuple[list[_Release], int, int]:
     return accepted, rejected, still_open
 
 
-def _tracks_or_failure(
-    found: catalogue.Catalogue, release: _Release
-) -> tuple[tuple[match.Wanted, ...], int | None] | _Failed:
+def _tracks_or_failure(found: catalogue.Catalogue, release: _Release) -> _Read | _Failed:
     """One release's tracks as ``Wanted`` rows and its year, or why there are none.
 
     THE FIRST CALLER OF ``release_tracks`` OWNS ITS FAILURE PATHS. Two exception
@@ -184,21 +225,36 @@ def _tracks_or_failure(
     ``label_cli.playlist_tracks_or_refuse`` makes: the provider's own error once
     the retry ladder is spent, and the listing module's plain ``RuntimeError``
     for a truncated or unpageable listing. So the catch is broad, bounded by the
-    ``CratekitError`` passthrough above it. A ``LookupError`` is the seam's
-    contract for a release the provider has nothing for, and is reported as
-    gone, which no retry will change.
+    ``CratekitError`` passthrough above it.
+
+    ONLY THE SEAM'S OWN EXCEPTION MEANS GONE. ``LookupError`` would be the
+    shorter catch and is the wrong one: ``KeyError`` is a ``LookupError``, a
+    client that meets a payload it cannot parse raises exactly that, and a
+    person would be told to revoke an acceptance over a parse failure.
+
+    EACH ROW IS READ ALONE. The row reader refuses a whole listing over one row
+    it cannot recognise, which is right for a document somebody wrote and wrong
+    here, where one odd row would cost every other track on the release. A row
+    it refuses is kept by what the refusal said, and reported.
     """
     if not release.release_id:
-        return _Failed(release, gone=False, why="the review item names no release identifier")
+        return _Failed(release, NO_IDENTIFIER, "the review item names no release identifier")
     try:
         rows, year = found.release_tracks(release.release_id)
-        return match.read_tidal_tracks(rows), year
     except CratekitError:
         raise
-    except LookupError as exc:
-        return _Failed(release, gone=True, why=str(exc))
+    except catalogue.ReleaseUnresolvable as exc:
+        return _Failed(release, GONE, str(exc))
     except Exception as exc:  # noqa: BLE001 - named per release, never swallowed
-        return _Failed(release, gone=False, why=f"{type(exc).__name__}: {exc}")
+        return _Failed(release, PROVIDER, f"{type(exc).__name__}: {exc}")
+    wanted: list[match.Wanted] = []
+    unreadable: list[str] = []
+    for row in rows:
+        try:
+            wanted.extend(match.read_tidal_tracks((row,)))
+        except match.UnreadableList as exc:
+            unreadable.append(str(exc))
+    return _Read(tuple(wanted), year, tuple(unreadable))
 
 
 def _out_dir(ctx, cfg) -> Path:
@@ -216,9 +272,25 @@ def _out_dir(ctx, cfg) -> Path:
     return out
 
 
-def list_name(listed: tuple[str, ...]) -> str:
-    """The name a list of exactly these identifiers, in this order, is written under."""
-    digest = hashlib.blake2s("\n".join(listed).encode("utf-8"), digest_size=DIGEST_BYTES)
+def list_name(
+    body: Mapping[str, Any], provenance: Mapping[str, listdoc.Provenance]
+) -> str:
+    """The name a list of exactly these rows, from exactly these releases, takes.
+
+    OVER EVERYTHING THE EMITTER COMPARES, not over the identifiers alone. The
+    emitter refuses a name whose file holds any other bytes, and the manifest's
+    bytes carry the year and the label. A digest of the identifiers gave the
+    same name to the same tracks with a year the provider had since corrected,
+    and the verb then refused on every run until somebody moved a file by hand.
+    """
+    said = {
+        "tracks": body["tracks"],
+        "provenance": [
+            dataclasses.asdict(provenance[track["id"]]) for track in body["tracks"]
+        ],
+    }
+    encoded = json.dumps(said, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    digest = hashlib.blake2s(encoded, digest_size=DIGEST_BYTES)
     return f"{LIST_PREFIX}-{digest.hexdigest()}"
 
 
@@ -231,12 +303,25 @@ def _named(release: _Release) -> str:
 
 
 def _failure_check(failed: _Failed) -> dict[str, Any]:
+    """One failing line per release, ending in the act that settles ITS kind."""
     release = failed.release
-    if failed.gone:
+    clear = f"crate review clear {release.item_id}"
+    if failed.kind == GONE:
         detail = (
             f"{_named(release)} is gone from the provider and none of it is in the "
             f"list ({failed.why}); waiting will not bring it back, so revoke its "
-            f"acceptance with: crate review clear {release.item_id}"
+            f"acceptance with: {clear}"
+        )
+    elif failed.kind == NO_IDENTIFIER:
+        detail = (
+            f"{_named(release)} cannot be asked for and none of it is in the list "
+            f"({failed.why}); running again will not change that, so revoke its "
+            f"acceptance with: {clear}"
+        )
+    elif failed.kind == NOT_ASKED:
+        detail = (
+            f"{_named(release)} was NOT ASKED FOR and none of it is in the list "
+            f"({failed.why}); run this again once the provider answers"
         )
     else:
         detail = (
@@ -280,16 +365,34 @@ def label_approved(ctx) -> Envelope:
     counts = {"owned": 0, "offered": 0, "suppressed": 0, "duplicate": 0, "missing": 0}
     failures: list[_Failed] = []
     undated: list[_Release] = []
+    unreadable: list[tuple[_Release, str]] = []
     missing: list[match.Wanted] = []
     origins: list[tuple[_Release, int | None]] = []
     seen: set[str] = set()
     read = 0
+    in_a_row = 0
     for release in accepted:
+        if in_a_row >= OUTAGE_AFTER:
+            failures.append(
+                _Failed(
+                    release,
+                    NOT_ASKED,
+                    f"the provider failed {OUTAGE_AFTER} releases in a row, so the "
+                    f"rest were not spent on it",
+                )
+            )
+            continue
         outcome = _tracks_or_failure(found, release)
         if isinstance(outcome, _Failed):
             failures.append(outcome)
+            # ONLY A PROVIDER THAT DID NOT ANSWER COUNTS. A release that is gone
+            # is the provider answering, and an item naming no release never
+            # reached it.
+            in_a_row = in_a_row + 1 if outcome.kind == PROVIDER else 0
             continue
-        wanted, year = outcome
+        in_a_row = 0
+        wanted, year = outcome.wanted, outcome.year
+        unreadable.extend((release, why) for why in outcome.unreadable)
         read += 1
         if year is None:
             undated.append(release)
@@ -325,11 +428,12 @@ def label_approved(ctx) -> Envelope:
                 missing.append(settled.wanted)
                 origins.append((release, year))
 
-    failed_detail = [
-        {"release_id": one.release.release_id, "item_id": one.release.item_id,
-         "gone": one.gone, "why": one.why}
-        for one in failures
-    ]
+    failed_detail = [one.to_json() for one in failures]
+    settle = (
+        "run this again once the provider answers",
+        "a release that is gone, or an item naming no release, stays that way; "
+        "revoke its acceptance with: crate review clear ITEM_ID",
+    )
     if not read:
         # NO RELEASE READ IS NOT NOTHING MISSING. A no-op here would read like a
         # library that holds every approved release, over a provider nobody
@@ -338,9 +442,7 @@ def label_approved(ctx) -> Envelope:
             f"none of the {len(accepted)} accepted release(s) could be read from the "
             f"provider, so nothing is known about what they hold and nothing was "
             f"written: " + "; ".join(f"{_named(one.release)}: {one.why}" for one in failures),
-            "run this again once the provider answers",
-            "a release that is gone stays gone; revoke its acceptance with: crate "
-            "review clear ITEM_ID",
+            *settle,
             failed=failed_detail,
         )
 
@@ -349,13 +451,25 @@ def label_approved(ctx) -> Envelope:
         rows = listdoc.rows_of(missing)
         provenance = _provenance(rows, origins)
         try:
-            _body, listed_ids, _unlisted = listdoc.document(rows)
+            body, _listed, _unlisted = listdoc.document(rows)
             written = listdoc.write(
-                _out_dir(ctx, cfg), list_name(listed_ids), rows, provenance
+                _out_dir(ctx, cfg), list_name(body, provenance), rows, provenance
             )
         except listdoc.ListDocRefused as exc:
             raise _unusable(
                 str(exc), "move the file aside or name another folder with --out"
+            ) from exc
+        except OSError as exc:
+            # A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL. The emitter
+            # converts what it reads and lets a failed write through, and left
+            # alone that reaches a person as an internal error telling them to
+            # report a defect over a folder they cannot write to.
+            raise _unusable(
+                f"the list could not be written ({type(exc).__name__}: "
+                f"{exc.strerror or exc}); nothing acquire download could read was "
+                f"left behind",
+                "name another folder with --out, or make this one writable",
+                path=str(exc.filename or ""),
             ) from exc
     listed = len(written.listed)
     unlisted = len(written.unlisted)
@@ -374,9 +488,7 @@ def label_approved(ctx) -> Envelope:
             f"{len(failures)} could not be, so this is not a library holding every "
             f"approved release: "
             + "; ".join(f"{_named(one.release)}: {one.why}" for one in failures),
-            "run this again once the provider answers",
-            "a release that is gone stays gone; revoke its acceptance with: crate "
-            "review clear ITEM_ID",
+            *settle,
             failed=failed_detail,
         )
 
@@ -418,6 +530,15 @@ def label_approved(ctx) -> Envelope:
             else "every missing track is in the list",
         ),
         _check(
+            "unreadable",
+            "fail" if unreadable else "ok",
+            f"{len(unreadable)} track row(s) the provider returned could not be read "
+            f"and are NOT in the list: "
+            + "; ".join(f"{_named(release)}: {why}" for release, why in unreadable)
+            if unreadable
+            else "every track row the provider returned was read",
+        ),
+        _check(
             "undated",
             "fail" if undated else "ok",
             f"{len(undated)} release(s) carry no year the provider could be read for, "
@@ -447,6 +568,7 @@ def label_approved(ctx) -> Envelope:
         offered=counts["offered"],
         suppressed=counts["suppressed"],
         duplicate=counts["duplicate"],
+        unreadable=len(unreadable),
         undated=[release.release_id for release in undated],
         failed=failed_detail,
     )
@@ -492,7 +614,12 @@ def _summary(written: listdoc.Written | None, **fields: Any) -> dict[str, Any]:
 
 __all__ = [
     "DIGEST_BYTES",
+    "GONE",
     "LIST_PREFIX",
+    "NOT_ASKED",
+    "NO_IDENTIFIER",
+    "OUTAGE_AFTER",
+    "PROVIDER",
     "PROVENANCE_SOURCE",
     "build_approved",
     "label_approved",

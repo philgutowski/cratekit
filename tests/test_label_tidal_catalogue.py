@@ -1523,6 +1523,38 @@ def test_the_year_is_read_or_is_none_and_is_never_a_guess(dated, expected, pause
     assert year == expected
 
 
+class Rejected(Exception):
+    """An HTTP failure in the client's shape: a status, and the URL in its text."""
+
+    def __init__(self, status_code: int, album_id: str) -> None:
+        super().__init__(
+            f"{status_code} Client Error for url: https://api.example.invalid/v1/albums/{album_id}"
+        )
+        self.response = Response(status_code)
+
+
+def test_an_identifier_holding_the_digits_404_does_not_make_a_rejection_a_withdrawal(pauses):
+    """The request URL carries the release identifier into the error's text."""
+    client = AlbumClient(Rejected(401, "24040417"))
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    with pytest.raises(Rejected):
+        adapter.release_tracks("24040417")
+
+    assert len(client.album_reads) == 6, "a rejection was answered once, as gone"
+
+
+def test_a_404_status_is_gone_whatever_the_class_is_called(pauses):
+    client = AlbumClient(Rejected(404, "r-gone"))
+    with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
+        tidal_catalogue.TidalCatalogue(client).release_tracks("r-gone")
+    assert client.album_reads == ["r-gone"]
+
+
+def test_the_adapter_raises_the_seams_own_exception():
+    assert tidal_catalogue.ReleaseUnresolvable is catalogue.ReleaseUnresolvable
+
+
 def test_the_adapter_and_the_verb_meet_over_a_gone_release(cfg, monkeypatch, pauses):
     """The seam's ``LookupError`` contract, driven from the live adapter's side."""
     from cratekit.label import approved_cli
@@ -1535,4 +1567,4 @@ def test_the_adapter_and_the_verb_meet_over_a_gone_release(cfg, monkeypatch, pau
     outcome = approved_cli._tracks_or_failure(adapter, release)
 
     assert isinstance(outcome, approved_cli._Failed)
-    assert outcome.gone is True
+    assert outcome.kind == approved_cli.GONE

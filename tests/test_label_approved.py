@@ -18,9 +18,9 @@ real person, a real label or a real track.
 
 from __future__ import annotations
 
-import hashlib
 import io
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -138,9 +138,21 @@ def owned(library: Path, name: str) -> None:
     (library / "Music" / name).write_bytes(b"")
 
 
-def named(*ids: str) -> str:
-    """The list name for these ids, derived HERE and not by the module."""
-    return "label-approved-" + hashlib.blake2s("\n".join(ids).encode(), digest_size=6).hexdigest()
+#: The shape of a list's name: the prefix, then six bytes of digest as hex.
+LIST_NAME = re.compile(r"label-approved-[0-9a-f]{12}\.list\.json")
+
+
+def the_list(folder: Path) -> Path:
+    """The ONE list in a folder, found on disk and never derived from the digest.
+
+    The digest is over everything the emitter writes, so deriving a name here
+    would be the module's own recipe copied into its test. What is pinned is
+    the shape of the name and that there is exactly one.
+    """
+    found = sorted(folder.glob("*.list.json"))
+    assert len(found) == 1, found
+    assert LIST_NAME.fullmatch(found[0].name), found[0].name
+    return found[0]
 
 
 def check(envelope: dict, key: str) -> dict:
@@ -179,7 +191,7 @@ def test_an_accepted_release_is_listed_and_a_rejected_or_open_one_is_never_read(
     assert envelope["outcome"] == "ok"
     assert fake.releases_asked_for == ["r-1"]
     summary = envelope["data"]["summary"]
-    expected = lists_dir(library) / f"{named('301', '302')}.list.json"
+    expected = the_list(lists_dir(library))
     assert summary["list"] == str(expected)
     assert (summary["accepted"], summary["rejected"], summary["open"]) == (1, 1, 1)
     assert (summary["written"], summary["read"]) == (2, 1)
@@ -272,7 +284,7 @@ def test_the_default_human_output_names_the_list_and_the_next_command(cfg, libra
     code, text = human(["label", "approved"])
 
     assert code == int(ExitCode.OK), text
-    path = lists_dir(library) / f"{named('301', '302')}.list.json"
+    path = the_list(lists_dir(library))
     assert (
         f"[ok  ] label.approved.written: 2 missing track(s) from 1 accepted release(s) "
         f"written to {path}" in text
@@ -287,9 +299,7 @@ def test_out_names_the_folder_the_list_is_written_into(cfg, library, tmp_path, m
 
     _code, envelope = approved("--out", str(elsewhere))
 
-    assert envelope["data"]["summary"]["list"] == str(
-        elsewhere / f"{named('301', '302')}.list.json"
-    )
+    assert envelope["data"]["summary"]["list"] == str(the_list(elsewhere))
     assert not lists_dir(library).exists()
 
 
@@ -551,9 +561,10 @@ def test_the_same_work_twice_writes_the_same_file_and_refuses_nothing(cfg, libra
     assert code == int(ExitCode.OK), second
     assert second["data"]["summary"]["list"] == first["data"]["summary"]["list"]
     assert Path(second["data"]["summary"]["list"]).read_bytes() == before
+    stem = the_list(lists_dir(library)).name.removesuffix(".list.json")
     assert sorted(path.name for path in lists_dir(library).iterdir()) == [
-        f"{named('301', '302')}.list.json",
-        f"{named('301', '302')}.manifest.json",
+        f"{stem}.list.json",
+        f"{stem}.manifest.json",
     ]
 
 
@@ -568,10 +579,9 @@ def test_a_track_landed_since_the_last_run_is_left_out_under_a_new_name(
     code, second = approved()
 
     assert code == int(ExitCode.OK), second
-    assert first["data"]["summary"]["list"].endswith(f"{named('301', '302')}.list.json")
-    assert second["data"]["summary"]["list"] == str(
-        lists_dir(library) / f"{named('302')}.list.json"
-    )
+    assert second["data"]["summary"]["list"] != first["data"]["summary"]["list"]
+    assert LIST_NAME.fullmatch(Path(second["data"]["summary"]["list"]).name)
+    assert len(list(lists_dir(library).glob("*.list.json"))) == 2
     body = json.loads(Path(second["data"]["summary"]["list"]).read_text())
     assert [t["id"] for t in body["tracks"]] == ["302"]
 
@@ -581,8 +591,11 @@ def test_a_file_of_the_lists_name_holding_something_else_is_refused_and_kept(
 ):
     accepted(cfg, "r-1")
     bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
-    lists_dir(library).mkdir(parents=True)
-    squatter = lists_dir(library) / f"{named('301', '302')}.list.json"
+    # The name is learned by running once, never derived, and both files are
+    # then removed so the squatter is the only thing under that name.
+    _code, first = approved()
+    squatter = Path(first["data"]["summary"]["list"])
+    Path(first["data"]["summary"]["manifest"]).unlink()
     squatter.write_text("somebody else's list\n")
 
     code, envelope = approved()
@@ -590,7 +603,7 @@ def test_a_file_of_the_lists_name_holding_something_else_is_refused_and_kept(
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-list-unusable"
     assert squatter.read_text() == "somebody else's list\n"
-    assert not squatter.with_name(f"{named('301', '302')}.manifest.json").exists()
+    assert [path.name for path in lists_dir(library).iterdir()] == [squatter.name]
 
 
 def test_an_out_that_is_a_file_is_refused(cfg, library, tmp_path, monkeypatch):
@@ -735,10 +748,22 @@ def test_a_track_with_no_provider_identifier_is_a_failing_line_and_not_dropped(
     ]
 
 
-def test_the_list_name_is_the_prefix_and_twelve_characters_of_the_ids_digest():
-    assert approved_cli.list_name(("301", "302")) == named("301", "302")
-    assert approved_cli.list_name(("301", "302")) != approved_cli.list_name(("302", "301"))
-    assert len(approved_cli.list_name(("301",))) == len("label-approved-") + 12
+def test_the_list_name_moves_with_anything_the_emitter_would_write():
+    from cratekit.acquire import listdoc
+
+    def name(year: int | None, *ids: str, label: str = "Tide Works") -> str:
+        body = {"tracks": [{"id": ref, "title": "T", "artist": "A"} for ref in ids]}
+        provenance = {
+            ref: listdoc.Provenance(source="label", label_name=label, year=year, release_id="r-1")
+            for ref in ids
+        }
+        return approved_cli.list_name(body, provenance)
+
+    assert LIST_NAME.fullmatch(name(2024, "301", "302") + ".list.json")
+    assert name(2024, "301", "302") == name(2024, "301", "302")
+    assert name(2024, "301", "302") != name(2024, "302", "301")
+    assert name(2024, "301", "302") != name(None, "301", "302")
+    assert name(2024, "301", "302") != name(2024, "301", "302", label="Glass Bay")
 
 
 def test_the_verb_declares_what_it_is():
@@ -750,3 +775,215 @@ def test_the_verb_declares_what_it_is():
     assert not entry.destructive
     assert entry.writes == frozenset()
     assert entry.landed
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# What the unit's review found, each driven red before it was fixed
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class Parsing(StrictCatalogue):
+    """Fails the way a client fails while parsing a payload it did not expect."""
+
+    def release_tracks(self, release_id: str):
+        if release_id == "r-odd":
+            self.releases_asked_for.append(release_id)
+            raise KeyError("numberOfTracks")
+        return super().release_tracks(release_id)
+
+
+def test_a_lookup_error_that_is_not_the_seams_own_is_never_read_as_a_gone_release(
+    cfg, library, monkeypatch
+):
+    """``KeyError`` is a ``LookupError``. A parse failure is not a withdrawal."""
+    accepted(cfg, "r-odd")
+    accepted(cfg, "r-1")
+    bind(monkeypatch, Parsing(releases={"r-1": two_track_release()}))
+
+    _code, envelope = approved()
+
+    failure = check(envelope, "release.r-odd")
+    assert "is gone from the provider" not in failure["detail"]
+    assert "review clear" not in failure["detail"]
+    assert envelope["data"]["summary"]["failed"][0]["kind"] == "provider"
+
+
+def test_the_same_tracks_with_a_corrected_year_take_a_new_name_and_are_not_refused(
+    cfg, library, monkeypatch
+):
+    accepted(cfg, "r-1")
+    tracks, _year = two_track_release()
+    bind(monkeypatch, StrictCatalogue(releases={"r-1": (tracks, None)}))
+    _code, first = approved()
+
+    bind(monkeypatch, StrictCatalogue(releases={"r-1": (tracks, 2024)}))
+    code, second = approved()
+
+    assert code == int(ExitCode.OK), second
+    assert second["data"]["summary"]["list"] != first["data"]["summary"]["list"]
+    sidecar = json.loads(Path(second["data"]["summary"]["manifest"]).read_text())
+    assert sidecar["rows"]["301"]["year"] == 2024
+
+
+def test_a_folder_the_account_cannot_write_keeps_the_permission_refusal_and_its_path(
+    cfg, library, tmp_path, monkeypatch
+):
+    """The cause constructor reclassifies a refusal raised FROM a permission
+    error, so this verb's catch must not flatten the better answer."""
+    accepted(cfg, "r-1")
+    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    try:
+        code, envelope = approved("--out", str(locked / "lists"))
+    finally:
+        locked.chmod(0o700)
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "path-permission-denied"
+    assert str(locked) in envelope["cause"]["detail"]["path"]
+
+
+def test_a_write_the_disk_refuses_is_the_verbs_refusal_and_not_an_internal_error(
+    cfg, library, monkeypatch
+):
+    import errno
+
+    from cratekit.acquire import listdoc
+
+    accepted(cfg, "r-1")
+    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+
+    def full(payload, path):
+        raise OSError(errno.ENOSPC, "No space left on device", str(path))
+
+    monkeypatch.setattr(listdoc.config, "atomic_write_bytes", full)
+
+    code, envelope = approved()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-list-unusable"
+    assert "No space left on device" in envelope["cause"]["message"]
+    assert "name another folder with --out" in json.dumps(envelope["cause"])
+
+
+def test_one_unreadable_row_is_reported_and_the_rest_of_the_release_still_lists(
+    cfg, library, monkeypatch
+):
+    accepted(cfg, "r-1")
+    bind(
+        monkeypatch,
+        StrictCatalogue(
+            releases={
+                "r-1": (
+                    [
+                        Track("301", "Aurora Bloom", "Sun Path"),
+                        Track("399", "", ""),
+                        Track("302", "Nova Reef", "Tide"),
+                    ],
+                    2024,
+                )
+            }
+        ),
+    )
+
+    code, envelope = approved()
+
+    assert code == int(ExitCode.OK), envelope
+    body = json.loads(Path(envelope["data"]["summary"]["list"]).read_text())
+    assert [t["id"] for t in body["tracks"]] == ["301", "302"]
+    unreadable = check(envelope, "unreadable")
+    assert unreadable["status"] == "fail"
+    assert unreadable["detail"].startswith("1 track row(s)")
+    assert "release r-1" in unreadable["detail"]
+    assert envelope["data"]["summary"]["unreadable"] == 1
+
+
+def test_an_item_naming_no_release_is_told_to_clear_it_and_not_to_wait(cfg, library, monkeypatch):
+    with review.open_store(cfg) as items:
+        stray = review.offer(
+            items,
+            queue=str(review.Queue.LABEL_RELEASE),
+            kind=sweep.KIND,
+            identity={"imported": "row-9"},
+            payload={"title": "No Identifier EP"},
+            handler_key=sweep.HANDLER_KEY,
+        )
+        review.resolve(items, stray.item_id, review.Verdict.ACCEPTED, actor="suite")
+    accepted(cfg, "r-1")
+    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+
+    _code, envelope = approved()
+
+    failure = check(envelope, f"release.{stray.item_id}")
+    assert f"crate review clear {stray.item_id}" in failure["detail"]
+    assert "once the provider answers" not in failure["detail"]
+
+
+class Down(StrictCatalogue):
+    """A provider that has stopped answering for every release."""
+
+    def release_tracks(self, release_id: str):
+        self.releases_asked_for.append(release_id)
+        raise ConnectionError("the provider timed out")
+
+
+def test_a_provider_that_stopped_answering_is_not_asked_about_every_release(
+    cfg, library, monkeypatch
+):
+    for number in range(1, 8):
+        accepted(cfg, f"r-{number}")
+    fake = Down()
+    bind(monkeypatch, fake)
+
+    code, envelope = approved()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert fake.releases_asked_for == ["r-1", "r-2", "r-3"]
+    failed = envelope["cause"]["detail"]["failed"]
+    assert [one["kind"] for one in failed] == ["provider"] * 3 + ["not-asked"] * 4
+
+
+class Flaky(StrictCatalogue):
+    """Two failures, an answer, then two more: never three in a row."""
+
+    def release_tracks(self, release_id: str):
+        if release_id in {"r-1", "r-2", "r-4", "r-5"}:
+            self.releases_asked_for.append(release_id)
+            raise ConnectionError("the provider timed out")
+        return super().release_tracks(release_id)
+
+
+def test_an_answer_resets_the_count_so_scattered_failures_never_stop_the_run(
+    cfg, library, monkeypatch
+):
+    for number in range(1, 7):
+        accepted(cfg, f"r-{number}")
+    fake = Flaky(
+        releases={
+            "r-3": two_track_release(),
+            "r-6": ([Track("601", "Mira Vale", "Glass Hour")], 2020),
+        }
+    )
+    bind(monkeypatch, fake)
+
+    code, envelope = approved()
+
+    assert code == int(ExitCode.OK), envelope
+    assert fake.releases_asked_for == ["r-1", "r-2", "r-3", "r-4", "r-5", "r-6"]
+    assert envelope["data"]["summary"]["written"] == 3
+
+
+def test_a_gone_release_does_not_count_towards_an_outage(cfg, library, monkeypatch):
+    for name in ("g-1", "g-2", "g-3", "g-4"):
+        accepted(cfg, name)
+    accepted(cfg, "r-1")
+    fake = StrictCatalogue(releases={"r-1": two_track_release()})
+    bind(monkeypatch, fake)
+
+    code, envelope = approved()
+
+    assert code == int(ExitCode.OK), envelope
+    assert fake.releases_asked_for == ["g-1", "g-2", "g-3", "g-4", "r-1"]
+    assert {one["kind"] for one in envelope["data"]["summary"]["failed"]} == {"gone"}
