@@ -52,6 +52,7 @@ from cratekit.core import (
     jobs,
     locations,
     rb_writer,
+    routing,
     session,
     taxonomy,
     tree_registry,
@@ -369,13 +370,72 @@ def _readable_file(location: str, cfg: config.Config) -> Path | None:
     return None
 
 
+def _unrated(row: dict[str, str]) -> bool:
+    """Whether an export row's star rating is still the one nobody set.
+
+    FILL IF EMPTY, and nothing wider. Empty and ``"0"`` are what rekordbox
+    writes for a track nobody rated. Any other value, including one this reader
+    cannot parse, is somebody's, and overwriting it would need a record of who
+    set it that nothing keeps. A row with no ``Rating`` attribute at all is not
+    planned either: the writer patches a value in place and cannot add one, so a
+    rating planned there would be a write the run declares and never performs.
+    """
+    value = row.get("Rating")
+    return value is not None and value.strip() in ("", "0")
+
+
+def _ratings(
+    declared: taxonomy.Taxonomy,
+    placements: tuple[rebuild.DeclaredPlacement, ...],
+    readings: list[rebuild.Truth],
+    files: dict[str, list[str]],
+    by_id: dict[str, dict[str, str]],
+) -> dict[str, int]:
+    """The star rating each unrated intake track takes from its energy.
+
+    THE SOURCE SYSTEM'S RULE, IN THE SAME PASS AS THE FILING: every sort set a
+    rating from energy on a track whose rating was still zero. The energy is the
+    reading the routing decision already took, so the two cannot disagree about
+    which track is which level, and the curve and the bucket flag are
+    :func:`cratekit.core.routing.energy_rating` and
+    :func:`cratekit.core.routing.rates`, called rather than restated.
+
+    THE EXPORT SCALE, which is the taxonomy's own. The cuts are written as 51 to
+    255, the values an export carries, so nothing is converted here, and the
+    database planner's unconfirmed scale (R-414) is not on this path at all.
+
+    Only a track the pass PLACES is rated. A track with no placement is one the
+    declaration has nowhere to put, and a rating is part of filing it.
+    """
+    energy = {reading.location: reading.energy for reading in readings}
+    plan: dict[str, int] = {}
+    for placement in placements:
+        if not routing.rates(declared, placement.bucket):
+            continue
+        rating = routing.energy_rating(declared, energy.get(placement.location))
+        if rating is None:
+            continue
+        for key in files[placement.location]:
+            if _unrated(by_id[key]):
+                plan[key] = rating
+    return plan
+
+
 def plan_export(
     cfg: config.Config, export: Path
-) -> tuple[bytes, dict[tuple[str, str], list[str]], list[dict[str, str]], list[dict[str, str]], tuple[str, ...]]:
+) -> tuple[
+    bytes,
+    dict[tuple[str, str], list[str]],
+    dict[str, int],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    tuple[str, ...],
+]:
     """Read one fresh export and decide where each intake track goes.
 
-    Returns the export's bytes, the plan the bridge writer takes, the items a
-    person is shown, the warnings, and the dimensions not derived.
+    Returns the export's bytes, the plan the bridge writer takes, the star
+    ratings to fill, the items a person is shown, the warnings, and the
+    dimensions not derived.
 
     THE ROUTING DECISION IS THE NATIVE PATH'S, called rather than restated. The
     readings come from :func:`cratekit.write.rebuild.read_truth`, the placements
@@ -438,17 +498,31 @@ def plan_export(
         for key in files[placement.location]:
             plan.setdefault((folder, sub), []).append(key)
             destined[key] = f"{folder}/{sub}"
+    ratings = _ratings(declared, placements, readings, files, by_id)
+    # The rating rides the item, so it is inside the digest a person approves:
+    # a rating write nobody was shown is a write nobody agreed to.
     items = [
-        {"track_id": key, "destination": destined.get(key, "")}
+        {
+            "track_id": key,
+            "destination": destined.get(key, ""),
+            "rating": str(ratings[key]) if key in ratings else "",
+        }
         for key in keys
     ]
-    return content, plan, items, warnings, gaps
+    return content, plan, ratings, items, warnings, gaps
 
 
 def apply_export(
-    cfg: config.Config, export: Path, content: bytes, plan: dict[tuple[str, str], list[str]]
-) -> tuple[Path | None, trees.RouteReport]:
+    cfg: config.Config,
+    export: Path,
+    content: bytes,
+    plan: dict[tuple[str, str], list[str]],
+    ratings: dict[str, int],
+) -> tuple[Path | None, trees.RouteReport, int]:
     """Write the plan into a copy of the export, beside it, never in place.
+
+    Returns the file written or None, the membership report, and how many star
+    ratings the writer actually set, which is its count and not the plan's.
 
     THE MEDIUM FOLLOWS THE REGISTRY. The tree is the governed routing tree, so
     the emitter guard in :func:`cratekit.write.rbxml.splice_into_subplaylist`
@@ -459,41 +533,49 @@ def apply_export(
     curated: a sub that is not there is a warning naming the bucket, never a
     playlist invented in somebody's library.
 
-    NOTHING INSERTED IS NOTHING WRITTEN. A file identical in every routed byte
-    to the export would still be a file somebody is told to import.
+    THE RATINGS GO INTO THE SAME BYTES, after the membership, as the source
+    system applied them. A rating is an attribute of a track and membership of
+    nothing, so a sub the writer skipped does not un-rate the track it held.
+
+    NOTHING CHANGED IS NOTHING WRITTEN. A file identical in every routed byte
+    to the export would still be a file somebody is told to import. A track
+    already filed and still unrated is a change, so a pass that only rates
+    writes a file.
     """
     declared = taxonomy.default_taxonomy()
     tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
     buffer = bytearray(content)
     report = trees.apply_playlist_changes(plan, buffer, tree=tree)
-    if not report.inserted:
-        return None, report
+    rated = trees.apply_rating_changes(ratings, buffer)
+    if not report.inserted and not rated:
+        return None, report, rated
     destination = export.with_name(export.stem + ROUTED_SUFFIX)
     config.atomic_write_bytes(bytes(buffer), destination)
-    return destination, report
+    return destination, report, rated
 
 
 def _export_pending(
-    run_id: str, verb: str, destination: Path, inserted: int
+    run_id: str, verb: str, destination: Path, inserted: int, rated: int
 ) -> PendingHumanAction:
     return PendingHumanAction(
         kind="rekordbox_import",
         id=new_pending_id(run_id),
         summary=(
-            f"{inserted} track(s) were routed into {destination.name}, which "
+            f"{inserted} track(s) were routed and {rated} unrated track(s) were "
+            f"given a star rating from energy in {destination.name}, which "
             f"rekordbox has not imported yet"
         ),
         # THIS VERB IS ITS OWN CHECK. Over a fresh export taken after the import,
-        # a second run inserts nothing, and that is the only reading in this
-        # build that the import happened. Named by the caller from its registry
-        # entry, because this layer may not spell a verb (KTD23).
+        # a second run inserts nothing and rates nothing, and that is the only
+        # reading in this build that the import happened. Named by the caller
+        # from its registry entry, because this layer may not spell a verb (KTD23).
         verify_verb=verb,
         artifact=str(destination),
         steps=(
             f"import {destination} into rekordbox as a rekordbox xml library and "
-            f"import the routing tree from it",
+            f"import the routing tree and the tracks' ratings from it",
             "then export the collection again and run route inbox --export with "
-            "that file, which routes nothing once the import has landed",
+            "that file, which routes and rates nothing once the import has landed",
         ),
     )
 
@@ -531,7 +613,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             origin=("routing_cli",),
             detail={"root": str(cfg.library.root), "export": str(export)},
         )
-    content, plan, items, warnings, gaps = plan_export(cfg, export)
+    content, plan, ratings, items, warnings, gaps = plan_export(cfg, export)
     offered = _plan(items, kind="inbox-export")
     option = _apply_gate(ctx, offered)
     if option != "apply":
@@ -540,7 +622,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             outcome=Outcome.NO_OP,
             warnings=warnings,
         )
-    destination, report = apply_export(cfg, export, content, plan)
+    destination, report, rated = apply_export(cfg, export, content, plan, ratings)
     # ONE CODE FOR EVERY SKIPPED WRITE, because the writer reports a missing
     # tree, a missing genre folder and a missing sub as sentences and the
     # sentence already names which. A code naming only the sub would call an
@@ -552,7 +634,9 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND. It is the answer the
     # pending action names as proof an import landed, so a run whose every write
     # was skipped, or whose every track could not be read, must not give it:
-    # that is a run that could not route, not a library already filed.
+    # that is a run that could not route, not a library already filed. A run
+    # that only rated wrote a file, so it is pending like any other, and its
+    # skipped writes still ride as warnings.
     if destination is not None:
         reason = None
     elif warnings:
@@ -565,6 +649,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         applied=destination is not None,
         reason=reason,
         inserted=report.inserted,
+        rated=rated,
         created=list(report.created),
         output=None if destination is None else str(destination),
         not_derived=list(gaps),
@@ -575,7 +660,9 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         data=data,
         outcome=Outcome.PENDING,
         code=ExitCode.PENDING_HUMAN,
-        pending=_export_pending(ctx.run.run_id, ctx.entry.name, destination, report.inserted),
+        pending=_export_pending(
+            ctx.run.run_id, ctx.entry.name, destination, report.inserted, rated
+        ),
         warnings=warnings,
     )
 

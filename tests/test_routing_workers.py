@@ -1036,17 +1036,50 @@ EXPORT_TRACKS = {
     "13": ("Top Track.flac", "Tech House", 8, ("Tech House", "High")),
 }
 
+#: U87's tracks: one per rating rule. Energy 10 is the top of the star curve
+#: and energy 1 the bottom; track 23 was rated by a person; track 24 files into
+#: a bucket declared ``rates = false``; track 25 has no energy reading.
+RATING_TRACKS = {
+    "21": ("Floor Filler.flac", "Tech House", 10, ("Tech House", "High")),
+    "22": ("Warm Up.flac", "Deep House", 1, ("Deep House", "Low")),
+    "23": ("Hand Rated.flac", "Tech House", 10, ("Tech House", "High")),
+    "24": ("Jazz Track.flac", "Jazz", 10, ("NonElectronic", "Jazz")),
+    "25": ("No Reading.flac", "Deep House", None, ("Deep House", "Unsorted")),
+}
+
+#: The folders RATING_TRACKS land in, so every one of them is filed and a
+#: rating left unset is the rating rule's doing and not a skipped write's.
+RATING_FOLDERS = (
+    ("Deep House", ("Low", "Med", "High", "Unsorted")),
+    ("Tech House", ("Low", "Med", "High")),
+    ("NonElectronic", ("Jazz",)),
+)
+
+#: The export scale's five and one star values, spelled out rather than asked
+#: of the taxonomy, and checked against the shipped template's raw TOML by
+#: ``test_the_star_values_the_rating_tests_expect_are_the_shipped_curve``.
+FIVE_STARS = "255"
+ONE_STAR = "51"
+
 #: Tokens that only ever appear in grid bearing XML, the set the beat grid
 #: suite forbids an emitter to produce, plus the tempo attribute itself.
 GRID_TOKENS = ("<TEMPO", "Battito", "Metro=", "Inizio=", "AverageBpm=", "Bpm=")
 
 
-def _export_track(tid: str, location: str, *, analyzed: bool = False) -> list[str]:
-    """One multi line collection row, the real export shape, optionally analysed."""
+def _export_track(
+    tid: str, location: str, *, analyzed: bool = False, rating: str | None = None
+) -> list[str]:
+    """One multi line collection row, the real export shape, optionally analysed.
+
+    ``rating`` None leaves the ``Rating`` attribute out, which U86's tests were
+    written against and which the rating pass does not plan for (U87). A real
+    export always carries one, so every U87 test passes it.
+    """
     bpm = "124.00" if analyzed else "0.00"
+    rated = "" if rating is None else f' Rating="{rating}"'
     lines = [
         f'    <TRACK TrackID="{tid}" Name="Track {tid}" Artist="A" Genre="Ignored"',
-        f'           AverageBpm="{bpm}" Location="{location}">',
+        f'           AverageBpm="{bpm}"{rated} Location="{location}">',
     ]
     if analyzed:
         lines.append('      <TEMPO Inizio="0.512" Bpm="124.00" Metro="4/4" Battito="1"/>')
@@ -1068,29 +1101,42 @@ def _write_export(
     folder: Path,
     *,
     subs: tuple[str, ...] = ("Low", "Med", "High"),
-    inbox: tuple[str, ...] = tuple(EXPORT_TRACKS),
+    inbox: tuple[str, ...] | None = None,
     extra_rows: tuple[str, ...] = (),
     missing_file: str | None = None,
+    tracks: dict[str, tuple] = EXPORT_TRACKS,
+    ratings: dict[str, str] | None = None,
+    folders: tuple[tuple[str, tuple[str, ...]], ...] | None = None,
+    analyzed: tuple[str, ...] = ("11",),
 ) -> Path:
     """A fresh export: a collection, an INBOX batch, and the routing tree.
 
     Every intake file is a real file under the library, because the reader is
     handed the path the export records and a Location naming nothing is refused
     as unreadable rather than routed to a fallback.
+
+    ``ratings`` maps a track id to the ``Rating`` its row carries; a track it
+    does not name carries none. ``folders`` replaces the two genre folders.
     """
     from cratekit.core import locations
     from tests.xml_fixtures import _xml_doc
 
+    inbox = tuple(tracks) if inbox is None else inbox
+    ratings = ratings or {}
+    if folders is None:
+        folders = (("Deep House", subs), ("Tech House", subs))
     music = Path(cfg.library.root) / "Music"
     rows: list[str] = []
-    for tid, (name, *_rest) in EXPORT_TRACKS.items():
+    for tid, (name, *_rest) in tracks.items():
         path = music / name
         if tid != missing_file:
             path.write_bytes(b"")
-        rows += _export_track(tid, locations.location_url(path), analyzed=tid == "11")
+        rows += _export_track(
+            tid, locations.location_url(path), analyzed=tid in analyzed, rating=ratings.get(tid)
+        )
     for tid in extra_rows:
         rows += _export_track(tid, locations.location_url(music / f"{tid}.flac"))
-    count = len(EXPORT_TRACKS) + len(extra_rows)
+    count = len(tracks) + len(extra_rows)
     declared = taxonomy.default_taxonomy()
     batch = [
         '          <NODE Name="2026-09-18 batch" Type="1" KeyType="0" '
@@ -1104,9 +1150,8 @@ def _write_export(
             f'      <NODE Type="0" Name="{declared.intake.display}" Count="1">',
             *batch,
             "      </NODE>",
-            f'      <NODE Type="0" Name="{declared.tree.display}" Count="2">',
-            *_routing_folder("Deep House", subs),
-            *_routing_folder("Tech House", subs),
+            f'      <NODE Type="0" Name="{declared.tree.display}" Count="{len(folders)}">',
+            *(line for name, held in folders for line in _routing_folder(name, held)),
             "      </NODE>",
         ],
     )
@@ -1126,7 +1171,10 @@ def tagged(monkeypatch):
     """
     from cratekit.core import tags
 
-    by_name = {name: (genre, energy) for name, genre, energy, _ in EXPORT_TRACKS.values()}
+    by_name = {
+        name: (genre, energy)
+        for name, genre, energy, _ in (*EXPORT_TRACKS.values(), *RATING_TRACKS.values())
+    }
     monkeypatch.setattr(
         tags, "read_genre_from_file", lambda path: by_name.get(Path(path).name, (None, None))[0]
     )
@@ -1382,10 +1430,10 @@ def test_the_export_writer_itself_refuses_a_routing_tree_that_has_cut_over(
     from cratekit.write import routing_cli
 
     export = _write_export(configured, tmp_path / "exports")
-    _content, plan, *_rest = routing_cli.plan_export(configured, export)
+    _content, plan, ratings, *_rest = routing_cli.plan_export(configured, export)
     _cut_over_routing_tree(configured)
     with pytest.raises(tree_registry.TreeModeRefused):
-        routing_cli.apply_export(configured, export, export.read_bytes(), plan)
+        routing_cli.apply_export(configured, export, export.read_bytes(), plan, ratings)
     assert not _routed(export).exists()
 
 
@@ -1472,3 +1520,190 @@ def test_without_export_a_library_with_no_native_tree_names_the_export_remedy(st
         if warning["code"] == "no-native-tree"
     ]
     assert remedies and "--export" in remedies[0], envelope["warnings"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U87: the export filing pass fills an empty star rating from energy
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Every source system sort set a rating from energy on a track whose rating was
+# still zero, in the same pass as the filing. Every expected value below is a
+# literal, never the taxonomy asked through the code that writes it, and every
+# test reads the OUTPUT FILE with a real XML parser.
+
+
+def _ratings_of(document: bytes) -> dict[str, str | None]:
+    """Each collection track's ``Rating`` in a written file, by a real parser."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(document)
+    return {track.get("TrackID"): track.get("Rating") for track in root.find("COLLECTION")}
+
+
+def _rating_export(cfg: config.Config, folder: Path, **overrides) -> Path:
+    """An export of RATING_TRACKS, every one unrated but the hand rated one.
+
+    Track 22 carries an EMPTY rating rather than a zero, the other shape of
+    "nobody rated this", so both are driven.
+    """
+    ratings = {tid: "0" for tid in RATING_TRACKS} | {"22": "", "23": "102"}
+    options = {"tracks": RATING_TRACKS, "ratings": ratings, "folders": RATING_FOLDERS}
+    return _write_export(cfg, folder, **(options | overrides))
+
+
+def test_the_star_values_the_rating_tests_expect_are_the_shipped_curve():
+    """The literals above against the template's own TOML, read raw, so the
+    expectation is the fixture and not the loader or the planner."""
+    import tomllib
+
+    import cratekit
+
+    template = Path(cratekit.__file__).parent / "templates" / "taxonomy.default.toml"
+    cuts = tomllib.loads(template.read_text(encoding="utf-8"))["energy"]["rating"]["cuts"]
+    assert str(cuts[-1]["rating"]) == FIVE_STARS and cuts[-1]["max"] == 10
+    assert cuts[-2]["max"] < 10, "energy 10 is not alone in the top cut's reach"
+    assert str(cuts[0]["rating"]) == ONE_STAR and cuts[0]["max"] >= 1
+
+
+def test_an_unrated_export_track_takes_its_star_rating_from_energy(
+    configured, tagged, tmp_path
+):
+    """Top of the curve five stars, bottom one star, zero and empty both filled."""
+    export = _rating_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    written = _ratings_of(_routed(export).read_bytes())
+    assert written["21"] == FIVE_STARS, "a zero rated top energy track was not five stars"
+    assert written["22"] == ONE_STAR, "an empty rated bottom energy track was not one star"
+    assert envelope["data"]["totals"]["rated"] == 2
+    assert "2 unrated track(s)" in envelope["pending_human_action"]["summary"]
+
+
+def test_a_hand_rated_export_track_is_never_overwritten(configured, tagged, tmp_path):
+    export = _rating_export(configured, tmp_path / "exports")
+    _apply_export(export)
+    assert _ratings_of(_routed(export).read_bytes())["23"] == "102", (
+        "a rating a person set was replaced by the energy curve"
+    )
+
+
+def test_a_track_in_a_bucket_that_does_not_rate_is_filed_and_left_unrated(
+    configured, tagged, tmp_path
+):
+    """Filed, so the pass reached it, and still unrated, so the flag held."""
+    export = _rating_export(configured, tmp_path / "exports")
+    _apply_export(export)
+    written = _routed(export).read_bytes()
+    assert _sub_keys(written, "NonElectronic", "Jazz") == ("24",)
+    assert _ratings_of(written)["24"] == "0", "a rates = false bucket was rated"
+
+
+def test_a_track_with_no_energy_reading_is_filed_and_left_unrated(
+    configured, tagged, tmp_path
+):
+    export = _rating_export(configured, tmp_path / "exports")
+    _apply_export(export)
+    written = _routed(export).read_bytes()
+    assert _sub_keys(written, "Deep House", "Unsorted") == ("25",)
+    assert _ratings_of(written)["25"] == "0", "a track with no energy was rated"
+
+
+def test_a_second_export_run_over_its_own_rated_output_changes_nothing(
+    configured, tagged, tmp_path
+):
+    export = _rating_export(configured, tmp_path / "exports")
+    _apply_export(export)
+    first = _routed(export)
+    before = sorted(path.name for path in first.parent.iterdir())
+
+    code, envelope = _apply_export(first)
+    assert code == int(ExitCode.OK), envelope
+    totals = envelope["data"]["totals"]
+    assert (totals["inserted"], totals["rated"]) == (0, 0)
+    assert totals["reason"] == "nothing-to-route"
+    assert all(item["rating"] == "" for item in envelope["data"]["items"])
+    assert sorted(path.name for path in first.parent.iterdir()) == before
+
+
+def test_a_filed_track_still_unrated_is_rated_in_a_file_of_its_own(
+    configured, tagged, tmp_path
+):
+    """Nothing to insert is not nothing to write while a rating is owed, and a
+    re-run that answered nothing-to-route here would pass the import check
+    over a track the pass never rated."""
+    export = _rating_export(configured, tmp_path / "exports")
+    _apply_export(export)
+    first = _routed(export)
+    first.write_bytes(first.read_bytes().replace(f'Rating="{FIVE_STARS}"'.encode(), b'Rating="0"'))
+
+    code, envelope = _apply_export(first)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    totals = envelope["data"]["totals"]
+    assert (totals["inserted"], totals["rated"]) == (0, 1)
+    assert _ratings_of(_routed(first).read_bytes())["21"] == FIVE_STARS
+
+
+def test_the_offered_plan_names_each_rating_before_anything_is_written(
+    configured, tagged, tmp_path
+):
+    """The rating rides the items, so it is inside the digest a person approves."""
+    export = _rating_export(configured, tmp_path / "exports")
+    code, envelope = _drive(
+        ["-d", "route.inbox.apply=abort", "route", "inbox", "--export", str(export)]
+    )
+    assert code == int(ExitCode.OK), envelope
+    offered = {item["track_id"]: item["rating"] for item in envelope["data"]["items"]}
+    assert offered == {"21": FIVE_STARS, "22": ONE_STAR, "23": "", "24": "", "25": ""}
+    assert not _routed(export).exists()
+
+
+def test_a_row_with_no_rating_attribute_is_not_planned(configured, tagged, tmp_path):
+    """The writer patches a value in place and cannot add one, so planning a
+    rating there would declare a write the run never performs."""
+    export = _write_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["rated"] == 0
+    assert all(item["rating"] == "" for item in envelope["data"]["items"])
+
+
+def test_a_run_whose_every_filing_was_skipped_still_rates_and_is_not_already_filed(
+    configured, tagged, tmp_path
+):
+    """A rating is an attribute of a track, so a missing routing tree does not
+    un-rate it, and the skipped writes still ride as warnings rather than the
+    answer the import check reads as done."""
+    export = _rating_export(configured, tmp_path / "exports")
+    display = taxonomy.default_taxonomy().tree.display
+    export.write_bytes(export.read_bytes().replace(f'Name="{display}"'.encode(), b'Name="Other"'))
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    totals = envelope["data"]["totals"]
+    assert (totals["inserted"], totals["rated"]) == (0, 2)
+    assert totals["reason"] != "nothing-to-route"
+    assert "route-write-skipped" in [w["code"] for w in envelope["warnings"]]
+
+
+def test_a_rating_pass_never_changes_a_tempo_or_bpm(configured, tagged, tmp_path):
+    """R17 on the rated element itself: track 21 is analysed AND rated, so the
+    patch lands in the one open tag whose track carries a tempo child."""
+    import xml.etree.ElementTree as ET
+
+    export = _rating_export(configured, tmp_path / "exports", analyzed=("21",))
+    before = ET.fromstring(export.read_bytes()).find("COLLECTION")
+    _apply_export(export)
+    written = _routed(export).read_bytes()
+    after = ET.fromstring(written).find("COLLECTION")
+    assert _ratings_of(written)["21"] == FIVE_STARS, "the analysed track was not rated"
+
+    def tempo(collection):
+        return {
+            track.get("TrackID"): (
+                track.get("AverageBpm"),
+                [sorted(t.attrib.items()) for t in track.findall("TEMPO")],
+            )
+            for track in collection
+        }
+
+    assert tempo(after) == tempo(before)
+    assert tempo(before)["21"][1], "the analysed track has no tempo child, so this proves nothing"
