@@ -10,7 +10,7 @@ consumers arrive here in one branch. One copy means a method the real
 place rather than absent in three.
 
 **IT REFUSES ANYTHING OUTSIDE THE PROTOCOL, AND THAT IS A GUARD RATHER THAN
-TIDINESS.** ``label.catalogue.Catalogue`` declares six reads and no write at
+TIDINESS.** ``label.catalogue.Catalogue`` declares seven reads and no write at
 all: no playlist create, no heart, no follow. :class:`StrictCatalogue` raises on
 any other attribute, so a worker that reached for one fails the suite instead of
 failing silently against a fake permissive enough to answer.
@@ -29,6 +29,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from cratekit.label.catalogue import ReleaseUnresolvable
+
 #: Every method the ``Catalogue`` protocol declares. Derived once here rather
 #: than remembered at each assertion site.
 PROTOCOL_METHODS = frozenset(
@@ -39,6 +41,7 @@ PROTOCOL_METHODS = frozenset(
         "check_label",
         "account_playlists",
         "favourite_tracks",
+        "release_tracks",
     }
 )
 
@@ -195,6 +198,7 @@ class FakeCatalogue:
         known_labels: set[str] | frozenset[str] | None = None,
         account: list[Any] | None = None,
         hearts: list[Any] | None = None,
+        releases: dict[str, tuple[list[Any], int | None]] | None = None,
     ) -> None:
         self.artists = dict(artists or {})
         self.playlists = dict(playlists or {})
@@ -207,6 +211,10 @@ class FakeCatalogue:
         self.heart_listings = 0
         self.confirmed = None if confirmed is None else frozenset(confirmed)
         self.known_labels = None if known_labels is None else frozenset(known_labels)
+        #: Each release's tracks and its year, keyed by the release identifier,
+        #: which is the only thing the seam is handed about a release.
+        self.releases = dict(releases or {})
+        self.releases_asked_for: list[str] = []
         self.asked_for: list[str] = []
         self.playlists_asked_for: list[str] = []
 
@@ -250,6 +258,16 @@ class FakeCatalogue:
     def favourite_tracks(self) -> tuple[Any, ...]:
         self.heart_listings += 1
         return tuple(self.hearts)
+
+    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
+        self.releases_asked_for.append(release_id)
+        try:
+            tracks, year = self.releases[release_id]
+        except KeyError as exc:
+            # The seam's own exception, which is the protocol's contract for a
+            # release the provider has nothing for, and never an empty listing.
+            raise ReleaseUnresolvable(f"no catalogue release {release_id!r}") from exc
+        return tuple(tracks), year
 
     def check_label(self, name: str) -> dict:
         if self.known_labels is not None and name not in self.known_labels:
@@ -305,6 +323,10 @@ class UnreadableCatalogue(FakeCatalogue):
     def favourite_tracks(self) -> tuple[Any, ...]:
         self.heart_listings += 1
         raise RuntimeError("the catalogue could not list the account's favourites")
+
+    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
+        self.releases_asked_for.append(release_id)
+        raise RuntimeError(f"the catalogue could not read the release {release_id!r}")
 
 
 class VerificationOutage(FakeCatalogue):

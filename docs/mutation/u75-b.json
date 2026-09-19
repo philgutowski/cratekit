@@ -1,0 +1,350 @@
+{
+  "name": "u75-b",
+  "pass_kind": "light",
+  "branch": "relay/120",
+  "head": "77d239c",
+  "when": "2026-09-19 06:43 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8107,
+  "baseline_exit": 0,
+  "pytest_runs": 14,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/approved_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/approved_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5d2518ef5d546081",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8107,
+    "baseline_collected": 8107,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_outage_threshold",
+      "description": "Raise the outage threshold from three to thirty, a realistic slip, so a dead provider is asked about every release",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1543f8231bbf9aa2",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_a_provider_that_stopped_answering_is_not_asked_about_every_release"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "OUTAGE_AFTER = 3",
+      "new": "OUTAGE_AFTER = 30"
+    },
+    {
+      "id": "B2_an_answer_resets_the_count",
+      "description": "Stop an answered release resetting the count, so scattered failures end the run",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4341238876dd9b22",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_an_answer_resets_the_count_so_scattered_failures_never_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            continue\n        in_a_row = 0\n        wanted, year = outcome.wanted, outcome.year",
+      "new": "            continue\n        wanted, year = outcome.wanted, outcome.year"
+    },
+    {
+      "id": "B3_only_a_provider_failure_counts",
+      "description": "Count a gone release towards an outage",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3b29c7403c8f4ca2",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_a_gone_release_does_not_count_towards_an_outage"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            in_a_row = in_a_row + 1 if outcome.kind == PROVIDER else 0",
+      "new": "            in_a_row = in_a_row + 1"
+    },
+    {
+      "id": "B4_no_release_read_refuses",
+      "description": "Remove the refusal for a run that read no release, so it reports a clean no-op",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ce96aa6c16f87e0d",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_no_release_read_is_refused_and_never_a_clean_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not read:\n        # NO RELEASE READ IS NOT NOTHING MISSING.",
+      "new": "    if False:\n        # NO RELEASE READ IS NOT NOTHING MISSING."
+    },
+    {
+      "id": "B5_nothing_listed_with_failures_refuses",
+      "description": "Remove the refusal for nothing listed while a release was unread",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ef7637f5a78628c2",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_nothing_missing_with_a_release_unread_is_refused_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if failures and not listed:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B6_missing_and_nothing_listable_refuses",
+      "description": "Remove the refusal for missing tracks none of which carries a provider identifier",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e0ea8ab6c93d0ec8",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 8107,
+      "baseline_collected": 8107,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if missing and not listed:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B7_same_recording_listed_once",
+      "description": "Remove the match id dedupe, so a single and its album list one recording twice",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a72fcf28cf11ba50",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_the_same_recording_on_two_releases_is_listed_once_under_the_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            elif settled.match_id in seen:\n                counts[\"duplicate\"] += 1\n",
+      "new": ""
+    },
+    {
+      "id": "B8_a_question_is_offered",
+      "description": "Skip adjudication, so a track held in another version is never offered under this verb's key",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ad090fafedbf1a72",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_a_track_held_in_another_version_is_offered_under_this_verb_and_not_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if resolved.of(match.MatchState.NEEDS_REVIEW):",
+      "new": "        if False:"
+    },
+    {
+      "id": "B9_name_digests_the_provenance",
+      "description": "Digest the tracks alone, the review's fourth finding, so a corrected year meets the emitter's refusal",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "398eef0e466be97b",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_the_list_name_moves_with_anything_the_emitter_would_write",
+        "tests/test_label_approved.py::test_the_same_tracks_with_a_corrected_year_take_a_new_name_and_are_not_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"provenance\": [\n            dataclasses.asdict(provenance[track[\"id\"]]) for track in body[\"tracks\"]\n        ],",
+      "new": "        \"provenance\": [],"
+    },
+    {
+      "id": "B11_write_failure_is_the_verbs_refusal",
+      "description": "Remove the OSError conversion, so a full disk reaches a person as an internal error",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cc37232b28940e46",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_a_write_the_disk_refuses_is_the_verbs_refusal_and_not_an_internal_error"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except OSError as exc:\n            # A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL.",
+      "new": "        except ZeroDivisionError as exc:\n            # A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL."
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B10_first_release_wins_provenance",
+      "description": "Let a later release overwrite a listed id's provenance",
+      "reason": "ranked below the cap: B7 measures the dedupe that makes a second provenance for one id unreachable"
+    },
+    {
+      "id": "B12_out_that_is_a_file",
+      "description": "Remove the guard on an --out that exists and is not a folder",
+      "reason": "ranked below the cap: the same guard intake missing carries, measured there, and one test here asserts it"
+    }
+  ]
+}

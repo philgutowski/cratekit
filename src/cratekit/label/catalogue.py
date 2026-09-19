@@ -70,10 +70,22 @@ class AccountPlaylist:
     tracks: int | None = None
 
 
+class ReleaseUnresolvable(LookupError):
+    """A release identifier the provider has nothing for, or none at all.
+
+    DECLARED ON THE SEAM, because it is the one failure of
+    :meth:`Catalogue.release_tracks` a caller acts on differently: a withdrawn
+    release is settled by revoking its acceptance, and every other failure is
+    settled by asking again. The caller therefore catches THIS class and never
+    ``LookupError``, which ``KeyError`` and ``IndexError`` also are, so a client
+    that failed to parse a payload is not reported as a release that is gone.
+    """
+
+
 class Catalogue(Protocol):
     """Every provider read the product makes through this seam, and nothing more.
 
-    SIX MEMBERS BECAUSE THERE ARE SIX CALL SITES, and the protocol is the list
+    SEVEN MEMBERS BECAUSE THERE ARE SEVEN CALL SITES, and the protocol is the list
     rather than a description of a provider. A method nobody calls is a method an
     adapter has to implement for no reason, and it is the shape by which a seam
     stops being a seam and becomes a client library.
@@ -152,6 +164,24 @@ class Catalogue(Protocol):
         report hearts the library lacks as absent from the account, so no page
         shape may end it early, and an empty tuple means the account has no
         hearts, never that nobody could ask.
+        """
+
+    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
+        """Every track on one release, and the year the provider dates it.
+
+        Consumed by ``label.approved_cli``, which turns an ACCEPTED label release
+        into rows for the list document. The release is read again BY IDENTIFIER
+        and nothing the review item's payload says about it is passed in, because
+        a payload written before R-379 carries a memory address where the artist
+        belongs. The rows are the shape ``match.read_tidal_tracks`` reads.
+
+        RAISES :class:`ReleaseUnresolvable` for a release the provider has nothing
+        for, and whatever the provider raised for one it could not answer about,
+        and raises rather than returning a short listing. An
+        empty tuple means the provider answered and the release holds no track,
+        never that nobody could ask. The year is ``None`` when the provider dates
+        the release with nothing this seam can read as a year, which is unknown
+        and is carried as unknown rather than guessed.
         """
 
 
@@ -248,4 +278,11 @@ def resolve(cfg: config.Config) -> Catalogue:
         ) from exc
 
 
-__all__ = ["ADAPTER_MODULE", "AccountPlaylist", "Catalogue", "bound", "resolve"]
+__all__ = [
+    "ADAPTER_MODULE",
+    "AccountPlaylist",
+    "Catalogue",
+    "ReleaseUnresolvable",
+    "bound",
+    "resolve",
+]

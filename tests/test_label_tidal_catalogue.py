@@ -1361,3 +1361,210 @@ def test_the_review_queue_is_untouched_by_a_playlist_intake(cfg, monkeypatch):
     assert code == int(ExitCode.OK), envelope
     with review.open_store(cfg) as queue:
         assert list(review.list_items(queue)) == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U75: one release read again by identifier
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class ProviderAlbum:
+    """An album that pages its tracks and declares how many it counts."""
+
+    def __init__(self, album_id: str, tracks: list[ProviderTrack], **dated: Any) -> None:
+        self.id = album_id
+        self._tracks = list(tracks)
+        self.num_tracks = len(self._tracks)
+        self.served: list[tuple[int | None, int]] = []
+        for name, value in dated.items():
+            setattr(self, name, value)
+
+    def tracks(self, limit: int | None = None, offset: int = 0) -> list[ProviderTrack]:
+        self.served.append((limit, offset))
+        size = 100 if limit is None else limit
+        return self._tracks[offset : offset + size]
+
+
+class AlbumClient(FakeClient):
+    """Answers ``album`` from a script of albums and exceptions, in order."""
+
+    def __init__(self, *answers: Any) -> None:
+        super().__init__()
+        self.answers = list(answers)
+        self.album_reads: list[str] = []
+
+    def album(self, album_id: str) -> Any:
+        self.album_reads.append(album_id)
+        answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+@pytest.fixture
+def pauses(monkeypatch) -> list[float]:
+    """The retry ladder's waits, recorded instead of slept."""
+    waited: list[float] = []
+    monkeypatch.setattr(tidal_catalogue, "_pause", waited.append)
+    return waited
+
+
+def album_tracks(count: int) -> list[ProviderTrack]:
+    return [ProviderTrack(str(700 + n), f"Act {n}", f"Title {n}") for n in range(count)]
+
+
+def test_a_release_is_paged_to_its_declared_count_and_carries_its_year(pauses):
+    album = ProviderAlbum("r-1", album_tracks(230), year=2021)
+    adapter = tidal_catalogue.TidalCatalogue(AlbumClient(album))
+
+    tracks, year = adapter.release_tracks("r-1")
+
+    assert year == 2021
+    assert len(tracks) == 230, "the release was not paged to exhaustion"
+    assert [offset for _limit, offset in album.served] == [0, 100, 200]
+    wanted = match.read_tidal_tracks(tracks)
+    assert (wanted[0].ref, wanted[0].artist, wanted[0].title) == ("700", "Act 0", "Title 0")
+    assert wanted[-1].ref == "929"
+    assert pauses == []
+
+
+def test_a_release_that_is_gone_raises_at_once_and_is_never_retried(pauses):
+    client = AlbumClient(ObjectNotFound("album r-gone"))
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    with pytest.raises(tidal_catalogue.ReleaseUnresolvable) as excinfo:
+        adapter.release_tracks("r-gone")
+
+    assert isinstance(excinfo.value, LookupError)
+    assert "'r-gone'" in str(excinfo.value)
+    assert client.album_reads == ["r-gone"]
+    assert pauses == []
+
+
+def test_a_release_the_client_returns_nothing_for_raises_too(pauses):
+    adapter = tidal_catalogue.TidalCatalogue(AlbumClient(None))
+    with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
+        adapter.release_tracks("r-1")
+
+
+def test_a_rate_limited_album_read_waits_and_is_asked_again(pauses):
+    album = ProviderAlbum("r-1", album_tracks(3), year=2020)
+    client = AlbumClient(RuntimeError("429 too many requests"), album)
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    tracks, year = adapter.release_tracks("r-1")
+
+    assert (len(tracks), year) == (3, 2020)
+    assert client.album_reads == ["r-1", "r-1"]
+    assert pauses == [1.0]
+
+
+def test_an_outage_is_re_raised_as_the_provider_raised_it_once_the_ladder_is_spent(pauses):
+    client = AlbumClient(ConnectionError("the provider timed out"))
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    with pytest.raises(ConnectionError):
+        adapter.release_tracks("r-1")
+
+    assert len(client.album_reads) == 6
+    assert pauses == [1.0, 2.0, 4.0, 8.0, 16.0]
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_no_identifier_is_refused_before_the_provider_is_asked(blank, pauses):
+    client = AlbumClient(ProviderAlbum("r-1", album_tracks(1), year=2020))
+    with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
+        tidal_catalogue.TidalCatalogue(client).release_tracks(blank)
+    assert client.album_reads == []
+
+
+def test_a_short_window_in_the_middle_of_a_release_does_not_end_it(pauses):
+    """The provider counts a track it will not serve and omits it from the window."""
+
+    class Withholding(ProviderAlbum):
+        def tracks(self, limit: int | None = None, offset: int = 0) -> list[ProviderTrack]:
+            page = super().tracks(limit, offset)
+            return page[:-1] if offset == 0 else page
+
+    album = Withholding("r-1", album_tracks(150), year=2020)
+    tracks, _year = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
+
+    assert len(tracks) == 149
+    assert tracks[-1].id == "849"
+
+
+class Dated:
+    def __init__(self, year: int) -> None:
+        self.year = year
+
+
+@pytest.mark.parametrize(
+    ("dated", "expected"),
+    [
+        ({"year": 2021}, 2021),
+        ({"year": "2019"}, 2019),
+        ({"year": None, "release_date": Dated(2018)}, 2018),
+        ({"year": None, "release_date": "2017-03-04"}, 2017),
+        ({"release_date": "2016-01-01T00:00:00"}, 2016),
+        ({"year": 0, "release_date": "2015-06-01"}, 2015),
+        ({"year": True}, None),
+        ({"year": "soon"}, None),
+        ({"year": 99999}, None),
+        ({}, None),
+    ],
+    ids=[
+        "int", "text", "date-object", "date-text", "no-year-field", "zero-falls-through",
+        "boolean", "words", "five-digits", "nothing",
+    ],
+)
+def test_the_year_is_read_or_is_none_and_is_never_a_guess(dated, expected, pauses):
+    album = ProviderAlbum("r-1", album_tracks(1), **dated)
+    _tracks, year = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
+    assert year == expected
+
+
+class Rejected(Exception):
+    """An HTTP failure in the client's shape: a status, and the URL in its text."""
+
+    def __init__(self, status_code: int, album_id: str) -> None:
+        super().__init__(
+            f"{status_code} Client Error for url: https://api.example.invalid/v1/albums/{album_id}"
+        )
+        self.response = Response(status_code)
+
+
+def test_an_identifier_holding_the_digits_404_does_not_make_a_rejection_a_withdrawal(pauses):
+    """The request URL carries the release identifier into the error's text."""
+    client = AlbumClient(Rejected(401, "24040417"))
+    adapter = tidal_catalogue.TidalCatalogue(client)
+
+    with pytest.raises(Rejected):
+        adapter.release_tracks("24040417")
+
+    assert len(client.album_reads) == 6, "a rejection was answered once, as gone"
+
+
+def test_a_404_status_is_gone_whatever_the_class_is_called(pauses):
+    client = AlbumClient(Rejected(404, "r-gone"))
+    with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
+        tidal_catalogue.TidalCatalogue(client).release_tracks("r-gone")
+    assert client.album_reads == ["r-gone"]
+
+
+def test_the_adapter_raises_the_seams_own_exception():
+    assert tidal_catalogue.ReleaseUnresolvable is catalogue.ReleaseUnresolvable
+
+
+def test_the_adapter_and_the_verb_meet_over_a_gone_release(cfg, monkeypatch, pauses):
+    """The seam's ``LookupError`` contract, driven from the live adapter's side."""
+    from cratekit.label import approved_cli
+
+    adapter = tidal_catalogue.TidalCatalogue(AlbumClient(ObjectNotFound("album r-gone")))
+    release = approved_cli._Release(
+        item_id="ri_1", release_id="r-gone", title="", label_id=None, label_name=None
+    )
+
+    outcome = approved_cli._tracks_or_failure(adapter, release)
+
+    assert isinstance(outcome, approved_cli._Failed)
+    assert outcome.kind == approved_cli.GONE

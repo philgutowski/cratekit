@@ -17511,6 +17511,23 @@ write, which is two units rather than one.
 **Closes when:** an approved label release is acquired and filed under the
 record labels tree.
 
+**Narrowed 2026-09-19 on `relay/120`, U75, the acquire half closed.**
+`crate label approved` reads every accepted release on the label queue, reads
+its tracks again through a new catalogue member, `release_tracks`, resolves each
+with the match engine and writes the missing ones through `listdoc.write`, with
+a manifest carrying `source` label, `label_id`, `label_name`, `year` and
+`release_id`. `acquire download` reads the list, pinned by a test that hands the
+written file to `match_cli.read_list`. A review answer is therefore no longer
+discarded. Mutation tables `docs/mutation/u75-a.md`, `u75-b.md`, `u75-c.md` and
+`u75-zeros.md`, 25 rows, all killing after two tests were written for the zeros,
+read in `u75-notes.md`. Landed against fakes: the first live call of
+`release_tracks` and the 98 live offered releases are owed to an attended
+sitting.
+
+**Still open:** the tree half. Nothing files a landed label track under
+`Record Labels / <Label> / <Label> <year>`, and `insert_record_labels_tree`
+still has no caller. That is U77, which reads the manifest this unit writes.
+
 ---
 
 ## R-403. `crate sync all` lands nothing, and its combined intake file is unreachable
@@ -18915,3 +18932,124 @@ mutation and answers with its own warning shape, with a test per writer over a
 bare LF line.
 
 ---
+
+---
+
+## R-448. `label approved` reads every accepted release from the provider again on every run
+
+**Found:** 2026-09-19, U75 on `relay/120`, by the unit's `/code-review`.
+
+The brief decided there is no handed off state: ownership makes a second run
+idempotent. The cost of that decision is that an accepted item is never
+consumed. Each run asks the provider for every accepted release again, an album
+read and at least one page of tracks, including a release whose every track
+landed months ago. The review store is also opened once per release that holds
+a question.
+
+**Measured cost:** none driven against the provider. By count, N accepted
+releases cost at least 2N requests per run, for as long as the queue holds
+them, so run time and rate limit exposure grow with review history. The 98 live
+offered releases are the first size this meets.
+
+**Why not fixed here.** A handed off marker is the state the brief ruled out,
+and a cache of fully owned releases is a second record of ownership that can
+disagree with the library.
+
+**Closes when:** a release whose tracks are all owned stops being asked for, by
+a record that cannot outlive the ownership it stands for, or the cost is
+accepted at a measured queue size.
+
+---
+
+## R-449. A list `label approved` wrote and nobody downloaded is listed again under a new name
+
+**Found:** 2026-09-19, U75 on `relay/120`, by the unit's `/code-review`.
+
+Owned means landed in the library. A track that is listed, or downloaded into
+staging and not landed, still resolves missing, so a second run before landing
+writes a second list that holds everything the first did plus whatever was
+accepted since. The name carries a digest of what is written, so the two never
+collide, and nothing marks the first as superseded.
+
+**Measured cost:** none driven. A person who runs `acquire download` on both
+lists fetches the shared tracks twice. `docs/GUIDE.md` and the labels skill say
+to download the newest list and ignore the older, which is advice and not a
+guard. `intake missing` is not the same shape, because its list is named for a
+job whose reports do not change.
+
+**Closes when:** a run names the earlier lists it supersedes, or
+`acquire download` declines a track already staged, or the advice is accepted.
+
+---
+
+## R-450. The shared unavailable classifier reads the digits 404 out of a message that carries the request URL
+
+**Found:** 2026-09-19, U75 on `relay/120`, by the unit's `/code-review`, in this
+unit's own adapter, and then by the hunt for the same shape elsewhere.
+
+`acquire.adapter.classify_unavailable` answers permanent for an exception whose
+text holds "404" or "not found". The provider client's HTTP errors carry the
+request URL, and the URL carries the identifier asked for. Driven directly: an
+exception with a 401 status and the text "401 Client Error: Unauthorized for
+url: .../albums/24040417" classifies as `unavailable-permanent`. U75's adapter
+stopped using the classifier for that reason and reads gone from the class name
+or a 404 status alone, pinned by
+`test_an_identifier_holding_the_digits_404_does_not_make_a_rejection_a_withdrawal`.
+
+Two other callers still ask it: `acquire/vendored.py:268`, which returns on
+permanent BEFORE it asks whether the failure was an authentication failure, and
+`modules/outbound/tidal_account.py:89`, whose `_not_found` turns a permanent
+answer into "the provider has nothing for this".
+
+**Measured cost:** the classifier was driven and the two producers were NOT, so
+the reachability is unmeasured. If it is reachable, a rejected session on a
+track whose identifier holds those digits is reported as a track that does not
+exist, which is the product saying something false, and on the download path
+the dead session is never reported as one.
+
+**Closes when:** the classifier reads a status or a class before any text, or
+each caller is driven with such an identifier and shown not to reach it.
+
+---
+
+## R-451. `label approved` and `intake missing` carry near copies of one reporting tail
+
+**Found:** 2026-09-19, U75 on `relay/120`, by the unit's `/code-review`.
+
+`label/approved_cli.py` and `intake/missing_cli.py` each hold their own `--out`
+resolution, their own translation of `ListDocRefused`, their own refusal for
+missing tracks none of which can be listed, and the same five check rows. The
+label verb also builds `listdoc.document` once for the name and lets
+`listdoc.write` build it again, because the emitter takes a name and not a
+function of what it lists.
+
+**Measured cost:** none to a person. A fix to one copy misses the other, and
+R-452 is the first instance.
+
+**Why not fixed here.** Lifting the tail means changing U69's verb and U68's
+emitter, neither of which this unit's tables measured.
+
+**Closes when:** the write and report tail is one function beside `listdoc`,
+called by both verbs, and the emitter names a list from what it lists.
+
+---
+
+## R-452. A write the disk refuses reaches a person from `intake missing` as an internal error
+
+**Found:** 2026-09-19, U75 on `relay/120`, by the hunt after a review fix, for
+the same shape one file over.
+
+`intake/missing_cli.py` catches `ListDocRefused` around `listdoc.write` and
+nothing else. The emitter converts what it READS and lets a failed write
+through. In `label approved` the same gap was driven: with
+`atomic_write_bytes` raising `ENOSPC`, the verb now refuses
+`label-list-unusable` and names the folder. A permission failure is not part of
+this, because the cause constructor already reclassifies it as
+`path-permission-denied`, driven and pinned in U75.
+
+**Measured cost:** driven in the label verb, NOT driven in `intake missing`, so
+the reachability there is unmeasured. If it is reachable, a full disk tells a
+person to report a defect.
+
+**Closes when:** `intake missing` converts an `OSError` from the write into its
+own refusal, with a test, which R-451's shared tail would do for both.

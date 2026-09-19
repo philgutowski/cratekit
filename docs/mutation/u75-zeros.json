@@ -1,0 +1,100 @@
+{
+  "name": "u75-zeros",
+  "pass_kind": "light",
+  "branch": "relay/120",
+  "head": "1c51cb0",
+  "when": "2026-09-19 06:50 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8108,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/approved_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/approved_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5d2518ef5d546081",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8108,
+    "baseline_collected": 8108,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A8_identity_before_payload",
+      "description": "Read the release identifier from the payload first, not from the item's identity",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "97eddfe3c5025d49",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 150,
+      "baseline_collected": 150,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_the_items_identity_names_the_release_and_a_payload_that_disagrees_does_not"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    release_id = _text(identity.get(\"release_id\")) or _text(item.payload.get(\"identity\")) or \"\"",
+      "new": "    release_id = _text(item.payload.get(\"identity\")) or _text(identity.get(\"release_id\")) or \"\""
+    },
+    {
+      "id": "B6_missing_and_nothing_listable_refuses",
+      "description": "Remove the refusal for missing tracks none of which carries a provider identifier",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e0ea8ab6c93d0ec8",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 150,
+      "baseline_collected": 150,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_approved.py::test_missing_tracks_none_of_which_can_be_asked_for_is_refused_and_not_a_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if missing and not listed:",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": []
+}

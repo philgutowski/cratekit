@@ -1,0 +1,250 @@
+{
+  "name": "u75-c",
+  "pass_kind": "light",
+  "branch": "relay/120",
+  "head": "aedb045",
+  "when": "2026-09-19 06:47 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8108,
+  "baseline_exit": 0,
+  "pytest_runs": 9,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/tidal_catalogue.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/tidal_catalogue.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2c74cee1745734b6",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8108,
+    "baseline_collected": 8108,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_gone_is_never_retried",
+      "description": "Stop classifying a not found answer first, so a withdrawn release climbs the whole retry ladder",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2324882f105e7dab",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.tidal_catalogue",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 109,
+      "baseline_collected": 109,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_404_status_is_gone_whatever_the_class_is_called",
+        "tests/test_label_tidal_catalogue.py::test_a_release_that_is_gone_raises_at_once_and_is_never_retried",
+        "tests/test_label_tidal_catalogue.py::test_the_adapter_and_the_verb_meet_over_a_gone_release"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if _gone(exc):\n                    return _GONE\n                raise",
+      "new": "                raise"
+    },
+    {
+      "id": "C2_gone_by_class_name",
+      "description": "Remove the class name half of the gone rule",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d6b291a7291297e7",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.tidal_catalogue",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 109,
+      "baseline_collected": 109,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_release_that_is_gone_raises_at_once_and_is_never_retried",
+        "tests/test_label_tidal_catalogue.py::test_the_adapter_and_the_verb_meet_over_a_gone_release"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if \"notfound\" in type(exc).__name__.lower():\n        return True\n    return getattr(getattr(exc, \"response\", None), \"status_code\", None) == 404",
+      "new": "    return getattr(getattr(exc, \"response\", None), \"status_code\", None) == 404"
+    },
+    {
+      "id": "C3_gone_by_status",
+      "description": "Remove the status half of the gone rule",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5869fe81dc04d812",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.tidal_catalogue",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 109,
+      "baseline_collected": 109,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_404_status_is_gone_whatever_the_class_is_called"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return getattr(getattr(exc, \"response\", None), \"status_code\", None) == 404",
+      "new": "    return False"
+    },
+    {
+      "id": "C4_gone_never_by_text",
+      "description": "Read gone from the message text again, the review's third finding",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5b4a2304aad5ae57",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.tidal_catalogue",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 109,
+      "baseline_collected": 109,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_identifier_holding_the_digits_404_does_not_make_a_rejection_a_withdrawal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return getattr(getattr(exc, \"response\", None), \"status_code\", None) == 404",
+      "new": "    return \"404\" in str(exc)"
+    },
+    {
+      "id": "C5_none_album_raises",
+      "description": "Let a client that returned nothing for a release through to the listing",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "453220faa491671d",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.tidal_catalogue",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 109,
+      "baseline_collected": 109,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_release_the_client_returns_nothing_for_raises_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if album is _GONE or album is None:",
+      "new": "        if album is _GONE:"
+    },
+    {
+      "id": "C7_tracks_through_the_paging_wrapper",
+      "description": "List the tracks with one direct call instead of the paging wrapper, which serves one page",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "243c27b859fa357e",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.tidal_catalogue",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 109,
+      "baseline_collected": 109,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_release_is_paged_to_its_declared_count_and_carries_its_year",
+        "tests/test_label_tidal_catalogue.py::test_a_short_window_in_the_middle_of_a_release_does_not_end_it",
+        "tests/test_label_tidal_catalogue.py::test_the_adapter_pages_nothing_by_hand"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        tracks = listing.playlist_tracks(album, shape=\"release_tracks\", sleep=_pause)",
+      "new": "        tracks = album.tracks()"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_list_prefix",
+      "description": "Reword the list prefix",
+      "reason": "ranked below the cap: a name, not a guard, and the shape regex in the suite pins it"
+    },
+    {
+      "id": "D2_failure_wording_per_kind",
+      "description": "Swap the closing step between the gone and provider kinds",
+      "reason": "ranked below the cap: A5 and A6 already measure the kind reaching the line, and three tests assert the step text"
+    },
+    {
+      "id": "D3_undated_check",
+      "description": "Report an undated release as dated",
+      "reason": "ranked below the cap: a report line over a manifest value the manifest test pins directly"
+    },
+    {
+      "id": "C6_blank_identifier_refused_before_the_provider",
+      "description": "Remove the blank identifier guard, so the provider is asked for nothing",
+      "reason": "ranked below the cap: A6 measures the verb's guard on the same input, which runs first"
+    },
+    {
+      "id": "C8_boolean_is_not_a_year",
+      "description": "Remove the boolean guard in the year reader, so True reads as a year",
+      "reason": "ranked below the cap: maintainer facing, and a parametrized case asserts it"
+    },
+    {
+      "id": "C9_year_bounds",
+      "description": "Widen the year bound to a nearby value, so a five digit number reads as a year",
+      "reason": "ranked below the cap: maintainer facing, and a parametrized case asserts it"
+    }
+  ]
+}

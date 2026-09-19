@@ -1,0 +1,91 @@
+name = "u75-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_kind_filter"
+description = "Drop the kind filter, so an accepted harvested label name, which shares the queue, is read as a release"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''        kinds=(sweep.KIND,),
+'''
+new = ""
+
+[[rows]]
+id = "A2_accepted_only"
+description = "Read a rejected release as accepted"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''        if item.verdict is review.Verdict.ACCEPTED:
+            accepted.append(_release_of(items, item))
+        elif item.verdict is review.Verdict.REJECTED:'''
+new = '''        if item.verdict is not None:
+            accepted.append(_release_of(items, item))
+        elif item.verdict is review.Verdict.REJECTED:'''
+
+[[rows]]
+id = "A3_nothing_accepted_before_the_catalogue"
+description = "Remove the early return, so a queue with nothing accepted resolves the catalogue and spends a login"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''    if not accepted:
+        # ASKED BEFORE THE CATALOGUE IS RESOLVED'''
+new = '''    if False:
+        # ASKED BEFORE THE CATALOGUE IS RESOLVED'''
+
+[[rows]]
+id = "A4_seam_refusal_passes_through"
+description = "Remove the CratekitError passthrough, so the seam's own refusal is flattened into a per release failure"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''        rows, year = found.release_tracks(release.release_id)
+    except CratekitError:
+        raise
+    except catalogue.ReleaseUnresolvable as exc:'''
+new = '''        rows, year = found.release_tracks(release.release_id)
+    except catalogue.ReleaseUnresolvable as exc:'''
+
+[[rows]]
+id = "A5_only_the_seams_exception_is_gone"
+description = "Catch LookupError again instead of the seam's own class, the review's first finding"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''    except catalogue.ReleaseUnresolvable as exc:
+        return _Failed(release, GONE, str(exc))'''
+new = '''    except LookupError as exc:
+        return _Failed(release, GONE, str(exc))'''
+
+[[rows]]
+id = "A6_no_identifier_is_not_asked_of_the_provider"
+description = "Remove the empty identifier guard, so the provider is asked for a release with no name"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''    if not release.release_id:
+        return _Failed(release, NO_IDENTIFIER, "the review item names no release identifier")
+'''
+new = ""
+
+[[rows]]
+id = "A7_each_row_read_alone"
+description = "Let one unreadable row escape, which costs the run instead of one line"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''        except match.UnreadableList as exc:
+            unreadable.append(str(exc))'''
+new = '''        except ZeroDivisionError as exc:
+            unreadable.append(str(exc))'''
+
+[[rows]]
+id = "A8_identity_before_payload"
+description = "Read the release identifier from the payload first, not from the item's identity"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''    release_id = _text(identity.get("release_id")) or _text(item.payload.get("identity")) or ""'''
+new = '''    release_id = _text(item.payload.get("identity")) or _text(identity.get("release_id")) or ""'''
+
+[[rows]]
+id = "A9_payload_fallback"
+description = "Drop the payload fallback, so an imported item with no identity names no release"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''    release_id = _text(identity.get("release_id")) or _text(item.payload.get("identity")) or ""'''
+new = '''    release_id = _text(identity.get("release_id")) or ""'''

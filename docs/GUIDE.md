@@ -222,6 +222,7 @@ crate label import "Some Label"
 crate sync labels
 crate review list --queue label-release
 crate review resolve ITEM_ID --verdict accepted --actor YOUR_NAME
+crate label approved
 ```
 
 `label registry` lists who you follow. The registry records nothing about what has
@@ -233,6 +234,21 @@ next sync treat the whole catalogue as new. `harvest` lists the labels behind a
 playlist and adds and downloads nothing. A sweep proposes releases into the
 review queue rather than taking them, and a rejection is remembered until you
 clear it.
+
+`label approved` is what makes an accepted release acquirable. It reads every
+release you accepted, asks the provider for its tracks again, and writes the
+ones your library does not hold into a list under the `lists` folder in download
+staging, or the folder you name with `--out`. It prints the path and the exact
+`acquire download` command to run next. Beside the list it writes a manifest
+recording the label, the year and the release each track came from. Tracks you
+own are left out, so you can run it after every review sitting and it lists only
+what is still owed. Owned means landed in the library, not listed or staged, so
+a list you have not downloaded yet is superseded by the next one, which holds
+everything the earlier one did. Download the newest and ignore the older, or
+you fetch the same tracks twice. A release the provider has withdrawn is reported by name as
+a failing line and the other releases are still listed. A track you hold in
+another version becomes a review question, and is listed on a later run once you
+answer it.
 
 ### Sync from streaming
 
