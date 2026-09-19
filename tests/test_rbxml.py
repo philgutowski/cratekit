@@ -876,6 +876,65 @@ def test_a_failure_after_an_earlier_merge_writes_nothing():
     assert bytes(work) == held, "the first year's merge survived a refusal"
 
 
+_SHARED_LINES = {
+    "folder close": (
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="1">',
+            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="0"/></NODE>',
+        ],
+        "the close tag of folder 'Kompakt'",
+    ),
+    "playlist close": (
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="1">',
+            '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">',
+            '            <TRACK Key="7"/></NODE>',
+            "        </NODE>",
+        ],
+        "the close tag of playlist 'Kompakt 2025'",
+    ),
+    "anchor playlist": (
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="1">'
+            '<NODE Name="Kompakt 2020" Type="1" KeyType="0" Entries="0"/>',
+            "        </NODE>",
+        ],
+        "the playlist 'Kompakt 2020'",
+    ),
+    "folder": (
+        [
+            '        <NODE Name="Other" Type="0" Count="0"/>'
+            '<NODE Name="Kompakt" Type="0" Count="0"/>',
+        ],
+        "the folder 'Kompakt'",
+    ),
+    "held playlist": (
+        [
+            '        <NODE Name="Kompakt" Type="0" Count="2">',
+            '          <NODE Name="X" Type="1" KeyType="0" Entries="0"/>'
+            '<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="0"/>',
+            "        </NODE>",
+        ],
+        "the playlist 'Kompakt 2025'",
+    ),
+}
+
+
+def test_a_merge_point_sharing_its_line_refuses_and_writes_nothing():
+    """Every merge writes whole lines at a line start.
+
+    When the tag it writes beside shares its line with another tag, that line
+    start belongs to the other tag and the write lands inside it. Each of the
+    five places a merge writes is driven with that shape, one at a time.
+    """
+    for shape, (lines, named) in _SHARED_LINES.items():
+        held = _labels_doc(lines)
+        out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [1]), ("Kompakt 2024", [2])])
+        assert warning is not None and named in warning, (shape, warning)
+        assert "does not start its own line" in warning, (shape, warning)
+        assert out == held, f"{shape}: a refusal wrote bytes"
+
+
 # ── location round-trip ──────────────────────────────────────────────────────
 
 
