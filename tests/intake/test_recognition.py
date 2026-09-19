@@ -917,12 +917,65 @@ def test_kept_and_fresh_answers_fold_in_set_order(tmp_path, cache, ledger):
     assert [row.title for row in second.rows] == ["Sun Path"]
 
 
-def test_a_pass_that_raised_keeps_nothing(tmp_path, cache, ledger):
-    """R-304's other half, stated as a test so nobody reads the cache as a resume."""
+def test_a_pass_that_raised_keeps_what_it_had_already_paid_for(tmp_path, cache, ledger):
+    """A quota refusal mid set. The answers before it are written on the way out."""
     source = real_recording(tmp_path)
-    with pytest.raises(CratekitError):
+    with pytest.raises(CratekitError) as refused:
         cached_run(FakeTransport(hit("Aurora Bloom", "Sun Path"), coded(3003)), source, cache, ledger)
-    assert not cache.root.exists() or not list(cache.root.iterdir())
+    assert refused.value.cause.detail["kind"] == "provider-quota"
+
+    rest = FakeTransport(miss(), hit("Nova Reef", "Tide"))
+    result = cached_run(rest, source, cache, ledger)
+
+    assert [r.sample for r in rest.requests] == [b"chunk@25", b"chunk@50"]
+    assert (result.calls, result.cached) == (2, 1)
+    assert [row.title for row in result.rows] == ["Sun Path", "Tide"]
+
+
+def test_a_cache_that_cannot_be_written_does_not_replace_the_refusal_on_its_way_out(
+    tmp_path, cache, ledger, monkeypatch
+):
+    def failing(self, plan, answers):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(acrcloud.RecognitionCache, "write", failing)
+    with pytest.raises(CratekitError) as refused:
+        cached_run(
+            FakeTransport(hit("Aurora Bloom", "Sun Path"), coded(3003)),
+            real_recording(tmp_path), cache, ledger,
+        )
+    assert refused.value.cause.reason == "intake-recognition-spend-bound"
+
+
+def test_refresh_reads_nothing_kept_and_lays_the_new_answers_over_the_document(
+    tmp_path, cache, ledger
+):
+    source = real_recording(tmp_path)
+    cached_run(FakeTransport(hit("Aurora Bloom", "Sun Path"), miss(), miss()), source, cache, ledger)
+    asked = FakeTransport(hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide"), miss())
+    refreshed = cached_run(asked, source, cache, ledger, refresh=True)
+    assert len(asked.requests) == 3
+    assert (refreshed.calls, refreshed.cached) == (3, 0)
+    after = cached_run(FakeTransport(), source, cache, ledger)
+    assert [row.title for row in after.rows] == ["Sun Path", "Tide"]
+
+
+def test_the_write_is_a_merge_so_an_overlapping_pass_does_not_drop_what_another_paid_for(
+    tmp_path, cache
+):
+    source = real_recording(tmp_path)
+    plan = plan_of(source)
+    cache.write(plan, {0: hit("Aurora Bloom", "Sun Path")})
+    # A second pass that began before that write knows only its own answer.
+    cache.write(plan, {25: miss()})
+    assert sorted(cache.read(plan)) == [0, 25]
+    assert cache.path_for(plan).with_suffix(".lock").is_file()
+
+
+def test_the_pass_carries_the_recordings_digest(tmp_path, cache, ledger):
+    source = real_recording(tmp_path)
+    result = cached_run(FakeTransport(*three_answers()), source, cache, ledger)
+    assert result.digest == acrcloud.content_digest(source)
 
 
 def plan_of(source: Path, duration_s: float = 85.0) -> acrcloud.ChunkPlan:
@@ -988,7 +1041,7 @@ def test_the_cache_lives_in_its_declared_installation_state_entry():
 def test_the_cache_document_is_private_and_holds_no_credential(tmp_path, cache, ledger):
     source = real_recording(tmp_path)
     cached_run(FakeTransport(*three_answers()), source, cache, ledger)
-    (document,) = list(cache.root.iterdir())
+    (document,) = list(cache.root.glob("*.json"))
     assert document.stat().st_mode & 0o777 == 0o600
     text = document.read_text()
     assert "an-access-key" not in text and "a-signing-key" not in text

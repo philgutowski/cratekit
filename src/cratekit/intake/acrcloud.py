@@ -63,7 +63,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -597,9 +597,11 @@ def content_digest(source: Path) -> str:
     THE BYTES AND NOTHING ELSE. A path, a size and a modification time are each
     an identity that is not unique to the thing it identifies: a second set
     exported over the first keeps the path, a re-encode can keep the size, and
-    a copy keeps neither while holding the same audio. Reading a two hour
-    recording costs a second or two, which is nothing against the spend a
-    stale answer would hide.
+    a copy keeps neither while holding the same audio. The whole file is
+    read, which is seconds for a compressed set and longer for a lossless one
+    on a slow volume, and it is paid on every pass because it is the only
+    thing that can say the audio has not changed. That is time, and what a
+    stale answer would cost is money and a false tracklist.
     """
     hashed = hashlib.sha256()
     with source.open("rb") as handle:
@@ -660,8 +662,15 @@ class RecognitionCache:
     A DOCUMENT THAT CANNOT BE READ, OR THAT DISAGREES WITH THE PLAN IT WAS
     ASKED FOR, IS A MISS. The cost of a miss is money and never a false
     tracklist, which is the right way round for a cache to fail. A document
-    that cannot be WRITTEN raises ``OSError`` to the caller, who reports it
-    rather than failing a pass whose answers are already paid for.
+    that cannot be WRITTEN raises to the caller, who reports it rather than
+    failing a pass whose answers are already paid for.
+
+    THE WRITE IS A LOCKED MERGE, NOT A REPLACE. Two passes over one recording
+    can overlap, ``intake identify`` and ``intake set`` started together or a
+    gap filling pass beside a slow one, and each read the document when it
+    began. A writer that replaced the document with what IT knew would drop
+    the answers the other paid for, so the document is read again under a
+    sibling lock and what this pass paid for is laid over it.
     """
 
     def __init__(self, root: Path | None = None) -> None:
@@ -698,19 +707,21 @@ class RecognitionCache:
         return answers
 
     def write(self, plan: ChunkPlan, answers: Mapping[int, Mapping[str, Any]]) -> None:
-        """Keep ``answers`` for ``plan``, replacing the document whole."""
-        document = {
-            "version": CACHE_VERSION,
-            "plan": plan.material(),
-            "answers": {
-                str(offset): dict(answers[offset])
-                for offset in sorted(answers)
-                if classify(answers[offset])[0] in _KEPT_OUTCOMES
-            },
-        }
-        payload = json.dumps(document, indent=2, sort_keys=True) + "\n"
-        config._mkdir_private(self.root)
-        config.atomic_write_bytes(payload.encode("utf-8"), self.path_for(plan))
+        """Lay ``answers`` over what is already kept for ``plan``, under its lock."""
+        path = self.path_for(plan)
+        with config._exclusive_lock(path.with_suffix(".lock")):
+            merged = {**self.read(plan), **answers}
+            document = {
+                "version": CACHE_VERSION,
+                "plan": plan.material(),
+                "answers": {
+                    str(offset): dict(merged[offset])
+                    for offset in sorted(merged)
+                    if classify(merged[offset])[0] in _KEPT_OUTCOMES
+                },
+            }
+            payload = json.dumps(document, indent=2, sort_keys=True) + "\n"
+            config.atomic_write_bytes(payload.encode("utf-8"), path)
 
 
 # ---------------------------------------------------------------------------
@@ -810,6 +821,7 @@ def identify(
     budget: Budget | None = None,
     ledger: Ledger | None = None,
     cache: RecognitionCache | None = None,
+    refresh: bool = False,
     host: str = HOST,
     month: str | None = None,
 ) -> Identified:
@@ -835,13 +847,25 @@ def identify(
     A CHUNK ALREADY ANSWERED IS NOT PAID FOR AGAIN. The recording is digested
     and the kept answers for its chunk plan are read before anything is
     carved. A kept chunk skips the carve, the ledger and the transport, and a
-    recording whose every chunk is kept never reaches the keychain either, so
-    the second of ``intake identify`` then ``intake set`` spends nothing. The
-    per run bound still reads the WHOLE grid, because it is what refuses a
-    file that is not a set; the monthly bound reads only what is owed, because
-    it is a bound on spend. What this pass paid for is kept once, at the end
-    of a pass that returned: a pass that raised keeps nothing, which is the
-    un-resumable half R-304 records and this does not close.
+    recording whose every chunk is kept never RETRIEVES a credential, so the
+    second of ``intake identify`` then ``intake set`` spends nothing. The
+    presence gate in :mod:`cratekit.intake.recognize` still runs first, so a
+    machine with no key recorded is refused there whatever is kept. The per
+    run bound still reads the WHOLE grid, because it is what refuses a file
+    that is not a set; the monthly bound reads only what is owed, because it
+    is a bound on spend.
+
+    A MISS IS KEPT UNTIL SOMEBODY ASKS AGAIN. The service's catalogue grows,
+    so a chunk it could not name last season may be one it can name now, and
+    nothing here can know that without paying. ``refresh`` is how a person
+    says so: nothing kept is read, every chunk is paid for, and what comes
+    back is laid over the document.
+
+    WHAT WAS PAID FOR IS KEPT ON THE WAY OUT, WHICHEVER WAY THAT IS. A quota
+    refusal on the hundred and twentieth chunk raises, and the hundred and
+    nineteen answers before it are written first, so the pass after the quota
+    resets pays for the rest and not for the set. What this does not cover is
+    a process that dies outright between the first answer and the write.
     """
     spend = budget or Budget()
     counter = ledger or Ledger()
@@ -864,14 +888,63 @@ def identify(
     assert_within(Budget(per_run=spend.per_run), planned=planned, used_this_month=0)
     offsets = sample_offsets(duration_s)
     plan, unkept = _plan_for(source, offsets, host=host)
-    kept = kept_in.read(plan) if plan is not None else {}
+    kept = kept_in.read(plan) if plan is not None and not refresh else {}
     owed = [offset for offset in offsets if offset not in kept]
+    paid: dict[int, Mapping[str, Any]] = {}
+    try:
+        result = _identified(
+            source,
+            offsets=offsets,
+            kept=kept,
+            owed=owed,
+            paid=paid,
+            transport=transport,
+            carver=carver,
+            credentials=credentials,
+            spend=spend,
+            counter=counter,
+            host=host,
+            month=month,
+        )
+    finally:
+        # ``paid`` is filled as the answers arrive, so this keeps what a pass
+        # that RAISED had already paid for. A failed write must not replace
+        # the refusal on its way out, and on the way out of a pass that
+        # returned it is reported instead.
+        if paid and plan is not None:
+            try:
+                kept_in.write(plan, paid)
+            except (config.ConfigLockUnavailable, OSError) as exc:
+                unkept = f"{type(exc).__name__}: {exc}"
+    return replace(
+        result,
+        cache_unwritten=unkept if paid else "",
+        digest=plan.digest if plan is not None else "",
+    )
+
+
+def _identified(
+    source: Path,
+    *,
+    offsets: tuple[int, ...],
+    kept: Mapping[int, Mapping[str, Any]],
+    owed: list[int],
+    paid: dict[int, Mapping[str, Any]],
+    transport: Transport,
+    carver: Carver,
+    credentials: Credentials,
+    spend: Budget,
+    counter: Ledger,
+    host: str,
+    month: str | None,
+) -> Identified:
+    """The pass itself. ``paid`` is the caller's, filled as each answer arrives,
+    so the caller can keep it whether this returns or raises."""
     if owed:
         assert_within(spend, planned=len(owed), used_this_month=counter.used(month))
         access_key, signing_key = credentials()
 
     found: list[Match] = []
-    paid: dict[int, Mapping[str, Any]] = {}
     calls = misses = unreached = streak = 0
     for offset in offsets:
         if offset in kept:
@@ -945,11 +1018,6 @@ def identify(
             source=str(source),
             calls=calls,
         )
-    if paid and plan is not None:
-        try:
-            kept_in.write(plan, {**kept, **paid})
-        except (config.ConfigLockUnavailable, OSError) as exc:
-            unkept = f"{type(exc).__name__}: {exc}"
     matches = fold(found)
     return Identified(
         rows=tuple(one.wanted for one in matches),
@@ -958,7 +1026,6 @@ def identify(
         misses=misses,
         unreached=unreached,
         cached=len(offsets) - len(owed),
-        cache_unwritten=unkept if paid else "",
     )
 
 
@@ -997,6 +1064,7 @@ def bound_identifier(
     budget: Budget | None = None,
     ledger: Ledger | None = None,
     cache: RecognitionCache | None = None,
+    refresh: bool = False,
 ) -> Callable[[Path], Identified]:
     """The identifier in the seam's own shape, over the shipped seams.
 
@@ -1014,6 +1082,7 @@ def bound_identifier(
             budget=budget,
             ledger=ledger,
             cache=cache,
+            refresh=refresh,
         )
 
     return run

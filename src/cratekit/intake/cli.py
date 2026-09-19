@@ -161,6 +161,14 @@ def build_set(parser, entry) -> None:
         metavar="JOB_ID",
         help="continue the intake job already queued under this identifier",
     )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "ask the recognition service about every chunk again instead of "
+            "reading the answers already kept for this recording; this spends"
+        ),
+    )
     parser.set_defaults(_handler=intake_set)
 
 
@@ -173,6 +181,14 @@ def build_identify(parser, entry) -> None:
         help=(
             "folder the tracklist is written into; defaults to a tracklists "
             "folder under download staging"
+        ),
+    )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "ask the recognition service about every chunk again instead of "
+            "reading the answers already kept for this recording; this spends"
         ),
     )
     parser.set_defaults(_handler=intake_identify)
@@ -500,7 +516,7 @@ def intake_set(ctx) -> Envelope:
             return _resume(ctx, store, ctx.args.job)
         frozen = _recording_or_refuse(str(ctx.args.source))
         recognize.assert_recognition_ready()
-        result = pipeline.identify_only(frozen)
+        result = pipeline.identify_only(frozen, refresh=bool(ctx.args.refresh))
         warnings = _coverage_or_refuse(result, frozen) + _cache_notes(result)
         tracks = frozen_rows(result.rows)
         if not tracks:
@@ -512,6 +528,7 @@ def intake_set(ctx) -> Envelope:
                     source=str(frozen),
                 ),
                 outcome=Outcome.NO_OP,
+                warnings=warnings,
             )
         job = jobs.enqueue(
             store,
@@ -540,32 +557,93 @@ def intake_set(ctx) -> Envelope:
 TRACKLISTS_DIR = "tracklists"
 TRACKLIST_SUFFIX = ".tracklist.txt"
 
+#: How much of the recording's digest a tracklist's name carries. Twelve hex
+#: characters is forty eight bits, which no two sets a person owns will share.
+TRACKLIST_DIGEST_CHARS = 12
+
 #: The two notes identification adds on the envelope's warnings channel. The
 #: ``match`` surface is closed at three arrays, so the file this verb wrote has
 #: no field to ride in, and the channel is the one a person is shown.
 TRACKLIST_WRITTEN = "tracklist-written"
 CACHE_UNWRITTEN = "recognition-cache-unwritten"
+CACHE_SERVED = "recognition-cached"
 
 
 def _cache_notes(result: pipeline.IdentifyResult) -> tuple[dict[str, str], ...]:
-    """Say so when what this pass paid for could not be kept.
+    """What the recognition cache did to this pass, said where a person reads it.
 
-    The pass succeeded and its rows are good. What is lost is the promise that
-    the next pass over the same recording is free, and a person who is about
-    to run ``intake set`` on it is owed that before the second bill.
+    SERVED. A kept miss is served until somebody asks again, and the service's
+    catalogue grows, so a pass that read kept answers says how many and names
+    the flag that pays for a fresh reading. Without it a tracklist with holes
+    in it looks like the service's answer today, when it is last season's.
+
+    UNWRITTEN. The pass succeeded and its rows are good. What is lost is the
+    promise that the next pass over the same recording is free, and a person
+    who is about to run ``intake set`` on it is owed that before the second
+    bill.
     """
-    if not result.cache_unwritten:
-        return ()
-    return (
-        {
-            "code": CACHE_UNWRITTEN,
-            "message": (
-                f"the {result.calls} recognition answer(s) this pass paid for could "
-                f"not be kept ({result.cache_unwritten}), so another pass over this "
-                f"recording pays for them again"
-            ),
-        },
+    notes: list[dict[str, str]] = []
+    if result.cached:
+        notes.append(
+            {
+                "code": CACHE_SERVED,
+                "message": (
+                    f"{result.cached} of {result.chunks} chunk(s) were answered from "
+                    f"what the service said about this recording before and cost "
+                    f"nothing; pass --refresh to ask it again, which spends"
+                ),
+            }
+        )
+    if result.cache_unwritten:
+        notes.append(
+            {
+                "code": CACHE_UNWRITTEN,
+                "message": (
+                    f"the {result.calls} recognition answer(s) this pass paid for "
+                    f"could not be kept ({result.cache_unwritten}), so another pass "
+                    f"over this recording pays for them again"
+                ),
+            }
+        )
+    return tuple(notes)
+
+
+def _library_or_refuse(cfg: config.Config, source: Path) -> None:
+    """Refuse, BEFORE THE SPEND, a library that is not there to be asked.
+
+    AN ABSENT LIBRARY IS NOT AN EMPTY ONE. The index of a music folder that is
+    not there holds nothing, so every identified track would resolve missing
+    with a clean exit, which is the false report this verb was written to
+    stop, reached by unplugging a drive. ``intake missing --list`` refuses the
+    same state for the same reason. It is asked before the identifier runs
+    because the answer is free now and follows a paid step otherwise.
+    """
+    music = Path(cfg.library.root) / cfg.library.music_dir
+    if music.is_dir():
+        return
+    raise refuse(
+        "library-volume-unmounted",
+        f"this library's music folder {str(music)!r} is not there, so no identified "
+        f"track could be told from one the library already holds; nothing was sent",
+        remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+        origin=("intake.cli",),
+        detail={"music": str(music), "source": str(source)},
     )
+
+
+def tracklist_name(source: Path, digest: str) -> str:
+    """The tracklist's file name: the recording's stem and a piece of its digest.
+
+    THE STEM ALONE IS NOT A NAME. A recorder that calls every set REC001 gives
+    two different nights one stem, and a tracklist named by it would be
+    replaced by the next night's with nothing said. The digest is of the
+    recording's bytes, so the same recording names the same file from
+    anywhere and a different one cannot. A recording whose bytes could not be
+    read is named by its absolute path instead, which still separates two
+    folders.
+    """
+    token = digest or digest_of({"path": str(source)})
+    return f"{source.stem}-{token[:TRACKLIST_DIGEST_CHARS]}{TRACKLIST_SUFFIX}"
 
 
 def _tracklist_dir(cfg: config.Config, given: str | None, source: Path) -> Path:
@@ -594,24 +672,29 @@ def _tracklist_written(
 ) -> dict[str, str]:
     """Write the tracklist and return the note that names it.
 
-    REPLACED, NOT REFUSED, when the file already holds something else. A
-    tracklist is derived from the recording, and a second identification that
-    filled a gap is the better reading of the same recording.
+    REPLACED, NOT REFUSED, when the file already holds something else. The
+    name carries the recording's digest, so what is replaced is an earlier
+    reading of THIS recording, and a second identification that filled a gap
+    is the better one.
 
     A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL, and it arrives
-    after the spend, so it says whether the answers were kept: when they were,
-    running again with another folder costs nothing.
+    after the spend, so it says what running again will cost, and says it
+    truthfully: nothing when every answer was kept, the unanswered chunks when
+    some got none, and all of it when nothing could be kept.
     """
-    path = out / f"{source.stem}{TRACKLIST_SUFFIX}"
+    path = out / tracklist_name(source, result.digest)
     try:
-        config._mkdir_private(out)
         config.atomic_write_bytes(result.tracklist.encode("utf-8"), path)
     except OSError as exc:
-        kept = (
-            "the recognition answers could not be kept either, so running again pays again"
-            if result.cache_unwritten
-            else "the recognition answers were kept, so running again spends nothing"
-        )
+        if result.cache_unwritten:
+            kept = "the recognition answers could not be kept either, so running again pays again"
+        elif result.unreached:
+            kept = (
+                f"the recognition answers were kept, so running again pays only for the "
+                f"{result.unreached} chunk(s) that got no answer"
+            )
+        else:
+            kept = "the recognition answers were kept, so running again spends nothing"
         raise _unusable(
             f"the tracklist could not be written to {path} ({type(exc).__name__}: "
             f"{exc.strerror or exc}); {kept}",
@@ -637,8 +720,9 @@ def intake_identify(ctx) -> Envelope:
     ``missing``. An open version question is a pending action, exactly as it
     is for ``acquire match`` over a typed list.
 
-    THE ORDER IS THE SPEND ORDER. The configuration, the recording, the gate
-    and the tracklist folder are all settled while a refusal is free. Then the
+    THE ORDER IS THE SPEND ORDER. The configuration, the recording, the gate,
+    the tracklist folder and whether the library is there to be asked are all
+    settled while a refusal is free. Then the
     identifier runs, which is the paid step and which pays nothing for a chunk
     the recognition cache already holds, so ``intake set`` after this verb
     costs no calls. The tracklist is written before the library is walked, so
@@ -651,7 +735,8 @@ def intake_identify(ctx) -> Envelope:
     source = _recording_or_refuse(str(ctx.args.source))
     recognize.assert_recognition_ready()
     out = _tracklist_dir(cfg, ctx.args.out, source)
-    result = pipeline.identify_only(source)
+    _library_or_refuse(cfg, source)
+    result = pipeline.identify_only(source, refresh=bool(ctx.args.refresh))
     warnings = _coverage_or_refuse(result, source) + _cache_notes(result)
     if not result.rows:
         return ctx.envelope(
@@ -939,6 +1024,7 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 __all__ = [
     "ARTIFACTS",
+    "CACHE_SERVED",
     "CACHE_UNWRITTEN",
     "CALLS",
     "FAVORITES",
@@ -970,4 +1056,5 @@ __all__ = [
     "resolve_track",
     "set_argv",
     "thawed",
+    "tracklist_name",
 ]

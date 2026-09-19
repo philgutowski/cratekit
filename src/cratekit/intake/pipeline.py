@@ -42,6 +42,7 @@ class IdentifyResult:
     unreached: int = 0
     cached: int = 0
     cache_unwritten: str = ""
+    digest: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,9 +58,10 @@ def identify_only(
     source: Path,
     *,
     identifier: Identifier | None = None,
+    refresh: bool = False,
 ) -> IdentifyResult:
     """Identify the tracks in ``source`` and stop. Download nothing."""
-    found = recognize.identify(source, identifier=identifier)
+    found = recognize.identify(source, identifier=identifier, refresh=refresh)
     return IdentifyResult(
         rows=found.rows,
         tracklist=recognize.tracklist_text(found.rows),
@@ -69,6 +71,7 @@ def identify_only(
         unreached=found.unreached,
         cached=found.cached,
         cache_unwritten=found.cache_unwritten,
+        digest=found.digest,
     )
 
 

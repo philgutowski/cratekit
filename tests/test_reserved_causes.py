@@ -5321,16 +5321,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # row of the list has an accepted second source candidate. Every refusal
     # the fetch raises reuses lossy-refused, output-exists,
     # unavailable-transient, unavailable-permanent or yt-dlp-missing.
-    # Re-pinned on U103, 2026-09-19: 446 to 448 distinct, 286 to 288 non-keys.
-    # TWO literals joined and NOTHING left, differenced over the branch's diff
-    # of `src` against `main` with `git grep` on `main` for each. Neither is a
-    # cause, and both are WARNING codes `intake identify` adds on the envelope.
-    # tracklist-written names the tracklist file the verb wrote, because the
-    # match surface has no field for a path, and recognition-cache-unwritten
-    # says the answers a pass paid for could not be kept. Every refusal the
-    # verb raises reuses intake-list-unusable or a slug recognition already
-    # reserves.
-    assert (len(literals), len(literals - set(causes))) == (448, 288), (
+    # Re-pinned on U103, 2026-09-19: 446 to 449 distinct, 286 to 289 non-keys.
+    # THREE literals joined and NOTHING left, differenced over the branch's
+    # diff of `src` against `main` with `git grep` on `main` for each. None is
+    # a cause, and all three are WARNING codes the two recognition verbs add on
+    # the envelope. tracklist-written names the tracklist file `intake
+    # identify` wrote, because the match surface has no field for a path.
+    # recognition-cached says how many chunks were answered from what was kept
+    # and names the flag that asks again, and recognition-cache-unwritten says
+    # the answers a pass paid for could not be kept. Every refusal the verb
+    # raises reuses intake-list-unusable, library-volume-unmounted or a slug
+    # recognition already reserves.
+    assert (len(literals), len(literals - set(causes))) == (449, 289), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

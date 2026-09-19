@@ -877,7 +877,14 @@ ENTRIES: tuple[Entry, ...] = (
         adjudicates=True,
         emits=frozenset({"match"}),
         output_schema="match/1",
-        doctor_checks=("binary.ffmpeg", "binary.ffprobe", "credential.recognition"),
+        # The library is asked, so a machine with no library mounted is one
+        # doctor has to fail, or doctor passes a verb that refuses.
+        doctor_checks=(
+            "library.mounted",
+            "binary.ffmpeg",
+            "binary.ffprobe",
+            "credential.recognition",
+        ),
     ),
     Entry(
         name="intake.playlist",
