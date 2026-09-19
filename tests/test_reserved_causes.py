@@ -4916,7 +4916,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # cut that files everything or nothing under with vox is written. It is the
     # verb's own and not in the reserved table. Population 158 to 159,
     # non-reserved 134 to 135, reserved half UNCHANGED at 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (159, 135, 24)
+    #
+    # Re-pinned on U75, 2026-09-19. ONE slug, named rather than counted:
+    # label-list-unusable, which ``label approved`` raises when no accepted
+    # release could be read, when nothing listable came of the ones that were,
+    # or when the list's own file could not be written, so none of those reads
+    # as a library that already holds every approved release. It is the verb's
+    # own and not in the reserved table. Population 159 to 160, non-reserved
+    # 135 to 136, reserved half UNCHANGED at 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (160, 136, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5254,7 +5262,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # cause: unplaced-export, the plan KIND the unplaced sweep digests its items
     # under, beside inbox-export. The sweep's one new refusal reuses
     # governed-tree-absent, which the table already reserves.
-    assert (len(literals), len(literals - set(causes))) == (423, 265), (
+    # Re-pinned on U75, 2026-09-19: 423 to 425 distinct, 265 to 266 non-keys.
+    # TWO literals joined and NOTHING left, differenced over an archive of
+    # `main`'s `src` against the branch's. One is a KEY, label-list-unusable,
+    # named at the population assertion above. The other is not a cause:
+    # label-approved, the prefix every list ``label approved`` writes is named
+    # under, before the digest of the identifiers it lists.
+    assert (len(literals), len(literals - set(causes))) == (425, 266), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5682,7 +5696,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # walking that file's integer constants on main and on the branch. This is
     # the narrowing the residual predicted when it said the copy widened the
     # surface this file watches.
-    assert (len(literal_holders), len(literal_both)) == (96, 18), (
+    # Re-pinned on U75, 2026-09-19: 96 to 97 holders. ONE module joined and
+    # none left, and it is a new file. label/approved_cli.py names
+    # label-list-unusable through cause.refuse, and holds the list prefix
+    # label-approved. The also-holds-an-integer half stays 18, because the
+    # module asks the hash for a six byte digest rather than slicing twelve
+    # characters off a longer one, which was removed rather than argued.
+    assert (len(literal_holders), len(literal_both)) == (97, 18), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

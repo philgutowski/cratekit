@@ -1509,6 +1509,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # default, since ``restore-from-snapshot`` is the wrong act for a
         # database that is merely on an unmounted volume.
         "collection-unreadable": ExitCode.LIBRARY_UNREADABLE,
+        # ── U75's refusal, appended for the reason every block above gives ────
+        #
+        # ``label approved`` could not turn the accepted label releases into a
+        # list: no accepted release could be read from the provider, none of the
+        # missing tracks carries a provider identifier, or the list's own file
+        # could not be written. A REFUSAL and never a no-op, because a no-op
+        # here reads exactly like a library that already holds every approved
+        # release. PRECONDITION on ``intake-list-unusable``'s argument: the
+        # command line was fine and what it points at is the problem.
+        "label-list-unusable": ExitCode.PRECONDITION,
     }
 )
 

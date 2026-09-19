@@ -1586,6 +1586,10 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "sync.labels": [],
         "label.import": ["no-such-label"],
         "label.harvest": ["https://example.invalid/playlist"],
+        # U75. No argument is required: over a configured machine with an
+        # empty review queue the verb reports nothing accepted and stops
+        # before the catalogue is resolved.
+        "label.approved": [],
         # U27. The four report verbs each take a collection export, and each is
         # handed a path under the CONFIGURED library that is deliberately absent,
         # for the same reason the file verbs above are: a literal here would be a

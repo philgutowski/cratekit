@@ -1412,6 +1412,31 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted", "credential.provider"),
     ),
     Entry(
+        name="label.approved",
+        summary=(
+            "write the list acquire download reads from the label releases "
+            "accepted in review"
+        ),
+        module="cratekit.label.approved_cli",
+        builder="build_approved",
+        handler_key="label.approved",
+        feature_rows=(22,),
+        module_id="labels",
+        # ``diagnostic/1`` for the reason ``intake.missing`` gives: the default
+        # human renderer shows checks and nothing else, and what a person needs
+        # from this verb is the list's path and the command that downloads it
+        # (R-402).
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # A track the library holds in another version is OFFERED into the match
+        # queue under this verb's own key, the way an intake offers it.
+        adjudicates=True,
+        # NO WRITE SURFACE, and therefore not destructive, on ``intake.missing``'s
+        # precedent: two new files, and ``listdoc.write`` refuses rather than
+        # replaces a file holding anything else.
+        doctor_checks=("library.mounted", "credential.provider"),
+    ),
+    Entry(
         name="label.harvest",
         summary="harvest the labels behind a playlist's tracks; imports nothing",
         module="cratekit.label.cli",
