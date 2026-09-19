@@ -4,7 +4,58 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-424, issue #111, `relay/111`, 2026-09-19.**
+**Last merged: U104, issue #149, `relay/149`, 2026-09-19.**
+`crate intake set` and `crate intake identify` take the web address of a mix,
+which CLOSES R-303. The address is fetched through a new seam,
+`intake/fetch.py`: a `SetFetcher` protocol, a shipped `YtDlpSetFetcher`, and a
+`fetched` context manager that owns the scratch folder. **The brief's verified
+state was out of date**: it said nothing drives the downloader, and U80 had
+since landed `fallback.YtDlpFetcher`. The mix download is THAT argv with two
+edits, a numbered output template and a playlist bound of two, so a set page
+lands as two files and is refused as several recordings rather than returned
+as one. The mix lands under a new installation scoped state entry,
+`mix_scratch`, one folder per address named by a digest of it, cleared before
+every attempt and removed however the pass ends, a raise included. **A mix
+never lands under the library**: the scratch root is refused if it resolves to
+the library or under it, by text AND by `samefile` over every existing
+ancestor, because `Path.resolve` leaves letter case as typed and the code
+review's case finding was DRIVEN true on this machine. The order is the cost
+order: a path that names nothing is refused before the gate as before, the
+recognition gate and identify's two free checks run before the download, and
+the job freezes the ADDRESS as its source, since the file is gone before a
+resume reads it and a resume never fetches. Refusals reuse existing slugs, so
+the cause population did not move: `yt-dlp-missing` with the install hint, now
+raised from `core/binary_refusal.py` for both verb families with `said` and
+`origin` required; `unavailable-transient`, retryable, for a TIMEOUT ONLY; and
+`intake-list-unusable`, not retryable, for a failed download, a playlist, a bad
+landing, a scratch folder that cannot be made and a scratch root under the
+library. A refusal raised inside the identifier over a fetched mix is re-raised
+about the address, because the file it names is gone. `binary.yt-dlp` is
+deliberately NOT a doctor check on either verb, since only an address needs it.
+**NO TEST RUNS YT-DLP**: a conftest autouse fixture fails any test that reaches
+`fetch.fetcher`, and the shipped fetcher is built only over a fake `run`.
+**The code review raised eight findings, seven applied** and one recorded as
+R-538. Two pinned counts in `tests/test_reserved_causes.py` moved and were
+re-pinned with their reasons: one warning literal, `mix-scratch-left`, and one
+holder, the new core module. Battery: ruff clean, **8906 passed** and 1
+skipped, scan clean, 42 of them new in `tests/intake/test_set_fetch.py`.
+Mutation table `docs/mutation/u104.md`: 25 rows, the author's own, 25 killed,
+five null controls at zero, 5 considered rows logged as dropped and NOT
+MEASURED. It ran as five FOREGROUND batches, `u104-a` to `u104-e`, because a
+Relay session cannot wait on a background job and one 25 row invocation passes
+the 600 second tool ceiling; each batch took under three minutes. The learning
+is filed under `docs/solutions/workflow-issues/`, the letter case one.
+Filed: R-538 to R-544. None meets the board bar, each being unmeasured,
+attended, or a person's decision. R-544 is the one to read: thirteen other
+containment checks in `src` compare resolved paths as text, found by grep and
+NOT driven.
+**Owed to an attended sitting:** one real mix address through `crate intake
+set`, one set page to see the several recordings refusal, the same address
+fetched twice with the two digests compared (R-539), and a measured download
+bound in place of 3600 seconds (R-541).
+**Main's highest residual number is R-544.**
+
+**The session before: R-424, issue #111, `relay/111`, 2026-09-19.**
 `crate sync favorites` now declares only the remote heart it performs, which
 CLOSES R-424. The honest report arm, as the card's recorded decision directed:
 the local write was NOT built. The entry declares `writes={"remote"}` alone.
