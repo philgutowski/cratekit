@@ -9,6 +9,7 @@ nothing, and a landed batch leaves a pending import a person can see.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import re
@@ -437,7 +438,53 @@ def test_an_answer_given_against_one_manifest_is_stale_once_it_is_rewritten(
     code, stale = _drive(["--run", run_id, *argv])
 
     assert stale["cause"]["reason"] == "decision-stale", stale
+    # THE GATE'S refusal and not the engine's, which carries the same reason
+    # one layer down. Each is removed alone in the mutation table, and a test
+    # that either one satisfies is a test of neither.
+    assert stale["cause"]["detail"]["gate"] == GATE
     assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_the_engine_is_handed_the_fingerprint_of_the_bytes_the_gate_compared(
+    cfg, silence, export, tmp_path, monkeypatch
+):
+    """Between the gate and the first move the file is read again. Without the
+    fingerprint the engine has nothing to compare that second read against."""
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
+    real = land_cli.landing.apply
+    handed: list[str | None] = []
+
+    def watched(planned, **kwargs):
+        handed.append(kwargs.get("manifest_digest"))
+        return real(planned, **kwargs)
+
+    monkeypatch.setattr(land_cli.landing, "apply", watched)
+
+    code, envelope = _drive(
+        ["-d", f"{GATE}=apply", *_land(export, "--name", BATCH, "--manifest", str(manifest))]
+    )
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert handed == [hashlib.sha256(manifest.read_bytes()).hexdigest()]
+
+
+def test_a_manifest_whose_only_row_matched_nothing_still_reports_it(
+    cfg, silence, export, tmp_path
+):
+    """Nothing filed is when the report matters most."""
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(tmp_path, [("2", "Probe", "Never Arrived", "Kompakt", 2024)])
+
+    code, envelope = _drive(
+        ["-d", f"{GATE}=apply", *_land(export, "--name", BATCH, "--manifest", str(manifest))]
+    )
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    data = envelope["data"]
+    assert [item["action"] for item in data["items"]] == ["landed", "unfiled"]
+    assert data["totals"] == {"count": 1, "landed": 1, "refused": 0, "filed": 0, "unfiled": 1}
+    assert [warning["code"] for warning in envelope["warnings"]] == ["label-row-unmatched"]
 
 
 def test_a_manifest_that_is_not_there_is_refused_before_the_gate(
