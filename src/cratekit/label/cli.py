@@ -1034,6 +1034,44 @@ def _job_library(job, cfg: config.Config) -> Callable[[], sweep.LibraryView]:
     return view
 
 
+def _refuse_unread(
+    entry: labels.LabelEntry, unread: Sequence[catalogue.Unread], *, offered: int
+) -> None:
+    """Refuse a sweep whose crawl skipped part of the label. R-261 and R-393.
+
+    RAISED AFTER THE INCREMENT, so every release the crawl did read is already
+    offered and durable in the review queue. That is the difference from
+    refusing the label outright, which R-352 removed from search and which
+    R-261's entry argues against: the skip still happens, and what it cost
+    is now said. A job item has no warning channel, only a cause, so the cause
+    is the one place a person reads it.
+
+    RESUMABLE ONLY WHEN SOMETHING CAN CHANGE. A rate limit or an outage clears
+    and another attempt reads the artist. A listing the client does not expose
+    stays missing however often the job is resumed, so that case names a
+    defect instead of telling the person to try again.
+    """
+    transient = any(one.transient for one in unread)
+    parts = "; ".join(f"{one.artist} ({one.listing}: {one.reason})" for one in unread)
+    raise refuse(
+        "label-sweep-incomplete",
+        f"the sweep of {entry.name!r} offered what it read and could not read "
+        f"{len(unread)} listings of the label: {parts}. The releases on those "
+        f"listings are missing from this sweep, not absent from the label",
+        remedy=Remedy.RESUME_JOB if transient else Remedy.REPORT_DEFECT,
+        retryable=transient,
+        origin=("label.cli",),
+        detail={
+            "label_id": entry.label_id,
+            "offered": offered,
+            "unread": [
+                {"artist": one.artist, "listing": one.listing, "reason": one.reason}
+                for one in unread
+            ],
+        },
+    )
+
+
 def handle(job, item, cfg) -> jobs.Produced | None:
     """Sweep one queued favourite label. The per item worker behind BOTH keys.
 
@@ -1149,6 +1187,8 @@ def handle(job, item, cfg) -> jobs.Produced | None:
                 "failed": len(result.errors),
             },
         )
+    if source.unread:
+        _refuse_unread(entry, source.unread, offered=len(result.processed))
     # A CATALOGUE THAT CONFIRMS NOTHING IS NOT A LABEL WITH NOTHING NEW, and
     # before this branch it was reported as one. ``list_for_label`` drops every
     # release a degraded, rate limited, or distributor-crediting verification

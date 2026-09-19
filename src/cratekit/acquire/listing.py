@@ -501,8 +501,8 @@ def account_playlists(session: Any, **kwargs: Any) -> list[Any]:
 RELEASE_METHODS: tuple[str, ...] = ("get_albums", "get_ep_singles")
 
 
-def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS,
-                    **kwargs: Any) -> list[Any]:
+def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS, *,
+                    skipped: list[str] | None = None, **kwargs: Any) -> list[Any]:
     """Every release credited to an artist, across both release-type listings.
 
     Stops on an **empty page**, which is the weaker rule, because the client
@@ -525,11 +525,19 @@ def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS,
     names have moved between client versions, and losing one listing is a smaller
     failure than refusing to crawl at all. A method that exists but cannot page IS
     fatal, for the reason ``_paged_caller`` states.
+
+    **THE SKIP LEAVES A RECORD WHEN A CALLER ASKS FOR ONE.** Each skipped method
+    name is appended to ``skipped``. Without it a half read catalogue returned
+    here in the same shape as a whole one, and a sweep reported the albums of a
+    label whose singles were never listed as a complete crawl (R-261). Deciding
+    what the skip means stays with the caller about to report it.
     """
     releases: list[Any] = []
     seen: set[str] = set()
     for method in methods:
         if getattr(artist, method, None) is None:
+            if skipped is not None:
+                skipped.append(method)
             continue
         for release in paginate(
             _paged_caller(artist, method), **_shape("artist_releases", **kwargs)
