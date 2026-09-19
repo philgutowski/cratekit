@@ -1,0 +1,29 @@
+name = "u100-c"
+pass_kind = "light"
+
+[[rows]]
+id = "R5_adopt_always_writes_after_fix"
+description = "RegistryStore.adopt asks for a write even when it added nothing, re-measured after the fix round added its test"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py"]
+old = '''            return any(result.added for result in results)'''
+new = '''            return True'''
+
+[[rows]]
+id = "R6_update_ignores_false_after_fix"
+description = "RegistryStore.update writes even when the mutator returns False, re-measured after the fix round added its test"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py"]
+old = '''            if changed is not False:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "C8_refused_counted_present_after_fix"
+description = "the summary lists a refused name as present, telling a script the registry holds it, re-measured after the fix round added its test"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py"]
+old = '''                    if not result.added and result.refused is None'''
+new = '''                    if not result.added'''

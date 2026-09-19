@@ -242,6 +242,8 @@ def test_a_name_with_no_identifier_fails_alone_and_the_rest_land(installed):
 
     assert envelope["data"]["summary"]["added"] == ["innervisions"]
     assert envelope["data"]["summary"]["refused"] == ["---"]
+    # Not present: a script reading the summary must not be told the registry holds it.
+    assert envelope["data"]["summary"]["present"] == []
     failing = [check for check in envelope["data"]["checks"] if check["status"] == "fail"]
     assert [check["key"] for check in failing] == [f"adopt.{bare.item_id}"]
     assert listed() == {"innervisions": "Innervisions"}
