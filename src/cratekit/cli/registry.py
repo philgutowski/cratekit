@@ -1108,11 +1108,15 @@ ENTRIES: tuple[Entry, ...] = (
         source_scripts=("dj-sort-unplaced",),
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        writes=frozenset({"db_tree"}),
-        destructive=True,
+        # A REPORT, NOT A WRITE (R-313). The handler opens the database without
+        # write intent, takes no session and writes nothing, so it declares no
+        # write surface, is not destructive and names no cloud-sync decision.
+        # Declaring otherwise told a person to close rekordbox before a read. The
+        # source's ``dj-sort-unplaced`` moved tracks, and that act is
+        # ``route.inbox`` here. The volume stays: the tree registry the report
+        # walks from is a state file on the library root.
         taxonomy_terms=("genre_energy",),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
-        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
+        doctor_checks=("library.mounted",),
     ),
     Entry(
         name="route.resort",

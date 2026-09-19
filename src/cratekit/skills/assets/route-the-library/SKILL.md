@@ -22,13 +22,17 @@ energy band changed under them, is `route resort`. Placing tracks whose
 destination was decided before the library had a row to place is
 `route pending`, and it is the only one of the four that can close a run.
 
-## All four want the same three conditions
+## Three of them want the same three conditions
 
-Routing writes playlist membership into the library database, so every one of
-these verbs checks that the library is mounted, that rekordbox is closed, and
-that the pins it depends on are intact. A refusal names which of the three
-failed. Ask the health check rather than opening the application to look, since
-opening it is the condition that makes the verb refuse.
+Routing writes playlist membership into the library database, so `route inbox`,
+`route resort` and `route pending` check that the library is mounted, that
+rekordbox is closed, and that the pins they depend on are intact. A refusal
+names which of the three failed. Ask the health check rather than opening the
+application to look, since opening it is the condition that makes the verb
+refuse.
+
+`route unplaced` is the exception. It only reads, so it needs the library
+mounted and nothing else, and it is safe to run with rekordbox open.
 
 ```bash
 crate doctor
@@ -73,8 +77,8 @@ crate --run RUN_ID route inbox
 ```
 
 `run show` names the open gate and its declared options, so it is the verb to
-reach for when the refusal scrolled past. All four routing verbs also declare
-`write.cloudsync.unreadable`, which fires when the cloud sync state cannot be
+reach for when the refusal scrolled past. The three routing verbs that write
+also declare `write.cloudsync.unreadable`, which fires when the cloud sync state cannot be
 read at all. It is explicit only, meaning it must be answered by name, and it
 is worth reading before answering, because proceeding while that state is
 unreadable is a decision about somebody else's copy of the library.
