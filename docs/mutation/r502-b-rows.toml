@@ -1,0 +1,109 @@
+name = "r502-b"
+pass_kind = "light"
+
+[[rows]]
+id = "G9_missing_count_stale"
+description = "Report the job's missing count rather than the count still missing now"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        counts["missing"] = len(missing)
+'''
+new = ""
+
+[[rows]]
+id = "G10_since_keys_swapped"
+description = "Count a row held since under suppressed_since and a row deleted since under owned_since"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    match.MatchState.MATCHED: "owned_since",
+    match.MatchState.SUPPRESSED: "suppressed_since",'''
+new = '''    match.MatchState.MATCHED: "suppressed_since",
+    match.MatchState.SUPPRESSED: "owned_since",'''
+
+[[rows]]
+id = "G11_since_not_in_summary"
+description = "Drop the since counts from the summary"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        **since,
+        "by_isrc": by_isrc,
+        "unlisted": unlisted,'''
+new = '''        "by_isrc": by_isrc,
+        "unlisted": unlisted,'''
+
+[[rows]]
+id = "G12_since_check_detail"
+description = "Reword the since check so it no longer names the rows in the library since"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            f"{since['owned_since']} in the library since, {since['suppressed_since']} "'''
+new = '''            f"{since['owned_since']} held now, {since['suppressed_since']} "'''
+
+[[rows]]
+id = "G13_written_line_for_gained"
+description = "Drop the written line's gained branch, so a job whose rows were all gained reads as a job with nothing missing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    elif gained:
+        said = ('''
+new = '''    elif False:
+        said = ('''
+
+[[rows]]
+id = "G14_refusal_says_gained"
+description = "Drop the refusal step saying how many rows a shorter rerun gained"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            if gained
+            else ()
+        )'''
+new = '''            if False
+            else ()
+        )'''
+
+[[rows]]
+id = "G15_gained_not_passed"
+description = "Pass no gained count to the writer, the performing path of G14"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            handed_on=writable,
+            gained=gained,'''
+new = '''            handed_on=writable,
+            gained=0,'''
+
+[[rows]]
+id = "G16_adjudicate_handler"
+description = "Adjudicate every rechecked question under this verb's key instead of the job's"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "maintainer"
+old = '''                    handler_key=handler_key,
+                    suppresses=suppresses,
+                    suppression_id=identify,
+                )
+                for n, one in zip(at, answered.matches, strict=True):'''
+new = '''                    handler_key="intake.missing",
+                    suppresses=suppresses,
+                    suppression_id=identify,
+                )
+                for n, one in zip(at, answered.matches, strict=True):'''
+
+[[rows]]
+id = "G17_doctor_check"
+description = "Drop intake.missing's library.mounted doctor declaration"
+file = "src/cratekit/cli/registry.py"
+surface = "maintainer"
+old = '''        doctor_checks=("library.mounted",),
+    ),
+    Entry(
+        name="intake.file",'''
+new = '''    ),
+    Entry(
+        name="intake.file",'''
+
+[[rows]]
+id = "E2_nothing_written_refusal"
+description = "Existing guard sample: drop the refusal for missing tracks none of which could be written"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if missing and not listed and not in_file:'''
+new = '''    if False:'''
