@@ -4,7 +4,35 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-342, issue #108, `relay/108`, 2026-09-18.**
+**Last merged: U87, issue #132, `relay/132`, 2026-09-18.**
+`crate route inbox --export X` now rates as it files, which closes R-405's
+first clause. Every intake track the pass places whose export `Rating` is
+empty or `"0"` gets the star value `routing.energy_rating` gives its energy,
+the reading the routing decision already took, written into the same bytes
+before the file is written through `trees.apply_rating_changes`, now its first
+caller in `src`. The values are the export scale, 51 to 255, the taxonomy's
+own, so R-414's database scale is not on this path and no database is
+written. A rating a person set is never touched, a `rates = false` bucket
+(NonElectronic, Chill / Ambient) is skipped, a track with no energy reading
+is not rated, and a row with no `Rating` attribute is not planned, since the
+writer patches a value and cannot add one. Each item gains `rating`, so the
+ratings are inside the digest the person approves; the totals gain `rated`,
+the writer's count; the pending summary names both counts. A pass that
+inserts nothing but rates writes a file and ends PENDING, so a filed and
+unrated track is never answered `nothing-to-route`. The re-spread after a
+recalibration is NOT built and R-405 stays open for it. The unit's
+`/code-review` found nothing; its one observation is filed as R-441, that the
+import check now assumes rekordbox carries a rating onto a track it already
+holds. 12 new tests in `tests/test_routing_workers.py`, whose U86 fixture
+rows still carry no `Rating`. Mutation tables `docs/mutation/u87.md`,
+`u87-b.md`, `u87-c.md`, 12 of 13 killing, the zero a maintainer row, read in
+`u87-notes.md`. R-441 filed, not on the board, since it closes only at an
+attended sitting. Owed to an attended sitting: the ratings seen in rekordbox
+after one import. Battery on the recorded tree: ruff clean, `scan_repo.py`
+exit 0, pytest 7939 passed and 1 skipped in 63 seconds.
+**Main's highest residual number is R-441.**
+
+**The session before: R-342, issue #108, `relay/108`, 2026-09-18.**
 A corrupt vocal calibration now refuses instead of reading as the default cut,
 which closes R-342. `write/metadata_cli.vocal_cut` still returns 12.0 for a
 missing file. An existing file that cannot be read, or whose threshold is not

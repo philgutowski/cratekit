@@ -1,0 +1,13 @@
+name = "u87-c"
+pass_kind = "light"
+
+[[rows]]
+id = "G8_one_key_per_file_rerun"
+description = "_ratings: only the first collection row naming a file is rated, re-run after the test it lacked landed"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        for key in files[placement.location]:
+            if _unrated(by_id[key]):'''
+new = '''        for key in files[placement.location][:1]:
+            if _unrated(by_id[key]):'''

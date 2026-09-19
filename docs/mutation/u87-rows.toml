@@ -1,0 +1,60 @@
+name = "u87"
+pass_kind = "light"
+
+[[rows]]
+id = "G1a_empty_not_unrated"
+description = "_unrated: an EMPTY Rating no longer reads as unrated, only zero does"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    return value is not None and value.strip() in ("", "0")'''
+new = '''    return value is not None and value.strip() in ("0",)'''
+
+[[rows]]
+id = "G1b_any_value_unrated"
+description = "_unrated: drop the empty-or-zero test, so a hand set rating reads as unrated"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    return value is not None and value.strip() in ("", "0")'''
+new = '''    return value is not None'''
+
+[[rows]]
+id = "G1c_absent_attribute_unrated"
+description = "_unrated: drop the presence check, so a row with no Rating attribute is planned"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    return value is not None and value.strip() in ("", "0")'''
+new = '''    return (value or "").strip() in ("", "0")'''
+
+[[rows]]
+id = "G2_rates_flag"
+description = "_ratings: drop the rates = false skip"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        if not routing.rates(declared, placement.bucket):
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "G3_no_energy"
+description = "_ratings: drop the no-rating skip, so a track with no energy reading is planned None"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        if rating is None:
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "G4_writer_not_called"
+description = "apply_export: the rating writer is never called"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    rated = trees.apply_rating_changes(ratings, buffer)'''
+new = '''    rated = 0'''
