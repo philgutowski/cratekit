@@ -1950,9 +1950,21 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
         status=Status.INFO,
         detail=(
             f"{len(open_records)} session(s) still open: "
-            f"{', '.join(f'{r.session_id} ({r.state})' for r in open_records)}"
+            f"{', '.join(f'{r.session_id} ({_open_state(r)})' for r in open_records)}"
         ),
     )
+
+
+def _open_state(record: session.SessionRecord) -> str:
+    """An open run's state, as a person should read it.
+
+    A landing whose import was proven stays ``open`` until a tree cuts over,
+    because the placement it still owes needs one (R-501). Listed bare, a
+    library with fifty finished landings reads as fifty runs in progress.
+    """
+    if session.owes_only_deferred_routing(record):
+        return f"{record.state}, import proven, placement waits for a cutover"
+    return str(record.state)
 
 
 #: The configuration file pre-commit reads when the hook names none.

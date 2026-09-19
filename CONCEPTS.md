@@ -164,7 +164,26 @@ files out of download staging into `Music/<batch>/` and splicing them into one
 intake file. Staging is deliberately invisible to ownership, which walks the
 music directory only, so an acquired file that has not landed still reads as
 missing and would be offered for download again. R-413 records that the step did
-not exist. U71 built its engine, `intake/landing.py`, and the verb is still owed.
+not exist. U71 built its engine, `intake/landing.py`, and U72 built the verb,
+`intake land`.
+
+### Import proof
+What ends a landing's wait on a person. A landing leaves its intake session
+`awaiting-import`, and the import is PROVEN, never declared: `intake imported`
+reads a Fresh Export taken after the import and finds every file the run
+recorded in the routing ledger, compared by the digest of the decoded path.
+After a cutover the routing pass reaching a row for the run's tracks is proof
+too, recorded as such only when it routed at least one. An intake file is never
+its own proof, since it names its tracks whether or not anybody imported them.
+Proven is not closed: see Retired.
+
+### Retired
+An intake file whose import is proven, renamed to `NAME_inboxed.xml.imported`
+so the cutover precheck's scan, which walks `*.xml`, no longer sees it. A
+rename and never a delete. The run it belonged to usually stays `open`
+afterwards, holding no capture, because the gated close refuses a run that
+holds a deferred placement and only a database native tree can place one. The
+precheck excuses exactly that run (R-501, R-528).
 
 ### List document
 The one file format `acquire download` reads: a versioned, closed document of

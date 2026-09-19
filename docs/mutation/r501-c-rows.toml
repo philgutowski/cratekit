@@ -1,0 +1,70 @@
+name = "r501-c"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_export_name_check"
+description = "imported_cli.read_export: drop the refusal of an export carrying an intake file's name, leaving only the identity check"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''    if any(export.name.endswith(suffix) for suffix in tree_registry.PENDING_XML_SUFFIXES):
+        raise _refuse_export('''
+new = '''    if False:
+        raise _refuse_export('''
+
+[[rows]]
+id = "M2_export_identity_check"
+description = "imported_cli.read_export: drop the refusal of the file a waiting run names, so a link to the intake file proves its own import"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''        if artifact and _same_file(export, Path(artifact)):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M3_missing_is_not_imported"
+description = "imported_cli.settle: ignore missing tracks, so an export taken before the import proves it"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''    if missing:
+        return {'''
+new = '''    if False:
+        return {'''
+
+[[rows]]
+id = "M4_nothing_recorded"
+description = "imported_cli.settle: drop the unverifiable answer, so a run the ledger names no file for is proven by any export"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''    if not landed:
+        # NOTHING RECORDED IS NOT NOTHING OWED.'''
+new = '''    if False:
+        # NOTHING RECORDED IS NOT NOTHING OWED.'''
+
+[[rows]]
+id = "M5_retire_name_guard"
+description = "imported_cli.retire: rename any file a record names, whatever it is called"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''    if not any(artifact.name.endswith(suffix) for suffix in tree_registry.PENDING_XML_SUFFIXES):
+        raise refuse(
+            "internal-error",'''
+new = '''    if False:
+        raise refuse(
+            "internal-error",'''
+
+[[rows]]
+id = "M6_retire_link_guard"
+description = "imported_cli.retire: follow a link instead of refusing it"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_cli_contract.py"]
+old = '''    if artifact.is_symlink() or not artifact.is_file():
+        return None
+    if not any('''
+new = '''    if not artifact.is_file():
+        return None
+    if not any('''

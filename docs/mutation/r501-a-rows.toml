@@ -1,0 +1,80 @@
+name = "r501-a"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_verify_state_guard"
+description = "session.mark_import_verified: drop the refusal of any state but awaiting-import, so any record can be marked proven"
+file = "src/cratekit/core/session.py"
+surface = "maintainer"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''    if record.state is not SessionState.AWAITING_IMPORT:
+        raise refuse(
+            "internal-error",
+            f"session {record.session_id} is {str(record.state)!r}, not "
+            f"{str(SessionState.AWAITING_IMPORT)!r}; only a session waiting on an "
+            f"import has one to verify",'''
+new = '''    if False:
+        raise refuse(
+            "internal-error",
+            f"session {record.session_id} is {str(record.state)!r}, not "
+            f"{str(SessionState.AWAITING_IMPORT)!r}; only a session waiting on an "
+            f"import has one to verify",'''
+
+[[rows]]
+id = "S2_excusal_capture"
+description = "session.owes_only_deferred_routing: drop the no capture condition, so a run holding a capture is excused from the cutover precheck"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''        record.state is SessionState.OPEN
+        and record.snapshot_path is None
+        and IMPORT_VERIFIED_KEY in record.detail'''
+new = '''        record.state is SessionState.OPEN
+        and IMPORT_VERIFIED_KEY in record.detail'''
+
+[[rows]]
+id = "S3_excusal_proof"
+description = "session.owes_only_deferred_routing: drop the proof condition, so any open run with no capture is excused, a crashed landing included"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''        record.state is SessionState.OPEN
+        and record.snapshot_path is None
+        and IMPORT_VERIFIED_KEY in record.detail'''
+new = '''        record.state is SessionState.OPEN
+        and record.snapshot_path is None'''
+
+[[rows]]
+id = "S4_excusal_state"
+description = "session.owes_only_deferred_routing: drop the open state condition, so a committed-unverified run carrying the key is excused"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''        record.state is SessionState.OPEN
+        and record.snapshot_path is None
+        and IMPORT_VERIFIED_KEY in record.detail'''
+new = '''        record.snapshot_path is None
+        and IMPORT_VERIFIED_KEY in record.detail'''
+
+[[rows]]
+id = "T1_precheck_excusal"
+description = "tree_registry.assert_cutover_ready: drop the excusal, so a proven landing refuses the cutover for ever, which is R-501 itself"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''        if not record.terminal and not session.owes_only_deferred_routing(record)'''
+new = '''        if not record.terminal'''
+
+[[rows]]
+id = "T2_precheck_run_steps"
+description = "tree_registry.assert_cutover_ready: never carry a waiting run's own steps, so the refusal names an act no verb offers"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_landing.py", "tests/test_cutover_precheck.py", "tests/intake/test_pipeline.py"]
+old = '''            for step in record.pending.steps if record.pending is not None else ():'''
+new = '''            for step in ():'''
+
+[[dropped]]
+id = "T3_precheck_general_steps"
+description = "tree_registry.assert_cutover_ready: drop the general wording for a run with no action recorded"
+reason = "ranked below the cap, the twenty sixth row: wording on a refusal that still refuses, and test_the_precheck_refuses_an_open_run_with_no_proof_recorded asserts the step"

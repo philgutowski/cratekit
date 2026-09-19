@@ -35,8 +35,9 @@ never go near the live database.
   pass the path each time, and a stale export answers every question confidently
   and wrongly. Export a fresh one when the answer matters.
 - **An importable file** is what intake and sync produce for new tracks.
-  Cratekit does not import it for you. You load it into rekordbox, then run
-  `crate route pending` so the tracks get filed once their rows exist.
+  Cratekit does not import it for you. You load it into rekordbox, export the
+  collection again, and run `crate intake imported --export` with that export,
+  which proves the import happened and puts the importable file away.
 - **The guarded write** is the only path to the live database. It refuses unless
   the library volume is mounted and is the volume that was recorded, rekordbox and
   its background agent are both closed, the pinned versions match, and you have
@@ -137,7 +138,9 @@ crate match run /path/to/tracklist.txt
   reads owned on the next run. A listing that cannot be read in full refuses
   rather than reporting a short one.
 - `intake file` shows a plan by default. It writes only when you also pass
-  `--export` with the collection export to splice the track into.
+  `--export` with the collection export to splice the track into. It then ends
+  waiting on you the way `intake land` does, naming the file to import, and is
+  settled the same way, with `crate intake imported`.
 - `intake set` takes a recording on this machine. A mix URL is not fetched by
   this build.
 - `intake identify` names the tracks in a recording and stops. It calls a paid
@@ -247,13 +250,16 @@ policy. What arrived then needs tagging, naming, landing and filing, in this
 order. `tag folder` writes genre and album art to the files only. `name apply`
 rebuilds filenames from your template. `intake land` moves the staged files into
 your library and writes one importable file naming every one of them, which you
-import into rekordbox. `route inbox` files the intake folder into your taxonomy,
-and `route pending` files the landed tracks once the import has made their rows.
+import into rekordbox. `intake imported` reads a collection export taken after
+that import and proves it happened. `route inbox` files the intake folder into
+your taxonomy, and `route pending` files the landed tracks once a tree has cut
+over to the database.
 
 ```bash
 crate tag folder /path/to/staging
 crate name apply --root /path/to/staging
 crate intake land --export /path/to/collection-export.xml
+crate intake imported --export /path/to/export-taken-after-the-import.xml
 crate route inbox
 crate route pending
 ```
@@ -264,8 +270,23 @@ to a new folder under your music folder, named for the run unless you pass
 `NAME_inboxed.xml`. It never replaces a file already in the library: a file whose
 name is taken stays in staging and the run says so. Staging has to be on the same
 volume as the library, because a move there is a rename and a copy is refused. The
-run ends waiting on you, naming the file to import, and `crate route pending` is
-what confirms the import was done.
+run ends waiting on you, naming the file to import.
+
+Once you have imported it, export your collection again and run
+`crate intake imported --export` with that new export. It looks for every landed
+file in the export. When they are all there, the import is proven: the importable
+file is renamed to `NAME_inboxed.xml.imported`, which you can delete whenever you
+like, and the landing stops counting as unfinished. When any are missing it
+changes nothing and names them, so an export taken before the import, or an
+import that skipped a track, is never mistaken for a finished one. The importable
+file itself is refused as the export, since it names every landed track whether or
+not rekordbox imported it. Run with no landing waiting, it does nothing, and then
+it needs no `--export`. A landing made before this verb existed recorded no
+importable file, so its import is proven the same way and the file is yours to
+remove once it is.
+
+Until a tree has cut over, `crate route pending` has nothing it can place and
+says so. It does not confirm an import.
 
 Tracks you acquired from a label can be filed under that label in the same file.
 `crate label approved` writes a manifest beside its list, a file ending in
@@ -299,7 +320,8 @@ crate sync mark --xml /path/to/library/RUN_synced_inboxed.xml
 
 Give it the importable file `intake land` wrote for the pass, under the name
 `intake missing --run` told you to land it as, since the name is how the pass is
-found. It reads what each playlist's job reported, and plans a rename only for a
+found. If you ran `intake imported` first, the file now ends in `.imported`, and
+that name works the same. It reads what each playlist's job reported, and plans a rename only for a
 playlist whose every track is now in your library, counting a track you have
 since deleted on purpose as settled. A playlist with a track still missing, or
 one the pass offered you for review and you have not got, is left alone and the

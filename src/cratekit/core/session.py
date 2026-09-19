@@ -1693,6 +1693,79 @@ def mark_awaiting_import(
     return record
 
 
+#: The record field saying a person's import was PROVEN, by what, and which file
+#: it was. Written only by :func:`mark_import_verified`, so its presence is a
+#: statement about evidence and never a caller's say so.
+IMPORT_VERIFIED_KEY = "import_verified"
+
+
+def mark_import_verified(
+    record: SessionRecord,
+    cfg: config.Config,
+    *,
+    evidence: str,
+    now: datetime | None = None,
+) -> SessionRecord:
+    """Move a session out of the un-imported state, once the import is proven.
+
+    THE ONLY WAY OUT OF ``awaiting-import``, and it had none (R-501). Nothing in
+    this product moved a record into that state or out of it, so the state's two
+    gates guarded a door no run ever reached.
+
+    It returns the record to ``open`` rather than ending it. Ending a run is
+    :func:`cratekit.write.routing_pass.close_run`'s claim to make, and it refuses
+    while the run still holds a track that reached no playlist. An intake run
+    whose import is proven usually does, because the placement was deferred.
+
+    ``evidence`` names what was read, and is required so the record says how
+    somebody knew. The pending action's artifact is kept beside it, because the
+    action itself is cleared here and the file it named still has to be retired.
+
+    It refuses on any other state. Verifying an import nobody was waiting on is
+    a caller holding the wrong record.
+    """
+    if record.state is not SessionState.AWAITING_IMPORT:
+        raise refuse(
+            "internal-error",
+            f"session {record.session_id} is {str(record.state)!r}, not "
+            f"{str(SessionState.AWAITING_IMPORT)!r}; only a session waiting on an "
+            f"import has one to verify",
+            remedy=Remedy.REPORT_DEFECT,
+            detail={"session_id": record.session_id, "state": str(record.state)},
+        )
+    pending = record.pending
+    record.detail[IMPORT_VERIFIED_KEY] = {
+        "at": output.timestamp(now),
+        "evidence": evidence,
+        "artifact": pending.artifact if pending is not None else None,
+    }
+    record.state = SessionState.OPEN
+    record.pending = None
+    write_record(record, cfg)
+    return record
+
+
+def owes_only_deferred_routing(record: SessionRecord) -> bool:
+    """True when the one thing this open run still owes is a deferred placement.
+
+    THE CUTOVER PRECHECK'S QUESTION, asked here because the answer is three facts
+    about a record. The precheck refuses an open run because it "still holds a
+    capture and possibly an un-imported export". A run that holds no capture and
+    whose import was proven holds neither, and what keeps it open is a placement
+    only a database native tree can perform, which is the thing the cutover
+    creates. Refusing the cutover over it is a refusal with no way past it.
+
+    All three are required. An open run with a capture is a destructive session
+    in flight. An open run with no proof recorded is a landing that crashed, or
+    one nobody has imported, and neither is excused.
+    """
+    return (
+        record.state is SessionState.OPEN
+        and record.snapshot_path is None
+        and IMPORT_VERIFIED_KEY in record.detail
+    )
+
+
 def assert_database_surface_allowed(record: SessionRecord) -> None:
     """Refuse a database write while this run's XML output has not been imported.
 
@@ -1983,6 +2056,7 @@ __all__ = [
     "ACK_SCHEMA_VERSION",
     "ANLZ_NAME_PATTERN",
     "DEFAULT_ACK_VALIDITY",
+    "IMPORT_VERIFIED_KEY",
     "LOG_SCHEMA_VERSION",
     "RUN_STATE_VOCABULARY",
     "SNAPSHOT_KEY",
@@ -2023,8 +2097,10 @@ __all__ = [
     "log_dir",
     "log_path",
     "mark_awaiting_import",
+    "mark_import_verified",
     "new_session_id",
     "open_session",
+    "owes_only_deferred_routing",
     "pending_import",
     "process_exists",
     "process_started",

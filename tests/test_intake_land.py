@@ -21,7 +21,7 @@ import pytest
 from cratekit import cli
 from cratekit.acquire import listdoc
 from cratekit.cli import output, registry
-from cratekit.core import config, tags
+from cratekit.core import config, session, tags
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import land_cli
 from tests._containers import synth_container
@@ -156,7 +156,7 @@ def test_an_answered_run_lands_the_batch_and_names_the_xml_in_human_output(
     assert code == int(ExitCode.PENDING_HUMAN), err.getvalue()
     human = out.getvalue() + err.getvalue()
     assert str(destination) in human
-    assert "verify: route.pending" in human
+    assert "verify: intake.imported" in human
     assert "blocks:" not in human
     assert sorted(p.name for p in _music(cfg, BATCH).iterdir()) == ["One.flac", "Two.flac"]
     assert _staged_names(cfg) == []
@@ -166,7 +166,9 @@ def test_an_answered_run_lands_the_batch_and_names_the_xml_in_human_output(
 
 
 def test_the_landed_envelope_carries_an_import_that_blocks_nothing(cfg, silence, export):
-    """The pending action is the run's state, not advice. ``blocks`` stays empty
+    """The pending action is state, not advice, and the state is the intake
+    session's: the envelope carries the action that record holds, read back, so
+    the two cannot differ (R-501, sweep finding 117.2). ``blocks`` stays empty
     because a blocking action makes every verb it names refuse, and no cost of an
     unimported landing was driven to justify that."""
     _stage(cfg, silence, "One.flac")
@@ -177,9 +179,13 @@ def test_the_landed_envelope_carries_an_import_that_blocks_nothing(cfg, silence,
     pending = envelope["pending_human_action"]
     assert pending["kind"] == "rekordbox_import"
     assert pending["artifact"] == str(Path(cfg.library.root) / f"{BATCH}_inboxed.xml")
-    assert pending["verify_verb"] == "route.pending"
+    assert pending["verify_verb"] == "intake.imported"
     assert pending["verify_verb"] in registry.VERB_NAMES
     assert pending["blocks"] == []
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.AWAITING_IMPORT
+    assert record.pending is not None
+    assert record.pending.to_json() == pending
     data = envelope["data"]
     assert [item["action"] for item in data["items"]] == ["landed"]
     assert data["totals"] == {"count": 1, "landed": 1, "refused": 0}
@@ -407,7 +413,10 @@ def test_a_manifest_is_on_the_gate_screen_and_its_labels_are_in_the_envelope(
     (warning,) = envelope["warnings"]
     assert warning["code"] == "label-row-unmatched"
     assert "Probe - Never Arrived" in warning["message"]
-    assert "1 label playlist(s)" in envelope["pending_human_action"]["summary"]
+    # The label playlists are in the items and the totals above. The pending
+    # action is the one the intake session persisted before any label was
+    # filed, so its summary names the file and not what was filed into it.
+    assert f"{BATCH}_inboxed.xml" in envelope["pending_human_action"]["summary"]
     body = (Path(cfg.library.root) / f"{BATCH}_inboxed.xml").read_bytes()
     assert b'<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">' in body
 

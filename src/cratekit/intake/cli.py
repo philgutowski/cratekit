@@ -52,7 +52,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import artifacts, config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.intake import normalize, pipeline, recognize
+from cratekit.intake import ingest, normalize, pipeline, recognize
 from cratekit.label import catalogue
 from cratekit.label import cli as label_cli
 
@@ -946,16 +946,26 @@ def intake_file(ctx) -> Envelope:
     items = [{"path": str(path), "artist": row.artist, "title": row.title} for row in rows]
     plan = _plan(items, kind="file")
     export = ctx.args.export
-    if export:
-        destination = path.with_name(path.stem + "_inboxed.xml")
-        pipeline.ingest_file(
-            path,
-            cfg=cfg,
-            export=Path(export),
-            destination=destination,
-        )
-        plan["items"][0]["destination"] = str(destination)
-    return ctx.envelope(data=plan, outcome=Outcome.OK)
+    if not export:
+        return ctx.envelope(data=plan, outcome=Outcome.OK)
+    destination = path.with_name(path.stem + "_inboxed.xml")
+    result = pipeline.ingest_file(
+        path,
+        cfg=cfg,
+        export=Path(export),
+        destination=destination,
+    )
+    plan["items"][0]["destination"] = str(destination)
+    # THE SAME ENDING A LANDING HAS, because it is the same ``place_files``
+    # (R-501). This used to answer OK over an intake file nobody had imported
+    # and a session nothing would close. The action is the one persisted on the
+    # intake session, read back so the two cannot differ.
+    return ctx.envelope(
+        data=plan,
+        outcome=Outcome.PENDING,
+        code=ExitCode.PENDING_HUMAN,
+        pending=ingest.persisted_pending(cfg, result.placed),
+    )
 
 
 # ---------------------------------------------------------------------------

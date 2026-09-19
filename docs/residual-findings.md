@@ -18973,6 +18973,17 @@ search above missed a reader. `core/tree_registry.py` `assert_cutover_ready`
 asks `not record.terminal` and refuses `cutover-open-run` on exactly this
 record, driven. R-501 carries the cost.
 
+**CLOSED 2026-09-19 on `relay/182`, by neither half of the closing line as
+written, and the reason is worth keeping.** The first half, close through
+`routing_pass.close_run` on success, cannot be done: `place_files` has just
+recorded the run's deferred placements, and the gated close refuses a run that
+holds one. So the session ends the call `awaiting-import`, which is not open and
+is the state the record should always have been in, with the pending action
+persisted on it. On a refusal the session is opened after the last refusal that
+needs none, and any failure after the open abandons it through the ungated
+close and removes the intake file when this call made it. Both driven, in
+`tests/test_intake_imported.py`. R-501 has the whole design.
+
 ---
 
 ## R-434. A landed batch marks no file lossy, whatever its name says
@@ -19049,6 +19060,14 @@ a parameter.
 **Closes when:** an import check exists that reads the collection for the
 landed Locations and the pending action names it, or `route pending` refuses or
 says so when no tree is database native.
+
+**CLOSED 2026-09-19 on `relay/182`, by both halves.** `crate intake imported`
+reads a Fresh Export for every Location the run recorded in the routing ledger,
+compared by `routing_pass.track_id`, and a landing's pending action names it as
+the `verify_verb`. `route pending` with no database native tree is now a no-op
+carrying a `no-native-tree` warning that says nothing was read and names the
+verb that does prove an import. Both driven. The cost this entry left
+unmeasured was measured by the sweep and is R-501.
 
 ---
 
@@ -20653,6 +20672,38 @@ moved to `awaiting-import` and the precheck and a shipped verb agree on how a
 person clears it, and an imported intake file has a stated end: a verb that
 retires it, or a pending step that says to remove it.
 
+**CLOSED 2026-09-19 on `relay/182`, by the second half, with one thing the
+closing line did not foresee.** `place_files` leaves its session
+`awaiting-import` through the existing builder, with the pending action
+persisted on the record. A new verb, `crate intake imported --export`, proves
+the import against a Fresh Export taken after it, retires the intake file by
+renaming it to `NAME_inboxed.xml.imported`, which the pending scan does not
+walk, and moves the session out of `awaiting-import`. The precheck's refusal
+over a waiting run now carries that run's own recorded steps, which name the
+verb. Driven end to end through the command line: land, follow every step,
+and `assert_cutover_ready` passes with no hand deletion, for `intake land` and
+for `intake file`.
+
+**What was not foreseen: the run cannot be CLOSED before a cutover.** Every
+close goes through `routing_pass.close_run`, two AST guards enforce that, and
+it refuses while the run holds a deferred placement. `place_files` records one
+per track, and only a database native tree can place one. So a proven run
+stays `open`, holding no capture, with `import_verified` recorded, and the
+precheck excuses exactly that record, `session.owes_only_deferred_routing`,
+since the only thing it owes is what the cutover unlocks. After a cutover
+`route pending` places the tracks, records the pass as the proof when it routed
+at least one, and closes the run. R-528 records the choice and the other one.
+
+**The same shape one file over, looked for.** The precheck walks three
+suffixes. Three were looked at and only `_inboxed.xml` has a reachable writer:
+`_synced.xml` comes from the writer R-437 records as unreachable, and nothing
+in `src` writes `_favorites.xml`. One neighbour was found and fixed: `sync
+mark` finds its pass from the intake file's name, so it now reads the same
+pass off a retired name.
+
+Mutation tables `docs/mutation/r501-a.md` to `r501-d.md`, 25 rows, 25 killed,
+the author's own. Residuals R-528 to R-533.
+
 ---
 
 ## R-502. A second `intake missing` over a job lists tracks the library has since gained
@@ -21312,6 +21363,15 @@ its branch.
 **Measured cost.** Maintainer facing: a red battery over a sound tree, and a
 refused mutation batch. The cause was not investigated.
 
+**Seen again 2026-09-19 on `relay/182`, in a different file.** The null
+control of mutation table `r501-d` killed 25 tests on its full suite run, every
+one of them in `tests/test_rebuild.py`, which that branch does not touch, and
+the driver declared the batch invalid. The file then passed alone three times
+in three, 103 each, and the rerun of the batch was clean with a null control of
+zero. Four full suite runs on that branch outside the driver were green. The
+error text was not captured, since the driver records node ids and not
+tracebacks. So the family is wider than `tests/test_deletion.py`.
+
 **Closes when:** the state those tests race on under `-n auto` is found and
 isolated, which R-470's closing line may already cover.
 
@@ -21474,3 +21534,152 @@ unresolved rows by prefix, which is the check that does not exist.
 help. The refusal's prose is accurate.
 
 **Closes when:** doctor gains the grouped prefix check, or the token changes.
+
+---
+
+## R-528. A landing whose import is proven stays an open session until a tree cuts over
+
+**Found:** 2026-09-19, by R-501's unit on `relay/182`. A decision recorded, with
+the option not taken. Driven.
+
+`crate intake imported` cannot close the run it proves before a cutover,
+because `routing_pass.close_run` refuses a run holding a deferred placement and
+only a database native tree can place one. The unit left the run `open` with
+`detail["import_verified"]` recorded, and taught the cutover precheck to excuse
+a run that is open, holds no capture and carries that key. Doctor's session
+check labels such a run "import proven, placement waits for a cutover".
+
+**Measured cost.** One non terminal session record per landing until the first
+cutover. Doctor lists every one of them at INFO. `restore.prune` with no owning
+session named refuses while any exists; a search of `src` found no caller that
+passes none, so that is not reachable from a shipped verb today. Every future
+reader of `not record.terminal` has to know to ask
+`owes_only_deferred_routing`, and nothing makes it.
+
+**The options.** (1) What was built, a detail key on an `open` record. (2) A
+sixth `SessionState`, say `awaiting-routing`, which makes the state first class
+and costs a session log schema question, since a build that predates the state
+cannot parse a record carrying it and the strict gate refuses on an entry it
+cannot read. (3) Let the gated close through when no tree is native, which
+changes U19's close for every caller and which its own tests pin against. The
+built in review raised (2) as the deeper fix. (1) was taken as the conservative
+call in an unattended session, because it changes no gate that guards a write.
+
+**Closes when:** a person picks, or the first cutover lands and `route pending`
+is driven closing these runs on a real library.
+
+---
+
+## R-529. A landing made before `intake imported` existed recorded no intake file, so its file is removed by hand
+
+**Found:** 2026-09-19, by the built in review on `relay/182`. Driven.
+
+Every landing before R-501's unit left an `open` intake record with no pending
+action. `crate intake imported` settles such a run, proving its import from
+the ledger's Locations the same way, and the precheck then excuses it. It
+retires no file for it, because the record never named one and the file cannot
+be told from its contents: a later batch's intake file is spliced from an
+export that already holds this run's tracks, so it names them too.
+
+**Measured cost.** `assert_cutover_ready` still refuses `cutover-xml-pending`
+over each such file until a person removes it, which the refusal's step does
+say. It is a one time population, the landings made on 2026-09-18 and
+2026-09-19, and it is paid at the attended cutover.
+
+**Closes when:** those files are removed at the cutover sitting, or the intake
+playlist node inside a file is matched to a run's tracks exactly and that is
+shown to identify one file.
+
+---
+
+## R-530. `intake imported` retires an intake file by renaming it, and nothing ever removes the renamed file
+
+**Found:** 2026-09-19, by R-501's unit on `relay/182`. A decision recorded.
+
+An intake file is a whole collection export plus the landed rows, so it is as
+large as the export. Retiring renames it to `NAME_inboxed.xml.imported` and
+leaves it at the library root, or beside the track for `intake file`.
+
+**Measured cost.** Not measured on a real library. One export sized file per
+landing accumulates until a person deletes it, and GUIDE says they may.
+
+**Why not a delete.** Nobody was watching the session that built it, the verb
+has no confirm gate, and a delete path with neither was not something to ship
+unattended. A rename loses nothing and is undone by renaming back.
+
+**Closes when:** a person decides between a gated delete, a delete after a
+retention period, and leaving it as it is.
+
+---
+
+## R-531. A landing's pending action is persisted on the intake session and still not on the run record
+
+**Found:** 2026-09-19, sweep finding 117.2, half closed by R-501's unit on
+`relay/182`.
+
+The finding was that the `rekordbox_import` action went only onto the printed
+envelope. It is now persisted on the intake session by `mark_awaiting_import`,
+the envelope carries that same action read back, and doctor's session check
+names every run still `awaiting-import`. It is still not assigned to
+`ctx.run.pending`, so `crate run show` and doctor's run findings show nothing
+for the landing's run.
+
+**Why not fixed here.** Nothing clears a run record's pending action. Set
+there, doctor would report the run as awaiting an import for ever, after the
+import was proven, which is the product saying something false. Clearing it
+means `intake imported` finding another verb's run record by its artifact and
+rewriting it, a seam no verb has today.
+
+**Measured cost.** None driven. The unimported file is remembered durably, on
+the session and not the run.
+
+**Closes when:** a verb can settle another run's pending action, or the run
+surfaces read the session's.
+
+---
+
+## R-532. An intake run with nothing an export can prove has no verb that ends it
+
+**Found:** 2026-09-19, by R-501's unit and the built in review on `relay/182`.
+Three shapes, one read and two driven.
+
+`crate intake imported` answers `unverifiable` and changes nothing when the
+routing ledger names no file for a run. That is right, since nothing recorded
+is not nothing owed, and it leaves three runs with no exit. (1) A landing
+killed between `open_session` and the ledger write leaves an `open` intake
+record with no intents, read, not driven, the window being a few file writes.
+(2) A run whose ledger was emptied, driven by writing an empty ledger. (3) A
+run whose every track a person acknowledged as gone settles with no row, so
+the routing pass is not proof and no export will ever name those files,
+driven through `routing_pass.acknowledge`, which no shipped verb calls.
+
+**Measured cost.** Each refuses the cutover precheck, `cutover-open-run`, until
+the record is ended by hand. No shipped verb abandons an intake run. Paid at
+the attended cutover.
+
+**Closes when:** a verb abandons a named intake run by a named person, through
+`close_run`'s ungated abandon.
+
+---
+
+## R-533. Two orderings R-501's unit depends on were not mutated, and one review finding was not applied
+
+**Found:** 2026-09-19, on `relay/182`. Maintainer facing.
+
+`place_files` marks its session before it writes the ledger, because an intent
+cannot be withdrawn, and `imported_cli.settle` retires the file before it
+marks the run proven, because the other order leaves a file nothing looks for.
+Each has a test written to pin it. Neither was mutated: a reorder is two sites
+and `scripts/mutate.py` replaces one string. Both are logged as dropped and NOT
+MEASURED in `docs/mutation/r501-b-rows.toml` and `r501-d-rows.toml`.
+
+The built in review's tenth finding was not applied. `read_export` builds the
+full attribute map of every collection row to read one attribute. The two
+other export readers, in `write/routing_cli.py` and `sync/mark_cli.py`, do the
+same, the full reader is the one that unescapes, and the cost on a real export
+was not measured.
+
+**Closes when:** the driver takes a two site row, or the two orderings are
+driven by hand and the counts recorded; and the export read is timed on a real
+collection.
+
