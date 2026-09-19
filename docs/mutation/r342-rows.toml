@@ -1,0 +1,146 @@
+name = "r342"
+pass_kind = "light"
+
+[[rows]]
+id = "V1_default_on_corrupt"
+description = "Restore the defect: an unreadable calibration returns the default cut instead of refusing"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''
+    except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:
+        raise refuse(
+'''
+new = '''
+    except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:
+        return DEFAULT_VOCAL_THRESHOLD
+        raise refuse(
+'''
+
+[[rows]]
+id = "V2_no_finite_check"
+description = "Drop the finiteness check, so NaN and Infinity read as a cut"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''
+        if not math.isfinite(threshold):
+            raise ValueError(f"threshold {threshold} is not a finite number")
+'''
+new = ""
+
+[[rows]]
+id = "V3_isnan_for_isfinite"
+description = "Nearby value: check only for NaN, so Infinity reads as a cut"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''if not math.isfinite(threshold):'''
+new = '''if math.isnan(threshold):'''
+
+[[rows]]
+id = "V4_no_bool_check"
+description = "Drop the boolean check, so true reads as a cut of 1.0"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''
+        if isinstance(raw, bool):
+            raise TypeError(f"threshold {raw} is a boolean, not a number")
+'''
+new = ""
+
+[[rows]]
+id = "V5_tuple_drops_overflow"
+description = "Drop OverflowError from the except tuple, the review's finding"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:'''
+new = '''except (OSError, ValueError, KeyError, TypeError) as exc:'''
+
+[[rows]]
+id = "V6_tuple_drops_keyerror"
+description = "Drop KeyError from the except tuple, so a file with no threshold key crashes"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:'''
+new = '''except (OSError, ValueError, TypeError, OverflowError) as exc:'''
+
+[[rows]]
+id = "V7_tuple_drops_typeerror"
+description = "Drop TypeError from the except tuple, so a list, null or boolean payload crashes"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:'''
+new = '''except (OSError, ValueError, KeyError, OverflowError) as exc:'''
+
+[[rows]]
+id = "V8_tuple_drops_valueerror"
+description = "Drop ValueError from the except tuple, so truncated JSON crashes"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:'''
+new = '''except (OSError, KeyError, TypeError, OverflowError) as exc:'''
+
+[[rows]]
+id = "V9_tuple_drops_oserror"
+description = "Drop OSError from the except tuple, so an unreadable file escapes unnamed"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:'''
+new = '''except (ValueError, KeyError, TypeError, OverflowError) as exc:'''
+
+[[rows]]
+id = "V10_missing_raises"
+description = "A missing file raises instead of returning the default cut"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''
+    if not path.is_file():
+        return DEFAULT_VOCAL_THRESHOLD
+'''
+new = '''
+    if not path.is_file():
+        raise FileNotFoundError(path)
+'''
+
+[[rows]]
+id = "V11_present_ignored"
+description = "A readable threshold is ignored and the default returned"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''    return threshold
+'''
+new = '''    return DEFAULT_VOCAL_THRESHOLD
+'''
+
+[[rows]]
+id = "V12_exit_code"
+description = "Declare the slug under REFUSED_BY_POLICY rather than PRECONDITION"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''"vocal-calibration-unreadable": ExitCode.PRECONDITION,'''
+new = '''"vocal-calibration-unreadable": ExitCode.REFUSED_BY_POLICY,'''
+
+[[rows]]
+id = "V13_detail_key"
+description = "Rename the calibration detail key the refusal carries"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "maintainer"
+old = '''detail={"calibration": str(path), "kind": type(exc).__name__},'''
+new = '''detail={"path": str(path), "kind": type(exc).__name__},'''
+
+[[rows]]
+id = "E1_cut_inclusive"
+description = "Existing guard sample: the with-vox cut becomes exclusive"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+old = '''if voxlevel is None or voxlevel < cut:'''
+new = '''if voxlevel is None or voxlevel <= cut:'''
+
+[[dropped]]
+id = "E2_exists_for_is_file"
+description = "Missing test becomes path.exists(), so a directory at the path refuses instead of defaulting"
+reason = "ranked below the cap: a directory at a state file path has no producer in the product, and the pre-existing missing-branch shape is unchanged by this unit"
+
+[[dropped]]
+id = "V14_message_reword"
+description = "Reword the refusal message or its remedy steps"
+reason = "ranked below the cap: prose only, no test reads it by design, and the slug and detail rows carry the contract"
