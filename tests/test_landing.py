@@ -601,3 +601,41 @@ def test_staging_configured_inside_the_library_still_lands(cfg, silence, export)
 
     assert [item.target.name for item in result.moved] == ["One.flac"]
     assert not (downloads / "One.flac").exists()
+
+
+def test_a_directory_named_like_audio_is_not_listed(cfg, silence):
+    _stage(cfg, silence, "Keep.flac")
+    (_staging(cfg) / "Album.flac").mkdir()
+    planned = landing.plan(_staging(cfg), cfg, BATCH)
+    assert [p.name for p in planned.items] == ["Keep.flac"]
+
+
+def test_every_file_taken_at_the_move_writes_no_intake_file(
+    cfg, silence, export, monkeypatch
+):
+    """Every file passes the first pass and is found occupied at the move, the
+    shape a concurrent landing produces. No intake file, no batch folder."""
+    _stage(cfg, silence, "A.flac")
+    _stage(cfg, silence, "B.flac")
+    real = landing._occupied
+    calls = {"n": 0}
+
+    def occupied(item, final):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            return real(item, final)
+        return landing.Refused(path=item, reason="output-exists", sentence="taken")
+
+    monkeypatch.setattr(landing, "_occupied", occupied)
+    with pytest.raises(CratekitError) as excinfo:
+        landing.apply(
+            landing.plan(_staging(cfg), cfg, BATCH),
+            cfg=cfg,
+            export=export,
+            destination=_destination(cfg),
+        )
+
+    assert excinfo.value.cause.reason == "intake-list-unusable"
+    assert not _destination(cfg).exists()
+    assert not (Path(cfg.library.root) / cfg.library.music_dir / BATCH).exists()
+    assert (_staging(cfg) / "A.flac").is_file()
