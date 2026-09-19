@@ -17581,6 +17581,23 @@ path does not currently perform.
 **Closes when:** a filing pass builds the long track playlist, or the taxonomy
 declares it and the tree writers fill it.
 
+**Closed 2026-09-18 on `relay/133`, U88.** `crate route inbox --export X`
+adds every collection track whose `TotalTime` is over the declared bound to one
+playlist, a direct child of the playlist root, in the same pass and the same
+written file as the filing and the ratings. The name and the bound are the
+taxonomy's new optional `[long_tracks]` section, shipped as "Sets and Long
+Tracks" over 1200 seconds, the source system's values, and the bound is strict
+as `sort_unplaced.py:179` is. `TotalTime` was confirmed as seconds on the
+fixture and on this project's own emitter. The write is
+`trees.add_to_root_playlist`, which calls `rbxml.insert_root_playlist` once,
+now its first caller in `src`, with the members the playlist already held
+written back ahead of the new ones. A row with no readable length is counted
+in `totals.duration_unreadable` and never guessed. A same named playlist inside
+a folder is neither read nor touched; a FOLDER of that name at the root is a
+`route-write-skipped` warning and is left alone. The source system rebuilt the
+playlist on every run; this pass only adds, which R-442 records. Owed to an
+attended sitting: the playlist seen in rekordbox after one import.
+
 ---
 
 ## R-407. `crate name apply` renames library files without consulting the collection
@@ -18596,5 +18613,36 @@ attended, and it is the sitting the brief already owes.
 
 **Closes when:** one routed file is imported and the ratings are seen in
 rekordbox, or the check stops counting ratings if they are not.
+
+---
+
+## R-442. The long track playlist only adds, so a track is never taken out of it
+
+**Found:** 2026-09-18, U88 on `relay/133`, by the brief's own decision, and
+restated by that unit's `/code-review`. Driven by
+`test_a_track_is_never_removed_from_the_playlist` in
+`tests/test_routing_workers.py`.
+
+`route inbox --export` adds to the "Sets and Long Tracks" playlist and removes
+nothing. A member whose collection row is gone, a member now under the bound
+after a person raised `over_seconds`, and a member a person dragged in by hand
+all stay. A long track a person took out of the playlist in rekordbox is added
+back on the next pass, since the pass cannot tell a removal from a track it
+has not seen, and that pass then writes a file and ends PENDING again.
+
+The source system rebuilt the playlist from scratch on every run, so it
+dropped stale members and also undid a hand removal. This build keeps a hand
+added member, which the source system did not.
+
+**Measured cost:** a playlist that can only grow, and a person who wants a set
+out of it has to delete the `[long_tracks]` section or raise the bound. Not
+measured live.
+
+**Why not fixed here.** Removal is out of the brief's scope, and whether a
+removal is a person's curation or a stale member needs a record of who put a
+track there that nothing keeps.
+
+**Closes when:** the pass removes stale members while keeping a person's
+choices, or the decision to only add is confirmed at an attended sitting.
 
 ---

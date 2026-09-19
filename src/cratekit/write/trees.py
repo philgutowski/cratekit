@@ -396,6 +396,61 @@ def apply_rating_changes(rating_plan: Mapping[object, object], content: bytearra
     return rbxml.apply_rating_changes(dict(rating_plan), content)
 
 
+def root_playlist_members(content: bytes, name: str) -> tuple[str, ...] | str:
+    """The track keys a playlist directly under the playlist root holds.
+
+    Empty when no such playlist exists yet. A warning string when the root has
+    no playlist tree, or when a FOLDER of that name stands there, because the
+    writer would refuse the same node and a caller planning against "empty"
+    would offer a write that cannot happen.
+
+    Only a DIRECT child is read, the child the writer replaces, so a playlist
+    of the same name inside somebody's folder is neither read nor touched.
+    """
+    root = rbxml.root_node(content)
+    if root is None:
+        return "ROOT node not found"
+    node = rbxml.direct_child(content, root, name, rbxml.PLAYLIST_TYPE)
+    if isinstance(node, str):
+        return node
+    return () if node is None else rbxml.track_keys(content, node)
+
+
+def add_to_root_playlist(
+    name: str, track_ids: Sequence[str], content: bytearray
+) -> tuple[int, str | None]:
+    """Add tracks to a root playlist, creating it, and never remove one.
+
+    Returns how many tracks the playlist gained and a warning or None.
+
+    ADD ONLY. :func:`cratekit.write.rbxml.insert_root_playlist` REPLACES the
+    playlist it finds, so the members it already holds are read first and
+    written back ahead of the new ones. Nothing the playlist held is dropped,
+    whatever the caller passed.
+
+    NOTHING NEW IS NOTHING WRITTEN, including no empty playlist, so a second
+    run over its own output leaves the bytes alone.
+
+    Takes no tree for the writer's reason: the playlist root is not a tree.
+    """
+    existing = root_playlist_members(content, name)
+    if isinstance(existing, str):
+        return 0, existing
+    held = set(existing)
+    new: list[str] = []
+    for track_id in track_ids:
+        key = str(track_id)
+        if key not in held:
+            held.add(key)
+            new.append(key)
+    if not new:
+        return 0, None
+    warning = rbxml.insert_root_playlist(name, [*existing, *new], content)
+    if warning is not None:
+        return 0, warning
+    return len(new), None
+
+
 def _tree_folders(content: bytes, tree_display: str) -> tuple[str, ...]:
     """Every folder directly inside a named tree, by display name, in document order.
 
@@ -966,6 +1021,7 @@ __all__ = [
     "RowMatch",
     "TreeUnreachable",
     "VoxReport",
+    "add_to_root_playlist",
     "add_vox_playlists",
     "apply_playlist_changes",
     "apply_rating_changes",
@@ -974,6 +1030,7 @@ __all__ = [
     "insert_record_labels_tree",
     "match_active_rows",
     "match_indexed_rows",
+    "root_playlist_members",
     "soft_delete_marker",
     "write_tree_membership",
 ]

@@ -303,6 +303,25 @@ class Node:
     display: str
 
 
+#: The source system's threshold for a set rather than a track: twenty minutes.
+#: A template that declares the long track playlist and omits the threshold
+#: takes this one, which is the separation a person had before the port.
+DEFAULT_LONG_TRACK_SECONDS = 1200
+
+
+@dataclass(frozen=True)
+class LongTracks:
+    """The root playlist every collection track over a length is a member of.
+
+    ``over_seconds`` is a strict bound, as the source system's was: a track of
+    exactly that length is not a member.
+    """
+
+    id: str
+    display: str
+    over_seconds: int = DEFAULT_LONG_TRACK_SECONDS
+
+
 @dataclass(frozen=True)
 class Taxonomy:
     """A validated, self-consistent taxonomy. Immutable, and safe to share."""
@@ -332,6 +351,11 @@ class Taxonomy:
     # refuses by name when asked to write a tree nobody declared, which beats
     # inventing a folder in somebody's library from a default they never saw.
     catalog: Node | None = None
+
+    # The playlist that keeps sets apart from tracks, a direct child of the
+    # playlist root. OPTIONAL for the catalog's reason: a template without it
+    # builds no such playlist rather than one named by a default nobody saw.
+    long_tracks: LongTracks | None = None
 
     # Indexes, built once at construction. They are derived data, so they can
     # never disagree with the declaration they came from.
@@ -564,9 +588,13 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         if catalog_raw is not None
         else None
     )
+    long_tracks, long_problems = _build_long_tracks(data)
+    problems += long_problems
     declared_nodes = [(tree, "tree"), (intake, "intake")]
     if catalog is not None:
         declared_nodes.append((catalog, "catalog"))
+    if long_tracks is not None:
+        declared_nodes.append((Node(long_tracks.id, long_tracks.display), "long_tracks"))
     for node, label in declared_nodes:
         if not _ID.match(node.id):
             problems.append(f"[{label}] id {node.id!r} must match {_ID.pattern}")
@@ -628,6 +656,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         label_gate=gate,
         family=family,
         catalog=catalog,
+        long_tracks=long_tracks,
         _by_id=by_id,
         _by_display={b.display: b.id for b in buckets},
         _routing_alias=routing_alias,
@@ -639,6 +668,34 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
 # Section builders. Each returns (value, problems) so one bad section never
 # hides the next one.
 # ---------------------------------------------------------------------------
+
+
+def _build_long_tracks(data: Mapping[str, Any]) -> tuple[LongTracks | None, list[str]]:
+    """The long track playlist, or None when the template declares none.
+
+    Keyed on PRESENCE, for the reason the catalog section gives: an empty table
+    is a declaration and is validated as one. The id and display are checked
+    with the other declared nodes; the threshold is checked here.
+
+    THE THRESHOLD IS A WHOLE NUMBER OF SECONDS ABOVE ZERO, and a boolean is
+    refused rather than read as 1, because ``true`` would put every track in the
+    collection into the playlist. A zero or negative bound does the same.
+    """
+    if "long_tracks" not in data:
+        return None, []
+    raw = data.get("long_tracks")
+    if not isinstance(raw, Mapping):
+        return None, ["[long_tracks] must be a table"]
+    problems: list[str] = []
+    seconds = raw.get("over_seconds", DEFAULT_LONG_TRACK_SECONDS)
+    if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds < 1:
+        problems.append(
+            f"[long_tracks] over_seconds must be a whole number of seconds of at "
+            f"least 1, got {seconds!r}"
+        )
+        seconds = DEFAULT_LONG_TRACK_SECONDS
+    declared = LongTracks(str(raw.get("id", "")), str(raw.get("display", "")), seconds)
+    return declared, problems
 
 
 def _build_energy(raw: Mapping[str, Any]) -> tuple[Energy, list[str]]:
