@@ -4,7 +4,30 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U86, issue #131, `relay/131`, 2026-09-18.**
+**Last merged: R-342, issue #108, `relay/108`, 2026-09-18.**
+A corrupt vocal calibration now refuses instead of reading as the default cut,
+which closes R-342. `write/metadata_cli.vocal_cut` still returns 12.0 for a
+missing file. An existing file that cannot be read, or whose threshold is not
+a finite number, a boolean, or too large for a float, raises
+`vocal-calibration-unreadable`, a PRECONDITION declared in `cause.REASONS`
+beside `energy-calibration-unreadable` and outside the reserved table, as that
+sibling is. A permission refusal reaches the reader as `path-permission-denied`
+through `cause.classified`, and still refuses. The remedy steps are prose,
+because the write layer may not spell a CLI invocation. Driven before the fix:
+`metadata mytags-vocals --apply` over a truncated calibration exited OK and
+wrote the vox My Tags from 12.0; now it exits PRECONDITION and writes nothing.
+The brief's `AttributeError` is not in the tuple, since this reader calls no
+mapping method and a list payload raises TypeError, pinned by a test. The
+unit's `/code-review` drove one finding, fixed: a four hundred digit threshold
+raised OverflowError past the tuple. `tests/test_reserved_causes.py` re-pinned
+population 157 to 158, non-reserved 133 to 134, distinct kebab literals 419 to
+420, non-keys unchanged at 263. 14 new tests in `tests/test_metadata_cli.py`.
+Mutation table `docs/mutation/r342.md`, 14 of 14 killing, the author's and not
+independent. No residual filed. Battery on the recorded tree: ruff clean,
+`scan_repo.py` exit 0, pytest 7928 collected, all passing but one skip.
+**Main's highest residual number is R-440.**
+
+**The session before: U86, issue #131, `relay/131`, 2026-09-18.**
 `crate route inbox --export X` files the INBOX playlist of a fresh export on a
 library whose routing tree has not cut over, which closes R-416 for the INBOX
 half. It writes `<X stem>_routed.xml` beside X, atomically, never in place,

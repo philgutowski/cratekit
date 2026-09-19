@@ -15608,6 +15608,26 @@ fixture.
 **Closes when:** an unreadable vocal calibration refuses by name, and a
 missing one still defaults.
 
+**Closed 2026-09-18 on `relay/108`.** `write/metadata_cli.vocal_cut` still
+returns 12.0 when the vocal calibration is missing. When it exists and cannot
+be read it raises `vocal-calibration-unreadable`, a PRECONDITION declared in
+`cause.REASONS` beside `energy-calibration-unreadable` and, like it, outside
+the reserved table. Unreadable covers truncated or empty JSON, a list or null
+payload, no `threshold` key, a threshold that is text, a boolean, NaN,
+Infinity or an integer too large for a float, and a file the account cannot
+read. That last one reaches the reader as `path-permission-denied`, because
+`cause.classified` corrects every refusal chained from a PermissionError, and
+it still refuses. Driven before the fix: `metadata mytags-vocals --apply` over
+a truncated calibration exited OK and wrote the vox My Tags from 12.0. After
+it the verb exits PRECONDITION and writes nothing. The brief asked for
+`AttributeError` in the tuple as energy's carries; it is not there, because
+this reader calls no mapping method and a list, string or null payload raises
+TypeError at the subscript, which a parametrized row pins. The review found
+the OverflowError hole and it is fixed. Driven in `tests/test_metadata_cli.py`;
+mutation table `docs/mutation/r342.md`, 14 of 14 killing, the author's and not
+independent. A threshold written as a numeric string still reads as that
+number, which is lenient and not a false cut.
+
 ---
 
 ## R-343. A mutation driver run wrote 343 files into the real state directory
