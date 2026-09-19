@@ -1,0 +1,222 @@
+name = "u101"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_held_is_listed"
+description = "Drop the skip, so a release the gate held is resolved, offered and listed anyway"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''
+        if release.item_id in held:
+            continue
+'''
+new = "\n"
+
+[[rows]]
+id = "G2_judged_per_release"
+description = "Group every release under itself, so each is judged alone and nothing is ever held"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''    return release.label_id or release.label_name or f"release:{release.release_id}"'''
+new = '''    return f"release:{release.release_id}"'''
+
+[[rows]]
+id = "G3_all_labels_one_group"
+description = "Group every release under one key, so labels are judged against each other"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''    return release.label_id or release.label_name or f"release:{release.release_id}"'''
+new = '''    return "all"'''
+
+[[rows]]
+id = "G4_unlabelled_grouped_together"
+description = "Group every release naming no label under one key instead of judging each alone"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''    return release.label_id or release.label_name or f"release:{release.release_id}"'''
+new = '''    return release.label_id or release.label_name or "release:"'''
+
+[[rows]]
+id = "G5_unread_label_judged"
+description = "Judge a label even when one of its releases was unread this run"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''        if label in unread:'''
+new = '''        if label in unread and False:'''
+
+[[rows]]
+id = "G6_unread_from_every_label"
+description = "Treat every label as having an unread release whenever any release failed"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''        if label in unread:'''
+new = '''        if unread:'''
+
+[[rows]]
+id = "G7_mixed_is_a_genre"
+description = "Rows that disagree yield their first genre instead of none"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''    if len(said) > 1:'''
+new = '''    if len(said) > 99:'''
+
+[[rows]]
+id = "G8_case_is_a_difference"
+description = "Compare genres by exact text, so one genre in two cases reads as mixed"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''            said.setdefault(text.casefold(), text)'''
+new = '''            said.setdefault(text, text)'''
+
+[[rows]]
+id = "G9_mapping_row_unread"
+description = "Read the genre by attribute only, so a mapping shaped row reports none"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''        value = row.get("genre") if isinstance(row, Mapping) else getattr(row, "genre", None)'''
+new = '''        value = getattr(row, "genre", None)'''
+
+[[rows]]
+id = "G10_ungated_not_reported_in_judged_label"
+description = "Drop the ungated branch in a judged label, so a release with no genre is listed silently"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''            if outcome.ungated is not None:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "G11_keep_read_as_drop"
+description = "Hold on the KEEP verdict instead of DROP"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''            elif verdict is routing.GateVerdict.DROP and family and outcome.genre:'''
+new = '''            elif verdict is routing.GateVerdict.KEEP and family and outcome.genre:'''
+
+[[rows]]
+id = "G12_reported_share_not_the_taxonomys"
+description = "Report a share the taxonomy did not declare"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''    share = declared.label_gate.out_of_place_share'''
+new = '''    share = 0.2'''
+
+[[rows]]
+id = "G13_family_count_off_by_one"
+description = "Report one more release of the family than there were"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''families.count(family), classified, share'''
+new = '''families.count(family) + 1, classified, share'''
+
+[[rows]]
+id = "G14_classified_counts_unjudged"
+description = "Count every release in the label as classified, including those with no genre"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''        classified = sum(1 for genre in genres if genre)'''
+new = '''        classified = len(genres)'''
+
+[[rows]]
+id = "G15_held_lines_dropped"
+description = "Drop the per release held lines from the checks"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''        *(_held_check(one) for one in held.values()),'''
+new = ""
+
+[[rows]]
+id = "G16_passed_counts_held"
+description = "Count held releases among those passed"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''    passed = read - len(held)'''
+new = '''    passed = read'''
+
+[[rows]]
+id = "G17_refusal_silent_on_held"
+description = "Drop the held clause from the nothing missing refusal"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''            + (f" and passed the genre gate ({len(held)} more held by it)" if held else "")'''
+new = '''            + ""'''
+
+[[rows]]
+id = "G18_no_op_claims_held"
+description = "The no op wording ignores held releases and says the library holds everything read"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''            f"held by it"
+            if held
+            else'''
+new = '''            f"held by it"
+            if False
+            else'''
+
+[[rows]]
+id = "G19_ungated_not_failing"
+description = "The ungated line is a note rather than a failing line"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''            "fail" if ungated else "ok",'''
+new = '''            "info" if ungated else "ok",'''
+
+[[rows]]
+id = "G20_summary_held_empty"
+description = "The summary carries no held releases"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''        held=[one.to_json() for one in held.values()],'''
+new = '''        held=[],'''
+
+[[rows]]
+id = "G21_summary_ungated_empty"
+description = "The summary carries no ungated releases"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_approved.py"]
+old = '''        ungated=[release.release_id for release, _why in ungated],'''
+new = '''        ungated=[],'''
+
+[[rows]]
+id = "E1_engine_share_bound"
+description = "Sample of the engine: a family exactly at the share drops"
+file = "src/cratekit/core/routing.py"
+old = '''    out_of_place = {f for f, n in counts.items() if n / classified < share}'''
+new = '''    out_of_place = {f for f, n in counts.items() if n / classified <= share}'''
+
+[[rows]]
+id = "E2_engine_keep_rule"
+description = "Sample of the engine: a keep rule answers its family instead of keep"
+file = "src/cratekit/core/routing.py"
+old = '''        return None if rule.keep else rule.family'''
+new = '''        return rule.family'''
+
+[[dropped]]
+id = "D1_unreadable_moved_before_gate"
+description = "Move the unreadable row report back after the held skip"
+reason = "ranked below the cap: a report on releases the gate held, whose tracks are not listed either way"
+
+[[dropped]]
+id = "D2_undated_over_passed"
+description = "Count undated over every release read rather than those passed"
+reason = "ranked below the cap: a held release has no manifest row for a year to be missing from"

@@ -52,9 +52,23 @@ waiting, so :data:`OUTAGE_AFTER` failures in a row end the asking and the
 releases left are reported as not asked. An answer, or a release that is gone,
 which is an answer too, resets the count.
 
-Not gated and not destructive: it writes two new files and the emitter refuses
-rather than replaces. Nothing here composes ``acquire download``, so nothing
-here can spend a download.
+THE GENRE GATE JUDGES EVERY RELEASE READ BEFORE ANY IS LISTED. U101, R-420.
+:func:`cratekit.core.routing.gate_decisions` decides against a set of
+releases at once, so every accepted release is read first, the gate runs once
+per label over one genre per release, and only then are the passed releases
+resolved. The set is the label's releases ACCEPTED AND READ THIS RUN, not its
+whole catalogue, which this verb never reads (R-462), and a label with any
+release unread this run is not judged at all. A release the gate holds is
+named with its family and its share and is neither listed nor offered for
+review. A release whose genre is not known,
+because its rows report none or report more than one, is listed with a failing
+line saying the gate could not judge it: absence of a genre is not evidence of
+a bad fit, and it is not evidence of a good one either. No shipped catalogue
+reports a genre today, so in the shipped build every release takes that path.
+
+Not a confirm gate and not destructive: it writes two new files and the
+emitter refuses rather than replaces. Nothing here composes
+``acquire download``, so nothing here can spend a download.
 """
 
 from __future__ import annotations
@@ -70,7 +84,7 @@ from typing import Any
 
 from cratekit.acquire import listdoc, match, match_cli
 from cratekit.cli.output import Envelope
-from cratekit.core import review
+from cratekit.core import review, routing, taxonomy
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.review import Queue
 from cratekit.intake.missing_cli import LISTS_DIR
@@ -160,11 +174,40 @@ class _Failed:
 
 @dataclass(frozen=True, slots=True)
 class _Read:
-    """One release the provider answered for: its readable rows, and the rest."""
+    """One release the provider answered for: its readable rows, and the rest.
+
+    ``genre`` is the one genre its rows report, or ``None`` with ``ungated``
+    saying why the gate cannot judge it.
+    """
 
     wanted: tuple[match.Wanted, ...]
     year: int | None
     unreadable: tuple[str, ...]
+    genre: str | None = None
+    ungated: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _Held:
+    """One release the genre gate held, and the numbers it was held on."""
+
+    release: _Release
+    genre: str
+    family: str
+    of_family: int
+    classified: int
+    share: float
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "release_id": self.release.release_id,
+            "item_id": self.release.item_id,
+            "genre": self.genre,
+            "family": self.family,
+            "of_family": self.of_family,
+            "classified": self.classified,
+            "share": self.share,
+        }
 
 
 def _text(value: Any) -> str | None:
@@ -172,6 +215,86 @@ def _text(value: Any) -> str | None:
     if not isinstance(value, str) or not value.strip():
         return None
     return value.strip()
+
+
+def _genre_of(rows: tuple[Any, ...]) -> tuple[str | None, str | None]:
+    """The one genre a release's rows report, or ``None`` and why there is none.
+
+    Read from a mapping or an attribute, the two shapes a provider row comes in.
+    ROWS THAT DISAGREE ARE NOT A GENRE. An EP whose remix is filed elsewhere
+    has no one answer, and choosing the first or the most common would let the
+    gate hold a release on a guess. The source system kept anything uncertain,
+    and so does this.
+    """
+    said: dict[str, str] = {}
+    for row in rows:
+        value = row.get("genre") if isinstance(row, Mapping) else getattr(row, "genre", None)
+        text = _text(value)
+        if text is not None:
+            said.setdefault(text.casefold(), text)
+    if not said:
+        return None, "the catalogue reports no genre for it"
+    if len(said) > 1:
+        return None, "its tracks report " + " and ".join(repr(one) for one in said.values())
+    return next(iter(said.values())), None
+
+
+def _label_of(release: _Release) -> str:
+    """What a release is grouped under for the gate: its label, else itself.
+
+    A release naming no label is judged alone, and alone every family it could
+    carry is the whole of its output, so it is never held. Grouping every
+    unlabelled release together would judge one against releases it shares
+    nothing with.
+    """
+    return release.label_id or release.label_name or f"release:{release.release_id}"
+
+
+def _gated(
+    declared: taxonomy.Taxonomy,
+    read: list[tuple[_Release, _Read]],
+    failures: list[_Failed],
+) -> tuple[dict[str, _Held], dict[str, str]]:
+    """Every read release the genre gate holds, and every one it could not judge.
+
+    Both keyed by review item. ONE CALL PER LABEL, never one per release. The
+    gate's share is a fraction of the label's accepted releases, so one judged
+    alone is always the whole of it and nothing would ever be held.
+
+    A LABEL WITH A RELEASE UNREAD THIS RUN IS NOT JUDGED AT ALL. Its share is
+    unknown rather than smaller: the unread release could be of the family in
+    question or of any other, so a provider that failed on some releases would
+    decide which of the rest are held. Every release of that label is listed
+    unjudged and says why, the timid direction, and the next run that reads
+    them all judges them.
+    """
+    unread = {_label_of(one.release) for one in failures}
+    groups: dict[str, list[tuple[_Release, _Read]]] = {}
+    for release, outcome in read:
+        groups.setdefault(_label_of(release), []).append((release, outcome))
+    share = declared.label_gate.out_of_place_share
+    held: dict[str, _Held] = {}
+    unjudged: dict[str, str] = {}
+    for label, members in groups.items():
+        if label in unread:
+            for release, outcome in members:
+                unjudged[release.item_id] = outcome.ungated or (
+                    "another accepted release on its label could not be read, so the "
+                    "label's share of its genre is not known"
+                )
+            continue
+        genres = [outcome.genre for _release, outcome in members]
+        verdicts = routing.gate_decisions(declared, genres)
+        families = [routing.gate_family(declared, genre) for genre in genres]
+        classified = sum(1 for genre in genres if genre)
+        for (release, outcome), verdict, family in zip(members, verdicts, families, strict=True):
+            if outcome.ungated is not None:
+                unjudged[release.item_id] = outcome.ungated
+            elif verdict is routing.GateVerdict.DROP and family and outcome.genre:
+                held[release.item_id] = _Held(
+                    release, outcome.genre, family, families.count(family), classified, share
+                )
+    return held, unjudged
 
 
 def _release_of(items: review.ReviewStore, item: review.Item) -> _Release:
@@ -257,7 +380,8 @@ def _tracks_or_failure(found: catalogue.Catalogue, release: _Release) -> _Read |
             wanted.extend(match.read_tidal_tracks((row,)))
         except match.UnreadableList as exc:
             unreadable.append(str(exc))
-    return _Read(tuple(wanted), year, tuple(unreadable))
+    genre, ungated = _genre_of(tuple(rows))
+    return _Read(tuple(wanted), year, tuple(unreadable), genre, ungated)
 
 
 def _out_dir(ctx, cfg) -> Path:
@@ -334,6 +458,19 @@ def _failure_check(failed: _Failed) -> dict[str, Any]:
     return _check(f"release.{release.release_id or release.item_id}", "fail", detail)
 
 
+def _held_check(held: _Held) -> dict[str, Any]:
+    """One line per held release, carrying the numbers it was held on."""
+    release = held.release
+    label = release.label_name or release.label_id or "no named label"
+    detail = (
+        f"{_named(release)} is HELD by the genre gate and none of it is in the list: "
+        f"its genre {held.genre!r} is the {held.family} family, {held.of_family} of "
+        f"the {held.classified} release(s) with a genre accepted from {label}, "
+        f"under the {held.share:.0%} share a family needs to belong to that label"
+    )
+    return _check(f"held.{release.release_id or release.item_id}", "info", detail)
+
+
 def label_approved(ctx) -> Envelope:
     """List the missing tracks of every accepted label release, or say why not."""
     cfg = label_cli._load()
@@ -372,7 +509,7 @@ def label_approved(ctx) -> Envelope:
     missing: list[match.Wanted] = []
     origins: list[tuple[_Release, int | None]] = []
     seen: set[str] = set()
-    read = 0
+    answered: list[tuple[_Release, _Read]] = []
     in_a_row = 0
     for release in accepted:
         if in_a_row >= OUTAGE_AFTER:
@@ -394,9 +531,23 @@ def label_approved(ctx) -> Envelope:
             in_a_row = in_a_row + 1 if outcome.kind == PROVIDER else 0
             continue
         in_a_row = 0
-        wanted, year = outcome.wanted, outcome.year
+        answered.append((release, outcome))
         unreadable.extend((release, why) for why in outcome.unreadable)
-        read += 1
+    read = len(answered)
+
+    # THE GATE BEFORE ANY RESOLUTION, so a held release is never offered for
+    # review and never listed, and every release it judges is judged against
+    # the same set.
+    held, unjudged = _gated(taxonomy.default_taxonomy(), answered, failures)
+    ungated = [
+        (release, unjudged[release.item_id])
+        for release, _outcome in answered
+        if release.item_id in unjudged
+    ]
+    for release, outcome in answered:
+        if release.item_id in held:
+            continue
+        wanted, year = outcome.wanted, outcome.year
         if year is None:
             undated.append(release)
         resolved = match.MatchResult(
@@ -484,12 +635,14 @@ def label_approved(ctx) -> Envelope:
             "run this again, and report it if it repeats",
             unlisted_tracks=[{"artist": row.artist, "title": row.title} for row in written.unlisted],
         )
+    passed = read - len(held)
     if failures and not listed:
         # NOTHING LISTED WITH RELEASES UNREAD IS NOT A LIBRARY THAT HOLDS THEM.
         raise _unusable(
-            f"nothing is missing from the {read} release(s) that could be read, and "
-            f"{len(failures)} could not be, so this is not a library holding every "
-            f"approved release: "
+            f"nothing is missing from the {passed} release(s) that could be read"
+            + (f" and passed the genre gate ({len(held)} more held by it)" if held else "")
+            + f", and {len(failures)} could not be, so this is not a library holding "
+            f"every approved release: "
             + "; ".join(f"{_named(one.release)}: {one.why}" for one in failures),
             *settle,
             failed=failed_detail,
@@ -504,9 +657,15 @@ def label_approved(ctx) -> Envelope:
         _check(
             "written",
             "ok" if listed else "info",
-            f"{listed} missing track(s) from {read} accepted release(s) written to "
+            f"{listed} missing track(s) from {passed} accepted release(s) written to "
             f"{written.list_path}; next: {command}"
             if listed
+            # A HELD RELEASE WAS NEVER RESOLVED, so the library is not said to
+            # hold it.
+            else f"nothing listed: the library holds every track of the {passed} "
+            f"accepted release(s) the genre gate passed, and {len(held)} more were "
+            f"held by it"
+            if held
             else f"nothing listed: the library holds every track of the {read} "
             f"accepted release(s)",
         ),
@@ -548,7 +707,24 @@ def label_approved(ctx) -> Envelope:
             f"so their manifest rows say none: "
             + ", ".join(_named(release) for release in undated)
             if undated
-            else "every release read carries its year",
+            else "every release the genre gate passed carries its year",
+        ),
+        _check(
+            "held",
+            "info",
+            f"{len(held)} accepted release(s) held by the genre gate and NOT in the list: "
+            + ", ".join(_named(one.release) for one in held.values())
+            if held
+            else "no release was held by the genre gate",
+        ),
+        _check(
+            "ungated",
+            "fail" if ungated else "ok",
+            f"{len(ungated)} release(s) the genre gate could not judge, so they are "
+            f"listed unjudged: "
+            + "; ".join(f"{_named(release)}: {why}" for release, why in ungated)
+            if ungated
+            else "every release read was judged by the genre gate",
         ),
         _check(
             "releases",
@@ -558,6 +734,7 @@ def label_approved(ctx) -> Envelope:
             else "every accepted release was read",
         ),
         *(_failure_check(one) for one in failures),
+        *(_held_check(one) for one in held.values()),
     ]
     summary = _summary(
         written,
@@ -573,6 +750,8 @@ def label_approved(ctx) -> Envelope:
         duplicate=counts["duplicate"],
         unreadable=len(unreadable),
         undated=[release.release_id for release in undated],
+        held=[one.to_json() for one in held.values()],
+        ungated=[release.release_id for release, _why in ungated],
         failed=failed_detail,
     )
     return ctx.envelope(
