@@ -57,7 +57,8 @@ in place. R-455 to R-459 are filed and none is on the board: none loses data,
 says something false, blocks a workflow or guards nothing. **Owed to an
 attended sitting:** import one labelled intake file into rekordbox and read the
 tree it makes. Battery on the recorded tree: ruff clean, `scan_repo.py` exit 0,
-pytest numbers in the line below. **Main's highest residual number is R-459.**
+pytest 8182 passed and 1 skipped in 66 seconds, and no test of this unit's among
+the ten slowest. **Main's highest residual number is R-459.**
 
 **The session before: U76, issue #121, `relay/121`, 2026-09-19.**
 The catalog writer merges into a folder the document already holds, and refuses
