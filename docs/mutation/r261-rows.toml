@@ -1,0 +1,141 @@
+name = "r261"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_skip_record"
+description = "listing.artist_releases stops appending a skipped method to the caller's collector"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''                skipped.append(method)'''
+new = '''                pass'''
+
+[[rows]]
+id = "R1_roster_missing"
+description = "LabelRoster._list drops the record of a member missing one listing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''            missing.extend(missing_listing(artist, name) for name in skipped)'''
+new = '''            pass'''
+
+[[rows]]
+id = "R2_roster_keeps_discovery"
+description = "LabelRoster.unread keeps only its own missing listings and loses what discovery handed in"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''        self.unread = (*unread, *missing)'''
+new = '''        self.unread = (*missing,)'''
+
+[[rows]]
+id = "D1_discovery_record"
+description = "_discover skips a failed listing without recording it, which is R-393 as it was"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''                unread.append(
+                    Unread(
+                        artist=str(getattr(artist, "name", "") or artist_id),'''
+new = '''                (
+                    Unread(
+                        artist=str(getattr(artist, "name", "") or artist_id),'''
+
+[[rows]]
+id = "D2_transient_class"
+description = "_discover marks every listing failure transient, a listing that cannot page included"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''                        transient=not isinstance('''
+new = '''                        transient=True or not isinstance('''
+
+[[rows]]
+id = "D3_held_guard"
+description = "_discover records a held artist the roster reads again (the review finding)"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''                if str(getattr(artist, "id", "") or artist_id) in held_ids:
+                    continue'''
+new = '''                if str(getattr(artist, "id", "") or artist_id) in ():
+                    continue'''
+
+[[rows]]
+id = "D4_pause"
+description = "_discover's listing waits with the ladder's bound default rather than _pause"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''                releases = listing.artist_releases(artist, sleep=_pause)'''
+new = '''                releases = listing.artist_releases(artist)'''
+
+[[rows]]
+id = "S1_roster_unread_read"
+description = "_crawl_or_refuse ignores the unread a roster carries"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''        built = tuple(getattr(artist, "unread", None) or ())'''
+new = '''        built = ()'''
+
+[[rows]]
+id = "S2_own_missing"
+description = "_crawl_or_refuse drops the methods a plain artist object lacks"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''    return releases, (*built, *(missing_listing(artist, method) for method in skipped))'''
+new = '''    return releases, built'''
+
+[[rows]]
+id = "S3_source_collects"
+description = "LabelSource.list_recent does not carry a label's unread onto the source"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''            unread.extend(listing.unread)'''
+new = '''            pass'''
+
+[[rows]]
+id = "S4_existing_can_list"
+description = "Sample of an existing guard: _crawl_or_refuse accepts an object exposing no listing at all"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''    if not listable:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W1_worker_refuses"
+description = "The worker returns success over a sweep that left something unread"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''    if source.unread:
+        _refuse_unread('''
+new = '''    if False:
+        _refuse_unread('''
+
+[[rows]]
+id = "W2_remedy"
+description = "The refusal tells the person to resume even when only a missing method is unread"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''        remedy=Remedy.RESUME_JOB if transient else Remedy.REPORT_DEFECT,'''
+new = '''        remedy=Remedy.RESUME_JOB,'''
+
+[[rows]]
+id = "W3_retryable"
+description = "The refusal is retryable whatever was unread"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''        retryable=transient,'''
+new = '''        retryable=True,'''
+
+[[dropped]]
+id = "W4_any_to_all"
+description = "transient = all(...) instead of any(...) in _refuse_unread"
+reason = "no test drives a mixed unread set, so this is a known zero; which answer is right for a mix is a judgement recorded as a residual rather than measured here"
