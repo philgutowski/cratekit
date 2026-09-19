@@ -14505,6 +14505,33 @@ the sweep the declaration describes. The name argues for the second: the source
 system's `dj-sort-unplaced` MOVED tracks, and this build's `route.inbox` is
 where that act now lives.
 
+**Closed 2026-09-19 on `relay/106`, issue 106.** The entry declares no write
+surface, is not destructive, names no gate, and asks doctor for
+`library.mounted` and `rekordbox.pins`. `rekordbox.closed` is gone. The sweep
+was not added. Driven with rekordbox and its agent reported running and no
+acknowledgment recorded, `crate route unplaced` reports both unplaced rows,
+leaves the database file byte identical and takes no session lock.
+
+One departure from the brief, taken on the review's finding and driven. The
+brief said drop `rekordbox.pins` too. The writer checks the binding pin on
+every open, a read included, so with the binding version patched the report
+refuses `pyrekordbox-pin-drift`, exit 23. Dropping the check would have had
+doctor call the verb ready and the verb then refuse, so it stays.
+`test_unplaced_still_refuses_on_a_drifted_binding_so_doctor_keeps_the_pins`
+pins the reason. The cloud-sync gate was dropped as the brief said: the
+unreadable refusal fires only on write intent, so this verb could never raise
+it.
+
+What did not change, measured. Doctor's report is profile wide, and
+`doctor.requires_check("rekordbox.closed", ...)` is still True in `slim`,
+`full` and `custom`, because the core write verbs `route.inbox`,
+`route.resort` and `route.pending` declare it. So the report a person reads
+from `crate doctor` is unchanged today. What changed is the declaration it is
+derived from, conformance 6's population (24 destructive cases, none of them
+this verb), the cloud-sync pairing, and the route skill, which said all four
+routing verbs want rekordbox closed. Mutation table `docs/mutation/r313.md`,
+7 of 7 killing, author run. R-444 records the neighbouring shape.
+
 ---
 
 ## R-314. Nothing in the suite reaches the addressability refusal, composite included
@@ -18700,5 +18727,33 @@ both out of the brief's scope.
 
 **Closes when:** the vocal gap on a resume comes from the derivation that ran,
 or the decision is confirmed at an attended sitting.
+
+---
+
+## R-444. A read that opens the database is not told it needs the binding pin, and the pins check cannot say only that
+
+**Found:** 2026-09-19, R-313 on `relay/106`, by the review and then driven.
+
+The writer checks the binding pin on every open, read or write, and the
+application pin only on a write. `route.unplaced` now declares
+`rekordbox.pins` for that reason. `converge` does the same kind of read,
+`rb_writer.open_db(cfg=cfg)` in `src/cratekit/cli/converge.py`, and declares
+only `library.mounted`, so its declaration under-claims the pin its open
+enforces.
+
+The fix is not simply to add the key, because `rekordbox.pins` is one check
+over two pins. It FAILs on an unset application pin, "so every database write
+refuses", and a verb that only reads is not refused by that. A read verb that
+declares it is told about a pin it does not need, and one that does not is
+not told about a pin it does.
+
+**Measured cost:** none a person can see today. Doctor's requirement is taken
+over every verb a profile switches on, and `requires_check("rekordbox.pins",
+...)` is True in `slim`, `full` and `custom` because the core write verbs
+declare it. It becomes a cost if doctor ever reports per verb.
+
+**Closes when:** the pins check is split into a binding pin every database
+open needs and an application pin only a write needs, and each verb that
+opens the database declares the one it reaches.
 
 ---

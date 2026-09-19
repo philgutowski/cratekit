@@ -189,7 +189,7 @@ session, and the lock around it are all real and driven.
 
 Ask the library rather than trusting the report. Convergence compares declared
 membership against the database per governed tree, coverage names tracks the
-governed trees do not cover, and the unplaced sweep finds rows nothing places.
+governed trees do not cover, and the unplaced report finds rows nothing places.
 
 ```bash
 crate converge

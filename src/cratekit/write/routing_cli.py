@@ -896,7 +896,11 @@ def unplaced_items(cfg: config.Config) -> tuple[list[dict[str, str]], dict[str, 
 
 
 def route_unplaced(ctx) -> Envelope:
-    """Report tracks no governed tree places, read off the library."""
+    """Report tracks no governed tree places, read off the library.
+
+    READ ONLY, and the registry entry says so (R-313). The open carries no write
+    intent and no session is entered, so the report is safe with rekordbox open.
+    """
     cfg = _load()
     items, totals = unplaced_items(cfg)
     return ctx.envelope(

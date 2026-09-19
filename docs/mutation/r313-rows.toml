@@ -1,0 +1,105 @@
+name = "r313"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_writes_and_destructive_restored"
+description = "the route.unplaced entry declares writes db_tree and destructive again, the pre R-313 over-claim"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''        # included, so a drifted binding refuses this report as well.
+        taxonomy_terms=("genre_energy",),
+'''
+new = '''        # included, so a drifted binding refuses this report as well.
+        writes=frozenset({"db_tree"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy",),
+'''
+
+[[rows]]
+id = "G2_destructive_alone_restored"
+description = "the entry declares destructive with no write surface, so conformance 6 counts it again"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''        # included, so a drifted binding refuses this report as well.
+        taxonomy_terms=("genre_energy",),
+'''
+new = '''        # included, so a drifted binding refuses this report as well.
+        destructive=True,
+        taxonomy_terms=("genre_energy",),
+'''
+
+[[rows]]
+id = "G3_rekordbox_closed_restored"
+description = "the entry asks doctor for rekordbox closed again, the precondition a report does not need"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''        doctor_checks=("library.mounted", "rekordbox.pins"),
+    ),
+    Entry(
+        name="route.resort",'''
+new = '''        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+    ),
+    Entry(
+        name="route.resort",'''
+
+[[rows]]
+id = "G4_cloud_sync_gate_restored"
+description = "the entry declares the cloud-sync write decision again with no write surface to raise it"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''        doctor_checks=("library.mounted", "rekordbox.pins"),
+    ),
+    Entry(
+        name="route.resort",'''
+new = '''        doctor_checks=("library.mounted", "rekordbox.pins"),
+        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
+    ),
+    Entry(
+        name="route.resort",'''
+
+[[rows]]
+id = "G5_pins_dropped"
+description = "the entry drops rekordbox.pins as the brief first said, though a read still checks the binding pin"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''        doctor_checks=("library.mounted", "rekordbox.pins"),
+    ),
+    Entry(
+        name="route.resort",'''
+new = '''        doctor_checks=("library.mounted",),
+    ),
+    Entry(
+        name="route.resort",'''
+
+[[rows]]
+id = "G6_volume_dropped"
+description = "the entry drops library.mounted though the tree registry it walks lives on the library root"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''        doctor_checks=("library.mounted", "rekordbox.pins"),
+    ),
+    Entry(
+        name="route.resort",'''
+new = '''        doctor_checks=("rekordbox.pins",),
+    ),
+    Entry(
+        name="route.resort",'''
+
+[[rows]]
+id = "G7_handler_opens_with_write_intent"
+description = "the unplaced report opens the database with require_closed, so it refuses with rekordbox open"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''        return [], {"compared": False, "reason": "no-native-tree", "collection": 0}
+    handle = rb_writer.open_db(cfg=cfg)
+'''
+new = '''        return [], {"compared": False, "reason": "no-native-tree", "collection": 0}
+    handle = rb_writer.open_db(cfg=cfg, require_closed=True)
+'''

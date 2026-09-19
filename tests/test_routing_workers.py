@@ -29,6 +29,12 @@ THE FOUR CLAIMS, and where each is proved:
    -> ``test_unplaced_reports_the_rows_no_governed_tree_holds``,
       ``test_unplaced_over_a_fully_placed_library_reports_none`` and
       ``test_unplaced_says_when_it_could_not_compare``
+5. unplaced is a report and declares itself one, so nothing asks a person to
+   close rekordbox before reading it (R-313)
+   -> ``test_unplaced_declares_no_write_and_needs_only_what_a_read_needs``,
+      ``test_doctor_does_not_ask_for_rekordbox_closed_for_the_unplaced_report``,
+      ``test_unplaced_reports_with_rekordbox_open_and_writes_nothing`` and
+      ``test_unplaced_still_refuses_on_a_drifted_binding_so_doctor_keeps_the_pins``
 
 WHAT IS SUPPLEMENTED. Binding the first caller in ``src`` to an engine makes
 this unit the owner of that engine's unreviewed failure paths, which is the
@@ -53,8 +59,17 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.cli import output
-from cratekit.core import config, jobs, preflight, rb_writer, session, taxonomy, tree_registry
+from cratekit.cli import doctor, output, registry
+from cratekit.core import (
+    config,
+    jobs,
+    preflight,
+    profiles,
+    rb_writer,
+    session,
+    taxonomy,
+    tree_registry,
+)
 from cratekit.core.cause import Outcome
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild
@@ -553,6 +568,87 @@ def test_unplaced_does_not_report_a_row_rekordbox_removed(acknowledged, native):
     assert code == int(ExitCode.OK), envelope
     assert {item["content_id"] for item in envelope["data"]["items"]} == {"1"}
     assert envelope["data"]["totals"]["collection"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Claim 5: unplaced is a report and says so (R-313)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_unplaced_declares_no_write_and_needs_only_what_a_read_needs():
+    """The declaration is what doctor and conformance read, so it is the surface.
+
+    Until R-313 closed, the entry said ``writes={"db_tree"}`` and
+    ``destructive=True`` and asked for rekordbox closed, for a verb that opens
+    the database without write intent and takes no session. The volume stays,
+    because the tree registry the report walks from is a state file on the
+    library root. The pins stay, because the binding pin is checked on a read as
+    well, which the drifted binding drive below proves.
+    """
+    entry = registry.entry("route.unplaced")
+    assert entry.writes == frozenset(), entry.writes
+    assert entry.destructive is False
+    assert entry.doctor_checks == ("library.mounted", "rekordbox.pins"), entry.doctor_checks
+    assert entry.gates == (), [spec.name for spec in entry.gates]
+
+
+def test_doctor_does_not_ask_for_rekordbox_closed_for_the_unplaced_report(monkeypatch):
+    """Doctor's per verb requirement, derived from this entry and nothing else.
+
+    ``requires_check`` is taken over every entry a profile switches on, so over
+    the real registry ``route.inbox`` would still require rekordbox closed and
+    the assertion would say nothing about this verb. Narrowing the walk to the
+    one entry is what makes the drive about ``route.unplaced``.
+    """
+    monkeypatch.setattr(registry, "entries", lambda: (registry.entry("route.unplaced"),))
+    membership = profiles.resolve("full")
+    assert doctor.requires_check("library.mounted", membership)
+    assert doctor.requires_check("rekordbox.pins", membership)
+    assert not doctor.requires_check("rekordbox.closed", membership)
+
+
+def test_unplaced_reports_with_rekordbox_open_and_writes_nothing(
+    configured, native, monkeypatch
+):
+    """The cost R-313 named, driven: a report that is safe with rekordbox open.
+
+    No acknowledgment is recorded, so a destructive session could not open, and
+    both rekordbox and its agent are reported running, which is the state a
+    person is in when they want to look before they file. The report still has
+    to name both rows, and the database file has to come back byte for byte.
+    """
+    del native
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
+    database = Path(configured.library.db_path)
+    before = database.read_bytes()
+
+    code, envelope = _drive(["route", "unplaced"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["compared"] is True
+    assert {item["content_id"] for item in envelope["data"]["items"]} == {"1", "2"}
+    assert database.read_bytes() == before, "a report changed the database it read"
+    assert not session.lock_path(configured).exists(), "a report took the session lock"
+
+
+def test_unplaced_still_refuses_on_a_drifted_binding_so_doctor_keeps_the_pins(
+    configured, native, monkeypatch
+):
+    """Why ``rekordbox.pins`` stays declared when ``rekordbox.closed`` goes.
+
+    The binding pin is checked on EVERY open, read or write, so a read only
+    report still refuses when the binding drifts. Dropping the check from the
+    declaration would have doctor call the verb ready and the verb then refuse,
+    which is the precondition the declaration exists to name in advance.
+    """
+    del native
+    import pyrekordbox
+
+    monkeypatch.setattr(pyrekordbox, "__version__", "0.0.0-drifted")
+    code, envelope = _drive(["route", "unplaced"])
+    assert code == int(ExitCode.VERSION_PIN), envelope
+    assert envelope["cause"]["reason"] == "pyrekordbox-pin-drift", envelope
+    assert "rekordbox.pins" in registry.entry("route.unplaced").doctor_checks
 
 
 # ═══════════════════════════════════════════════════════════════════════════
