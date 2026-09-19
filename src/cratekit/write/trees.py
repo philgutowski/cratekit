@@ -745,13 +745,18 @@ def insert_record_labels_tree(
 # ---------------------------------------------------------------------------
 
 
-def _comparable(recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]):
+def comparable(recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]):
     """One recorded path, decoded and resolved into the form both sides compare in.
 
     BOTH sides of every comparison go through this, which is the whole rule the
     identity primitives exist to enforce: one side normalized and the other not
     is how 144 files with accented names went missing, and the two sides here are
     a path this machine can see and a path rekordbox wrote down years ago.
+
+    PUBLIC SINCE R-500, because ``write/naming_cli`` had grown its own copy of
+    these two calls and a fix to one copy would not have reached the other. What
+    a caller does with the answer is its own: the index below drops a row that
+    did not resolve, and ``name apply`` refuses on one.
     """
     return locations.resolve_recorded_path(
         locations.location_to_path(str(recorded)), root=root, prefix_map=prefix_map
@@ -782,7 +787,7 @@ def index_active_rows(
     for row in rows:
         if row.deleted:
             continue
-        resolved = _comparable(row.recorded, root=root, prefix_map=prefix_map)
+        resolved = comparable(row.recorded, root=root, prefix_map=prefix_map)
         if resolved.path is None:
             continue
         by_location.setdefault(resolved.path, []).append(row.content_id)
@@ -829,7 +834,7 @@ def match_indexed_rows(
     out: list[RowMatch] = []
     for entry in requested:
         text = str(entry)
-        resolved = _comparable(text, root=root, prefix_map=prefix_map)
+        resolved = comparable(text, root=root, prefix_map=prefix_map)
         if resolved.path is None:
             out.append(
                 RowMatch(text, MatchOutcome.UNRESOLVED, resolution=resolved.resolution)

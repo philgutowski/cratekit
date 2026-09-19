@@ -9,6 +9,12 @@ A file the rekordbox collection references is never renamed or retagged here
 (U67). rekordbox records a path once, at import, so a rename leaves the row
 pointing at nothing. The verb reads the collection, holds those files back and
 lists them in the plan, and refuses outright when the collection cannot be read.
+
+A row recorded under a volume no prefix rule names refuses the whole verb too
+(R-500). No file on this machine carries that spelling, so the row matches no
+candidate and the file it names would be planned as an ordinary rename. That is
+the same condition the deletion pass refuses on, for the same reason: a row that
+did not answer is a hole in the proof, not a row that references nothing.
 """
 
 from __future__ import annotations
@@ -17,9 +23,10 @@ from pathlib import Path
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, locations, naming, rb_writer, tags
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import AUDIO_EXTS, MarkerRule, NameBudget, NameSpec, NameTemplate
+from cratekit.write import trees
 
 RENAME = "rename"
 REFERENCED = "referenced"
@@ -171,30 +178,90 @@ def _key(path: str) -> str:
 
 
 def _referenced(recorded: tuple[str, ...], *, cfg: config.Config) -> frozenset[str]:
-    """The keys of every file the collection references.
+    """The keys of every file the collection references, or a refusal.
 
     Each row contributes its path as recorded AND its path after the configured
     volume rewrites, because most rows in a real library still carry a volume
     name the drive stopped using long ago, and either spelling can be the one
     that is on disk today. A row naming another host has no local path and
-    contributes nothing, since no local file can be the one it names.
+    contributes nothing, since no local file can be the one it names, and a
+    streaming pseudo-location references no file at all.
+
+    THE DECODE AND THE RESOLVE ARE ``trees.comparable``, the one locate the
+    membership and routing writers use, so a row is unmapped here exactly when
+    it is unmapped there. The KEYING stays this verb's own, because the two ask
+    different questions: a writer needs the one row that IS a file and compares
+    exactly, and this guard needs every row that COULD name a file and errs
+    toward holding it back, which is what the casefold and the second spelling
+    are for. Casefolding the writers' index would manufacture ambiguous rows.
+
+    A ROW UNDER NO RULE REFUSES THE WHOLE VERB (R-500). Its only key is a
+    spelling nothing on this machine carries, so it would match no candidate and
+    the file it names would be renamed out from under it. Holding nothing back
+    for that row is absence read as evidence, and the deletion pass refuses on
+    the same condition. A rule that differs from the recorded volume only in
+    case is no rule, here as in every other consumer of the shared resolver, and
+    the message names the recorded spelling so the difference can be seen.
     """
     rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
     keys: set[str] = set()
+    unmapped: list[str] = []
     for value in recorded:
         if not value:
             continue
         try:
-            decoded = locations.location_to_path(value)
+            resolved = trees.comparable(value, root=cfg.library.root, prefix_map=rules)
         except locations.LocationDecodeError:
             continue
-        keys.add(_key(decoded))
-        resolved = locations.resolve_recorded_path(
-            decoded, root=cfg.library.root, prefix_map=rules
-        )
+        keys.add(_key(locations.location_to_path(value)))
         if resolved.path is not None:
             keys.add(_key(resolved.path))
+        elif resolved.resolution is locations.Resolution.UNMAPPED:
+            unmapped.append(value)
+    if unmapped:
+        raise _unmapped_refusal(unmapped)
     return frozenset(keys)
+
+
+def _unmapped_refusal(unmapped: list[str]) -> CratekitError:
+    """The refusal over rows no prefix rule resolves, shaped as deletion's is.
+
+    The count leads and the first recorded spelling follows, because the count
+    says how much of the collection is dark and the spelling is what a person
+    compares against their rules. The prefixes are grouped in the detail so
+    ten thousand rows under one old volume name read as one correction.
+    """
+    count = len(unmapped)
+    rows = "collection row records" if count == 1 else "collection rows record"
+    prefixes = sorted(
+        {
+            prefix
+            for prefix in (
+                locations.leading_prefix(locations.location_to_path(value)) for value in unmapped
+            )
+            if prefix
+        }
+    )
+    return refuse(
+        "collection-row-unmapped",
+        f"{count} {rows} a location this machine cannot resolve, the first of "
+        f"them {unmapped[0]}, so which file each of them names is not known and "
+        f"a rename could strand any of them; nothing is renamed",
+        steps=(
+            "add a volume prefix rule to library.location_prefix_map that maps "
+            "the recorded volume onto where it is mounted now, spelled exactly "
+            "as recorded, or onto itself for a folder outside the library, then "
+            "run this again",
+        ),
+        remedy=Remedy.RUN_DOCTOR,
+        scope=Scope.RUN,
+        origin=("write.naming_cli",),
+        detail={
+            "unmapped": count,
+            "unmapped_rows": unmapped[:20],
+            "unmapped_prefixes": prefixes[:20],
+        },
+    )
 
 
 def _is_referenced(path: Path, referenced: frozenset[str]) -> bool:

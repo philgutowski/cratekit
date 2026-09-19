@@ -473,7 +473,13 @@ def collected(library, monkeypatch, prefix_map):
         rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
     )
     if prefix_map:
-        data["library"]["location_prefix_map"] = prefix_map
+        # ``{tmp}`` is this test's own temporary directory, for a rule over a
+        # folder outside the library, whose path no parameter can spell ahead
+        # of the run.
+        data["library"]["location_prefix_map"] = [
+            {side: text.replace("{tmp}", str(library.parent)) for side, text in rule.items()}
+            for rule in prefix_map
+        ]
     resolved = config.from_dict(data)
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
@@ -562,6 +568,118 @@ def test_a_row_under_a_remapped_volume_still_protects_its_file(collected):
     assert held.is_file()
 
 
+# ---------------------------------------------------------------------------
+# R-500: a row whose recorded prefix matches no rule refuses the whole verb.
+#
+# Such a row is keyed only by a spelling no file on this machine carries, so it
+# matches no candidate and the file it names is planned as an ordinary rename.
+# The deletion pass refuses on the same condition, and the two writers now agree
+# about what an unmapped row means.
+# ---------------------------------------------------------------------------
+
+
+def test_a_row_under_an_unmapped_volume_refuses_and_renames_nothing(collected):
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    relative = held.relative_to(collected.library.root)
+    _record(collected, f"/mnt/volume/{relative}", identifier="10")
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    cause = envelope["cause"]
+    assert cause["reason"] == "collection-row-unmapped"
+    assert cause["remediation"]["remedy"] == "run-doctor"
+    assert cause["message"].startswith("1 collection row records")
+    assert f"/mnt/volume/{relative}" in cause["message"]
+    assert cause["detail"]["unmapped"] == 1
+    assert cause["detail"]["unmapped_rows"] == [f"/mnt/volume/{relative}"]
+    assert cause["detail"]["unmapped_prefixes"] == ["/mnt/volume"]
+    assert held.is_file() and free.is_file()
+
+
+def test_an_unmapped_row_refuses_the_plan_too(collected):
+    """The abort option reads the plan, and a plan over a collection with a hole
+    in it would show a rename the apply was never going to be allowed."""
+    folder = _folder(collected)
+    _pair(folder)
+    _record(collected, "/mnt/volume/Music/elsewhere.flac", identifier="10")
+    code, out, _ = drive([
+        "--output", "json", "-d", "name.apply.confirm=abort",
+        "name", "apply", "--root", str(folder),
+    ])
+    assert code == int(ExitCode.PRECONDITION), out
+    assert json.loads(out)["cause"]["reason"] == "collection-row-unmapped"
+
+
+def test_every_unmapped_row_is_counted_and_the_first_is_named(collected):
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, "/mnt/volume/Music/b.flac", identifier="10")
+    _record(collected, "/mnt/library/Music/a.flac", identifier="11", deleted=1)
+    _record(collected, str(held), identifier="12")
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    cause = envelope["cause"]
+    assert cause["message"].startswith("2 collection rows record")
+    assert "/mnt/volume/Music/b.flac" in cause["message"]
+    assert "/mnt/library/Music/a.flac" not in cause["message"]
+    assert cause["detail"]["unmapped"] == 2
+    assert cause["detail"]["unmapped_prefixes"] == ["/mnt/library", "/mnt/volume"]
+    assert held.is_file() and free.is_file()
+
+
+@pytest.mark.parametrize(
+    "prefix_map", [[{"from": "/mnt/VOLUME", "to": "{library.root}"}]]
+)
+def test_a_rule_differing_from_the_recorded_volume_only_in_case_refuses(collected):
+    """PINNED TO THE REFUSAL. The shared resolver compares a prefix exactly, so
+    this row is unmapped to every writer, and matching it here alone would make
+    this verb a second locate that disagrees with the first. The message names
+    the recorded spelling, which is what shows a person the difference."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    relative = held.relative_to(collected.library.root)
+    _record(collected, f"/mnt/volume/{relative}", identifier="10")
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "collection-row-unmapped"
+    assert "/mnt/volume/" in envelope["cause"]["message"]
+    assert held.is_file() and free.is_file()
+
+
+def test_a_row_that_goes_unmapped_after_the_gate_refuses_before_any_rename(
+    collected, monkeypatch
+):
+    """The re-read before the rename, on its own. The plan is built over a
+    collection every row of which resolves, and the apply pass reads one that
+    gained a row under a volume no rule names."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    reads = iter([(), ("/mnt/volume/Music/late.flac",)])
+    monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "collection-row-unmapped"
+    assert held.is_file() and free.is_file()
+
+
+def test_a_row_that_is_not_a_path_neither_blocks_nor_protects(collected):
+    """A streaming pseudo-location references no file, so it is not a hole in
+    the collection, and a library that ever streamed anything still renames."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, "tidal:tracks:12345", identifier="10")
+    _apply(folder)
+    assert not held.exists() and not free.exists()
+
+
+def test_an_unmapped_row_over_an_empty_folder_refuses_nothing(collected):
+    """With no rename candidate the collection is not read at all, so a hole in
+    it cannot change the outcome and the empty plan is still readable."""
+    folder = _folder(collected)
+    _record(collected, "/mnt/volume/Music/elsewhere.flac", identifier="10")
+    assert _plan(folder)["items"] == []
+
+
 @pytest.mark.parametrize("form", ["NFD", "NFC"])
 def test_a_composition_variant_of_the_name_still_protects_its_file(collected, form):
     folder = _folder(collected)
@@ -591,7 +709,12 @@ def test_a_tombstoned_row_still_protects_its_file(collected):
     assert held.is_file()
 
 
+@pytest.mark.parametrize(
+    "prefix_map", [[{"from": "{tmp}/laptop", "to": "{tmp}/laptop"}]]
+)
 def test_a_root_outside_the_library_is_still_checked(collected, tmp_path):
+    """The rule maps the folder onto itself, which is how a location outside
+    the library is declared since R-500: a row under no rule refuses."""
     folder = tmp_path / "laptop" / "Downloads"
     folder.mkdir(parents=True)
     held, free = _pair(folder)
@@ -697,11 +820,16 @@ def test_a_file_recorded_by_its_real_path_is_protected_through_a_linked_root(
     assert not free.exists()
 
 
+@pytest.mark.parametrize(
+    "prefix_map", [[{"from": "{tmp}/linked", "to": "{tmp}/linked"}]]
+)
 def test_a_file_recorded_through_a_link_is_protected_through_that_link(
     collected, tmp_path
 ):
     """The row records the path through a link and the root is given the same
-    way, so only the ABSOLUTE spelling of the candidate matches."""
+    way, so only the ABSOLUTE spelling of the candidate matches. The rule maps
+    the link onto ITSELF and not onto the folder behind it, so the resolved
+    spelling still cannot be the one that matches."""
     folder = _folder(collected)
     held, free = _pair(folder)
     link = tmp_path / "linked"

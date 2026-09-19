@@ -1512,6 +1512,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # default, since ``restore-from-snapshot`` is the wrong act for a
         # database that is merely on an unmounted volume.
         "collection-unreadable": ExitCode.LIBRARY_UNREADABLE,
+        # ── R-500's refusal, appended for the reason every block above gives ──
+        #
+        # ``name apply`` read the collection and met a row recorded under a
+        # volume no prefix rule names, so which file that row references is not
+        # known and a rename could strand it. PRECONDITION, the code the
+        # deletion pass answers the same condition with, because the library
+        # read cleanly and the thing to correct is configuration.
+        "collection-row-unmapped": ExitCode.PRECONDITION,
         # ── U75's refusal, appended for the reason every block above gives ────
         #
         # ``label approved`` could not turn the accepted label releases into a

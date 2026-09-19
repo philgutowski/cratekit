@@ -4933,7 +4933,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # rclone-missing and encoder-missing, and it is not in the reserved table.
     # Population 160 to 161, non-reserved 136 to 137, reserved half UNCHANGED
     # at 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (161, 137, 24)
+    #
+    # Re-pinned on the residual finding "`name apply` renames a file the library
+    # names when its row sits under an unmapped volume", 2026-09-19. ONE slug,
+    # named rather than counted: collection-row-unmapped, which name apply
+    # raises when a collection row is recorded under a volume no prefix rule
+    # names, so a row that did not answer is never read as a row that
+    # references nothing. It is the verb's own and not in the reserved table.
+    # Population 161 to 162, non-reserved 137 to 138, reserved half UNCHANGED
+    # at 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (162, 138, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5347,7 +5356,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # is not a cause: version-uncredited is the KIND the deletion pass records
     # the companion of a credited tombstone under, spelled once in
     # `core.tombstone` and once in `acquire.match`. Nothing refuses with it.
-    assert (len(literals), len(literals - set(causes))) == (451, 291), (
+    # Re-pinned on the residual finding "`name apply` renames a file the library
+    # names when its row sits under an unmapped volume", 2026-09-19: 451 to 452
+    # distinct, 291 non-keys UNCHANGED. ONE literal joined and NOTHING left,
+    # differenced over the branch's diff of `src` against `main`, which removes
+    # no kebab literal. It IS a cause, collection-row-unmapped, name apply's
+    # refusal over a row recorded under a volume no prefix rule names.
+    assert (len(literals), len(literals - set(causes))) == (452, 291), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5811,7 +5826,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # of the recording's digest a tracklist's file name carries. It is a
     # length and is never an exit status. Measured by walking that file's
     # integer constants on main and on the branch.
-    assert (len(literal_holders), len(literal_both)) == (99, 20), (
+    # Re-pinned on the residual finding "`name apply` renames a file the library
+    # names when its row sits under an unmapped volume", 2026-09-19: holders
+    # UNCHANGED at 99, and the also-holds-an-integer half moves 20 to 21. No
+    # module joined the holders, since write/naming_cli.py named
+    # collection-unreadable on main already. ONE holder gained an in-range
+    # integer: that file held 0 and 1 on main and holds 20 as well now, the cap
+    # on how many unmapped spellings and prefixes its refusal's detail carries,
+    # the same bound the deletion pass puts on the same list. It is kept rather
+    # than removed because a fresh setup was measured at 9937 unmapped rows,
+    # which uncapped is 9937 strings in one envelope. It is a length and is
+    # never an exit status. Measured by walking that file's integer constants
+    # on main and on the branch.
+    assert (len(literal_holders), len(literal_both)) == (99, 21), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

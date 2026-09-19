@@ -352,7 +352,7 @@ def _resolved_path(
     see the difference.
 
     So both consumers of a recorded location decode before they resolve. The
-    sibling is :func:`cratekit.write.trees._comparable`, whose docstring already
+    sibling is :func:`cratekit.write.trees.comparable`, whose docstring already
     said both sides must; this is the side that was not.
 
     The unresolved answers are kept apart because their remedies are, which is

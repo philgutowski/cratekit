@@ -1030,7 +1030,10 @@ ENTRIES: tuple[Entry, ...] = (
         #: cannot reach, in both directions. The read open DOES still refuse a
         #: library whose cloud sync is ON, and that refusal, like every other
         #: failed read, reaches a person as ``collection-unreadable`` carrying
-        #: the inner cause's message and its ``disable-cloud-sync`` remedy. The
+        #: the inner cause's message and its ``disable-cloud-sync`` remedy. A
+        #: collection that READ but holds a row under a volume no prefix rule
+        #: names refuses as ``collection-row-unmapped`` (R-500), the condition
+        #: the deletion pass refuses on, since that row could name any file. The
         #: rekordbox Name half of the padding convention is
         #: ``write/metadata.plan_title_padding``, which no verb calls (R-165).
         writes=frozenset({"files"}),
