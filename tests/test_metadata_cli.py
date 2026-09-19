@@ -99,6 +99,105 @@ def test_vocal_tag_values_are_empty_below_the_cut():
     assert metadata_cli.vocal_tag_values(90, "U", 12.0) == ["vox"]
 
 
+def _vocal_calibration(cfg, text: str) -> Path:
+    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_an_absent_vocal_calibration_is_the_default_cut(tmp_path):
+    cfg = config.from_dict(valid_data(tmp_path / "library"))
+    assert not config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg).exists()
+    assert metadata_cli.vocal_cut(cfg) == 12.0
+
+
+def test_a_present_vocal_calibration_is_its_own_threshold(tmp_path):
+    cfg = config.from_dict(valid_data(tmp_path / "library"))
+    _vocal_calibration(cfg, '{"threshold": 37.5, "method": "otsu"}')
+    assert metadata_cli.vocal_cut(cfg) == 37.5
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"threshold": 37.',
+        "",
+        '["threshold", 37.5]',
+        '{"method": "otsu"}',
+        '{"threshold": "high"}',
+        '{"threshold": null}',
+        '{"threshold": NaN}',
+        '{"threshold": Infinity}',
+        '{"threshold": 1' + "0" * 400 + "}",
+        '{"threshold": true}',
+    ],
+    ids=[
+        "truncated",
+        "empty",
+        "list",
+        "no-key",
+        "text",
+        "null",
+        "nan",
+        "infinity",
+        "overflow",
+        "boolean",
+    ],
+)
+def test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting(tmp_path, text):
+    """R-342: a corrupt calibration is not an absent one, so it is never the default cut."""
+    from cratekit.core.cause import CratekitError
+
+    cfg = config.from_dict(valid_data(tmp_path / "library"))
+    path = _vocal_calibration(cfg, text)
+    with pytest.raises(CratekitError) as caught:
+        metadata_cli.vocal_cut(cfg)
+    assert caught.value.cause.reason == "vocal-calibration-unreadable"
+    assert caught.value.cause.detail["calibration"] == str(path)
+
+
+def test_a_vocal_calibration_this_account_cannot_read_refuses(tmp_path, monkeypatch):
+    from cratekit.core.cause import CratekitError
+
+    cfg = config.from_dict(valid_data(tmp_path / "library"))
+    path = _vocal_calibration(cfg, '{"threshold": 37.5}')
+    # Raised rather than produced with chmod, because an account that bypasses
+    # file permissions would read the file and the row would measure nothing.
+    real_read_text = Path.read_text
+
+    def denied(self, *args, **kwargs):
+        if self == path:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", denied)
+    with pytest.raises(CratekitError) as caught:
+        metadata_cli.vocal_cut(cfg)
+    # The site declares its own slug, and cause.classified corrects a refusal
+    # the operating system made to the access slug whose remedy is granting
+    # access, as it does for every ``raise refuse(...) from exc``. Either way it
+    # is a refusal and never the default cut.
+    assert caught.value.declared_cause.reason == "vocal-calibration-unreadable"
+    assert caught.value.declared_cause.detail["kind"] == "PermissionError"
+    assert caught.value.cause.reason == "path-permission-denied"
+
+
+def test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing(ready):
+    cfg, audio, db_path = ready
+    del audio
+    _vocal_calibration(cfg, '{"threshold": 37.')
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "vocal-calibration-unreadable"
+
+    db = rb_writer.open_db(db_path, unlock=False, cfg=cfg)
+    try:
+        assert metadata_cli.VALUE_VOX not in [tag.Name for tag in db.get_my_tag()]
+    finally:
+        rb_writer.close_db(db)
+
+
 def test_the_plan_names_existing_rows_and_writes_nothing(ready):
     cfg, audio, db_path = ready
     del audio

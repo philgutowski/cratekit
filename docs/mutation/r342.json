@@ -1,0 +1,489 @@
+{
+  "name": "r342",
+  "pass_kind": "light",
+  "branch": "relay/108",
+  "head": "4d3e65a",
+  "when": "2026-09-19 02:51 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7928,
+  "baseline_exit": 0,
+  "pytest_runs": 17,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/metadata_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/metadata_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "495273adaaced595",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7928,
+    "baseline_collected": 7928,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "V1_default_on_corrupt",
+      "description": "Restore the defect: an unreadable calibration returns the default cut instead of refusing",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7fe1503f7f4e2606",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing",
+        "tests/test_metadata_cli.py::test_a_vocal_calibration_this_account_cannot_read_refuses",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[boolean]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[empty]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[infinity]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[list]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[nan]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[no-key]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[null]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[overflow]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[text]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[truncated]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:\n        raise refuse(\n",
+      "new": "    except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:\n        return DEFAULT_VOCAL_THRESHOLD\n        raise refuse(\n"
+    },
+    {
+      "id": "V2_no_finite_check",
+      "description": "Drop the finiteness check, so NaN and Infinity read as a cut",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ec94a56fa0bf9399",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[infinity]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[nan]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not math.isfinite(threshold):\n            raise ValueError(f\"threshold {threshold} is not a finite number\")\n",
+      "new": ""
+    },
+    {
+      "id": "V3_isnan_for_isfinite",
+      "description": "Nearby value: check only for NaN, so Infinity reads as a cut",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4042bbc248e5d4fe",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[infinity]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "if not math.isfinite(threshold):",
+      "new": "if math.isnan(threshold):"
+    },
+    {
+      "id": "V4_no_bool_check",
+      "description": "Drop the boolean check, so true reads as a cut of 1.0",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c5815c891d2f0dc6",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[boolean]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(raw, bool):\n            raise TypeError(f\"threshold {raw} is a boolean, not a number\")\n",
+      "new": ""
+    },
+    {
+      "id": "V5_tuple_drops_overflow",
+      "description": "Drop OverflowError from the except tuple, the review's finding",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "13ac934381b15f8e",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[overflow]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:",
+      "new": "except (OSError, ValueError, KeyError, TypeError) as exc:"
+    },
+    {
+      "id": "V6_tuple_drops_keyerror",
+      "description": "Drop KeyError from the except tuple, so a file with no threshold key crashes",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e8c4400bb2e898d4",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[no-key]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:",
+      "new": "except (OSError, ValueError, TypeError, OverflowError) as exc:"
+    },
+    {
+      "id": "V7_tuple_drops_typeerror",
+      "description": "Drop TypeError from the except tuple, so a list, null or boolean payload crashes",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e973b8180996e9a6",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[boolean]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[list]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[null]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:",
+      "new": "except (OSError, ValueError, KeyError, OverflowError) as exc:"
+    },
+    {
+      "id": "V8_tuple_drops_valueerror",
+      "description": "Drop ValueError from the except tuple, so truncated JSON crashes",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "afe14482ddeabbd1",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[empty]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[infinity]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[nan]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[text]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[truncated]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:",
+      "new": "except (OSError, KeyError, TypeError, OverflowError) as exc:"
+    },
+    {
+      "id": "V9_tuple_drops_oserror",
+      "description": "Drop OSError from the except tuple, so an unreadable file escapes unnamed",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b9a5f0623d54abf1",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_a_vocal_calibration_this_account_cannot_read_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:",
+      "new": "except (ValueError, KeyError, TypeError, OverflowError) as exc:"
+    },
+    {
+      "id": "V10_missing_raises",
+      "description": "A missing file raises instead of returning the default cut",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "624f1d23d64d5f55",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_a_library_with_no_tag_category_refuses_through_the_verb",
+        "tests/test_metadata_cli.py::test_a_second_apply_is_idempotent",
+        "tests/test_metadata_cli.py::test_an_absent_vocal_calibration_is_the_default_cut",
+        "tests/test_metadata_cli.py::test_apply_writes_my_tags_and_does_not_write_a_content_column",
+        "tests/test_metadata_cli.py::test_the_plan_names_existing_rows_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not path.is_file():\n        return DEFAULT_VOCAL_THRESHOLD\n",
+      "new": "    if not path.is_file():\n        raise FileNotFoundError(path)\n"
+    },
+    {
+      "id": "V11_present_ignored",
+      "description": "A readable threshold is ignored and the default returned",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4ed554d403a25165",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_a_present_vocal_calibration_is_its_own_threshold"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return threshold\n",
+      "new": "    return DEFAULT_VOCAL_THRESHOLD\n"
+    },
+    {
+      "id": "V12_exit_code",
+      "description": "Declare the slug under REFUSED_BY_POLICY rather than PRECONDITION",
+      "file": "src/cratekit/core/cause.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0b0effc613fb2a00",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "\"vocal-calibration-unreadable\": ExitCode.PRECONDITION,",
+      "new": "\"vocal-calibration-unreadable\": ExitCode.REFUSED_BY_POLICY,"
+    },
+    {
+      "id": "V13_detail_key",
+      "description": "Rename the calibration detail key the refusal carries",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "facf36204cb9d45b",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[boolean]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[empty]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[infinity]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[list]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[nan]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[no-key]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[null]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[overflow]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[text]",
+        "tests/test_metadata_cli.py::test_an_unreadable_vocal_calibration_refuses_rather_than_defaulting[truncated]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "detail={\"calibration\": str(path), \"kind\": type(exc).__name__},",
+      "new": "detail={\"path\": str(path), \"kind\": type(exc).__name__},"
+    },
+    {
+      "id": "E1_cut_inclusive",
+      "description": "Existing guard sample: the with-vox cut becomes exclusive",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1177c4822915369b",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.metadata_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_vocal_tag_values_are_empty_below_the_cut"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "if voxlevel is None or voxlevel < cut:",
+      "new": "if voxlevel is None or voxlevel <= cut:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "E2_exists_for_is_file",
+      "description": "Missing test becomes path.exists(), so a directory at the path refuses instead of defaulting",
+      "reason": "ranked below the cap: a directory at a state file path has no producer in the product, and the pre-existing missing-branch shape is unchanged by this unit"
+    },
+    {
+      "id": "V14_message_reword",
+      "description": "Reword the refusal message or its remedy steps",
+      "reason": "ranked below the cap: prose only, no test reads it by design, and the slug and detail rows carry the contract"
+    }
+  ]
+}

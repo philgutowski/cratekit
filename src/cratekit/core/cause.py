@@ -1467,6 +1467,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # remedy, calibrating again, reaches the person instead of a defect
         # report over a JSON error.
         "energy-calibration-unreadable": ExitCode.PRECONDITION,
+        # R-342, the same shape for the vocal cut. The file exists and cannot
+        # be read, or carries a threshold that is not a finite number, so the
+        # My Tags verb refuses rather than tagging from the default cut as if
+        # the library had never been calibrated. A MISSING file still means
+        # the default, which is honest; only the unreadable one refuses.
+        "vocal-calibration-unreadable": ExitCode.PRECONDITION,
         # An analysed track could not be finalized: its tag write returned
         # false or its rename could not claim the target. The item FAILS rather
         # than reporting done, because an analysis whose values never reached
