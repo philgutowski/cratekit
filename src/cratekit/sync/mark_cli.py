@@ -147,14 +147,18 @@ class _Playlist:
 
 def _pass_name(xml: Path) -> str:
     """The name the pass's list, batch and intake file share, read off the file."""
-    if not xml.name.endswith(land_cli.INTAKE_SUFFIX) or xml.name == land_cli.INTAKE_SUFFIX:
+    # RETIRED OR NOT (R-501). ``intake imported`` renames the file once the
+    # import is proven, and a person who proved it before marking passes that
+    # name. It is the same file and it names the same pass.
+    written = land_cli.unretired_name(xml.name)
+    if not written.endswith(land_cli.INTAKE_SUFFIX) or written == land_cli.INTAKE_SUFFIX:
         raise _blocked(
             f"{xml.name} is not named as an intake file, so it does not say which "
             f"sync pass it landed and nothing can be marked from it",
             f"pass the file ending in {land_cli.INTAKE_SUFFIX} that crate intake land wrote",
             path=str(xml),
         )
-    return xml.name[: -len(land_cli.INTAKE_SUFFIX)]
+    return written[: -len(land_cli.INTAKE_SUFFIX)]
 
 
 def _comparable(path: str | Path) -> str:

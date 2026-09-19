@@ -143,12 +143,34 @@ def _close_run(record, cfg: config.Config):
     return routing_pass.close_run(record, cfg)
 
 
+#: What is recorded as the evidence when the routing pass is what proved an
+#: import. No verb is named, because the record outlives any one verb's name.
+PLACED_EVIDENCE = "the routing pass placed every track this run landed"
+
+
 def _close_if_settled(cfg: config.Config, session_id: str) -> None:
     for record in session.records(cfg):
         if record.session_id != session_id or record.terminal:
             continue
+        if record.state is session.SessionState.AWAITING_IMPORT and _all_settled(
+            cfg, session_id
+        ):
+            # AN INTAKE RUN NOW ENDS ``awaiting-import`` (R-501), and the gated
+            # close refuses that state. Here the pass has reached a row for
+            # every track the run recorded, which is stronger proof of the
+            # import than any export, so the proof is recorded and the close
+            # goes ahead. A run with NO recorded track proves nothing, and is
+            # left for the close to refuse.
+            session.mark_import_verified(record, cfg, evidence=PLACED_EVIDENCE)
         _close_run(record, cfg)
         return
+
+
+def _all_settled(cfg: config.Config, session_id: str) -> bool:
+    """True when the ledger holds at least one track for this run and none is outstanding."""
+    ledger = routing_pass.read(cfg)
+    recorded = [entry for entry in ledger.intents if entry.session_id == session_id]
+    return bool(recorded) and not ledger.outstanding(session_id)
 
 
 def _reported(store, job) -> dict:
@@ -311,6 +333,14 @@ ROUTED_SUFFIX = "_routed.xml"
 EXPORT_REMEDY = (
     "no tree has cut over, so this library is still filed through an export: "
     "export the collection from rekordbox and run route inbox --export with that file"
+)
+
+#: The same, for the deferred placements. They wait for a cutover, and what a
+#: person can settle before one is the import itself.
+PENDING_REMEDY = (
+    "no tree has cut over, so no deferred placement can be made and none was "
+    "read: these tracks are placed once a tree is database native. An import is "
+    "proven by intake imported --export with a Fresh Export, not by this verb"
 )
 
 
@@ -1435,7 +1465,8 @@ def route_pending(ctx) -> Envelope:
     """Place tracks whose routing was decided before the library held a row.
 
     On a library with no outstanding intents this is a no-op: nothing is
-    opened and no session is closed. When a named session's outstanding
+    opened and no session is closed. On a library with no database native
+    tree it is a no-op too, and says so. When a named session's outstanding
     set becomes empty, the run closes through :func:`_close_run`.
     """
     cfg = _load()
@@ -1455,7 +1486,15 @@ def route_pending(ctx) -> Envelope:
         tree_id for tree_id in entries.tree_ids() if entries.is_database_native(tree_id)
     ]
     if not native:
-        return ctx.envelope(data=_plan(items, kind="pending"), outcome=Outcome.OK)
+        # NOTHING WAS READ, SO NOTHING IS CLAIMED (R-436, R-501). This answered
+        # OK over runs it had not opened, and a landing named it as the proof
+        # of an import. With no native tree there is nowhere to place a track,
+        # so it is a no-op that says why and names what does work today.
+        return ctx.envelope(
+            data=_plan(items, kind="pending"),
+            outcome=Outcome.NO_OP,
+            warnings=[{"code": "no-native-tree", "message": PENDING_REMEDY}],
+        )
 
     declared = taxonomy.default_taxonomy()
     handle = rb_writer.open_db(cfg=cfg)

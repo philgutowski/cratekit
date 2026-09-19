@@ -1811,6 +1811,7 @@ QUALIFIED_MUTATIONS = frozenset(
         "session.close_session",
         "session.commit_sources",
         "session.mark_awaiting_import",
+        "session.mark_import_verified",
         "session.open_session",
         "session.record_acknowledgment",
         "session.release_stale_lock",

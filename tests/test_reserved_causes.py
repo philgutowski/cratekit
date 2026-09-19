@@ -5838,7 +5838,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # which uncapped is 9937 strings in one envelope. It is a length and is
     # never an exit status. Measured by walking that file's integer constants
     # on main and on the branch.
-    assert (len(literal_holders), len(literal_both)) == (99, 21), (
+    # Re-pinned on the residual finding "Every landing leaves an open session
+    # and an intake file that each refuse the cutover precheck", 2026-09-19: 99
+    # to 100 holders, and the also-holds-an-integer half moves 21 to 22. ONE
+    # module joined and none left, and it is a new file. intake/imported_cli.py
+    # names library-export-unusable, intake-export-is-stub, intake-list-unusable
+    # and internal-error through cause.refuse, and holds 10, MISSING_SHOWN, how
+    # many missing tracks one run's item names. It is a length and is never an
+    # exit status. Measured by listing this file's own holders on the branch and
+    # asking the same walk whether that one file holds an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (100, 22), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

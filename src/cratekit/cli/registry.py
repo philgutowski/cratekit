@@ -1889,6 +1889,27 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── The import proof (R-501) ────────────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="intake.imported",
+        summary="prove an intake file imported, retire it, and settle its run",
+        module="cratekit.intake.imported_cli",
+        builder="build_imported",
+        handler_key="intake.imported",
+        feature_rows=(3, 35),
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface. The intake file this product wrote is RENAMED so the
+        #: pending scan stops seeing it, never deleted and never over another
+        #: file, which is why no gate stands in front of it: nothing is lost
+        #: and the rename is undone by renaming back. The Fresh Export is read
+        #: and never written, and no database is opened. The session record it
+        #: settles is this product's own state, not a declared surface.
+        writes=frozenset({"xml"}),
+        doctor_checks=("library.mounted",),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

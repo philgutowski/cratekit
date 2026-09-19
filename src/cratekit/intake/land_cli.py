@@ -13,12 +13,20 @@ stale if the folder, the batch or the intake file changed since, because the
 digest covers all of them and not only the files.
 
 THE IMPORT IS THE PERSON'S, AND THE RUN SAYS SO. A landed batch is one intake
-file rekordbox has not seen. The envelope carries a ``rekordbox_import``
-pending action naming it, verified by ``route pending``, which is the verb that
-closes the intake session :func:`cratekit.intake.ingest.place_files` opens once
-the imported rows exist. It BLOCKS NOTHING. A blocking action makes every verb
-it names refuse, and no consequence of an unimported landing was driven that
-would justify that.
+file rekordbox has not seen. :func:`cratekit.intake.ingest.place_files` leaves
+its intake session ``awaiting-import`` with a ``rekordbox_import`` pending
+action PERSISTED ON THAT RECORD, and the envelope carries that same action, not
+a second one built here, so what the screen said and what the session log holds
+cannot differ. Its steps run end to end: import the file, take a Fresh Export,
+run ``intake imported``, which proves the import, retires the file and settles
+the run (R-501). It BLOCKS NOTHING. A blocking action makes every verb it names
+refuse, and no consequence of an unimported landing was driven that would
+justify that.
+
+THE SESSION RECORD IS WHERE IT IS REMEMBERED, NOT THE RUN RECORD. The action is
+not put on this run's own state, because nothing would ever clear it there and
+doctor would report the run as waiting for ever. Doctor's session check names
+every run still ``awaiting-import``.
 
 ``--manifest`` FILES LABEL TRACKS IN THE SAME FILE. The manifest is the
 provenance ``label approved`` wrote beside its list. Its bytes are part of what
@@ -29,15 +37,16 @@ track, never a failure: the file, if there is one, is in the intake playlist.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
-from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
+from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config
 from cratekit.core.cause import Outcome
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import landing
+from cratekit.intake import ingest, landing
 
 #: The action every planned file carries until the apply reports on it.
 LAND = "land"
@@ -48,11 +57,28 @@ REFUSED = "refused"
 FILED = "filed"
 UNFILED = "unfiled"
 
-#: The verb that proves an intake file imported. Named here and not in the
-#: engine, because a layer below the command line must not spell a verb.
-VERIFY_VERB = "route.pending"
+#: The verb that proves an intake file imported. One spelling, beside the
+#: session it is persisted on, and named here for the callers that read it.
+VERIFY_VERB = ingest.VERIFY_VERB
 
 INTAKE_SUFFIX = "_inboxed.xml"
+
+#: What an intake file's name gains once its import is proven (R-501). It ends
+#: the name, so the cutover precheck's scan, which walks ``*.xml``, stops seeing
+#: the file. A second file retired under a name already taken gains ``-2``.
+RETIRED_SUFFIX = ".imported"
+
+_RETIRED_TAIL = re.compile(re.escape(RETIRED_SUFFIX) + r"(-[0-9]+)?$")
+
+
+def unretired_name(name: str) -> str:
+    """An intake file's name as it was written, retired or not.
+
+    ONE PLACE KNOWS BOTH SPELLINGS. A verb that finds its pass from an intake
+    file's name is handed the retired name by anybody who proved the import
+    first, and it must read the same pass off it.
+    """
+    return _RETIRED_TAIL.sub("", name)
 
 
 def default_name(run_id: str) -> str:
@@ -234,29 +260,6 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
     return {**payload, "items": items, "totals": totals}
 
 
-def _pending(run_id: str, landed: landing.Landed, target: Path) -> PendingHumanAction:
-    destination = landed.destination
-    filed = (
-        f", with {len(landed.labelled)} label playlist(s) in the same file"
-        if landed.labelled
-        else ""
-    )
-    return PendingHumanAction(
-        kind="rekordbox_import",
-        id=new_pending_id(run_id),
-        summary=(
-            f"{len(landed.moved)} file(s) landed in {target} and are named in "
-            f"{destination.name}{filed}, which rekordbox has not imported yet"
-        ),
-        verify_verb=VERIFY_VERB,
-        artifact=str(destination),
-        steps=(
-            f"import {destination} into rekordbox as a rekordbox xml library",
-            "then run crate route pending so the imported tracks are filed",
-        ),
-    )
-
-
 def intake_land(ctx) -> Envelope:
     cfg = intake_cli._load()
     folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.paths.download_staging)
@@ -296,7 +299,7 @@ def intake_land(ctx) -> Envelope:
         data=_reported(payload, landed),
         outcome=Outcome.PENDING,
         code=ExitCode.PENDING_HUMAN,
-        pending=_pending(ctx.run.run_id, landed, target),
+        pending=ingest.persisted_pending(cfg, landed.placed),
         warnings=[
             {"code": entry.reason, "message": entry.sentence}
             for entry in (*landed.refused, *landed.unlabelled)
@@ -306,9 +309,11 @@ def intake_land(ctx) -> Envelope:
 
 __all__ = [
     "INTAKE_SUFFIX",
+    "RETIRED_SUFFIX",
     "VERIFY_VERB",
     "build_land",
     "default_name",
     "intake_file",
     "intake_land",
+    "unretired_name",
 ]

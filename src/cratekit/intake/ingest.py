@@ -13,6 +13,7 @@ Inbox stays on the XML bridge. This module does not flip a tree.
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
@@ -145,6 +146,30 @@ def decide_placement(meta: dict) -> tuple[str, str, str] | None:
     if sub is None:
         return None
     return declared.tree.id, resolved.bucket_id, sub.id
+
+
+def persisted_pending(
+    cfg: config.Config, placed: Sequence[PlacedTrack]
+) -> output.PendingHumanAction:
+    """The pending action :func:`place_files` persisted on its intake session.
+
+    READ BACK RATHER THAN BUILT AGAIN, so an envelope cannot say one thing while
+    the session log holds another. A call that returned with no such record is
+    a defect here, and it is reported as one: the intake file is written by now,
+    and an envelope claiming an action nothing holds would be the tool saying
+    something and forgetting it.
+    """
+    session_id = placed[0].session_id if placed else ""
+    record = session.read_record(session_id, cfg) if session_id else None
+    if record is None or record.pending is None:
+        raise refuse(
+            "internal-error",
+            f"the intake file was written and its intake session {session_id!r} "
+            f"holds no pending import, so nothing durable says the file is waiting",
+            origin=("intake.ingest",),
+            detail={"session_id": session_id},
+        )
+    return record.pending
 
 
 def place_files(
