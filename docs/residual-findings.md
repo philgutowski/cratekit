@@ -8265,6 +8265,22 @@ NODE names, and a snapshot-time reading (duplicate sibling playlists in
 `djmdPlaylist`, or a `masterPlaylists6.xml` node count out of proportion to
 the library) is a red flag before any write.
 
+**Narrowed 2026-09-19 on `relay/121`, U76. The writer half is closed.**
+`rbxml.insert_catalog_folder`, the one writer that emits a folder subtree and
+the producer of the label tree, now merges into a folder the document already
+holds instead of replacing it. A year playlist it holds keeps every member and
+gains only the ids it lacks, a year it lacks is added in newest first place,
+and writing the same catalog twice writes the same bytes, pinned against the
+single write golden. Two siblings of one name refuse and write nothing, at the
+tree under ROOT, the folder under the tree and each playlist under the folder,
+because merging into the first of two leaves a document rekordbox doubles
+again. A caller naming one playlist twice gets one. Names compare under NFC and
+never under case, R-453. Still open: the snapshot time reading, duplicate
+sibling playlists in `djmdPlaylist` or a `masterPlaylists6.xml` node count out
+of proportion flagged before any write, which is the database side and no part
+of this unit. The five other writers that locate a sibling by name still take
+the first of two, R-454.
+
 ## R-130. U22 queues increments and proves the engine; it does not yet drive a real source
 
 **Found:** at the U22 review, 2026-08-17. Accepted rather than held.
@@ -19053,3 +19069,49 @@ person to report a defect.
 
 **Closes when:** `intake missing` converts an `OSError` from the write into its
 own refusal, with a test, which R-451's shared tail would do for both.
+
+---
+
+## R-453. How rekordbox folds a folder name on import was never measured, so the catalog writer's fold is a choice
+
+**Found:** 2026-09-19, U76 on `relay/121`, from the brief's hazard.
+
+The catalog writer compares sibling names after NFC normalisation and nothing
+else: a composed and a decomposed `Café` are one folder, and `Kompakt` and
+`KOMPAKT` are two. R-129's record says rekordbox merges an imported folder "by
+name" and does not say how it compares. If rekordbox folds case, a document
+holding `Kompakt` and `KOMPAKT` side by side doubles on import the way R-129
+did, and this writer would not refuse it. If it does not fold canonical
+equivalence, merging a decomposed spelling into a composed one renames nothing
+but joins two folders rekordbox would keep apart.
+
+**Measured cost:** none driven. No caller of the writer exists in `src` yet,
+and the live comparison needs an import.
+
+**Closes when:** an attended sitting imports a two folder payload that differs
+only by case, and one that differs only by normalisation, into a scratch copy
+of a library, and `rbxml._folded` is set to what rekordbox did.
+
+---
+
+## R-454. The other writers that locate a sibling by name take the first of two and say nothing
+
+**Found:** 2026-09-19, U76 on `relay/121`, by the hunt for the same shape one
+file over.
+
+`rbxml.direct_child` returns the first direct child carrying a name. The
+catalog writer now asks `_sole_child`, which refuses two. `insert_root_playlist`,
+`insert_genre_folder`, `insert_intake_playlist`, `insert_empty_subplaylist` and
+`remove_folder_node` still ask `direct_child`, so over a document already
+holding R-129's shape each writes into, replaces or removes the first copy and
+leaves the second, reporting success.
+
+**Measured cost:** not driven. These writers emit single nodes at the
+playlist level rather than a folder import, so the doubling R-129 describes is
+not what they produce; the cost is a clean answer over a document that already
+carries duplicates. Reachability is unmeasured: the producer would be a fresh
+export of a library that R-129's import already doubled.
+
+**Closes when:** each of those writers asks `_sole_child` or a public form of
+it, with a test per writer, or the decision to leave them is recorded with a
+driven reason.

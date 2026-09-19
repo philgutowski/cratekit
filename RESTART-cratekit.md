@@ -4,7 +4,44 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U75, issue #120, `relay/120`, 2026-09-19.**
+**Last merged: U76, issue #121, `relay/121`, 2026-09-19.**
+The catalog writer merges into a folder the document already holds, and refuses
+a duplicated sibling, which closes R-129's writer half.
+`rbxml.insert_catalog_folder`, the producer `trees.insert_record_labels_tree`
+calls and still the only writer that emits a folder subtree, used to REPLACE a
+held label folder. Now it merges into it. A year playlist it holds keeps every
+member, including duplicates the document already carried, gains only the ids
+it lacks, and has its `Entries` raised by that number. A year it lacks is placed
+before the first held playlist whose name sorts below its own, and last when
+none does, so each folder stays newest first. The folder's `Count` rises by the
+playlists created. A self closed folder or playlist is opened first. Writing
+the same catalog twice writes the same bytes, and that is pinned against the
+single write golden `label_library_insert`. `_sole_child` gives
+`direct_child`'s answers plus a fourth: two siblings of one name refuse at the
+tree under ROOT, the folder under the tree and each playlist under the folder.
+Merging into the first of two would leave a document that rekordbox doubles
+again on import. Names compare through `_folded`, which applies NFC and never
+case, R-453. `_merged_pairs` joins a caller's pairs by name and dedupes each
+playlist's ids before anything is written. Every edit is made on a copy, so a
+refusal writes nothing. A merge point whose tag shares its line with another
+tag refuses rather than writing inside it. Still no caller in `src`, and that
+is U77's work. The unit's `/code-review` drove one finding and it is fixed: a
+new year was placed by the caller's own list alone, so the folder holding 2025
+and the caller naming 2026 and 2024 wrote 2025, 2026, 2024. The hunt afterward
+found the same first of two locate in the five other writers, R-454. 15 new test
+cases, 14 in `tests/test_rbxml.py` and 1 in `tests/test_xml_splice_golden.py`.
+The rerun test in `tests/test_tree_writer.py` now says merged. Mutation tables
+`docs/mutation/u76-a.md`, `u76-b.md` and `u76-zeros.md`, 25 rows, 23 killed on
+the first run and both zeros killed by a new test each, read in
+`u76-notes.md`. R-129 is narrowed to its snapshot time reading. R-453 and R-454
+are filed, and neither is on the board: R-453 closes only at an attended
+sitting, and R-454 was not driven. **Owed to an attended sitting:** R-453's two
+imports into a scratch copy. Battery on the recorded tree: ruff clean,
+`scan_repo.py` exit 0, pytest 8122 passed and 1 skipped in 58 seconds, and no
+test of this unit's among the ten slowest. **Main's highest residual number is
+R-454.**
+
+**The session before: U75, issue #120, `relay/120`, 2026-09-19.**
 `crate label approved` turns the label releases accepted in review into the
 list `acquire download` reads, which is the acquire half of R-402. It lists the
 accepted items of kind `label-release` on the label queue BEFORE the catalogue

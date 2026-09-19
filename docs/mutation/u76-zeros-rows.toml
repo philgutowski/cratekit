@@ -1,0 +1,24 @@
+name = "u76-zeros"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_join_pairs"
+description = "_merged_pairs: keep every pair as given, so a caller naming one playlist twice emits two siblings of that name"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    return [(joined[key][0], dedupe_track_ids(joined[key][1])) for key in order]'''
+new = '''    return [(name, dedupe_track_ids(ids)) for name, ids in playlists]'''
+
+[[rows]]
+id = "X5_entries_absent"
+description = "_extend_playlist: write the ids into a held playlist with no Entries attribute rather than refusing"
+file = "src/cratekit/write/rbxml.py"
+surface = "maintainer"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_writer.py", "tests/test_tree_registry.py"]
+old = '''    if entries is None:
+        return f"Entries attr not found for playlist {playlist.name!r}"
+    total = _read_int(content, entries) + len(fresh)'''
+new = '''    if entries is None:
+        entries = (playlist.tag_end, playlist.tag_end)
+    total = _read_int(content, entries) + len(fresh) if entries[0] != entries[1] else len(fresh)'''

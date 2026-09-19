@@ -480,7 +480,8 @@ def test_a_catalog_rerun_refreshes_the_folder_rather_than_duplicating_it(tmp_pat
 
     No golden covers this, because the system these were ported from had no test
     that ran twice. It is the defect the consolidation fixes, so it is asserted
-    directly: one folder, the new contents, and the tree's own count unmoved.
+    directly: one folder, the new year merged into it, and the tree's own count
+    unmoved. The merge rules themselves are pinned in tests/test_rbxml.py.
     """
     source = tmp_path / "fresh.xml"
     source.write_bytes(_fresh_xml())

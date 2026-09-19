@@ -375,3 +375,26 @@ def test_label_subtree_golden(tmp_path):
     assert b'<NODE Name="Record Labels" Type="0" Count="1">' in out
     assert out.find(b"Kompakt 2025") < out.find(b"Kompakt 2024"), "newest year must sort first"
     assert b'            <TRACK Key="900000001"/>\r\n' in out
+
+
+def test_label_subtree_written_twice_matches_the_single_write_golden(tmp_path):
+    """R-129: a second write of the same label merges into the first and adds nothing.
+
+    Compared against the same golden the single write is, so a second write that
+    moved any byte, a duplicated year, a doubled track, a count bumped again,
+    fails with the golden's own diff.
+    """
+    from cratekit.write import trees
+
+    source = tmp_path / "fresh.xml"
+    source.write_bytes(_fresh_xml())
+    buckets = {
+        2025: [{"track_ids": [900000001, 900000002]}],
+        2024: [{"track_ids": [900000003]}],
+    }
+    once = tmp_path / "once.xml"
+    twice = tmp_path / "twice.xml"
+    trees.insert_record_labels_tree(source, "Kompakt", buckets, once, registry=tree_registry.EMPTY)
+    trees.insert_record_labels_tree(once, "Kompakt", buckets, twice, registry=tree_registry.EMPTY)
+    _check("label_library_insert", twice.read_bytes())
+    assert twice.read_bytes() == once.read_bytes()
