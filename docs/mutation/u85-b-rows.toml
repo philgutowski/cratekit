@@ -1,0 +1,94 @@
+name = "u85-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_beatport_resized"
+description = "The Beatport release image URL is asked for at the size the payload named, not the source edge"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    return _BEATPORT_IMAGE_SIZE.sub(f"image_size/{edge}x{edge}/", uri)'''
+new = '''    return uri'''
+
+[[rows]]
+id = "B2_edge_coefficient"
+description = "The Beatport edge drops from 1400 to 1200"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+old = '''BEATPORT_IMAGE_EDGE = 1400'''
+new = '''BEATPORT_IMAGE_EDGE = 1200'''
+
+[[rows]]
+id = "B3_picture_off_the_winning_row"
+description = "The picture is read off the loop's last row rather than the winning row, the wrong cover hazard"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    return best
+
+
+def _search_beatport('''
+new = '''    return best and _Pick(best.genre, _beatport_art(track))
+
+
+def _search_beatport('''
+
+[[rows]]
+id = "B4_only_web_addresses"
+description = "A payload value that is not an http or https URL becomes a GET"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    return text if text.startswith(("https://", "http://")) else ""'''
+new = '''    return text'''
+
+[[rows]]
+id = "B5_bandcamp_original_size"
+description = "The Bandcamp picture is asked for at the thumbnail size the page named"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    return _BC_IMAGE_SIZE.sub("_10.jpg", _web_url(found.group(1)))'''
+new = '''    return _web_url(found.group(1))'''
+
+[[rows]]
+id = "B6_bandcamp_page_for_art"
+description = "A listing with a genre and no picture never reads the track page's og:image"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''        if not genre or not art_url:'''
+new = '''        if not genre:'''
+
+[[rows]]
+id = "B7_listing_genre_wins"
+description = "The track page's tags overwrite a genre the listing already gave"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''genre = genre or _bandcamp_tag('''
+new = '''genre = _bandcamp_tag('''
+
+[[rows]]
+id = "B8_hit_carries_the_url"
+description = "The resolved hit drops the matched row's picture URL"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''        art_url=outcome.art_url,
+'''
+new = ""
+
+[[rows]]
+id = "B9_image_fetch_paced"
+description = "The image fetch skips the pace wait, so a folder opens with a burst of picture requests"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    def fetch_image(url: str) -> bytes | None:
+        pacer.wait()
+'''
+new = '''    def fetch_image(url: str) -> bytes | None:
+'''
+
+[[dropped]]
+id = "D3_image_response_none_guard"
+description = "Drop the response is None branch in default_image_fetch"
+reason = "it only adds the debug log line; getattr on None already answers None, so it is maintainer facing and ranked below the cap"
+
+[[dropped]]
+id = "D4_image_bytes_coercion"
+description = "Return the response content uncoerced"
+reason = "a real response's content is already bytes; no producer of another type was found, ranked below the cap"

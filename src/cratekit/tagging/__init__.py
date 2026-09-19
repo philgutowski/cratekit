@@ -3,7 +3,8 @@
 Search is injectable so the suite can prove the write path without a
 network. The live searchers (Beatport, Traxsource, Bandcamp) live in
 ``searchers`` and a worker binds one through ``for_taxonomy`` at call
-time, so a test can substitute a fake in process.
+time, and its picture fetch through ``for_images``, so a test can
+substitute a fake in process.
 """
 
 from __future__ import annotations

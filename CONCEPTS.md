@@ -144,6 +144,20 @@ report a clean sweep over answers it never got. A decline is a question the
 next run asks again; a refusal fails that one item and leaves the job
 resumable.
 
+A match also carries the cover URL off the same catalogue row as its genre,
+never off another row, because the artist and title gate that picks the genre
+is the only thing that says the picture belongs to this track.
+
+### Art fetch
+What `crate tag folder` did about a picture for one file, reported beside the
+genre outcome and independent of it. A file carrying any picture at all is
+`present` and is never re-downloaded, whatever state the in place repair left
+it in. `embedded` is new art written, `unavailable` is a decline (no row named
+a picture, or the one it named could not be fetched or was not an image),
+`error` is a picture the file would not take, and `unchecked` means the need
+was never known. A tagged file searched only for its art is not failed by a
+catalogue refusal; that refusal is reported as `unavailable`.
+
 ### Landing
 The step between a download and a rekordbox import: moving a batch of acquired
 files out of download staging into `Music/<batch>/` and splicing them into one

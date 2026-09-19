@@ -158,12 +158,22 @@ def _traxsource_page(rows: list[tuple[str, str, str]]) -> str:
 BANDCAMP_TRACK_URL = "https://example.bandcamp.com/track/sunrise-mood"
 
 
-def _bandcamp_search_page(entries: list[tuple[str, str, str, str]]) -> str:
+#: A listing thumbnail in the shape Bandcamp serves and the source system read.
+#: ``_7`` is a thumbnail size; the searcher asks for ``_10``, the original.
+BANDCAMP_LISTING_ART = "https://f4.bcbits.com/img/a0123456789_7.jpg"
+BANDCAMP_PAGE_ART = "https://f4.bcbits.com/img/a0123456789_5.jpg"
+
+
+def _bandcamp_search_page(
+    entries: list[tuple[str, str, str, str]], *, art: str | None = BANDCAMP_LISTING_ART
+) -> str:
     parts = ["<html><ul>"]
     for url, heading, artist, genre in entries:
         cell = f'<div class="genre"> genre: {genre} </div>' if genre else ""
+        picture = f'<div class="art"><img src="{art}" class="thumb"></div>' if art else ""
         parts.append(
             '<li class="searchresult track">'
+            f"{picture}"
             f'<div class="heading"><a href="{url}">{heading}</a></div>'
             f'<div class="subhead"> by {artist} </div>'
             f"{cell}</li>"
@@ -172,9 +182,10 @@ def _bandcamp_search_page(entries: list[tuple[str, str, str, str]]) -> str:
     return "".join(parts)
 
 
-def _bandcamp_track_page(tags: list[str]) -> str:
+def _bandcamp_track_page(tags: list[str], *, og_image: str | None = None) -> str:
+    head = f'<meta property="og:image" content="{og_image}">' if og_image else ""
     body = "".join(f'<a class="tag" href="#">{tag}</a>' for tag in tags)
-    return f"<html>{body}</html>"
+    return f"<html><head>{head}</head>{body}</html>"
 
 
 UNREACHABLE = searchers.Fetched(note="synthetic transport failure")
@@ -245,7 +256,7 @@ def test_a_beatport_match_carries_the_tag_the_source_name_and_the_raw_genre():
     assert hit.genre == BUCKET_GENRE
     assert hit.source == searchers.BEATPORT
     assert hit.source_genre == BUCKET_GENRE
-    assert hit.art is None
+    assert hit.art_url == "", "a row naming no release picture names no picture"
 
 
 def test_a_beatport_miss_falls_through_to_traxsource_and_the_hit_names_traxsource():
@@ -714,14 +725,187 @@ def test_the_module_names_no_declared_genre_display():
     assert not literals & DISPLAYS
 
 
+# ---------------------------------------------------------------------------
+# F. U85: the picture rides the genre's row, and is fetched on the same terms
+# ---------------------------------------------------------------------------
+
+BEATPORT_ART = "https://geo-media.beatport.com/image_size/250x250/cover-one.jpg"
+OTHER_ART = "https://geo-media.beatport.com/image_size/250x250/cover-two.jpg"
+
+
+def _with_art(track: dict, uri: str) -> dict:
+    return {**track, "release": {"release_image_uri": uri}}
+
+
+def _beatport_only(tracks: list[dict]):
+    return _all_three(beatport=_beatport_page(tracks), traxsource="", bandcamp="")
+
+
+def test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge():
+    fetch = _beatport_only([_with_art(_beatport_track(ARTIST, TITLE, BUCKET_GENRE), BEATPORT_ART)])
+
+    hit = _searcher(fetch)(ARTIST, TITLE)
+
+    assert hit is not None
+    assert hit.art_url == "https://geo-media.beatport.com/image_size/1400x1400/cover-one.jpg"
+
+
+def test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another():
+    """The hazard the brief names: a cover from a different row is the wrong cover.
+
+    Three rows. The first is an exact title with a picture and NO genre, so it is
+    not a candidate at all and must not lend its picture. The second wins, and
+    both fields are its own. The third shares the artist, loses on title, and is
+    the LAST row scanned, so a picture read off the loop's final row shows here.
+    """
+    genreless = _with_art(_beatport_track(ARTIST, TITLE, ""), OTHER_ART)
+    winner = _with_art(_beatport_track(ARTIST, TITLE, BUCKET_GENRE), BEATPORT_ART)
+    loser = _with_art(_beatport_track(ARTIST, f"{TITLE} Reprise Dub", SUB_GENRE), OTHER_ART)
+
+    hit = _searcher(_beatport_only([genreless, winner, loser]))(ARTIST, TITLE)
+
+    assert hit is not None
+    assert hit.source_genre == BUCKET_GENRE
+    assert hit.art_url.endswith("/image_size/1400x1400/cover-one.jpg")
+
+
+def test_a_row_whose_artist_does_not_match_lends_neither_genre_nor_picture():
+    stranger = _with_art(_beatport_track("Somebody Else", TITLE, BUCKET_GENRE), BEATPORT_ART)
+    fetch = _all_three(
+        beatport=_beatport_page([stranger]),
+        traxsource=_traxsource_page([]),
+        bandcamp=_bandcamp_search_page([]),
+    )
+
+    assert _searcher(fetch)(ARTIST, TITLE) is None
+
+
+@pytest.mark.parametrize("uri", ["", "file:///etc/passwd", "javascript:alert(1)", 7])
+def test_a_release_picture_that_is_not_a_web_address_is_no_picture(uri):
+    fetch = _beatport_only([_with_art(_beatport_track(ARTIST, TITLE, BUCKET_GENRE), uri)])
+
+    hit = _searcher(fetch)(ARTIST, TITLE)
+
+    assert hit is not None and hit.genre == BUCKET_GENRE
+    assert hit.art_url == ""
+
+
+def test_a_traxsource_hit_names_no_picture_which_is_parity():
+    fetch = _all_three(
+        beatport=_beatport_page([]),
+        traxsource=_traxsource_page([(ARTIST, TITLE, BUCKET_GENRE)]),
+        bandcamp="",
+    )
+
+    hit = _searcher(fetch)(ARTIST, TITLE)
+
+    assert hit is not None and hit.source == searchers.TRAXSOURCE
+    assert hit.art_url == ""
+
+
+def test_a_bandcamp_listing_picture_is_asked_for_at_its_original_size():
+    seen: list[str] = []
+    fetch = _all_three(
+        beatport=_beatport_page([]),
+        traxsource=_traxsource_page([]),
+        bandcamp=_bandcamp_search_page([(BANDCAMP_TRACK_URL, TITLE, ARTIST, BUCKET_GENRE.lower())]),
+        seen=seen,
+    )
+
+    hit = _searcher(fetch)(ARTIST, TITLE)
+
+    assert hit is not None
+    assert hit.art_url == "https://f4.bcbits.com/img/a0123456789_10.jpg"
+    assert not [url for url in seen if "/track/" in url]
+
+
+def test_a_bandcamp_listing_with_a_genre_and_no_picture_reads_the_track_pages_og_image():
+    naps: list[float] = []
+    seen: list[str] = []
+    fetch = _all_three(
+        beatport=_beatport_page([]),
+        traxsource=_traxsource_page([]),
+        bandcamp=_bandcamp_search_page(
+            [(BANDCAMP_TRACK_URL, TITLE, ARTIST, BUCKET_GENRE.lower())], art=None
+        ),
+        track_page=_bandcamp_track_page(["gqom"], og_image=BANDCAMP_PAGE_ART),
+        seen=seen,
+    )
+
+    hit = _searcher(fetch, naps=naps)(ARTIST, TITLE)
+
+    assert hit is not None
+    assert hit.genre == BUCKET_GENRE, "the listing's genre wins over the page's tags"
+    assert hit.art_url == "https://f4.bcbits.com/img/a0123456789_10.jpg"
+    assert [url for url in seen if "/track/" in url] == [BANDCAMP_TRACK_URL]
+    assert len(naps) == len(seen), "the page touch was not paced"
+
+
+def test_the_image_fetch_is_paced_and_answers_the_bytes():
+    naps: list[float] = []
+    calls: list[str] = []
+
+    def get(url, headers, timeout):
+        calls.append(url)
+        assert len(naps) == 1, "the pace wait must come before the request"
+        return _Response(200, content=b"\xff\xd8picture")
+
+    fetch_image = searchers.default_image_fetch(get=get, sleep=naps.append)
+
+    assert fetch_image("https://example.test/cover.jpg") == b"\xff\xd8picture"
+    assert calls == ["https://example.test/cover.jpg"]
+    assert searchers.MIN_INTERVAL_S <= naps[0] <= searchers.MIN_INTERVAL_S * 1.5
+
+
+@pytest.mark.parametrize("status", [404, 500])
+def test_an_image_that_is_not_there_is_none_rather_than_a_refusal(status):
+    fetch_image = searchers.default_image_fetch(
+        get=lambda url, headers, timeout: _Response(status, content=b"page"),
+        sleep=lambda _s: None,
+    )
+
+    assert fetch_image("https://example.test/cover.jpg") is None
+
+
+def test_an_image_fetch_that_meets_a_rate_limit_backs_off_like_a_search():
+    waits: list[float] = []
+    replies = iter([_Response(429), _Response(200, content=b"bytes")])
+    pacer = searchers.Pacer(sleep=lambda _s: None)
+    fetch_image = searchers.default_image_fetch(
+        get=lambda url, headers, timeout: next(replies), sleep=waits.append, pacing=pacer
+    )
+
+    assert fetch_image("https://example.test/cover.jpg") == b"bytes"
+    assert waits == [searchers.RATE_LIMIT_BASE_WAIT_S]
+
+
+def test_an_image_fetch_whose_transport_fails_is_none():
+    def get(url, headers, timeout):
+        raise OSError("no route to host")
+
+    fetch_image = searchers.default_image_fetch(get=get, sleep=lambda _s: None)
+
+    assert fetch_image("https://example.test/cover.jpg") is None
+
+
+def test_the_image_binder_hands_back_a_fetch_without_touching_the_network(monkeypatch):
+    def detonate(*args, **kwargs):
+        raise AssertionError("the binder reached the network")
+
+    monkeypatch.setattr(searchers, "_requests_get", detonate)
+    assert callable(searchers.for_images())
+
+
 class _Response:
-    """The two attributes this module reads off an HTTP response, and no more.
+    """The attributes this module reads off an HTTP response, and no more.
 
     Defined as the last thing in the file on purpose: it is a fixture for the
     default fetch's tests rather than a description of anything the module owns,
-    and the module's own contract with a getter is exactly these two fields.
+    and the module's own contract with a getter is exactly these fields:
+    ``text`` for a page and ``content`` for a picture.
     """
 
-    def __init__(self, status_code: int, text: str = "") -> None:
+    def __init__(self, status_code: int, text: str = "", *, content: bytes = b"") -> None:
         self.status_code = status_code
         self.text = text
+        self.content = content

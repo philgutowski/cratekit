@@ -650,11 +650,14 @@ def test_a_folder_of_three_tags_the_two_with_no_genre_and_leaves_the_third(
 
     THE THIRD FILE IS THE ONE WORTH HAVING. Fill if empty is the policy this
     verb exists to hold, so a file that already carries somebody's curation must
-    come back as a skip with a reason rather than as a write.
+    come back as a skip with a reason rather than as a write. It carries a
+    picture as well, because since U85 a tagged file with none is asked for art.
     """
+    from tests.test_tagging_engine import _jpeg, plant
+
     place(folder, silence, "a")
     place(folder, silence, "b")
-    place(folder, silence, "c", genre=SPECIFIC)
+    plant(place(folder, silence, "c", genre=SPECIFIC), _jpeg(320, 200), dims=(320, 200, 24))
     searcher = bound(
         monkeypatch,
         answering({"a": hit("deep house", SPECIFIC), "b": hit("deep house", SPECIFIC)}),
@@ -825,7 +828,72 @@ def test_a_report_from_before_the_repair_is_counted_under_no_status(cfg, store):
     summary = tag_cli._summary(cfg, job.job_id)
 
     assert summary["art_repair"] == dict.fromkeys(art.REPAIR_STATUSES, 0)
+    assert summary["art_fetch"] == dict.fromkeys(tag.ART_FETCH_STATUSES, 0)
     assert summary["skipped"][tag.NO_HIT] == 1
+
+
+def test_new_art_reaches_the_file_the_artifact_and_the_summary(
+    cfg, folder, silence, monkeypatch
+):
+    """U85 through the verb. The worker looks its image fetch up at call time.
+
+    Four files: no genre and no picture, a genre and no picture, a genre and a
+    picture, and one whose picture 404s. The first two get art, the third is
+    never asked, and the fourth still gets its genre and says its art was
+    unavailable, with every status counted, zeroes included.
+    """
+    from tests.test_tagging_engine import _jpeg, blocks, plant
+
+    place(folder, silence, "a")
+    place(folder, silence, "b", genre=SPECIFIC)
+    plant(place(folder, silence, "c", genre=SPECIFIC), _jpeg(320, 200), dims=(320, 200, 24))
+    place(folder, silence, "d")
+
+    def art_hit(name: str) -> SearchHit:
+        return SearchHit(
+            genre=SPECIFIC,
+            source=searchers.BEATPORT,
+            source_genre="deep house",
+            art_url=f"https://example.test/{name}.jpg",
+        )
+
+    searcher = bound(monkeypatch, answering({name: art_hit(name) for name in "abcd"}))
+    fetched: list[str] = []
+
+    def fetch_image(url: str) -> bytes | None:
+        fetched.append(url)
+        return None if url.endswith("/d.jpg") else _jpeg(1000, 1000)
+
+    monkeypatch.setattr(searchers, "for_images", lambda: fetch_image)
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    assert [asked for _artist, asked in searcher.asked] == ["a", "b", "d"]
+    assert fetched == [f"https://example.test/{name}.jpg" for name in ("a", "b", "d")]
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert {name: reports[f"{name}.flac"]["art_fetch"] for name in "abcd"} == {
+        "a": tag.ART_EMBEDDED,
+        "b": tag.ART_EMBEDDED,
+        "c": tag.ART_PRESENT,
+        "d": tag.ART_UNAVAILABLE,
+    }
+    assert "d.jpg" in reports["d.flac"]["art_fetch_detail"]
+    assert tags.read_genre_from_file(folder / "d.flac") == SPECIFIC
+    assert blocks(folder / "d.flac") == []
+    for name in ("a", "b"):
+        (block,) = blocks(folder / f"{name}.flac")
+        assert (block.width, block.height, block.depth) == (800, 800, 24)
+    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
+    assert resumed["data"]["progress"]["tagging"]["art_fetch"] == {
+        tag.ART_EMBEDDED: 2,
+        tag.ART_PRESENT: 1,
+        tag.ART_UNAVAILABLE: 1,
+        tag.ART_ERROR: 0,
+        tag.ART_UNCHECKED: 0,
+    }
 
 
 def test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory(
