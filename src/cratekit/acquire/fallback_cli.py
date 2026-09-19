@@ -7,11 +7,15 @@ does, and searches SoundCloud and then YouTube for each row that is still
 missing. What comes back is ranked and OFFERED into the ``fallback-source``
 review queue, one item per row. Nothing is picked and nothing downloads here.
 
-A ROW WITH A PROVIDER ROUTE IS NOT SEARCHED. A row whose provider candidate is
-waiting in review or was accepted there already has a route to a lossless
-download, and a second source offer beside it would ask a person to choose a
-worse copy of a track they are about to get. A row whose provider candidates
-were all rejected is exactly the row this verb is for, and it is searched.
+A ROW WITH A PROVIDER ROUTE IS NOT SEARCHED. A row carrying the provider's own
+id, and a row whose provider candidate is waiting in review or was accepted
+there, already has a route to a lossless download, and a second source offer
+beside it would ask a person to choose a worse copy of a track they are about
+to get. A row whose provider candidates were all rejected is exactly the row
+this verb is for, and it is searched. WHAT THIS CANNOT SEE: a row the
+provider's text search would list without a person leaves no trace in the
+queue, so run ``intake missing --list`` first and pass the rows it could not
+route; asking the provider again here would spend a login on every run.
 
 THE QUEUE BEFORE THE SEARCH. A row already offered, answered or rejected here
 spends no search, so a second run over the same list offers nothing twice.
@@ -41,7 +45,7 @@ from cratekit.cli.output import Envelope
 from cratekit.core import binaries, review
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.intake import candidates
+from cratekit.intake import candidates, missing_cli
 
 #: The verb's origin on every refusal it raises.
 ORIGIN = ("acquire.fallback",)
@@ -181,23 +185,34 @@ def acquire_fallback(ctx) -> Envelope:
             counts["suppressed"] += 1
         else:
             counts["missing"] += 1
-            if one.match_id not in seen:
-                seen.add(one.match_id)
+            # ONE ROW PER QUESTION, on the fallback item's own identity. The
+            # match identifier carries the musical key and the question does
+            # not, so the same track typed with and without a key would be
+            # searched twice and reported offered twice under one item.
+            asked = fallback.item_id(one.wanted)
+            if asked not in seen:
+                seen.add(asked)
                 missing.append(one.wanted)
 
-    provider_routed: list[candidates.Proposal] = []
+    provider_routed: list[match.Wanted] = []
     proposals: list[fallback.Proposal] = []
     offered_now: list[fallback.Proposal] = []
     if missing:
         with review.open_store(cfg) as items:
             held: list[tuple[match.Wanted, fallback.Proposal | None]] = []
             for one in missing:
+                if missing_cli.provider_ref(one):
+                    # THE PROVIDER'S OWN ID IS A ROUTE. ``intake missing --list``
+                    # lists such a row without a search, and a lossless download
+                    # of it is one command away.
+                    provider_routed.append(one)
+                    continue
                 on_provider = candidates.settled(items, one)
                 if on_provider is not None and on_provider.state in (
                     candidates.WAITING,
                     candidates.ACCEPTED,
                 ):
-                    provider_routed.append(on_provider)
+                    provider_routed.append(one)
                     continue
                 held.append((one, fallback.settled(items, one)))
             found: fallback.FallbackSearcher | None = None
@@ -267,10 +282,11 @@ def acquire_fallback(ctx) -> Envelope:
         _check(
             "provider",
             "info",
-            f"{len(provider_routed)} missing track(s) have a provider candidate waiting "
-            f"in review or accepted there, and are not searched elsewhere"
+            f"{len(provider_routed)} missing track(s) carry the provider's own id or "
+            f"have a provider candidate waiting or accepted in review, and are not "
+            f"searched elsewhere"
             + (
-                ": " + "; ".join(f"{one.wanted.artist} - {one.wanted.listed}" for one in provider_routed)
+                ": " + "; ".join(f"{one.artist} - {one.listed}" for one in provider_routed)
                 if provider_routed
                 else ""
             ),

@@ -734,8 +734,12 @@ def _listed(
     )
 
 
-def _provider_ref(wanted: match.Wanted) -> str:
-    """The row's identifier if it is the PROVIDER'S, the rule ``listdoc`` writes by."""
+def provider_ref(wanted: match.Wanted) -> str:
+    """The row's identifier if it is the PROVIDER'S, the rule ``listdoc`` writes by.
+
+    Public since U80: ``acquire fallback`` asks the same question, so a row
+    this verb would list by its id is never searched for on a second source.
+    """
     return str(wanted.ref or "").strip() if wanted.origin == match.TIDAL else ""
 
 
@@ -881,8 +885,8 @@ def _missing_for_list(ctx, given: str) -> Envelope:
         # writes it with none, and sorted here by its ref it was in no file and
         # on no check, a missing track dropped at exit zero. It is bare.
         resolve = _catalogue_once(cfg)
-        bare = [one for one in missing if not _provider_ref(one)]
-        named = [one for one in missing if _provider_ref(one)]
+        bare = [one for one in missing if not provider_ref(one)]
+        named = [one for one in missing if provider_ref(one)]
         unnamed: list[match.Wanted] = []
         for one, answer in zip(bare, _named_by_isrc(bare, resolve), strict=True):
             if isinstance(answer, _Unnamed):
@@ -1153,5 +1157,6 @@ __all__ = [
     "found_name",
     "intake_missing",
     "job_reports",
+    "provider_ref",
     "synced_name",
 ]

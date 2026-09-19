@@ -654,3 +654,48 @@ def test_the_shipped_searcher_resolves_the_binary(monkeypatch, tmp_path):
 
     assert fallback.yt_dlp_searcher().binary == str(program)
     assert fallback_cli.searcher().binary == str(program)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The review's two findings
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_row_the_provider_names_by_id_is_not_searched(cfg, library, tmp_path, monkeypatch):
+    """A list document a provider list was written as carries the provider's
+    own id on every row, and a row with that id downloads losslessly."""
+    from cratekit.acquire import listdoc
+
+    named = dataclasses.replace(
+        match.read_text_lines(TIDE)[0], ref="7010", origin=match.TIDAL
+    )
+    written = listdoc.write(
+        tmp_path,
+        "provider",
+        listdoc.rows_of([named]),
+        listdoc.Provenance(source="list", source_ref="suite"),
+    )
+    fake = bind(monkeypatch, FakeSearcher({}))
+
+    code, envelope = run(written.list_path)
+
+    assert fake.calls == [], "a row the provider names by id was searched elsewhere"
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["summary"]["provider_routed"] == 1
+    assert "Nova Reef - Tide" in checks(envelope)["provider"]["detail"]
+
+
+def test_one_track_with_and_without_a_key_is_searched_once(cfg, library, tmp_path, monkeypatch):
+    plain = match.read_text_lines(BOOT)[0]
+    keyed = dataclasses.replace(plain, key="8A")
+    assert plain.key_key != keyed.key_key, "the fixture must differ by key alone"
+    monkeypatch.setattr(fallback_cli.match_cli, "read_list", lambda _path: (plain, keyed))
+    fake = bind(monkeypatch, FakeSearcher(boot_answers()))
+
+    code, envelope = run(tracklist(tmp_path, BOOT))
+
+    assert code == int(ExitCode.OK), envelope
+    assert len(fake.calls) == 2, fake.calls
+    assert envelope["data"]["summary"]["fallback_offered"] == 1
+    assert len(items_of(cfg)) == 1
