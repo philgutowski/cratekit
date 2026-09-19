@@ -539,7 +539,8 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
     * the landing goes through ``checked_landing``, the one place every
       acquisition's file passes, and is marked through ``marked_name``, which
       refuses a configuration that names no marker text;
-    * the artist and title tags are written from the ROW, never from the upload's
+    * every tag the upload carried is stripped, a tempo frame included, and the
+      artist and title tags are written from the ROW, never from the upload's
       page, so the tagger and the naming stage downstream read the track a
       person asked for;
     * the engine commits it into the staging root, where the ordinary tag, name
@@ -636,7 +637,13 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
         f"is not committed; it stays queued"
     )
     try:
-        written = tags.write_tags(landed, {"artist": artist or None, "title": title or None})
+        # EVERY TAG THE UPLOAD CARRIED GOES FIRST. The tool drops the upload's
+        # metadata only when it converts, and an upload already served as MP3
+        # is not converted, so a tempo frame an uploader wrote would otherwise
+        # survive under the row's artist and title (R17).
+        written = tags.strip_tags(landed) and tags.write_tags(
+            landed, {"artist": artist or None, "title": title or None}
+        )
     except tags.UnsupportedContainer as exc:
         raise refuse(
             "unavailable-transient",

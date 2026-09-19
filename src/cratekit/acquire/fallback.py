@@ -279,10 +279,11 @@ class YtDlpFetcher:
         self._timeout = timeout
 
     def argv(self, url: str, directory: Path) -> list[str]:
-        # THE UPLOAD'S OWN METADATA IS DROPPED, ``-map_metadata -1``, so a tempo
-        # an uploader typed into the container is not carried into a file this
-        # product lands (R17). The clean artist and title are written afterwards
-        # from the row. ``--`` keeps the address from ever reading as an option,
+        # THE UPLOAD'S OWN METADATA IS DROPPED, ``-map_metadata -1``, when the
+        # tool converts. It does not convert an upload already in the target
+        # format, so this is not the guard against a tempo frame (R17): the
+        # worker strips every tag the landing carries before it writes the
+        # row's artist and title. ``--`` keeps the address from ever reading as an option,
         # and ``--no-playlist`` keeps a track page that is also a set page from
         # fetching the set.
         return [

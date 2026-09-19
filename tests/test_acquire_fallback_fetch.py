@@ -301,6 +301,79 @@ def test_artist_and_title_tags_come_from_the_row_not_the_upload_page(
     assert "UPLOAD" not in final.name
 
 
+def _with_upload_tempo(landed: Path) -> None:
+    """What an uploader's MP3 can carry, written straight through mutagen because
+    the product's own writer cannot express a tempo at all (R17)."""
+    from mutagen.id3 import TBPM, TXXX
+    from mutagen.mp3 import MP3
+
+    handle = MP3(landed)
+    if handle.tags is None:
+        handle.add_tags()
+    handle.tags.add(TBPM(encoding=3, text=["174"]))
+    handle.tags.add(TXXX(encoding=3, desc="BPM", text=["174"]))
+    handle.save()
+
+
+def test_a_tempo_the_upload_carried_is_never_committed(permissive, tmp_path, monkeypatch):
+    """R17 through the one path the tool leaves open: an upload already served as
+    MP3 is not converted, so the tool's metadata drop never runs on it. Found by
+    the unit's review, 2026-09-19, against the installed tool's source."""
+    from mutagen.mp3 import MP3
+
+    accepted(permissive)
+    fake = FakeFetcher()
+    real = fake.fetch
+
+    def fetch(url, directory):
+        landed = real(url, directory)
+        _with_upload_tempo(landed)
+        return landed
+
+    fake.fetch = fetch
+    bind(monkeypatch, fake)
+    job_id = queued(tracklist(tmp_path, BOOT))
+
+    run(job_id)
+
+    final = marked_final(permissive)
+    assert only_item(job_id).state is jobs.ItemState.DONE
+    frames = MP3(final).tags
+    assert frames is not None
+    assert not frames.getall("TBPM"), "the upload's tempo frame was committed"
+    assert not frames.getall("TXXX:BPM"), "the upload's tempo text frame was committed"
+    assert tags.read_tag(final, "artist") == BOOT_ARTIST
+    assert tags.read_tag(final, "title") == BOOT_TITLE
+
+
+def test_strip_tags_empties_an_id3_chunk_inside_a_container_and_keeps_the_audio(tmp_path):
+    from mutagen.id3 import TBPM
+    from mutagen.wave import WAVE
+
+    from tests.acquire_fakes import wav_bytes
+
+    path = tmp_path / "a.wav"
+    path.write_bytes(wav_bytes())
+    handle = WAVE(path)
+    handle.add_tags()
+    handle.tags.add(TBPM(encoding=3, text=["128"]))
+    handle.save()
+
+    assert tags.strip_tags(path) is True
+
+    after = WAVE(path)
+    assert after.tags is None or not after.tags.getall("TBPM")
+    assert path.read_bytes()[:4] == b"RIFF"
+    assert tags.strip_tags(path) is True, "a file with no tags is already stripped"
+
+
+def test_strip_tags_refuses_an_unknown_container_rather_than_guessing(tmp_path):
+    path = tmp_path / "a.xyz"
+    path.write_bytes(b"x")
+    with pytest.raises(tags.UnsupportedContainer):
+        tags.strip_tags(path)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # What becomes an item, and what does not
 # ═══════════════════════════════════════════════════════════════════════════
