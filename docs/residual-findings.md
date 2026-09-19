@@ -18941,6 +18941,22 @@ covers the intake file, which the engine checks absent before the first move and
 `place_files` then writes with a plain overwrite. Still not measured. It meets the
 board bar, since a landed file can be overwritten, and is issue #180.
 
+**CLOSED 2026-09-19 on `relay/180`, by the first of the two.** `crate intake
+land` holds `landing.batch_lock` across the whole of `landing.apply`, one lock
+per batch name, exclusive and non blocking, so a second landing under a held
+name is refused as `job-driver-held` with nothing moved, the batch and the
+holder named, and two steps: wait and run again, or take another `--name`,
+because a first landing that succeeds keeps the name through its intake file.
+The lock files sit under a new installation scoped state entry,
+`landing_locks`, on the local state disk and never the library volume. The
+primitive is `jobs.driver_lock`, never unlinked, released by the kernel when
+its holder dies, which a test drives with a holder in a second process that is
+killed. The key is a digest of the casefolded, normalized name, so two
+spellings of one folder share a lock. The plan and the gate screen take no
+lock. The window itself was still not measured: what is measured is that the
+second landing never reaches it. Mutation tables `docs/mutation/r432-a.md` and
+`r432-b.md`. What the lock does not hold is R-534 and R-535.
+
 ---
 
 ## R-433. `place_files` leaves its intake session record open, on success and on every refusal after it opens
@@ -21372,6 +21388,13 @@ zero. Four full suite runs on that branch outside the driver were green. The
 error text was not captured, since the driver records node ids and not
 tracebacks. So the family is wider than `tests/test_deletion.py`.
 
+**Seen a third time 2026-09-19 on `relay/180`.** The null control of mutation
+table `r432-a` killed 20 on its full suite run, every one in
+`tests/test_rebuild.py`, which that branch does not touch, and the batch was
+declared invalid. The rerun was clean, null control zero of 8857, and so was
+table b's. Two full suite runs on that branch outside the driver were green.
+Still no error text, for the same reason.
+
 **Closes when:** the state those tests race on under `-n auto` is found and
 isolated, which R-470's closing line may already cover.
 
@@ -21683,3 +21706,73 @@ was not measured.
 driven by hand and the counts recorded; and the export read is timed on a real
 collection.
 
+---
+
+## R-534. Two landings of one staging folder under two batch names are not kept apart
+
+**Found:** 2026-09-19, by the `/code-review` of R-432's unit on `relay/180`.
+Read, not driven.
+
+`crate intake land` locks the BATCH NAME, which is what R-432 asked for, and
+the default batch name is the run id, unique per run. So two landings started
+over the same staging folder with no `--name` take two different locks, both
+pass the engine's staleness check, and both rename out of one folder. Nothing
+is overwritten, since the two batch folders differ, which is why this is not
+R-432. `os.replace` has one winner per file. Both runs walk the files in the
+same order, so with two fresh batch folders the loser fails on the first file,
+having moved nothing, and is refused saying so. The loser can have moved a file
+first only when the winner skipped one as occupied, which needs a batch folder
+that already held that name.
+
+**Measured cost:** none measured. By reading, a refused run and no lost file.
+It does not meet the board bar.
+
+**Closes when:** the verb also holds a lock keyed on the resolved staging
+folder, or the two landing case is driven and the refusal it ends in is judged
+enough.
+
+---
+
+## R-535. What the batch lock gives up, one zero row, and three rows not measured
+
+**Found:** 2026-09-19, on `relay/180`, by the review and the author's mutation
+tables. Maintainer facing except where it says otherwise.
+
+**No lock on a platform with no `fcntl`.** `jobs.driver_lock` proceeds unlocked
+there, which its own docstring defends for jobs because a claim is still a
+transaction. A landing has no second guard, so on such a platform R-432's
+window is as it was, and `docs/GUIDE.md` says two landings under one name never
+run at once with no such limit. Not driven, since no such platform was to hand.
+Refusing instead would make the verb unusable there. This half is user facing
+and is the one that should be decided by a person.
+
+**The key is the name and not the folder.** One batch name in two libraries on
+one machine shares a lock, so the second is refused though its folder is
+another one. That refuses a safe landing and never admits an unsafe one. Keying
+on the resolved target was not taken, because two spellings of one path that
+resolve differently would then admit two landings into one folder.
+
+**One lock file per batch name stays for good.** About sixty bytes each, one
+per landing, since the default name is unique per run and a lock file is never
+unlinked, for the reason every lock here gives.
+
+**An error from `flock` that is not contention arrives untyped.** Read, not
+driven. It is raised before the first move. The unwritable state directory WAS
+driven and is refused by name as `path-permission-denied`, pinned by
+`test_a_lock_directory_this_account_cannot_write_refuses_by_name_and_moves_nothing`.
+
+**Row A4, zero, the author could not kill it.** Dropping the release in
+`batch_lock`'s `finally` kills nothing of 8857, twice, because CPython frees
+the finished generator's frame and closes the descriptor at the same moment.
+The composite A4c, the release dropped and the lock object kept alive, kills 7,
+so a lock that outlives its `with` is held. The explicit release is kept for an
+interpreter that does not count references.
+
+**Three considered rows were logged as dropped and NOT MEASURED** in
+`docs/mutation/r432-b-rows.toml`: the snapshot role of the state entry, a
+reword of the refusal sentence, and the three other members of `_holder`'s
+tolerated exceptions, which would likely read zero since only the empty lock
+file is driven.
+
+**Closes when:** a person decides what a landing does with no `fcntl`, and the
+rest is either accepted at a retro or measured.

@@ -828,6 +828,25 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="landing_locks",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.DIRECTORY,
+        relative="landing_locks",
+        why=(
+            "One lock per batch name, held by ``intake land`` across its moves "
+            "(R-432). The landing engine asks whether a target is free and then "
+            "renames over it, so two landings under one batch name could take "
+            "each other's files and intake file with neither told. Installation "
+            "scoped ON PURPOSE, against the rule that a lock follows what it "
+            "protects: the library volume is commonly exFAT, where an advisory "
+            "lock was never verified to hold, and a lock that silently does not "
+            "exclude is worse than one a second machine cannot see. Two machines "
+            "landing into one library at once is the case this gives up. "
+            "NEVER_RESTORED for the inode reason every lock here shares."
+        ),
+    ),
+    StateFile(
         key="credential_index",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,

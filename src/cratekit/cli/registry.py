@@ -1836,8 +1836,10 @@ ENTRIES: tuple[Entry, ...] = (
         #: Files and one XML. The engine renames each file out of staging with
         #: ``os.replace`` and refuses a target that exists, and it refuses an
         #: intake file that exists before the first move. ``place_files`` itself
-        #: writes with a plain overwrite, so that check is the only protection,
-        #: and a file arriving after it is the window R-432 records. No
+        #: writes with a plain overwrite, so that check is the only protection
+        #: inside the engine. The window after each check is closed by the
+        #: verb, which holds one lock per batch name across the apply and
+        #: refuses a second landing under a held name (R-432). No
         #: database open. With ``--manifest`` the same XML also gains the label
         #: tree (U77): it is the intake file this run just made that is read
         #: and replaced, never the export, so the write surface is unchanged.

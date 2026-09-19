@@ -287,14 +287,22 @@ def intake_land(ctx) -> Envelope:
     # The engine lists the folder again and refuses a fingerprint that moved,
     # so the gap between this plan and the moves is its to close, not this
     # shell's. What the gate compared is what the person was shown.
-    landed = landing.apply(
-        planned,
-        cfg=cfg,
-        export=export,
-        destination=destination,
-        manifest=manifest.path if manifest is not None else None,
-        manifest_digest=manifest.digest if manifest is not None else None,
-    )
+    #
+    # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432). The
+    # engine checks a target free and then renames over it, and checks the
+    # intake file absent long before it is written, so a second landing into
+    # the same batch folder is refused at the door rather than waited for. Only
+    # here, after the answer: a plan and a gate screen move nothing and a held
+    # name does not stop anybody reading one.
+    with landing.batch_lock(batch):
+        landed = landing.apply(
+            planned,
+            cfg=cfg,
+            export=export,
+            destination=destination,
+            manifest=manifest.path if manifest is not None else None,
+            manifest_digest=manifest.digest if manifest is not None else None,
+        )
     return ctx.envelope(
         data=_reported(payload, landed),
         outcome=Outcome.PENDING,

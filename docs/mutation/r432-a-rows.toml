@@ -1,0 +1,100 @@
+name = "r432-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_key_casefold"
+description = "lock_key: drop the casefold, so two spellings of one folder on a case insensitive volume each get their own lock"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''    folded = unicodedata.normalize("NFC", batch.casefold())'''
+new = '''    folded = unicodedata.normalize("NFC", batch)'''
+
+[[rows]]
+id = "A2_key_normalization"
+description = "lock_key: drop the normalization, so the composed and decomposed spellings of an accented name each get their own lock"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''    folded = unicodedata.normalize("NFC", batch.casefold())'''
+new = '''    folded = batch.casefold()'''
+
+[[rows]]
+id = "A3_lock_never_taken"
+description = "batch_lock: hand back the lock's path without taking it, so nothing is excluded"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''        path = lock.__enter__()'''
+new = '''        path = jobs.lock_path(key, root=root)'''
+
+[[rows]]
+id = "A4_release_left_to_the_collector"
+description = "batch_lock: drop the release in the finally clause, so the lock is freed only when the collector gets to its frame"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''        lock.__exit__(None, None, None)'''
+new = '''        pass'''
+
+[[rows]]
+id = "A5_not_retryable"
+description = "batch_lock: mark the held refusal as not retryable, though the holder ending is exactly what a retry waits for"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''            retryable=True,
+            origin=_ORIGIN,
+            detail={"batch": batch, "lock": str(held), "holder": who},'''
+new = '''            retryable=False,
+            origin=_ORIGIN,
+            detail={"batch": batch, "lock": str(held), "holder": who},'''
+
+[[rows]]
+id = "A6_second_step_dropped"
+description = "batch_lock: drop the step that says a landed first run keeps the name, leaving only wait and rerun, the promise the review found false"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''                "wait for that landing to finish, then run this one again",
+                "if that landing succeeded its intake file now holds the name, "
+                "so land this folder under another --name",
+            ),'''
+new = '''                "wait for that landing to finish, then run this one again",
+            ),'''
+
+[[rows]]
+id = "A7_holder_unreadable_name"
+description = "_holder: stop treating a lock file with no readable name in it as an unknown holder, so the refusal dies on a parse error instead"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''    except (OSError, ValueError, TypeError, KeyError):
+        return "holder unknown"'''
+new = '''    except (OSError, TypeError, KeyError):
+        return "holder unknown"'''
+
+[[rows]]
+id = "A8_holder_left_out"
+description = "batch_lock: leave the holder out of the message, so a person is told a landing is running and not which"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''            f"another landing under the batch name {batch!r} is running ({who}), "'''
+new = '''            f"another landing under the batch name {batch!r} is running, "'''
+
+[[rows]]
+id = "A9_body_refusal_translated"
+description = "batch_lock: translate a held job lock raised by the body as well as by the taking, so an unrelated refusal is reported as a second landing"
+file = "src/cratekit/intake/landing.py"
+surface = "maintainer"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py"]
+old = '''    try:
+        yield path
+    finally:'''
+new = '''    try:
+        try:
+            yield path
+        except jobs.DriverHeld:
+            raise refuse("job-driver-held", "a second landing", origin=_ORIGIN) from None
+    finally:'''

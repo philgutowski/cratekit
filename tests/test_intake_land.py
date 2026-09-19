@@ -12,8 +12,11 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,8 +25,9 @@ from cratekit import cli
 from cratekit.acquire import listdoc
 from cratekit.cli import output, registry
 from cratekit.core import config, session, tags
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import land_cli
+from cratekit.intake import land_cli, landing
 from tests._containers import synth_container
 from tests.test_config import valid_data
 from tests.xml_fixtures import _fresh_xml
@@ -525,6 +529,243 @@ def test_the_list_passed_where_the_manifest_belongs_is_refused_before_the_gate(
     assert "not a manifest" in refused["cause"]["message"]
     assert code == int(ExitCode.PRECONDITION)
     assert _staged_names(cfg) == ["One.flac"]
+
+
+# ---------------------------------------------------------------------------
+# One landing per batch name (R-432)
+# ---------------------------------------------------------------------------
+
+
+def _answered(export: Path, *extra: str) -> list[str]:
+    return ["-d", f"{GATE}=apply", *_land(export, *extra)]
+
+
+def _intake(cfg: config.Config, batch: str) -> Path:
+    return Path(cfg.library.root) / f"{batch}_inboxed.xml"
+
+
+def _assert_free(batch: str) -> None:
+    with landing.batch_lock(batch):
+        pass
+
+
+def test_a_second_landing_under_a_held_batch_name_refuses_and_moves_nothing(
+    cfg, silence, export
+):
+    for name in ("One.flac", "Two.flac"):
+        _stage(cfg, silence, name)
+
+    with landing.batch_lock(BATCH) as held:
+        code, envelope = _drive(_answered(export, "--name", BATCH))
+
+    assert code == int(ExitCode.LIBRARY_BUSY), envelope
+    cause = envelope["cause"]
+    assert cause["reason"] == "job-driver-held"
+    assert cause["retryable"] is True
+    assert cause["detail"]["batch"] == BATCH
+    assert cause["detail"]["lock"] == str(held)
+    assert len(cause["remediation"]["steps"]) == 2
+    assert _staged_names(cfg) == ["One.flac", "Two.flac"]
+    assert not _music(cfg, BATCH).exists()
+    assert not _intake(cfg, BATCH).exists()
+    assert session.records(cfg) == ()
+
+
+def test_another_spelling_of_a_held_batch_folder_is_refused(cfg, silence, export):
+    _stage(cfg, silence, "One.flac")
+
+    with landing.batch_lock(BATCH):
+        code, envelope = _drive(_answered(export, "--name", BATCH.upper()))
+
+    assert code == int(ExitCode.LIBRARY_BUSY), envelope
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_a_held_batch_name_does_not_stop_anybody_reading_the_plan(cfg, silence, export):
+    _stage(cfg, silence, "One.flac")
+
+    with landing.batch_lock(BATCH):
+        code, refused = _drive(_land(export, "--name", BATCH))
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == GATE
+
+
+def test_the_lock_is_held_for_the_whole_of_the_apply(cfg, silence, export, monkeypatch):
+    """Asked from inside the engine call, before its first check and after its
+    last write, so a lock taken late or dropped early is seen."""
+    _stage(cfg, silence, "One.flac")
+    real = landing.apply
+    seen: list[str] = []
+
+    def held_now() -> str:
+        try:
+            _assert_free(BATCH)
+        except CratekitError as exc:
+            return exc.cause.reason
+        return "free"
+
+    def watched(plan, **kwargs):
+        seen.append(held_now())
+        landed = real(plan, **kwargs)
+        assert _intake(cfg, BATCH).exists()
+        seen.append(held_now())
+        return landed
+
+    monkeypatch.setattr(landing, "apply", watched)
+
+    code, envelope = _drive(_answered(export, "--name", BATCH))
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert seen == ["job-driver-held", "job-driver-held"]
+
+
+def test_the_lock_is_released_after_a_landing(cfg, silence, export):
+    _stage(cfg, silence, "One.flac")
+    code, envelope = _drive(_answered(export, "--name", BATCH))
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+
+    _assert_free(BATCH)
+    # And a following landing under the name reaches the engine, which is what
+    # refuses it now, over the intake file the first one left.
+    _stage(cfg, silence, "Two.flac")
+    code, envelope = _drive(_answered(export, "--name", BATCH))
+    assert envelope["cause"]["reason"] == "output-exists", envelope
+    assert _staged_names(cfg) == ["Two.flac"]
+
+
+def _an_export_that_is_not_there(cfg, export) -> None:
+    export.unlink()
+
+
+def _an_intake_file_already_there(cfg, export) -> None:
+    _intake(cfg, BATCH).write_bytes(b"<DJ_PLAYLISTS/>")
+
+
+def _every_target_taken(cfg, export) -> None:
+    _music(cfg, BATCH).mkdir(parents=True)
+    (_music(cfg, BATCH) / "One.flac").write_bytes(b"already here")
+
+
+@pytest.mark.parametrize(
+    "arrange",
+    [_an_export_that_is_not_there, _an_intake_file_already_there, _every_target_taken],
+)
+def test_the_lock_is_released_by_every_refusal_and_the_name_can_land_after(
+    cfg, silence, export, tmp_path, arrange
+):
+    _stage(cfg, silence, "One.flac")
+    kept = tmp_path / "kept.xml"
+    shutil.copyfile(export, kept)
+    arrange(cfg, export)
+
+    code, envelope = _drive(_answered(export, "--name", BATCH))
+
+    assert code not in (int(ExitCode.OK), int(ExitCode.PENDING_HUMAN)), envelope
+    assert envelope["cause"]["reason"] != "job-driver-held"
+    assert _staged_names(cfg) == ["One.flac"]
+    _assert_free(BATCH)
+
+    # What refused it is put right, and the same name lands in the same process.
+    shutil.copyfile(kept, export)
+    _intake(cfg, BATCH).unlink(missing_ok=True)
+    shutil.rmtree(_music(cfg, BATCH), ignore_errors=True)
+    code, envelope = _drive(_answered(export, "--name", BATCH))
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _staged_names(cfg) == []
+
+
+def test_the_lock_is_released_when_the_engine_fails_with_no_refusal(
+    cfg, silence, export, monkeypatch
+):
+    _stage(cfg, silence, "One.flac")
+
+    def broken(plan, **kwargs):
+        raise RuntimeError("the engine failed with no cause")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(landing, "apply", broken)
+        code, envelope = _drive(_answered(export, "--name", BATCH))
+    assert code not in (int(ExitCode.OK), int(ExitCode.PENDING_HUMAN)), envelope
+
+    _assert_free(BATCH)
+    code, envelope = _drive(_answered(export, "--name", BATCH))
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+
+
+def test_a_lock_directory_this_account_cannot_write_refuses_by_name_and_moves_nothing(
+    cfg, silence, export
+):
+    """Driven, not argued: the lock is taken before the first move, so a state
+    directory that refuses leaves staging whole, and the dispatcher names the
+    path and the permission instead of an internal error."""
+    _stage(cfg, silence, "One.flac")
+    state = config.installation_state_dir()
+    state.mkdir(parents=True, exist_ok=True)
+    os.chmod(state, 0o500)
+    try:
+        code, envelope = _drive(_answered(export, "--name", BATCH))
+    finally:
+        os.chmod(state, 0o700)
+
+    cause = envelope["cause"]
+    assert cause["reason"] == "path-permission-denied", envelope
+    assert cause["detail"]["path"].endswith("landing_locks")
+    assert _staged_names(cfg) == ["One.flac"]
+    assert not _music(cfg, BATCH).exists()
+
+
+def test_a_landing_under_another_batch_name_lands_while_one_is_held(cfg, silence, export):
+    _stage(cfg, silence, "One.flac")
+
+    with landing.batch_lock(BATCH):
+        code, envelope = _drive(_answered(export, "--name", BATCH + "-second"))
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert [p.name for p in _music(cfg, BATCH + "-second").iterdir()] == ["One.flac"]
+    assert not _music(cfg, BATCH).exists()
+
+
+_HOLDER = """
+import sys
+from cratekit.intake import landing
+
+with landing.batch_lock(sys.argv[1]):
+    print("held", flush=True)
+    sys.stdin.read()
+"""
+
+
+def test_a_landing_in_another_process_refuses_this_one_until_it_ends(cfg, silence, export):
+    """The exclusion is between PROCESSES, which no test holding the lock in
+    this one shows, and a holder that dies frees the name with no clean up."""
+    _stage(cfg, silence, "One.flac")
+    holder = subprocess.Popen(
+        [sys.executable, "-c", _HOLDER, BATCH],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout.readline().strip() == "held"
+
+        code, envelope = _drive(_answered(export, "--name", BATCH))
+
+        assert code == int(ExitCode.LIBRARY_BUSY), envelope
+        assert f"pid {holder.pid}" in envelope["cause"]["message"]
+        assert _staged_names(cfg) == ["One.flac"]
+
+        holder.kill()
+        holder.wait(timeout=30)
+        code, envelope = _drive(_answered(export, "--name", BATCH))
+        assert code == int(ExitCode.PENDING_HUMAN), envelope
+        assert _staged_names(cfg) == []
+    finally:
+        if holder.poll() is None:
+            holder.kill()
+            holder.wait(timeout=30)
+        holder.stdin.close()
+        holder.stdout.close()
 
 
 def test_guide_names_the_verb_between_naming_and_routing():

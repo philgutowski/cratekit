@@ -642,3 +642,136 @@ def test_every_file_taken_at_the_move_writes_no_intake_file(
     assert not _destination(cfg).exists()
     assert not (Path(cfg.library.root) / cfg.library.music_dir / BATCH).exists()
     assert (_staging(cfg) / "A.flac").is_file()
+
+
+# ---------------------------------------------------------------------------
+# One landing per batch name (R-432)
+# ---------------------------------------------------------------------------
+
+
+def test_a_held_batch_name_refuses_a_second_holder_and_names_the_batch(cfg):
+    with landing.batch_lock(BATCH) as held:
+        with pytest.raises(CratekitError) as excinfo:
+            with landing.batch_lock(BATCH):
+                raise AssertionError("two holders of one batch name")
+
+    cause = excinfo.value.cause
+    assert cause.reason == "job-driver-held"
+    assert cause.retryable is True
+    assert cause.detail["batch"] == BATCH
+    assert cause.detail["lock"] == str(held)
+    assert cause.detail["holder"].startswith(f"pid {os.getpid()}, since ")
+    assert BATCH in cause.message
+    assert f"pid {os.getpid()}" in cause.message
+    # Said in this engine's words. A landing has no job and no driver, and the
+    # lock's key is a digest nobody typed.
+    assert cause.inner is None
+    assert "job" not in cause.message
+    assert landing.lock_key(BATCH) not in cause.message
+    # Waiting is half the remedy: a first landing that succeeds keeps the name.
+    assert cause.remediation.remedy is None
+    assert len(cause.remediation.steps) == 2
+    assert "--name" in cause.remediation.steps[1]
+
+
+def test_a_holder_that_has_not_written_its_name_yet_is_unknown(cfg, monkeypatch):
+    """The name inside the file is for the message and is never the liveness
+    test, so a lock held over an empty file still refuses."""
+    with landing.batch_lock(BATCH) as held:
+        held.write_text("", encoding="utf-8")
+        with pytest.raises(CratekitError) as excinfo:
+            with landing.batch_lock(BATCH):
+                raise AssertionError("two holders of one batch name")
+    assert excinfo.value.cause.reason == "job-driver-held"
+    assert excinfo.value.cause.detail["holder"] == "holder unknown"
+
+
+def test_the_batch_lock_is_on_the_state_disk_and_never_under_the_library(cfg):
+    """The library volume is commonly exFAT, where an advisory lock was never
+    verified to hold, so the lock file must not follow the batch folder."""
+    with landing.batch_lock(BATCH) as held:
+        pass
+
+    assert held.parent == config.installation_state_dir() / "landing_locks"
+    assert Path(cfg.library.root).resolve() not in held.resolve().parents
+    entry = config.state_file(landing.LOCK_KEY)
+    assert entry.root is config.StateRoot.INSTALLATION
+    assert entry.snapshot is config.SnapshotRole.NEVER_RESTORED
+
+
+def test_a_released_batch_lock_leaves_its_file_and_can_be_taken_again(cfg):
+    """Unlinking on release lets a second process lock a fresh inode under the
+    same name while the first still holds the old one."""
+    with landing.batch_lock(BATCH) as first:
+        inode = first.stat().st_ino
+    assert first.exists()
+
+    with landing.batch_lock(BATCH) as second:
+        assert second == first
+        assert second.stat().st_ino == inode
+    assert first.stat().st_mode & 0o777 == config.PRIVATE_FILE_MODE
+    assert first.parent.stat().st_mode & 0o777 == config.PRIVATE_DIR_MODE
+
+
+def test_a_refusal_inside_the_batch_lock_releases_it(cfg):
+    """What this holds is a lock that OUTLIVES its ``with``, which mutation row
+    A4c measures. It cannot tell the release in the ``finally`` from CPython
+    freeing the finished generator's frame, which closes the descriptor at the
+    same moment (row A4, zero). Keeping the raised exception alive does not
+    separate them either: ``contextlib`` puts the caller's traceback back on
+    it, so the lock's frame is never held by one."""
+    with pytest.raises(RuntimeError):
+        with landing.batch_lock(BATCH):
+            raise RuntimeError("the landing failed")
+
+    with landing.batch_lock(BATCH):
+        pass
+
+
+def test_two_batch_names_are_held_together(cfg):
+    with landing.batch_lock(BATCH) as one, landing.batch_lock(BATCH + "-b") as two:
+        assert one != two
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        BATCH.upper(),
+        BATCH.swapcase(),
+    ],
+)
+def test_two_spellings_of_one_folder_share_one_lock(cfg, other):
+    """A case insensitive volume makes both spellings one batch folder, so a
+    lock per spelling would let two landings into it."""
+    assert other != BATCH
+    assert landing.lock_key(other) == landing.lock_key(BATCH)
+    with landing.batch_lock(BATCH):
+        with pytest.raises(CratekitError) as excinfo:
+            with landing.batch_lock(other):
+                raise AssertionError("two holders of one batch folder")
+    assert excinfo.value.cause.reason == "job-driver-held"
+
+
+def test_composed_and_decomposed_spellings_share_one_lock():
+    composed, decomposed = "Café", "Café"
+    assert composed != decomposed
+    assert landing.lock_key(composed) == landing.lock_key(decomposed)
+    assert landing.lock_key(composed) != landing.lock_key("Cafe")
+
+
+def test_a_lock_key_is_a_plain_file_name_whatever_the_batch_is_called():
+    key = landing.lock_key("a batch: with * every ? odd | character " + "x" * 300)
+    assert re.fullmatch(r"[0-9a-f]{64}", key)
+
+
+def test_a_held_job_lock_raised_under_the_batch_lock_is_not_called_a_landing(cfg, tmp_path):
+    """Only the taking is translated. Whatever runs under the lock may refuse
+    with the same cause about something else, and that must arrive unchanged."""
+    from cratekit.core import jobs
+
+    with pytest.raises(jobs.DriverHeld) as excinfo:
+        with landing.batch_lock(BATCH):
+            with jobs.driver_lock("a-job", root=tmp_path / "jobs"):
+                with jobs.driver_lock("a-job", root=tmp_path / "jobs"):
+                    raise AssertionError("two drivers of one job")
+    assert excinfo.value.cause.detail["job_id"] == "a-job"
