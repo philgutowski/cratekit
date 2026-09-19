@@ -773,6 +773,29 @@ def test_a_track_with_no_provider_identifier_is_a_failing_line_and_not_dropped(
     ]
 
 
+def test_missing_tracks_none_of_which_can_be_asked_for_is_refused_and_not_a_no_op(
+    cfg, library, monkeypatch
+):
+    """Mutation row B6 found nothing holding this refusal."""
+    accepted(cfg, "r-1")
+    bind(
+        monkeypatch,
+        StrictCatalogue(releases={"r-1": ([Track("", "Nova Reef", "Tide")], 2024)}),
+    )
+
+    code, envelope = approved()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-list-unusable"
+    assert "1 missing track(s) and none carries a provider identifier" in (
+        envelope["cause"]["message"]
+    )
+    assert envelope["cause"]["detail"]["unlisted_tracks"] == [
+        {"artist": "Nova Reef", "title": "Tide"}
+    ]
+    assert not lists_dir(library).exists()
+
+
 def test_the_list_name_moves_with_anything_the_emitter_would_write():
     from cratekit.acquire import listdoc
 

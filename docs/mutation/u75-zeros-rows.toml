@@ -1,0 +1,21 @@
+name = "u75-zeros"
+pass_kind = "light"
+
+# The two zeros of batches a and b, run again after a test was added for each.
+# They are the same two rows, not new ones, so the table stays at 25.
+
+[[rows]]
+id = "A8_identity_before_payload"
+description = "Read the release identifier from the payload first, not from the item's identity"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''    release_id = _text(identity.get("release_id")) or _text(item.payload.get("identity")) or ""'''
+new = '''    release_id = _text(item.payload.get("identity")) or _text(identity.get("release_id")) or ""'''
+
+[[rows]]
+id = "B6_missing_and_nothing_listable_refuses"
+description = "Remove the refusal for missing tracks none of which carries a provider identifier"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''    if missing and not listed:'''
+new = '''    if False:'''
