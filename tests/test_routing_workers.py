@@ -2602,3 +2602,37 @@ def test_vocal_subs_alone_are_a_change_and_write_a_file(configured, voiced, tmp_
     assert envelope["data"]["totals"]["inserted"] == 0
     assert len(envelope["data"]["totals"]["vox_created"]) == 2
     assert _routed(bare).is_file()
+
+
+def test_a_calibrated_export_with_no_routing_tree_warns_rather_than_crashing(
+    configured, voiced, tmp_path
+):
+    """The vocal writer raises on an unreachable tree, and the pass carries it as
+    a skipped write beside the routing writer's own, not as a traceback."""
+    _calibrated(configured)
+    voiced["Low Track.flac"] = 6
+    export = _write_export(configured, tmp_path / "exports")
+    display = taxonomy.default_taxonomy().tree.display
+    export.write_bytes(export.read_bytes().replace(f'Name="{display}"'.encode(), b'Name="Other"'))
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["reason"] == "route-blocked"
+    assert envelope["data"]["totals"]["vox_created"] == []
+    messages = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
+    assert any("no vocal sub-playlist was created" in m for m in messages), messages
+    assert not _routed(export).exists()
+
+
+def test_a_calibrated_export_over_a_taxonomy_with_no_vocal_sub_creates_none(
+    configured, voiced, no_vocal_dimension, tmp_path
+):
+    del no_vocal_dimension
+    _calibrated(configured)
+    voiced["Low Track.flac"] = 6
+    export = _write_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["vox_created"] == []
+    assert envelope["data"]["totals"]["not_derived"] == []
+    # Spelled, because the narrowed taxonomy no longer declares the name.
+    assert b'Name="with vox"' not in _routed(export).read_bytes()

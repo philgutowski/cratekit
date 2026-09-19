@@ -849,8 +849,9 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         long_added=lengthened,
         duration_unreadable=long_plan.unreadable,
         # THE PLAN'S LIST, and the writer's too: the subs are in the bytes the
-        # writer was handed, so a file written carries every one of them.
-        vox_created=list(vox_created) if destination is not None else [],
+        # writer was handed, and a sub created is a change, so whenever this
+        # list is not empty a file was written and carries every one of them.
+        vox_created=list(vox_created),
         created=list(report.created),
         output=None if destination is None else str(destination),
         not_derived=list(gaps),
