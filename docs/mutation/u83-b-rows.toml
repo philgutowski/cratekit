@@ -3,7 +3,7 @@ pass_kind = "light"
 
 [[rows]]
 id = "W1_undecodable_guard"
-description = "The writer reworded refusal for undecodable bytes is dropped, so the bytes go on toward the file"
+description = "The writer's refusal of undecodable bytes is dropped, so they go on toward the file"
 file = "src/cratekit/core/art.py"
 surface = "user"
 tests = ["tests/test_art.py"]
