@@ -21108,8 +21108,8 @@ deliberate backfill.
 in a store. How many the live store holds was not counted, since a session
 does not read it.
 
-**Meets the board bar. Its issue is opened by this session as the one follow
-up a Relay task may open.**
+**Meets the board bar. Its issue is owed**, since METHOD files an issue after
+the merge that carries the entry and a Relay session exits before that merge.
 
 **Closes when:** a verb, a backfill flag on `crate tombstone list` or a step
 of `crate doctor`, walks the standing `version` records, writes the companion
