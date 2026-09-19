@@ -273,22 +273,28 @@ def test_the_library_guard_reads_resolved_paths(tmp_path, where):
     fetch.assert_outside_library(tmp_path / "library-state" / "x", root)
 
 
-def test_the_library_guard_asks_the_filesystem_and_not_only_the_strings(tmp_path):
-    """Driven on a case insensitive volume: ``resolve`` leaves the letter case
-    as it was typed, so a lower case spelling of a mixed case library is not
-    textually inside it. On a case sensitive volume the other spelling does not
-    exist and this test has nothing to show."""
+def test_the_library_guard_asks_the_filesystem_and_not_only_the_strings(tmp_path, monkeypatch):
+    """Two spellings of one folder that ``resolve`` does not settle.
+
+    Found on a case insensitive volume, where ``resolve`` leaves the letter
+    case as typed, so a lower case spelling of a mixed case library is not
+    textually inside it. Built here so it holds on any volume: where the other
+    spelling is not already the same folder it is made one, and ``resolve`` is
+    held still so only the ``samefile`` layer can answer.
+    """
     root = tmp_path / "Library"
-    (root / "Music").mkdir(parents=True)
+    (root / "Music" / "state").mkdir(parents=True)
     other = tmp_path / "library"
     if not other.exists():
-        pytest.skip("this volume is case sensitive, so the two spellings are two folders")
-    scratch = other / "music" / "state" / "mix_scratch" / "abc"
-    assert root.resolve() not in scratch.resolve().parents, "resolve settled the case after all"
+        other.symlink_to(root, target_is_directory=True)
+    monkeypatch.setattr(Path, "resolve", lambda self, strict=False: self)
+    scratch = other / "Music" / "state" / "mix_scratch" / "abc"
+    assert root not in scratch.parents
     with pytest.raises(fetch.ScratchUnderLibrary):
         fetch.assert_outside_library(scratch, root)
     with pytest.raises(fetch.ScratchUnderLibrary):
         fetch.assert_outside_library(other, root)
+    fetch.assert_outside_library(tmp_path / "elsewhere" / "abc", root)
 
 
 def test_a_library_that_is_not_there_has_nothing_to_be_inside(tmp_path):
