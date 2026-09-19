@@ -18859,6 +18859,11 @@ single file caller has the same shape.
 `routing_pass.close_run` on success and as refused on a refusal, or opens
 it only after its last refusal.
 
+**Corrected 2026-09-19 in the attended worktree, sweep finding 117.1.** The
+search above missed a reader. `core/tree_registry.py` `assert_cutover_ready`
+asks `not record.terminal` and refuses `cutover-open-run` on exactly this
+record, driven. R-501 carries the cost.
+
 ---
 
 ## R-434. A landed batch marks no file lossy, whatever its name says
@@ -20432,3 +20437,344 @@ same row stays refusable by leaving its candidate unaccepted.
 
 **Closes when:** a person can name a URL for a row in review and the fetch
 honours it, or the override is dispositioned as cut.
+
+---
+
+## R-500. `name apply` renames a file the library names when its row sits under an unmapped volume
+
+**Found:** 2026-09-19, by an independent review of U67's merged diff, sweep
+finding 112.1 in `docs/ideation/2026-09-19-fable-review-sweep.md`. Driven
+against a disposable library in the attended worktree.
+
+U67's guard holds back a rename when a collection row names the file. With an
+empty `location_prefix_map`, a row recorded under another volume name is keyed
+only by its old spelling, no candidate matches it, and the file is planned as
+an ordinary rename. Driven, the plan read `count 2, referenced 0` and the apply
+renamed the file the row names. No warning, no count, exit ok.
+
+**Measured cost:** the R-407 outcome the guard exists to stop, a row left
+naming a path that is gone. R-372 measured this library at 9937 of 9937 rows
+under the drive's old volume name, and setup writes the map empty. The
+author's own configuration now carries a prefix rule for the renamed drive, so
+the live library is covered. A fresh setup is not. The deletion pass refuses on
+an unmapped row where this verb proceeds, and no test covers an unmapped row.
+The case sensitive half of the finding, a rule differing from the recorded
+volume only in case, was read and not driven.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** `name apply` refuses, or holds the file back and says so, when
+any collection row's recorded prefix matches no rule, the way the deletion pass
+does, with a test driving an unmapped row.
+
+---
+
+## R-501. Every landing leaves an open session and an intake file that each refuse the cutover precheck
+
+**Found:** 2026-09-19, sweep finding 117.1. Driven. **This corrects R-433**,
+whose measured cost says an open intake record blocks nothing today.
+
+Driven on a disposable library with no database native tree. `crate intake
+land` of one file ended `PENDING_HUMAN` and left its session record `OPEN`.
+`crate route pending` then answered exit 0, outcome ok, and the record was
+still `OPEN`, because the verb returns before `_close_if_settled` while no tree
+is native. `tree_registry.assert_cutover_ready` refused `cutover-open-run`
+naming that session. With the record forced terminal, it refused again,
+`cutover-xml-pending`, naming `<root>/<batch>_inboxed.xml`. Only with that
+file deleted by hand did the precheck pass.
+
+R-433 searched for readers of `SessionState.OPEN` and found none. The reader is
+`core/tree_registry.py`, which asks `not record.terminal`.
+
+**Measured cost:** the first cutover cannot pass its precheck on any library
+that has landed a batch. The session closes only through `route pending`,
+which closes it only once a tree is native, which takes a cutover. No shipped
+verb closes or abandons an open intake record: `session release` is the lock,
+and `session.abandon` takes only `committed-unverified`. The refusal's step,
+close or abandon every open run, names an act no verb offers. The landing's
+pending action says to import the file and run `route pending`, and never says
+the imported file must then be removed. What limits the cost today is that no
+shipped verb calls `tree_registry.flip`, a search of `src` and `scripts` found
+only the function itself, so this is paid at the attended cutover, U29, and by
+every landing on the live library before it, each of which leaves one more
+record and one more file for that sitting to clear. `intake file` has the same
+shape through the same `place_files`.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** `place_files` closes the session it opened, or the record is
+moved to `awaiting-import` and the precheck and a shipped verb agree on how a
+person clears it, and an imported intake file has a stated end: a verb that
+retires it, or a pending step that says to remove it.
+
+---
+
+## R-502. A second `intake missing` over a job lists tracks the library has since gained
+
+**Found:** 2026-09-19, sweep finding 114.2. Driven.
+
+The verb lists from the job's committed reports, whose states were fixed when
+the job ran, and rechecks nothing. Driven: a hearts job with two missing rows,
+`intake missing` wrote two, `acquire download` fetched both. The staged audio
+was removed as a landing would, and both tracks were put in the library. A
+second `intake missing` over the same job answered exit 0, outcome ok,
+`missing 2, written 2`, and printed the same `next: crate acquire download`
+line. That download queued a new job over the same two ids and fetched both
+again. Neither verb raised a check or a warning.
+
+**Measured cost:** a repeat run hands a person a download command for tracks
+they already hold, and the report calls them missing. `acquire download` does
+not consult the library either, so nothing downstream catches it. A track
+tombstoned after the intake is listed the same way, read and not driven, which
+the module docstring says the verb will not do. R-431 covers only tombstones
+the consult cannot reach at intake time, and R-449 sets this verb aside as a
+different shape.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** the listing rechecks ownership and tombstones at listing time
+for each row it is about to write, or says in a failing check how old the
+job's answers are, and a repeat run over rows since acquired lists none of
+them.
+
+---
+
+## R-503. An offered track never becomes listable, whatever the review answer
+
+**Found:** 2026-09-19, sweep finding 114.1. Driven.
+
+The offered check reads "offered for review and not listed until answered; see:
+crate review list". Driven: a job with one offered row. `review list` showed
+one `version-match` item, `review resolve --verdict rejected` answered ok, and
+`review list` came back empty. A second `intake missing` still counted
+`offered 1, written 2`. Resuming the succeeded job answered exit 0 and changed
+nothing, and a third listing read the same.
+
+**Measured cost:** the check promises a path that does not exist. A track held
+in another version, which a person has said is not the one they want, never
+reaches a download list from that job. The only route is to queue the whole
+playlist again. One correction to the sweep's wording: resuming a succeeded
+job does not refuse, it answers ok and does nothing.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** a rejected version match makes its row listable on the next
+`intake missing`, read from the review store at listing time, or the check
+stops promising it and names what a person must do instead.
+
+---
+
+## R-504. The hearts listing returns short with no error when the provider withholds unservable hearts
+
+**Found:** 2026-09-19, sweep finding 115.2. Driven at the adapter with a fake
+provider shaped as R-383 measured the real one.
+
+`TidalCatalogue.favourite_tracks` says "this read is complete or it raises".
+`listing.favorite_tracks` ends its walk on `get_tracks_count`, which counts
+hearts the provider will not serve, and each page leaves those hearts out.
+Driven: 197 declared, 12 unservable, two pages read, 185 rows returned, nothing
+raised. Nothing compares the rows returned with the declared total.
+
+**Measured cost:** the job reports owned, offered and missing over the short
+listing as if it were the account, and the withheld hearts appear nowhere, not
+as missing and not as a warning. The `Catalogue.favourite_tracks` contract
+promises completeness. The sweep says the guide repeats the promise, and a
+search of `docs/GUIDE.md` found no such sentence. R-383 measured the mechanism live on
+this account at 197 against 93. R-423 owes the live count to an attended
+sitting, and this entry does not change that. The size of the shortfall on the
+live account today was not measured here.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** the hearts read compares what it returned with the declared
+total and carries the difference to the verb as a failing check or a warning
+naming the count, and the contract says what the read can and cannot
+promise.
+
+---
+
+## R-505. One unreadable heart refuses the whole hearts listing on every run
+
+**Found:** 2026-09-19, sweep finding 115.1. Driven with fake provider rows.
+
+Driven: six hearts, one with a blank identifier. `crate intake playlist
+favorites` refused, exit 30, `intake-list-unusable`, "1 track(s) in this
+playlist carry no provider identifier (positions 3)", with the step "fetch the
+playlist again so every row carries its id". A second run refused identically.
+A heart with an empty artist refused the same way with remedy `run-doctor` and
+no steps.
+
+**Measured cost:** unmeasured on the live account. If the provider ever serves
+such a heart, the inbound hearts verb refuses for that account until the heart
+is found and removed by hand, and the step cannot be acted on, because hearts
+are not a playlist and a position in a newest first listing is not something a
+person can see. Whether the provider does serve one is not known: R-383's
+mechanism leaves unservable hearts out of the page altogether, which would
+make this rarer than the sweep's scenario supposes. The first attended
+favourites sitting answers it. R-430 records the undercount and the playlist
+wording, not that the refusal repeats or that the no artist path exists.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** an unreadable heart is set aside and reported by artist and
+title where it has them, and the rest of the listing proceeds, or an attended
+sitting shows the provider never serves one and the entry is closed as not
+reachable.
+
+---
+
+## R-506. A move that fails part way through a landing leaves files the batch verb will not take again
+
+**Found:** 2026-09-19, sweep finding 116.1. Driven, and narrower than the
+sweep read it.
+
+Driven: three files staged, the second `os.replace` faulted with EIO.
+`landing.apply` refused, named `One.flac` as already moved in the message and
+in `detail.moved`, and wrote no intake file. `One.flac` sat in `Music/<batch>`
+with no collection row. Planning a landing over `Music/<batch>` refused,
+"inside the library ... already owned". Landing staging again under the same
+batch name moved the other two, and its intake file does not name `One.flac`.
+
+**The sweep's claim that no verb can recover the file is refuted.** `crate
+intake file <the stranded path> --export XML` answered exit 0 and wrote
+`Music/<batch>/One_inboxed.xml` naming it.
+
+**Measured cost:** a recovery exists and the refusal does not name it. It is
+one run and one rekordbox import per stranded file, so a fault at file 150 of
+200 is 149 of each. The refusal's slug for an EIO is `intake-list-unusable`,
+which is sweep finding 116.5 and not recorded separately here.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** a failed move refuses that file and the landing continues and
+writes an intake file for what moved, as `_occupied` already does, or the
+refusal names `intake file` as the way to bring each moved file in.
+
+---
+
+## R-507. The failed job refusal on `intake missing --run` never names `job resume`
+
+**Found:** 2026-09-19, sweep finding 118.1. The refusal and the resume were
+driven. The consequence for a second sync pass was read, not driven.
+
+Driven: a run with one succeeded and one failed playlist job. The refusal's
+steps were "pass --skip-failed to list the rest and name these as left out" and
+"or queue those playlists again with crate sync all and list that run". The
+words `job resume` appear nowhere in the cause. `crate job resume <job>`
+answered exit 0, the job went to queued, its worker ran it to succeeded, and
+it stayed in the same run.
+
+**Measured cost:** the one remedy that keeps the pass as one list is the one
+not offered. By reading, the second step produces a new run holding only the
+requeued playlist, because the sync cursor records the succeeded one as swept
+(R-359), so listing that run reads as the whole pass and the first run's
+succeeded jobs are never listed. That half was not driven.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** the refusal names `crate job resume JOB` first, and the
+`sync all` step either goes or says that the new run will not hold the jobs
+that already succeeded.
+
+---
+
+## R-508. A run list written with `--skip-failed` refuses the listing that follows a resumed job
+
+**Found:** 2026-09-19, sweep finding 118.2. Driven.
+
+The run list has one fixed name, `<run>_synced`, and its contents depend on
+which jobs have succeeded. Driven: `--skip-failed` wrote the list from the one
+succeeded job. The failed job was resumed and succeeded. `intake missing --run`
+with no flag then refused, exit 30, `intake-list-unusable`, "`<run>_synced.manifest.json`
+already exists and holds something else; it is left as it is", with the step
+"move the file aside or name another folder with --out". The list on disk
+still held only the first job's track. The skipped check that came with the
+first listing carried no remedy.
+
+**Measured cost:** a person who follows the product's own order, list what
+succeeded, resume what failed, list again, is refused, and the way out is to
+move aside a list that may already be half downloaded and then download
+against a list that names the first job's tracks again, which is R-502's
+shape. R-449 says `intake missing` is not this shape because a job's reports
+do not change, which stopped being true for `--run`. R-476 records the same
+fixed name trap for a changed ISRC answer only.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** a run listing whose job set grew writes a list a person can
+use without moving a file, by a name that carries the job set or by replacing
+a list it can show it wrote itself, and a test drives skip, resume, list.
+
+---
+
+## R-509. One row with an ISRC makes every row of `intake missing` wait on a provider login
+
+**Found:** 2026-09-19, sweep finding 123.1. Driven for `--job`. The mixed
+`--run` case was read, not driven.
+
+Driven: a set job with ten missing rows, nine with no ISRC and one with a well
+formed ISRC, and no stored provider session, which is the ordinary state for a
+person who only runs `intake set`. `intake missing` refused, exit 30,
+`credential-missing`, and wrote no file. The nine rows need no provider call
+and would have gone to the unlisted text list.
+`test_no_stored_session_refuses_before_anything_is_written` pins this, so it is
+a decision, and this entry records its cost.
+
+**Measured cost:** a set's tracklist cannot be handed on until a provider
+login exists, though most of its rows never ask the provider anything. By
+reading, a mixed `--run` withholds playlist rows that already carry ids and
+were listed before U78.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** rows that need no lookup are written whatever the session
+state, and the rows that do are handed on with a reason naming the login, or
+the all or nothing rule is restated in the guide as the intended behaviour.
+
+---
+
+## R-510. `intake.missing` declares no provider check and no third file
+
+**Found:** 2026-09-19, sweep finding 123.5. Driven by reading the registry
+entry at run time and running `crate doctor`.
+
+The `intake.missing` registry entry carries `doctor_checks == ()` and
+`writes == frozenset()`, and its comment still says the verb adds two files.
+Since U78 the verb needs a provider session for any row with an ISRC and
+writes a third file, `<name>.unlisted.json`.
+
+**Measured cost:** smaller than the sweep read it. `crate doctor` on the
+fixture's profile still failed `credential.provider`, because another enabled
+verb declares it, so doctor does not report this installation ready. It would
+on a profile where `intake.missing` is the only enabled verb that spends the
+session, and that was not measured. A maintainer facing declaration gap.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** the entry declares `credential.provider` and its comment
+names the three files.
+
+---
+
+## R-511. The provider client drops an ISRC's unreadable ids before the adapter can count them
+
+**Found:** 2026-09-19, sweep finding 123.10. Confirmed by reading the installed
+client, tidalapi 0.8.11. Not driven against the provider.
+
+`Session.get_tracks_by_isrc` reads each id the open API files under the ISRC
+with `self.track(id)`, and on `ObjectNotFound` it continues to the next id. So
+an ISRC filed under ids A and B, where the read of B answers not found in this
+region, comes back as `[A]`. `tracks_for_isrc` returns what it was handed, and
+`intake missing` lists the row as naming exactly one id.
+
+**Measured cost:** unmeasured live. The rule that a row is listed only when
+its ISRC names one distinct id cannot be guaranteed by the adapter, because
+the narrowing happens inside the client. The sweep's second half, that a
+single id whose track is not streamable is listed and fails only at download,
+was not checked. R-477 records that two ISRC readers disagree, not this.
+
+**Why not fixed here.** The sweep session records and does not change code.
+
+**Closes when:** the adapter reads the open API answer itself, or counts the
+ids before the per id reads, so a dropped id is seen and the row is handed on
+as several, or an attended sitting shows the case does not occur.
