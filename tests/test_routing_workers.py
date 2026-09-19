@@ -3011,3 +3011,53 @@ def test_a_calibrated_vocal_track_lands_in_a_vocal_sub_the_sweep_creates(
     assert _sub_keys(written, "Tech House", vox) == ("13",)
     vocal = {item["track_id"]: item["vocal"] for item in envelope["data"]["items"]}
     assert vocal == {"11": "", "12": "", "13": f"Tech House/{vox}"}
+
+
+def test_a_bare_lf_before_a_folder_close_is_a_skipped_create_and_the_file_parses(
+    configured, tagged, tmp_path
+):
+    """Found by U91's hunt, driven before the fix: a line an old splicer ended
+    with a bare LF, just above a genre folder's close, put the created sub one
+    byte early, splitting a ``/>``, and the sweep wrote a file no parser reads."""
+    import xml.etree.ElementTree as ET
+
+    export = _unplaced_export(configured, tmp_path / "exports")
+    last_sub = b'<NODE Name="Med" Type="1" KeyType="0" Entries="0"/>\r\n        </NODE>'
+    document = export.read_bytes()
+    assert document.count(last_sub) == 2, "the fixture no longer has the shape this bends"
+    at = document.rindex(last_sub)
+    export.write_bytes(document[:at] + last_sub.replace(b"\r\n", b"\n") + document[at + len(last_sub):])
+
+    code, envelope = _sweep(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["created"] == []
+    messages = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
+    assert any("Tech House" in m and "CRLF" in m for m in messages), messages
+    written = _placed(export).read_bytes()
+    ET.fromstring(written)
+    assert _sub_keys(written, "Deep House", "Low") == ("11",)
+
+
+def test_the_creating_writer_refuses_a_document_whose_lines_end_in_lf():
+    """The engine alone, every line LF: nothing written rather than a corrupt file."""
+    from cratekit.write import trees
+
+    lines = [
+        b'<?xml version="1.0" encoding="UTF-8"?>',
+        b'<DJ_PLAYLISTS Version="1.0.0">',
+        b'  <PLAYLISTS>',
+        b'    <NODE Type="0" Name="ROOT" Count="1">',
+        b'      <NODE Type="0" Name="Deep House" Count="1">',
+        b'        <NODE Name="Low" Type="1" KeyType="0" Entries="0"/>',
+        b"      </NODE>",
+        b"    </NODE>",
+        b"  </PLAYLISTS>",
+        b"</DJ_PLAYLISTS>",
+        b"",
+    ]
+    document = b"\n".join(lines)
+    buffer = bytearray(document)
+    report = trees.apply_unplaced_changes({("Deep House", "High"): ["1"]}, buffer)
+    assert report.inserted == 0 and report.created == ()
+    assert len(report.warnings) == 1 and "CRLF" in report.warnings[0]
+    assert bytes(buffer) == document

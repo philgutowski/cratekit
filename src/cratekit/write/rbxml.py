@@ -1164,6 +1164,19 @@ def splice_into_subplaylist(
         # create path that skipped this made the outcome depend on whether the
         # sub happened to exist yet: the run that created it kept both copies
         # forever, and the run that found it kept one.
+        # THE BREAK BEFORE THE CLOSE LINE HAS TO BE A CRLF, or the offset below
+        # lands one byte early, inside the line before, and the node splits a
+        # ``/>`` in two: a file no parser reads, written as a success (U91).
+        # Real exports still carry bare LF lines an old splicer wrote. Refused
+        # rather than written around, because writing there anyway means
+        # inventing a line ending, which is how the bare LF got in.
+        at = _break_before(content, line_start(content, folder.close_start))
+        if at is None:
+            return SpliceResult(
+                warning=f"the line before the close tag of genre folder {genre_folder} "
+                f"does not end in CRLF, so {sub_name} cannot be created there "
+                f"without inventing a line ending"
+            )
         fresh = dedupe_track_ids(track_ids, (), norm_by_tid)
         new_node = (
             "\r\n"
@@ -1172,7 +1185,6 @@ def splice_into_subplaylist(
             + " " * close_indent
             + "</NODE>"
         ).encode("utf-8")
-        at = line_start(content, folder.close_start) - len(CRLF)
         content[at:at] = bytearray(new_node)
         return SpliceResult(inserted=len(fresh), entries_after=len(fresh), created=True)
 
@@ -1708,6 +1720,20 @@ def _first_child_offset(content: bytes, parent: NodeSpan) -> int | None:
     if bytes(content[at : at + len(CRLF)]) != CRLF:
         return None
     return at + len(CRLF)
+
+
+def _break_before(content: bytes, line_at: int) -> int | None:
+    """Where the CRLF ending the line before ``line_at`` begins, or None.
+
+    An insert that emits a lead broken node lands it just before that break.
+    None when the line ends in a bare LF, or in nothing, for the reason
+    :func:`_first_child_offset` gives: the only way to write there anyway is to
+    invent a line ending.
+    """
+    at = line_at - len(CRLF)
+    if at < 0 or bytes(content[at:line_at]) != CRLF:
+        return None
+    return at
 
 
 def _absorb_lead_break(content: bytes, start: int) -> int:
