@@ -439,7 +439,12 @@ def test_a_placed_call_ends_awaiting_import_with_the_action_persisted(cfg, silen
     assert record.pending is not None
     assert record.pending.artifact == str(destination)
     assert record.pending.verify_verb == ingest.VERIFY_VERB == "intake.imported"
-    assert record.pending.steps == ingest.import_steps(destination)
+    # Spelled out, because an expected value read off ``ingest.import_steps``
+    # would only say the function returns what it returns.
+    first, second, third = record.pending.steps
+    assert first == f"import {destination} into rekordbox as a rekordbox xml library"
+    assert second == "take a Fresh Export of the collection from rekordbox"
+    assert third.startswith("run crate intake imported --export with that Fresh Export")
     assert ingest.persisted_pending(cfg, placed) == record.pending
 
 
