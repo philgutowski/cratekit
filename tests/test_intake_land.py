@@ -214,6 +214,61 @@ def test_an_answer_given_for_one_batch_name_is_stale_for_another(cfg, silence, e
     assert not _music(cfg, "elsewhere").exists()
 
 
+def test_an_answer_given_against_one_export_is_stale_for_another(
+    cfg, silence, export, tmp_path
+):
+    """The export is what the batch is spliced into, so it is part of the plan."""
+    _stage(cfg, silence, "One.flac")
+    code, refused = _drive(_land(export, "--name", BATCH))
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    other = tmp_path / "other.xml"
+    other.write_bytes(export.read_bytes())
+
+    code, envelope = _drive(["--run", run_id, *_land(other, "--name", BATCH)])
+
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_an_answer_given_for_one_folder_is_stale_for_another_holding_the_same_names(
+    cfg, silence, export
+):
+    """The file fingerprint is names, sizes and times. Two folders can match on
+    all three, so the folder itself is in the digest."""
+    _stage(cfg, silence, "One.flac")
+    twin = _staging(cfg) / "twin"
+    twin.mkdir()
+    staged = _staging(cfg) / "One.flac"
+    shutil.copy2(staged, twin / "One.flac")
+    code, refused = _drive(_land(export, "--name", BATCH))
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+
+    code, envelope = _drive(["--run", run_id, *_land(export, str(twin), "--name", BATCH)])
+
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    assert (twin / "One.flac").is_file()
+    assert not _music(cfg, BATCH).exists()
+
+
+def test_staging_holding_only_lists_and_dotfiles_is_a_plan_of_nothing(cfg, export):
+    """What staging holds between landings: the lists folder ``intake missing``
+    writes, the unfinished download directory, a Finder dotfile and a sync's
+    intake file. None of it is audio, so there is nothing to land."""
+    staging = _staging(cfg)
+    (staging / "lists").mkdir()
+    (staging / ".cratekit-acquire-staging").mkdir()
+    (staging / ".DS_Store").write_bytes(b"\0")
+    (staging / "run_synced.xml").write_bytes(b"<DJ_PLAYLISTS/>")
+
+    code, envelope = _drive(["-d", f"{GATE}=apply", *_land(export, "--name", BATCH)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["items"] == []
+
+
 def test_an_abort_is_no_op_and_moves_nothing(cfg, silence, export):
     _stage(cfg, silence, "One.flac")
     code, envelope = _drive(["-d", f"{GATE}=abort", *_land(export, "--name", BATCH)])
