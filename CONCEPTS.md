@@ -172,6 +172,16 @@ item of kind `provider-candidate` on the `version-match` queue, keyed on the
 folded row, and `crate intake missing --list` lists the accepted one on its
 next run. A candidate's score orders the screen and never lists anything.
 
+### Fallback candidate
+An upload on a second source, SoundCloud or YouTube, that `crate acquire
+fallback` found for a missing row the configured provider has no route to,
+since U80. Offered as a review item of kind `fallback-candidate` on the
+`fallback-source` queue, keyed on the same folded row a provider candidate is,
+one option per upload page URL, ranked by a score that orders the screen and
+drops nothing. It is never picked and, until R-404's download half lands,
+never downloaded. A row with a provider route, its own provider id or a
+provider candidate waiting or accepted, is not searched for one.
+
 ### Hearts reference
 The reserved word `favorites` in place of a playlist reference, since U70:
 `crate intake playlist favorites` lists every track hearted on the account and

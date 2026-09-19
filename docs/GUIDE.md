@@ -198,6 +198,32 @@ nothing for is reported as a failing line, never silently dropped. The list is
 written as `NAME-found.list.json`, `NAME` being the input's own name, so it
 never lands on the job's list.
 
+A bootleg, a white label or an unreleased promo is not on the provider at all.
+For those lines there is a second source search:
+
+```bash
+crate acquire fallback PATH
+```
+
+It reads the same kind of list, checks it against the library the same way,
+and searches SoundCloud and then YouTube for each line still missing. Run
+`intake missing --list` first and hand this the lines it could not route: a
+line carrying the provider's own id, or with a provider candidate waiting or
+accepted in review, is left alone, and a line the provider would list on its
+own is not something this verb can see. What it finds is offered for review,
+best match first, and nothing is picked or downloaded:
+
+```bash
+crate review list --queue fallback-source --kind fallback-candidate
+crate review resolve ITEM_ID --verdict accepted --option URL
+```
+
+A second run searches nothing it already offered. It needs `yt-dlp`, and says
+how to install it when it is missing. If a search fails part way it stops and
+names every line it had already offered, and the next run carries on from
+there. An accepted upload is reported with its address; downloading it is not
+built yet.
+
 A `crate sync all` pass queues one playlist job per new playlist, and its output
 ends with the command that lists the whole pass at once:
 
