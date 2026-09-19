@@ -172,6 +172,13 @@ def build_inbox(parser, entry) -> None:
 
 
 def build_unplaced(parser, entry) -> None:
+    parser.add_argument(
+        "--export",
+        default=None,
+        metavar="PATH",
+        help="place every track the routing tree of this fresh export does not "
+        "hold and write <name>_placed.xml beside it, for a tree that has not cut over",
+    )
     parser.set_defaults(_handler=route_unplaced)
 
 
@@ -315,6 +322,23 @@ def _export_refusal(reason: str, message: str, export: Path, **extra: Any) -> Cr
         origin=("routing_cli",),
         detail={"export": str(export), **extra},
     )
+
+
+def _read_export(export: Path) -> bytes:
+    """The bytes of a collection export, or a refusal naming why they are not one."""
+    if not export.is_file():
+        raise _export_refusal(
+            "library-export-unusable", f"no collection export at {export}", export
+        )
+    content = export.read_bytes()
+    if rbxml.playlists_start(content) == -1:
+        raise _export_refusal(
+            "library-export-unusable",
+            f"{export.name} has no {rbxml.PLAYLISTS_SECTION} section, so it is not "
+            f"a collection export",
+            export,
+        )
+    return content
 
 
 def _inbox_keys(content: bytes, declared: taxonomy.Taxonomy, export: Path) -> list[str]:
@@ -546,6 +570,75 @@ def _vox_subs(
     return written, tuple(f"{folder}/{sub}" for folder in report.modified)
 
 
+@dataclass(frozen=True)
+class Decision:
+    """Where the routing decision puts a set of export tracks, and what it read.
+
+    ``plan`` is what a bridge writer takes, keyed on ``(folder, sub)``.
+    ``destined`` and ``vocal`` name each track's energy sub and vocal sub as a
+    person is shown them. ``files`` maps each readable file to the keys that
+    name it, and ``readings`` and ``placements`` are the engine's own answers,
+    kept for a caller that rates from the same reading.
+    """
+
+    plan: dict[tuple[str, str], list[str]]
+    destined: dict[str, str]
+    vocal: dict[str, str]
+    files: dict[str, list[str]]
+    readings: list[rebuild.Truth]
+    placements: tuple[rebuild.DeclaredPlacement, ...]
+    gaps: tuple[str, ...]
+
+
+def _decide(
+    cfg: config.Config,
+    declared: taxonomy.Taxonomy,
+    rows: list[tuple[str, dict[str, str]]],
+    threshold: float | None,
+    warnings: list[dict[str, str]],
+) -> Decision:
+    """Route export rows by the native path's decision, called rather than restated.
+
+    ONE DECISION FOR BOTH EXPORT SWEEPS, the inbox and the unplaced (U91). The
+    readings come from :func:`cratekit.write.rebuild.read_truth`, the placements
+    from :func:`cratekit.write.rebuild.derive_from_taxonomy`, and the display
+    names from :func:`cratekit.write.routing_pass.destination`, so the two sweeps
+    and the database medium cannot disagree about where a track goes.
+
+    A row whose Location names no file here is a warning and is not routed:
+    tags read off a file that is not there are all absent, and absent tags route
+    to the fallback bucket, which would file a track by the one fact nobody
+    measured.
+    """
+    files: dict[str, list[str]] = {}
+    for key, row in rows:
+        path = _readable_file(row.get("Location", ""), cfg)
+        if path is None:
+            warnings.append({
+                "code": "track-file-unreadable",
+                "message": f"track {key} names {row.get('Location', '')!r}, which is not "
+                f"a file on this machine, so its tags could not be read and it was "
+                f"not routed",
+            })
+            continue
+        files.setdefault(str(path), []).append(key)
+
+    readings = [rebuild.read_truth(Path(path)) for path in files]
+    placements, gaps = rebuild.derive_from_taxonomy(
+        declared, readings, vocal_threshold=threshold
+    )
+    plan: dict[tuple[str, str], list[str]] = {}
+    destined: dict[str, str] = {}
+    vocal: dict[str, str] = {}
+    for placement in placements:
+        folder, sub = routing_pass.destination(declared, placement.bucket, placement.sub)
+        named = vocal if placement.sub == trees.VOX_SUB_CLASS else destined
+        for key in files[placement.location]:
+            plan.setdefault((folder, sub), []).append(key)
+            named[key] = f"{folder}/{sub}"
+    return Decision(plan, destined, vocal, files, readings, placements, gaps)
+
+
 def plan_export(
     cfg: config.Config, export: Path
 ) -> tuple[
@@ -580,18 +673,7 @@ def plan_export(
     derived. With one, a vocal track files under the vocal sub as well as its
     energy sub, and :func:`_vox_subs` has made that sub first.
     """
-    if not export.is_file():
-        raise _export_refusal(
-            "library-export-unusable", f"no collection export at {export}", export
-        )
-    content = export.read_bytes()
-    if rbxml.playlists_start(content) == -1:
-        raise _export_refusal(
-            "library-export-unusable",
-            f"{export.name} has no {rbxml.PLAYLISTS_SECTION} section, so it is not "
-            f"a collection export",
-            export,
-        )
+    content = _read_export(export)
     declared = taxonomy.default_taxonomy()
     keys = _inbox_keys(content, declared, export)
     by_id = {
@@ -601,7 +683,7 @@ def plan_export(
     warnings: list[dict[str, str]] = []
     threshold = metadata_cli.load_vocal_threshold(cfg)
     content, vox_created = _vox_subs(cfg, declared, content, threshold, warnings)
-    files: dict[str, list[str]] = {}
+    rows: list[tuple[str, dict[str, str]]] = []
     for key in keys:
         row = by_id.get(key)
         if row is None:
@@ -611,31 +693,13 @@ def plan_export(
                 f"row in {export.name}, so it was not routed",
             })
             continue
-        path = _readable_file(row.get("Location", ""), cfg)
-        if path is None:
-            warnings.append({
-                "code": "track-file-unreadable",
-                "message": f"track {key} names {row.get('Location', '')!r}, which is not "
-                f"a file on this machine, so its tags could not be read and it was "
-                f"not routed",
-            })
-            continue
-        files.setdefault(str(path), []).append(key)
-
-    readings = [rebuild.read_truth(Path(path)) for path in files]
-    placements, gaps = rebuild.derive_from_taxonomy(
-        declared, readings, vocal_threshold=threshold
+        rows.append((key, row))
+    decision = _decide(cfg, declared, rows, threshold, warnings)
+    plan, destined, vocal = decision.plan, decision.destined, decision.vocal
+    gaps = decision.gaps
+    ratings = _ratings(
+        declared, decision.placements, decision.readings, decision.files, by_id
     )
-    plan: dict[tuple[str, str], list[str]] = {}
-    destined: dict[str, str] = {}
-    vocal: dict[str, str] = {}
-    for placement in placements:
-        folder, sub = routing_pass.destination(declared, placement.bucket, placement.sub)
-        named = vocal if placement.sub == trees.VOX_SUB_CLASS else destined
-        for key in files[placement.location]:
-            plan.setdefault((folder, sub), []).append(key)
-            named[key] = f"{folder}/{sub}"
-    ratings = _ratings(declared, placements, readings, files, by_id)
     long_plan = _long_tracks(declared, content, by_id, warnings)
     lengthy = set(long_plan.keys)
     playlist = declared.long_tracks.display if declared.long_tracks else ""
@@ -767,31 +831,31 @@ def _export_pending(
     )
 
 
-def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
-    """Route a fresh export's intake folder into a new file, behind the apply gate.
+def _refuse_off_the_bridge(
+    cfg: config.Config, declared: taxonomy.Taxonomy, export: Path, *, instead: str
+) -> None:
+    """Refuse an export sweep the bridge cannot serve, before anything is read.
 
-    THE ROUTING TREE HAS TO BE ON THE BRIDGE. A tree that has cut over is the
-    database's, and an export carrying new membership for it would put a second
-    tree beside the real one on import. Refused before the plan is offered, so a
-    person is never asked to approve a write the guard would stop.
+    A TREE THAT HAS CUT OVER is the database's, and an export carrying new
+    membership for it would put a second tree beside the real one on import.
+    ``instead`` is the step a person takes, which differs by verb.
+
+    AN ABSENT LIBRARY ROOT is the source system's mount guard. With the volume
+    gone every Location names nothing, every track warns, and a plan that routed
+    nothing would be the only thing a person saw.
     """
-    declared = taxonomy.default_taxonomy()
-    registry = tree_registry.read(cfg)
-    if registry.is_database_native(declared.tree.id):
+    if tree_registry.read(cfg).is_database_native(declared.tree.id):
         raise refuse(
             "tree-unconverged",
             f"the tree {declared.tree.id!r} has cut over to the database, so an "
             f"export must not carry its membership; importing one would replace "
             f"the tree the database owns",
             remedy=Remedy.FIX_COMMAND_LINE,
-            steps=("run route inbox without --export, which writes the database",),
+            steps=(instead,),
             origin=("routing_cli",),
             detail={"tree_id": declared.tree.id, "export": str(export)},
         )
     if not Path(cfg.library.root).is_dir():
-        # THE SOURCE SYSTEM'S MOUNT GUARD. With the volume gone every Location
-        # names nothing, every track warns, and a plan that routed nothing
-        # would be the only thing a person saw.
         raise refuse(
             "library-volume-unmounted",
             f"this library's root {cfg.library.root!r} is not there, so no track "
@@ -800,6 +864,20 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             origin=("routing_cli",),
             detail={"root": str(cfg.library.root), "export": str(export)},
         )
+
+
+def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
+    """Route a fresh export's intake folder into a new file, behind the apply gate.
+
+    THE ROUTING TREE HAS TO BE ON THE BRIDGE, and the volume has to be there,
+    both asked by :func:`_refuse_off_the_bridge` before the plan is offered, so a
+    person is never asked to approve a write the guard would stop.
+    """
+    declared = taxonomy.default_taxonomy()
+    _refuse_off_the_bridge(
+        cfg, declared, export, instead="run route inbox without --export, which "
+        "writes the database",
+    )
     content, plan, ratings, long_plan, items, warnings, gaps, vox_created = plan_export(
         cfg, export
     )
@@ -971,17 +1049,255 @@ def unplaced_items(cfg: config.Config) -> tuple[list[dict[str, str]], dict[str, 
     }
 
 
-def route_unplaced(ctx) -> Envelope:
-    """Report tracks no governed tree places, read off the library.
+#: The suffix of the file the unplaced sweep writes, beside the export it read.
+#: Not ``ROUTED_SUFFIX``: a sweep of the same export would replace an inbox
+#: routing nobody has imported yet, and the intake filing would go with it.
+PLACED_SUFFIX = "_placed.xml"
 
-    READ ONLY, and the registry entry says so (R-313). The open carries no write
-    intent and no session is entered, so the report is safe with rekordbox open.
+#: The warning the report carries when no tree has cut over, so the answer
+#: names the medium that places tracks today rather than only saying it did
+#: not compare.
+UNPLACED_EXPORT_REMEDY = (
+    "no tree has cut over, so this library is still filed through an export: "
+    "export the collection from rekordbox and run route unplaced --export with "
+    "that file, which places what the routing tree does not hold"
+)
+
+
+def _routing_tree_node(
+    content: bytes, declared: taxonomy.Taxonomy, export: Path
+) -> rbxml.NodeSpan:
+    """The export's routing tree, a folder that is a direct child of the root.
+
+    THE WRITER'S OWN SCOPE. :func:`cratekit.write.rbxml.splice_into_subplaylist`
+    looks for the tree among the root's children and nowhere deeper, so the set
+    of tracks it could place is read from the same node. The coverage audit
+    widens this to a tree filed inside another folder, which it can report on
+    and this sweep could not write into.
+
+    AN ABSENT TREE REFUSES. Every track would read as unplaced and every write
+    would be skipped, so the one answer a person would see is a plan to re-file
+    a whole library into a tree the file does not hold.
+    """
+    display = declared.tree.display
+    root = rbxml.root_node(content)
+    node = (
+        None
+        if root is None
+        else rbxml.direct_child(content, root, display, rbxml.FOLDER_TYPE)
+    )
+    if isinstance(node, rbxml.NodeSpan):
+        return node
+    why = node if isinstance(node, str) else f"no folder named {display!r} sits under ROOT"
+    raise refuse(
+        "governed-tree-absent",
+        f"{export.name} carries no routing tree to place tracks into: {why}",
+        steps=(
+            "check that the export is the current one and holds the routing tree "
+            "the taxonomy declares, directly under the playlist root",
+        ),
+        origin=("routing_cli",),
+        detail={"export": str(export), "declared": display, "tree": declared.tree.id},
+    )
+
+
+def unplaced_keys(
+    content: bytes, tree_node: rbxml.NodeSpan, by_id: dict[str, dict[str, str]]
+) -> list[str]:
+    """Every collection track no playlist under the routing tree holds, in order.
+
+    THE COVERAGE AUDIT'S RULE, and the source system's: a track is placed when a
+    playlist ANYWHERE under the tree holds it, whatever the sub, so a track a
+    person filed by hand into a sub the declaration would not choose is left
+    where it is. Only playlists are read, because a folder's byte range holds
+    its children's keys and would count them twice as its own.
+
+    A track in the intake folder and not under the tree is unplaced, which is
+    what the source system's sweep read too.
+    """
+    held: set[str] = set()
+    for _path, child in rbxml.walk_nodes(content, tree_node):
+        if child.node_type == rbxml.PLAYLIST_TYPE:
+            held.update(rbxml.track_keys(content, child))
+    return [key for key in by_id if key not in held]
+
+
+def plan_unplaced_export(
+    cfg: config.Config, export: Path
+) -> tuple[
+    bytes,
+    dict[tuple[str, str], list[str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    tuple[str, ...],
+]:
+    """Read one fresh export and decide where each unplaced track goes.
+
+    Returns the bytes to write into, the plan the creating writer takes, the
+    items a person is shown, the warnings, and the dimensions not derived.
+
+    THE DECISION IS :func:`_decide`'s, the one the inbox sweep makes, over the
+    calibrated cut the one loader reads. A vocal track files under the vocal sub
+    as well, and the creating writer makes that sub where it is absent, so no
+    separate vocal pass runs first.
+    """
+    content = _read_export(export)
+    declared = taxonomy.default_taxonomy()
+    tree_node = _routing_tree_node(content, declared, export)
+    by_id = {
+        track.track_id: rbxml.attributes(content, track)
+        for track in rbxml.collection_tracks(content)
+    }
+    keys = unplaced_keys(content, tree_node, by_id)
+    warnings: list[dict[str, str]] = []
+    threshold = metadata_cli.load_vocal_threshold(cfg)
+    decision = _decide(cfg, declared, [(key, by_id[key]) for key in keys], threshold, warnings)
+    items = [
+        {
+            "track_id": key,
+            "destination": decision.destined.get(key, ""),
+            "vocal": decision.vocal.get(key, ""),
+        }
+        for key in keys
+    ]
+    return content, decision.plan, items, warnings, decision.gaps
+
+
+def apply_unplaced_export(
+    cfg: config.Config,
+    export: Path,
+    content: bytes,
+    plan: dict[tuple[str, str], list[str]],
+) -> tuple[Path | None, trees.RouteReport]:
+    """Write the plan into a copy of the export, beside it, never in place.
+
+    THE CREATING WRITER, :func:`cratekit.write.trees.apply_unplaced_changes`,
+    and this is its first caller. The sweep exists to leave nothing unplaced,
+    so a bucket with no sub yet is the ordinary case, and refusing to create one
+    would leave behind exactly the tracks the sweep was run for. A missing GENRE
+    folder is still a warning: the writer creates a playlist, never a folder.
+
+    THE TREE IS NAMED, so the emitter guard refuses a tree that has cut over
+    behind the refusal the caller already made by name.
+
+    NOTHING INSERTED IS NOTHING WRITTEN. A file identical to the export would
+    still be a file somebody is told to import.
+    """
+    declared = taxonomy.default_taxonomy()
+    tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
+    buffer = bytearray(content)
+    report = trees.apply_unplaced_changes(plan, buffer, tree=tree)
+    if not report.inserted:
+        return None, report
+    destination = export.with_name(export.stem + PLACED_SUFFIX)
+    config.atomic_write_bytes(bytes(buffer), destination)
+    return destination, report
+
+
+def _unplaced_pending(
+    run_id: str, verb: str, destination: Path, inserted: int, created: int
+) -> PendingHumanAction:
+    made = f", and {created} sub-playlist(s) were created" if created else ""
+    return PendingHumanAction(
+        kind="rekordbox_import",
+        id=new_pending_id(run_id),
+        summary=(
+            f"{inserted} unplaced track(s) were placed{made} in {destination.name}, "
+            f"which rekordbox has not imported yet"
+        ),
+        # THIS VERB IS ITS OWN CHECK, as the inbox sweep is: over a fresh export
+        # taken after the import, a second run places nothing. Named by the
+        # caller from its registry entry, because this layer may not spell a
+        # verb (KTD23).
+        verify_verb=verb,
+        artifact=str(destination),
+        steps=(
+            f"import {destination} into rekordbox as a rekordbox xml library and "
+            f"import the routing tree from it",
+            "then export the collection again and run route unplaced --export "
+            "with that file, which places nothing once the import has landed",
+        ),
+    )
+
+
+def route_unplaced_export(ctx, cfg: config.Config, export: Path) -> Envelope:
+    """Place every track a fresh export's routing tree does not hold, into a new file.
+
+    NO GATE, and that is the brief's decision (U91). The export and the
+    database are never written; the file lands beside the export and reaches
+    rekordbox only when a person imports it, which is the review. The report
+    without ``--export`` is unchanged.
+    """
+    declared = taxonomy.default_taxonomy()
+    _refuse_off_the_bridge(
+        cfg, declared, export, instead="run route unplaced without --export, which "
+        "reports what the database's tree does not hold",
+    )
+    content, plan, items, warnings, gaps = plan_unplaced_export(cfg, export)
+    destination, report = apply_unplaced_export(cfg, export, content, plan)
+    warnings = [
+        *warnings,
+        *({"code": "route-write-skipped", "message": text} for text in report.warnings),
+    ]
+    # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND, the inbox sweep's
+    # rule and for its reason: it is the answer the pending action reads as
+    # proof the import landed.
+    if destination is not None:
+        reason = None
+    elif warnings:
+        reason = "route-blocked"
+    else:
+        reason = "nothing-to-route"
+    data = _plan(
+        items,
+        kind="unplaced-export",
+        applied=destination is not None,
+        reason=reason,
+        inserted=report.inserted,
+        created=list(report.created),
+        output=None if destination is None else str(destination),
+        not_derived=list(gaps),
+    )
+    if destination is None:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
+    return ctx.envelope(
+        data=data,
+        outcome=Outcome.PENDING,
+        code=ExitCode.PENDING_HUMAN,
+        pending=_unplaced_pending(
+            ctx.run.run_id,
+            ctx.entry.name,
+            destination,
+            report.inserted,
+            len(report.created),
+        ),
+        warnings=warnings,
+    )
+
+
+def route_unplaced(ctx) -> Envelope:
+    """Report tracks no governed tree places, or place them through an export.
+
+    WITHOUT ``--export`` IT IS READ ONLY (R-313). The open carries no write
+    intent and no session is entered, so the report is safe with rekordbox
+    open. On a library with nothing native it compares nothing and says which
+    medium would place the tracks.
+
+    WITH ``--export`` THE ACT IS BACK (U91), on the medium that needs no
+    database write. See :func:`route_unplaced_export`.
     """
     cfg = _load()
+    if ctx.args.export:
+        return route_unplaced_export(ctx, cfg, Path(ctx.args.export))
     items, totals = unplaced_items(cfg)
     return ctx.envelope(
         data=_plan(items, kind="unplaced", **totals),
         outcome=Outcome.OK if totals["compared"] else Outcome.NO_OP,
+        warnings=(
+            [{"code": "no-native-tree", "message": UNPLACED_EXPORT_REMEDY}]
+            if totals["reason"] == "no-native-tree"
+            else []
+        ),
     )
 
 

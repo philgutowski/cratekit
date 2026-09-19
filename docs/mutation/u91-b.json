@@ -1,0 +1,98 @@
+{
+  "name": "u91-b",
+  "pass_kind": "light",
+  "branch": "relay/136",
+  "head": "608396e",
+  "when": "2026-09-19 06:05 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8037,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/routing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/routing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d24071f8a3353ece",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8037,
+    "baseline_collected": 8037,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "U6_tree_named",
+      "description": "apply_unplaced_export: stop naming the tree, so the emitter guard is unarmed and the genre folder is searched for across the whole playlist section",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "db1d4592f3fc86a4",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 135,
+      "baseline_collected": 135,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_namesake_genre_folder_outside_the_routing_tree_takes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    report = trees.apply_unplaced_changes(plan, buffer, tree=tree)",
+      "new": "    report = trees.apply_unplaced_changes(plan, buffer, tree=None)"
+    },
+    {
+      "id": "P1_inbox_decide_rows",
+      "description": "plan_export, existing guard sample: hand an intake key with no collection row to _decide anyway",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e722ee21b86532a4",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 135,
+      "baseline_collected": 135,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_an_intake_key_with_no_row_warns_once_and_only_as_row_absent"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                f\"row in {export.name}, so it was not routed\",\n            })\n            continue\n        rows.append((key, row))",
+      "new": "                f\"row in {export.name}, so it was not routed\",\n            })\n        rows.append((key, row or {}))"
+    }
+  ],
+  "dropped": []
+}

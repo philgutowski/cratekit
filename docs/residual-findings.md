@@ -14545,6 +14545,28 @@ this verb), the cloud-sync pairing, and the route skill, which said all four
 routing verbs want rekordbox closed. Mutation table `docs/mutation/r313.md`,
 7 of 7 killing, author run. R-444 records the neighbouring shape.
 
+**The placing arm, closed 2026-09-19 on `relay/136`, issue 136, U91.** The
+second of the two ways to close named above: the verb gained the sweep, on the
+medium that needs no database write. `crate route unplaced --export X` routes
+every collection track that no playlist under the export's routing tree holds,
+at any depth, by the decision `route inbox --export` makes, now one function,
+and writes `<X stem>_placed.xml` beside X through
+`trees.apply_unplaced_changes`, the creating writer and its first caller. A
+bucket with no sub gets one and the answer names it under `created`. The
+registry entry declares `xml` and nothing else, is not destructive and names no
+gate, as the brief decided; the export and the database are never written.
+Without `--export` the verb is the report above, and on a library with nothing
+native it now carries a `no-native-tree` warning naming `--export`. Two
+departures, both recorded where they live: the tree is read as a direct child
+of the playlist root, the writer's own scope, rather than anywhere as the
+coverage audit reads it, so a nested tree refuses `governed-tree-absent`
+instead of planning writes that cannot land; and the sweep does not rate,
+which is R-446. The hunt found the creating writer corrupting a file over a
+bare LF line; the path this verb calls is fixed and the four siblings are
+R-447. Mutation tables `docs/mutation/u91.md` and `u91-b.md`, 24 rows, all
+killing after two tests, read in `u91-notes.md`, author run. Owed to an
+attended sitting: one `_placed.xml` imported into rekordbox.
+
 ---
 
 ## R-314. Nothing in the suite reaches the addressability refusal, composite included
@@ -18834,5 +18856,62 @@ outside the brief. It is a choice for the person.
 
 **Closes when:** the cut is frozen with the job, or reading it live is
 confirmed at an attended sitting.
+
+---
+
+## R-446. `route unplaced --export` places a back catalogue track and does not rate it
+
+**Found:** 2026-09-19, U91 on `relay/136`, by the author, read against the
+source system's `dj-sort-unplaced`.
+
+The source sweep set a star rating from energy on every unplaced track whose
+rating was still zero, outside the NonElectronic and Chill / Ambient buckets,
+and rebuilt the long track playlist, in the same pass as the placing. U91's
+brief asked for the placing arm and this build's sweep does only that. The long
+track playlist is already built over the whole collection by
+`route inbox --export` (U88), so the gap is the ratings: a track outside the
+intake that this sweep places stays unrated, where `route inbox --export` would
+have rated it had it come through the intake.
+
+**Measured cost:** none driven. A person reading their library finds filed
+tracks with no rating, which the source never left.
+
+**Closes when:** the sweep fills the ratings `routing_cli._ratings` plans, over
+the same reading, with the same fill if empty rule, or the gap is accepted.
+
+---
+
+## R-447. Four tree inserts still assume a CRLF before the close line, and over a bare LF they write a file no parser reads
+
+**Found:** 2026-09-19, U91 on `relay/136`, by the hunt after the review, as
+the first caller of the creating writer. Driven on the engine.
+
+Every lead broken insert in `write/rbxml.py` lands its node at the close line's
+start minus two bytes, which is right only when the line before ends in CRLF.
+rbxml's own header says real exports still carry bare LF lines an old splicer
+wrote. Over one of those the node lands a byte early and splits a `/>` in two.
+U91 fixed the one it binds, the create branch of `splice_into_subplaylist`, with
+`_break_before`, which answers None and turns the write into a warning. The same
+arithmetic is still in `insert_root_playlist`, `insert_genre_folder`,
+`insert_intake_playlist` and `insert_empty_subplaylist`. Driven:
+`insert_empty_subplaylist` over a genre folder whose last sub line ends in a
+bare LF returns `created=True` and no warning, and the document then fails
+`xml.etree` at the line it split.
+
+**Measured cost:** a corrupt routed file reported as a success, which a person
+is then told to import. Two shipped verbs reach two of the four:
+`route inbox --export` calls `insert_root_playlist` through the long track
+playlist and `insert_empty_subplaylist` through the vocal pass. Reachability on
+a real export is unmeasured: the live library is off limits, and no export here
+was read for a bare LF line before a close.
+
+**Why not fixed here.** `insert_root_playlist` and `insert_intake_playlist`
+delete an existing node before they compute the insert point, so a refusal
+there has to come before the delete to keep "a failure writes nothing", which is
+a change to two writers this unit does not call.
+
+**Closes when:** each of the four asks `_break_before` before its first
+mutation and answers with its own warning shape, with a test per writer over a
+bare LF line.
 
 ---

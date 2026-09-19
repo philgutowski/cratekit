@@ -1,0 +1,25 @@
+name = "u91-b"
+pass_kind = "light"
+
+[[rows]]
+id = "U6_tree_named"
+description = "apply_unplaced_export: stop naming the tree, so the emitter guard is unarmed and the genre folder is searched for across the whole playlist section"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    report = trees.apply_unplaced_changes(plan, buffer, tree=tree)'''
+new = '''    report = trees.apply_unplaced_changes(plan, buffer, tree=None)'''
+
+[[rows]]
+id = "P1_inbox_decide_rows"
+description = "plan_export, existing guard sample: hand an intake key with no collection row to _decide anyway"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''                f"row in {export.name}, so it was not routed",
+            })
+            continue
+        rows.append((key, row))'''
+new = '''                f"row in {export.name}, so it was not routed",
+            })
+        rows.append((key, row or {}))'''

@@ -4,7 +4,43 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U90, issue #135, `relay/135`, 2026-09-19.**
+**Last merged: U91, issue #136, `relay/136`, 2026-09-19.**
+`crate route unplaced --export X` places what the routing tree does not hold,
+which closes R-313's placing arm. Every collection track that no playlist under
+the export's routing tree holds, at any depth, is routed by the decision
+`route inbox --export` makes, now one function, `routing_cli._decide`, and
+written to `<X stem>_placed.xml` beside X through `trees.apply_unplaced_changes`,
+the creating writer and now its first caller. The suffix is not `_routed.xml`, so
+the sweep never replaces an inbox routing nobody has imported. A bucket with no
+sub gets one, named in `totals.created`; a missing genre folder is a
+`route-write-skipped` warning, never invented. A track filed anywhere under the
+tree is left alone, even in a sub the rules would not pick. The tree is read as
+a direct child of the playlist root, the writer's own scope, and an absent or
+wrong typed tree refuses `governed-tree-absent`. A cut over routing tree refuses
+`tree-unconverged` and an absent root `library-volume-unmounted`, through
+`_refuse_off_the_bridge`, now shared with the inbox sweep. A written file ends
+PENDING with a `rekordbox_import` action whose verify verb is `route.unplaced`;
+no file is `route-blocked` when warnings were left and `nothing-to-route` when
+not. The registry entry declares `xml` only, is not destructive and names no
+gate, the brief's decision; the export path opens no database. Without
+`--export` the verb is the R-313 report, and with nothing native it now carries
+a `no-native-tree` warning naming `--export`. The unit's `/code-review` found
+nothing. The hunt after it found the creating writer, over a bare LF line before
+a genre folder's close, writing a file no parser reads as a success; the path
+this verb calls now asks `rbxml._break_before` and warns instead, and the four
+sibling inserts are R-447. 20 new test cases in `tests/test_routing_workers.py`, and
+`tests/test_reserved_causes.py` re-pinned 422 to 423 distinct, 264 to 265
+non-keys, for the plan kind `unplaced-export`. The route skill has a section on
+the flag. Mutation tables `docs/mutation/u91.md` and `u91-b.md`, 24 rows, all
+killing after two tests were added for the zeros, read in `u91-notes.md`. R-446
+(the sweep does not rate) filed, not on the board. **R-447 meets the board bar
+and its issue is owed after this merge**, titled from its ledger heading.
+**Owed to an attended sitting:** one `_placed.xml` imported into rekordbox.
+Battery on the recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 8036
+passed and 1 skipped in 56 seconds, and no test of this unit's among the ten
+slowest. **Main's highest residual number is R-447.**
+
+**The session before: U90, issue #135, `relay/135`, 2026-09-19.**
 `crate analyze calibrate --vocal-cut N` sets the with vox cut by hand, which
 closes R-374. The flag and the folder are mutually exclusive in the parser. A
 cut outside 0 to 100, the presence score's range, or not a number, refuses
