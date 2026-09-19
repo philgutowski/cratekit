@@ -1015,3 +1015,340 @@ def test_converge_compares_a_native_tree_on_an_encrypted_library(acknowledged, e
         check["key"]: check["status"] for check in envelope["data"]["checks"]
     }
     assert statuses[f"tree.{TREE_ID}"] != converge.NOT_COMPARED, envelope
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U86: the export medium, for a library whose tree has not cut over
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The source system sorted the INBOX playlist of a fresh export and wrote a new
+# file to import. That needs no database write, so it works on a library that
+# has cut nothing over, which is every library until U29. Every test below goes
+# through the shipped command line and then reads the OUTPUT FILE back, because
+# the envelope is what a hollow write would still produce.
+
+#: Three intake tracks, their tag readings, and where the declared rules put
+#: each one. The destination is spelled out here rather than derived, so the
+#: expectation cannot be the code under test asked twice.
+EXPORT_TRACKS = {
+    "11": ("Low Track.flac", "Deep House", 2, ("Deep House", "Low")),
+    "12": ("Mid Track.flac", "Deep House", 5, ("Deep House", "Med")),
+    "13": ("Top Track.flac", "Tech House", 8, ("Tech House", "High")),
+}
+
+#: Tokens that only ever appear in grid bearing XML, the set the beat grid
+#: suite forbids an emitter to produce, plus the tempo attribute itself.
+GRID_TOKENS = ("<TEMPO", "Battito", "Metro=", "Inizio=", "AverageBpm=", "Bpm=")
+
+
+def _export_track(tid: str, location: str, *, analyzed: bool = False) -> list[str]:
+    """One multi line collection row, the real export shape, optionally analysed."""
+    bpm = "124.00" if analyzed else "0.00"
+    lines = [
+        f'    <TRACK TrackID="{tid}" Name="Track {tid}" Artist="A" Genre="Ignored"',
+        f'           AverageBpm="{bpm}" Location="{location}">',
+    ]
+    if analyzed:
+        lines.append('      <TEMPO Inizio="0.512" Bpm="124.00" Metro="4/4" Battito="1"/>')
+    lines.append("    </TRACK>")
+    return lines
+
+
+def _routing_folder(name: str, subs: tuple[str, ...]) -> list[str]:
+    lines = [f'        <NODE Type="0" Name="{name}" Count="{len(subs)}">']
+    lines += [
+        f'          <NODE Name="{sub}" Type="1" KeyType="0" Entries="0"/>' for sub in subs
+    ]
+    lines.append("        </NODE>")
+    return lines
+
+
+def _write_export(
+    cfg: config.Config,
+    folder: Path,
+    *,
+    subs: tuple[str, ...] = ("Low", "Med", "High"),
+    inbox: tuple[str, ...] = tuple(EXPORT_TRACKS),
+    extra_rows: tuple[str, ...] = (),
+    missing_file: str | None = None,
+) -> Path:
+    """A fresh export: a collection, an INBOX batch, and the routing tree.
+
+    Every intake file is a real file under the library, because the reader is
+    handed the path the export records and a Location naming nothing is refused
+    as unreadable rather than routed to a fallback.
+    """
+    from cratekit.core import locations
+    from tests.xml_fixtures import _xml_doc
+
+    music = Path(cfg.library.root) / "Music"
+    rows: list[str] = []
+    for tid, (name, *_rest) in EXPORT_TRACKS.items():
+        path = music / name
+        if tid != missing_file:
+            path.write_bytes(b"")
+        rows += _export_track(tid, locations.location_url(path), analyzed=tid == "11")
+    for tid in extra_rows:
+        rows += _export_track(tid, locations.location_url(music / f"{tid}.flac"))
+    count = len(EXPORT_TRACKS) + len(extra_rows)
+    declared = taxonomy.default_taxonomy()
+    batch = [
+        '          <NODE Name="2026-09-18 batch" Type="1" KeyType="0" '
+        f'Entries="{len(inbox)}">',
+        *(f'            <TRACK Key="{key}"/>' for key in inbox),
+        "          </NODE>",
+    ]
+    document = _xml_doc(
+        collection=[f'  <COLLECTION Entries="{count}">', *rows, "  </COLLECTION>"],
+        root_children=[
+            f'      <NODE Type="0" Name="{declared.intake.display}" Count="1">',
+            *batch,
+            "      </NODE>",
+            f'      <NODE Type="0" Name="{declared.tree.display}" Count="2">',
+            *_routing_folder("Deep House", subs),
+            *_routing_folder("Tech House", subs),
+            "      </NODE>",
+        ],
+    )
+    folder.mkdir(parents=True, exist_ok=True)
+    export = folder / "library_FRESH.xml"
+    export.write_bytes(document)
+    return export
+
+
+@pytest.fixture
+def tagged(monkeypatch):
+    """The three tag readings, served from the file NAME.
+
+    Patched at the tag reader rather than at ``read_truth``, so the reader the
+    native path uses is the one that runs. An empty file has no tags, and a
+    tag writer here would be a second thing under test.
+    """
+    from cratekit.core import tags
+
+    by_name = {name: (genre, energy) for name, genre, energy, _ in EXPORT_TRACKS.values()}
+    monkeypatch.setattr(
+        tags, "read_genre_from_file", lambda path: by_name.get(Path(path).name, (None, None))[0]
+    )
+    monkeypatch.setattr(
+        tags, "read_energy_from_file", lambda path: by_name.get(Path(path).name, (None, None))[1]
+    )
+    monkeypatch.setattr(tags, "read_vox_from_file", lambda path: None)
+
+
+def _routed(export: Path) -> Path:
+    return export.with_name(export.stem + "_routed.xml")
+
+
+def _sub_keys(document: bytes, folder: str, sub: str) -> tuple[str, ...]:
+    """What one sub playlist holds in a written file, read by a real XML parser.
+
+    A parser rather than the byte locates, so a file the locates can read and
+    rekordbox could not is a failure here rather than a pass.
+    """
+    import xml.etree.ElementTree as ET
+
+    declared = taxonomy.default_taxonomy()
+    root = ET.fromstring(document)
+    tree = next(
+        node for node in root.find("PLAYLISTS")[0] if node.get("Name") == declared.tree.display
+    )
+    bucket = next(node for node in tree if node.get("Name") == folder)
+    playlist = next(node for node in bucket if node.get("Name") == sub)
+    keys = tuple(track.get("Key") for track in playlist.findall("TRACK"))
+    assert int(playlist.get("Entries")) == len(keys), "the entry count disagrees"
+    return keys
+
+
+def _apply_export(export: Path) -> tuple[int, dict]:
+    return _drive(["-d", "route.inbox.apply=apply", "route", "inbox", "--export", str(export)])
+
+
+def test_an_export_inbox_lands_each_track_in_its_declared_sub(configured, tagged, tmp_path):
+    """Three tracks, three subs, and the file that comes out parses."""
+    export = _write_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["outcome"] == str(Outcome.PENDING)
+    totals = envelope["data"]["totals"]
+    assert totals["applied"] is True
+    assert totals["inserted"] == 3
+    assert totals["created"] == []
+    assert totals["output"] == str(_routed(export))
+
+    written = _routed(export).read_bytes()
+    for tid, (_name, _genre, _energy, (folder, sub)) in EXPORT_TRACKS.items():
+        assert _sub_keys(written, folder, sub) == (tid,), (
+            f"track {tid} did not land in {folder}/{sub} alone"
+        )
+    assert {
+        item["track_id"]: item["destination"] for item in envelope["data"]["items"]
+    } == {tid: f"{folder}/{sub}" for tid, (*_, (folder, sub)) in EXPORT_TRACKS.items()}
+
+    pending = envelope["pending_human_action"]
+    assert pending["kind"] == "rekordbox_import"
+    assert pending["artifact"] == str(_routed(export))
+
+
+def test_an_export_sub_that_does_not_exist_is_a_warning_and_nothing_is_created(
+    configured, tagged, tmp_path
+):
+    """The non creating writer: a curated tree gains no playlist it never had."""
+    export = _write_export(configured, tmp_path / "exports", subs=("Low", "Med"))
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    totals = envelope["data"]["totals"]
+    assert totals["created"] == []
+    assert totals["inserted"] == 2
+    messages = [warning["message"] for warning in envelope["warnings"]]
+    assert any("Tech House/High" in message for message in messages), messages
+    written = _routed(export).read_bytes()
+    assert b'Name="High"' not in written, "a sub the tree never had was created"
+
+
+def test_a_second_export_run_over_its_own_output_inserts_nothing(configured, tagged, tmp_path):
+    """Idempotent, and a run that inserted nothing writes no file to import."""
+    export = _write_export(configured, tmp_path / "exports")
+    _apply_export(export)
+    first = _routed(export)
+    before = sorted(path.name for path in first.parent.iterdir())
+
+    code, envelope = _apply_export(first)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.NO_OP)
+    assert envelope["data"]["totals"]["inserted"] == 0
+    assert envelope["data"]["totals"]["reason"] == "nothing-to-route"
+    assert envelope["pending_human_action"] is None
+    assert sorted(path.name for path in first.parent.iterdir()) == before, (
+        "a run that routed nothing still wrote a file somebody would import"
+    )
+
+
+def test_the_input_export_is_byte_identical_afterwards(configured, tagged, tmp_path):
+    export = _write_export(configured, tmp_path / "exports")
+    before = export.read_bytes()
+    _apply_export(export)
+    assert export.read_bytes() == before, "the export was written in place"
+    assert _routed(export).read_bytes() != before
+
+
+def test_an_export_route_never_writes_a_tempo_bpm_or_grid(configured, tagged, tmp_path):
+    """R17 over the diff: no added or removed line carries grid data.
+
+    Track 11 is analysed, so the input HAS a grid, and the rekordbox authored
+    one must survive verbatim while nothing new of the kind appears.
+    """
+    import difflib
+
+    export = _write_export(configured, tmp_path / "exports")
+    before = export.read_bytes().decode("utf-8").splitlines()
+    _apply_export(export)
+    after = _routed(export).read_bytes().decode("utf-8").splitlines()
+    changed = [
+        line
+        for line in difflib.unified_diff(before, after, lineterm="", n=0)
+        if line[:1] in "+-" and not line.startswith(("+++", "---"))
+    ]
+    assert changed, "the diff is empty, so this proves nothing"
+    offenders = [line for line in changed if any(token in line for token in GRID_TOKENS)]
+    assert offenders == [], offenders
+    assert sum("<TEMPO" in line for line in after) == sum("<TEMPO" in line for line in before) == 1
+
+
+def test_an_export_track_whose_file_is_not_there_is_a_warning_and_not_routed(
+    configured, tagged, tmp_path
+):
+    """An unreadable file has no tags, and no tags route to the fallback, which
+    would file a track by the one fact nobody measured."""
+    export = _write_export(configured, tmp_path / "exports", missing_file="12")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["inserted"] == 2
+    codes = [warning["code"] for warning in envelope["warnings"]]
+    assert "track-file-unreadable" in codes, envelope["warnings"]
+    items = {item["track_id"]: item["destination"] for item in envelope["data"]["items"]}
+    assert items["12"] == ""
+    written = _routed(export).read_bytes()
+    routed = {
+        key
+        for folder in ("Deep House", "Tech House")
+        for sub in ("Low", "Med", "High")
+        for key in _sub_keys(written, folder, sub)
+    }
+    assert routed == {"11", "13"}, "the unreadable track was routed anyway"
+
+
+def test_an_export_intake_key_with_no_collection_row_is_a_warning(configured, tagged, tmp_path):
+    export = _write_export(configured, tmp_path / "exports", inbox=("11", "99"))
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["data"]["totals"]["inserted"] == 1
+    assert "track-row-absent" in [warning["code"] for warning in envelope["warnings"]]
+
+
+def test_a_declined_export_route_writes_nothing(configured, tagged, tmp_path):
+    export = _write_export(configured, tmp_path / "exports")
+    code, envelope = _drive(
+        ["-d", "route.inbox.apply=abort", "route", "inbox", "--export", str(export)]
+    )
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.NO_OP)
+    assert envelope["data"]["totals"]["applied"] is False
+    assert not _routed(export).exists()
+
+
+def test_an_export_without_an_intake_folder_refuses(configured, tagged, tmp_path):
+    """An absent INBOX is not an empty one, and only one of them means done."""
+    export = _write_export(configured, tmp_path / "exports")
+    display = taxonomy.default_taxonomy().intake.display
+    export.write_bytes(export.read_bytes().replace(f'Name="{display}"'.encode(), b'Name="Elsewhere"'))
+    code, envelope = _apply_export(export)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "intake-flow-absent"
+    assert not _routed(export).exists()
+
+
+def test_an_absent_export_refuses(configured, tmp_path):
+    code, envelope = _apply_export(tmp_path / "no-such.xml")
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "library-export-unusable"
+
+
+def test_an_export_route_refuses_a_routing_tree_that_has_cut_over(
+    configured, tagged, tmp_path
+):
+    """The medium follows the registry. A native tree is the database's, and
+    an export carrying membership for it replaces that tree on import."""
+    export = _write_export(configured, tmp_path / "exports")
+    declared = taxonomy.default_taxonomy()
+    tree_registry.write(
+        configured,
+        tree_registry.Registry(
+            (
+                tree_registry.TreeRecord(
+                    tree_id=declared.tree.id,
+                    mode=tree_registry.Mode.DATABASE,
+                    cutover_on=date(2026, 8, 1),
+                    root_id="1",
+                    source=tree_registry.DerivationSource.TAXONOMY,
+                ),
+            )
+        ),
+    )
+    code, envelope = _apply_export(export)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "tree-unconverged"
+    assert not _routed(export).exists()
+
+
+def test_without_export_a_library_with_no_native_tree_names_the_export_remedy(stocked):
+    """Still no-native-tree, and now the answer names the medium that works."""
+    code, envelope = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["reason"] == "no-native-tree"
+    remedies = [
+        warning["message"]
+        for warning in envelope["warnings"]
+        if warning["code"] == "no-native-tree"
+    ]
+    assert remedies and "--export" in remedies[0], envelope["warnings"]

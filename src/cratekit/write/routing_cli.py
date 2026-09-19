@@ -44,20 +44,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
 from cratekit.core import (
     analysis_store,
     config,
     convergence,
     jobs,
+    locations,
     rb_writer,
     session,
     taxonomy,
     tree_registry,
 )
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
-from cratekit.write import rebuild, routing_pass, trees
+from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.write import rbxml, rebuild, routing_pass, trees
 
 #: The session log's name for a write this verb performed, one per verb, so a
 #: person reading the log can tell which act touched their library. Not shared
@@ -157,6 +158,13 @@ def _reported(store, job) -> dict:
 
 
 def build_inbox(parser, entry) -> None:
+    parser.add_argument(
+        "--export",
+        default=None,
+        metavar="PATH",
+        help="route the INBOX playlist of this fresh export and write "
+        "<name>_routed.xml beside it, for a tree that has not cut over",
+    )
     parser.set_defaults(_handler=route_inbox)
 
 
@@ -278,6 +286,271 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
     }
 
 
+#: The suffix of the file an export routing writes, beside the export it read.
+ROUTED_SUFFIX = "_routed.xml"
+
+#: The warning a library with nothing native carries on the database path, so
+#: the answer names the medium that does work today rather than only the one
+#: that does not.
+EXPORT_REMEDY = (
+    "no tree has cut over, so this library is still filed through an export: "
+    "export the collection from rekordbox and run route inbox --export with that file"
+)
+
+
+def _export_refusal(reason: str, message: str, export: Path, **extra: Any) -> CratekitError:
+    return refuse(
+        reason,
+        message,
+        steps=("export the collection again from rekordbox and pass that file",),
+        origin=("routing_cli",),
+        detail={"export": str(export), **extra},
+    )
+
+
+def _inbox_keys(content: bytes, declared: taxonomy.Taxonomy, export: Path) -> list[str]:
+    """Every track key the export's intake folder holds, first seen first.
+
+    THE INTAKE FOLDER IS A DIRECT CHILD OF THE PLAYLIST ROOT, which is where
+    :func:`cratekit.write.rbxml.intake_tree` puts it, so a namesake deeper in
+    somebody's tree is never read as their inbox. An export with no such folder
+    REFUSES: an empty answer would read as "your inbox is empty", which is the
+    one sentence a person would not check.
+    """
+    root = rbxml.root_node(content)
+    if root is None:
+        raise _export_refusal(
+            "library-export-unusable",
+            f"{export.name} has no playlist tree, so it is not a collection export",
+            export,
+        )
+    display = declared.intake.display
+    node = rbxml.direct_child(content, root, display, rbxml.FOLDER_TYPE)
+    if not isinstance(node, rbxml.NodeSpan):
+        why = node if isinstance(node, str) else f"no folder named {display!r} sits under ROOT"
+        raise refuse(
+            "intake-flow-absent",
+            f"{export.name} carries no intake folder to route: {why}",
+            origin=("routing_cli",),
+            detail={"export": str(export), "intake": display},
+        )
+    keys: list[str] = []
+    seen: set[str] = set()
+    for _path, child in rbxml.walk_nodes(content, node):
+        if child.node_type != rbxml.PLAYLIST_TYPE:
+            continue
+        for key in rbxml.track_keys(content, child):
+            if key not in seen:
+                seen.add(key)
+                keys.append(key)
+    return keys
+
+
+def _readable_file(location: str, cfg: config.Config) -> Path | None:
+    """The file a recorded Location names on this machine, or None.
+
+    Through the configured prefix map first, because rekordbox keeps recording
+    a volume name long after the drive stopped using it. A Location the map does
+    not cover is tried as written, since that is the path rekordbox recorded
+    rather than a guess. None when neither is a file here, and the caller routes
+    nothing for it: tags read off a file that is not there are all absent, and
+    absent tags route to the fallback bucket, which would file a track by the
+    one fact nobody measured.
+    """
+    try:
+        decoded = locations.location_to_path(location)
+    except locations.LocationDecodeError:
+        return None
+    rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
+    resolved = locations.resolve_recorded_path(decoded, root=cfg.library.root, prefix_map=rules)
+    for candidate in (resolved.path, decoded):
+        if candidate and candidate.startswith("/") and Path(candidate).is_file():
+            return Path(candidate)
+    return None
+
+
+def plan_export(
+    cfg: config.Config, export: Path
+) -> tuple[bytes, dict[tuple[str, str], list[str]], list[dict[str, str]], list[dict[str, str]], tuple[str, ...]]:
+    """Read one fresh export and decide where each intake track goes.
+
+    Returns the export's bytes, the plan the bridge writer takes, the items a
+    person is shown, the warnings, and the dimensions not derived.
+
+    THE ROUTING DECISION IS THE NATIVE PATH'S, called rather than restated. The
+    readings come from :func:`cratekit.write.rebuild.read_truth`, the placements
+    from :func:`cratekit.write.rebuild.derive_from_taxonomy`, and the display
+    names from :func:`cratekit.write.routing_pass.destination`, which are the
+    three calls :func:`apply_inbox` makes through ``declared_membership``. So the
+    two media cannot disagree about where a track goes. The genre is the FILE's,
+    not the export's ``Genre`` attribute, for the reason
+    :func:`cratekit.core.tags.read_genre_from_file` gives.
+
+    NO CALIBRATION IS READ, the same answer :func:`apply_inbox` gives, so the
+    vocal dimension is named in the last return value rather than derived.
+    """
+    if not export.is_file():
+        raise _export_refusal(
+            "library-export-unusable", f"no collection export at {export}", export
+        )
+    content = export.read_bytes()
+    if rbxml.playlists_start(content) == -1:
+        raise _export_refusal(
+            "library-export-unusable",
+            f"{export.name} has no {rbxml.PLAYLISTS_SECTION} section, so it is not "
+            f"a collection export",
+            export,
+        )
+    declared = taxonomy.default_taxonomy()
+    keys = _inbox_keys(content, declared, export)
+    by_id = {
+        track.track_id: rbxml.attributes(content, track)
+        for track in rbxml.collection_tracks(content)
+    }
+    warnings: list[dict[str, str]] = []
+    files: dict[str, list[str]] = {}
+    for key in keys:
+        row = by_id.get(key)
+        if row is None:
+            warnings.append({
+                "code": "track-row-absent",
+                "message": f"track {key} is in the intake folder and has no collection "
+                f"row in {export.name}, so it was not routed",
+            })
+            continue
+        path = _readable_file(row.get("Location", ""), cfg)
+        if path is None:
+            warnings.append({
+                "code": "track-file-unreadable",
+                "message": f"track {key} names {row.get('Location', '')!r}, which is not "
+                f"a file on this machine, so its tags could not be read and it was "
+                f"not routed",
+            })
+            continue
+        files.setdefault(str(path), []).append(key)
+
+    readings = [rebuild.read_truth(Path(path)) for path in files]
+    placements, gaps = rebuild.derive_from_taxonomy(declared, readings, vocal_threshold=None)
+    plan: dict[tuple[str, str], list[str]] = {}
+    destined: dict[str, str] = {}
+    for placement in placements:
+        folder, sub = routing_pass.destination(declared, placement.bucket, placement.sub)
+        for key in files[placement.location]:
+            plan.setdefault((folder, sub), []).append(key)
+            destined[key] = f"{folder}/{sub}"
+    items = [
+        {"track_id": key, "destination": destined.get(key, "")}
+        for key in keys
+    ]
+    return content, plan, items, warnings, gaps
+
+
+def apply_export(
+    cfg: config.Config, export: Path, content: bytes, plan: dict[tuple[str, str], list[str]]
+) -> tuple[Path | None, trees.RouteReport]:
+    """Write the plan into a copy of the export, beside it, never in place.
+
+    THE MEDIUM FOLLOWS THE REGISTRY. The tree is the governed routing tree, so
+    the emitter guard in :func:`cratekit.write.rbxml.splice_into_subplaylist`
+    refuses a tree that has cut over, and the caller has already refused it by
+    name before offering a plan.
+
+    THE NON CREATING WRITER, because this sweep runs against a tree a person
+    curated: a sub that is not there is a warning naming the bucket, never a
+    playlist invented in somebody's library.
+
+    NOTHING INSERTED IS NOTHING WRITTEN. A file identical in every routed byte
+    to the export would still be a file somebody is told to import.
+    """
+    declared = taxonomy.default_taxonomy()
+    tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
+    buffer = bytearray(content)
+    report = trees.apply_playlist_changes(plan, buffer, tree=tree)
+    if not report.inserted:
+        return None, report
+    destination = export.with_name(export.stem + ROUTED_SUFFIX)
+    config.atomic_write_bytes(bytes(buffer), destination)
+    return destination, report
+
+
+def _export_pending(run_id: str, destination: Path, inserted: int) -> PendingHumanAction:
+    return PendingHumanAction(
+        kind="rekordbox_import",
+        id=new_pending_id(run_id),
+        summary=(
+            f"{inserted} track(s) were routed into {destination.name}, which "
+            f"rekordbox has not imported yet"
+        ),
+        # THIS VERB IS ITS OWN CHECK. Over a fresh export taken after the import,
+        # a second run inserts nothing, and that is the only reading in this
+        # build that the import happened.
+        verify_verb="route.inbox",
+        artifact=str(destination),
+        steps=(
+            f"import {destination} into rekordbox as a rekordbox xml library and "
+            f"import the routing tree from it",
+            "then export the collection again and run route inbox --export with "
+            "that file, which routes nothing once the import has landed",
+        ),
+    )
+
+
+def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
+    """Route a fresh export's intake folder into a new file, behind the apply gate.
+
+    THE ROUTING TREE HAS TO BE ON THE BRIDGE. A tree that has cut over is the
+    database's, and an export carrying new membership for it would put a second
+    tree beside the real one on import. Refused before the plan is offered, so a
+    person is never asked to approve a write the guard would stop.
+    """
+    declared = taxonomy.default_taxonomy()
+    registry = tree_registry.read(cfg)
+    if registry.is_database_native(declared.tree.id):
+        raise refuse(
+            "tree-unconverged",
+            f"the tree {declared.tree.id!r} has cut over to the database, so an "
+            f"export must not carry its membership; importing one would replace "
+            f"the tree the database owns",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            steps=("run route inbox without --export, which writes the database",),
+            origin=("routing_cli",),
+            detail={"tree_id": declared.tree.id, "export": str(export)},
+        )
+    content, plan, items, warnings, gaps = plan_export(cfg, export)
+    offered = _plan(items, kind="inbox-export")
+    option = _apply_gate(ctx, offered)
+    if option != "apply":
+        return ctx.envelope(
+            data=_plan(items, kind="inbox-export", applied=False),
+            outcome=Outcome.NO_OP,
+            warnings=warnings,
+        )
+    destination, report = apply_export(cfg, export, content, plan)
+    warnings = [
+        *warnings,
+        *({"code": "route-sub-absent", "message": text} for text in report.warnings),
+    ]
+    data = _plan(
+        items,
+        kind="inbox-export",
+        applied=destination is not None,
+        reason=None if destination is not None else "nothing-to-route",
+        inserted=report.inserted,
+        created=list(report.created),
+        output=None if destination is None else str(destination),
+        not_derived=list(gaps),
+    )
+    if destination is None:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
+    return ctx.envelope(
+        data=data,
+        outcome=Outcome.PENDING,
+        code=ExitCode.PENDING_HUMAN,
+        pending=_export_pending(ctx.run.run_id, destination, report.inserted),
+        warnings=warnings,
+    )
+
+
 def route_inbox(ctx) -> Envelope:
     """Offer a plan for the intake folder, then apply it if the person says so.
 
@@ -286,8 +559,13 @@ def route_inbox(ctx) -> Envelope:
     are derived in and for the same reason: only the one answer that means yes
     may write, so an option added to this gate later cannot acquire the writing
     behaviour by nobody having classified it.
+
+    WITH ``--export`` THE INTAKE IS THE EXPORT'S, not the disk folder, and the
+    write is a new file rather than the database. See :func:`route_inbox_export`.
     """
     cfg = _load()
+    if ctx.args.export:
+        return route_inbox_export(ctx, cfg, Path(ctx.args.export))
     items = _inbox_items(cfg)
     plan = _plan(items, kind="inbox")
     option = _apply_gate(ctx, plan)
@@ -305,6 +583,11 @@ def route_inbox(ctx) -> Envelope:
     return ctx.envelope(
         data=_plan(items, kind="inbox", **result),
         outcome=Outcome.OK if result["applied"] else Outcome.NO_OP,
+        warnings=(
+            [{"code": "no-native-tree", "message": EXPORT_REMEDY}]
+            if result["reason"] == "no-native-tree"
+            else []
+        ),
     )
 
 

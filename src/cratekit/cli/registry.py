@@ -1074,7 +1074,7 @@ ENTRIES: tuple[Entry, ...] = (
     # ── Routing and audits ──────────────────────────────────────────────────
     Entry(
         name="route.inbox",
-        summary="route the intake folder into the declared taxonomy",
+        summary="route the intake folder into the declared taxonomy, or an export's with --export",
         module="cratekit.write.routing_cli",
         builder="build_inbox",
         handler_key="route.inbox",
@@ -1082,7 +1082,9 @@ ENTRIES: tuple[Entry, ...] = (
         source_scripts=("dj-sort-inbox",),
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        writes=frozenset({"db_tree"}),
+        # U86. ``--export`` writes a new file beside a fresh export, for a tree
+        # that has not cut over, so the verb writes the bridge as well.
+        writes=frozenset({"db_tree", "xml"}),
         destructive=True,
         taxonomy_terms=("inbox", "genre_energy"),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
