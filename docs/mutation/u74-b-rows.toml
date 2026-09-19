@@ -1,0 +1,110 @@
+name = "u74-b"
+pass_kind = "light"
+
+# U74's composer and report guards. Batch B of two. Batch A is u74-rows.toml.
+
+[[rows]]
+id = "B1_source_id_dropped"
+description = "Queue the hearts job with no source_id, so the next pass cannot see it is open"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''                run_id=run_id,
+                source_id=intake_cli.FAVORITES_SOURCE_ID,
+            )'''
+new = '''                run_id=run_id,
+                source_id=None,
+            )'''
+
+[[rows]]
+id = "B2_compose_skips_inbound"
+description = "The composer never queues the read half"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        if p.inbound is not None and p.inbound.queue is not None:
+            ready.append'''
+new = '''        if False:
+            ready.append'''
+
+[[rows]]
+id = "B3_queue_refusal_raised"
+description = "Raise a queue time refusal instead of recording it against its half"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''                    half.refused, half.not_queued = exc.cause, exc.cause.reason'''
+new = '''                    raise'''
+
+[[rows]]
+id = "B4_filed_outbound_only"
+description = "Count only the write half's jobs as filed, so a pass that queued only the hearts refuses or reads as a no-op"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    return [*plan.filed, *(plan.inbound.filed if plan.inbound is not None else ())]'''
+new = '''    return [*plan.filed]'''
+
+[[rows]]
+id = "B5_inbound_refusal_not_counted"
+description = "Leave the hearts refusal out of the refusal list, so a declined pass it alone stopped reads as a no-op"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        for cause in (p.refused, p.inbound.refused if p.inbound else None)'''
+new = '''        for cause in (p.refused, None)'''
+
+[[rows]]
+id = "B6_inbound_warning"
+description = "Emit no warning for a hearts refusal"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''        if plan.inbound is not None and plan.inbound.refused is not None:
+            warnings.append('''
+new = '''        if False:
+            warnings.append('''
+
+[[rows]]
+id = "B7_block_dropped"
+description = "Leave the favourites.inbound block out of the summary"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''            plan.detail = {**(plan.detail or {}), "inbound": plan.inbound.block()}'''
+new = '''            pass'''
+
+[[rows]]
+id = "B8_check_dropped"
+description = "Leave the sync.favorites.inbound check out, which is all the default output prints"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''            checks.append(_inbound_check(plan, plan.inbound))'''
+new = '''            pass'''
+
+[[rows]]
+id = "B9_check_wording"
+description = "Say the hearts were not listed for a half that was listed and refused at the queue"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''            if inbound.hearts is None'''
+new = '''            if True'''
+
+[[rows]]
+id = "B10_refused_check_status"
+description = "Report a hearts refusal as info rather than fail"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    elif inbound.refused is not None:
+        check["status"] = "fail"'''
+new = '''    elif inbound.refused is not None:
+        check["status"] = "info"'''
+
+[[rows]]
+id = "B11_gate_screen"
+description = "The gate screen says the hearts are queued whatever the answer when the listing refused"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''                "queued_whatever_the_answer": p.inbound.queue is not None,'''
+new = '''                "queued_whatever_the_answer": True,'''
+
+[[rows]]
+id = "B12_next_step_outbound_only"
+description = "Name no intake missing --run step when only the hearts filed an intake job"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    filed = [job for p in plans for job in _filed(p) if job.handler_key in intake_cli.INTAKE_KEYS]'''
+new = '''    filed = [job for p in plans for job in p.filed if job.handler_key in intake_cli.INTAKE_KEYS]'''
