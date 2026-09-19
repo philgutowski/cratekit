@@ -1,0 +1,43 @@
+name = "u104-a"
+pass_kind = "light"
+
+[[rows]]
+id = "F1_guard_string_layer"
+description = "Drop the textual half of the library guard: a scratch folder that resolves to the library or to a path under it is no longer refused by name"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''    if here == library or library in here.parents:
+        raise ScratchUnderLibrary(here, library)
+    if not library.exists():'''
+new = '''    if not library.exists():'''
+
+[[rows]]
+id = "F2_guard_samefile_layer"
+description = "Drop the filesystem half of the library guard: two spellings of one folder that resolve does not settle are no longer compared with samefile"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''        if ancestor.exists() and ancestor.samefile(library):
+            raise ScratchUnderLibrary(here, library)'''
+new = '''        if ancestor.exists() and ancestor.samefile(library):
+            pass'''
+
+[[rows]]
+id = "F3_guard_absent_library_return"
+description = "Drop the early return for a library root that is not there, so samefile is asked about a folder that does not exist"
+file = "src/cratekit/intake/fetch.py"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''    if not library.exists():
+        return
+'''
+new = ''
+
+[[rows]]
+id = "F4_landing_inside_scratch"
+description = "Drop the half of the landing check that requires the fetched file to be inside the scratch folder it was handed"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''        if not landed.is_file() or scratch.resolve() not in landed.resolve().parents:'''
+new = '''        if not landed.is_file():'''

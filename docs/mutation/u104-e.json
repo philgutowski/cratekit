@@ -1,0 +1,221 @@
+{
+  "name": "u104-e",
+  "pass_kind": "light",
+  "branch": "relay/149",
+  "head": "735b82f",
+  "when": "2026-09-19 23:37 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8907,
+  "baseline_exit": 0,
+  "pytest_runs": 9,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "1a228b5361604712",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8907,
+    "baseline_collected": 8907,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "E1_gate_before_fetch",
+      "description": "Drop intake set's recognition gate ahead of the fetch, so a machine with no keys downloads a whole mix before it is told",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "92611b529c4af928",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_the_gate_refuses_before_anything_is_fetched"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        local = _local_or_none(source)\n        recognize.assert_recognition_ready()\n        job = None",
+      "new": "        local = _local_or_none(source)\n        job = None"
+    },
+    {
+      "id": "E2_timeout_is_retryable",
+      "description": "Stop calling a timed out download retryable, the one fetch failure known to be worth running again",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e7a181848853a8ad",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_download_that_timed_out_is_the_one_fetch_failure_called_retryable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            remedy=Remedy.RETRY_LATER,\n            retryable=True,\n            steps=(\n                \"run it again later\",",
+      "new": "            remedy=Remedy.RETRY_LATER,\n            retryable=False,\n            steps=(\n                \"run it again later\","
+    },
+    {
+      "id": "E3_honest_zero_names_the_address",
+      "description": "Report the scratch file's path as the source of a mix nobody recognised",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df3b2498dd2f342f",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_mix_nobody_recognised_is_an_honest_zero_that_names_the_address"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    chunks=result.chunks,\n                    source=held.ref,",
+      "new": "                    chunks=result.chunks,\n                    source=str(held.path),"
+    },
+    {
+      "id": "E4_identify_library_before_fetch",
+      "description": "Drop intake identify's check that the library is there to be asked, which runs before anything is fetched or sent",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2fae2e72df1f0286",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_identify_over_a_url_refuses_an_absent_library_before_anything_is_fetched",
+        "tests/intake/test_workers.py::test_an_absent_library_is_refused_before_the_spend_and_never_read_as_an_empty_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _library_or_refuse(cfg, shown)\n",
+      "new": ""
+    },
+    {
+      "id": "E5_install_hint_steps",
+      "description": "Drop the install step from the yt-dlp-missing refusal, so a missing binary refuses without saying how to get it",
+      "file": "src/cratekit/core/binary_refusal.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6b665dbc78966826",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/test_acquire_fallback.py",
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 112,
+      "baseline_collected": 112,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_missing_yt_dlp_refuses_a_url_with_the_install_hint",
+        "tests/test_acquire_fallback.py::test_a_broken_override_is_its_own_refusal",
+        "tests/test_acquire_fallback.py::test_a_missing_binary_refuses_with_the_install_hint",
+        "tests/test_acquire_fallback_fetch.py::test_a_missing_yt_dlp_parks_the_job_rather_than_failing_every_item"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if hint is not None\n            else ()\n        ),\n        scope=Scope.RUN,",
+      "new": "            if hint is None\n            else ()\n        ),\n        scope=Scope.RUN,"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "X1_conftest_fetcher_guard",
+      "description": "Remove the autouse fixture that fails a test reaching the shipped fetcher",
+      "reason": "it lives under tests/, which the driver does not mutate; test_the_suite_cannot_reach_the_shipped_fetcher pins it directly"
+    },
+    {
+      "id": "X2_timeout_coefficient",
+      "description": "Quarter the mix download bound, 3600 to 900",
+      "reason": "ranked below the cap: the bound is unmeasured by its own comment and the one test over it names the number, so a death there is X equals X"
+    },
+    {
+      "id": "X3_stem_cleaning_pattern",
+      "description": "Widen the characters a tracklist stem may keep",
+      "reason": "ranked below the cap: same family as P5, which is measured, and the parametrized stem test reads five addresses against it"
+    },
+    {
+      "id": "X4_several_recordings_steps",
+      "description": "Reword the step a playlist address is refused with",
+      "reason": "ranked below the cap: a message row on a refusal whose reason and retryable flag P3 and the playlist test already pin"
+    },
+    {
+      "id": "X5_help_and_summary_text",
+      "description": "Take the mix URL back out of the help text and the registry summaries",
+      "reason": "ranked below the cap: static text, read by one test per verb in test_workers"
+    }
+  ]
+}

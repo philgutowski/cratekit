@@ -1,0 +1,49 @@
+name = "u104-d"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_job_freezes_the_address"
+description = "Freeze the scratch file's path as the job's source instead of the address, so a resume argv names a file that is gone"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''                        SOURCE: held.ref,'''
+new = '''                        SOURCE: str(held.path),'''
+
+[[rows]]
+id = "C2_refusal_named_for_the_address"
+description = "Let a refusal raised inside the identifier through as it is, naming the scratch file in its message and detail"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''                raise _named_for_the_address(exc, held) from exc.__cause__'''
+new = '''                raise'''
+
+[[rows]]
+id = "C3_detail_renamed"
+description = "Rename the message only and leave the scratch path in the refusal's detail"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''        key: held.ref if value == str(held.path) else value'''
+new = '''        key: value'''
+
+[[rows]]
+id = "C4_scratch_left_said"
+description = "Never say that a scratch folder outlived its pass"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''    if held.leftover is None:
+        return ()'''
+new = '''    if held.leftover is None or True:
+        return ()'''
+
+[[rows]]
+id = "C5_no_digest_token_is_the_address"
+description = "Take a digestless tracklist's token from the scratch path, which every fetched mix shares, instead of from the address"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''    token = digest or digest_of({"path": held.ref})'''
+new = '''    token = digest or digest_of({"path": str(held.path)})'''

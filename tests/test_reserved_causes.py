@@ -5375,7 +5375,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # hearts on the service and writes no colour, tag or playlist membership in
     # the library. Nothing refuses with it, because nothing about it is a
     # failure: it is the verb declaring its own scope.
-    assert (len(literals), len(literals - set(causes))) == (453, 292), (
+    # Re-pinned on U104, 2026-09-19: 453 to 454 distinct, 292 to 293 non-keys.
+    # ONE literal joined and NOTHING left, differenced over the branch's diff of
+    # `src` against `main`. It is not a cause: mix-scratch-left is the WARNING
+    # code `intake set` and `intake identify` carry when the scratch folder a
+    # fetched mix landed in could not be removed. Nothing refuses with it. The
+    # three refusals a mix URL can meet are yt-dlp-missing,
+    # unavailable-transient and intake-list-unusable, all keys already, and
+    # `intake/cli.py` was a holder before this unit, so neither the cause
+    # population nor the holder count moves.
+    assert (len(literals), len(literals - set(causes))) == (454, 293), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5860,7 +5869,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # many missing tracks one run's item names. It is a length and is never an
     # exit status. Measured by listing this file's own holders on the branch and
     # asking the same walk whether that one file holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (100, 22), (
+    # Re-pinned on U104, 2026-09-19: 100 to 101 holders, the other half
+    # UNCHANGED at 22. ONE module joined and none left, and it is a new file.
+    # core/binary_refusal.py names yt-dlp-missing through cause.refuse, moved
+    # there from acquire/fallback_cli.py so `intake set` can raise it without
+    # importing a verb's command line module from inside a function.
+    # fallback_cli.py still names unavailable-transient and the rest, so it
+    # stays a holder. The new file holds no integer at all.
+    assert (len(literal_holders), len(literal_both)) == (101, 22), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

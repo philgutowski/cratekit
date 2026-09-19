@@ -1,0 +1,56 @@
+name = "u104-b"
+pass_kind = "light"
+
+[[rows]]
+id = "F5_landing_is_a_file"
+description = "Drop the half of the landing check that requires the fetcher's answer to be a file that exists"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''        if not landed.is_file() or scratch.resolve() not in landed.resolve().parents:'''
+new = '''        if scratch.resolve() not in landed.resolve().parents:'''
+
+[[rows]]
+id = "F6_clear_before_attempt"
+description = "Stop clearing the scratch folder before an attempt: reuse whatever a killed process left in it"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''            if scratch.exists():
+                shutil.rmtree(scratch)
+            scratch.mkdir(parents=True)'''
+new = '''            scratch.mkdir(parents=True, exist_ok=True)'''
+
+[[rows]]
+id = "F7_remove_on_exit"
+description = "Drop the removal of the scratch folder when the pass ends, so a fetched mix stays on disk"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+        if scratch.exists():'''
+new = '''    finally:
+        if scratch.exists():'''
+
+[[rows]]
+id = "F8_leftover_recorded"
+description = "Drop the record of a scratch folder that could not be removed, so the envelope says nothing about it"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''        if scratch.exists():
+            held.leftover = str(scratch)'''
+new = '''        if scratch.exists():
+            pass'''
+
+[[rows]]
+id = "F9_scratch_prepare_is_its_own_kind"
+description = "Report a scratch folder that cannot be made as an ordinary failed fetch rather than as a fact about this machine"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''            raise ScratchUnusable(
+                f"the scratch folder {scratch} could not be prepared "'''
+new = '''            raise SetFetchFailed(
+                f"the scratch folder {scratch} could not be prepared "'''

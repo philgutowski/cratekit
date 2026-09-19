@@ -1,0 +1,190 @@
+{
+  "name": "u104-d",
+  "pass_kind": "light",
+  "branch": "relay/149",
+  "head": "735b82f",
+  "when": "2026-09-19 23:33 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8907,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "1a228b5361604712",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8907,
+    "baseline_collected": 8907,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_job_freezes_the_address",
+      "description": "Freeze the scratch file's path as the job's source instead of the address, so a resume argv names a file that is gone",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "feb26d9e9f177ac4",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_mix_url_runs_the_ordinary_set_pipeline_over_the_fetched_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        SOURCE: held.ref,",
+      "new": "                        SOURCE: str(held.path),"
+    },
+    {
+      "id": "C2_refusal_named_for_the_address",
+      "description": "Let a refusal raised inside the identifier through as it is, naming the scratch file in its message and detail",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b9ae580655c8445b",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_refusal_from_inside_the_identifier_names_the_address_and_not_the_scratch_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                raise _named_for_the_address(exc, held) from exc.__cause__",
+      "new": "                raise"
+    },
+    {
+      "id": "C3_detail_renamed",
+      "description": "Rename the message only and leave the scratch path in the refusal's detail",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c7f3f2a72af2d2c4",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_refusal_from_inside_the_identifier_names_the_address_and_not_the_scratch_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        key: held.ref if value == str(held.path) else value",
+      "new": "        key: value"
+    },
+    {
+      "id": "C4_scratch_left_said",
+      "description": "Never say that a scratch folder outlived its pass",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bcb33c9d3e646073",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_scratch_folder_that_cannot_be_removed_is_said_on_the_envelope"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if held.leftover is None:\n        return ()",
+      "new": "    if held.leftover is None or True:\n        return ()"
+    },
+    {
+      "id": "C5_no_digest_token_is_the_address",
+      "description": "Take a digestless tracklist's token from the scratch path, which every fetched mix shares, instead of from the address",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "98f30c9a0ddd2279",
+      "subset": [
+        "tests/intake/test_set_fetch.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_fetch.py::test_a_fetched_mix_with_no_digest_is_named_by_its_address_and_not_its_scratch_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    token = digest or digest_of({\"path\": held.ref})",
+      "new": "    token = digest or digest_of({\"path\": str(held.path)})"
+    }
+  ],
+  "dropped": []
+}

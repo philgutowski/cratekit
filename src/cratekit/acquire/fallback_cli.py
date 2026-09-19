@@ -51,7 +51,7 @@ from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import fallback, match, match_cli
 from cratekit.acquire.adapter import AdapterSettings, decide_lossless
 from cratekit.cli.output import Envelope
-from cratekit.core import binaries, config, jobs, naming, review, tags
+from cratekit.core import binaries, binary_refusal, config, jobs, naming, review, tags
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import candidates, missing_cli
@@ -83,41 +83,6 @@ def build(parser, entry) -> None:
 def _check(key: str, status: str, detail: str) -> dict[str, Any]:
     return {"key": f"acquire.fallback.{key}", "title": key, "status": status,
             "detail": detail, "remedy": None}
-
-
-def _binary_refusal(
-    exc: binaries.BinaryNotFound,
-    subject: dict[str, Any],
-    *,
-    said: str = "A second source search runs it, so no row was searched and nothing was offered.",
-    origin: tuple[str, ...] = ORIGIN,
-) -> CratekitError:
-    """A missing ``yt-dlp`` as this verb's refusal, the install hint and all.
-
-    The binaries module already decided which of its situations this is, so
-    the remedy IS its token: install, install from source, or fix the override.
-    The hint travels as data for the command line layer to render (D2).
-    """
-    hint = exc.hint
-    return refuse(
-        "yt-dlp-missing",
-        f"{exc} {said}",
-        remedy=Remedy(exc.remedy.value),
-        steps=(
-            (f"install {', '.join(hint.packages)} with {hint.manager}, then run it again",)
-            if hint is not None
-            else ()
-        ),
-        scope=Scope.RUN,
-        origin=origin,
-        detail={
-            "binary": exc.binary,
-            "override": binaries.env_var(exc.binary),
-            "manager": str(hint.manager) if hint is not None else None,
-            "packages": list(hint.packages) if hint is not None else [],
-            **subject,
-        },
-    )
 
 
 def _named(proposals: list[fallback.Proposal]) -> str:
@@ -259,7 +224,13 @@ def acquire_fallback(ctx) -> Envelope:
                     try:
                         found = searcher()
                     except binaries.BinaryNotFound as exc:
-                        raise _binary_refusal(exc, subject) from exc
+                        raise binary_refusal.yt_dlp_missing(
+                            exc,
+                            subject,
+                            said="A second source search runs it, so no row was searched "
+                            "and nothing was offered.",
+                            origin=ORIGIN,
+                        ) from exc
                 try:
                     answer = fallback.search_all(found, one)
                 except CratekitError:
@@ -610,7 +581,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
         # PARKED, NOT FAILED. A missing program is a fact about the machine and
         # never about the track, so every later item would fail the same way.
         raise jobs.Parked(
-            _binary_refusal(
+            binary_refusal.yt_dlp_missing(
                 exc,
                 detail,
                 said="A second source download runs it, so the job is parked with this "

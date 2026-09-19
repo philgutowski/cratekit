@@ -189,6 +189,26 @@ def _no_paid_recognition(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_mix_download(monkeypatch):
+    """Refuse the shipped mix fetcher in every test, structurally.
+
+    U104 taught ``intake set`` and ``intake identify`` to fetch a mix URL, and
+    the seam is looked up on the module at call time. A machine with ``yt-dlp``
+    installed would otherwise download a real upload from a test that passed
+    an address and forgot to inject a fetcher, with the battery green. A test
+    that wants a download replaces ``fetch.fetcher`` itself.
+    """
+    from cratekit.intake import fetch
+
+    def refused():
+        raise AssertionError(
+            "a test reached the shipped mix fetcher; set fetch.fetcher to a fake"
+        )
+
+    monkeypatch.setattr(fetch, "fetcher", refused)
+
+
+@pytest.fixture(autouse=True)
 def _block_real_library_paths(request, tmp_path_factory, monkeypatch):
     """Point the library root at a temp directory and disarm the mount check.
 

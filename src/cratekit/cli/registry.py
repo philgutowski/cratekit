@@ -834,7 +834,7 @@ ENTRIES: tuple[Entry, ...] = (
     # ── Intake ──────────────────────────────────────────────────────────────
     Entry(
         name="intake.set",
-        summary="identify a set recording on this machine and resolve its tracks",
+        summary="identify a set recording, or a mix URL fetched first, and resolve its tracks",
         module="cratekit.intake.cli",
         builder="build_set",
         handler_key="intake.set",
@@ -853,6 +853,10 @@ ENTRIES: tuple[Entry, ...] = (
         # exactly those or a machine doctor passes refuses at the verb. The
         # provider session is not declared because this verb's worker never
         # acquires: a recognised track carries no provider identifier.
+        # ``binary.yt-dlp`` IS DELIBERATELY ABSENT (U104). Only a mix URL needs
+        # the downloader, so declaring it would fail doctor on a machine that
+        # identifies every recording it is handed. A URL without it refuses
+        # with ``yt-dlp-missing`` and the install hint, before any spend.
         doctor_checks=(
             "library.mounted",
             "binary.ffmpeg",
@@ -862,7 +866,7 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="intake.identify",
-        summary="identify the tracks in a set and stop; download nothing",
+        summary="identify the tracks in a set recording or a mix URL and stop; acquire nothing",
         module="cratekit.intake.cli",
         builder="build_identify",
         handler_key="intake.identify",

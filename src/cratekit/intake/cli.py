@@ -41,18 +41,19 @@ warning saying how much of it was never answered.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from cratekit.acquire import match, match_cli
 from cratekit.acquire.match import Wanted
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import artifacts, config, jobs, review
+from cratekit.core import artifacts, binaries, binary_refusal, config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.intake import ingest, normalize, pipeline, recognize
+from cratekit.intake import fetch, ingest, normalize, pipeline, recognize
 from cratekit.label import catalogue
 from cratekit.label import cli as label_cli
 
@@ -146,11 +147,14 @@ def _unusable(message: str, *steps: str, **detail: Any) -> CratekitError:
 # The surface
 # ---------------------------------------------------------------------------
 
-#: The help text both recognition verbs show. A recording ON THIS MACHINE and
-#: not a mix URL, because this build fetches none; the refusal a URL meets
-#: says the same thing, and the two have to agree on the one screen a person
-#: reads first.
-_SOURCE_HELP = "set recording on this machine (a mix URL is not fetched by this build)"
+#: The help text both recognition verbs show. A recording on this machine OR a
+#: mix URL, because U104 fetches one. SEAM P6 runs both ways: a verb that
+#: refuses an address cannot advertise one, and a verb that takes one has to
+#: say so on the one screen a person reads first.
+_SOURCE_HELP = (
+    "set recording on this machine, or a mix URL, which is fetched with yt-dlp, "
+    "identified and then removed"
+)
 
 
 def build_set(parser, entry) -> None:
@@ -447,11 +451,8 @@ def _resume(ctx, store, job_id: str) -> Envelope:
 def _recording_or_refuse(source: str) -> Path:
     """The recording as a file on this machine, absolute, or why not.
 
-    A MIX URL IS REFUSED HONESTLY. This build fetches no mix: nothing in the
-    package drives the downloader the binaries table knows about, and a verb
-    that accepted the address and then found that out inside a paid step would
-    have spent the gate for nothing. The address is refused at the queue with
-    the step that gets a person to a file, and the help text says the same.
+    A LOCAL PATH ONLY. A mix URL never reaches this function: ``_local_or_none``
+    sends it to the fetch seam instead (U104, R-303).
 
     EXPANDED BEFORE IT IS CHECKED, because a tilde a shell did not expand is
     the one input the expansion exists for, and checking the literal string
@@ -459,13 +460,6 @@ def _recording_or_refuse(source: str) -> Path:
     freezes its recording absolute: the child a resume spawns inherits the
     resuming process's directory.
     """
-    if normalize.is_url(source):
-        raise _unusable(
-            f"{source} is a web address, and this build identifies a recording on "
-            f"this machine rather than fetching one",
-            "download the mix to a file first, then run intake set on that file",
-            source=source,
-        )
     path = Path(source).expanduser()
     if not path.is_file():
         raise _unusable(
@@ -475,7 +469,175 @@ def _recording_or_refuse(source: str) -> Path:
     return path.absolute()
 
 
-def _coverage_or_refuse(result: pipeline.IdentifyResult, source: Path) -> tuple[dict[str, str], ...]:
+def _local_or_none(source: str) -> Path | None:
+    """The recording when ``source`` is a path, and None when it is a mix URL.
+
+    SPLIT FROM THE FETCH ON PURPOSE. A path that names nothing is refused here,
+    before the gate, exactly as it always was. An address costs a download, so
+    it waits until every refusal that is still free has had its turn.
+    """
+    if normalize.is_url(source):
+        return None
+    return _recording_or_refuse(source)
+
+
+@dataclass(slots=True)
+class SetRecording:
+    """The file a pass identifies, and what the pass calls it.
+
+    ``ref`` is what is frozen, reported and shown: the absolute path of a local
+    recording, or the ADDRESS of a fetched one, because the fetched file is
+    gone by the time anybody reads the job. ``stem`` names a tracklist and
+    ``shown`` is the short name a sentence uses. ``leftover`` is a scratch
+    folder that could not be removed, read after the ``with`` block that lent
+    the file.
+
+    ONE OBJECT RATHER THAN A PATH AND SOME OPTIONAL OVERRIDES, because a helper
+    that takes the path and an optional address falls back to the scratch
+    file's name whenever a caller forgets the address, and says so to nobody.
+    """
+
+    path: Path
+    ref: str
+    stem: str
+    shown: str
+    leftover: str | None = None
+
+    @classmethod
+    def local(cls, path: Path) -> SetRecording:
+        return cls(path=path, ref=str(path), stem=path.stem, shown=path.name)
+
+
+MIX_SCRATCH_LEFT = "mix-scratch-left"
+
+
+def _fetch_notes(held: SetRecording) -> tuple[dict[str, str], ...]:
+    """A scratch folder that outlived its pass, said where a person reads it."""
+    if held.leftover is None:
+        return ()
+    return (
+        {
+            "code": MIX_SCRATCH_LEFT,
+            "message": (
+                f"the fetched mix could not be removed from {held.leftover}; it is "
+                f"outside the library and is cleared the next time this address is "
+                f"fetched, or delete the folder by hand"
+            ),
+        },
+    )
+
+
+@contextmanager
+def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[SetRecording]:
+    """Lend the recording for one pass, fetching it first when it is a mix URL.
+
+    A LOCAL RECORDING IS LENT AS IT IS and nothing about it changes.
+
+    A MIX URL IS FETCHED THROUGH THE SEAM, into a scratch folder under the
+    installation state root, and the folder is removed when the block ends,
+    however it ends. The three ways the fetch cannot happen are this verb's
+    refusals, each in a vocabulary that already exists: a missing ``yt-dlp`` is
+    U80's ``yt-dlp-missing`` with the install hint, a download that failed is
+    ``unavailable-transient`` and retryable, and a scratch root that resolves
+    under the library is refused before anything is fetched, because a mix must
+    never land beside the music.
+    """
+    if local is not None:
+        yield SetRecording.local(local)
+        return
+    address = source.strip()
+    try:
+        found = fetch.fetcher()
+    except binaries.BinaryNotFound as exc:
+        raise binary_refusal.yt_dlp_missing(
+            exc,
+            {"source": address},
+            said="Fetching a mix runs it, so nothing was fetched and nothing was sent.",
+            origin=("intake.cli",),
+        ) from exc
+    try:
+        with fetch.fetched(address, Path(cfg.library.root), found) as got:
+            held = SetRecording(
+                path=got.path, ref=address, stem=fetch.stem_of(address), shown=address
+            )
+            try:
+                yield held
+            except CratekitError as exc:
+                raise _named_for_the_address(exc, held) from exc.__cause__
+        held.leftover = got.leftover
+    except fetch.ScratchUnderLibrary as exc:
+        raise _unusable(
+            f"the scratch folder a fetched mix lands in, {exc.scratch}, is inside "
+            f"this library at {exc.library}, and a mix is never written under the "
+            f"library; nothing was fetched",
+            f"point {config.ENV_STATE_DIR} outside the library, or unset it",
+            source=address,
+            scratch=str(exc.scratch),
+        ) from exc
+    except fetch.ScratchUnusable as exc:
+        raise _unusable(
+            f"{exc}, so the mix at {address} was not fetched; nothing was sent",
+            f"make that folder writable, or point {config.ENV_STATE_DIR} somewhere that is",
+            source=address,
+        ) from exc
+    except fetch.SetFetchTimedOut as exc:
+        # THE ONE FETCH FAILURE KNOWN TO BE WORTH A RETRY. Everything else a
+        # download can end on is below, and is not called retryable, because
+        # nobody watches a session and a driver that trusts the flag would
+        # re-run a dead address for ever.
+        raise refuse(
+            "unavailable-transient",
+            f"the mix at {address} could not be fetched ({exc}); nothing was sent "
+            f"and nothing was kept",
+            remedy=Remedy.RETRY_LATER,
+            retryable=True,
+            steps=(
+                "run it again later",
+                "or download the mix to a file yourself and run it on that file",
+            ),
+            origin=("intake.cli",),
+            detail={"source": address},
+        ) from exc
+    except fetch.SeveralRecordings as exc:
+        raise _unusable(
+            f"{address} was not fetched: {exc}; nothing was sent and nothing was kept",
+            "give the address of one recording on that page",
+            source=address,
+        ) from exc
+    except fetch.SetFetchFailed as exc:
+        raise _unusable(
+            f"the mix at {address} could not be fetched ({exc}); nothing was sent "
+            f"and nothing was kept. Whether the address or the network is at fault "
+            f"is not known from a failed download",
+            "open the address in a browser to check it still plays, then run it again",
+            "a streaming playlist goes through intake playlist instead",
+            "or download the mix to a file yourself and run it on that file",
+            source=address,
+        ) from exc
+
+
+def _named_for_the_address(exc: CratekitError, held: SetRecording) -> CratekitError:
+    """A refusal raised over a fetched mix, said about the ADDRESS.
+
+    The identifier names what it was handed, in its message and in its detail,
+    and for a fetched mix that is a scratch file removed before anybody reads
+    the refusal. Some of these arrive after calls were paid for, so the one
+    thing a person can act on, the address, has to be in them. The reason, the
+    remedy and everything else are the identifier's and are kept.
+    """
+    cause = exc.declared_cause
+    message = cause.message.replace(str(held.path), held.ref).replace(held.path.name, held.ref)
+    detail = {
+        key: held.ref if value == str(held.path) else value
+        for key, value in dict(cause.detail).items()
+    }
+    detail.setdefault("source", held.ref)
+    return CratekitError(replace(cause, message=message, detail=detail))
+
+
+def _coverage_or_refuse(
+    result: pipeline.IdentifyResult, held: SetRecording
+) -> tuple[dict[str, str], ...]:
     """The warnings a partially answered identification carries, or a refusal.
 
     ABSENCE IS NOT EVIDENCE OF ABSENCE. A run where some chunks got no answer
@@ -491,13 +653,17 @@ def _coverage_or_refuse(result: pipeline.IdentifyResult, source: Path) -> tuple[
     if not result.rows:
         raise refuse(
             "intake-recognition-failed",
-            f"{result.unreached} of {result.chunks} chunk(s) of {source.name} got no "
+            f"{result.unreached} of {result.chunks} chunk(s) of {held.shown} got no "
             f"answer and the rest named nothing, so this is not a set nobody "
             f"recognised; {result.calls} call(s) were made and counted",
             remedy=Remedy.RETRY_LATER,
             retryable=True,
             origin=("intake.cli",),
-            detail={"source": str(source), "calls": result.calls, "unreached": result.unreached},
+            detail={
+                "source": held.ref,
+                "calls": result.calls,
+                "unreached": result.unreached,
+            },
         )
     return (
         {
@@ -519,39 +685,51 @@ def intake_set(ctx) -> Envelope:
     least one track becomes a job. The counts the identifier reports are the
     counts the job freezes, so the honest zero says what it cost and a
     partial run says how partial.
+
+    A MIX URL IS FETCHED AFTER THE GATE AND BEFORE THE SPEND (U104). The gate
+    is free and a download is minutes, so a machine with no recognition keys
+    is told so before it waits. The job freezes the ADDRESS as its source, not
+    the scratch file, which is removed when the ``with`` block ends: the
+    worker reads nothing but the job, and a resume returns above this branch,
+    so nothing is ever fetched twice for one job.
     """
     cfg = _load()
     with jobs.open_store() as store:
         if ctx.args.job:
             return _resume(ctx, store, ctx.args.job)
-        frozen = _recording_or_refuse(str(ctx.args.source))
+        source = str(ctx.args.source)
+        local = _local_or_none(source)
         recognize.assert_recognition_ready()
-        result = pipeline.identify_only(frozen, refresh=bool(ctx.args.refresh))
-        warnings = _coverage_or_refuse(result, frozen) + _cache_notes(result)
-        tracks = frozen_rows(result.rows)
-        if not tracks:
+        job = None
+        with _recording(cfg, source, local) as held:
+            result = pipeline.identify_only(held.path, refresh=bool(ctx.args.refresh))
+            warnings = _coverage_or_refuse(result, held) + _cache_notes(result)
+            tracks = frozen_rows(result.rows)
+            if tracks:
+                job = jobs.enqueue(
+                    store,
+                    handler_key=ctx.entry.handler_key,
+                    payload={
+                        SOURCE: held.ref,
+                        TRACKS: tracks,
+                        CALLS: result.calls,
+                        UNREACHED: result.unreached,
+                    },
+                    cfg=cfg,
+                    item_ids=tuple(tracks),
+                )
+        warnings += _fetch_notes(held)
+        if job is None:
             return ctx.envelope(
                 data=_no_op(
                     "nothing-identified",
                     calls=result.calls,
                     chunks=result.chunks,
-                    source=str(frozen),
+                    source=held.ref,
                 ),
                 outcome=Outcome.NO_OP,
                 warnings=warnings,
             )
-        job = jobs.enqueue(
-            store,
-            handler_key=ctx.entry.handler_key,
-            payload={
-                SOURCE: str(frozen),
-                TRACKS: tracks,
-                CALLS: result.calls,
-                UNREACHED: result.unreached,
-            },
-            cfg=cfg,
-            item_ids=tuple(tracks),
-        )
         return ctx.envelope(
             data=_reported(
                 store, job, extra={"calls": result.calls, "unreached": result.unreached}
@@ -618,7 +796,7 @@ def _cache_notes(result: pipeline.IdentifyResult) -> tuple[dict[str, str], ...]:
     return tuple(notes)
 
 
-def _library_or_refuse(cfg: config.Config, source: Path) -> None:
+def _library_or_refuse(cfg: config.Config, source: Path | str) -> None:
     """Refuse, BEFORE THE SPEND, a library that is not there to be asked.
 
     AN ABSENT LIBRARY IS NOT AN EMPTY ONE. The index of a music folder that is
@@ -641,7 +819,7 @@ def _library_or_refuse(cfg: config.Config, source: Path) -> None:
     )
 
 
-def tracklist_name(source: Path, digest: str) -> str:
+def tracklist_name(held: SetRecording, digest: str) -> str:
     """The tracklist's file name: the recording's stem and a piece of its digest.
 
     THE STEM ALONE IS NOT A NAME. A recorder that calls every set REC001 gives
@@ -651,12 +829,16 @@ def tracklist_name(source: Path, digest: str) -> str:
     anywhere and a different one cannot. A recording whose bytes could not be
     read is named by its absolute path instead, which still separates two
     folders.
+
+    A FETCHED MIX IS NAMED BY ITS ADDRESS, because the file it was fetched
+    into is named for nothing: the stem is the address's last segment and the
+    fallback token is a digest of the address.
     """
-    token = digest or digest_of({"path": str(source)})
-    return f"{source.stem}-{token[:TRACKLIST_DIGEST_CHARS]}{TRACKLIST_SUFFIX}"
+    token = digest or digest_of({"path": held.ref})
+    return f"{held.stem}-{token[:TRACKLIST_DIGEST_CHARS]}{TRACKLIST_SUFFIX}"
 
 
-def _tracklist_dir(cfg: config.Config, given: str | None, source: Path) -> Path:
+def _tracklist_dir(cfg: config.Config, given: str | None, source: Path | str) -> Path:
     """Where the tracklist goes, checked BEFORE the spend.
 
     A path that exists and is not a folder is refused here, while the refusal
@@ -678,7 +860,7 @@ def _tracklist_dir(cfg: config.Config, given: str | None, source: Path) -> Path:
 
 
 def _tracklist_written(
-    out: Path, source: Path, result: pipeline.IdentifyResult
+    out: Path, held: SetRecording, result: pipeline.IdentifyResult
 ) -> dict[str, str]:
     """Write the tracklist and return the note that names it.
 
@@ -692,7 +874,7 @@ def _tracklist_written(
     truthfully: nothing when every answer was kept, the unanswered chunks when
     some got none, and all of it when nothing could be kept.
     """
-    path = out / tracklist_name(source, result.digest)
+    path = out / tracklist_name(held, result.digest)
     try:
         config.atomic_write_bytes(result.tracklist.encode("utf-8"), path)
     except OSError as exc:
@@ -710,7 +892,7 @@ def _tracklist_written(
             f"{exc.strerror or exc}); {kept}",
             "name another folder with --out, or make this one writable",
             path=str(path),
-            source=str(source),
+            source=held.ref,
         ) from exc
     return {
         "code": TRACKLIST_WRITTEN,
@@ -740,19 +922,30 @@ def intake_identify(ctx) -> Envelope:
 
     NOTHING IDENTIFIED WRITES NO TRACKLIST and walks no library, because there
     is nothing to write and nothing to ask.
+
+    A MIX URL IS FETCHED LAST OF THE FREE STEPS (U104), after the gate, the
+    tracklist folder and the library have each had the chance to refuse, and
+    the fetched file is removed before the library is walked, because the
+    walk needs the rows and not the recording.
     """
     cfg = _load()
-    source = _recording_or_refuse(str(ctx.args.source))
+    source = str(ctx.args.source)
+    local = _local_or_none(source)
     recognize.assert_recognition_ready()
-    out = _tracklist_dir(cfg, ctx.args.out, source)
-    _library_or_refuse(cfg, source)
-    result = pipeline.identify_only(source, refresh=bool(ctx.args.refresh))
-    warnings = _coverage_or_refuse(result, source) + _cache_notes(result)
-    if not result.rows:
+    shown = local if local is not None else source.strip()
+    out = _tracklist_dir(cfg, ctx.args.out, shown)
+    _library_or_refuse(cfg, shown)
+    written = None
+    with _recording(cfg, source, local) as held:
+        result = pipeline.identify_only(held.path, refresh=bool(ctx.args.refresh))
+        warnings = _coverage_or_refuse(result, held) + _cache_notes(result)
+        if result.rows:
+            written = _tracklist_written(out, held, result)
+    warnings += _fetch_notes(held)
+    if written is None:
         return ctx.envelope(
             data=match.MatchResult(matches=()).payload(), warnings=warnings
         )
-    written = _tracklist_written(out, source, result)
     resolved = match_cli.resolve_list(
         cfg, result.rows, handler_key=ctx.entry.handler_key, run_id=ctx.run.run_id
     )
@@ -1094,12 +1287,14 @@ __all__ = [
     "FAVORITES_SOURCE_ID",
     "HEARTS_WITHHELD",
     "INTAKE_KEYS",
+    "MIX_SCRATCH_LEFT",
     "SOURCE",
     "TRACKLISTS_DIR",
     "TRACKLIST_SUFFIX",
     "TRACKLIST_WRITTEN",
     "TRACKS",
     "UNREACHED",
+    "SetRecording",
     "build_file",
     "build_identify",
     "build_playlist",

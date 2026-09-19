@@ -141,8 +141,11 @@ crate match run /path/to/tracklist.txt
   `--export` with the collection export to splice the track into. It then ends
   waiting on you the way `intake land` does, naming the file to import, and is
   settled the same way, with `crate intake imported`.
-- `intake set` takes a recording on this machine. A mix URL is not fetched by
-  this build.
+- `intake set` takes a recording on this machine, or the web address of a mix.
+  An address is fetched with `yt-dlp` into a scratch folder outside the
+  library, identified, and removed again, because a mix is input and not
+  library material. Without `yt-dlp` it refuses and says how to install it.
+  `intake identify` takes an address the same way.
 - `intake identify` names the tracks in a recording and stops. It calls a paid
   recognition service, so it refuses before the first call if the recognition
   keys are not recorded.

@@ -1,0 +1,90 @@
+name = "u104-e"
+pass_kind = "light"
+
+[[rows]]
+id = "E1_gate_before_fetch"
+description = "Drop intake set's recognition gate ahead of the fetch, so a machine with no keys downloads a whole mix before it is told"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''        local = _local_or_none(source)
+        recognize.assert_recognition_ready()
+        job = None'''
+new = '''        local = _local_or_none(source)
+        job = None'''
+
+[[rows]]
+id = "E2_timeout_is_retryable"
+description = "Stop calling a timed out download retryable, the one fetch failure known to be worth running again"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''            remedy=Remedy.RETRY_LATER,
+            retryable=True,
+            steps=(
+                "run it again later",'''
+new = '''            remedy=Remedy.RETRY_LATER,
+            retryable=False,
+            steps=(
+                "run it again later",'''
+
+[[rows]]
+id = "E3_honest_zero_names_the_address"
+description = "Report the scratch file's path as the source of a mix nobody recognised"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''                    chunks=result.chunks,
+                    source=held.ref,'''
+new = '''                    chunks=result.chunks,
+                    source=str(held.path),'''
+
+[[rows]]
+id = "E4_identify_library_before_fetch"
+description = "Drop intake identify's check that the library is there to be asked, which runs before anything is fetched or sent"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''    _library_or_refuse(cfg, shown)
+'''
+new = ''
+
+[[rows]]
+id = "E5_install_hint_steps"
+description = "Drop the install step from the yt-dlp-missing refusal, so a missing binary refuses without saying how to get it"
+file = "src/cratekit/core/binary_refusal.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py"]
+old = '''            if hint is not None
+            else ()
+        ),
+        scope=Scope.RUN,'''
+new = '''            if hint is None
+            else ()
+        ),
+        scope=Scope.RUN,'''
+
+[[dropped]]
+id = "X1_conftest_fetcher_guard"
+description = "Remove the autouse fixture that fails a test reaching the shipped fetcher"
+reason = "it lives under tests/, which the driver does not mutate; test_the_suite_cannot_reach_the_shipped_fetcher pins it directly"
+
+[[dropped]]
+id = "X2_timeout_coefficient"
+description = "Quarter the mix download bound, 3600 to 900"
+reason = "ranked below the cap: the bound is unmeasured by its own comment and the one test over it names the number, so a death there is X equals X"
+
+[[dropped]]
+id = "X3_stem_cleaning_pattern"
+description = "Widen the characters a tracklist stem may keep"
+reason = "ranked below the cap: same family as P5, which is measured, and the parametrized stem test reads five addresses against it"
+
+[[dropped]]
+id = "X4_several_recordings_steps"
+description = "Reword the step a playlist address is refused with"
+reason = "ranked below the cap: a message row on a refusal whose reason and retryable flag P3 and the playlist test already pin"
+
+[[dropped]]
+id = "X5_help_and_summary_text"
+description = "Take the mix URL back out of the help text and the registry summaries"
+reason = "ranked below the cap: static text, read by one test per verb in test_workers"

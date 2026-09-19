@@ -773,6 +773,21 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="mix_scratch",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.DIRECTORY,
+        relative="mix_scratch",
+        why=(
+            "Where a mix fetched from a web address sits while it is identified, "
+            "one folder per address, removed when the pass ends. A mix is INPUT "
+            "and never library material, so this is under the installation root "
+            "and never under the library: a file left beside the music is one "
+            "rekordbox can be pointed at and one a library walk would index. "
+            "Losing it costs a download and no data."
+        ),
+    ),
+    StateFile(
         key="genre_lookup_cache",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,

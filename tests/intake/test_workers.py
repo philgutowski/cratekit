@@ -551,11 +551,11 @@ def test_two_recordings_sharing_a_stem_keep_a_tracklist_each(cfg, library, recog
 
 
 def test_a_recording_with_no_digest_is_named_by_its_path_so_two_folders_still_differ(tmp_path):
-    one = intake_cli.tracklist_name(tmp_path / "a" / "REC001.WAV", "")
-    other = intake_cli.tracklist_name(tmp_path / "b" / "REC001.WAV", "")
+    one = intake_cli.tracklist_name(intake_cli.SetRecording.local(tmp_path / "a" / "REC001.WAV"), "")
+    other = intake_cli.tracklist_name(intake_cli.SetRecording.local(tmp_path / "b" / "REC001.WAV"), "")
     assert one != other
     assert one.startswith("REC001-") and one.endswith(intake_cli.TRACKLIST_SUFFIX)
-    assert intake_cli.tracklist_name(tmp_path / "REC001.WAV", "ab" * 32) == (
+    assert intake_cli.tracklist_name(intake_cli.SetRecording.local(tmp_path / "REC001.WAV"), "ab" * 32) == (
         "REC001-abababababab.tracklist.txt"
     )
 
@@ -627,31 +627,28 @@ def test_a_repeated_recording_in_one_set_is_one_item_per_play_and_one_per_fold(
     assert len(items_of(job_id)) == 2
 
 
-def test_a_mix_url_is_refused_at_the_queue_before_the_gate_or_any_spend(cfg, recognised):
-    three_tracks(recognised)
-    code, envelope = drive(["intake", "set", "https://example.invalid/mix"])
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert "download the mix" in " ".join(envelope["cause"]["remediation"]["steps"])
-    assert recognised.requests == []
-
-
-def test_the_help_text_and_the_registry_summary_say_what_the_refusal_says():
-    """SEAM P6. A verb that refuses a URL cannot advertise one."""
+def test_the_help_text_and_the_registry_summary_say_what_the_verb_takes():
+    """SEAM P6, both ways. A verb that refuses a URL cannot advertise one, and
+    since U104 these two take one, so the help and the summary have to say so.
+    The URL's own behaviour is ``tests/intake/test_set_fetch.py``."""
     import argparse
 
     from cratekit.cli import registry
 
-    parser = argparse.ArgumentParser()
-    intake_cli.build_set(parser, None)
-    source = next(a for a in parser._actions if a.dest == "source")
-    assert "URL" not in source.help.split("(")[0]
-    assert "on this machine" in source.help
-    entry = next(e for e in registry.ENTRIES if e.name == "intake.set")
-    assert "URL" not in entry.summary
-    assert "binary.ffprobe" in entry.doctor_checks
-    assert "credential.recognition" in entry.doctor_checks
-    assert "credential.provider" not in entry.doctor_checks
+    for name, build in (("intake.set", intake_cli.build_set), ("intake.identify", intake_cli.build_identify)):
+        parser = argparse.ArgumentParser()
+        build(parser, None)
+        source = next(a for a in parser._actions if a.dest == "source")
+        assert "on this machine" in source.help
+        assert "mix URL" in source.help
+        assert "yt-dlp" in source.help
+        entry = next(e for e in registry.ENTRIES if e.name == name)
+        assert "mix URL" in entry.summary
+        assert "binary.ffprobe" in entry.doctor_checks
+        assert "credential.recognition" in entry.doctor_checks
+        assert "credential.provider" not in entry.doctor_checks
+        # Only an address needs the downloader, so doctor does not demand it.
+        assert "binary.yt-dlp" not in entry.doctor_checks
 
 
 def test_a_tilde_is_expanded_before_the_file_is_looked_for(cfg, library, recognised, monkeypatch):
