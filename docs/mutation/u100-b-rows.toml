@@ -1,0 +1,106 @@
+name = "u100-b"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_name_accepted"
+description = "adopt no longer refuses a name argument and silently ignores it"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''    if ctx.args.name or ctx.args.new_name is not None:'''
+new = '''    if ctx.args.new_name is not None:'''
+
+[[rows]]
+id = "C2_to_accepted"
+description = "adopt no longer refuses --to and silently ignores it"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''    if ctx.args.name or ctx.args.new_name is not None:'''
+new = '''    if ctx.args.name:'''
+
+[[rows]]
+id = "C3_outcome_always_ok"
+description = "adopt reports ok when it added nothing"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''        outcome=Outcome.OK if added else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK,'''
+
+[[rows]]
+id = "C4_empty_says_nothing"
+description = "adopt over a queue with nothing accepted emits no check, so a person reads a blank answer"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''    if not checks:
+        checks.append('''
+new = '''    if False:
+        checks.append('''
+
+[[rows]]
+id = "C5_nameless_unreported"
+description = "adopt drops the failing check for an accepted item that names no label"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''        for item_id in found.nameless'''
+new = '''        for item_id in ()'''
+
+[[rows]]
+id = "C6_held_name_hidden"
+description = "the already held check no longer names the spelling the label is held under"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''        if result.held_name != result.name:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C7_refused_reads_as_note"
+description = "a name that yields no identifier is shown as a note rather than a failure"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''        status = "fail"
+        detail = ('''
+new = '''        status = "info"
+        detail = ('''
+
+[[rows]]
+id = "C8_refused_counted_present"
+description = "the summary lists a refused name as present, telling a script the registry holds it"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''                    if not result.added and result.refused is None'''
+new = '''                    if not result.added'''
+
+[[rows]]
+id = "C9_dispatch"
+description = "the adopt action is never dispatched and falls through to the named actions"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''    if action == "adopt":'''
+new = '''    if action == "adopted":'''
+
+[[rows]]
+id = "C10_added_message"
+description = "reword the added detail a person reads"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py"]
+old = '''        status, detail = "ok", f"{result.name}: added as {result.label_id}"'''
+new = '''        status, detail = "ok", f"{result.name}: now followed as {result.label_id}"'''
+
+[[dropped]]
+id = "H5_identity_before_payload"
+description = "read the name from the payload before the identity"
+reason = "the two are written equal by the only producer, harvest.from_tracks; no reachable input distinguishes them, so a row would measure nothing"
+
+[[dropped]]
+id = "C11_zip_strict"
+description = "drop strict=True on the result pairing"
+reason = "adopt returns one result per name by construction; a mismatch is not producible, so the row is a maintainer guard ranked below the cap"
