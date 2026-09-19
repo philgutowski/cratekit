@@ -17534,6 +17534,27 @@ database write behind a gate rather than a wiring change.
 **Closes when:** a filing pass writes ratings, and a recalibration can re-spread
 ratings it did not originally set.
 
+**Narrowed 2026-09-18 on `relay/132`, U87. The first clause is closed; the
+re-spread stays open.** `crate route inbox --export X` now fills the star
+rating of every intake track it places whose export `Rating` is empty or
+`"0"`, from the energy the routing decision already read, through
+`routing.energy_rating` and `routing.rates`, into the same bytes before the
+file is written, through `trees.apply_rating_changes`, now its first caller in
+`src`. The scale is the export's, which is the taxonomy's own, so R-414's
+database scale is not on this path. A rating a person set is never touched, a
+`rates = false` bucket is skipped, a track with no energy reading is not
+rated, and a row with no `Rating` attribute is not planned since the writer
+cannot add one. The rating rides each item, inside the digest the person
+approves. A pass that only rates still writes a file, so a filed and unrated
+track is not answered `nothing-to-route`. Driven in
+`tests/test_routing_workers.py`, 12 tests; mutation tables
+`docs/mutation/u87.md`, `u87-b.md`, `u87-c.md`, read in `u87-notes.md`.
+`route unplaced` has no export medium and rates nothing, as it files nothing
+through one. **Still open:** the second clause. A re-spread after a
+recalibration overwrites ratings, which needs a record of which ratings
+automation set, and nothing keeps one. Also open, R-441: whether a rekordbox
+import carries the rating onto a track already in the collection.
+
 ---
 
 ## R-406. The "Sets and Long Tracks" playlist is never built
@@ -18550,5 +18571,30 @@ writer to report which keys each warning covers, which it does not.
 
 **Closes when:** each item carries whether its write landed, or the bridge
 writer reports its warnings per plan entry.
+
+---
+
+## R-441. The routed export's import check assumes rekordbox imports a rating onto a track it already holds
+
+**Found:** 2026-09-18, by U87's `/code-review` on `relay/132`. Read, not
+driven, because it needs rekordbox.
+
+Since U87 a `route inbox --export` pass that only rates still writes a file and
+ends PENDING, and the pending action's check is the verb itself: over a fresh
+export taken after the import, a second run that inserts nothing AND rates
+nothing answers `nothing-to-route`. That reading holds only if importing the
+routed file into rekordbox writes its `Rating` onto tracks already in the
+collection. The source system relied on the same import, and nothing here has
+measured it.
+
+**Measured cost:** unmeasured. If the import does not carry the rating, every
+re-run over a fresh export writes another rating only file, and the pending
+import never reads as landed.
+
+**Why not fixed here.** Answering it is one import into rekordbox, which is
+attended, and it is the sitting the brief already owes.
+
+**Closes when:** one routed file is imported and the ratings are seen in
+rekordbox, or the check stops counting ratings if they are not.
 
 ---

@@ -1,0 +1,69 @@
+{
+  "name": "u87-c",
+  "pass_kind": "light",
+  "branch": "relay/132",
+  "head": "52d1051",
+  "when": "2026-09-19 03:19 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 7940,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/routing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/routing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d24071f8a3353ece",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 7940,
+    "baseline_collected": 7940,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G8_one_key_per_file_rerun",
+      "description": "_ratings: only the first collection row naming a file is rated, re-run after the test it lacked landed",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9234bcea946c8b8b",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 65,
+      "baseline_collected": 65,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_two_rows_naming_one_file_are_both_rated"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        for key in files[placement.location]:\n            if _unrated(by_id[key]):",
+      "new": "        for key in files[placement.location][:1]:\n            if _unrated(by_id[key]):"
+    }
+  ],
+  "dropped": []
+}

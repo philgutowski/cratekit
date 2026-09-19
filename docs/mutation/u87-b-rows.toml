@@ -1,0 +1,71 @@
+name = "u87-b"
+pass_kind = "light"
+
+[[rows]]
+id = "G5_rating_only_writes_nothing"
+description = "apply_export: a pass that inserted nothing writes no file even when it rated"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if not report.inserted and not rated:'''
+new = '''    if not report.inserted:'''
+
+[[rows]]
+id = "G6_rating_off_the_item"
+description = "plan_export: the item no longer carries the rating, so the digest does not cover it"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''            "rating": str(ratings[key]) if key in ratings else "",'''
+new = '''            "rating": "",'''
+
+[[rows]]
+id = "G7_summary_count"
+description = "_export_pending: the summary names the inserted count where the rated count belongs"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''            f"{inserted} track(s) were routed and {rated} unrated track(s) were "'''
+new = '''            f"{inserted} track(s) were routed and {inserted} unrated track(s) were "'''
+
+[[rows]]
+id = "G8_one_key_per_file"
+description = "_ratings: only the first collection row naming a file is rated"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''        for key in files[placement.location]:
+            if _unrated(by_id[key]):'''
+new = '''        for key in files[placement.location][:1]:
+            if _unrated(by_id[key]):'''
+
+[[rows]]
+id = "S1_curve_boundary"
+description = "Existing: routing.energy_rating reads a cut's max as exclusive"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''        if level <= cut.max:
+            return cut.rating'''
+new = '''        if level < cut.max:
+            return cut.rating'''
+
+[[rows]]
+id = "S2_writer_index_filter"
+description = "Existing: rbxml.apply_rating_changes no longer skips an id the collection lacks"
+file = "src/cratekit/write/rbxml.py"
+surface = "maintainer"
+old = '''        for track_id, rating in rating_plan.items()
+        if str(track_id) in index
+    ]'''
+new = '''        for track_id, rating in rating_plan.items()
+    ]'''
+
+[[dropped]]
+id = "D1_rated_total_planned"
+description = "totals rated=len(ratings) in place of the writer's count"
+reason = "equivalent on every reachable input: _unrated admits only rows whose Rating attribute is present, and every planned id is a collection row of the same bytes, so the writer patches every planned row"
+
+[[dropped]]
+id = "D2_rate_before_membership"
+description = "apply ratings before the membership write"
+reason = "equivalent by construction: the writer re-locates every track in one pass over the current bytes, so order does not change which element is patched"
