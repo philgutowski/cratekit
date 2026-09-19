@@ -53,11 +53,14 @@ releases left are reported as not asked. An answer, or a release that is gone,
 which is an answer too, resets the count.
 
 THE GENRE GATE JUDGES EVERY RELEASE READ BEFORE ANY IS LISTED. U101, R-420.
-:func:`cratekit.core.routing.gate_decisions` decides against a label's whole
-output at once, so every accepted release is read first, the gate runs once
+:func:`cratekit.core.routing.gate_decisions` decides against a set of
+releases at once, so every accepted release is read first, the gate runs once
 per label over one genre per release, and only then are the passed releases
-resolved. A release the gate holds is named with its family and its share and
-is neither listed nor offered for review. A release whose genre is not known,
+resolved. The set is the label's releases ACCEPTED AND READ THIS RUN, not its
+whole catalogue, which this verb never reads (R-462), and a label with any
+release unread this run is not judged at all. A release the gate holds is
+named with its family and its share and is neither listed nor offered for
+review. A release whose genre is not known,
 because its rows report none or report more than one, is listed with a failing
 line saying the gate could not judge it: absence of a genre is not evidence of
 a bad fit, and it is not evidence of a good one either. No shipped catalogue
@@ -247,29 +250,51 @@ def _label_of(release: _Release) -> str:
     return release.label_id or release.label_name or f"release:{release.release_id}"
 
 
-def _gated(declared: taxonomy.Taxonomy, read: list[tuple[_Release, _Read]]) -> dict[str, _Held]:
-    """Every read release the genre gate holds, by review item.
+def _gated(
+    declared: taxonomy.Taxonomy,
+    read: list[tuple[_Release, _Read]],
+    failures: list[_Failed],
+) -> tuple[dict[str, _Held], dict[str, str]]:
+    """Every read release the genre gate holds, and every one it could not judge.
 
-    ONE CALL PER LABEL, never one per release. The gate's share is a fraction
-    of what the label puts out, so a release judged alone is always the whole
-    of it and nothing would ever be held.
+    Both keyed by review item. ONE CALL PER LABEL, never one per release. The
+    gate's share is a fraction of the label's accepted releases, so one judged
+    alone is always the whole of it and nothing would ever be held.
+
+    A LABEL WITH A RELEASE UNREAD THIS RUN IS NOT JUDGED AT ALL. Its share is
+    unknown rather than smaller: the unread release could be of the family in
+    question or of any other, so a provider that failed on some releases would
+    decide which of the rest are held. Every release of that label is listed
+    unjudged and says why, the timid direction, and the next run that reads
+    them all judges them.
     """
+    unread = {_label_of(one.release) for one in failures}
     groups: dict[str, list[tuple[_Release, _Read]]] = {}
     for release, outcome in read:
         groups.setdefault(_label_of(release), []).append((release, outcome))
     share = declared.label_gate.out_of_place_share
     held: dict[str, _Held] = {}
-    for members in groups.values():
+    unjudged: dict[str, str] = {}
+    for label, members in groups.items():
+        if label in unread:
+            for release, outcome in members:
+                unjudged[release.item_id] = outcome.ungated or (
+                    "another accepted release on its label could not be read, so the "
+                    "label's share of its genre is not known"
+                )
+            continue
         genres = [outcome.genre for _release, outcome in members]
         verdicts = routing.gate_decisions(declared, genres)
         families = [routing.gate_family(declared, genre) for genre in genres]
         classified = sum(1 for genre in genres if genre)
         for (release, outcome), verdict, family in zip(members, verdicts, families, strict=True):
-            if verdict is routing.GateVerdict.DROP and family and outcome.genre:
+            if outcome.ungated is not None:
+                unjudged[release.item_id] = outcome.ungated
+            elif verdict is routing.GateVerdict.DROP and family and outcome.genre:
                 held[release.item_id] = _Held(
                     release, outcome.genre, family, families.count(family), classified, share
                 )
-    return held
+    return held, unjudged
 
 
 def _release_of(items: review.ReviewStore, item: review.Item) -> _Release:
@@ -513,9 +538,11 @@ def label_approved(ctx) -> Envelope:
     # THE GATE BEFORE ANY RESOLUTION, so a held release is never offered for
     # review and never listed, and every release it judges is judged against
     # the same set.
-    held = _gated(taxonomy.default_taxonomy(), answered)
+    held, unjudged = _gated(taxonomy.default_taxonomy(), answered, failures)
     ungated = [
-        (release, outcome.ungated) for release, outcome in answered if outcome.ungated is not None
+        (release, unjudged[release.item_id])
+        for release, _outcome in answered
+        if release.item_id in unjudged
     ]
     for release, outcome in answered:
         if release.item_id in held:

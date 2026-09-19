@@ -1291,7 +1291,7 @@ def test_nothing_missing_with_one_held_and_one_unread_is_refused_and_says_both(
         owned(library, f"House Artist h{n} - Deep Cut.flac")
     accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
-    accepted(cfg, "r-gone")
+    accepted(cfg, "r-gone", label_id="salt-flats", label_name="Salt Flats")
     bind(monkeypatch, StrictCatalogue(releases=releases))
 
     code, envelope = approved()
@@ -1313,3 +1313,41 @@ def test_the_default_human_output_names_a_held_release(cfg, library, monkeypatch
     _code, text = human(["label", "approved"])
 
     assert "release r-hh ('Corner Talk' on Tide Works) is HELD by the genre gate" in text
+
+
+def test_a_label_with_a_release_unread_this_run_is_not_judged_and_says_why(
+    cfg, library, monkeypatch
+):
+    releases: dict = {}
+    house_label(cfg, releases)
+    accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
+    releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
+    accepted(cfg, "r-gone", label_id="tide-works", label_name="Tide Works")
+    bind(monkeypatch, StrictCatalogue(releases=releases))
+
+    _code, envelope = approved()
+
+    assert "901" in listed_ids(envelope)
+    assert envelope["data"]["summary"]["held"] == []
+    assert "r-hh" in envelope["data"]["summary"]["ungated"]
+    assert (
+        "another accepted release on its label could not be read, so the label's "
+        "share of its genre is not known"
+    ) in check(envelope, "ungated")["detail"]
+
+
+def test_a_release_unread_on_another_label_does_not_stop_this_label_being_judged(
+    cfg, library, monkeypatch
+):
+    releases: dict = {}
+    house_label(cfg, releases)
+    accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
+    releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
+    accepted(cfg, "r-gone", label_id="salt-flats", label_name="Salt Flats")
+    bind(monkeypatch, StrictCatalogue(releases=releases))
+
+    _code, envelope = approved()
+
+    assert "901" not in listed_ids(envelope)
+    assert [one["release_id"] for one in envelope["data"]["summary"]["held"]] == ["r-hh"]
+    assert envelope["data"]["summary"]["ungated"] == []
