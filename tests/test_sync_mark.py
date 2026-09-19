@@ -22,7 +22,7 @@ import pytest
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
 from cratekit.core import artifacts, config, jobs, locations
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import land_cli, missing_cli
@@ -52,18 +52,34 @@ def fresh_cache():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _swept_pass(monkeypatch, *listed) -> tuple[object, str]:
+def _swept_pass(monkeypatch, *listed, failing: tuple[str, ...] = ()) -> tuple[object, str]:
     """``sync all`` over ``listed``, every job finished, the pass listed. Returns
-    the fake catalogue and the name the pass's list and batch share."""
+    the fake catalogue and the name the pass's list and batch share.
+
+    A playlist named in ``failing`` has its job FAILED and never run, and the
+    pass is then listed with ``--skip-failed``, which is the one way the product
+    lists a pass holding a failed job.
+    """
     fake = bind_playlists(monkeypatch, *listed)
     code, passed = drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
     run_id = passed["run_id"]
     for job in _playlist_jobs():
+        if playlists.playlist_of(job) in failing:
+            stopped = Cause(
+                reason="internal-error",
+                message="stopped for the test",
+                remediation=Remediation(steps=("nothing",)),
+                origin=("test",),
+            )
+            with jobs.open_store() as store:
+                jobs.transition(store, job.job_id, jobs.JobState.FAILED, cause=stopped)
+            continue
         code, resumed = drive(cli_jobs.argv_for(job))
         assert code == int(ExitCode.OK), resumed
         assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
-    code, missing = drive(["intake", "missing", "--run", run_id])
+    extra = ["--skip-failed"] if failing else []
+    code, missing = drive(["intake", "missing", "--run", run_id, *extra])
     assert code == int(ExitCode.OK), missing
     return fake, missing_cli.synced_name(run_id)
 
@@ -312,6 +328,62 @@ def test_an_already_prefixed_playlist_is_skipped(slim, monkeypatch):
     assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
     skipped = _by_id(done)["pl-a"]
     assert (skipped["action"], skipped["reason"]) == ("skip", "already-marked")
+
+
+def test_a_playlist_the_account_no_longer_lists_is_said_and_not_planned(slim, monkeypatch):
+    """Nothing could rename it, so a plan that showed it as a rename would be a
+    declared write the run never performs."""
+    fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+    fake.account = [_playlist("pl-b", "Peak")]
+
+    code, shown = _mark(xml)
+    assert code == int(ExitCode.DECISION_REQUIRED), shown
+    context = shown["cause"]["detail"]["shown"]
+    assert context["renamed on the account"] == ["Peak -> DOWNLOADED Peak"]
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    gone = _by_id(done)["pl-a"]
+    assert (gone["action"], gone["reason"]) == ("skip", "not-listed")
+    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+
+
+def test_a_playlist_whose_job_failed_is_said_and_not_planned(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO, failing=("pl-a",))
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    failed = _by_id(done)["pl-a"]
+    assert (failed["action"], failed["reason"]) == ("skip", "job-unfinished")
+    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+
+
+def test_an_answer_to_one_plan_does_not_carry_out_another(slim, monkeypatch):
+    """The intake file is untouched, so only the plan's own marks can make the
+    answer stale. ``102`` arrives after the answer, ``pl-a`` becomes whole, and
+    a rename nobody was shown must not ride in on the answer to the smaller plan."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "201")
+    code, refused = _mark(xml)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["renamed on the account"] == [
+        "Peak -> DOWNLOADED Peak"
+    ]
+    run_id = refused["run_id"]
+    code, _ = drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK)
+
+    music = Path(slim.library.root) / slim.library.music_dir
+    (music / "Artist 102 - Title 102.flac").write_bytes(b"")
+    code, stale = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
+    assert code != int(ExitCode.OK), stale
+    assert account.renamed == []
 
 
 def test_a_playlist_renamed_after_the_plan_was_shown_is_skipped_and_said(slim, monkeypatch):
