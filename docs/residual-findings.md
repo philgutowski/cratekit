@@ -18232,7 +18232,8 @@ narrowed and not closed: the batch name defaults to the run id, unique per run,
 so two landings meet in one batch folder only when a person passes the same
 `--name` to both and both reach their moves at the same moment. The same window
 covers the intake file, which the engine checks absent before the first move and
-`place_files` then writes with a plain overwrite. Still not measured.
+`place_files` then writes with a plain overwrite. Still not measured. It meets the
+board bar, since a landed file can be overwritten, and is issue #180.
 
 ---
 
