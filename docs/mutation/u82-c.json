@@ -1,0 +1,332 @@
+{
+  "name": "u82-c",
+  "pass_kind": "light",
+  "branch": "relay/127",
+  "head": "06cc92f",
+  "when": "2026-09-19 12:15 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8419,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/mark_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/mark_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "513fcfd8a68d8fe9",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8419,
+    "baseline_collected": 8419,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_a_tombstoned_track_is_settled",
+      "description": "_settle: drop the suppressed branch, so a track deleted on purpose since the pass holds its playlist back for ever",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9572476221f0f667",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_track_deleted_on_purpose_since_the_pass_is_not_owed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            elif found.state is match.MatchState.SUPPRESSED:",
+      "new": "            elif False:"
+    },
+    {
+      "id": "C2_one_outstanding_track_holds_the_playlist",
+      "description": "_settle: never set the outstanding reason, so a playlist with a track still not in the library is planned for the prefix",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6d9101f5aa4a0296",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_playlist_with_one_row_not_landed_is_not_marked",
+        "tests/test_sync_mark.py::test_a_track_deleted_on_purpose_since_the_pass_is_not_owed",
+        "tests/test_sync_mark.py::test_a_track_the_pass_offered_for_review_holds_its_playlist_back",
+        "tests/test_sync_mark.py::test_a_track_two_playlists_share_holds_both_back_until_it_lands",
+        "tests/test_sync_mark.py::test_an_answer_to_one_plan_does_not_carry_out_another",
+        "tests/test_sync_mark.py::test_the_pass_is_decided_without_its_manifest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if entry.outstanding:\n            entry.reason = ROWS_OUTSTANDING",
+      "new": "        if False:\n            entry.reason = ROWS_OUTSTANDING"
+    },
+    {
+      "id": "C3_landed_is_told_from_owned",
+      "description": "_settle: call every matched track landed, so the screen credits this landing with files it did not bring",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "884ed66c8b378f31",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_row_the_library_holds_and_the_file_does_not_name_is_owned"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                entry.settled[LANDED if held & named else OWNED] += 1",
+      "new": "                entry.settled[LANDED] += 1"
+    },
+    {
+      "id": "C4_an_abort_renames_nothing",
+      "description": "sync_mark: stop reading the answer, so abort renames exactly what apply would",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8c2b6bbf429066e9",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_an_abort_renames_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if option != \"apply\" or not planned:",
+      "new": "    if not planned:"
+    },
+    {
+      "id": "C5_the_engine_is_told_which_are_finished",
+      "description": "sync_mark: hand the engine no only set, so every pending playlist of the account is renamed, the ones this plan held back included",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "49838fce7b71c8ee",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_playlist_whose_reports_cannot_be_read_is_left_alone",
+        "tests/test_sync_mark.py::test_a_playlist_with_one_row_not_landed_is_not_marked",
+        "tests/test_sync_mark.py::test_a_track_the_pass_offered_for_review_holds_its_playlist_back",
+        "tests/test_sync_mark.py::test_the_pass_is_decided_without_its_manifest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            only=frozenset(planned),",
+      "new": "            only=None,"
+    },
+    {
+      "id": "C6_the_digest_covers_the_file",
+      "description": "_payload: leave the intake file's size and time out of the digest, so an answer survives the file being rewritten",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "899da2c2774fd97e",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_an_answer_is_stale_once_the_intake_file_is_rewritten"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"xml_size\": seen.st_size,\n        \"xml_mtime_ns\": seen.st_mtime_ns,",
+      "new": ""
+    },
+    {
+      "id": "C7_the_digest_covers_the_marks",
+      "description": "_payload: leave the planned renames out of the digest, so an answer to a plan of one rename carries out a plan of two",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6632c5deebb8eca0",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_an_answer_to_one_plan_does_not_carry_out_another"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"marks\": sorted((item[\"id\"], item[\"to\"]) for item in items if item[\"action\"] == MARK),",
+      "new": "        \"marks\": [],"
+    },
+    {
+      "id": "C8_a_failure_names_what_was_marked",
+      "description": "sync_mark: re-raise the failure as it came, so the playlists already renamed are named nowhere",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "55deaa7e9736835c",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_failure_before_any_rename_says_nothing_was_marked",
+        "tests/test_sync_mark.py::test_a_partial_failure_names_what_was_marked",
+        "tests/test_sync_mark.py::test_a_refusal_the_account_raised_keeps_its_reason_and_names_what_was_marked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        raise _failed_part_way(exc, landed, sweep.names(), planned) from exc",
+      "new": "        raise"
+    },
+    {
+      "id": "C9_the_accounts_reason_is_kept",
+      "description": "_failed_part_way: treat a refusal the account raised as a defect, so a provider timeout is reported as internal-error",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b42bde44725a54b2",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_refusal_the_account_raised_keeps_its_reason_and_names_what_was_marked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if isinstance(exc, CratekitError):\n        cause = exc.cause",
+      "new": "    if False:\n        cause = exc.cause"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "C10_nothing_asks_means_no_walk",
+      "description": "_settle: drop the early return when no playlist is left to settle",
+      "reason": "ranked below the cap: a cost in minutes and never a wrong rename, and test_the_library_is_not_walked_when_no_playlist_is_left_to_settle drives it"
+    },
+    {
+      "id": "C11_a_file_of_no_pass_stops_before_the_listing",
+      "description": "sync_mark: drop the no pass branch",
+      "reason": "ranked below the cap: row B3 mutates the comparison that feeds it, and the no pass test asserts the listing count"
+    },
+    {
+      "id": "C12_a_changed_playlist_is_reported_skipped",
+      "description": "sync_mark: report every planned item as marked whatever landed",
+      "reason": "ranked below the cap: a report over a rename that did not happen, driven by test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said"
+    },
+    {
+      "id": "C13_the_gate_is_explicit_and_the_write_is_declared",
+      "description": "registry: drop explicit from the gate, or remote from writes",
+      "reason": "static declarations, asserted literally by test_the_verb_declares_one_remote_write_behind_an_explicit_gate and held by conformance 3"
+    }
+  ]
+}

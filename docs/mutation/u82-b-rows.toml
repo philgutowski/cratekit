@@ -1,0 +1,90 @@
+name = "u82-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_the_file_must_name_a_pass"
+description = "_pass_name: drop the intake suffix refusal, so any XML is cut at a fixed length and read as a pass name"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''    if not xml.name.endswith(land_cli.INTAKE_SUFFIX) or xml.name == land_cli.INTAKE_SUFFIX:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B2_paths_compared_resolved"
+description = "_comparable: compare the spelled path and not the resolved one, so a library reached through a link reads every landed file as owned"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''    return locations.norm_for_compare(str(Path(path).resolve()))'''
+new = '''    return locations.norm_for_compare(str(path))'''
+
+[[rows]]
+id = "B3_only_this_passes_jobs"
+description = "_pass_jobs: keep every playlist job this source queued, whatever run it spells, so a file of one pass marks the playlists of another"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''            == name
+        ),'''
+new = '''            != ""
+        ),'''
+
+[[rows]]
+id = "B4_already_marked_is_skipped"
+description = "_decided: drop the already prefixed reason, so the plan shows a second prefix going onto a marked playlist"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''        elif playlists.is_swept_name(entry.name):'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "B5_not_listed_is_skipped"
+description = "_decided: drop the not listed reason, so the plan declares a rename of a playlist the account no longer has"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''        if not entry.name:
+            entry.reason = NOT_LISTED'''
+new = '''        if False:
+            entry.reason = NOT_LISTED'''
+
+[[rows]]
+id = "B6_a_failed_job_is_skipped"
+description = "_decided: drop the unfinished job reason, so a playlist whose tracks were never all resolved is read from whatever reports it has"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''        elif job.state is not jobs.JobState.SUCCEEDED:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "B7_unread_reports_hold_the_playlist"
+description = "_decided: stop catching the report reader's refusal, so one damaged report refuses the whole verb and the whole playlists beside it are never marked"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''        except CratekitError as exc:
+            # UNREAD IS NOT NOTHING OWED.'''
+new = '''        except ZeroDivisionError as exc:
+            # UNREAD IS NOT NOTHING OWED.'''
+
+[[rows]]
+id = "B8_an_offered_track_is_owed"
+description = "_NOT_FOUND: count only missing reports, which is what the manifest carried, so a playlist holding a track the pass offered for review is marked over it"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py"]
+old = '''_NOT_FOUND = frozenset({"missing", "offered"})'''
+new = '''_NOT_FOUND = frozenset({"missing"})'''
+
+[[dropped]]
+id = "B9_an_intake_file_names_a_track"
+description = "_locations: drop the refusal over a file naming no local track"
+reason = "ranked below the cap: a file naming nothing reads every settled row as owned and not landed, which changes a count on the screen and no rename"
+
+[[dropped]]
+id = "B10_a_foreign_location_is_passed_over"
+description = "_locations: stop catching LocationDecodeError"
+reason = "ranked below the cap: the failure is a traceback before any rename, and test_a_location_on_another_host_is_passed_over_and_never_a_traceback drives it"

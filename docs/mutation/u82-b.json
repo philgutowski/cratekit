@@ -1,0 +1,282 @@
+{
+  "name": "u82-b",
+  "pass_kind": "light",
+  "branch": "relay/127",
+  "head": "06cc92f",
+  "when": "2026-09-19 12:10 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8419,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/mark_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/mark_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "513fcfd8a68d8fe9",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8419,
+    "baseline_collected": 8419,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_the_file_must_name_a_pass",
+      "description": "_pass_name: drop the intake suffix refusal, so any XML is cut at a fixed length and read as a pass name",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4513417daf1e7e84",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_file_not_named_as_an_intake_file_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not xml.name.endswith(land_cli.INTAKE_SUFFIX) or xml.name == land_cli.INTAKE_SUFFIX:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B2_paths_compared_resolved",
+      "description": "_comparable: compare the spelled path and not the resolved one, so a library reached through a link reads every landed file as owned",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "33620ae7602c4ded",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 8419,
+      "baseline_collected": 8419,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    return locations.norm_for_compare(str(Path(path).resolve()))",
+      "new": "    return locations.norm_for_compare(str(path))"
+    },
+    {
+      "id": "B3_only_this_passes_jobs",
+      "description": "_pass_jobs: keep every playlist job this source queued, whatever run it spells, so a file of one pass marks the playlists of another",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "42acc9036eff40dc",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_an_intake_file_of_no_pass_is_a_gated_plan_of_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            == name\n        ),",
+      "new": "            != \"\"\n        ),"
+    },
+    {
+      "id": "B4_already_marked_is_skipped",
+      "description": "_decided: drop the already prefixed reason, so the plan shows a second prefix going onto a marked playlist",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d318e2f9b6561ea4",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_an_already_prefixed_playlist_is_skipped",
+        "tests/test_sync_mark.py::test_the_library_is_not_walked_when_no_playlist_is_left_to_settle"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif playlists.is_swept_name(entry.name):",
+      "new": "        elif False:"
+    },
+    {
+      "id": "B5_not_listed_is_skipped",
+      "description": "_decided: drop the not listed reason, so the plan declares a rename of a playlist the account no longer has",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "205f405a8a54176e",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_playlist_the_account_no_longer_lists_is_said_and_not_planned"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not entry.name:\n            entry.reason = NOT_LISTED",
+      "new": "        if False:\n            entry.reason = NOT_LISTED"
+    },
+    {
+      "id": "B6_a_failed_job_is_skipped",
+      "description": "_decided: drop the unfinished job reason, so a playlist whose tracks were never all resolved is read from whatever reports it has",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3b5c2273fb0ac38c",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_playlist_whose_job_failed_is_said_and_not_planned"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif job.state is not jobs.JobState.SUCCEEDED:",
+      "new": "        elif False:"
+    },
+    {
+      "id": "B7_unread_reports_hold_the_playlist",
+      "description": "_decided: stop catching the report reader's refusal, so one damaged report refuses the whole verb and the whole playlists beside it are never marked",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fddfa3ed8e47a98d",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_playlist_whose_reports_cannot_be_read_is_left_alone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except CratekitError as exc:\n            # UNREAD IS NOT NOTHING OWED.",
+      "new": "        except ZeroDivisionError as exc:\n            # UNREAD IS NOT NOTHING OWED."
+    },
+    {
+      "id": "B8_an_offered_track_is_owed",
+      "description": "_NOT_FOUND: count only missing reports, which is what the manifest carried, so a playlist holding a track the pass offered for review is marked over it",
+      "file": "src/cratekit/sync/mark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "10814a718a875cd2",
+      "subset": [
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_mark.py::test_a_track_the_pass_offered_for_review_holds_its_playlist_back"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_NOT_FOUND = frozenset({\"missing\", \"offered\"})",
+      "new": "_NOT_FOUND = frozenset({\"missing\"})"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B9_an_intake_file_names_a_track",
+      "description": "_locations: drop the refusal over a file naming no local track",
+      "reason": "ranked below the cap: a file naming nothing reads every settled row as owned and not landed, which changes a count on the screen and no rename"
+    },
+    {
+      "id": "B10_a_foreign_location_is_passed_over",
+      "description": "_locations: stop catching LocationDecodeError",
+      "reason": "ranked below the cap: the failure is a traceback before any rename, and test_a_location_on_another_host_is_passed_over_and_never_a_traceback drives it"
+    }
+  ]
+}
