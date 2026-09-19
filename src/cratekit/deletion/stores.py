@@ -139,17 +139,18 @@ def uncredited_version_of(row: RemovedRow) -> dict[str, str] | None:
 
 
 #: The payload field on a companion record naming the tombstone it was written
-#: beside. A LOOKUP, for the reason :func:`tombstone_predicate` gives: a
-#: revocation that found the companion by recomputing it would stop finding it
-#: the day the stripping rule changed, and a companion nothing can find is a
-#: suppression nobody can lift.
+#: beside, so the listing can show a person which deletion a companion belongs
+#: to. Two deleted rows crediting two guests share one companion, and it names
+#: only the row that arrived first.
 CREDITED_ID_FIELD = "credited_id"
 
-#: The same pointer from the other end: the payload field on a TOMBSTONE naming
-#: the companion written with it, empty for a row that carried no credit. Two
-#: deleted rows crediting two guests share one companion, which names only the
-#: row that arrived first, so the question "does another standing tombstone
-#: still account for this companion" can only be a lookup from this end.
+#: The pointer from the other end: the payload field on a TOMBSTONE naming the
+#: companion written with it, empty for a row that carried no credit. A LOOKUP,
+#: for the reason :func:`tombstone_predicate` gives: a revocation that found the
+#: companion only by recomputing it would stop finding it the day the stripping
+#: rule changed, and a companion nothing can find is a suppression nobody can
+#: lift. It is this end that carries the rule because every credited tombstone
+#: has one, while a shared companion names only the first row it was written for.
 UNCREDITED_ID_FIELD = "uncredited_id"
 
 
@@ -1015,7 +1016,11 @@ def _companions_to_lift(
     """The companions that go when this tombstone goes. Asked under the lock.
 
     A companion is this tombstone's when the tombstone accounts for it, see
-    :func:`_accounts_for`, or when the companion's own pointer names it.
+    :func:`_accounts_for`. The companion's own pointer back is NOT consulted:
+    a companion is only ever written in the same write as a tombstone carrying
+    the pointer to it, so that half could find nothing the first does not, and
+    a guard nothing can distinguish from its neighbour is not a guard. The
+    pointer back is for the listing.
 
     IT STAYS WHILE ANOTHER STANDING TOMBSTONE STILL ACCOUNTS FOR IT. Two deleted
     rows crediting two guests share one companion, and lifting it with the first
@@ -1025,12 +1030,7 @@ def _companions_to_lift(
     """
     if named.kind != tombstone.KIND_VERSION:
         return ()
-    mine = set(_accounts_for(named)) | {
-        one.suppression_id
-        for one in records.values()
-        if one.kind == tombstone.KIND_VERSION_UNCREDITED
-        and one.payload.get(CREDITED_ID_FIELD) == named.suppression_id
-    }
+    mine = _accounts_for(named)
     still_accounted_for: set[str] = set()
     for other in records.values():
         if (

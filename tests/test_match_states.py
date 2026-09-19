@@ -4001,6 +4001,17 @@ def test_a_provider_row_crediting_somebody_else_is_not_withheld(cfg):
     assert match.standing_tombstone(same, suppresses=suppresses, suppression_id=identify)
 
 
+def test_a_listing_both_records_answer_is_reported_under_the_tombstone(cfg, music, tmp_path):
+    """The plain cut and the credited cut were both deleted, so the listing that
+    spelled no credit is answered by a tombstone AND by a companion. It is
+    reported under the tombstone, the record a person wrote for that row."""
+    plain = deleted(cfg, "Sun Path (Nightwave Remix)", content_id="9002")
+    deleted(cfg, "Sun Path (feat. Mira) (Nightwave Remix)")
+    path = write_list(tmp_path, "Aurora Bloom - Sun Path (Nightwave Remix)\n", "both.txt")
+    _code, envelope = drive(["match", "run", path])
+    assert [w["suppression"] for w in envelope["warnings"]] == [plain.suppression_id]
+
+
 def test_a_provider_row_billing_a_guest_in_its_artists_never_asks_for_a_companion():
     """A CREDIT WITH NOTHING IN THE TITLE TO SHOW IT. The reader keeps the first
     artist and drops the rest, so a row billing Zed beside the main artist reads

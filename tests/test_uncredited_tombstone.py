@@ -264,6 +264,82 @@ def test_a_shared_companion_survives_a_lift_even_when_the_stripping_rule_has_mov
     ]
 
 
+def test_a_second_deletion_leaves_the_shared_companion_exactly_as_it_stood(cfg):
+    """``beside`` writes a companion that is absent or lifted and passes over one
+    that stands, the way ``record`` itself treats a standing record."""
+    first = stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+    )
+    before = next(
+        one for one in stores.list_tombstones(cfg)
+        if one.kind == tombstone.KIND_VERSION_UNCREDITED
+    )
+    stores.record_tombstone(
+        cfg, row("Sun Path (feat. Zed) (Nightwave Remix)", content_id="9002"),
+        actor="somebody-else",
+    )
+    after = next(
+        one for one in stores.list_tombstones(cfg)
+        if one.kind == tombstone.KIND_VERSION_UNCREDITED
+    )
+    assert after == before
+    assert (after.actor, after.payload[stores.CREDITED_ID_FIELD]) == (
+        "deletion", first.suppression_id
+    )
+
+
+def test_a_tombstone_with_no_pointer_still_accounts_for_the_companion_it_strips_to(cfg):
+    """THE STRIPPING HALF, removed from the pointer half. A credited tombstone an
+    earlier build wrote carries no pointer and has no companion. A second guest's
+    deletion by this build writes one, and lifting that second deletion must not
+    take the companion from under the first, which still stands. Lifting the
+    first then takes it, found by stripping because there is no pointer to read."""
+    from cratekit.core import review
+
+    legacy = review.DecisionStore(tombstone.STORE_KEY, cfg).record(
+        kind=tombstone.KIND_VERSION,
+        identity={"artist": "aurora bloom", "title": "sun path (feat. mira) (nightwave remix)"},
+        actor="an-earlier-build",
+    )
+    second = stores.record_tombstone(
+        cfg, row("Sun Path (feat. Zed) (Nightwave Remix)", content_id="9002"), actor="deletion"
+    )
+    run.revoke(cfg, second.suppression_id, actor="a-person")
+    assert live(cfg) == [
+        ("version", "sun path (feat. mira) (nightwave remix)"),
+        ("version-uncredited", "sun path (nightwave remix)"),
+    ]
+    run.revoke(cfg, legacy.suppression_id, actor="a-person")
+    assert live(cfg) == []
+
+
+def test_a_companion_already_lifted_keeps_the_lift_it_was_given(cfg):
+    """``also`` passes over a record that is already lifted, so who lifted it and
+    when stay what they were, and an identifier that names nothing is passed
+    over too, where it would otherwise fail a lift a person asked for."""
+    from cratekit.core import review
+
+    written = stores.record_tombstone(
+        cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+    )
+    companion = next(
+        one for one in stores.list_tombstones(cfg)
+        if one.kind == tombstone.KIND_VERSION_UNCREDITED
+    )
+    run.revoke(cfg, companion.suppression_id, actor="the-first-person")
+    run.revoke(cfg, written.suppression_id, actor="the-second-person")
+    assert sorted(
+        (one.kind, one.revoked_by) for one in stores.list_tombstones(cfg, include_revoked=True)
+    ) == [("version", "the-second-person"), ("version-uncredited", "the-first-person")]
+
+    store = review.DecisionStore(tombstone.STORE_KEY, cfg)
+    plain = stores.record_tombstone(cfg, row("Salt Road", content_id="9003"), actor="deletion")
+    lifted = store.revoke(
+        plain.suppression_id, actor="a-person", also=lambda _named, _records: ["dc_names_nothing"]
+    )
+    assert lifted.revoked
+
+
 def writes(cfg, monkeypatch) -> list[int]:
     """Count the store's writes, each entry the number of records it held."""
     from cratekit.core import review
