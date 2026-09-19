@@ -1,0 +1,110 @@
+name = "r431-b"
+pass_kind = "light"
+
+# Table b of two for R-431, over the CONSULTING side: who may ask for a
+# companion, what the engine asks under, and whether the answer survives the
+# intake freeze the worker resolves from. Table a holds 15 rows, this one 10.
+
+[[rows]]
+id = "B1_a_wanted_built_by_hand_asks"
+description = "uncredited_spellings no longer requires a spelled title, so a Wanted built from a held file asks for a companion"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''        if not self.spelled or self.several_artists or _credits_in(self.spelled):'''
+new = '''        if self.several_artists or _credits_in(self.listed):'''
+
+[[rows]]
+id = "B2_a_row_billing_a_guest_asks"
+description = "uncredited_spellings ignores several_artists, so a row crediting a guest in its artists list asks"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''        if not self.spelled or self.several_artists or _credits_in(self.spelled):'''
+new = '''        if not self.spelled or _credits_in(self.spelled):'''
+
+[[rows]]
+id = "B3_a_listing_that_spelled_a_credit_asks"
+description = "uncredited_spellings ignores a bracketed credit, so a listing crediting Zed reaches Mira's companion"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''        if not self.spelled or self.several_artists or _credits_in(self.spelled):'''
+new = '''        if not self.spelled or self.several_artists:'''
+
+[[rows]]
+id = "B4_the_engine_never_asks"
+description = "standing_tombstone asks under the companion kind for nothing, which is the defect the unit closes"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    for identity in wanted.uncredited_spellings:
+        if suppresses(UNCREDITED_KIND, identity):'''
+new = '''    for identity in ():
+        if suppresses(UNCREDITED_KIND, identity):'''
+
+[[rows]]
+id = "B5_the_engine_ignores_companions_false"
+description = "standing_tombstone asks for a companion even when the caller said not to"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    if not companions:
+        return None
+    for identity in wanted.uncredited_spellings:'''
+new = '''    for identity in wanted.uncredited_spellings:'''
+
+[[rows]]
+id = "B6_the_verb_calls_a_companion_stale"
+description = "The verb's report over a matched row asks for companions, so a held file crediting somebody else calls one stale"
+file = "src/cratekit/acquire/match_cli.py"
+surface = "user"
+old = '''                companions=not held,'''
+new = '''                companions=True,'''
+
+[[rows]]
+id = "B7_the_engine_asks_under_the_tombstones_kind"
+description = "The engine's copy of the companion kind drifts onto the tombstone's own"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''UNCREDITED_KIND = "version-uncredited"'''
+new = '''UNCREDITED_KIND = "version"'''
+
+[[rows]]
+id = "B8_the_reader_never_counts_the_artists"
+description = "_from_row stops setting several_artists, so every provider row reads as billing one"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''        several_artists=_bills_several(row),'''
+new = '''        several_artists=False,'''
+
+[[rows]]
+id = "B9_the_freeze_drops_the_field"
+description = "The intake freeze stops carrying several_artists, so the worker resolves from a track that never looked"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''        "several_artists": row.several_artists,'''
+new = ""
+
+[[rows]]
+id = "B10_an_older_payload_reads_as_solo"
+description = "A payload frozen before the field existed thaws as billing one artist and asks for a companion"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+old = '''        several_artists=bool(said.get("several_artists", True)),'''
+new = '''        several_artists=bool(said.get("several_artists", False)),'''
+
+[[dropped]]
+id = "B_the_companion_is_asked_first"
+description = "standing_tombstone asks the companion kind before the tombstone's own"
+reason = "not expressible as one exact replacement, since it reorders two loops; test_a_listing_both_records_answer_is_reported_under_the_tombstone is the test that would die"
+
+[[dropped]]
+id = "B_three_artists_before_it_counts"
+description = "_bills_several needs more than two named artists"
+reason = "ranked below the cap: B8 measures the same test from the caller"
+
+[[dropped]]
+id = "B_a_blank_entry_is_an_artist"
+description = "_bills_several counts a blank entry as a second artist"
+reason = "ranked below the cap: a miss in the cheap direction, a missed suppression that is reported"
+
+[[dropped]]
+id = "B_thaw_drops_the_field"
+description = "thawed stops passing several_artists at all"
+reason = "ranked below the cap: B9 and B10 measure the same assertions from either side of it"
