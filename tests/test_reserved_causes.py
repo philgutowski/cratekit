@@ -5724,7 +5724,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # label-approved. The also-holds-an-integer half stays 18, because the
     # module asks the hash for a six byte digest rather than slicing twelve
     # characters off a longer one, which was removed rather than argued.
-    assert (len(literal_holders), len(literal_both)) == (97, 18), (
+    # Re-pinned on U82, 2026-09-19: 97 to 98 holders. ONE module joined and
+    # none left, and it is a new file. sync/mark_cli.py names
+    # sync-marks-blocked through cause.refuse. sync/marks.py, which this unit
+    # changed, held that slug on main already. The also-holds-an-integer half
+    # stays 18, measured by the same run: the new module slices by a length it
+    # takes from a constant and holds no in-range integer of its own.
+    assert (len(literal_holders), len(literal_both)) == (98, 18), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
