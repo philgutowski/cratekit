@@ -85,14 +85,18 @@ def _check(key: str, status: str, detail: str) -> dict[str, Any]:
             "detail": detail, "remedy": None}
 
 
-def _binary_refusal(
+def binary_refusal(
     exc: binaries.BinaryNotFound,
     subject: dict[str, Any],
     *,
     said: str = "A second source search runs it, so no row was searched and nothing was offered.",
     origin: tuple[str, ...] = ORIGIN,
 ) -> CratekitError:
-    """A missing ``yt-dlp`` as this verb's refusal, the install hint and all.
+    """A missing ``yt-dlp`` as the calling verb's refusal, the install hint and all.
+
+    PUBLIC since U104, because ``intake set`` fetches a mix through the same
+    binary and a second spelling of this refusal would be a second place for
+    the install hint to drift. ``said`` and ``origin`` are the caller's.
 
     The binaries module already decided which of its situations this is, so
     the remedy IS its token: install, install from source, or fix the override.
@@ -259,7 +263,7 @@ def acquire_fallback(ctx) -> Envelope:
                     try:
                         found = searcher()
                     except binaries.BinaryNotFound as exc:
-                        raise _binary_refusal(exc, subject) from exc
+                        raise binary_refusal(exc, subject) from exc
                 try:
                     answer = fallback.search_all(found, one)
                 except CratekitError:
@@ -610,7 +614,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
         # PARKED, NOT FAILED. A missing program is a fact about the machine and
         # never about the track, so every later item would fail the same way.
         raise jobs.Parked(
-            _binary_refusal(
+            binary_refusal(
                 exc,
                 detail,
                 said="A second source download runs it, so the job is parked with this "
