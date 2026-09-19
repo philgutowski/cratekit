@@ -16,10 +16,16 @@ is membership in a named playlist, defaulting to the one the source system
 maintains. A pink row outside that playlist is not swept, which is R-228 rather
 than something papered over.
 
-**NO LOCAL WRITE HAPPENS HERE.** ``heart_back`` accepts a ``LocalColors`` writer
-and would colour the library row. That is a write to the live rekordbox database
-and belongs behind the guarded write session, so ``colors`` is ``None`` and this
-verb reaches the remote half only.
+**NO LOCAL WRITE HAPPENS HERE, AND SINCE R-424 NOTHING SAYS OTHERWISE.**
+``heart_back`` accepts a ``LocalColors`` writer and would colour the library row.
+That is a write to the live rekordbox database and belongs behind the guarded
+write session, so ``colors`` is ``None`` and this verb reaches the remote half
+only. That was true before R-424 and only this docstring said it: the registry
+declared four local write surfaces, the guide promised a colour, a Favorite tag
+and playlist membership, and each item's report carried a ``colored`` list that
+was empty on every path. :data:`LOCAL_WRITE_WARNING` is the correction a person
+actually reads, because the default renderer prints a verb's outcome, its
+warnings and its run id, and nothing else.
 
 **ADD ONLY IS A PROPERTY OF THE TYPE, NOT OF THIS FILE'S RESTRAINT.**
 ``modules/outbound/service.RemoteAccount`` declares no remove, so a caller that
@@ -52,6 +58,44 @@ EXPORT = shell.EXPORT
 PLACEHOLDER_NAME = placeholders.PLACEHOLDER_NAME
 BACKLOG = placeholders.BACKLOG
 placeholder_name = placeholders.placeholder_name
+
+#: What every pass of this verb tells a person about the LOCAL half (R-424).
+#:
+#: A STANDING CONDITION RATHER THAN AN EVENT, which is the same shape as
+#: ``outbound-account-unbound`` in :mod:`cratekit.modules.outbound.shell`: it is
+#: true of this build on every pass, and a person is told at the moment the
+#: report would otherwise let them assume the opposite. It is a warning and not
+#: a line of rendered data because the default renderer has no case for a
+#: ``job_state/1`` payload, so the warning channel is the only place a sentence
+#: reaches the person who did not ask for json.
+#:
+#: Spelled once and read by two composers. ``crate sync all`` builds the
+#: favourites plan itself rather than calling this verb's queueing branch, so a
+#: message living in that branch alone would be absent from the pass most people
+#: actually run.
+#:
+#: IT NAMES ITS SUBJECT. Under ``crate sync all`` this sentence prints beside
+#: warnings from sources that genuinely do write the library, and "this sweep"
+#: in that company reads as a claim about the whole pass. The one place a
+#: warning can be misread is the place it appears next to other warnings.
+LOCAL_WRITE_WARNING: dict[str, str] = {
+    "code": "favorites-local-write-unbound",
+    "message": (
+        "the favourites sweep hearts matching tracks on the streaming service "
+        "and changes nothing in the library: it writes no colour, no Favorite "
+        "tag and no playlist membership locally"
+    ),
+}
+
+
+def local_write_warning() -> tuple[dict[str, str], ...]:
+    """:data:`LOCAL_WRITE_WARNING` as a warnings tuple, copied per call.
+
+    A COPY, because the envelope's warnings travel into a renderer and into json,
+    and a caller handed the module level dict could mutate the sentence every
+    later pass of this verb reports.
+    """
+    return (dict(LOCAL_WRITE_WARNING),)
 
 
 def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
@@ -181,7 +225,16 @@ def sync_favorites(ctx) -> Envelope:
     spec = next(gate for gate in ctx.entry.gates if gate.name.endswith(".confirm"))
     if ctx.args.job:
         return shell.resume(
-            ctx, spec, ctx.args.job, digest=confirm_digest, summary=summary
+            ctx,
+            spec,
+            ctx.args.job,
+            digest=confirm_digest,
+            summary=summary,
+            # THE RESUME IS WHERE THE HEARTING HAPPENS, so it is the pass whose
+            # report a person reads for what the run did. Telling them only at
+            # queue time would put the correction on the invocation that wrote
+            # nothing at all.
+            standing=local_write_warning(),
         )
 
     exported, resolved = resolve_sweep(
@@ -208,7 +261,10 @@ def sync_favorites(ctx) -> Envelope:
         )
         return ctx.envelope(
             data=shell.reported(store, job, cfg, summary),
-            warnings=shell.queue_warnings(resolved, noun="favourite"),
+            warnings=(
+                *shell.queue_warnings(resolved, noun="favourite"),
+                *local_write_warning(),
+            ),
         )
 
 
@@ -283,6 +339,13 @@ def run_heart_item(
     rekordbox database; ``flags`` exists so a caller that still thinks in mirror
     mode cannot reach a different function, and the safest value for a shell that
     never wants one is not to pass it.
+
+    THE REPORT CARRIES NO ``colored`` KEY, and that is R-424 rather than an
+    omission. ``HeartReport.colored`` is the rows the engine coloured, which is
+    every row when a caller hands it a writer and none when it does not. Reported
+    from here it was an empty list on every pass, and an empty list reads as a
+    write that found nothing to do rather than as a write that cannot happen.
+    ``summary`` below never read the key, so nothing downstream loses a field.
     """
     library = source.read_library(Path(str(payload[EXPORT])))
     candidates = source.heart_candidates(library, (row_id,), cfg=cfg)
@@ -304,7 +367,6 @@ def run_heart_item(
         "row": row_id,
         "hearted": list(report.hearted),
         "already": list(report.already),
-        "colored": list(report.colored),
         "unmatched": list(report.unmatched),
     }
 
@@ -328,10 +390,12 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 __all__ = [
     "BACKLOG",
+    "LOCAL_WRITE_WARNING",
     "PLACEHOLDER_NAME",
     "build_sync",
     "confirm_digest",
     "handle",
+    "local_write_warning",
     "placeholder_name",
     "queue_sweep",
     "resolve_sweep",

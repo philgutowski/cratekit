@@ -1186,6 +1186,57 @@ def test_a_source_refused_at_queue_time_leaves_the_queued_ones_named(
     assert "sync-source-not-queued" in {w["code"] for w in passed["warnings"]}
 
 
+def test_the_composed_pass_carries_the_favourites_verb_standing_warning(
+    installed, exported
+):
+    """R-424 survives the composition, which is the pass most people run.
+
+    ``_plan_favorites`` resolves and queues the sweep itself rather than calling
+    ``favorites_cli.sync_favorites``, so a sentence living in that verb's own
+    queueing branch would be absent from every ``crate sync all``. The message is
+    read off the verb's module rather than typed here: two spellings of one
+    standing fact is how the two come to disagree.
+    """
+    del installed
+    _, code, passed = _confirmed(exported)
+    assert code == int(ExitCode.OK), passed
+    assert [job.handler_key for job in _jobs()] == ["sync.favorites"]
+    warning = next(
+        w
+        for w in passed["warnings"]
+        if w["code"] == favorites_cli.LOCAL_WRITE_WARNING["code"]
+    )
+    assert warning["message"] == favorites_cli.LOCAL_WRITE_WARNING["message"]
+
+
+def test_a_declined_favourites_source_says_nothing_about_a_write_it_never_reached(
+    installed, exported
+):
+    """The reverse, which is the direction a standing warning rots in.
+
+    ``_envelope`` extends only the plans that filed. A person who answered the
+    confirm with abort queued no sweep, so telling them what that sweep would not
+    have written is noise about work that did not happen.
+
+    A LABEL IS REGISTERED AND THAT IS THE WHOLE POINT OF IT. Written without
+    one, this test was vacuous and passed for the wrong reason: every source
+    refuses, nothing is queued, and the pass RAISES before it reaches the
+    warnings loop at all, so the envelope carries no warnings whatever the
+    filter does. Measured by the mutation row ``D2_filed_filter``, which
+    deleted the filter and killed nothing. With the labels sweep queued the
+    pass exits OK, the loop runs, and the filter is the only thing keeping the
+    declined source's sentence out.
+    """
+    del installed
+    register(LABELS[0])
+    _, code, passed = _confirmed(exported, option="abort")
+    assert code == int(ExitCode.OK), passed
+    assert [job.handler_key for job in _jobs()] == ["sync.labels"]
+    assert passed["data"]["summary"]["not_queued"]["favorites"] == sync_cli.DECLINED
+    codes = {w["code"] for w in passed["warnings"]}
+    assert favorites_cli.LOCAL_WRITE_WARNING["code"] not in codes, passed["warnings"]
+
+
 def test_a_hand_off_to_a_gate_that_compares_no_digest_refuses(installed, monkeypatch):
     """The digest layer alone. No declared gate offers "sync" without comparing a
     digest, so one is made here: the real favourites entry with its confirm's

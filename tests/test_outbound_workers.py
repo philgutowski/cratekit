@@ -23,11 +23,13 @@ a guard pointed at a key nothing uses.
 
 from __future__ import annotations
 
+import io
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from cratekit import cli
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, locations, tags
 from cratekit.core.cause import CratekitError
@@ -567,6 +569,192 @@ def test_the_resume_of_a_half_failed_sweep_does_not_exit_ok(
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK)
     assert resumed["cause"] is not None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4b. R-424: the verb says only what it does, in the output a person gets
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _human(argv: list[str]) -> tuple[int, str]:
+    """One invocation in the DEFAULT output mode, returned as text.
+
+    ``tests.cli_drive.drive`` always passes ``--output json``, which is why the
+    whole of this file stayed green over a report that never mentioned the local
+    write it was not doing. These rows go through the dispatcher the way a person
+    does. Recorded in
+    ``docs/solutions/workflow-issues/a-json-only-driver-cannot-see-a-blank-human-renderer.md``.
+    """
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(argv, stdout=out, stderr=err)
+    return code, out.getvalue() or err.getvalue()
+
+
+def _answer_the_confirm(verb: list[str], gate: str) -> str:
+    """R34's first two acts, without the third. Returns the gate run.
+
+    ``approve_and_queue`` does all three and returns a job id, which is the right
+    helper when the queueing pass is json. It is the wrong one here: the drive
+    under test IS the queueing pass, and it has to be the human one.
+    """
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert detail["gate"] == gate
+    run_id = str(refused["run_id"])
+    decided, envelope = drive(
+        ["run", "decide", run_id, gate, detail["options"][0], "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+    return run_id
+
+
+def _says_no_local_write(text: str) -> bool:
+    """The warning as the renderer prints it, on its own line.
+
+    THE WHOLE LINE AND NOT A SUBSTRING OF THE MESSAGE. A dump of the json
+    envelope as text would contain the sentence inside a quoted value and would
+    satisfy a substring match while telling a person nothing, which is the shape
+    the human-renderer learning warns about.
+    """
+    code = favorites_cli.LOCAL_WRITE_WARNING["code"]
+    message = favorites_cli.LOCAL_WRITE_WARNING["message"]
+    return f"warning [{code}]: {message}" in text.splitlines()
+
+
+def test_queueing_a_sweep_tells_a_person_in_the_default_output_that_nothing_local_is_written(
+    installed, exported, monkeypatch
+):
+    """R-424's cost, driven on the surface that carried it.
+
+    The verb declared four local write surfaces it never reached, the guide
+    promised a colour, a Favorite tag and a playlist membership, and the pass
+    itself said nothing either way. This is the pass a person types.
+    """
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
+    run_id = _answer_the_confirm(favorites_verb(exported), "sync.favorites.confirm")
+
+    code, text = _human(["--run", run_id, *favorites_verb(exported)])
+
+    assert code == int(ExitCode.OK), text
+    assert _says_no_local_write(text), text
+
+
+def test_the_resumed_sweep_says_the_same_thing_where_the_hearting_actually_happens(
+    installed, exported, monkeypatch
+):
+    """The queueing pass writes nothing at all; the resume is the run.
+
+    A correction that appeared only at queue time would be on the invocation
+    whose report nobody reads for what happened.
+    """
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+    from cratekit.cli import jobs as cli_jobs
+
+    with jobs.open_store() as store:
+        argv = cli_jobs.argv_for(jobs.get(store, job_id))
+
+    code, text = _human(argv)
+
+    assert code == int(ExitCode.OK), text
+    assert _says_no_local_write(text), text
+
+
+def test_an_item_report_carries_no_empty_colored_list(installed, exported, monkeypatch):
+    """R-424's other half: an empty list reads as a write that found nothing.
+
+    Asserted on the COMMITTED artifact rather than on the worker's return value,
+    because the artifact is what survives a kill and what ``crate job`` reads
+    back, so a key dropped from one and kept in the other is two answers.
+    """
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+    assert _resume(job_id)[0] == int(ExitCode.OK)
+
+    reports = artifacts.committed(installed, job_id)
+
+    assert reports, "the sweep committed nothing to assert about"
+    for report in reports:
+        assert "colored" not in report, report
+        assert "hearted" in report, report
+
+
+def test_the_verb_declares_the_remote_account_and_no_local_surface():
+    """The declaration R-424 is about, read off the shipped registry.
+
+    Each surface is named rather than compared as a set alone, because a set
+    comparison that fails says only that two sets differ and this assertion is
+    about WHICH ones were claimed. ``db_tree`` and ``db_metadata`` stood for the
+    colour, the tag and the playlist membership; ``xml`` and ``files`` for a
+    document and a file the sweep never writes.
+    """
+    entry = registry.entry("sync.favorites")
+    assert entry.writes == frozenset({"remote"}), sorted(entry.writes)
+    assert not entry.writes & registry.DB_WRITE_SURFACES
+    assert "colour" not in entry.summary and "both ways" not in entry.summary
+
+
+def test_the_verb_asks_no_question_its_work_cannot_raise():
+    """The cloud-sync decision goes with the database surfaces.
+
+    It is the decision a person answers when the guarded writer cannot read
+    rekordbox's Cloud Library Sync state. This verb never opens the database, so
+    the question could not arise and an answer to it authorised nothing.
+    """
+    entry = registry.entry("sync.favorites")
+    assert [spec.name for spec in entry.gates] == ["sync.favorites.confirm"]
+
+
+def test_doctor_asks_neither_rekordbox_question_for_a_sweep_that_reads_an_export(
+    monkeypatch,
+):
+    """Derived from this entry alone, the way ``route.unplaced`` pinned the same shape.
+
+    ``requires_check`` walks every entry a profile switches on, so over the real
+    registry another verb would answer for this one and the assertion would say
+    nothing about favourites.
+    """
+    from cratekit.cli import doctor
+    from cratekit.core import profiles
+
+    monkeypatch.setattr(registry, "entries", lambda: (registry.entry("sync.favorites"),))
+    membership = profiles.resolve("full")
+    assert doctor.requires_check("library.mounted", membership)
+    assert doctor.requires_check("credential.provider", membership)
+    assert not doctor.requires_check("rekordbox.closed", membership)
+    assert not doctor.requires_check("rekordbox.pins", membership)
+
+
+def test_a_sweep_runs_with_rekordbox_open_and_never_opens_the_database(
+    installed, exported, monkeypatch
+):
+    """Why dropping both checks is safe, driven rather than argued.
+
+    The verb reads a collection export through this project's own reader. Both
+    rekordbox and its agent are reported running, which is the state doctor used
+    to refuse this verb in, and the sweep still hearts both rows. Nothing opens
+    the library database: ``rb_writer.open_db`` raises if anything reaches for it.
+    """
+    del installed
+    from cratekit.core import rb_writer
+
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
+
+    def refuse_to_open(*args, **kwargs):
+        raise AssertionError("the favourites sweep opened the library database")
+
+    monkeypatch.setattr(rb_writer, "open_db", refuse_to_open)
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2))
+    bind(monkeypatch, account)
+
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+
+    assert _resume(job_id)[0] == int(ExitCode.OK)
+    assert sorted(account.hearted) == ["tid-1", "tid-2"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -4231,6 +4231,10 @@ CITED_RESIDUALS = (
     # numbering gives the incoming side fresh numbers. The citation would have
     # gone on pointing at whatever main had put in the vacated slot, silently and
     # with no test failing. Both are titles now.
+    # Declared on relay/111, 2026-09-19, by the closure that closed it. Cited
+    # above the kebab-literal pin, which this branch re-pinned because the
+    # closure's one new literal is a warning code rather than a cause.
+    "`crate sync favorites` declares a local colour and tag write it never performs",
     "Guard whitelists assert what is forbidden, never what is permitted",
     "What the soft-delete guard cannot see, and two gaps in the gate contract",
     # Declared on relay/54, 2026-09-11, by the closure that closed it. Cited from
@@ -5362,7 +5366,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # differenced over the branch's diff of `src` against `main`, which removes
     # no kebab literal. It IS a cause, collection-row-unmapped, name apply's
     # refusal over a row recorded under a volume no prefix rule names.
-    assert (len(literals), len(literals - set(causes))) == (452, 291), (
+    # Re-pinned 2026-09-19 on the residual "`crate sync favorites` declares a local colour and tag write it never performs":
+    # 452 to 453 distinct, 291 to 292 non-keys.
+    # ONE literal joined and NOTHING left, differenced over the branch's diff of
+    # `src` against `main` with `git grep` on `main` for it. It is not a cause:
+    # favorites-local-write-unbound is the WARNING code `crate sync favorites`
+    # carries on every pass, and `crate sync all` with it, saying the sweep
+    # hearts on the service and writes no colour, tag or playlist membership in
+    # the library. Nothing refuses with it, because nothing about it is a
+    # failure: it is the verb declaring its own scope.
+    assert (len(literals), len(literals - set(causes))) == (453, 292), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

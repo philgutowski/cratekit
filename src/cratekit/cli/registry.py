@@ -1421,7 +1421,7 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="sync.favorites",
-        summary="sync hearted tracks both ways; add-only, never un-hearts",
+        summary="heart the library's favourites on the streaming service; add-only, never un-hearts",
         module="cratekit.favorites.cli",
         builder="build_sync",
         handler_key="sync.favorites",
@@ -1432,10 +1432,36 @@ ENTRIES: tuple[Entry, ...] = (
         long_running=True,
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        writes=frozenset({"db_tree", "db_metadata", "xml", "files", "remote"}),
+        # THE REMOTE ACCOUNT IS THE ONLY SURFACE THIS VERB REACHES (R-424).
+        # It declared four more. The handler reads a collection export and
+        # calls ``hearts.heart_back`` with ``colors=None``, so no library row
+        # is coloured, no Favorite tag is written and no playlist gains a
+        # member: the three acts ``db_tree`` and ``db_metadata`` stood for.
+        # There is no document written beside the export either, so no ``xml``.
+        # The outbound write ledger is the one file a pass does touch and it is
+        # not ``files``: ``export.playlist`` writes that same ledger through the
+        # same shell and has always declared ``remote`` alone, so counting it
+        # here would make one file two different surfaces. Narrowing it drops
+        # the cloud-sync decision with it, since that gate belongs to
+        # ``DB_WRITE_SURFACES`` and a verb declaring a question its work cannot
+        # raise is the over-claim wearing a prompt. ``destructive`` STAYS: the
+        # verb writes an account a person cannot roll back, and whether an
+        # add-only remote write is destruction under KTD24 is a person's call.
+        # It is recorded in `docs/residual-findings.md` as its own finding,
+        # under a heading naming this verb and this flag, rather than decided
+        # here: narrowing a claim in the cautious direction is a different act
+        # from removing one that was false, and only the second was this
+        # closure's to take.
+        writes=frozenset({"remote"}),
         adjudicates=True,
         destructive=True,
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
+        # NEITHER REKORDBOX CHECK SURVIVES THE NARROWING. The verb never opens
+        # the database: it reads an export through this project's own reader,
+        # so nothing binds it to a pyrekordbox version and nothing breaks if
+        # rekordbox is running. ``library.mounted`` stays because the outbound
+        # write ledger is library scoped, and losing it is how a second pass
+        # hearts what the first one already hearted.
+        doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
                 name="sync.favorites.confirm",
@@ -1444,7 +1470,6 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True,
                 digest_source="plan",
             ),
-            CLOUD_SYNC_UNREADABLE_GATE,
         ),
         # Landed by U33. The marker said U22; R-130 remounts this verb onto
         # the unit that creates cratekit.favorites.cli. U33 is that unit.

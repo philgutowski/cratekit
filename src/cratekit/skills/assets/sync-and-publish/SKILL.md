@@ -90,15 +90,22 @@ one of them should move a cursor.
 
 ## Favourites move both ways, and neither way removes
 
-`crate sync favorites` is two halves. Locally it colours, tags, and places the
-hearted tracks the library already holds, and acquires the ones it does not into
-the same shared intake file. Remotely it hearts the local favourites back on the
-account.
+`crate sync favorites` is the outbound half. It reads the favourites playlist out
+of a collection export and hearts each matched track on the account. It writes
+nothing in the library: no colour, no Favorite tag and no playlist membership,
+and the pass that queues the sweep says so in its own report, before any heart
+is written. The inbound half is
+`crate intake playlist favorites`, which resolves the account's hearts against
+the library and queues the ones it does not own for acquisition.
 
 ```bash
-crate sync favorites
-crate sync favorites --run-id SHARED-RUN-ID
+crate sync favorites --export COLLECTION-EXPORT
+crate sync favorites --export COLLECTION-EXPORT --run-id SHARED-RUN-ID
 ```
+
+The export is not optional here either. This verb decides what to write by
+reading it, so an invocation without it refuses with `outbound-export-required`
+before anything is queued.
 
 Neither half removes anything, and that is structural rather than a default. The
 heart-back engine has no remove path at all, and an argument whose name sounds
