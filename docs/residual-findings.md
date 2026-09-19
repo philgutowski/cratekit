@@ -20582,6 +20582,37 @@ volume only in case, was read and not driven.
 any collection row's recorded prefix matches no rule, the way the deletion pass
 does, with a test driving an unmapped row.
 
+**CLOSED 2026-09-19 on `relay/181`, by the refusal.** `_referenced` in
+`write/naming_cli.py` now collects every DARK row and refuses the whole verb as
+`collection-row-unmapped`, exit PRECONDITION, count first and the first location
+named, before any item is classified or renamed. It sits on the checking path,
+so the plan read and the re read after the gate both get it. Reproduced red
+first: the new test read `count 2, referenced 0` before the guard existed.
+
+Dark is two facts together, no rule resolves the row AND its recorded file is
+not on this machine. The first cut refused on every unmapped row and the built
+in review rejected it, correctly: a track imported from a downloads folder, or
+the demo tracks rekordbox installs, sits under no rule with its recorded
+spelling on disk, so the recorded key already protects it, and two of U67's own
+tests only passed once given an identity rule. The existence test fails closed.
+
+The case half, read and not driven when this was filed, is now driven and
+PINNED TO THE REFUSAL. The shared resolver compares a prefix exactly, so a rule
+differing only in case leaves the row unmapped to every writer, and matching it
+here alone would make this verb the second locate sweep finding 112.7 warns
+about. The refusal quotes the decoded location so the difference can be seen.
+
+The locate is lifted IN PART. `trees.located` is public, decodes once and hands
+back the decoded path beside the resolution, and both `trees._comparable` and
+this verb call it. The keying, a casefold and the as recorded spelling, stays
+in `naming_cli`, because the guard errs toward holding back and the writers
+need one exact row, so casefolding their index would manufacture ambiguity.
+
+Fifteen mutation rows in `docs/mutation/r500-a`, `r500-b` and `r500-c`, fifteen
+killed, null control zero on the full suite in each. The author's table, so a
+kill reads as "the author could kill it". What this left open is R-523 to
+R-527.
+
 ---
 
 ## R-501. Every landing leaves an open session and an intake file that each refuse the cutover precheck
@@ -21325,3 +21356,121 @@ worst case is a list short of a track the other library wanted.
 
 **Closes when:** `--job` refuses a job queued for another library, as `--run`
 already filters one out.
+
+---
+
+## R-523. An unmapped row whose file is gone refuses `name apply` even under a folder that is on this machine
+
+**Found:** 2026-09-19, on `relay/181`, R-500, while narrowing what dark means.
+Driven, and pinned by `test_an_unmapped_row_whose_file_is_gone_refuses_even_outside_a_volume`.
+
+A row recorded outside the library root under no rule is dark when its file is
+absent. That is right for a volume that was renamed, and it also catches a
+track imported from a downloads folder whose file was later moved or deleted:
+the folder exists here, the recorded spelling is one this machine uses, and
+the verb still refuses until a rule maps that folder onto itself.
+
+**Measured cost:** unmeasured on a real library. One such row stops `name
+apply` for every folder until a person writes a rule, and an identity rule is
+not something the refusal's steps spell out. The deletion pass has the same
+friction over the same row. Nothing is renamed wrongly, the cost is a verb
+that will not run. **This meets board bar (c) and is owed an issue after the
+merge**, which a Relay session cannot open because the number is not on
+`main` until the runner merges.
+
+**The options, a person's call.** Keep it, the conservative reading taken
+here. Or answer a row whose leading prefix exists on this machine, the anchor
+idea the deletion pass already uses to tell a missing file from a dead volume:
+`/Volumes/VOLUME` absent is dark, a home folder present with the file gone is a
+row that names nothing. The risk in the second is a row stranded earlier by a
+move into the library, which is already stranded.
+
+**Closes when:** one of the two is chosen and pinned, and if the first, the
+refusal's steps say how to declare a folder outside the library.
+
+---
+
+## R-524. A dark tombstoned row refuses `name apply`, and the deletion pass skips the same row
+
+**Found:** 2026-09-19, on `relay/181`, by the built in review of R-500. Driven,
+`test_every_unmapped_row_is_counted_and_the_first_is_named` carries one.
+
+`name apply` counts a tombstone as a reference, U67's rule, because a restore
+brings the row back pointing at what it recorded. So a track imported once
+from a stick and deleted in rekordbox years ago is dark and refuses the verb.
+`deletion/candidates.py` skips a tombstone before it asks whether the row
+resolved. R-500's goal was that the two writers agree about an unmapped row,
+and on this row they still do not, deliberately.
+
+**Measured cost:** unmeasured, how many tombstones a real library carries
+under a volume that is gone was not counted. The remedy works, a rule for the
+dead volume, and it is an odd thing to ask for.
+
+**Closes when:** a person decides whether a dark tombstone refuses, is held
+to a warning in the plan, or is passed over, and a test pins it.
+
+---
+
+## R-525. A row recorded with a drive letter or on another host is excused by `name apply` and refused by the deletion pass
+
+**Found:** 2026-09-19, on `relay/181`, by the built in review of R-500. Read,
+not driven.
+
+A drive letter path resolves `NOT_A_PATH` and a location on another host
+raises in the decoder. `name apply` passes over both, the second by a pinned
+U67 decision. `deletion/candidates._unnameable` treats both as rows that name
+a real file this build cannot spell and refuses. For `name apply` that is
+R-500's shape again, a row that did not answer read as a row that references
+nothing.
+
+**Measured cost:** reachability unmeasured. The producer would be a library
+recorded on Windows or against a network share and then opened on this
+machine, and none was driven. `_unnameable` lives in the deletion package,
+which the write layer may not import, so the fix is a lift into
+`core.locations` first.
+
+**Closes when:** the predicate is lifted and `name apply` refuses on those
+two shapes, or a driven library shows neither can reach it.
+
+---
+
+## R-526. `name apply` reads the collection after the tree walk, so a refusal over a dark row costs the whole walk first
+
+**Found:** 2026-09-19, on `relay/181`, R-500. The brief asked for the refusal
+before the tree walk and this is where it was not followed.
+
+U67 pinned that the collection is read only when something would be renamed,
+`test_an_empty_folder_needs_no_database`, and with no candidate a dark row
+cannot change the outcome. Reading first would either break that or need the
+read's refusal deferred past the walk. So the walk, which reads tags from
+every audio file, still runs before the collection is opened. The refusal does
+precede every plan item and every rename.
+
+**Measured cost:** not timed. On a fresh setup pointed at a whole library it
+is one full tag read across the tree, then a refusal, then the same walk
+again after the rule is written. Sweep finding 112.6 is the same ordering
+seen from the other side.
+
+**Closes when:** the collection is read before the walk with the unreadable
+case deferred until a candidate exists, or the ordering is kept and timed.
+
+---
+
+## R-527. The deletion pass's unmapped row refusal says `run-doctor`, and no doctor check reads the prefix map
+
+**Found:** 2026-09-19, on `relay/181`, by the built in review of R-500, against
+the token R-500 had copied. Read: `cli/doctor.py` declares seven checks and
+none names `location_prefix_map` or an unmapped row.
+
+`deletion/candidates.assert_complete` carries `Remedy.RUN_DOCTOR` on its
+generic refusal. A caller acting on the token runs doctor, gets a clean
+report, runs the pass again and meets the same refusal. `name apply` now
+carries `fix-config-values` for the same condition, so the two refusals
+disagree about the remedy, and this one is the one that is wrong.
+`locations.leading_prefix`'s docstring describes a doctor check that groups
+unresolved rows by prefix, which is the check that does not exist.
+
+**Measured cost:** maintainer and agent facing, a remedy token that cannot
+help. The refusal's prose is accurate.
+
+**Closes when:** doctor gains the grouped prefix check, or the token changes.

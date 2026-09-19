@@ -1,0 +1,186 @@
+{
+  "name": "r500-b",
+  "pass_kind": "light",
+  "branch": "relay/181",
+  "head": "20bb698",
+  "when": "2026-09-19 20:24 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8783,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/naming_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/naming_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a7d1852399fb5adb",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8783,
+    "baseline_collected": 8783,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G6_reread_after_gate_skipped",
+      "description": "Existing U67 guard, sampled: the apply pass trusts the plan's read and never reads the collection again, so a row that goes dark while the gate waits is not met",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c1c25b6804f895a1",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.naming_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_row_that_appears_after_the_gate_still_protects_its_file",
+        "tests/test_naming_apply_cli.py::test_a_row_that_goes_unmapped_after_the_gate_refuses_before_any_rename"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    referenced = _referenced(_recorded(cfg), cfg=cfg) if renames else frozenset()\n    for item in renames:",
+      "new": "    referenced = frozenset()\n    for item in renames:"
+    },
+    {
+      "id": "G7_raw_spelling_quoted",
+      "description": "Collect the raw recorded value rather than the decoded path, so the refusal quotes a percent encoded spelling a rule can never match",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c92baad65e6dccec",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.naming_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_the_refusal_names_the_decoded_location_a_rule_is_matched_against"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            dark.append(decoded)",
+      "new": "            dark.append(value)"
+    },
+    {
+      "id": "G8_last_row_named",
+      "description": "Name the last dark row in the message rather than the first",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "438ab2e4b5632020",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.naming_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_every_unmapped_row_is_counted_and_the_first_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "f\"them {dark[0]}, so which file",
+      "new": "f\"them {dark[-1]}, so which file"
+    },
+    {
+      "id": "G9_plural_always",
+      "description": "Move the singular wording's bound, so one row reads as rows",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "13d07ee22339b064",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.naming_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_row_under_an_unmapped_volume_refuses_and_renames_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "\"collection row records\" if count == 1 else",
+      "new": "\"collection row records\" if count == 0 else"
+    },
+    {
+      "id": "G10_cap_halved",
+      "description": "Halve the cap on the detail's location list, a coefficient",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ef1c85ee3ae57fdb",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.naming_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_the_refusal_counts_every_row_and_lists_no_more_than_twenty"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"unmapped_locations\": dark[:20],",
+      "new": "            \"unmapped_locations\": dark[:10],"
+    }
+  ],
+  "dropped": []
+}

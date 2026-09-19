@@ -1,0 +1,224 @@
+{
+  "name": "r500-c",
+  "pass_kind": "light",
+  "branch": "relay/181",
+  "head": "20bb698",
+  "when": "2026-09-19 20:27 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8783,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/naming_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/naming_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a7d1852399fb5adb",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8783,
+    "baseline_collected": 8783,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G11_prefix_cap_halved",
+      "description": "Halve the cap on the detail's prefix list, a coefficient",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8c4a6bbf5a9c4d0b",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.naming_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_the_refusal_counts_every_row_and_lists_no_more_than_twenty"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"unmapped_prefixes\": prefixes[:20],",
+      "new": "            \"unmapped_prefixes\": prefixes[:10],"
+    },
+    {
+      "id": "G12_remedy_run_doctor",
+      "description": "Carry the deletion pass's run-doctor token, which sends a caller to a report no check of which reads the prefix map",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "de5a0568f47ab792",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.naming_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_row_under_an_unmapped_volume_refuses_and_renames_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        remedy=Remedy.FIX_CONFIG_VALUES,",
+      "new": "        remedy=Remedy.RUN_DOCTOR,"
+    },
+    {
+      "id": "G13_exit_code",
+      "description": "Map the new reason to LIBRARY_UNREADABLE, the code of the verb's other refusal, though the library read cleanly",
+      "file": "src/cratekit/core/cause.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b431c093e5f1fd21",
+      "subset": [
+        "tests/test_naming_apply_cli.py",
+        "tests/test_reserved_causes.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 279,
+      "baseline_collected": 279,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_row_recording_a_link_to_nothing_is_dark",
+        "tests/test_naming_apply_cli.py::test_a_row_that_goes_unmapped_after_the_gate_refuses_before_any_rename",
+        "tests/test_naming_apply_cli.py::test_a_row_under_an_unmapped_volume_refuses_and_renames_nothing",
+        "tests/test_naming_apply_cli.py::test_a_rule_differing_from_the_recorded_volume_only_in_case_refuses[prefix_map0]",
+        "tests/test_naming_apply_cli.py::test_an_unmapped_row_refuses_the_plan_too",
+        "tests/test_naming_apply_cli.py::test_an_unmapped_row_whose_file_is_gone_refuses_even_outside_a_volume",
+        "tests/test_naming_apply_cli.py::test_every_unmapped_row_is_counted_and_the_first_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"collection-row-unmapped\": ExitCode.PRECONDITION,",
+      "new": "        \"collection-row-unmapped\": ExitCode.LIBRARY_UNREADABLE,"
+    },
+    {
+      "id": "G14_located_skips_the_decode",
+      "description": "trees.located resolves the raw recorded value without decoding it, the shared locate step both writers and this verb now call",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "06d8313fc9b87f92",
+      "subset": [
+        "tests/test_adopt_workers.py",
+        "tests/test_deferred_routing.py",
+        "tests/test_deletion.py",
+        "tests/test_genre_retag.py",
+        "tests/test_landing_labels.py",
+        "tests/test_rebuild.py",
+        "tests/test_routing_workers.py",
+        "tests/test_tree_registry.py",
+        "tests/test_tree_writer.py",
+        "tests/test_xml_splice_golden.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.trees",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 913,
+      "baseline_collected": 913,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_a_second_drive_adds_no_second_membership_row",
+        "tests/test_adopt_workers.py::test_an_apply_over_a_cut_over_library_writes_the_memberships",
+        "tests/test_adopt_workers.py::test_an_apply_whose_entries_failed_raises_rather_than_reporting_success",
+        "tests/test_adopt_workers.py::test_the_apply_writes_no_tag_and_leaves_every_file_byte_identical",
+        "tests/test_adopt_workers.py::test_the_approving_actor_travels_in_the_payload",
+        "tests/test_adopt_workers.py::test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run",
+        "tests/test_adopt_workers.py::test_the_membership_write_needs_locations_and_not_content_identifiers",
+        "tests/test_tree_writer.py::test_a_location_url_and_a_plain_path_resolve_to_one_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    decoded = locations.location_to_path(str(recorded))\n    return decoded,",
+      "new": "    decoded = str(recorded)\n    return decoded,"
+    },
+    {
+      "id": "G15_other_host_refuses",
+      "description": "Existing U67 guard, sampled: a row naming another host raises out of the verb rather than being passed over",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5c0ff0c37f08fdf5",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.naming_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_row_naming_another_host_neither_blocks_nor_protects"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except locations.LocationDecodeError:\n            continue",
+      "new": "        except locations.LocationDecodeError:\n            raise"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_prefix_none_filter",
+      "description": "Drop the `if prefix` filter on the grouped prefixes",
+      "reason": "unreachable by construction rather than untested: leading_prefix answers None only for a path with no leading slash, and such a path resolves NOT_A_PATH and is never dark. It stays as the type's guard, since sorted over None and str raises"
+    },
+    {
+      "id": "D2_prefixes_unsorted",
+      "description": "Replace sorted over the prefix set with list",
+      "reason": "a set's order is per process, so the row would measure hash seeding rather than the suite, and a death would not repeat"
+    },
+    {
+      "id": "D3_empty_value_skip",
+      "description": "Drop the skip over a row with no recorded path, an existing U67 line",
+      "reason": "outside the round's diff and below the sample: an empty value resolves NOT_A_PATH, adds the key of the empty string, and can neither refuse nor match a candidate"
+    }
+  ]
+}
