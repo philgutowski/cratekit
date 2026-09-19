@@ -39,6 +39,27 @@ candidates and drive each before it becomes an R-N entry.
   and no batch folder made. The refusal does arrive only after the gate has been
   answered, which is the smaller point in card 117 finding 6.
 
+**Driven 2026-09-19 in the attended worktree, against main `3b1adbf`,** and
+filed as R-500 to R-511 in `docs/residual-findings.md`, one entry per line:
+
+- 112.1 confirmed, R-500.
+- 117.1 confirmed in full, R-501, and R-433 carries a correction.
+- 114.2 confirmed, R-502. 114.1 confirmed, R-503, with one correction: resuming
+  a succeeded job answers ok and changes nothing rather than refusing.
+- 115.2 confirmed at the adapter with a fake shaped as R-383, R-504. The guide
+  does not repeat the completeness promise. 115.1 confirmed with fake rows,
+  R-505, and whether the live provider ever serves such a heart is not known.
+- 116.1 confirmed narrower, R-506: the file strands, and `intake file` over
+  the stranded path recovers it, so the claim that no verb can is refuted.
+- 118.1 confirmed for the refusal text, R-507; the second sync pass half was
+  read, not driven. 118.2 confirmed, R-508.
+- 123.1 confirmed for `--job`, R-509. 123.5 confirmed as a declaration gap,
+  R-510, and doctor on the fixture's profile still fails `credential.provider`
+  for another verb. 123.10 confirmed by reading tidalapi 0.8.11, R-511, not
+  driven live.
+
+Every other finding below is still a candidate and still needs driving.
+
 Line numbers are at each card's merge, not at current main. "Ledger" notes are
 the reviewer's own text search of `docs/residual-findings.md` at the main of
 that hour.
