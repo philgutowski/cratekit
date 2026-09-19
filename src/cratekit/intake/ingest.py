@@ -12,7 +12,8 @@ Inbox stays on the XML bridge. This module does not flip a tree.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import contextlib
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 
@@ -35,6 +36,28 @@ from cratekit.write.routing_pass import RoutingIntent
 
 INTAKE_WORKFLOW = "intake"
 
+#: The verb that proves an intake file imported, and the one a person runs to
+#: say so. SPELLED ONCE, HERE, beside the session it is persisted on, because
+#: both callers of :func:`place_files` owe the same action and two spellings is
+#: how one of them goes stale. It was ``route.pending``, which before a cutover
+#: answers without reading anything (R-436).
+VERIFY_VERB = "intake.imported"
+
+
+def import_steps(destination: Path) -> tuple[str, ...]:
+    """What a person does with an intake file, end to end, in order.
+
+    END TO END IS THE REQUIREMENT. The steps used to stop at the import, and a
+    person who followed every one of them was left with a session and a file
+    that each refused the cutover precheck (R-501).
+    """
+    return (
+        f"import {destination} into rekordbox as a rekordbox xml library",
+        "take a Fresh Export of the collection from rekordbox",
+        "run crate intake imported --export with that Fresh Export, which "
+        "proves the import, retires the intake file and settles this run",
+    )
+
 
 @dataclass(frozen=True, slots=True)
 class PlacedTrack:
@@ -47,6 +70,9 @@ class PlacedTrack:
     bucket: str
     sub: str
     xml: str
+    #: The intake session this placement was recorded under, which is where its
+    #: pending action is persisted. Every track of one call carries the same one.
+    session_id: str = ""
 
 
 def _template_for(cfg: config.Config) -> NameTemplate:
@@ -168,11 +194,6 @@ def place_files(
             origin=("intake.ingest",),
         )
 
-    record = session.open_session(
-        cfg,
-        workflow=INTAKE_WORKFLOW,
-        session_id=session_id,
-    )
     added = date_added or date.today().isoformat()
     next_id = collection_xml.next_track_id(bytes(content))
     placed: list[PlacedTrack] = []
@@ -222,25 +243,65 @@ def place_files(
             ),
             origin=("intake.ingest",),
         )
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(bytes(content))
-
-    # Recorded at the moment the placement is decided, not at the end of a
-    # later verb. U19's ledger is the only subject the deferred-routing
-    # suite has.
-    routing_pass.record_intents(
+    # OPENED AFTER THE LAST REFUSAL THAT NEEDS NO SESSION, so a file with a
+    # bad tag or an export with no intake folder leaves no record at all. It
+    # cannot move below the write, because the intents carry its identifier.
+    record = session.open_session(
         cfg,
-        [
-            RoutingIntent(
-                track=routing_pass.track_id(item.location),
-                session_id=record.session_id,
-                location=item.location,
-                tree=item.tree,
-                bucket=item.bucket,
-                sub=item.sub,
-                decided=output.timestamp(),
-            )
-            for item in placed
-        ],
+        workflow=INTAKE_WORKFLOW,
+        session_id=session_id,
     )
+    placed = [replace(item, session_id=record.session_id) for item in placed]
+    wrote = False
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(bytes(content))
+        wrote = True
+
+        # Recorded at the moment the placement is decided, not at the end of a
+        # later verb. U19's ledger is the only subject the deferred-routing
+        # suite has.
+        routing_pass.record_intents(
+            cfg,
+            [
+                RoutingIntent(
+                    track=routing_pass.track_id(item.location),
+                    session_id=record.session_id,
+                    location=item.location,
+                    tree=item.tree,
+                    bucket=item.bucket,
+                    sub=item.sub,
+                    decided=output.timestamp(),
+                )
+                for item in placed
+            ],
+        )
+        session.mark_awaiting_import(
+            record,
+            session.pending_import(
+                record,
+                artifact=destination,
+                summary=(
+                    f"{len(placed)} file(s) are named in {destination.name}, "
+                    f"which rekordbox has not imported yet"
+                ),
+                verify_verb=VERIFY_VERB,
+                steps=import_steps(destination),
+            ),
+            cfg,
+        )
+    except BaseException:
+        # THE CALL REFUSED, SO THE RUN IS GIVEN UP, AND THE RECORD SAYS SO.
+        # Abandoning is the ungated close, which is what makes it reachable
+        # from here whatever state the ledger is in. The file goes too when
+        # this call wrote it: an intake file with no run behind it refuses the
+        # cutover precheck and no verb retires it. Both are attempts. The
+        # refusal being raised is the one the caller has to see, and a second
+        # failure while cleaning up must not replace it.
+        if wrote:
+            with contextlib.suppress(OSError):
+                destination.unlink(missing_ok=True)
+        with contextlib.suppress(Exception):
+            routing_pass.close_run(record, cfg, state=session.SessionState.ABANDONED)
+        raise
     return placed

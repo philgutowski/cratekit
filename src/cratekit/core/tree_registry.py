@@ -756,23 +756,48 @@ def assert_cutover_ready(cfg: config.Config, *, export: Path) -> None:
     pending intake file this same function refuses, and a cutover that
     treated debris as the fallback would have no fallback.
     """
-    open_runs = [record for record in session.records(cfg) if not record.terminal]
+    # A RUN WHOSE ONLY DEBT IS A DEFERRED PLACEMENT IS NOT REFUSED (R-501). Its
+    # import was proven and it holds no capture, so neither half of the reason
+    # below is true of it, and the placement it still owes needs a database
+    # native tree, which only this cutover creates. The question is asked of the
+    # record by the module that owns the record.
+    open_runs = [
+        record
+        for record in session.records(cfg)
+        if not record.terminal and not session.owes_only_deferred_routing(record)
+    ]
     if open_runs:
         first = open_runs[0]
+        # THE RUN'S OWN STEPS WHEN IT HAS THEM. A run waiting on an import
+        # carries a pending action written by the layer that may name a verb,
+        # and this layer may not. Without them the refusal named an act no verb
+        # offers.
+        owed: list[str] = []
+        for record in open_runs:
+            for step in record.pending.steps if record.pending is not None else ():
+                if step not in owed:
+                    owed.append(step)
+        if any(record.pending is None for record in open_runs):
+            # A run with no action recorded gets the general wording, beside
+            # and never instead of what the other runs said.
+            owed.extend(
+                (
+                    "close or abandon every open run",
+                    "import any export a run left in awaiting-import, then close it",
+                )
+            )
         raise refuse(
             "cutover-open-run",
             f"session {first.session_id} has not reached a terminal state, so "
             f"a cutover would flip a tree while that run still holds a capture "
             f"and possibly an un-imported export",
             remedy=Remedy.COMPLETE_PENDING_ACTION,
-            steps=(
-                "close or abandon every open run",
-                "import any export a run left in awaiting-import, then close it",
-            ),
+            steps=tuple(owed),
             scope=Scope.RUN,
             origin=("tree_registry",),
             detail={
                 "sessions": [record.session_id for record in open_runs],
+                "states": {record.session_id: str(record.state) for record in open_runs},
             },
         )
     pending = pending_intake_xml(cfg)
