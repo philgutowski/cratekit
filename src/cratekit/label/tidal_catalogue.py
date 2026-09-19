@@ -27,6 +27,7 @@ Layer: modules.
 from __future__ import annotations
 
 import re
+import time
 from collections import deque
 from collections.abc import Mapping
 from typing import Any
@@ -37,6 +38,7 @@ from urllib.parse import urlsplit
 import tidalapi
 
 from cratekit.acquire import listing, provider_session
+from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core.cause import CratekitError
 from cratekit.label import harvest, registry
 from cratekit.label import verify as label_verify
@@ -90,6 +92,60 @@ class LabelUnresolvable(LookupError):
     picking one of them is a guess. Discovery that finds no credited artist is
     the same refusal, with a message that names that search found nothing.
     """
+
+
+class ReleaseUnresolvable(LookupError):
+    """A release identifier the provider has nothing for, or none at all.
+
+    PERMANENT, and raised without a retry. A release a label withdrew does not
+    come back because somebody waited, so the album read classifies the
+    provider's answer FIRST and leaves the retry ladder to the failures waiting
+    can change. R-380 is what the other order costs: a permanent failure that
+    reports itself as transient and resumable.
+    """
+
+
+#: What the retry ladder waits with, read off the module AT CALL TIME. The
+#: ladder's own default is bound when that function is defined, so a suite
+#: could not otherwise drive a retry here without sleeping for real.
+_pause = time.sleep
+
+#: What the album read returns for a release that is gone, so the retry ladder
+#: sees an answer rather than an exception it would climb on.
+_GONE = object()
+
+
+def _gone(exc: BaseException) -> bool:
+    """Whether a failure is the provider saying the release does not exist.
+
+    The acquisition adapter's own rule, called rather than copied: only an
+    explicit not found answer is permanent, by class name, by a 404 status or
+    by the text, and everything else is a failure waiting might change.
+    """
+    return classify_unavailable(exc) is TrackOutcome.UNAVAILABLE_PERMANENT
+
+
+def _year(release: Any) -> int | None:
+    """The year the provider dates a release, or ``None``. Never a guess.
+
+    ``year`` first, then the year of ``release_date``, which the client parses
+    to a date and an older payload carries as text. A boolean is not a year,
+    and neither is a number outside four digits.
+    """
+    for held in (getattr(release, "year", None), getattr(release, "release_date", None)):
+        if held is None or isinstance(held, bool):
+            continue
+        found = getattr(held, "year", held)
+        if isinstance(found, bool):
+            continue
+        if isinstance(found, int):
+            if 1000 <= found <= 9999:
+                return found
+            continue
+        text = str(found).strip()[:4]
+        if len(text) == 4 and text.isdigit() and int(text) >= 1000:
+            return int(text)
+    return None
 
 
 def playlist_id(reference: str) -> str:
@@ -215,7 +271,7 @@ def _credited_ids(release: Any) -> tuple[str, ...]:
 
 
 class TidalCatalogue:
-    """The six provider reads the ``Catalogue`` seam declares, over one logged in client."""
+    """The seven provider reads the ``Catalogue`` seam declares, over one logged in client."""
 
     def __init__(self, session: Any) -> None:
         self._session = session
@@ -479,6 +535,43 @@ class TidalCatalogue:
             )
         return tuple(listing.favorite_tracks(self._session))
 
+    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
+        """One release read again by identifier: its tracks, and its year.
+
+        TWO READS, AND BOTH CLIMB THE ONE LADDER. The album itself goes through
+        ``listing.fetch_with_retry`` so a rate limit on the ninetieth release of
+        a long approval waits rather than failing it, and the tracks go through
+        ``listing.playlist_tracks``, because an album pages its tracks exactly
+        as a playlist does and counts the ones it will not serve the same way.
+        That wrapper stops on the declared count, so a short window is never
+        read as the end of the release.
+
+        A RELEASE THAT IS GONE IS ANSWERED ONCE. See :class:`ReleaseUnresolvable`.
+        Every other failure is re-raised as the provider raised it once the
+        ladder is spent, and the caller names the release it belongs to.
+        """
+        identity = str(release_id or "").strip()
+        if not identity:
+            raise ReleaseUnresolvable("no release identifier was given to read")
+
+        def attempt(limit: int, offset: int) -> Any:
+            del limit, offset
+            try:
+                return self._session.album(identity)
+            except Exception as exc:
+                if _gone(exc):
+                    return _GONE
+                raise
+
+        album = listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
+        if album is _GONE or album is None:
+            raise ReleaseUnresolvable(
+                f"the provider has no release {identity!r}; it was withdrawn or "
+                f"the identifier was never a release"
+            )
+        tracks = listing.playlist_tracks(album, shape="release_tracks", sleep=_pause)
+        return tuple(tracks), _year(album)
+
 
 def open_catalogue() -> TidalCatalogue:
     """A catalogue over a freshly logged in client, from the stored session."""
@@ -493,6 +586,7 @@ __all__ = [
     "LabelUnresolvable",
     "PlaylistReferenceInvalid",
     "PlaylistUnresolvable",
+    "ReleaseUnresolvable",
     "TidalCatalogue",
     "album_search_queries",
     "open_catalogue",
