@@ -656,6 +656,29 @@ def test_skip_failed_over_nothing_missing_refuses_rather_than_a_clean_no_op(cfg,
     assert not lists_dir(library).exists()
 
 
+def test_skip_failed_over_tracks_only_handed_on_writes_them_rather_than_refusing(cfg, library):
+    """U78's mutation row B4. The finished job's one missing track has no
+    provider id and no ISRC, so it is handed on to the text list. That is a file
+    to act on, and the pass must not be refused as though nothing was missing."""
+    kept = finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+    fail(broken)
+    with jobs.open_store() as store:
+        job = jobs.get(store, kept)
+        item = jobs.items(store, kept)[0]
+    path = artifacts.final_path(intake_cli.ARTIFACTS, jobs.frozen_config(job), kept, item.ordinal)
+    report = json.loads(path.read_text())
+    report["track"] = {**report["track"], "origin": "text", "ref": ""}
+    path.write_text(json.dumps(report))
+
+    code, envelope = run_missing("--skip-failed")
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["unlisted"], summary["skipped"]) == (0, 1, [broken])
+    assert Path(summary["unlisted_list"]).is_file()
+
+
 def test_a_run_with_nothing_missing_and_nothing_skipped_is_a_no_op(cfg, library):
     owned(library, "Lumen Drift - Salt Road.flac")
     finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])

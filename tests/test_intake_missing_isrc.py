@@ -366,3 +366,46 @@ def test_the_order_the_provider_answers_in_does_not_change_the_files(
 
     assert again[0] == int(ExitCode.OK), again[1]
     assert "(9002, 9003)" in first[1]["data"]["summary"]["unlisted_tracks"][0]["reason"]
+
+
+def test_a_product_refusal_from_the_catalogue_passes_through_unrelabelled(
+    cfg, library, recognised, monkeypatch  # noqa: F811
+):
+    """U78's mutation row A4. A refusal the catalogue raised in the product's
+    own vocabulary already says what to do, and relabelled as a wait it would
+    tell a person whose session expired to try again later."""
+    from cratekit.core.cause import refuse
+    from cratekit.core.exit_codes import Remedy
+
+    class Expired(FakeCatalogue):
+        def tracks_for_isrc(self, isrc):
+            raise refuse(
+                "credential-missing",
+                "the stored session expired mid lookup",
+                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+                origin=("test",),
+            )
+
+    job_id = finished_set(library, recognised, monkeypatch, *three())
+    bind(monkeypatch, Expired())
+
+    code, envelope = missing(job_id)
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "credential-missing"
+    assert not lists_dir(library).exists() or list(lists_dir(library).iterdir()) == []
+
+
+def test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op(
+    cfg, library, recognised, monkeypatch  # noqa: F811
+):
+    """U78's mutation row B2. Nothing listed and nothing handed on to a file,
+    reported as a no-op, reads exactly like a set the library already held."""
+    job_id = finished_set(library, recognised, monkeypatch, hit("Kite - Harbor", "Low Tide Signal"))
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert envelope["cause"]["detail"]["unlisted_tracks"][0]["artist"] == "Kite - Harbor"
+    assert not lists_dir(library).exists()
