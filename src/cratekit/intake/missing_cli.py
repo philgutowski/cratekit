@@ -15,7 +15,7 @@ MISSING WHEN THE JOB RAN IS ASKED AGAIN AT LISTING TIME (R-502). A report's
 state was fixed when the job ran, and the second listing of a job whose tracks
 were since downloaded and landed handed a person the same download again. Each
 missing row is asked of the library and the tombstone store once more, through
-the consult the worker used, against the configuration the job froze, and a row
+the consult the worker used, against the library as it is now, and a row
 that is now held, deleted on purpose or a question for a person is counted
 under ``since`` and neither listed nor handed on. The reports are not
 rewritten. A rerun over a library that gained nothing writes the same bytes;
@@ -591,59 +591,59 @@ def _still_missing(
 
     THE WORKER'S CONSULT, NOT A SECOND OPINION. Each row is resolved as
     :func:`cratekit.intake.cli.resolve_track` resolves it: the library view
-    ``match_cli.library_view`` builds, against the configuration the job froze,
-    then a question the library raises goes through ``adjudicate``, so an
-    answer a person already gave decides it. Without that step a row a person
-    answered as a different track would read here as a fresh question and drop
-    out of the list for ever. One view per frozen configuration and verb, so a
-    run whose jobs share one walks the library once.
+    ``match_cli.library_view`` builds, then a question the library raises goes
+    through ``adjudicate``, so an answer a person already gave decides it.
+    Without that step a row a person answered as a different track would read
+    here as a fresh question and drop out of the list for ever. The library is
+    walked once, however many jobs a run holds.
+
+    THE LIBRARY AS IT IS NOW, not as the job froze it. The question is whether
+    the library holds the track today, and a library whose root moved since the
+    job was queued would otherwise refuse as unmounted while mounted, or answer
+    from the old folder. ``--list`` and ``sync mark`` ask the same question the
+    same way.
 
     AN ABSENT LIBRARY IS NOT AN EMPTY ONE. Every row would recheck missing and
-    the list would read as asked again when it was not, so every library is
-    asked to be there before any is walked.
+    the list would read as asked again when it was not.
     """
-    groups: dict[tuple[str, str], list[int]] = {}
-    for n, job in enumerate(origins):
-        groups.setdefault((job.config_fingerprint, job.handler_key), []).append(n)
-    frozen = {key: jobs.frozen_config(origins[at[0]]) for key, at in groups.items()}
-    for cfg in frozen.values():
-        music = Path(cfg.library.root) / cfg.library.music_dir
-        if not music.is_dir():
-            raise refuse(
-                "library-volume-unmounted",
-                f"this library's music folder {str(music)!r} is not there, so no "
-                f"track the job found missing can be asked again whether it is held "
-                f"now; nothing was written",
-                remedy=Remedy.MOUNT_LIBRARY_VOLUME,
-                origin=("intake.missing",),
-                detail={"music": str(music), **subject},
-            )
-    now: dict[int, match.TrackMatch] = {}
-    for (fingerprint, handler_key), at in groups.items():
-        cfg = frozen[(fingerprint, handler_key)]
-        index, suppresses, identify = match_cli.library_view(cfg)
-        found = [
-            match.resolve_one(missing[n], index, suppresses=suppresses, suppression_id=identify)
-            for n in at
-        ]
-        asked = [k for k, one in enumerate(found) if one.state is match.MatchState.NEEDS_REVIEW]
-        if asked:
-            with review.open_store(cfg) as items:
+    cfg = intake_cli._load()
+    music = Path(cfg.library.root) / cfg.library.music_dir
+    if not music.is_dir():
+        raise refuse(
+            "library-volume-unmounted",
+            f"this library's music folder {str(music)!r} is not there, so no track "
+            f"the job found missing can be asked again whether it is held now; "
+            f"nothing was written",
+            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+            origin=("intake.missing",),
+            detail={"music": str(music), **subject},
+        )
+    index, suppresses, identify = match_cli.library_view(cfg)
+    now = [
+        match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify)
+        for one in missing
+    ]
+    # BY THE JOB'S OWN VERB, since the review item is keyed by the handler that
+    # asked it and the worker asked under the job's.
+    asked: dict[str, list[int]] = {}
+    for n, one in enumerate(now):
+        if one.state is match.MatchState.NEEDS_REVIEW:
+            asked.setdefault(origins[n].handler_key, []).append(n)
+    if asked:
+        with review.open_store(cfg) as items:
+            for handler_key, at in asked.items():
                 answered = match_cli.adjudicate(
                     items,
-                    match.MatchResult(matches=tuple(found[k] for k in asked)),
+                    match.MatchResult(matches=tuple(now[n] for n in at)),
                     handler_key=handler_key,
                     suppresses=suppresses,
                     suppression_id=identify,
                 )
-            for k, one in zip(asked, answered.matches, strict=True):
-                found[k] = one
-        for n, one in zip(at, found, strict=True):
-            now[n] = one
+                for n, one in zip(at, answered.matches, strict=True):
+                    now[n] = one
     since = dict.fromkeys(_SINCE.values(), 0)
     kept: list[int] = []
-    for n in range(len(missing)):
-        one = now[n]
+    for n, one in enumerate(now):
         if one.state is match.MatchState.MISSING:
             kept.append(n)
         else:

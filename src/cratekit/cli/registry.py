@@ -925,6 +925,9 @@ ENTRIES: tuple[Entry, ...] = (
         # ``review export`` sets: it adds two new files beside nothing and
         # ``listdoc.write`` refuses rather than replaces a file holding anything
         # else, so there is nothing a destructive session's gates would protect.
+        # R-502: every listing asks its missing rows of the library again, and
+        # refuses an absent music folder, so doctor has to require it too.
+        doctor_checks=("library.mounted",),
     ),
     Entry(
         name="intake.file",

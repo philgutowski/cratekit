@@ -370,6 +370,36 @@ def test_an_unmounted_library_refuses_rather_than_reading_every_row_missing(
     assert not lists_dir(library).exists()
 
 
+def test_the_library_is_asked_where_it_is_now_not_where_the_job_froze_it(
+    cfg, library, monkeypatch, tmp_path
+):
+    """A job freezes the configuration it was queued against, and the library's
+    root may move after it. Asked at the frozen root, the listing refused a
+    mounted library as unmounted; the question is what the library holds now."""
+    mixed_library(library)
+    job_id = finished(monkeypatch, hearts())
+    moved = tmp_path / "moved"
+    library.rename(moved)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(moved))
+    config.save(
+        config.from_dict(
+            valid_data(
+                moved,
+                profile={"name": "full"},
+                acquisition={"adapter": FAKE_ADAPTER, "pacing_delay_s": 0.0},
+            )
+        )
+    )
+    config.reset_cache()
+    owned(moved, "Lumen Drift - Salt Road.flac")
+    owned(moved, "Kite Harbor - Low Tide Signal.flac")
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert (envelope["outcome"], envelope["data"]["summary"]["owned_since"]) == ("no_op", 2)
+
+
 def test_a_job_with_nothing_missing_does_not_need_the_library(cfg, library, monkeypatch):
     owned(library, "Aurora Bloom - Sun Path.flac")
     job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path")])
