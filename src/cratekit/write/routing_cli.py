@@ -1036,8 +1036,9 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                 detail={"job_id": job.job_id},
             )
         # THE CUT THE WORKER WILL READ, read the same way first (U89): the one
-        # loader, the frozen configuration. A corrupt calibration refuses here
-        # before any item is claimed.
+        # loader, at the path the frozen configuration names. The file itself
+        # is read as it stands, not frozen with the job. A corrupt calibration
+        # refuses here before any item is claimed.
         threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
@@ -1106,8 +1107,8 @@ def handle_resort(job, item, cfg) -> None:
         cfg,
         tree_id=str(item.item_id),
         workflow=RESORT_WORKFLOW,
-        # THE CALIBRATED CUT, through the one loader, from the frozen
-        # configuration. None on a library never calibrated (U89, D7).
+        # THE CALIBRATED CUT, through the one loader, at the path the frozen
+        # configuration names. None on a library never calibrated (U89, D7).
         vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
     )
     return None

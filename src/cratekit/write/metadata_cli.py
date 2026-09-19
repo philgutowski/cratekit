@@ -142,8 +142,9 @@ def load_vocal_threshold(cfg: config.Config) -> float | None:
             steps=(
                 "calibrate again over a folder holding both vocal and "
                 "instrumental tracks, which rewrites it",
-                f"or delete {path} to tag from the default cut of "
-                f"{DEFAULT_VOCAL_THRESHOLD}",
+                f"or delete {path}, after which My Tags use the default cut of "
+                f"{DEFAULT_VOCAL_THRESHOLD} and the routing passes file nothing "
+                f"under the vocal sub-playlist until a calibration is written",
             ),
             origin=_ORIGIN,
             detail={"calibration": str(path), "kind": type(exc).__name__},

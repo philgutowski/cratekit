@@ -1715,8 +1715,8 @@ def rebuild_governed_tree(
     a fresh one is the resume bug that rule closes.
 
     ``vocal_threshold`` IS PASSED IN AND HAS NO DEFAULT (D7). Each worker reads
-    it through ``metadata_cli.load_vocal_threshold`` from the configuration its
-    job was frozen against, and None is that reader's answer for a library never
+    it through ``metadata_cli.load_vocal_threshold`` at the path the
+    configuration its job was frozen against names, and None is that reader's answer for a library never
     calibrated, in which case the engine names the dimension it did not derive.
     It used to default to None, and every caller left it there, so the vocal
     sub-playlists were never filled (R-276). A required keyword makes a caller
@@ -1763,8 +1763,9 @@ def governed_not_compared(vocal_threshold: float | None) -> tuple[str, ...]:
     """What :func:`rebuild_governed_tree` leaves uncompared, asked without a library.
 
     THE SAME TWO INPUTS THAT FUNCTION DERIVES WITH: the shipped taxonomy, and
-    the vocal threshold, which the resume reads through the same loader and the
-    same frozen configuration the worker does. Passed rather than assumed, so
+    the vocal threshold, which the resume reads through the same loader, at
+    the path the same frozen configuration names, as the worker does. Passed
+    rather than assumed, so
     the warning stops the moment a calibration is read and the dimension is
     compared; a constant None here would go on saying "not compared" over a
     job that filed every vocal track (U89). A resume reports this rather than

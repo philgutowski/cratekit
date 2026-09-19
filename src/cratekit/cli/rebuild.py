@@ -175,15 +175,16 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                 origin=("cli.rebuild",),
                 detail={"job_id": job.job_id},
             )
-        # THE CUT IS READ BEFORE ANYTHING IS DRIVEN, through the one loader and
-        # from the configuration the job was frozen against, which is what the
-        # worker reads too (U89). A corrupt calibration therefore refuses here
-        # with its own slug before any item is claimed.
+        # THE CUT IS READ BEFORE ANYTHING IS DRIVEN, through the one loader,
+        # at the path the frozen configuration names, which is what the worker
+        # reads too (U89). The FILE is read as it stands now and is not frozen
+        # with the job, so a calibration made after queueing is the one used.
+        # A corrupt calibration refuses here before any item is claimed.
         threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
         # WHAT THE REBUILD DID NOT COMPARE, beside the drift (R-316). The worker
-        # keeps its None, so the engine is asked the question its report would
+        # still returns None, so the engine is asked the question its report would
         # have answered: the gap depends on the declaration and the threshold,
         # never on the library. Only on the branch that drove, because a
         # queue-only answer and a job finished on entry compared nothing in
@@ -289,8 +290,8 @@ def handle(job, item, cfg) -> None:
         cfg,
         tree_id=str(item.item_id),
         workflow=engine.REBUILD_WORKFLOW,
-        # THE CALIBRATED CUT, through the one loader, from the frozen
-        # configuration. None on a library never calibrated (U89, D7).
+        # THE CALIBRATED CUT, through the one loader, at the path the frozen
+        # configuration names. None on a library never calibrated (U89, D7).
         vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
     )
     return None
