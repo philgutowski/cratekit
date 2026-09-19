@@ -1,0 +1,94 @@
+name = "u100-a"
+pass_kind = "light"
+
+[[rows]]
+id = "H1a_rejected_adopted"
+description = "harvest.decided reads any settled verdict as accepted, so a rejected label is adopted"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+old = '''        if item.verdict is review.Verdict.ACCEPTED:'''
+new = '''        if item.verdict is not None:'''
+
+[[rows]]
+id = "H1b_open_adopted"
+description = "harvest.decided reads anything not rejected as accepted, so an open label is adopted"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+old = '''        if item.verdict is review.Verdict.ACCEPTED:'''
+new = '''        if item.verdict is not review.Verdict.REJECTED:'''
+
+[[rows]]
+id = "H2_kind_filter"
+description = "harvest.decided drops the harvested-label kind filter, so an accepted sweep release on the same queue is adopted as a label"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+old = '''        kinds=(KIND,),'''
+new = '''        kinds=None,'''
+
+[[rows]]
+id = "H3_resolved_excluded"
+description = "harvest.decided lists open items only, so no accepted verdict is ever read"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+old = '''        include_resolved=True,'''
+new = '''        include_resolved=False,'''
+
+[[rows]]
+id = "H4_nameless_dropped"
+description = "an accepted item naming no label is skipped silently instead of reported"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+old = '''                nameless.append(item.item_id)'''
+new = '''                pass'''
+
+[[rows]]
+id = "R1_slug_only_presence"
+description = "RegistryStore.adopt checks presence by slug alone, the R-381 hazard: a label held under sueno is filed again as sue-o"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''                held = Registry(labels=current).resolve(name)'''
+new = '''                held = Registry(labels=current).by_id(label_id)'''
+
+[[rows]]
+id = "R2_no_presence_check"
+description = "RegistryStore.adopt never finds a label present, so every accepted name is written over the held entry"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''                if held is not None:
+                    results.append('''
+new = '''                if False:
+                    results.append('''
+
+[[rows]]
+id = "R3_presence_before_the_batch"
+description = "RegistryStore.adopt resolves against the file as loaded, not the entries this run already added, so two spellings in one run both add"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''                held = Registry(labels=current).resolve(name)'''
+new = '''                held = self.load().resolve(name)'''
+
+[[rows]]
+id = "R4_slug_refusal_aborts"
+description = "a name that yields no identifier is no longer caught per name, so it aborts the whole adopt"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''                except CratekitError as exc:
+                    results.append('''
+new = '''                except KeyError as exc:
+                    results.append('''
+
+[[rows]]
+id = "R5_adopt_always_writes"
+description = "RegistryStore.adopt asks for a write even when it added nothing"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''            return any(result.added for result in results)'''
+new = '''            return True'''
+
+[[rows]]
+id = "R6_update_ignores_false"
+description = "RegistryStore.update writes even when the mutator returns False"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''            if changed is not False:'''
+new = '''            if True:'''

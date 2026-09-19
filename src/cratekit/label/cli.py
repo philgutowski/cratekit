@@ -68,8 +68,11 @@ def build_registry(parser, entry) -> None:
         "action",
         nargs="?",
         default="list",
-        choices=("list", "add", "set", "remove", "rename"),
-        help="list (default), add, set fields on, remove, or rename a favourite label",
+        choices=("list", "add", "set", "remove", "rename", "adopt"),
+        help=(
+            "list (default), add, set fields on, remove, or rename a favourite "
+            "label, or adopt every harvested label accepted in review"
+        ),
     )
     parser.add_argument("name", nargs="?", help="display name or identifier")
     parser.add_argument("--to", dest="new_name", default=None, help="new display name")
@@ -201,6 +204,8 @@ def registry_cmd(ctx) -> Envelope:
                 "summary": {"count": len(held.labels), "labels": _labels_json(held)},
             }
         )
+    if action == "adopt":
+        return adopt_harvested(ctx, store)
     name = ctx.args.name
     if not name:
         raise refuse(
@@ -277,6 +282,113 @@ def registry_cmd(ctx) -> Envelope:
             "checks": _checks_for(held),
             "summary": {"renamed": entry.label_id, "count": len(held.labels)},
         }
+    )
+
+
+def _adopt_check(item_id: str, result: labels.Adopted) -> dict:
+    if result.refused is not None:
+        status = "fail"
+        detail = (
+            f"{result.name}: yields no identifier, so it cannot be a favourite "
+            f"label ({result.refused}); clear the verdict and reject it in review"
+        )
+    elif result.added:
+        status, detail = "ok", f"{result.name}: added as {result.label_id}"
+    else:
+        status = "info"
+        detail = f"{result.name}: already held as {result.label_id}"
+        if result.held_name != result.name:
+            detail += f", under the name {result.held_name}"
+    return {
+        "key": f"adopt.{item_id}",
+        "title": result.name,
+        "status": status,
+        "detail": detail,
+        "remedy": None,
+    }
+
+
+def adopt_harvested(ctx, store: labels.RegistryStore) -> Envelope:
+    """Add every harvested label accepted in review to the registry.
+
+    THE SECOND HALF OF HARVEST, AND A VERB OF ITS OWN (R-419). Harvest offers a
+    label for review and a verdict is recorded; nothing read that verdict, so
+    each approved label was typed again into ``add``. It is not done inside
+    ``review resolve``, which would make answering a review a write to a second
+    store.
+
+    IDEMPOTENT BY RESOLUTION, NOT BY BOOKKEEPING. Nothing is marked on the review
+    item. A label is skipped because the registry already holds it, found the way
+    :meth:`labels.RegistryStore.adopt` finds it, so a label removed from the
+    registry since is added again on the next run. That is what an accepted
+    verdict says, and the verdict is the person's to clear.
+
+    One check per accepted item, keyed on the review item, because two items can
+    name one label and a key on the label would repeat. ``diagnostic/1`` renders
+    checks to a person, so the answer is on the screen and not only in json.
+    """
+    if ctx.args.name or ctx.args.new_name is not None:
+        raise refuse(
+            "label-name-invalid",
+            "label registry adopt takes every harvested label accepted in review "
+            "and no name; ignoring the one given would report a choice that was "
+            "never applied",
+            steps=(
+                "run label registry adopt with no name",
+                "or add one label with: crate label registry add <name>",
+            ),
+            origin=("label.cli",),
+        )
+    cfg = _load()
+    with review.open_store(cfg) as items:
+        found = harvest.decided(items)
+    results = store.adopt([name for _, name in found.accepted]) if found.accepted else ()
+    checks = [
+        _adopt_check(item_id, result)
+        for (item_id, _), result in zip(found.accepted, results, strict=True)
+    ]
+    checks.extend(
+        {
+            "key": f"adopt.{item_id}",
+            "title": item_id,
+            "status": "fail",
+            "detail": f"{item_id}: accepted in review and names no label",
+            "remedy": None,
+        }
+        for item_id in found.nameless
+    )
+    if not checks:
+        checks.append(
+            {
+                "key": "adopt.none",
+                "title": "harvested labels",
+                "status": "info",
+                "detail": (
+                    f"no harvested label is accepted in review; "
+                    f"{found.still_open} open, {found.rejected} rejected"
+                ),
+                "remedy": None,
+            }
+        )
+    added = [result.label_id for result in results if result.added]
+    return ctx.envelope(
+        data={
+            "checks": checks,
+            "summary": {
+                "added": added,
+                "present": [
+                    result.label_id
+                    for result in results
+                    if not result.added and result.refused is None
+                ],
+                "refused": [result.name for result in results if result.refused is not None],
+                "nameless": list(found.nameless),
+                "rejected": found.rejected,
+                "open": found.still_open,
+                "count": len(store.load().labels),
+            },
+        },
+        outcome=Outcome.OK if added else Outcome.NO_OP,
     )
 
 
@@ -1064,6 +1176,7 @@ def handle(job, item, cfg) -> jobs.Produced | None:
 
 
 __all__ = [
+    "adopt_harvested",
     "build_harvest",
     "build_import",
     "build_registry",

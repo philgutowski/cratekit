@@ -1,0 +1,361 @@
+{
+  "name": "u100-b",
+  "pass_kind": "light",
+  "branch": "relay/145",
+  "head": "b16a1d5",
+  "when": "2026-09-19 08:50 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8230,
+  "baseline_exit": 0,
+  "pytest_runs": 14,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "208bc3f65b02af3b",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8230,
+    "baseline_collected": 8230,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_name_accepted",
+      "description": "adopt no longer refuses a name argument and silently ignores it",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9bcea0b6a283e4f2",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 47,
+      "baseline_collected": 47,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_adopt_with_a_name_or_a_field_refuses_and_writes_nothing[name]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.args.name or ctx.args.new_name is not None:",
+      "new": "    if ctx.args.new_name is not None:"
+    },
+    {
+      "id": "C2_to_accepted",
+      "description": "adopt no longer refuses --to and silently ignores it",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e6439bad5fcc487f",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 47,
+      "baseline_collected": 47,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_adopt_with_a_name_or_a_field_refuses_and_writes_nothing[to]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.args.name or ctx.args.new_name is not None:",
+      "new": "    if ctx.args.name:"
+    },
+    {
+      "id": "C3_outcome_always_ok",
+      "description": "adopt reports ok when it added nothing",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f107d387a8e571c6",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 47,
+      "baseline_collected": 47,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_an_accepted_label_is_added_once_and_a_second_run_adds_none",
+        "tests/test_label_registry_adopt.py::test_nothing_accepted_writes_nothing_and_says_what_is_waiting"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        outcome=Outcome.OK if added else Outcome.NO_OP,",
+      "new": "        outcome=Outcome.OK,"
+    },
+    {
+      "id": "C4_empty_says_nothing",
+      "description": "adopt over a queue with nothing accepted emits no check, so a person reads a blank answer",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "079c57504b8b7148",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 47,
+      "baseline_collected": 47,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_nothing_accepted_writes_nothing_and_says_what_is_waiting"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not checks:\n        checks.append(",
+      "new": "    if False:\n        checks.append("
+    },
+    {
+      "id": "C5_nameless_unreported",
+      "description": "adopt drops the failing check for an accepted item that names no label",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3f4efd02cebbb54e",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 47,
+      "baseline_collected": 47,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_an_accepted_item_naming_no_label_is_reported_not_skipped"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        for item_id in found.nameless",
+      "new": "        for item_id in ()"
+    },
+    {
+      "id": "C6_held_name_hidden",
+      "description": "the already held check no longer names the spelling the label is held under",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b15fe8b69745af63",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 47,
+      "baseline_collected": 47,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_a_carried_over_accented_label_is_not_filed_twice"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if result.held_name != result.name:",
+      "new": "        if False:"
+    },
+    {
+      "id": "C7_refused_reads_as_note",
+      "description": "a name that yields no identifier is shown as a note rather than a failure",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6e4ea57e6223771c",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 47,
+      "baseline_collected": 47,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_a_name_with_no_identifier_fails_alone_and_the_rest_land"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        status = \"fail\"\n        detail = (",
+      "new": "        status = \"info\"\n        detail = ("
+    },
+    {
+      "id": "C8_refused_counted_present",
+      "description": "the summary lists a refused name as present, telling a script the registry holds it",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c99ab3b339fad2ea",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 8230,
+      "baseline_collected": 8230,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "                    if not result.added and result.refused is None",
+      "new": "                    if not result.added"
+    },
+    {
+      "id": "C9_dispatch",
+      "description": "the adopt action is never dispatched and falls through to the named actions",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fbb22e3deccadb15",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 47,
+      "baseline_collected": 47,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_a_carried_over_accented_label_is_not_filed_twice",
+        "tests/test_label_registry_adopt.py::test_a_label_held_under_a_folded_name_is_reported_not_duplicated[case]",
+        "tests/test_label_registry_adopt.py::test_a_label_held_under_a_folded_name_is_reported_not_duplicated[padding]",
+        "tests/test_label_registry_adopt.py::test_a_label_release_on_the_same_queue_is_not_adopted",
+        "tests/test_label_registry_adopt.py::test_a_name_with_no_identifier_fails_alone_and_the_rest_land",
+        "tests/test_label_registry_adopt.py::test_a_person_reading_the_default_output_sees_what_was_added",
+        "tests/test_label_registry_adopt.py::test_a_rejected_or_open_label_is_not_added",
+        "tests/test_label_registry_adopt.py::test_an_accepted_item_naming_no_label_is_reported_not_skipped",
+        "tests/test_label_registry_adopt.py::test_an_accepted_label_is_added_once_and_a_second_run_adds_none",
+        "tests/test_label_registry_adopt.py::test_an_adopt_that_adds_nothing_does_not_rewrite_the_registry",
+        "tests/test_label_registry_adopt.py::test_nothing_accepted_writes_nothing_and_says_what_is_waiting",
+        "tests/test_label_registry_adopt.py::test_two_spellings_accepted_in_one_run_add_the_label_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if action == \"adopt\":",
+      "new": "    if action == \"adopted\":"
+    },
+    {
+      "id": "C10_added_message",
+      "description": "reword the added detail a person reads",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2edd0b5e22a5fd72",
+      "subset": [
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 47,
+      "baseline_collected": 47,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_registry_adopt.py::test_a_person_reading_the_default_output_sees_what_was_added"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        status, detail = \"ok\", f\"{result.name}: added as {result.label_id}\"",
+      "new": "        status, detail = \"ok\", f\"{result.name}: now followed as {result.label_id}\""
+    }
+  ],
+  "dropped": [
+    {
+      "id": "H5_identity_before_payload",
+      "description": "read the name from the payload before the identity",
+      "reason": "the two are written equal by the only producer, harvest.from_tracks; no reachable input distinguishes them, so a row would measure nothing"
+    },
+    {
+      "id": "C11_zip_strict",
+      "description": "drop strict=True on the result pairing",
+      "reason": "adopt returns one result per name by construction; a mismatch is not producible, so the row is a maintainer guard ranked below the cap"
+    }
+  ]
+}

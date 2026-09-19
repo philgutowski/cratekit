@@ -18199,6 +18199,20 @@ verification, not this hop.
 
 **Closes when:** an accepted harvest verdict adds the label to the registry.
 
+**Closed 2026-09-19 on `relay/145`, U100.** `crate label registry adopt` reads
+every `harvested-label` item on the label release queue and adds each accepted
+one the registry does not already hold, through a new `RegistryStore.adopt`.
+Rejected and open items are counted, not added. A name is present when it
+resolves by identifier, folded display name, then slug, inside the registry
+lock and against entries the same run added, so a label carried over as `Sueño`
+under `sueno` is reported as held and not filed again as `sue-o` (R-381), and two
+spellings accepted in one run add once. A run that adds nothing writes nothing.
+A name that yields no identifier, and an accepted item naming no label, fail on
+their own check line and the rest still land. The review answer is unchanged.
+Driven through the real dispatcher in `tests/test_label_registry_adopt.py`.
+Mutation tables `docs/mutation/u100-a.md`, `u100-b.md` and `u100-c.md`, read in
+`u100-notes.md`. What stays open is R-461.
+
 ---
 
 ## R-420. The label genre gate has no caller
@@ -19282,3 +19296,26 @@ match needle.
 
 **Closes when:** `set` takes a clearing form for each field, or the decision
 not to is recorded.
+
+---
+
+## R-461. An adopt whose every accepted label failed exits zero
+
+**Found:** 2026-09-19, U100 on `relay/145`, the built in review of
+`crate label registry adopt`.
+
+When every accepted harvest item is refused, a name with no identifier or an
+item naming no label, adopt adds nothing and reports `no_op` with status 0. Each
+failure is a FAIL line to a person and is listed under `summary.refused` or
+`summary.nameless` to a reader of json. A script that reads only the exit code
+sees the same success as a run with nothing to do. Driven in
+`test_a_name_with_no_identifier_fails_alone_and_the_rest_land` and
+`test_an_accepted_item_naming_no_label_is_reported_not_skipped`.
+
+**Measured cost:** none on any producer driven. `harvest.from_tracks` offers
+only names the catalogue confirmed, and the one candidate that reaches this
+path, a `review import` carrying such an item, was driven only through
+`review.offer` directly.
+
+**Closes when:** adopt exits non zero when it refused something, or the decision
+that a per item failure is not a run failure is recorded.

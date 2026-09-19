@@ -241,6 +241,7 @@ plan again.
 crate label registry
 crate label registry add "Some Label" --match "Some Label Rec"
 crate label harvest https://tidal.com/playlist/PLAYLIST_UUID
+crate label registry adopt
 crate label import "Some Label"
 crate sync labels
 crate review list --queue label-release
@@ -253,8 +254,11 @@ been pulled. A
 label's identifier is made once, when you add it, and the record of what has been
 pulled hangs off that identifier. To change how a label is displayed, use
 `label registry rename`. Removing and re-adding under a new spelling makes the
-next sync treat the whole catalogue as new. `harvest` lists the labels behind a
-playlist and adds and downloads nothing. A sweep proposes releases into the
+next sync treat the whole catalogue as new. `harvest` offers the labels behind a
+playlist for review and adds and downloads nothing. Accept the ones you want in
+review, then `label registry adopt` adds each accepted label the registry does
+not already hold, under any spelling of its name, and reports the rest as
+already held. Running it again adds nothing new. A sweep proposes releases into the
 review queue rather than taking them, and a rejection is remembered until you
 clear it.
 
