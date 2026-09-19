@@ -13,10 +13,13 @@ so every doubt lands on the offer side:
 
 - A row is LISTED without a person only when the answer holds candidates that
   fold to exactly the row, artist, title and version, under ``match``'s own fold,
-  all of them carry ONE distinct identifier, and every row of the answer could
-  be read. A row of the answer that could not be read, or an exact candidate
-  carrying no identifier, could be a second exact candidate nobody can see, so
-  either one sends the row to review.
+  all of them carry ONE distinct identifier, every row of the answer could be
+  read, the answer is shorter than the seam's page, and the row's title reads
+  one way only. A row of the answer that could not be read, an exact candidate
+  carrying no identifier, and a page that came back full could each hide a
+  second exact candidate nobody can see, and a title whose dash tail may be a
+  version or the end of the title is a row nobody can call exact, so each of
+  those sends the row to review.
 - Anything else with a candidate worth showing is OFFERED into the review queue,
   exact candidates first and then by score, keyed on the folded row, so the
   same line in two lists is one question and a second run re-offers nothing.
@@ -41,8 +44,8 @@ from typing import Any
 
 from cratekit.acquire import match
 from cratekit.core import review
-from cratekit.core.cause import CratekitError
 from cratekit.intake import cli as intake_cli
+from cratekit.label.catalogue import TRACK_SEARCH_PAGE
 
 #: The queue. The version confirm gate's own surface: its legacy file is the
 #: source system's review of what a provider text search resolved a wanted
@@ -75,6 +78,9 @@ WAITING = "waiting"
 REJECTED = "rejected"
 NO_CANDIDATES = "no-candidates"
 STALLED = "stalled"
+#: An accepted candidate the library now holds, or that was deleted on purpose.
+#: The verb's word and not this module's: it is set where the library is asked.
+HELD = "held"
 
 #: The states in which the row's ``track`` is a provider track to list.
 NAMED = frozenset({LISTED, ACCEPTED})
@@ -100,6 +106,13 @@ class Answer:
     candidates: tuple[Candidate, ...]
     hits: int
     unreadable: int
+    #: The row's title reads two ways, so no candidate can be called THE exact one.
+    ambiguous: bool = False
+
+    @property
+    def full(self) -> bool:
+        """The answer filled the seam's page, so it may have been cut short."""
+        return self.hits >= TRACK_SEARCH_PAGE
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,10 +170,13 @@ def query_title(wanted: match.Wanted) -> str:
 def _tokens(wanted: match.Wanted) -> frozenset[tuple[str, str]]:
     """Every (recording, version) the row reads as, the ambiguous reading too.
 
-    BOTH READINGS COUNT AS EXACT. A title whose dash tail may be a version or
-    the end of the title is two rows to the exact test, and a candidate matching
-    either one is a candidate a person might have meant, so two candidates that
-    each match one reading are two exact candidates and the row is offered.
+    BOTH READINGS MARK A CANDIDATE EXACT, AND NEITHER LISTS IT. A title whose
+    dash tail may be a version or the end of the title is two rows to the exact
+    test, and a candidate matching either one is a candidate a person might have
+    meant, so it leads the screen. ``match.Wanted.readings`` says the second
+    reading is for what to OFFER and that nothing identifying is derived from
+    it, and the string cannot say which reading is the first, so a row with two
+    readings is never listed without a person: see :func:`sole_exact`.
     """
     return frozenset((one.recording, one.version_key) for one in wanted.readings)
 
@@ -198,16 +214,25 @@ def read_answer(wanted: match.Wanted, rows: tuple[Any, ...]) -> Answer:
                 album=_album_of(row),
             )
         )
-    return Answer(candidates=tuple(candidates), hits=len(rows), unreadable=unreadable)
+    return Answer(
+        candidates=tuple(candidates),
+        hits=len(rows),
+        unreadable=unreadable,
+        ambiguous=wanted.other_reading is not None,
+    )
 
 
 def sole_exact(answer: Answer) -> Candidate | None:
     """The one candidate the row may be listed as without a person, or ``None``.
 
-    THREE CONDITIONS, EACH REMOVABLE ALONE. Every row of the answer was read.
-    Every exact candidate carries an identifier. Those identifiers are one.
+    FIVE CONDITIONS, EACH REMOVABLE ALONE. The row's title reads one way. The
+    answer did not fill the page, since a second exact candidate could sit past
+    the cut. Every row of the answer was read. Every exact candidate carries an
+    identifier. Those identifiers are one.
     """
     exact = [one for one in answer.candidates if one.exact]
+    if answer.ambiguous or answer.full:
+        return None
     if answer.unreadable or not exact:
         return None
     if any(not one.track.ref for one in exact):
@@ -263,10 +288,20 @@ def _option(one: Candidate) -> review.Option:
 
 def _why_offered(answer: Answer, offered: tuple[Candidate, ...]) -> str:
     exact = len({one.track.ref for one in offered if one.exact})
+    if exact and answer.ambiguous:
+        return (
+            "its title reads two ways, as a version or as the end of the title, so "
+            "no candidate can be called the exact one without a person"
+        )
     if exact > 1:
         return (
             f"the provider holds {exact} tracks that match it exactly, and which "
             f"release to download is not something the row decides"
+        )
+    if exact and answer.full:
+        return (
+            f"one candidate matches it exactly and the provider's answer filled its "
+            f"page of {answer.hits}, so another exact one may sit past the cut"
         )
     if exact and answer.unreadable:
         return (
@@ -292,14 +327,8 @@ def settled(items: review.ReviewStore, wanted: match.Wanted) -> Proposal | None:
     else was on the screen. Over several it is a yes to nobody knows which, and
     the row stalls with clearing named as the way through, never the first.
     """
-    try:
-        held = review.get(items, item_id(wanted))
-    except CratekitError as exc:
-        # ONLY AN UNKNOWN ITEM IS AN ABSENCE. A store that cannot be read is
-        # not "nobody was asked", and read as one it would search and re-offer
-        # over an answer somebody already gave.
-        if exc.cause.reason != "review-item-unknown":
-            raise
+    held = review.find(items, item_id(wanted))
+    if held is None:
         return None
     if held.verdict is None:
         return Proposal(
@@ -424,6 +453,7 @@ __all__ = [
     "ACCEPTED",
     "ASKED",
     "CANDIDATE_FLOOR",
+    "HELD",
     "KIND",
     "LISTED",
     "NAMED",

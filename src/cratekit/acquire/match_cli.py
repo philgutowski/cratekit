@@ -410,12 +410,7 @@ def _options(found: match.TrackMatch) -> tuple[review.Option, ...]:
 
 def _item(items: review.ReviewStore, item_id: str) -> review.Item | None:
     """The stored item, or None when nobody has ever been asked this."""
-    try:
-        return review.get(items, item_id)
-    except CratekitError as exc:
-        if exc.cause.reason == "review-item-unknown":
-            return None
-        raise
+    return review.find(items, item_id)
 
 
 def adjudicate(

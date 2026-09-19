@@ -55,8 +55,10 @@ one, and otherwise handed to :mod:`cratekit.intake.candidates`, where a search
 is a proposal and never a pick: exactly one candidate matching under the
 product's own fold is listed, anything else is offered for review with its
 candidates, and an accepted candidate is listed by the next run. Nothing is
-ever listed from a fuzzy score. The list is named for the input with
-``-found`` after it, so it never collides with the job's own list.
+ever listed from a fuzzy score. The list is named for the input, with
+``-found`` and a digest of what it lists after it, so it never lands on the
+job's own list, and a second run that lists more, the run after a review
+answer, writes a new list rather than refusing over the first.
 
 Not gated and not destructive: it writes new files, and :func:`listdoc.write`
 refuses rather than replaces a file that holds anything else, so it cannot
@@ -66,9 +68,12 @@ nothing here can spend a download.
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import json
 import re
 import shlex
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -98,6 +103,10 @@ LIST_SOURCE = "list"
 
 #: What follows the input's name in the name of the list ``--list`` writes.
 FOUND_SUFFIX = "-found"
+
+#: How many bytes of digest follow that, the width ``label approved`` names its
+#: lists with.
+DIGEST_BYTES = 6
 
 #: The suffixes an input list's file name may end in, longest first, taken off
 #: before the list written from it is named.
@@ -318,7 +327,27 @@ def _ids_or_unnamed(code: str, tracks: tuple[Any, ...]) -> tuple[str, ...] | _Un
     return tuple(dict.fromkeys(ids))
 
 
-def _named_by_isrc(wanted: list[match.Wanted]) -> list[str | _Unnamed]:
+def _catalogue_once(cfg=None) -> Callable[[], catalogue.Catalogue]:
+    """A getter that resolves the catalogue on first use and once per run.
+
+    LAZY, so a run with nothing to ask spends no login, and SHARED, so a list
+    with rows to ask by ISRC and rows to search for restores one session and
+    not two. Looked up on the module at call time, the contract
+    ``label/catalogue.py`` states, which is what lets a suite substitute it.
+    """
+    held: list[catalogue.Catalogue] = []
+
+    def get() -> catalogue.Catalogue:
+        if not held:
+            held.append(catalogue.resolve(cfg if cfg is not None else intake_cli._load()))
+        return held[0]
+
+    return get
+
+
+def _named_by_isrc(
+    wanted: list[match.Wanted], resolve: Callable[[], catalogue.Catalogue] | None = None
+) -> list[str | _Unnamed]:
     """Each row's one provider identifier, or why the provider cannot name it.
 
     THE CATALOGUE IS RESOLVED ONLY WHEN A ROW CAN BE ASKED ABOUT, so a job whose
@@ -332,7 +361,7 @@ def _named_by_isrc(wanted: list[match.Wanted]) -> list[str | _Unnamed]:
     askable = list(dict.fromkeys(code for code in codes if _ISRC.fullmatch(code)))
     answers: dict[str, tuple[str, ...] | _Unnamed] = {}
     if askable:
-        found = catalogue.resolve(intake_cli._load())
+        found = (resolve or _catalogue_once())()
         for code in askable:
             try:
                 tracks = tuple(found.tracks_for_isrc(code))
@@ -686,37 +715,66 @@ def _listed(
     )
 
 
-def found_name(path: Path) -> str:
+def _provider_ref(wanted: match.Wanted) -> str:
+    """The row's identifier if it is the PROVIDER'S, the rule ``listdoc`` writes by."""
+    return str(wanted.ref or "").strip() if wanted.origin == match.TIDAL else ""
+
+
+def found_name(
+    path: Path,
+    rows: tuple[listdoc.Row, ...] = (),
+    provenance: Mapping[str, listdoc.Provenance] | None = None,
+) -> str:
     """The name of the list written from the text list at ``path``.
 
-    The input's own name with its list suffix off and ``-found`` after it, so
-    ``intake-J.unlisted.json`` writes ``intake-J-found.list.json`` beside the
-    job's ``intake-J.list.json`` and never onto it. A character a file name
-    should not carry becomes a hyphen, and a name with nothing left is
-    ``tracklist``.
+    The input's own name with its list suffix off, ``-found`` after it, and a
+    digest of everything the emitter compares: the rows and their provenance,
+    which carries the input's full path. ``intake-J.unlisted.json`` writes
+    ``intake-J-found-<digest>.list.json`` beside the job's ``intake-J.list.json``
+    and never onto it. A character a file name should not carry becomes a
+    hyphen, and a name with nothing left is ``tracklist``.
+
+    THE DIGEST IS WHAT LETS THE SECOND RUN HAPPEN. The emitter refuses a name
+    whose file holds other bytes, and the run after a review answer lists MORE
+    than the run before it, by design. Under a fixed name that run was refused
+    until somebody moved a file by hand, which the unit's review drove. The
+    same work still rewrites the same bytes under the same name, and two
+    tracklists that share a file name in two folders take two names, since the
+    provenance names the folder.
     """
+    body, _listed, _unlisted = listdoc.document(rows)
+    said = {
+        "tracks": body["tracks"],
+        "provenance": [
+            dataclasses.asdict((provenance or {})[track["id"]]) for track in body["tracks"]
+        ],
+    }
+    encoded = json.dumps(said, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    digest = hashlib.blake2s(encoded, digest_size=DIGEST_BYTES).hexdigest()
     stem = path.name
     for suffix in _LIST_SUFFIXES:
         if stem.lower().endswith(suffix) and len(stem) > len(suffix):
             stem = stem[: -len(suffix)]
             break
     stem = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("-.")
-    return f"{stem or 'tracklist'}{FOUND_SUFFIX}"
+    return f"{stem or 'tracklist'}{FOUND_SUFFIX}-{digest}"
 
 
 def _searched(
-    cfg, wanted: list[match.Wanted]
+    resolve: Callable[[], catalogue.Catalogue], wanted: list[match.Wanted]
 ) -> list[candidates.Answer]:
     """One search answer per row, every one in hand before anything is offered.
 
     THE CATALOGUE IS RESOLVED ONLY WHEN A ROW HAS TO BE SEARCHED FOR, looked up
     on the module at call time as ``_named_by_isrc`` does. A provider that could
-    not answer refuses the whole verb, with no item offered and no file written:
-    a partial pass would report the unasked rows as having no candidate.
+    not answer refuses the whole verb, with no provider candidate offered and
+    no file written: a partial pass would report the unasked rows as having no
+    candidate. A version question the LIBRARY raised is already in the queue by
+    then, so the sentence says which offers it means.
     """
     if not wanted:
         return []
-    found = catalogue.resolve(cfg)
+    found = resolve()
     answers: list[candidates.Answer] = []
     for one in wanted:
         try:
@@ -728,9 +786,15 @@ def _searched(
                 "unavailable-transient",
                 f"the streaming provider could not answer a search for "
                 f"{one.artist} - {one.listed} ({exc}), so the missing tracks cannot "
-                f"be sorted into listed and offered; nothing was offered and "
-                f"nothing was written",
+                f"be sorted into listed and offered; no provider candidate was "
+                f"offered and no list was written",
                 remedy=Remedy.RETRY_LATER,
+                steps=(
+                    "run it again later",
+                    "if the search for this one row fails on every run, take the "
+                    "row out of the list and run it again, so the rest are not "
+                    "held back by it",
+                ),
                 scope=Scope.RUN,
                 origin=("intake.missing",),
                 detail={"artist": one.artist, "title": one.listed},
@@ -793,14 +857,20 @@ def _missing_for_list(ctx, given: str) -> Envelope:
     if missing:
         # THE FOLDER BEFORE THE PROVIDER, so a bad --out spends no lookup.
         out = _out_dir(ctx, subject)
-        bare = [one for one in missing if not str(one.ref or "").strip()]
-        named = [one for one in missing if str(one.ref or "").strip()]
+        # ONLY THE PROVIDER'S OWN IDENTIFIER NAMES A ROW, the emitter's rule. A
+        # row of another service's list carries that service's id, the emitter
+        # writes it with none, and sorted here by its ref it was in no file and
+        # on no check, a missing track dropped at exit zero. It is bare.
+        resolve = _catalogue_once(cfg)
+        bare = [one for one in missing if not _provider_ref(one)]
+        named = [one for one in missing if _provider_ref(one)]
         unnamed: list[match.Wanted] = []
-        for one, answer in zip(bare, _named_by_isrc(bare), strict=True):
+        for one, answer in zip(bare, _named_by_isrc(bare, resolve), strict=True):
             if isinstance(answer, _Unnamed):
                 unnamed.append(one)
             else:
-                named.append(replace(one, ref=answer))
+                # THE ORIGIN WITH THE REF, or the emitter takes the ref off again.
+                named.append(replace(one, ref=answer, origin=match.TIDAL))
                 by_isrc += 1
         if unnamed:
             # THE QUEUE BEFORE THE PROVIDER, and every answer before any offer.
@@ -809,7 +879,7 @@ def _missing_for_list(ctx, given: str) -> Envelope:
             with review.open_store(cfg) as items:
                 held = [candidates.settled(items, one) for one in unnamed]
             unasked = [one for one, said in zip(unnamed, held, strict=True) if said is None]
-            answers = iter(_searched(cfg, unasked))
+            answers = iter(_searched(resolve, unasked))
             with review.open_store(cfg) as items:
                 for one, said in zip(unnamed, held, strict=True):
                     proposals.append(
@@ -820,8 +890,7 @@ def _missing_for_list(ctx, given: str) -> Envelope:
                         )
                     )
 
-    in_library: list[candidates.Proposal] = []
-    for one in proposals:
+    for n, one in enumerate(proposals):
         if one.state not in candidates.NAMED or one.track is None:
             continue
         if one.state == candidates.ACCEPTED:
@@ -833,10 +902,9 @@ def _missing_for_list(ctx, given: str) -> Envelope:
                 one.track, index, suppresses=suppresses, suppression_id=identify
             )
             if now.state in (match.MatchState.MATCHED, match.MatchState.SUPPRESSED):
-                in_library.append(one)
+                proposals[n] = replace(one, state=candidates.HELD)
                 continue
         named.append(one.track)
-    held_ids = {id(one) for one in in_library}
 
     written = listdoc.Written(None, None, (), ())
     if named:
@@ -846,7 +914,7 @@ def _missing_for_list(ctx, given: str) -> Envelope:
             for row in rows
         }
         try:
-            written = listdoc.write(out, found_name(path), rows, provenance)
+            written = listdoc.write(out, found_name(path, rows, provenance), rows, provenance)
         except listdoc.ListDocRefused as exc:
             raise _unusable(
                 str(exc), "move the file aside or name another folder with --out", **subject
@@ -854,7 +922,9 @@ def _missing_for_list(ctx, given: str) -> Envelope:
     listed = len(written.listed)
 
     def of(*states: str) -> list[candidates.Proposal]:
-        return [one for one in proposals if one.state in states and id(one) not in held_ids]
+        return [one for one in proposals if one.state in states]
+
+    in_library = of(candidates.HELD)
 
     by_search = len(of(candidates.LISTED))
     by_review = len(of(candidates.ACCEPTED))
@@ -958,9 +1028,7 @@ def _missing_for_list(ctx, given: str) -> Envelope:
         "candidates_offered": len(asked),
         "unfound": len(unfound),
         "review_next": review_command if asked else None,
-        "rows": [
-            {**one.to_json(), "in_library": id(one) in held_ids} for one in proposals
-        ],
+        "rows": [one.to_json() for one in proposals],
     }
     return ctx.envelope(
         data={"checks": checks, "summary": summary},
@@ -1053,6 +1121,7 @@ def intake_missing(ctx) -> Envelope:
 
 
 __all__ = [
+    "DIGEST_BYTES",
     "FOUND_SUFFIX",
     "LISTS_DIR",
     "LIST_SOURCE",

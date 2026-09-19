@@ -54,6 +54,13 @@ from cratekit.label import registry
 ADAPTER_MODULE = "cratekit.label.tidal_catalogue"
 
 
+#: How many rows :meth:`Catalogue.search_tracks` returns at most. ON THE SEAM
+#: because the caller reads it: an answer this long may have been cut off, so
+#: a candidate past the cut could be a second exact one nobody can see, and
+#: ``intake.candidates`` never lists a row on the strength of a full page.
+TRACK_SEARCH_PAGE = 50
+
+
 @dataclass(frozen=True, slots=True)
 class AccountPlaylist:
     """One playlist the account itself created, reduced to what a sweep decides on.
@@ -255,7 +262,9 @@ class Catalogue(Protocol):
         caller lists a row only on its own exact test and offers everything
         else to a person. ``title`` carries the version when the row names one,
         since the provider searches one string. The rows are the shape
-        ``match.read_tidal_tracks`` reads, in the provider's order.
+        ``match.read_tidal_tracks`` reads, in the provider's order, and at most
+        :data:`TRACK_SEARCH_PAGE` of them: an answer that long is one the
+        caller must read as possibly cut short.
 
         An empty tuple means the provider answered and found nothing. RAISES
         when the provider could not answer, on the same contract as the reads
@@ -362,6 +371,7 @@ __all__ = [
     "AccountPlaylist",
     "Catalogue",
     "ReleaseUnresolvable",
+    "TRACK_SEARCH_PAGE",
     "Unread",
     "bound",
     "missing_listing",

@@ -1003,6 +1003,23 @@ def get(store: ReviewStore, item_id: str) -> Item:
 #: screenful rather than a memory limit: the reason paging exists here is that a
 #: person works through a queue a few at a time, and a run that materialized four
 #: hundred items to show ten has already lost the property.
+def find(store: ReviewStore, item_id: str) -> Item | None:
+    """The stored item, or ``None`` when nobody has ever been asked this.
+
+    ONLY AN UNKNOWN ITEM IS AN ABSENCE. Every other refusal of :func:`get` is
+    re-raised, because a store that could not be read is not "nobody was asked",
+    and a producer that read it as one would search and offer again over an
+    answer somebody already gave. One spelling, so the two producers that ask
+    this before offering cannot come to disagree about the reason.
+    """
+    try:
+        return get(store, item_id)
+    except CratekitError as exc:
+        if exc.cause.reason != "review-item-unknown":
+            raise
+        return None
+
+
 DEFAULT_PAGE = 50
 
 
@@ -2126,6 +2143,7 @@ __all__ = [
     "decision_store_keys",
     "suppression_id_for",
     "export_document",
+    "find",
     "get",
     "identity_of",
     "import_document",

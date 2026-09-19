@@ -19,6 +19,7 @@ D1 applies. Nothing here names a real volume, a real person, or a real track.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -153,7 +154,8 @@ def test_one_exact_candidate_is_listed_without_review(cfg, library, tmp_path, mo
     summary = envelope["data"]["summary"]
     assert fake.searched_for == [SUN]
     assert (summary["written"], summary["by_search"], summary["candidates_offered"]) == (1, 1, 0)
-    assert Path(summary["list"]) == lists_dir(library) / "typed-found.list.json"
+    assert Path(summary["list"]).parent == lists_dir(library)
+    assert re.fullmatch(r"typed-found-[0-9a-f]{12}\.list\.json", Path(summary["list"]).name)
     body = json.loads(Path(summary["list"]).read_text())
     assert [(t["id"], t["artist"], t["title"]) for t in body["tracks"]] == [
         ("7001", "Aurora Bloom", "Sun Path")
@@ -488,6 +490,7 @@ def test_an_accepted_candidate_the_library_now_holds_is_not_listed_again(
     body = json.loads(Path(summary["list"]).read_text())
     assert [t["id"] for t in body["tracks"]] == ["7010"], "a held track was listed for download"
     assert (summary["by_review"], summary["in_library"]) == (0, 1)
+    assert [r["state"] for r in summary["rows"]] == [candidates.HELD, candidates.LISTED]
     assert "already in the library" in checks(envelope)["accepted"]["detail"]
 
 
@@ -675,7 +678,9 @@ def test_the_unlisted_list_is_read_and_its_found_list_sits_beside_the_jobs(
     code, envelope = found(written.unlisted_path)
 
     assert code == int(ExitCode.OK), envelope
-    assert Path(envelope["data"]["summary"]["list"]) == out / "intake-j1-found.list.json"
+    listed = Path(envelope["data"]["summary"]["list"])
+    assert listed.parent == out
+    assert re.fullmatch(r"intake-j1-found-[0-9a-f]{12}\.list\.json", listed.name)
 
 
 @pytest.mark.parametrize(
@@ -690,7 +695,9 @@ def test_the_unlisted_list_is_read_and_its_found_list_sits_beside_the_jobs(
     ],
 )
 def test_the_found_list_is_named_for_its_input(given, named):
-    assert missing_cli.found_name(Path("/somewhere") / given) == named
+    name = missing_cli.found_name(Path("/somewhere") / given)
+
+    assert re.fullmatch(re.escape(named) + r"-[0-9a-f]{12}", name), name
 
 
 def test_skip_failed_means_nothing_for_a_list_and_is_refused(cfg, library, tmp_path):
@@ -702,6 +709,217 @@ def test_skip_failed_means_nothing_for_a_list_and_is_refused(cfg, library, tmp_p
 
 def test_the_verb_declares_that_it_adjudicates():
     assert registry.entry("intake.missing").adjudicates
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# What the unit's review drove
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_run_after_an_answer_lists_more_than_the_first_and_is_not_refused(
+    cfg, library, tmp_path, monkeypatch
+):
+    """The documented second run. Under one fixed name it was refused, because
+    the first run had already written a list and this one holds other bytes."""
+    path = tracklist(tmp_path, "Nova Reef - Tide", "Aurora Bloom - Sun Path")
+    bind(
+        monkeypatch,
+        FakeCatalogue(
+            searches={
+                TIDE: [Hit("7010", *TIDE)],
+                SUN: [Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix")],
+            }
+        ),
+    )
+    code, first = found(path)
+    assert code == int(ExitCode.OK), first
+    resolve(the_item(cfg).item_id, "accepted", "--option", "7002")
+
+    code, second = found(path)
+
+    assert code == int(ExitCode.OK), second
+    body = json.loads(Path(second["data"]["summary"]["list"]).read_text())
+    assert [t["id"] for t in body["tracks"]] == ["7010", "7002"]
+    assert second["data"]["summary"]["list"] != first["data"]["summary"]["list"]
+
+
+def test_the_same_work_twice_rewrites_the_same_list(cfg, library, tmp_path, monkeypatch):
+    path = tracklist(tmp_path, "Nova Reef - Tide")
+    bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)]}))
+    _code, first = found(path)
+
+    code, second = found(path)
+
+    assert code == int(ExitCode.OK), second
+    assert second["data"]["summary"]["list"] == first["data"]["summary"]["list"]
+    assert len(list(lists_dir(library).glob("*.list.json"))) == 1
+
+
+def test_two_tracklists_of_one_file_name_in_two_folders_do_not_collide(
+    cfg, library, tmp_path, monkeypatch
+):
+    (tmp_path / "friday").mkdir()
+    (tmp_path / "saturday").mkdir()
+    one = tracklist(tmp_path / "friday", "Nova Reef - Tide", name="tracklist.txt")
+    two = tracklist(tmp_path / "saturday", "Aurora Bloom - Sun Path", name="tracklist.txt")
+    bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)], SUN: [Hit("7001", *SUN)]}))
+    found(one)
+
+    code, envelope = found(two)
+
+    assert code == int(ExitCode.OK), envelope
+    assert len(list(lists_dir(library).glob("tracklist-found-*.list.json"))) == 2
+
+
+def test_a_missing_row_of_another_services_list_is_searched_for_and_not_dropped(
+    cfg, library, tmp_path, monkeypatch
+):
+    """Its ref is that service's id, which the emitter writes as none. Sorted by
+    the ref alone it was in no file and on no check, at exit zero."""
+    path = tmp_path / "other.json"
+    path.write_text(
+        json.dumps(
+            {
+                "list": 1,
+                "origin": "spotify",
+                "tracks": [
+                    {"track": {"id": "sp1", "name": "Sun Path", "artists": [{"name": "Aurora Bloom"}]}}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake = bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN)]}))
+
+    code, envelope = found(path)
+
+    assert code == int(ExitCode.OK), envelope
+    assert fake.searched_for == [SUN]
+    body = json.loads(Path(envelope["data"]["summary"]["list"]).read_text())
+    assert [t["id"] for t in body["tracks"]] == ["7001"], "another service's id was listed"
+
+
+def test_a_full_page_is_never_the_whole_answer_so_its_one_exact_hit_is_offered(
+    cfg, library, tmp_path, monkeypatch
+):
+    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
+    filler = [
+        Hit(str(8000 + n), "Quite Another Act", f"Wholly Different {n}")
+        for n in range(catalogue.TRACK_SEARCH_PAGE - 1)
+    ]
+    bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN), *filler]}))
+
+    code, envelope = found(path)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["written"] == 0
+    item = the_item(cfg)
+    assert [o.option_id for o in item.options] == ["7001"]
+    assert "filled its page" in item.payload["why"]
+
+
+def test_one_hit_short_of_a_full_page_is_a_whole_answer(cfg, library, tmp_path, monkeypatch):
+    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
+    filler = [
+        Hit(str(8000 + n), "Quite Another Act", f"Wholly Different {n}")
+        for n in range(catalogue.TRACK_SEARCH_PAGE - 2)
+    ]
+    bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN), *filler]}))
+
+    code, envelope = found(path)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["by_search"] == 1
+
+
+@pytest.mark.parametrize(
+    "hit",
+    [
+        Hit("7001", "Aurora Bloom", "Sun Path", version="Dub"),
+        Hit("7002", "Aurora Bloom", "Sun Path - Dub"),
+    ],
+    ids=["the-version-reading", "the-title-reading"],
+)
+def test_a_title_with_two_readings_is_never_listed_on_one_candidate(
+    hit, cfg, library, tmp_path, monkeypatch
+):
+    """The string cannot say which reading was meant, so no candidate is THE one."""
+    path = tracklist(tmp_path, "Aurora Bloom - Sun Path - Dub")
+    wanted = match.read_text_lines("Aurora Bloom - Sun Path - Dub")[0]
+    bind(
+        monkeypatch,
+        FakeCatalogue(searches={(wanted.artist, candidates.query_title(wanted)): [hit]}),
+    )
+
+    code, envelope = found(path)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["written"] == 0
+    item = the_item(cfg)
+    assert [o.option_id for o in item.options] == [hit.id]
+    assert item.options[0].detail["exact"] is True
+    assert "reads two ways" in item.payload["why"]
+
+
+def test_a_failed_search_says_which_offers_it_did_not_make(cfg, library, tmp_path, monkeypatch):
+    """A version question the library raised is in the queue before the provider
+    is asked, so the refusal may not say nothing was offered."""
+    owned(library, "Nova Reef - Tide (Extended Mix).flac")
+    path = tracklist(tmp_path, "Nova Reef - Tide", "Aurora Bloom - Sun Path")
+    bind(monkeypatch, UnreadableCatalogue())
+
+    code, envelope = found(path)
+
+    message = envelope["cause"]["message"]
+    assert "no provider candidate was offered and no list was written" in message
+    assert "nothing was offered" not in message
+    assert [one.kind for one in items_of(cfg)] == [match.QUESTION_KIND]
+    assert "take the row out of the list" in " ".join(envelope["cause"]["remediation"]["steps"])
+
+
+def test_rows_asked_by_isrc_and_rows_searched_for_share_one_catalogue(
+    cfg, library, tmp_path, monkeypatch
+):
+    path = tmp_path / "mixed.json"
+    path.write_text(
+        json.dumps(
+            {
+                "list": 1,
+                "origin": "spotify",
+                "tracks": [
+                    {
+                        "track": {
+                            "id": "sp1",
+                            "name": "Tide",
+                            "artists": [{"name": "Nova Reef"}],
+                            "external_ids": {"isrc": "QZAAA2600001"},
+                        }
+                    },
+                    {"track": {"id": "sp2", "name": "Sun Path", "artists": [{"name": "Aurora Bloom"}]}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake = FakeCatalogue(
+        isrcs={"QZAAA2600001": [Hit("7010", *TIDE)]}, searches={SUN: [Hit("7001", *SUN)]}
+    )
+    resolved: list[object] = []
+
+    def resolve_once(cfg_):
+        resolved.append(cfg_)
+        return fake
+
+    monkeypatch.setattr(catalogue, "resolve", resolve_once)
+
+    code, envelope = found(path)
+
+    assert code == int(ExitCode.OK), envelope
+    assert len(resolved) == 1, "one run restored the provider session twice"
+    summary = envelope["data"]["summary"]
+    assert (summary["by_isrc"], summary["by_search"], summary["written"]) == (1, 1, 2)
+    body = json.loads(Path(summary["list"]).read_text())
+    assert [t["id"] for t in body["tracks"]] == ["7010", "7001"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
