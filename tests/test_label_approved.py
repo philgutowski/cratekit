@@ -483,6 +483,31 @@ def test_an_accepted_harvested_label_shares_the_queue_and_is_not_a_release(
     assert check(envelope, "releases")["status"] == "ok"
 
 
+def test_the_items_identity_names_the_release_and_a_payload_that_disagrees_does_not(
+    cfg, library, monkeypatch
+):
+    """Mutation row A8 found nothing holding the order of the two reads."""
+    with review.open_store(cfg) as items:
+        item = review.offer(
+            items,
+            queue=str(review.Queue.LABEL_RELEASE),
+            kind=sweep.KIND,
+            identity={"release_id": "r-1"},
+            payload={"identity": "r-2", "label_name": "Tide Works"},
+            handler_key=sweep.HANDLER_KEY,
+        )
+        review.resolve(items, item.item_id, review.Verdict.ACCEPTED, actor="suite")
+    fake = StrictCatalogue(
+        releases={"r-1": two_track_release(), "r-2": ([Track("401", "Mira Vale", "Glass Hour")], 2023)}
+    )
+    bind(monkeypatch, fake)
+
+    code, envelope = approved()
+
+    assert code == int(ExitCode.OK), envelope
+    assert fake.releases_asked_for == ["r-1"]
+
+
 def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(
     cfg, library, monkeypatch
 ):
