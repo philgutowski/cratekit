@@ -30,8 +30,9 @@ tables `docs/mutation/u74.md` and `u74-b.md`, 24 of 24 killing, read in
 `u74-notes.md`. R-438 filed, not on the board: a full pass opens the catalogue
 twice. Issue 110, the board's record of R-423, closes by keyword in this
 branch's record commit when `main` is pushed. Owed to the `sync all` sitting: one live
-pass with the heart count compared against the account's 197. **Main's highest
-residual number is R-438.**
+pass with the heart count compared against the account's 197. Battery on the
+recorded tree: ruff clean, `scan_repo.py` exit 0, pytest 7895 passed and 1
+skipped in 53 seconds. **Main's highest residual number is R-438.**
 
 **The session before: R-239, issue #156, `relay/156`, 2026-09-18.**
 Every open of the rekordbox database asks the file whether it needs the key,
