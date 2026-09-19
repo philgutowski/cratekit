@@ -1473,6 +1473,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the library had never been calibrated. A MISSING file still means
         # the default, which is honest; only the unreadable one refuses.
         "vocal-calibration-unreadable": ExitCode.PRECONDITION,
+        # U90. ``analyze calibrate --vocal-cut`` was given a cut outside the
+        # presence score's range, 0 to 100, or one that is not a finite
+        # number. A cut above 100 files nothing under with vox and a NaN cut
+        # files everything, so neither is written. PRECONDITION rather than
+        # USAGE, because the parser accepted a number.
+        "vocal-cut-out-of-range": ExitCode.PRECONDITION,
         # An analysed track could not be finalized: its tag write returned
         # false or its rename could not claim the target. The item FAILS rather
         # than reporting done, because an analysis whose values never reached

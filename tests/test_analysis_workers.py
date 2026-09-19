@@ -35,6 +35,7 @@ from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, routing, tags, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
+from cratekit.write import metadata_cli
 from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_analysis import _FakeModel
@@ -1059,6 +1060,137 @@ def test_a_single_cluster_is_not_cut_down_the_middle(cfg, folder, silence, monke
 def test_cluster_separation_is_none_with_nothing_on_one_side():
     assert analysis_cli.cluster_separation([1.0, 2.0], 50.0) is None
     assert analysis_cli.cluster_separation([1.0, 41.0], 20.0) == 40.0
+
+
+# ---------------------------------------------------------------------------
+# U90: ``--vocal-cut`` sets the with vox cut by hand
+# ---------------------------------------------------------------------------
+
+HAND_DAY = "2026-09-17"
+
+
+@pytest.fixture
+def hand_day(monkeypatch):
+    monkeypatch.setattr(analysis_cli, "_today", lambda: HAND_DAY)
+
+
+def test_a_hand_cut_is_written_and_the_one_loader_reads_it_back(cfg, hand_day):
+    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    assert envelope["data"]["summary"] == {
+        "folder": None, "vocal_cut": 5.0, "previous_vocal_cut": None
+    }
+    (check,) = envelope["data"]["checks"]
+    assert check["key"] == "calibrate.vocals" and check["status"] == "ok"
+    assert "cut set by hand at 5" in check["detail"]
+    assert "My Tags used the default 12" in check["detail"]
+    assert metadata_cli.load_vocal_threshold(cfg) == 5.0
+    assert metadata_cli.vocal_cut(cfg) == 5.0
+    record = metadata_cli.load_vocal_calibration(cfg)
+    assert record["method"] == "hand"
+    assert record["note"] == f"set by hand on {HAND_DAY}"
+    assert record["set_on"] == HAND_DAY
+    assert energy.load_calibration(cfg) is None, "the energy calibration is left alone"
+
+
+def test_a_second_hand_cut_reports_the_cut_it_replaces(cfg, hand_day):
+    drive(["analyze", "calibrate", "--vocal-cut", "5"])
+    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "7.5"])
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["previous_vocal_cut"], summary["vocal_cut"]) == (5.0, 7.5)
+    assert (
+        f"this replaces the cut of 5 set by hand on {HAND_DAY}"
+        in envelope["data"]["checks"][0]["detail"]
+    )
+    assert metadata_cli.load_vocal_threshold(cfg) == 7.5
+
+
+@pytest.mark.parametrize("cut", ["0", "100"])
+def test_the_ends_of_the_score_range_are_cuts(cfg, cut):
+    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", cut])
+    assert code == int(ExitCode.OK), envelope
+    assert metadata_cli.load_vocal_threshold(cfg) == float(cut)
+
+
+@pytest.mark.parametrize("cut", ["-1", "-0.5", "100.5", "nan", "inf", "-inf"])
+def test_a_cut_outside_the_score_range_refuses_and_writes_nothing(cfg, cut):
+    code, envelope = drive(["analyze", "calibrate", f"--vocal-cut={cut}"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "vocal-cut-out-of-range"
+    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+
+
+def test_a_refused_cut_leaves_the_cut_on_record_byte_for_byte(cfg, hand_day):
+    drive(["analyze", "calibrate", "--vocal-cut", "5"])
+    path = analysis_cli.vocal_calibration_path(cfg)
+    before = path.read_bytes()
+    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "101"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert path.read_bytes() == before
+
+
+def test_a_folder_and_a_hand_cut_together_are_refused_by_the_parser(cfg, folder):
+    code, _ = drive(["analyze", "calibrate", str(folder), "--vocal-cut", "5"])
+    assert code == int(ExitCode.USAGE)
+    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+
+
+def test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_read(cfg):
+    path = analysis_cli.vocal_calibration_path(cfg)
+    config._mkdir_private(path.parent)
+    path.write_text("{not json", encoding="utf-8")
+    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
+    assert code == int(ExitCode.OK), envelope
+    assert "could not be read" in envelope["data"]["checks"][0]["detail"]
+    assert metadata_cli.load_vocal_threshold(cfg) == 5.0
+
+
+def test_a_hand_cut_refuses_with_the_library_away(cfg):
+    shutil.rmtree(cfg.library.root)
+    code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
+    assert code == int(ExitCode.LIBRARY_UNAVAILABLE), envelope
+    assert envelope["cause"]["reason"] == "library-volume-unmounted"
+    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+
+
+def test_a_fit_after_a_hand_cut_replaces_it_and_says_so(
+    cfg, folder, silence, monkeypatch, hand_day
+):
+    drive(["analyze", "calibrate", "--vocal-cut", "5"])
+    names = [f"t{i:02d}" for i in range(12)]
+    for index, name in enumerate(names):
+        place(folder, silence, name, voxlevel=2 if index < 8 else 40)
+    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
+
+    code, envelope = drive(["analyze", "calibrate", str(folder)])
+    assert code == int(ExitCode.OK), envelope
+    checks = {check["key"]: check for check in envelope["data"]["checks"]}
+    assert checks["calibrate.vocals"]["status"] == "ok"
+    assert (
+        f"this replaces the cut of 5 set by hand on {HAND_DAY}"
+        in checks["calibrate.vocals"]["detail"]
+    )
+    record = metadata_cli.load_vocal_calibration(cfg)
+    assert record["method"] == "otsu" and record["note"] == f"fitted over {folder}"
+    assert 2 < record["threshold"] <= 40 and record["threshold"] != 5.0
+
+
+def test_a_fit_over_a_fitted_cut_names_the_fit_it_replaces(cfg, folder, silence, monkeypatch):
+    names = [f"t{i:02d}" for i in range(12)]
+    for index, name in enumerate(names):
+        place(folder, silence, name, voxlevel=2 if index < 8 else 40)
+    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
+    drive(["analyze", "calibrate", str(folder)])
+    first = metadata_cli.load_vocal_threshold(cfg)
+    code, envelope = drive(["analyze", "calibrate", str(folder)])
+    assert code == int(ExitCode.OK), envelope
+    checks = {check["key"]: check for check in envelope["data"]["checks"]}
+    assert (
+        f"this replaces the cut of {first:g} (fitted over {folder})"
+        in checks["calibrate.vocals"]["detail"]
+    )
 
 
 def test_calibrate_over_too_few_tracks_writes_nothing_and_says_so(

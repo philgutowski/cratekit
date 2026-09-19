@@ -95,6 +95,22 @@ crate --output json analyze calibrate /path/to/labelled
 Reach for the JSON form when something other than a person is going to read the
 answer, because the human rendering is free to change and the payload is not.
 
+## Setting the with vox cut by hand
+
+A fitted vocal cut can be tighter than your ears, and a cut chosen after
+listening to named tracks is a legitimate answer. Set it directly:
+
+```bash
+crate analyze calibrate --vocal-cut 5
+```
+
+The cut is a presence score from 0 to 100, and anything outside that range, or
+not a number, is refused with nothing written. This one does write: it records
+the cut as set by hand with the date, reports the cut it replaced, and leaves the
+energy calibration alone. It takes no folder, because fitting and setting in one
+call would leave you guessing which one won. A later calibrate over a folder
+replaces the hand cut and says so in its report.
+
 ## Validate asks a different question from calibrate
 
 Calibrate proposes a threshold from labelled data. Validate scores what the
