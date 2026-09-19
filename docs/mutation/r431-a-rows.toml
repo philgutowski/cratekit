@@ -1,0 +1,157 @@
+name = "r431-a"
+pass_kind = "light"
+
+# Table a of two for R-431, over the RECORDING side: what strips, what one
+# deletion writes, and what lifting one takes with it. Table b holds the
+# consulting side. This one spends 15 rows and that one 10, the unit's 25.
+
+[[rows]]
+id = "A1_a_plain_row_gains_a_companion"
+description = "uncredited_title answers the stripped title even when nothing was stripped, so a plain deletion writes a companion"
+file = "src/cratekit/core/tombstone.py"
+surface = "user"
+old = '''    return stripped if dropped else ""'''
+new = '''    return stripped'''
+
+[[rows]]
+id = "A2_one_kind_for_both"
+description = "The companion is recorded under the tombstone's own kind, where every verbatim lookup lands on it"
+file = "src/cratekit/core/tombstone.py"
+surface = "user"
+old = '''KIND_VERSION_UNCREDITED = "version-uncredited"'''
+new = '''KIND_VERSION_UNCREDITED = "version"'''
+
+[[rows]]
+id = "A3_stripped_from_the_title_column"
+description = "The companion is stripped from the Title column and not from the composed identity, so a mix name in the version column is lost"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+old = '''    stripped = tombstone.uncredited_title(verbatim["title"])'''
+new = '''    stripped = tombstone.uncredited_title(tombstone.fold(row.title))'''
+
+[[rows]]
+id = "A4_the_tombstone_names_no_companion"
+description = "The tombstone's pointer to its companion is written empty"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+old = '''            UNCREDITED_ID_FIELD: uncredited_id,'''
+new = '''            UNCREDITED_ID_FIELD: "",'''
+
+[[rows]]
+id = "A5_the_companion_names_no_tombstone"
+description = "The companion's pointer back is dropped from its payload, so the listing cannot link the pair"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+old = '''                        CREDITED_ID_FIELD: review.suppression_id_for(
+                            tombstone.STORE_KEY, tombstone.KIND_VERSION, identity
+                        ),'''
+new = '''                        CREDITED_ID_FIELD: "",'''
+
+[[rows]]
+id = "A6_a_standing_companion_is_rewritten"
+description = "beside overwrites a companion that already stands, so a second guest's deletion restamps the shared one"
+file = "src/cratekit/core/review.py"
+surface = "maintainer"
+old = '''                if standing is not None and standing.suppressing:
+                    continue'''
+new = '''                if standing is None and standing is not None:
+                    continue'''
+
+[[rows]]
+id = "A7_beside_written_when_the_record_stood"
+description = "A record that already stood still writes its beside records, so a companion lifted alone comes back"
+file = "src/cratekit/core/review.py"
+surface = "user"
+old = '''            if existing is not None and existing.suppressing:
+                return existing
+            suppression = Suppression('''
+new = '''            if existing is not None and existing.suppressing and not beside:
+                return existing
+            suppression = Suppression('''
+
+[[rows]]
+id = "A8_also_is_never_asked"
+description = "revoke ignores also, so lifting a credited tombstone leaves its companion suppressing"
+file = "src/cratekit/core/review.py"
+surface = "user"
+old = '''            with_it = tuple(also(existing, dict(recorded))) if also is not None else ()'''
+new = '''            with_it = ()'''
+
+[[rows]]
+id = "A9_an_already_lifted_record_is_lifted_again"
+description = "also restamps a record that was already lifted, and fails on an identifier that names nothing"
+file = "src/cratekit/core/review.py"
+surface = "maintainer"
+old = '''                if other is not None and other.suppressing:
+                    recorded[other_id] = lifted(other)'''
+new = '''                if other is not None:
+                    recorded[other_id] = lifted(other)'''
+
+[[rows]]
+id = "A10_the_shared_companion_goes_with_the_first_lift"
+description = "Lifting takes every companion the tombstone accounts for, whoever else still does"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+old = '''    return tuple(sorted(mine - still_accounted_for))'''
+new = '''    return tuple(sorted(mine))'''
+
+[[rows]]
+id = "A11_a_lifted_tombstone_still_accounts"
+description = "A tombstone that was itself lifted still holds the shared companion, so the second lift strands it"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+old = '''            and other.suppressing
+            and other.suppression_id != named.suppression_id'''
+new = '''            and other.suppression_id != named.suppression_id'''
+
+[[rows]]
+id = "A12_the_named_tombstone_accounts_for_itself"
+description = "The tombstone being lifted counts as still accounting, so no companion is ever lifted"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+old = '''            and other.suppressing
+            and other.suppression_id != named.suppression_id'''
+new = '''            and other.suppressing'''
+
+[[rows]]
+id = "A13_accounting_by_stripping_alone"
+description = "_accounts_for drops the pointer, so a moved stripping rule strands a companion and takes a shared one"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+old = '''    found = {str(credited.payload.get(UNCREDITED_ID_FIELD) or "")}'''
+new = '''    found = {""}'''
+
+[[rows]]
+id = "A14_accounting_by_pointer_alone"
+description = "_accounts_for drops the stripping, so a tombstone with no pointer accounts for nothing"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+old = '''    if stripped:
+        found.add('''
+new = '''    if stripped and not stripped:
+        found.add('''
+
+[[rows]]
+id = "A15_the_verb_lifts_through_the_store"
+description = "run.revoke lifts a tombstone through the store and not through stores.revoke_tombstone, so no companion goes"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+old = '''                # being readable.
+                return stores.revoke_tombstone(cfg, suppression_id, actor=actor)'''
+new = '''                # being readable.
+                return held.revoke(suppression_id, actor=actor)'''
+
+[[dropped]]
+id = "A_every_group_strips"
+description = "uncredited_title drops every bracketed group, not only a credit"
+reason = "ranked below the cap: the parametrized strip table pins ten literals and A1 already measures that table"
+
+[[dropped]]
+id = "A_a_companion_named_directly_cascades"
+description = "Remove the kind check at the top of _companions_to_lift"
+reason = "equivalent: a companion carries no pointer and strips to nothing, so _accounts_for answers empty for it with or without the check"
+
+[[dropped]]
+id = "A_the_listing_drops_the_pointers"
+description = "summarize stops emitting credited_id and uncredited_id"
+reason = "ranked below the cap: one test asserts both keys as literals, and A4 and A5 measure the same assertion from the writing end"
