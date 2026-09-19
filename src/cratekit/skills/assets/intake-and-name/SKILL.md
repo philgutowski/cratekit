@@ -142,12 +142,13 @@ retagged, whatever folder you point the verb at, because rekordbox records a
 path once and a rename leaves its row pointing at nothing. Those files appear in
 the plan marked `referenced` and are counted under `totals.referenced`. If the
 collection cannot be read at all, the verb refuses with `collection-unreadable`
-and renames nothing. If any row is recorded under a volume that no rule in
-`library.location_prefix_map` names, the verb refuses with
-`collection-row-unmapped` and renames nothing, because it cannot tell which file
+and renames nothing. When there is something to rename, a row recorded outside
+the library root, under a volume no rule in `library.location_prefix_map` names,
+whose recorded file is not on this machine either, makes the verb refuse with
+`collection-row-unmapped` and rename nothing, because it cannot tell which file
 that row references. The refusal names how many rows and the first recorded
-location, and the remedy is a prefix rule spelled exactly as recorded, capitals
-included. There is no flag that overrides any of these.
+location, and the remedy is a prefix rule spelled exactly as that location is,
+capitals included. There is no flag that overrides any of these.
 
 `name apply` builds the full plan, then stops at its confirm gate and exits
 asking for a decision. Answer it on the invocation, or later from anywhere:

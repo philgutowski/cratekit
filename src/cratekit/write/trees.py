@@ -745,22 +745,32 @@ def insert_record_labels_tree(
 # ---------------------------------------------------------------------------
 
 
-def comparable(recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]):
+def located(
+    recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]
+) -> tuple[str, locations.ResolvedPath]:
+    """One recorded path, decoded ONCE, with how it resolves on this machine.
+
+    PUBLIC SINCE R-500, because ``write/naming_cli`` had grown its own copy of
+    these two calls and a fix to one copy would not have reached the other. The
+    decoded path is handed back beside the resolution so a caller that also
+    needs the spelling as recorded never decodes a second time, which would be
+    the second copy again by another route. What a caller does with the answer
+    is its own: the index below drops a row that did not resolve, and ``name
+    apply`` refuses on one.
+    """
+    decoded = locations.location_to_path(str(recorded))
+    return decoded, locations.resolve_recorded_path(decoded, root=root, prefix_map=prefix_map)
+
+
+def _comparable(recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]):
     """One recorded path, decoded and resolved into the form both sides compare in.
 
     BOTH sides of every comparison go through this, which is the whole rule the
     identity primitives exist to enforce: one side normalized and the other not
     is how 144 files with accented names went missing, and the two sides here are
     a path this machine can see and a path rekordbox wrote down years ago.
-
-    PUBLIC SINCE R-500, because ``write/naming_cli`` had grown its own copy of
-    these two calls and a fix to one copy would not have reached the other. What
-    a caller does with the answer is its own: the index below drops a row that
-    did not resolve, and ``name apply`` refuses on one.
     """
-    return locations.resolve_recorded_path(
-        locations.location_to_path(str(recorded)), root=root, prefix_map=prefix_map
-    )
+    return located(recorded, root=root, prefix_map=prefix_map)[1]
 
 
 def index_active_rows(
@@ -787,7 +797,7 @@ def index_active_rows(
     for row in rows:
         if row.deleted:
             continue
-        resolved = comparable(row.recorded, root=root, prefix_map=prefix_map)
+        resolved = _comparable(row.recorded, root=root, prefix_map=prefix_map)
         if resolved.path is None:
             continue
         by_location.setdefault(resolved.path, []).append(row.content_id)
@@ -834,7 +844,7 @@ def match_indexed_rows(
     out: list[RowMatch] = []
     for entry in requested:
         text = str(entry)
-        resolved = comparable(text, root=root, prefix_map=prefix_map)
+        resolved = _comparable(text, root=root, prefix_map=prefix_map)
         if resolved.path is None:
             out.append(
                 RowMatch(text, MatchOutcome.UNRESOLVED, resolution=resolved.resolution)

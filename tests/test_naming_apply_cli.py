@@ -473,13 +473,7 @@ def collected(library, monkeypatch, prefix_map):
         rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
     )
     if prefix_map:
-        # ``{tmp}`` is this test's own temporary directory, for a rule over a
-        # folder outside the library, whose path no parameter can spell ahead
-        # of the run.
-        data["library"]["location_prefix_map"] = [
-            {side: text.replace("{tmp}", str(library.parent)) for side, text in rule.items()}
-            for rule in prefix_map
-        ]
+        data["library"]["location_prefix_map"] = prefix_map
     resolved = config.from_dict(data)
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
@@ -587,11 +581,12 @@ def test_a_row_under_an_unmapped_volume_refuses_and_renames_nothing(collected):
     assert code == int(ExitCode.PRECONDITION), envelope
     cause = envelope["cause"]
     assert cause["reason"] == "collection-row-unmapped"
-    assert cause["remediation"]["remedy"] == "run-doctor"
+    assert cause["remediation"]["remedy"] == "fix-config-values"
+    assert "location_prefix_map" in cause["remediation"]["steps"][0]
     assert cause["message"].startswith("1 collection row records")
     assert f"/mnt/volume/{relative}" in cause["message"]
     assert cause["detail"]["unmapped"] == 1
-    assert cause["detail"]["unmapped_rows"] == [f"/mnt/volume/{relative}"]
+    assert cause["detail"]["unmapped_locations"] == [f"/mnt/volume/{relative}"]
     assert cause["detail"]["unmapped_prefixes"] == ["/mnt/volume"]
     assert held.is_file() and free.is_file()
 
@@ -662,6 +657,36 @@ def test_a_row_that_goes_unmapped_after_the_gate_refuses_before_any_rename(
     assert held.is_file() and free.is_file()
 
 
+def test_the_refusal_names_the_decoded_location_a_rule_is_matched_against(collected):
+    """A row recorded as a location URL is quoted DECODED, because a rule is
+    compared with the decoded path and the encoded spelling would never match."""
+    folder = _folder(collected)
+    _pair(folder)
+    _record(collected, "file://localhost/mnt/volume/My%20Music/x.flac", identifier="10")
+    _code, envelope = _refusal(folder)
+    cause = envelope["cause"]
+    assert "/mnt/volume/My Music/x.flac" in cause["message"]
+    assert "%20" not in cause["message"]
+    assert cause["detail"]["unmapped_locations"] == ["/mnt/volume/My Music/x.flac"]
+
+
+def test_an_unmapped_row_whose_file_is_gone_refuses_even_outside_a_volume(
+    collected, tmp_path
+):
+    """The other half of the existence rule. The folder is on this machine and
+    the recorded file is not, so nothing says which file the row names."""
+    folder = tmp_path / "laptop" / "Downloads"
+    folder.mkdir(parents=True)
+    held, free = _pair(folder)
+    _record(collected, str(folder / "moved away.flac"), identifier="10")
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["detail"]["unmapped_locations"] == [
+        str(folder / "moved away.flac")
+    ]
+    assert held.is_file() and free.is_file()
+
+
 def test_a_row_that_is_not_a_path_neither_blocks_nor_protects(collected):
     """A streaming pseudo-location references no file, so it is not a hole in
     the collection, and a library that ever streamed anything still renames."""
@@ -709,12 +734,10 @@ def test_a_tombstoned_row_still_protects_its_file(collected):
     assert held.is_file()
 
 
-@pytest.mark.parametrize(
-    "prefix_map", [[{"from": "{tmp}/laptop", "to": "{tmp}/laptop"}]]
-)
 def test_a_root_outside_the_library_is_still_checked(collected, tmp_path):
-    """The rule maps the folder onto itself, which is how a location outside
-    the library is declared since R-500: a row under no rule refuses."""
+    """The row sits under no rule and its recorded file is on this machine, so
+    it has answered (R-500): the recorded key protects the file and nothing
+    refuses. A downloads folder is the ordinary case."""
     folder = tmp_path / "laptop" / "Downloads"
     folder.mkdir(parents=True)
     held, free = _pair(folder)
@@ -820,16 +843,11 @@ def test_a_file_recorded_by_its_real_path_is_protected_through_a_linked_root(
     assert not free.exists()
 
 
-@pytest.mark.parametrize(
-    "prefix_map", [[{"from": "{tmp}/linked", "to": "{tmp}/linked"}]]
-)
 def test_a_file_recorded_through_a_link_is_protected_through_that_link(
     collected, tmp_path
 ):
     """The row records the path through a link and the root is given the same
-    way, so only the ABSOLUTE spelling of the candidate matches. The rule maps
-    the link onto ITSELF and not onto the folder behind it, so the resolved
-    spelling still cannot be the one that matches."""
+    way, so only the ABSOLUTE spelling of the candidate matches."""
     folder = _folder(collected)
     held, free = _pair(folder)
     link = tmp_path / "linked"

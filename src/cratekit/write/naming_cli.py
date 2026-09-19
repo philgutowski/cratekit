@@ -10,15 +10,17 @@ A file the rekordbox collection references is never renamed or retagged here
 pointing at nothing. The verb reads the collection, holds those files back and
 lists them in the plan, and refuses outright when the collection cannot be read.
 
-A row recorded under a volume no prefix rule names refuses the whole verb too
-(R-500). No file on this machine carries that spelling, so the row matches no
-candidate and the file it names would be planned as an ordinary rename. That is
-the same condition the deletion pass refuses on, for the same reason: a row that
-did not answer is a hole in the proof, not a row that references nothing.
+A row recorded under a volume no prefix rule names, whose recorded file is not
+on this machine either, refuses the whole verb too (R-500). Nothing here carries
+that spelling, so the row matches no candidate and the file it names would be
+planned as an ordinary rename. The deletion pass refuses on an unmapped row for
+the same reason: a row that did not answer is a hole in the proof, not a row
+that references nothing.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from cratekit.cli.output import Envelope, digest_of
@@ -187,7 +189,7 @@ def _referenced(recorded: tuple[str, ...], *, cfg: config.Config) -> frozenset[s
     contributes nothing, since no local file can be the one it names, and a
     streaming pseudo-location references no file at all.
 
-    THE DECODE AND THE RESOLVE ARE ``trees.comparable``, the one locate the
+    THE DECODE AND THE RESOLVE ARE ``trees.located``, the one locate the
     membership and routing writers use, so a row is unmapped here exactly when
     it is unmapped there. The KEYING stays this verb's own, because the two ask
     different questions: a writer needs the one row that IS a file and compares
@@ -195,70 +197,81 @@ def _referenced(recorded: tuple[str, ...], *, cfg: config.Config) -> frozenset[s
     toward holding it back, which is what the casefold and the second spelling
     are for. Casefolding the writers' index would manufacture ambiguous rows.
 
-    A ROW UNDER NO RULE REFUSES THE WHOLE VERB (R-500). Its only key is a
-    spelling nothing on this machine carries, so it would match no candidate and
-    the file it names would be renamed out from under it. Holding nothing back
-    for that row is absence read as evidence, and the deletion pass refuses on
-    the same condition. A rule that differs from the recorded volume only in
-    case is no rule, here as in every other consumer of the shared resolver, and
-    the message names the recorded spelling so the difference can be seen.
+    A DARK ROW REFUSES THE WHOLE VERB (R-500). Dark is two facts together: no
+    rule resolves the row, and the file it records is not on this machine under
+    that spelling. Its only key is then a spelling nothing here carries, so it
+    would match no candidate and the file it names would be renamed out from
+    under it. Holding nothing back for that row is absence read as evidence. A
+    rule that differs from the recorded volume only in case is no rule, here as
+    in every other consumer of the shared resolver.
+
+    AN UNMAPPED ROW WHOSE RECORDED FILE EXISTS HAS ANSWERED. A track imported
+    from a downloads folder, or the demo tracks rekordbox installs, sit outside
+    the library under no rule, and the recorded spelling is the one on disk, so
+    the recorded key already protects the file. Refusing on those would stop the
+    verb on most real libraries over rows that are not in doubt. The existence
+    test fails closed: a path that cannot be inspected reads as absent.
+
+    WHERE THIS IS STRICTER THAN THE DELETION PASS, and it is deliberate. That
+    pass skips a tombstoned row before it asks whether the row resolved. This
+    verb counts one, by its own rule above that a restore brings a tombstone
+    back pointing at whatever it recorded. And two shapes that pass refuses on,
+    a drive letter and a location on another host, are still excused here.
     """
     rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
     keys: set[str] = set()
-    unmapped: list[str] = []
+    dark: list[str] = []
     for value in recorded:
         if not value:
             continue
         try:
-            resolved = trees.comparable(value, root=cfg.library.root, prefix_map=rules)
+            decoded, resolved = trees.located(value, root=cfg.library.root, prefix_map=rules)
         except locations.LocationDecodeError:
             continue
-        keys.add(_key(locations.location_to_path(value)))
+        keys.add(_key(decoded))
         if resolved.path is not None:
             keys.add(_key(resolved.path))
-        elif resolved.resolution is locations.Resolution.UNMAPPED:
-            unmapped.append(value)
-    if unmapped:
-        raise _unmapped_refusal(unmapped)
+        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):
+            dark.append(decoded)
+    if dark:
+        raise _unmapped_refusal(dark)
     return frozenset(keys)
 
 
-def _unmapped_refusal(unmapped: list[str]) -> CratekitError:
-    """The refusal over rows no prefix rule resolves, shaped as deletion's is.
+def _unmapped_refusal(dark: list[str]) -> CratekitError:
+    """The refusal over rows nothing resolves, worded as the deletion pass's is.
 
-    The count leads and the first recorded spelling follows, because the count
-    says how much of the collection is dark and the spelling is what a person
-    compares against their rules. The prefixes are grouped in the detail so
-    ten thousand rows under one old volume name read as one correction.
+    The count leads and the first location follows, because the count says how
+    much of the collection is dark and the location is what a person compares
+    against their rules. It is the DECODED location, since that is the text a
+    rule is matched against, and a percent-encoded spelling copied into a rule
+    would never match. The prefixes are grouped in the detail so ten thousand
+    rows under one old volume name read as one correction.
+
+    ``fix-config-values`` and not ``run-doctor``, which is what the deletion
+    pass says: no doctor check reads the prefix map, so that token would send a
+    caller to a report that comes back clean.
     """
-    count = len(unmapped)
+    count = len(dark)
     rows = "collection row records" if count == 1 else "collection rows record"
-    prefixes = sorted(
-        {
-            prefix
-            for prefix in (
-                locations.leading_prefix(locations.location_to_path(value)) for value in unmapped
-            )
-            if prefix
-        }
-    )
+    prefixes = sorted({prefix for prefix in map(locations.leading_prefix, dark) if prefix})
     return refuse(
         "collection-row-unmapped",
         f"{count} {rows} a location this machine cannot resolve, the first of "
-        f"them {unmapped[0]}, so which file each of them names is not known and "
-        f"a rename could strand any of them; nothing is renamed",
+        f"them {dark[0]}, so which file each of them names is not known and a "
+        f"rename could strand any of them; nothing is renamed",
         steps=(
-            "add a volume prefix rule to library.location_prefix_map that maps "
-            "the recorded volume onto where it is mounted now, spelled exactly "
-            "as recorded, or onto itself for a folder outside the library, then "
-            "run this again",
+            "add a rule to library.location_prefix_map whose from side is the "
+            "recorded volume spelled exactly as it is named here, capitals "
+            "included, and whose to side is where that volume is mounted now, "
+            "then run this again",
         ),
-        remedy=Remedy.RUN_DOCTOR,
+        remedy=Remedy.FIX_CONFIG_VALUES,
         scope=Scope.RUN,
         origin=("write.naming_cli",),
         detail={
             "unmapped": count,
-            "unmapped_rows": unmapped[:20],
+            "unmapped_locations": dark[:20],
             "unmapped_prefixes": prefixes[:20],
         },
     )
