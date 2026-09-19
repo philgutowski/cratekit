@@ -1,0 +1,223 @@
+name = "r259"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_worker_empty_owned"
+description = "The worker hands the source and the increment an empty set again, the defect R-259 names"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+old = '''        owned = sweep.OwnedReleases(cfg, found, library=_job_library(job, cfg))'''
+new = '''        owned = set()'''
+
+[[rows]]
+id = "W2_list_recent_drops_owned"
+description = "LabelSource.list_recent stops passing its owned container to list_for_label, R-137's order"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''                verify=verify,
+                owned=self.owned,
+            )'''
+new = '''                verify=verify,
+            )'''
+
+[[rows]]
+id = "W3_listing_owned_check"
+description = "list_for_label no longer skips an owned confirmed release"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        if identity in owned_ids:
+            continue
+        candidates.append(_candidate(entry, release))'''
+new = '''        candidates.append(_candidate(entry, release))'''
+
+[[rows]]
+id = "W4_owned_before_verify"
+description = "Ownership asked before verification again, so an unconfirmed release has its tracks read"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        if tombstoned(release):
+            suppressed.append(_candidate(entry, release))
+            continue
+'''
+new = '''        if tombstoned(release):
+            suppressed.append(_candidate(entry, release))
+            continue
+        if identity in owned_ids:
+            continue
+'''
+
+[[rows]]
+id = "O1_no_tracks_guard"
+description = "A release the provider lists with no track reads as owned, since all over nothing is True"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        if not rows:
+            return False
+'''
+new = ""
+
+[[rows]]
+id = "O2_unreadable_row"
+description = "A release with a row the reader cannot read counts as owned"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        except match.UnreadableList:
+            return False'''
+new = '''        except match.UnreadableList:
+            return True'''
+
+[[rows]]
+id = "O3_matched_only"
+description = "A track held only in another version counts as owned"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''            is match.MatchState.MATCHED
+            for one in wanted'''
+new = '''            in (match.MatchState.MATCHED, match.MatchState.NEEDS_REVIEW)
+            for one in wanted'''
+
+[[rows]]
+id = "O4_every_track"
+description = "One held track makes the release owned, all becomes any"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        return all(
+            match.resolve_one('''
+new = '''        return any(
+            match.resolve_one('''
+
+[[rows]]
+id = "O5_memo"
+description = "The answer is not kept, so the increment's scope reads every release a second time"
+file = "src/cratekit/label/sweep.py"
+old = '''        if identity not in self._answers:
+            self._answers[identity] = self._holds(identity)
+        return self._answers[identity]'''
+new = '''        return self._holds(identity)'''
+
+[[rows]]
+id = "O6_empty_identity"
+description = "An empty or non string identity is sent to the provider rather than answered not owned"
+file = "src/cratekit/label/sweep.py"
+old = '''        if not isinstance(identity, str) or not identity:
+            return False
+'''
+new = ""
+
+[[rows]]
+id = "O7_gone_is_owned"
+description = "A release the provider no longer has counts as owned"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''            self._failed_in_a_row = 0
+            return False
+        except Exception:'''
+new = '''            self._failed_in_a_row = 0
+            return True
+        except Exception:'''
+
+[[rows]]
+id = "O8_failure_raises"
+description = "A failed track read refuses the label as a lookup failure, the first draft's behaviour"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        except Exception:  # noqa: BLE001 - not owned, and the release is offered
+            self._failed_in_a_row += 1
+            return False'''
+new = '''        except Exception as exc:  # noqa: BLE001 - not owned, and the release is offered
+            raise run.LookupFailure(str(exc)) from exc'''
+
+[[rows]]
+id = "O9_failure_is_owned"
+description = "A failed track read counts as owned, absence read as evidence"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''            self._failed_in_a_row += 1
+            return False'''
+new = '''            self._failed_in_a_row += 1
+            return True'''
+
+[[rows]]
+id = "O10_cratekit_passthrough"
+description = "An adapter refusal in kind is swallowed as a failed read"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        except CratekitError:
+            raise
+        except ReleaseUnresolvable:'''
+new = '''        except ReleaseUnresolvable:'''
+
+[[rows]]
+id = "F1_count_failures"
+description = "Failures are never counted, so an outage is asked of every release"
+file = "src/cratekit/label/sweep.py"
+old = '''            self._failed_in_a_row += 1
+'''
+new = ""
+
+[[rows]]
+id = "F2_threshold_bound"
+description = "The stop fires one failure later, greater than rather than at least"
+file = "src/cratekit/label/sweep.py"
+old = '''        if self._failed_in_a_row >= OUTAGE_AFTER:'''
+new = '''        if self._failed_in_a_row > OUTAGE_AFTER:'''
+
+[[rows]]
+id = "F3_threshold_value"
+description = "Three becomes four"
+file = "src/cratekit/label/sweep.py"
+old = '''OUTAGE_AFTER = 3'''
+new = '''OUTAGE_AFTER = 4'''
+
+[[rows]]
+id = "F4_gone_resets"
+description = "A gone release no longer breaks the run of failures"
+file = "src/cratekit/label/sweep.py"
+old = '''            # THE PROVIDER ANSWERED, so the run of failures is broken.
+            self._failed_in_a_row = 0
+'''
+new = ""
+
+[[rows]]
+id = "F5_read_resets"
+description = "A successful read no longer breaks the run of failures"
+file = "src/cratekit/label/sweep.py"
+old = '''        self._failed_in_a_row = 0
+        if not rows:'''
+new = '''        if not rows:'''
+
+[[rows]]
+id = "L1_job_cache_read"
+description = "The worker never reuses the job's library view, one walk per label"
+file = "src/cratekit/label/cli.py"
+old = '''        held = _JOB_LIBRARY.get(key)'''
+new = '''        held = None'''
+
+[[rows]]
+id = "L2_library_kwarg"
+description = "OwnedReleases ignores the library it is handed and walks its own"
+file = "src/cratekit/label/sweep.py"
+old = '''            if self._library_of is not None:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "L3_cache_clear"
+description = "The cache keeps every job's view rather than only the one being driven"
+file = "src/cratekit/label/cli.py"
+old = '''            _JOB_LIBRARY.clear()
+'''
+new = ""
+
+[[rows]]
+id = "L4_cache_key_job"
+description = "The cache key forgets the job, so a later job in the process reads an earlier job's library"
+file = "src/cratekit/label/cli.py"
+old = '''    key = (str(job.job_id), str(cfg.library.root / cfg.library.music_dir))'''
+new = '''    key = ("", str(cfg.library.root / cfg.library.music_dir))'''
+
+[[rows]]
+id = "S1_scope_owned_sample"
+description = "Existing guard sample: scope.scoped no longer drops owned identities"
+file = "src/cratekit/sync/scope.py"
+old = '''        if item.identity in owned:'''
+new = '''        if False:'''
