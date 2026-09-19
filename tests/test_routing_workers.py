@@ -59,7 +59,11 @@ from cratekit.core.cause import Outcome
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild
 from tests.test_config import valid_data
-from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database
+from tests.test_rb_writer_db import (
+    RECORDED_APP_VERSION,
+    _build_disposable_database,
+    _encrypt_in_place,
+)
 
 # ── synthesized names (D1) ───────────────────────────────────────────────────
 
@@ -133,12 +137,8 @@ def _platform_seams(monkeypatch):
         "read_rekordbox_settings",
         lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
     )
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer,
-        "integrity_ok",
-        lambda target, **kwargs: real_integrity_ok(target, unlock=False),
-    )
+    # The capture check is NOT patched here. It asks the file whether it needs
+    # the key, and the encrypted drives below depend on it asking (R-239).
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
 
 
@@ -271,7 +271,7 @@ def _membership(cfg: config.Config, root_id: str) -> set[str]:
     the engine's own check makes and the only one that cannot be fooled by a
     namesake elsewhere in the library.
     """
-    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
+    handle = rb_writer.open_db(Path(cfg.library.db_path), cfg=cfg)
     try:
         held: set[str] = set()
         for node in rebuild.read_tree(handle, root_id):
@@ -948,3 +948,70 @@ def test_a_gate_answer_this_verb_does_not_recognise_writes_nothing(
         "an answer this verb does not recognise wrote membership, so the gate "
         "admits by omission rather than by decision"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-239: every verb here opens an ENCRYPTED library, which is what a real one is
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def encrypted(acknowledged, native) -> str:
+    """The native library above, encrypted with the key the binding supplies.
+
+    Every other database in this file is plain, and these verbs used to pass
+    ``unlock=False`` to the opener, which a plain file accepts and a real library
+    refuses. Encrypted AFTER the rows are recorded, because recording them goes
+    straight through ``sqlite3``, which cannot read an encrypted file.
+    """
+    path = Path(acknowledged.library.db_path)
+    _encrypt_in_place(path)
+    assert rb_writer.unlock_needed(path)
+    return native
+
+
+def test_a_confirmed_inbox_applies_on_an_encrypted_library(acknowledged, encrypted):
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert applied["data"]["totals"]["applied"] is True
+    assert _membership(acknowledged, encrypted) == {"2"}
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["rebuild", "--actor", "a-person"], ["route", "resort"]],
+    ids=["rebuild", "resort"],
+)
+def test_a_queued_rebuild_and_resort_run_on_an_encrypted_library(
+    acknowledged, encrypted, argv
+):
+    code, queued = _drive(argv)
+    assert code == int(ExitCode.OK), queued
+    job_id = queued["data"]["job_id"]
+
+    code, done = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert [item.state for item in _items(job_id)] == [jobs.ItemState.DONE]
+    assert _membership(acknowledged, encrypted) == {"1"}
+
+
+def test_unplaced_compares_on_an_encrypted_library(acknowledged, encrypted):
+    del acknowledged, encrypted
+    code, envelope = _drive(["route", "unplaced"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["compared"] is True
+    assert {item["content_id"] for item in envelope["data"]["items"]} == {"1", "2"}
+
+
+def test_converge_compares_a_native_tree_on_an_encrypted_library(acknowledged, encrypted):
+    """``converge`` answered "not compared" on every real library, which a person
+    reads as "nothing to see" rather than as "could not look"."""
+    del acknowledged, encrypted
+    from cratekit.cli import converge
+
+    code, envelope = _drive(["converge"])
+    assert code == int(ExitCode.OK), envelope
+    statuses = {
+        check["key"]: check["status"] for check in envelope["data"]["checks"]
+    }
+    assert statuses[f"tree.{TREE_ID}"] != converge.NOT_COMPARED, envelope

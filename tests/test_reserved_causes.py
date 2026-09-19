@@ -5623,7 +5623,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Differenced as SETS by re-deriving this module's own predicate over the
     # working tree and over main's src extracted into a scratch directory. The
     # also-holds-an-integer half stays 19, measured by the same run.
-    assert (len(literal_holders), len(literal_both)) == (96, 19), (
+    # Re-pinned on R-239, 2026-09-18: holders stay 96, and the also-holds-an-
+    # integer half moves 19 to 18. ONE module left it and none joined:
+    # deletion/cli.py held the integers 0 and 16 on main and holds only 0 now,
+    # because its private copy of the encryption probe, which sliced the first
+    # sixteen bytes, was removed in favour of the one in rb_writer. Measured by
+    # walking that file's integer constants on main and on the branch. This is
+    # the narrowing the residual predicted when it said the copy widened the
+    # surface this file watches.
+    assert (len(literal_holders), len(literal_both)) == (96, 18), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

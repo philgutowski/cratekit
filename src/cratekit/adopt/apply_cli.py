@@ -772,7 +772,6 @@ def _write_memberships(
     handle = rb_writer.open_db(
         target,
         require_closed=True,
-        unlock=rb_writer.unlock_needed(target),
         cfg=cfg,
     )
     try:

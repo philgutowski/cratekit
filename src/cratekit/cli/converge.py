@@ -190,7 +190,7 @@ def converge(ctx: "Context") -> Envelope:
         # tree, never an absent one.
         handle = None
         try:
-            handle = rb_writer.open_db(cfg=cfg, unlock=False)
+            handle = rb_writer.open_db(cfg=cfg)
         except CratekitError as exc:
             for tree_id in native:
                 live[tree_id] = (NOT_COMPARED, exc.cause.message)

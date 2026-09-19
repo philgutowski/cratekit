@@ -308,7 +308,9 @@ def test_the_reader_never_opens_the_database_for_writing(cfg, seeded, monkeypatc
 
     assert len(calls) == 1
     assert calls[0]["require_closed"] is False
-    assert calls[0]["unlock"] is rb_writer.unlock_needed(seeded)
+    # The key question is left to the opener, which asks the file (R-239). A
+    # reader that answered it here could answer it wrong for a real library.
+    assert "unlock" not in calls[0]
 
 
 def test_the_database_file_is_byte_identical_after_a_full_read(cfg, seeded):

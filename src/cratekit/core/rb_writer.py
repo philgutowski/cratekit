@@ -288,20 +288,19 @@ def unlock_needed(path: Path | str) -> bool:
     ASKED OF THE BYTES RATHER THAN ASSUMED EITHER WAY, and both constant answers
     are wrong somewhere. ``unlock=True`` against a plain file fails on a database
     a test just built; ``unlock=False`` against a real library fails on every
-    machine adoption is for. ``cratekit.deletion.cli`` already asks it this way
-    and is the only caller that does: ``cratekit.write.routing_cli`` and
-    ``cratekit.cli.converge`` both pass ``unlock=False`` unconditionally.
+    machine. ``open_db`` and ``integrity_ok`` ask it whenever their caller names
+    no answer, and no caller in ``src`` names one (R-239): five verb sites used
+    to pass ``unlock=False`` and failed at the open on every real library, which
+    ``tests/test_rb_writer_db.py`` now refuses by walking the source.
 
     A file that cannot be read at all answers True, which is the conservative
     direction: the open below then fails with the database's own refusal rather
     than with a guess made here.
 
     THE HEADER IS THE ONLY THING READ, and its length comes from the constant
-    rather than from a number typed beside it. ``cratekit.deletion.cli`` reads the
-    first sixteen bytes of the whole file through ``read_bytes``, which pulls a
-    multi-gigabyte database into memory to look at fifteen characters, and spells
-    the bound as a bare integer in a module that also names causes, which widens
-    the surface ``tests/test_reserved_causes.py`` watches.
+    rather than from a number typed beside it. A copy that read the whole file
+    through ``read_bytes`` to look at fifteen characters lived in
+    ``cratekit.deletion.cli`` until R-239 removed it.
     """
     try:
         with Path(path).open("rb") as handle:
@@ -1094,7 +1093,7 @@ def open_db(
     check_app_version: bool = True,
     force_schema: bool = False,
     force_cloud_canary: bool = False,
-    unlock: bool = True,
+    unlock: bool | None = None,
     cfg: config.Config | None = None,
 ) -> Any:
     """Open the rekordbox database behind the full open-side gate.
@@ -1115,9 +1114,12 @@ def open_db(
     open-time refusal, which is why the commit-side check is unconditional and is
     the real backstop.
 
-    ``unlock`` exists for the integration suite: a disposable, unencrypted
-    database opens with it off. It is not a safety escape, because the live
-    database is encrypted and reading it with the key off simply fails.
+    ``unlock`` is ASKED OF THE FILE when a caller names no answer, which is
+    every caller in ``src``: :func:`unlock_needed` reads the header, so a real
+    library opens with the key and a disposable plain database opens without
+    it. An explicit bool exists for the integration suite. It is not a safety
+    escape, because the live database is encrypted and reading it with the key
+    off simply fails.
     """
     target = Path(path) if path is not None else live_db_path(cfg)
 
@@ -1143,6 +1145,9 @@ def open_db(
     assert_binding_version(cfg)
 
     from pyrekordbox import Rekordbox6Database
+
+    if unlock is None:
+        unlock = unlock_needed(target)
 
     try:
         db = Rekordbox6Database(path=str(target), unlock=unlock)
@@ -1232,14 +1237,16 @@ def snapshot_db(
     return copied
 
 
-def integrity_ok(snapshot_database: Path | str, *, unlock: bool = True) -> bool:
+def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = None) -> bool:
     """True when a snapshot passes SQLite's own consistency check.
 
     Run through the same open path the writers use rather than through a bare
     connection, so a snapshot that cannot be opened the way it will be USED fails
     here rather than at the moment somebody needs it. The application pin is
     skipped: a snapshot is a file, and whether an application is installed says
-    nothing about whether the copy is intact.
+    nothing about whether the copy is intact. ``unlock`` is passed through
+    unanswered, so the copy is asked for its key the way the open asks the
+    original.
     """
     from sqlalchemy import text
 
