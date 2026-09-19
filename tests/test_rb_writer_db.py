@@ -439,27 +439,72 @@ def _unlock_arguments(tree) -> list[tuple[int, str]]:
     return found
 
 
+def _forwarded_lines(tree) -> set[int]:
+    """The lines where ``integrity_ok`` passes its own ``unlock`` to ``open_db``.
+
+    Exactly that shape and nowhere else: a call inside the ``integrity_ok``
+    definition whose ``unlock`` keyword is the bare name ``unlock``. A literal
+    answer typed anywhere in ``rb_writer``, including inside ``integrity_ok``,
+    is not a forward and is refused like any other.
+    """
+    import ast
+
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.FunctionDef) and node.name == "integrity_ok"):
+            continue
+        for call in ast.walk(node):
+            if not isinstance(call, ast.Call):
+                continue
+            if any(
+                kw.arg == "unlock" and isinstance(kw.value, ast.Name) and kw.value.id == "unlock"
+                for kw in call.keywords
+            ):
+                lines.add(call.lineno)
+    return lines
+
+
 def test_no_caller_in_src_answers_the_key_question_for_itself():
     """R-239's closing condition as a guard: one function answers, every open asks.
 
     The single exemption is ``integrity_ok`` forwarding its own argument to
     ``open_db`` inside ``rb_writer``, which is the question passed through rather
-    than answered.
+    than answered, and it is matched by shape rather than by file.
     """
     import ast
 
     root = Path(W.__file__).resolve().parents[1]
     problems = []
     scanned = 0
+    forwards = 0
     for source in sorted(root.rglob("*.py")):
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
         scanned += 1
+        forwarded = _forwarded_lines(tree) if source.name == "rb_writer.py" else set()
         for line, name in _unlock_arguments(tree):
-            forwarded = source.name == "rb_writer.py" and name == "open_db"
-            if not forwarded:
-                problems.append(f"{source.relative_to(root)}:{line}: {name}(unlock=...)")
+            if line in forwarded:
+                forwards += 1
+                continue
+            problems.append(f"{source.relative_to(root)}:{line}: {name}(unlock=...)")
     assert scanned > 100, f"scanned {scanned} files; the walk is not reaching src"
+    assert forwards == 1, f"expected integrity_ok's one forward, found {forwards}"
     assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def integrity_ok(snapshot, *, unlock=None):\n    open_db(snapshot, unlock=False)\n",
+        "def other(path, *, unlock=None):\n    open_db(path, unlock=unlock)\n",
+    ],
+    ids=["literal-inside-integrity-ok", "forward-outside-integrity-ok"],
+)
+def test_the_forward_exemption_admits_only_integrity_ok_passing_its_own_argument(source):
+    import ast
+
+    tree = ast.parse(source)
+    assert _unlock_arguments(tree)
+    assert _forwarded_lines(tree) == set()
 
 
 @pytest.mark.parametrize(
