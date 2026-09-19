@@ -22,8 +22,8 @@ it did before. `LabelSource` hands the container to every label's listing, so
 owned is dropped before the per label cap (R-137). `/code-review` found two
 costs, and both were fixed: a library walk per label, and a failed track read
 refusing the whole label. That read now offers the release, and three failures
-in a row stop the asking. 14 new test cases by collected count, 8245 to 8259:
-13 in `tests/test_label_workers.py` section 12 and 1 in
+in a row stop the asking. 13 new test cases by collected count, 8246 to 8259:
+12 in `tests/test_label_workers.py` section 12 and 1 in
 `tests/modules/test_labels.py`. Mutation tables `docs/mutation/r259.md`, 24
 rows with 19 killed, and `r259-b.md`, which re-measured the two user facing
 zeros after the tests they bought and killed both. Read them in
