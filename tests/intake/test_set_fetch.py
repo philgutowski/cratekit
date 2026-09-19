@@ -301,6 +301,31 @@ def test_a_library_that_is_not_there_has_nothing_to_be_inside(tmp_path):
     fetch.assert_outside_library(tmp_path / "state" / "x", tmp_path / "absent-library")
 
 
+def test_a_library_that_is_not_there_is_still_refused_by_name(tmp_path):
+    """An unplugged drive is the ordinary way a library root is absent, and the
+    filesystem layer has nothing to ask then, so the strings alone refuse."""
+    absent = tmp_path / "absent-library"
+    with pytest.raises(fetch.ScratchUnderLibrary):
+        fetch.assert_outside_library(absent / "state" / "mix_scratch" / "abc", absent)
+
+
+def test_a_fetcher_that_answers_with_a_file_that_is_not_there_is_a_failed_fetch(
+    cfg, library, recognised, monkeypatch
+):
+    three_tracks(recognised)
+
+    class Ghost:
+        def fetch(self, url, directory):
+            return directory / "fetched.mp3"
+
+    monkeypatch.setattr(fetch, "fetcher", lambda: Ghost())
+    code, envelope = drive(["intake", "set", URL])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "not a file inside" in envelope["cause"]["message"]
+    assert recognised.requests == []
+    assert nothing_left()
+
+
 def test_a_fetcher_that_lands_outside_its_folder_is_a_failed_fetch(
     cfg, library, recognised, monkeypatch
 ):
@@ -456,6 +481,16 @@ def test_identify_over_a_url_refuses_an_absent_library_before_anything_is_fetche
     assert envelope["cause"]["reason"] == "library-volume-unmounted"
     assert envelope["cause"]["detail"]["source"] == URL
     assert fetcher.asked == []
+
+
+def test_a_fetched_mix_with_no_digest_is_named_by_its_address_and_not_its_scratch_file(tmp_path):
+    """Every fetched mix lands on a file of one name pattern, so a token taken
+    from the scratch path would say nothing about which mix it was."""
+    path = tmp_path / "fetched-00001.mp3"
+    one = intake_cli.Recording(path=path, ref=URL, stem="mix", shown=URL)
+    other = intake_cli.Recording(path=path, ref=URL + "-two", stem="mix", shown=URL)
+    assert intake_cli.tracklist_name(one, "") != intake_cli.tracklist_name(other, "")
+    assert intake_cli.tracklist_name(one, "ab" * 32) == intake_cli.tracklist_name(other, "ab" * 32)
 
 
 @pytest.mark.parametrize(
