@@ -1,0 +1,130 @@
+{
+  "name": "u78-d",
+  "pass_kind": "light",
+  "branch": "relay/123",
+  "head": "c821dfc",
+  "when": "2026-09-19 11:31 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8383,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/missing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/missing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2362b860db919a83",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8383,
+    "baseline_collected": 8383,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A4_cratekit_error_passthrough_again",
+      "description": "A product refusal raised by the catalogue is relabelled unavailable-transient",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "24834a6a7d3eb09a",
+      "subset": [
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_isrc.py::test_a_product_refusal_from_the_catalogue_passes_through_unrelabelled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            except CratekitError:\n                raise\n            except Exception as exc:",
+      "new": "            except Exception as exc:"
+    },
+    {
+      "id": "B2_nothing_written_no_op_again",
+      "description": "Missing tracks with nothing at all written no longer refuse, and read as a job where everything was owned",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b59f54d37997dc1a",
+      "subset": [
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_isrc.py::test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if missing and not listed and not in_file:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B4_left_out_handed_only_again",
+      "description": "A run whose finished jobs only handed tracks on, with jobs skipped, refuses instead of writing",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df0efff501a7f548",
+      "subset": [
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_skip_failed_over_tracks_only_handed_on_writes_them_rather_than_refusing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if left_out and not listed and not unlisted:",
+      "new": "    if left_out and not listed:"
+    }
+  ],
+  "dropped": []
+}

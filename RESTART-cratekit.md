@@ -4,7 +4,53 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U83, issue #128, `relay/128`, 2026-09-19.**
+**Last merged: U78, issue #123, `relay/123`, 2026-09-19.**
+A finished `intake set` job now lists its missing tracks for download, which
+closes R-401. `crate intake missing --job JOB` asks the catalogue, through a new
+eighth `Catalogue` member `tracks_for_isrc(isrc)`, about every missing row that
+carries no provider id, and only when such a row has a well formed ISRC, so a
+job with none spends no login. The code is folded of hyphens and spaces and
+upper cased first, and one question is asked per distinct code. Exactly one
+distinct id in the answer lists the row with that id. No ISRC, a malformed one,
+none filed, several filed (R-356, 2 of 4 rows live), or an answer holding a
+track with no id hand the row on, each with a word in `why` (`none`,
+`malformed`, `unknown`, `several`, `unreadable`) and a sentence in `reason`.
+Handed on rows go to `<name>.unlisted.json` beside the list, a TEXT origin list
+document `match run` reads, each line under a `#` row carrying its reason,
+which the text reader skips. `listdoc` stays the one writer: `write` takes
+`handed_on`, checks all three files before writing any, and `text_line` reads
+every line back through the text reader. A row that would re-read as another
+track or as none (an artist carrying ` - `, a leading ordinal, a leading `#`)
+is not written. It is named on a failing `intake.missing.unwritable` check and
+marked `in_file` false (R-478), and the verb refuses only when nothing at all
+was written. A provider that cannot answer refuses `unavailable-transient` with
+nothing written, and a product refusal from the catalogue passes through
+unrelabelled. **THE TRAP:** tidalapi 0.8.11 raises `InvalidISRC` for every HTTP
+error on that endpoint but 404 and 429, so the adapter treats only a not found
+as an answer and lets `InvalidISRC` climb the ladder. Filed under
+`docs/solutions/integration-issues/`. The outbound `match_track` still reads it
+as no match, driven, R-477. The summary gains `by_isrc`, `unlisted_list`,
+`unlisted_next`, and `isrc`, `why`, `reason` and `in_file` on each
+`unlisted_tracks` entry. A job whose missing rows were all handed on is now OK
+with the text list named, where U69 refused it. `/code-review` drove two
+findings, both fixed: one unwritable row refused the whole verb under a remedy
+that could not work, and a repeat run could refuse over provider order, now
+sorted. The half it cannot fix, a catalogue that really changed, is R-476. 33
+new test cases by collected count, 8350 to 8383: 15 in the new
+`tests/test_intake_missing_isrc.py` over real set jobs, 9 in
+`tests/test_listdoc.py`, 8 in `tests/test_label_tidal_catalogue.py` and 1 in
+`tests/test_intake_missing.py`. Mutation tables `docs/mutation/u78-a.md` to
+`u78-d.md`, 25 rows, 22 killed on the first pass and the three zeros killed
+after a test each, read in `u78-notes.md`. R-401 is closed in place. R-475 (set
+play order, the brief's decision), R-476, R-477, R-478, R-479 and R-480 are
+filed. **R-477 meets the board bar and its issue is owed**, to be filed after
+this merge lands on `main`: an outbound heart reports a track unmatched over a
+lookup that failed. **Owed to an attended sitting:** one real set, identified,
+listed, downloaded and landed, the first sitting `intake set` has had. Battery
+on the recorded tree: BATTERY_LINE
+**Main's highest residual number is R-480.**
+
+**The session before: U83, issue #128, `relay/128`, 2026-09-19.**
 The product has an art engine and no verb calls it yet. New `core/art.py` sits
 beside `core/tags.py` and borrows its `_open` and `_save`, so both writers
 classify containers through one table. Nothing was added to `tags.FIELDS`.
