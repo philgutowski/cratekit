@@ -29,6 +29,15 @@ one ``sync.next`` check naming ``crate intake missing --run RUN_ID``, which
 writes every missing track of the pass as one list, so the pass downloads and
 lands as one batch.
 
+A READ NEEDS NO CONSENT A WRITE DOES (U74). Favourites has two halves. The
+outbound half hearts local favourites on the account and waits on the one
+question. The inbound half lists the account's hearts into the library, and it
+is queued under ``intake.playlist`` with the shared run whatever that question's
+answer, and whether or not the outbound half's own export was found, since an
+abort or a missing export used to drop the read along with the write. It runs
+only when the favourites module is enabled, and never beside an open job that
+is already listing the hearts.
+
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23), and each source's module is imported only when
 the profile enables it.
@@ -110,6 +119,35 @@ Queue = Callable[[Any, "config.Config", str, "list[jobs.Job]"], None]
 
 
 @dataclasses.dataclass
+class _Inbound:
+    """A source's read only half (U74), queued whatever its write half's answer.
+
+    Its own refusal, its own reason and its own jobs, so a refused or declined
+    write half says nothing about it and it says nothing about the write half.
+    """
+
+    handler_key: str
+    #: The second queue callable. None when the half has nothing to queue.
+    queue: Queue | None = None
+    filed: list[jobs.Job] = dataclasses.field(default_factory=list)
+    refused: Cause | None = None
+    not_queued: str | None = None
+    #: How many hearts the listing held, or None when nothing was listed.
+    hearts: int | None = None
+    #: The open jobs already listing the hearts, when that is why none was queued.
+    open_jobs: tuple[str, ...] = ()
+
+    def block(self) -> dict[str, Any]:
+        return {
+            "handler_key": self.handler_key,
+            "hearts": self.hearts,
+            "job_ids": [job.job_id for job in self.filed],
+            "not_queued": self.not_queued,
+            "open_jobs": list(self.open_jobs),
+        }
+
+
+@dataclasses.dataclass
 class _Plan:
     """One enabled source, as far as the pass got with it."""
 
@@ -130,6 +168,13 @@ class _Plan:
     #: The check detail is what the default human output prints for this verb,
     #: so a fact only the json block states is a fact a person never reads.
     note: Callable[[dict[str, Any]], str | None] | None = None
+    #: The source's read only half, when its spec declares one.
+    inbound: _Inbound | None = None
+
+
+def _filed(plan: _Plan) -> list[jobs.Job]:
+    """Every job the source filed, its read only half's included."""
+    return [*plan.filed, *(plan.inbound.filed if plan.inbound is not None else ())]
 
 
 def _plan_labels(spec: sources.SourceSpec, ctx) -> _Plan:
@@ -147,15 +192,94 @@ def _plan_labels(spec: sources.SourceSpec, ctx) -> _Plan:
     return _Plan(spec=spec, queue=queue, warnings=label_cli.queue_warnings())
 
 
+def _hearts_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.Job, ...]:
+    """Every job listing the account's hearts for THIS library, however it was queued.
+
+    ``crate intake playlist favorites`` run by hand carries the same key and the
+    same ``source_id``, and lists the same hearts, so an open one of its jobs is
+    one this pass must not queue beside. The library, because the queue is
+    installation scoped.
+    """
+    from cratekit.intake import cli as intake_cli
+
+    return tuple(
+        job
+        for job in jobs.list_jobs(store)
+        if job.handler_key == handler_key
+        and (job.payload or {}).get("source_id") == intake_cli.FAVORITES_SOURCE_ID
+        and job.library_id == cfg.library.volume_id
+    )
+
+
+def _plan_inbound(spec: sources.SourceSpec, cfg: config.Config) -> _Inbound:
+    """List the account's hearts as ``crate intake playlist favorites`` lists them.
+
+    NEVER RAISES A REFUSAL. A catalogue that cannot be resolved or a listing
+    that cannot be read is recorded against this half, so the write half and the
+    other sources still run. The listing is taken here, at plan time, as the
+    playlists source takes its own, and the queueing waits for the pass.
+    """
+    from cratekit.intake import cli as intake_cli
+    from cratekit.label import catalogue
+    from cratekit.sync import playlists
+
+    handler_key = str(spec.inbound_key)
+    inbound = _Inbound(handler_key=handler_key)
+    try:
+        with jobs.open_store() as store:
+            in_flight = tuple(
+                job.job_id
+                for job in _hearts_jobs(store, cfg, handler_key=handler_key)
+                if job.is_open()
+            )
+        if in_flight:
+            inbound.not_queued, inbound.open_jobs = playlists.Excluded.IN_FLIGHT, in_flight
+            return inbound
+        tracks = intake_cli.list_playlist(catalogue.resolve(cfg), intake_cli.FAVORITES)
+    except CratekitError as exc:
+        inbound.refused, inbound.not_queued = exc.cause, exc.cause.reason
+        return inbound
+    inbound.hearts = len(tracks)
+    if not tracks:
+        inbound.not_queued = playlists.Excluded.EMPTY
+        return inbound
+
+    def queue(store, cfg: config.Config, run_id: str, filed: list[jobs.Job]) -> None:
+        filed.append(
+            intake_cli.queue_playlist(
+                store,
+                cfg,
+                handler_key=handler_key,
+                reference=intake_cli.FAVORITES,
+                tracks=tracks,
+                run_id=run_id,
+                source_id=intake_cli.FAVORITES_SOURCE_ID,
+            )
+        )
+
+    inbound.queue = queue
+    return inbound
+
+
 def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
-    """Resolve the sweep, and leave the queueing to wait on the one question."""
+    """Plan the read only half, resolve the sweep, and leave its queueing to the question."""
     from cratekit.favorites import cli as favorites_cli
     from cratekit.modules.outbound import shell
 
-    exported, resolved = favorites_cli.resolve_sweep(
-        getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
-    )
-    plan = _Plan(spec=spec, warnings=shell.queue_warnings(resolved, noun="favourite"))
+    plan = _Plan(spec=spec)
+    if spec.inbound_key is not None:
+        plan.inbound = _plan_inbound(spec, _load())
+    try:
+        exported, resolved = favorites_cli.resolve_sweep(
+            getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
+        )
+    except CratekitError as exc:
+        # THE WRITE HALF'S OWN PRECONDITION, recorded here rather than raised to
+        # ``_plan``, which would build a fresh plan and drop the read half with
+        # it. A missing export is no reason not to list the hearts.
+        plan.refused, plan.not_queued = exc.cause, exc.cause.reason
+        return plan
+    plan.warnings = shell.queue_warnings(resolved, noun="favourite")
 
     def ask(plans: list[_Plan]) -> None:
         gate = next(g for g in ctx.entry.gates if g.name == CONFIRM)
@@ -319,11 +443,47 @@ def _check(plan: _Plan) -> dict[str, Any]:
     return check
 
 
+def _inbound_check(plan: _Plan, inbound: _Inbound) -> dict[str, Any]:
+    """The read only half's own row, since the default output prints only checks."""
+    from cratekit.sync import playlists
+
+    source_id = plan.spec.source_id
+    check: dict[str, Any] = {
+        "key": f"sync.{source_id}.inbound",
+        "title": f"{source_id} inbound",
+        "status": "ok",
+        "detail": "",
+        "remedy": None,
+    }
+    if inbound.filed:
+        check["detail"] = (
+            "queued as "
+            + ", ".join(f"{job.job_id} under {job.handler_key}" for job in inbound.filed)
+            + f": the account's {inbound.hearts} heart(s), each resolved against the "
+            "library whatever the confirmation's answer"
+        )
+    elif inbound.refused is not None:
+        check["status"] = "fail"
+        check["detail"] = f"the account's hearts were not listed: {inbound.refused.message}"
+        check["remedy"] = str(inbound.refused.remediation.remedy)
+    elif inbound.not_queued == playlists.Excluded.IN_FLIGHT:
+        check["status"] = "info"
+        check["detail"] = (
+            "not queued: the account's hearts are already being listed by "
+            + ", ".join(inbound.open_jobs)
+            + "; that job is resumed rather than a second one queued"
+        )
+    else:
+        check["status"] = "info"
+        check["detail"] = "not queued: the account lists no hearts"
+    return check
+
+
 def _report(plans: list[_Plan], run_id: str) -> dict[str, Any]:
-    queued = [p for p in plans if p.filed]
+    queued = [p for p in plans if _filed(p)]
     summary: dict[str, Any] = {
         "run_id": run_id,
-        "queued": sum(len(p.filed) for p in queued),
+        "queued": sum(len(_filed(p)) for p in queued),
         "sources": [p.spec.source_id for p in queued],
         "jobs": [
             {
@@ -332,7 +492,7 @@ def _report(plans: list[_Plan], run_id: str) -> dict[str, Any]:
                 "handler_key": job.handler_key,
             }
             for p in queued
-            for job in p.filed
+            for job in _filed(p)
         ],
         "not_queued": {
             p.spec.source_id: p.not_queued for p in plans if p.not_queued is not None
@@ -341,9 +501,15 @@ def _report(plans: list[_Plan], run_id: str) -> dict[str, Any]:
     for plan in plans:
         if plan.describe is not None:
             plan.detail = plan.describe(plan.filed)
+        if plan.inbound is not None:
+            plan.detail = {**(plan.detail or {}), "inbound": plan.inbound.block()}
         if plan.detail is not None:
             summary[plan.spec.source_id] = plan.detail
-    checks = [_check(p) for p in plans]
+    checks: list[dict[str, Any]] = []
+    for plan in plans:
+        checks.append(_check(plan))
+        if plan.inbound is not None:
+            checks.append(_inbound_check(plan, plan.inbound))
     step = _next_step(plans, run_id)
     summary["next"] = step["command"] if step is not None else None
     if step is not None:
@@ -361,7 +527,7 @@ def _next_step(plans: list[_Plan], run_id: str) -> dict[str, Any] | None:
     """
     from cratekit.intake import cli as intake_cli
 
-    filed = [job for p in plans for job in p.filed if job.handler_key in intake_cli.INTAKE_KEYS]
+    filed = [job for p in plans for job in _filed(p) if job.handler_key in intake_cli.INTAKE_KEYS]
     if not filed:
         return None
     command = f"crate intake missing --run {run_id}"
@@ -391,23 +557,35 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
         if plan.ask is not None:
             plan.ask(plans)
 
-    ready = [(p, p.queue) for p in plans if p.queue is not None]
+    # THE READ ONLY HALF IS QUEUED BESIDE ITS SOURCE, not after the question,
+    # so a declined or refused write half leaves it queued.
+    ready: list[tuple[_Plan | _Inbound, Queue, list[jobs.Job]]] = []
+    for p in plans:
+        if p.queue is not None:
+            ready.append((p, p.queue, p.filed))
+        if p.inbound is not None and p.inbound.queue is not None:
+            ready.append((p.inbound, p.inbound.queue, p.inbound.filed))
     if ready:
         with jobs.open_store() as store:
-            for plan, queue in ready:
+            for half, queue, filed in ready:
                 # EACH ENQUEUE IS ITS OWN TRANSACTION, so a source that refuses
                 # here leaves the sources before it queued. Recorded against that
                 # source rather than raised, or the refusal would carry no word
                 # of the jobs already filed and the natural recovery, running
                 # the pass again, would queue each of them a second time.
                 try:
-                    queue(store, cfg, run_id, plan.filed)
+                    queue(store, cfg, run_id, filed)
                 except CratekitError as exc:
-                    plan.refused, plan.not_queued = exc.cause, exc.cause.reason
+                    half.refused, half.not_queued = exc.cause, exc.cause.reason
 
     data = _report(plans, run_id)
-    queued_any = any(p.filed for p in plans)
-    refused = [p.refused for p in plans if p.refused is not None]
+    queued_any = any(_filed(p) for p in plans)
+    refused = [
+        cause
+        for p in plans
+        for cause in (p.refused, p.inbound.refused if p.inbound else None)
+        if cause is not None
+    ]
     if not queued_any and refused:
         # NOTHING QUEUED AND A SOURCE REFUSED. Not a no-op: a person who ran a
         # sync and got nothing because of something they can fix is told so
@@ -426,6 +604,15 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
                 {
                     "code": "sync-source-not-queued",
                     "message": f"{plan.spec.source_id}: {plan.refused.message}",
+                }
+            )
+        if plan.inbound is not None and plan.inbound.refused is not None:
+            warnings.append(
+                {
+                    "code": "sync-source-not-queued",
+                    "message": (
+                        f"{plan.spec.source_id} inbound: {plan.inbound.refused.message}"
+                    ),
                 }
             )
     # THE HONEST ZERO. Nothing refused and nothing queued is the slim profile's

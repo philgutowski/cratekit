@@ -1207,3 +1207,348 @@ def test_a_hand_off_to_a_gate_that_compares_no_digest_refuses(installed, monkeyp
     asked.state.decisions[spec.name] = gates.Decision("sync", "a-person", "now", "d1")
     with pytest.raises(CratekitError):
         asked.hand_off(spec, verb="sync.favorites", gate="sync.favorites.confirm")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. The hearts listing, favourites' read only half (U74)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _hearts(*ids: str) -> list[Track]:
+    return [Track(track_id, f"Heart Artist {track_id}", f"Heart {track_id}") for track_id in ids]
+
+
+def bind_hearts(monkeypatch, fake: FakeCatalogue | None = None) -> FakeCatalogue:
+    """An account with three hearts and no playlists of its own, unless given one."""
+    fake = fake if fake is not None else FakeCatalogue(hearts=_hearts("301", "302", "303"))
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    return fake
+
+
+def _hearts_jobs() -> list[jobs.Job]:
+    return [
+        job
+        for job in _playlist_jobs()
+        if job.payload.get("source_id") == intake_cli.FAVORITES_SOURCE_ID
+    ]
+
+
+def _pass(envelope: dict) -> dict:
+    """The pass's report, whether it ended OK or as the refusal that carries it."""
+    if envelope.get("cause"):
+        return envelope["cause"]["detail"]["sources"]
+    return envelope["data"]
+
+
+def _inbound(envelope: dict) -> dict:
+    return _pass(envelope)["summary"]["favorites"]["inbound"]
+
+
+def _inbound_check(envelope: dict) -> dict:
+    (check,) = [c for c in _pass(envelope)["checks"] if c["key"] == "sync.favorites.inbound"]
+    return check
+
+
+def test_only_favourites_declares_a_read_half_and_its_key_is_a_bound_intake_key():
+    """The inbound key is a string at this layer, pinned where the registry is
+    visible. It must be an intake key, or ``intake missing --run`` would not list
+    what it found and the pass would name no next step for it."""
+    declared = {spec.source_id: spec.inbound_key for spec in sources.SPECS if spec.inbound_key}
+    assert declared == {"favorites": INTAKE_PLAYLIST}
+    owner = registry.by_handler_key(INTAKE_PLAYLIST)
+    assert owner.landed and owner.long_running
+    assert INTAKE_PLAYLIST in handlers.HANDLERS
+    assert INTAKE_PLAYLIST in intake_cli.INTAKE_KEYS
+
+
+def test_the_gate_refusal_queues_no_hearts_listing_either(installed, exported, monkeypatch):
+    """PLAN, ASK, QUEUE still holds. The read is queued by the run that answers."""
+    del installed
+    bind_hearts(monkeypatch)
+    code, refused = drive(_verb(exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert _jobs() == []
+
+
+def test_an_abort_still_queues_the_hearts_listing_under_the_shared_run(
+    installed, exported, monkeypatch
+):
+    """The unit's whole point. Declining the write no longer drops the read."""
+    del installed
+    register(LABELS[0])
+    fake = bind_hearts(monkeypatch)
+    run_id, code, passed = _confirmed(exported, option="abort")
+    assert code == int(ExitCode.OK), passed
+    assert passed["outcome"] == "ok"
+
+    assert sorted(job.handler_key for job in _jobs()) == [INTAKE_PLAYLIST, "sync.labels"]
+    (job,) = _hearts_jobs()
+    assert job.payload["run_id"] == run_id
+    assert job.payload[intake_cli.SOURCE] == intake_cli.FAVORITES
+    # EXACTLY WHAT ``crate intake playlist favorites`` QUEUES, read through the
+    # same listing path, so the worker cannot tell the two apart.
+    assert job.payload[intake_cli.TRACKS] == intake_cli.list_playlist(fake, intake_cli.FAVORITES)
+    assert len(_items(job.job_id)) == 3
+
+    summary = passed["data"]["summary"]
+    assert summary["not_queued"]["favorites"] == sync_cli.DECLINED
+    assert _inbound(passed) == {
+        "handler_key": INTAKE_PLAYLIST,
+        "hearts": 3,
+        "job_ids": [job.job_id],
+        "not_queued": None,
+        "open_jobs": [],
+    }
+    assert ("favorites", job.job_id, INTAKE_PLAYLIST) in {
+        (j["source"], j["job_id"], j["handler_key"]) for j in summary["jobs"]
+    }
+    assert summary["queued"] == 2
+    # AN INTAKE JOB, so the pass names the verb that lists what it found missing.
+    assert summary["next"] == f"crate intake missing --run {run_id}"
+    check = _inbound_check(passed)
+    assert check["status"] == "ok" and job.job_id in check["detail"]
+    (outbound,) = [c for c in passed["data"]["checks"] if c["key"] == "sync.favorites"]
+    assert "abort" in outbound["detail"]
+
+
+def test_a_confirmed_pass_queues_both_halves(installed, exported, monkeypatch):
+    del installed
+    bind_hearts(monkeypatch)
+    run_id, code, passed = _confirmed(exported)
+    assert code == int(ExitCode.OK), passed
+    assert sorted(job.handler_key for job in _jobs()) == [INTAKE_PLAYLIST, "sync.favorites"]
+    assert {job.payload["run_id"] for job in _jobs()} == {run_id}
+    assert passed["data"]["summary"]["sources"] == ["favorites"]
+
+
+def test_a_missing_export_still_queues_the_hearts_and_the_pass_is_not_a_refusal(
+    installed, monkeypatch
+):
+    """The write half's own precondition used to refuse the whole source. With
+    the labels registry empty too, the hearts are the only work, and the pass is
+    OK rather than a refusal naming the export."""
+    del installed
+    bind_hearts(monkeypatch)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["outcome"] == "ok"
+    assert len(_hearts_jobs()) == 1
+    assert passed["data"]["summary"]["not_queued"] == {
+        "favorites": "outbound-export-required",
+        "labels": "label-registry-empty",
+        "playlists": sync_cli.NOTHING_NEW,
+    }
+    (outbound,) = [c for c in passed["data"]["checks"] if c["key"] == "sync.favorites"]
+    assert outbound["status"] == "fail"
+
+
+def test_a_slim_pass_lists_no_hearts_and_queues_none(slim, monkeypatch):
+    """The read is the favourites module's, and slim does not switch it on."""
+    del slim
+    fake = FakeCatalogue(
+        hearts=_hearts("301"),
+        playlists={"pl-a": FakePagedPlaylist(_tracks("101"))},
+        account=[_playlist("pl-a", "Warmup")],
+    )
+    bind_hearts(monkeypatch, fake)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert _hearts_jobs() == []
+    assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-a"]
+    assert fake.heart_listings == 0
+    assert "favorites" not in passed["data"]["summary"]
+    assert "sync.favorites.inbound" not in {c["key"] for c in passed["data"]["checks"]}
+
+
+def test_a_catalogue_refusal_is_the_hearts_own_and_the_others_still_run(installed):
+    """No provider session: the hearts are reported not listed, with the
+    catalogue's own remedy, and the labels sweep is queued regardless."""
+    del installed
+    register(LABELS[0])
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert [job.handler_key for job in _jobs()] == ["sync.labels"]
+    block = _inbound(passed)
+    assert block["not_queued"] == "credential-missing"
+    assert block["hearts"] is None and block["job_ids"] == []
+    check = _inbound_check(passed)
+    assert check["status"] == "fail" and check["remedy"]
+    assert any(
+        w["code"] == "sync-source-not-queued" and w["message"].startswith("favorites inbound:")
+        for w in passed["warnings"]
+    )
+
+
+def test_an_unreadable_hearts_listing_is_reported_and_the_playlists_still_queue(
+    installed, monkeypatch
+):
+    del installed
+    register(LABELS[0])
+
+    class NoHearts(FakeCatalogue):
+        def favourite_tracks(self):
+            raise RuntimeError("the favourites listing spent its whole budget")
+
+    bind_hearts(
+        monkeypatch,
+        NoHearts(
+            playlists={"pl-a": FakePagedPlaylist(_tracks("101"))},
+            account=[_playlist("pl-a", "Warmup")],
+        ),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert _hearts_jobs() == []
+    assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-a"]
+    assert "sync.labels" in {job.handler_key for job in _jobs()}
+    assert _inbound(passed)["not_queued"] == "label-playlist-unreadable"
+    assert _inbound_check(passed)["status"] == "fail"
+
+
+def test_nothing_queued_because_every_half_refused_is_still_a_refusal(installed, monkeypatch):
+    """The hearts refusal joins the refusal list after the write half's, so the
+    pass still leads with the export a person can supply."""
+    del installed
+
+    class NoHearts(FakeCatalogue):
+        def favourite_tracks(self):
+            raise RuntimeError("the favourites listing failed")
+
+    bind_hearts(monkeypatch, NoHearts())
+    code, refused = drive(["sync", "all"])
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "outbound-export-required"
+    sources_data = refused["cause"]["detail"]["sources"]
+    assert sources_data["summary"]["favorites"]["inbound"]["not_queued"] == (
+        "label-playlist-unreadable"
+    )
+    assert _jobs() == []
+
+
+def test_an_account_with_no_hearts_queues_nothing_for_them(installed, monkeypatch):
+    del installed
+    register(LABELS[0])
+    bind_hearts(monkeypatch, FakeCatalogue())
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert _hearts_jobs() == []
+    block = _inbound(passed)
+    assert block["hearts"] == 0 and block["not_queued"] == "empty"
+    check = _inbound_check(passed)
+    assert check["status"] == "info" and "no hearts" in check["detail"]
+
+
+def test_an_open_hearts_job_is_not_queued_twice(installed, monkeypatch):
+    del installed
+    fake = bind_hearts(monkeypatch)
+    code, first = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), first
+    (job,) = _hearts_jobs()
+
+    # NOTHING NEW AND TWO SOURCES REFUSED, so the second pass is the refusal that
+    # names the export, carrying the whole pass. Not an OK over an open job.
+    code, again = drive(["sync", "all"])
+    assert code != int(ExitCode.OK), again
+    assert again["cause"]["reason"] == "outbound-export-required"
+    assert _hearts_jobs() == [job], "an open hearts job was queued a second time"
+    block = _inbound(again)
+    assert block["not_queued"] == "in-flight"
+    assert block["open_jobs"] == [job.job_id]
+    assert fake.heart_listings == 1, "the hearts were listed again beside an open job"
+    check = _inbound_check(again)
+    assert check["status"] == "info" and job.job_id in check["detail"]
+
+
+def test_a_hearts_job_queued_by_hand_is_not_queued_beside(installed, monkeypatch):
+    """``crate intake playlist favorites`` lists the same hearts under the same key."""
+    del installed
+    bind_hearts(monkeypatch)
+    code, by_hand = drive(["intake", "playlist", "favorites"])
+    assert code == int(ExitCode.OK), by_hand
+    (job,) = _hearts_jobs()
+    code, passed = drive(["sync", "all"])
+    assert code != int(ExitCode.OK), passed
+    assert _hearts_jobs() == [job]
+    assert _inbound(passed)["open_jobs"] == [job.job_id]
+
+
+def test_a_finished_hearts_job_does_not_hold_the_next_pass(installed, monkeypatch):
+    """No cursor: a heart acquired since resolves owned, so the next pass lists again."""
+    del installed
+    bind_hearts(monkeypatch)
+    drive(["sync", "all"])
+    (job,) = _hearts_jobs()
+    with jobs.open_store() as store:
+        jobs.transition(store, job.job_id, jobs.JobState.FAILED)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert len(_hearts_jobs()) == 2
+    assert _inbound(passed)["not_queued"] is None
+
+
+def test_another_librarys_open_hearts_job_does_not_hold_this_one(installed, monkeypatch):
+    import dataclasses
+
+    cfg = installed
+    bind_hearts(monkeypatch)
+    elsewhere = dataclasses.replace(
+        cfg, library=dataclasses.replace(cfg.library, volume_id="0000-0000")
+    )
+    with jobs.open_store() as store:
+        intake_cli.queue_playlist(
+            store,
+            elsewhere,
+            handler_key=INTAKE_PLAYLIST,
+            reference=intake_cli.FAVORITES,
+            tracks={"301": {"title": "Heart 301"}},
+            source_id=intake_cli.FAVORITES_SOURCE_ID,
+        )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert len(_hearts_jobs()) == 2
+    assert _inbound(passed)["open_jobs"] == []
+
+
+def test_an_open_playlists_job_does_not_hold_the_hearts(installed, monkeypatch):
+    """Same key, another source: only a hearts job is the same work."""
+    del installed
+    bind_hearts(
+        monkeypatch,
+        FakeCatalogue(
+            hearts=_hearts("301"),
+            playlists={"pl-a": FakePagedPlaylist(_tracks("101"))},
+            account=[_playlist("pl-a", "Warmup")],
+        ),
+    )
+    drive(["sync", "all"])
+    assert len(_hearts_jobs()) == 1
+    (hearts_job,) = _hearts_jobs()
+    with jobs.open_store() as store:
+        jobs.transition(store, hearts_job.job_id, jobs.JobState.FAILED)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert len(_hearts_jobs()) == 2
+
+
+def test_a_hearts_queue_refusal_is_recorded_against_the_hearts_alone(
+    installed, monkeypatch
+):
+    del installed
+    from cratekit.core.cause import refuse
+
+    register(LABELS[0])
+    bind_hearts(monkeypatch)
+    real = intake_cli.queue_playlist
+
+    def refusing(store, cfg, **kwargs):
+        if kwargs.get("source_id") == intake_cli.FAVORITES_SOURCE_ID:
+            raise refuse("internal-error", "the queue refused the hearts")
+        return real(store, cfg, **kwargs)
+
+    monkeypatch.setattr(intake_cli, "queue_playlist", refusing)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert [job.handler_key for job in _jobs()] == ["sync.labels"]
+    assert _inbound(passed)["not_queued"] == "internal-error"
+    assert passed["data"]["summary"]["not_queued"]["favorites"] == "outbound-export-required"
+    assert _inbound_check(passed)["status"] == "fail"
