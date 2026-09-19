@@ -1785,6 +1785,42 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── The deferred mark (U82) ─────────────────────────────────────────────
+    #
+    # Appended rather than beside its sync siblings, for the reason the
+    # deferred routing block above gives.
+    Entry(
+        name="sync.mark",
+        summary="prefix the account playlists a landed sync pass finished",
+        module="cratekit.sync.mark_cli",
+        builder="build_mark",
+        handler_key="sync.mark",
+        feature_rows=(3, 25),
+        source_scripts=("dj-sync",),
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account. The only write is ``rename_playlist``, a
+        #: retitle keyed by identifier that changes no membership. The cursor
+        #: is READ and never written here, no file is written and no database
+        #: is opened. ``destructive`` because a retitle lands on a playlist the
+        #: product did not make and nothing here puts the old title back.
+        writes=frozenset({"remote"}),
+        destructive=True,
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="sync.mark.confirm",
+                options=("apply", "abort"),
+                prompt="Rename these playlists on the streaming account?",
+                # EXPLICIT, as the other question about a write to the account
+                # is. A retitle of a playlist the product did not make is
+                # answered by a separate recorded act, never by one more flag
+                # on the run that found the question (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

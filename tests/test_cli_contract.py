@@ -1517,6 +1517,20 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # U72. A folder under the CONFIGURED library that holds no audio, so
         # the verb refuses from the vocabulary before its gate is reached.
         "intake.land": [str(library / "Music"), "--export", str(library / "no-such.xml")],
+        # U82. A real export document under the CONFIGURED library, named as an
+        # intake file of a pass this fixture never ran. No playlist job spells
+        # that name, so the plan is empty, the explicit gate is still asked,
+        # and the verb ends NO_OP without reading a manifest, listing the
+        # account or asking for a credential this fixture does not have. The
+        # marking path is driven in tests/test_sync_mark.py.
+        "sync.mark": [
+            "--xml",
+            str(
+                outbound_fakes.write_export(library / "landed").rename(
+                    library / "landed" / "no-such-pass_synced_inboxed.xml"
+                )
+            ),
+        ],
         "tag.folder": [str(library / "Music")],
         # U40. Same convention as tag.folder: a folder under the CONFIGURED
         # library. It is empty here, so the selection is empty and the confirm

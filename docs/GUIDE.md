@@ -238,6 +238,23 @@ label's folder is added to, never doubled, so landing the rest of a label later
 is safe. An export holding the same label folder twice is refused before anything
 moves: merge the two in rekordbox and export again.
 
+Once a sync pass has landed, `crate sync mark` tells the streaming account which
+playlists it finished, by putting `DOWNLOADED ` in front of their names:
+
+```bash
+crate sync mark --xml /path/to/library/RUN_synced_inboxed.xml
+```
+
+Give it the importable file `intake land` wrote for the pass. It reads the
+pass's manifest from download staging, or the one you name with `--manifest`,
+and plans a rename only for a playlist whose every listed track is now in your
+library. A playlist with a track still missing is left alone and the track is
+named. Nothing is renamed until you answer the gate, a playlist whose name
+changed since the plan is skipped, and a playlist already carrying the prefix is
+never prefixed twice. If a rename fails part way, the run names the playlists it
+had already renamed, and running it again picks up the rest. A rename is a
+change to your account that this tool does not undo.
+
 `name apply`, `intake land` and `route inbox` each build a plan and stop at a
 gate before they write. Run once to read the plan, then answer the gate. See
 "Answering a gate". A plan is bound to the folder as it was, so if a file lands
@@ -438,6 +455,7 @@ the same gate with nothing recorded and refuses again. Gates you will meet:
 | `tag.retag.confirm` | apply | `tag retag` |
 | `sync.favorites.confirm` | sync | `sync favorites` |
 | `sync.all.favorites.confirm` | sync | `sync all` |
+| `sync.mark.confirm` | apply | `sync mark` |
 | `export.playlist.confirm` | export | `export playlist` |
 | `delete.review.confirm` | trash | `delete review` |
 | `adopt.apply.approve` | approve | `adopt apply` |

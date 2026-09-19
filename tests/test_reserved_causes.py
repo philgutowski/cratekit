@@ -5279,7 +5279,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # label-row-needs-review, the batch holds another version of it; and
     # label-tree-unwritten, the disk refused the label's folder after the moves.
     # Every refusal the landing raises reuses a slug the table already reserves.
-    assert (len(literals), len(literals - set(causes))) == (431, 272), (
+    # Re-pinned on U82, 2026-09-19: 431 to 440 distinct, 272 to 281 non-keys.
+    # NINE literals joined and NOTHING left, differenced by running this file's
+    # own collector over an archive of `main`'s `src` and over the branch. None
+    # is a cause, and all nine are `sync mark`'s. sync-mark is the plan KIND its
+    # digest is taken under. already-marked, not-listed, job-unfinished and
+    # rows-outstanding are the four REASONS a playlist of the pass is left out
+    # of the plan, and changed-since-plan is the one a planned playlist is
+    # skipped for when the engine's recheck fails. sync-mark-no-pass,
+    # sync-mark-unlisted-uncounted and sync-mark-changed-since-plan are WARNING
+    # codes. Every refusal the verb raises reuses sync-marks-blocked, or passes
+    # on the reason the account's own failure carried.
+    assert (len(literals), len(literals - set(causes))) == (440, 281), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
