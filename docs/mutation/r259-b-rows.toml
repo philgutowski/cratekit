@@ -1,0 +1,20 @@
+name = "r259-b"
+pass_kind = "light"
+
+[[rows]]
+id = "O2_unreadable_row"
+description = "A release with a row the reader cannot read counts as owned"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''        except match.UnreadableList:
+            return False'''
+new = '''        except match.UnreadableList:
+            return True'''
+
+[[rows]]
+id = "F5_read_resets"
+description = "A successful read no longer breaks the run of failures"
+file = "src/cratekit/label/sweep.py"
+old = '''        self._failed_in_a_row = 0
+        if not rows:'''
+new = '''        if not rows:'''
