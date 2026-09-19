@@ -456,11 +456,16 @@ def accepted_rows(
         if provider_routed(items, one):
             continue
         said = fallback.settled(items, one)
-        if said is None or said.state != fallback.ACCEPTED or not said.url:
+        # ONE CHECK, THE STATE. ``settled`` names an upload only on an accepted
+        # answer, so a second check for the URL could never be the one that
+        # decided, and u81-b measured it covering this one to a zero. An
+        # accepted answer with no upload would reach the worker as an empty
+        # address and be refused there, never downloaded.
+        if said is None or said.state != fallback.ACCEPTED:
             continue
         rows.setdefault(
             str(said.item_id),
-            {"artist": one.artist, "title": one.listed, "url": said.url},
+            {"artist": one.artist, "title": one.listed, "url": str(said.url or "")},
         )
     return rows
 
