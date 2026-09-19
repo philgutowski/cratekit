@@ -5230,7 +5230,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 2026-09-18: 419 to 420 distinct, non-keys UNCHANGED at 263. The one that
     # joined is vocal-calibration-unreadable, a KEY, named at the population
     # assertion above. Nothing left.
-    assert (len(literals), len(literals - set(causes))) == (420, 263), (
+    # Re-pinned on the residual finding "Neither new worker derives the vocal
+    # dimension, and no surface says so", 2026-09-19: 420 to 421 distinct, 263
+    # to 264 non-keys.
+    # ONE literal joined and NOTHING left, differenced over the branch's diff of
+    # `src` against `main`, which removes no kebab literal. It is not a cause:
+    # vocal-dimension-not-compared, the WARNING code the inbox apply and the
+    # rebuild and resort resumes carry when the declared vocal sub-playlist was
+    # not derived. Nothing refuses with it.
+    assert (len(literals), len(literals - set(causes))) == (421, 264), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
