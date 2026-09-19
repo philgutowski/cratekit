@@ -1177,6 +1177,33 @@ def test_a_calibration_the_account_cannot_read_refuses_and_is_not_replaced(cfg):
     assert metadata_cli.load_vocal_threshold(cfg) == 9.0
 
 
+def test_a_fit_over_a_cut_it_cannot_open_reports_the_energy_it_wrote(
+    cfg, folder, silence, monkeypatch
+):
+    """The energy half is written before the vocal half reads the old cut, so
+    the vocal half fails in its check and the verb does not refuse over it."""
+    names = [f"t{i:02d}" for i in range(12)]
+    for index, name in enumerate(names):
+        place(folder, silence, name, voxlevel=2 if index < 8 else 40)
+    bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
+    path = analysis_cli.vocal_calibration_path(cfg)
+    config._mkdir_private(path.parent)
+    path.write_text('{"threshold": 9.0, "method": "hand"}', encoding="utf-8")
+    path.chmod(0)
+    try:
+        code, envelope = drive(["analyze", "calibrate", str(folder)])
+    finally:
+        path.chmod(0o600)
+    assert code == int(ExitCode.OK), envelope
+    checks = {check["key"]: check for check in envelope["data"]["checks"]}
+    assert checks["calibrate.energy"]["status"] == "ok"
+    assert energy.load_calibration(cfg) is not None
+    assert checks["calibrate.vocals"]["status"] == "failed"
+    assert "no cut was written" in checks["calibrate.vocals"]["detail"]
+    assert checks["calibrate.vocals"]["remedy"] is not None
+    assert metadata_cli.load_vocal_threshold(cfg) == 9.0
+
+
 def test_a_hand_cut_refuses_with_the_library_away(cfg):
     shutil.rmtree(cfg.library.root)
     code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])

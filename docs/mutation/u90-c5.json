@@ -1,0 +1,70 @@
+{
+  "name": "u90-c5",
+  "pass_kind": "light",
+  "branch": "relay/135",
+  "head": "a90b7d7",
+  "when": "2026-09-19 05:28 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8016,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/metadata_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/metadata_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "495273adaaced595",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8016,
+    "baseline_collected": 8016,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C5_record_threshold_unconverted",
+      "description": "The one reader returns the stored threshold as written rather than the checked float",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a6b3a97880c7eb1a",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 119,
+      "baseline_collected": 119,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return {**record, \"threshold\": threshold}",
+      "new": "    return dict(record)"
+    }
+  ],
+  "dropped": []
+}

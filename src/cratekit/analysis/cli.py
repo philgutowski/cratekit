@@ -861,7 +861,20 @@ def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> di
             f"holding both instrumental and vocal tracks is what a cut needs",
             Remedy.FIX_COMMAND_LINE,
         )
-    _, before = _previous_vocal_cut(cfg)
+    try:
+        _, before = _previous_vocal_cut(cfg)
+    except CratekitError as exc:
+        # The energy half is already written by now, so a refusal raised from
+        # here would report the whole verb as failed over a write that
+        # happened. The vocal half fails in its own check instead (U90, driven).
+        return _check(
+            "calibrate.vocals",
+            "vocal cut",
+            "failed",
+            f"the vocal cut on record could not be opened ({exc.cause.message}), "
+            f"so no cut was written over it",
+            exc.cause.remediation.remedy,
+        )
     target = _write_vocal_calibration(
         cfg, threshold, method="otsu", note=f"fitted over {folder}", n_tracks=len(scores)
     )
