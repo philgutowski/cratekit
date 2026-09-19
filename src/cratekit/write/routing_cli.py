@@ -526,15 +526,29 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             warnings=warnings,
         )
     destination, report = apply_export(cfg, export, content, plan)
+    # ONE CODE FOR EVERY SKIPPED WRITE, because the writer reports a missing
+    # tree, a missing genre folder and a missing sub as sentences and the
+    # sentence already names which. A code naming only the sub would call an
+    # export with no routing tree at all a missing playlist.
     warnings = [
         *warnings,
-        *({"code": "route-sub-absent", "message": text} for text in report.warnings),
+        *({"code": "route-write-skipped", "message": text} for text in report.warnings),
     ]
+    # "NOTHING TO ROUTE" ONLY WHEN NO WRITE WAS REFUSED. It is the answer the
+    # pending action names as proof an import landed, so a run whose every write
+    # was skipped must not give it: that is a file nobody could route into, not
+    # a library already filed.
+    if destination is not None:
+        reason = None
+    elif report.warnings:
+        reason = "route-blocked"
+    else:
+        reason = "nothing-to-route"
     data = _plan(
         items,
         kind="inbox-export",
         applied=destination is not None,
-        reason=None if destination is not None else "nothing-to-route",
+        reason=reason,
         inserted=report.inserted,
         created=list(report.created),
         output=None if destination is None else str(destination),

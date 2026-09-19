@@ -1286,6 +1286,24 @@ def test_an_export_intake_key_with_no_collection_row_is_a_warning(configured, ta
     assert "track-row-absent" in [warning["code"] for warning in envelope["warnings"]]
 
 
+def test_an_export_with_no_routing_tree_is_blocked_not_already_filed(
+    configured, tagged, tmp_path
+):
+    """Every write skipped is not "nothing to route", which is the answer the
+    pending action names as proof that an import landed."""
+    export = _write_export(configured, tmp_path / "exports")
+    display = taxonomy.default_taxonomy().tree.display
+    export.write_bytes(export.read_bytes().replace(f'Name="{display}"'.encode(), b'Name="Other"'))
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.NO_OP)
+    assert envelope["data"]["totals"]["inserted"] == 0
+    assert envelope["data"]["totals"]["reason"] == "route-blocked"
+    skipped = [w for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
+    assert skipped and all(display in w["message"] for w in skipped), envelope["warnings"]
+    assert not _routed(export).exists()
+
+
 def test_a_declined_export_route_writes_nothing(configured, tagged, tmp_path):
     export = _write_export(configured, tmp_path / "exports")
     code, envelope = _drive(
