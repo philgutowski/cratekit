@@ -2169,3 +2169,52 @@ def test_a_refusal_the_track_read_raises_in_kind_keeps_its_own_reason(
 
     assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
+
+
+def test_a_release_with_a_row_the_reader_cannot_read_is_offered(installed, monkeypatch):
+    """A row naming no artist is a track nobody can look for, so it is not held.
+
+    Every row the reader CAN read is in the library here, so the offer can come
+    only from the unreadable one.
+    """
+    register(LABELS[0])
+    hold(
+        installed,
+        "Aurora Bloom - Sun Path.flac",
+        "Nova Reef - Tide.flac",
+        "Mira Vale - Glass Hour.flac",
+    )
+    releases = {
+        **TRACKS,
+        "hf-2": ([Row("21", "Mira Vale", "Glass Hour"), Row("22", "", "Untitled")], 2025),
+    }
+    bind(monkeypatch, tracked(releases=releases))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert offers(installed) == {"hf-2": SLUGS[0]}
+
+
+def test_a_track_read_that_succeeds_breaks_the_run_of_failed_reads(
+    installed, monkeypatch
+):
+    """An answer resets the count, so failures that are not in a row never stop it."""
+
+    class Intermittent(FakeCatalogue):
+        def release_tracks(self, release_id: str):
+            self.releases_asked_for.append(release_id)
+            if release_id in {"hf-3", "hf-6"}:
+                return (Row(release_id, "Lumen Drift", release_id),), 2026
+            raise RuntimeError("the provider answered 503 after the retry ladder")
+
+    register(LABELS[0])
+    many = [FakeRelease(f"hf-{n}") for n in range(1, 8)]
+    fake = bind(monkeypatch, Intermittent(artists={SLUGS[0]: FakePagedArtist(many)}))
+    job_id = queued_job(["sync", "labels"])
+
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    assert len(fake.releases_asked_for) == 7, fake.releases_asked_for
