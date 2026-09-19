@@ -194,8 +194,16 @@ def resume(
     *,
     digest: Callable[[str, str, list[str]], str],
     summary: Callable[[config.Config, str], Mapping[str, Sequence[str]]],
+    standing: tuple[dict[str, str], ...] = (),
 ):
     """Answer the gate from the frozen payload, then drive the job's items.
+
+    ``standing`` IS WHAT IS TRUE OF EVERY PASS OF THE CALLING VERB, as against
+    the warnings a run produces. ``sync.favorites`` carries one (R-424): the
+    sweep writes nothing in the library, and the default renderer prints a
+    verb's warnings and nothing of its payload, so a standing sentence is the
+    only way that fact reaches a person who did not ask for json. A verb with
+    nothing standing to say passes nothing and reports exactly what it did.
 
     THIS BRANCH READS NOTHING FROM THE EXPORT DOCUMENT. The job's items are
     already in the queue and its identity is already frozen, so re-deriving here
@@ -263,7 +271,11 @@ def resume(
         if not job.is_open() and job.cause is not None:
             raise CratekitError(job.cause)
         return ctx.envelope(
-            data=reported(store, job, frozen, summary), warnings=warnings
+            data=reported(store, job, frozen, summary),
+            # THE STANDING ONES FIRST, because they are true whether or not the
+            # run produced any of its own, and a person scanning a long report
+            # should not have to reach the end to learn what the verb cannot do.
+            warnings=(*standing, *warnings),
         )
 
 

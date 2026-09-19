@@ -289,7 +289,16 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
         # it. A missing export is no reason not to list the hearts.
         plan.refused, plan.not_queued = exc.cause, exc.cause.reason
         return plan
-    plan.warnings = shell.queue_warnings(resolved, noun="favourite")
+    # THE FAVOURITES VERB'S STANDING WARNING TRAVELS WITH THE COMPOSITION
+    # (R-424). This function builds the plan itself rather than calling
+    # ``favorites_cli.sync_favorites``, so a sentence added to that verb's own
+    # queueing branch would be absent here, which is the pass most people run.
+    # ``_envelope`` below extends only the plans that filed, so a declined or
+    # refused favourites source says nothing about a write it never reached.
+    plan.warnings = (
+        *shell.queue_warnings(resolved, noun="favourite"),
+        *favorites_cli.local_write_warning(),
+    )
 
     def ask(plans: list[_Plan]) -> None:
         gate = next(g for g in ctx.entry.gates if g.name == CONFIRM)
