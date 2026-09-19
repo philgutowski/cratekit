@@ -4,7 +4,38 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-313, issue #106, `relay/106`, 2026-09-19.**
+**Last merged: U89, issue #134, `relay/134`, 2026-09-19.**
+Calibrate, then file, and tracks land under "with vox". This closes R-276 and
+R-417. `write/metadata_cli.load_vocal_threshold` is the one reader of the vocal
+calibration. It returns None when the file is absent and refuses
+`vocal-calibration-unreadable` when the file is corrupt, the R-342 body moved
+rather than copied. `vocal_cut` keeps the default cut of 12.0 over it for My
+Tags. Every routing caller that passed `vocal_threshold=None` now reads the cut
+through that loader: the inbox apply, the export route, `converge`, both
+workers and both resumes. `rebuild_governed_tree` takes the threshold with no
+default. `governed_not_compared` takes the threshold the resume read, so the
+R-316 warning fires only on an uncalibrated library. A resume reads the cut
+before driving, so a corrupt file refuses before any item is claimed. On the
+export medium a calibrated run calls `trees.add_vox_playlists`, its first
+caller, on the bytes before routing. Each created sub is a plan item with no
+track and a count in `totals.vox_created`, and a created sub counts as a change,
+so a file is written. Every export item gains `vocal`, the vocal sub a track
+also files into. The vocal writer's unreachable tree and per folder refusals are
+`route-write-skipped` warnings. On the database medium the membership writer
+creates the sub where a vocal track lands. `registry.py`'s `dj-vox-backfill`
+claim and `CUT.md`'s `dj-create-vox-playlists` cut stay as written and are now
+true. The unit's `/code-review` found two things, both fixed. The refusal's
+delete step promised the default cut on surfaces where absence files nothing,
+and the comments called the cut frozen when only its path is. The second
+became R-445, not on the board. R-443 is narrowed to its taxonomy half.
+23 new test cases in `tests/test_routing_workers.py`, and two existing ones there
+now assert the threshold. Mutation table `docs/mutation/u89.md`, 21 of 23
+killing; E6 was then killed by a new test, confirmed in `u89-e6.md`; R2 is a
+maintainer zero. **Owed to an attended sitting:** one filing pass on the live
+library after a calibration. Battery on the recorded tree: see the merge.
+**Main's highest residual number is R-445.**
+
+**The session before: R-313, issue #106, `relay/106`, 2026-09-19.**
 `route.unplaced` now declares itself a report. The registry entry has no write
 surface, is not destructive, names no gate, and asks doctor for
 `library.mounted` and `rekordbox.pins`. `rekordbox.closed` and the cloud-sync
