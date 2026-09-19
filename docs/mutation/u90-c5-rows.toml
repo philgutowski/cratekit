@@ -1,0 +1,13 @@
+name = "u90-c5"
+pass_kind = "light"
+
+# C5 of batch C again, after its zero was answered by a test.
+
+[[rows]]
+id = "C5_record_threshold_unconverted"
+description = "The one reader returns the stored threshold as written rather than the checked float"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_metadata_cli.py"]
+old = '''    return {**record, "threshold": threshold}'''
+new = '''    return dict(record)'''

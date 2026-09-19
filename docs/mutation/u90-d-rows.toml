@@ -1,0 +1,17 @@
+name = "u90-d"
+pass_kind = "light"
+
+# The guard the hunt after the review added, measured alone.
+
+[[rows]]
+id = "D1_fit_refuses_over_its_energy_write"
+description = "The fit lets a refusal from the previous cut read escape after the energy calibration is written"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    try:
+        _, before = _previous_vocal_cut(cfg)
+    except CratekitError as exc:'''
+new = '''    _, before = _previous_vocal_cut(cfg)
+    if False:
+        exc = None'''

@@ -1,0 +1,251 @@
+{
+  "name": "u90-a",
+  "pass_kind": "light",
+  "branch": "relay/135",
+  "head": "aa1880f",
+  "when": "2026-09-19 05:14 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8015,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/analysis/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/analysis/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "3cd54f7639498b9e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8015,
+    "baseline_collected": 8015,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_lower_bound_strict",
+      "description": "The range guard's lower bound made strict, so a cut of 0 is refused",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "10bf36cb04320d40",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_the_ends_of_the_score_range_are_cuts[0]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:",
+      "new": "    if not VOCAL_SCORE_MIN < cut <= VOCAL_SCORE_MAX:"
+    },
+    {
+      "id": "A2_upper_bound_strict",
+      "description": "The range guard's upper bound made strict, so a cut of 100 is refused",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "89470695fb4b7ef6",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_the_ends_of_the_score_range_are_cuts[100]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:",
+      "new": "    if not VOCAL_SCORE_MIN <= cut < VOCAL_SCORE_MAX:"
+    },
+    {
+      "id": "A3_range_guard_off",
+      "description": "The whole range guard switched off, so any float is written as the cut",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a402ba5002c1ec7e",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_cut_outside_the_score_range_refuses_and_writes_nothing[-0.5]",
+        "tests/test_analysis_workers.py::test_a_cut_outside_the_score_range_refuses_and_writes_nothing[-1]",
+        "tests/test_analysis_workers.py::test_a_cut_outside_the_score_range_refuses_and_writes_nothing[-inf]",
+        "tests/test_analysis_workers.py::test_a_cut_outside_the_score_range_refuses_and_writes_nothing[100.5]",
+        "tests/test_analysis_workers.py::test_a_cut_outside_the_score_range_refuses_and_writes_nothing[inf]",
+        "tests/test_analysis_workers.py::test_a_cut_outside_the_score_range_refuses_and_writes_nothing[nan]",
+        "tests/test_analysis_workers.py::test_a_refused_cut_leaves_the_cut_on_record_byte_for_byte"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:",
+      "new": "    if False:"
+    },
+    {
+      "id": "A4_max_coefficient",
+      "description": "The score range's top moved from 100 to 1000",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1154a6ec5eec1623",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_cut_outside_the_score_range_refuses_and_writes_nothing[100.5]",
+        "tests/test_analysis_workers.py::test_a_refused_cut_leaves_the_cut_on_record_byte_for_byte"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "VOCAL_SCORE_MAX = 100.0",
+      "new": "VOCAL_SCORE_MAX = 1000.0"
+    },
+    {
+      "id": "A5_min_coefficient",
+      "description": "The score range's bottom moved from 0 to minus 1",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7fa1663fbc3d7dc7",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_cut_outside_the_score_range_refuses_and_writes_nothing[-0.5]",
+        "tests/test_analysis_workers.py::test_a_cut_outside_the_score_range_refuses_and_writes_nothing[-1]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "VOCAL_SCORE_MIN = 0.0",
+      "new": "VOCAL_SCORE_MIN = -1.0"
+    },
+    {
+      "id": "A6_dispatch_truthiness",
+      "description": "The hand path dispatched on truthiness, so a cut of 0 falls through to the fit",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3905f2f8981cecdb",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_the_ends_of_the_score_range_are_cuts[0]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.args.vocal_cut is not None:",
+      "new": "    if ctx.args.vocal_cut:"
+    },
+    {
+      "id": "A7_exclusive_group_gone",
+      "description": "The folder and the flag no longer mutually exclusive in the parser",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7a51cd0eeb6d5110",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_folder_and_a_hand_cut_together_are_refused_by_the_parser"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    chosen = parser.add_mutually_exclusive_group()",
+      "new": "    chosen = parser"
+    }
+  ],
+  "dropped": []
+}

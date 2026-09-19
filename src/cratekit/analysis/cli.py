@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import functools
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -54,6 +55,13 @@ _ORIGIN = ("analysis", "cli")
 STATE_KEY_VOCAL_CALIBRATION = "vocal_calibration"
 #: The fallback cut when a folder has too few scored tracks for Otsu to split.
 DEFAULT_VOCAL_THRESHOLD = 12.0
+#: The presence score's range, the percentage of frames the vocal model hears
+#: singing in (``vocal.presence_score``). A cut is a point on this scale, so a
+#: cut set by hand outside it is refused (U90).
+VOCAL_SCORE_MIN = 0.0
+VOCAL_SCORE_MAX = 100.0
+#: The ``method`` a cut set by hand is recorded under, beside the fit's "otsu".
+VOCAL_METHOD_HAND = "hand"
 #: How far apart the two clusters' means must sit for a cut between them to
 #: mean anything. An all instrumental folder is one cluster, and Otsu will
 #: still split it down the middle and call half of it vocal.
@@ -209,8 +217,21 @@ def build(parser, entry) -> None:
 
 
 def build_calibrate(parser, entry) -> None:
-    parser.add_argument(
+    # One or the other, because a folder fits the vocal cut and the flag sets
+    # it, and both in one call would leave the person guessing which one won.
+    chosen = parser.add_mutually_exclusive_group()
+    chosen.add_argument(
         "folder", nargs="?", default=None, help="folder whose tracks fit the calibration"
+    )
+    chosen.add_argument(
+        "--vocal-cut",
+        type=float,
+        default=None,
+        metavar="CUT",
+        help=(
+            "set the with vox cut by hand, a presence score from 0 to 100, "
+            "instead of fitting one; the energy calibration is left alone"
+        ),
     )
     parser.set_defaults(_handler=analyze_calibrate)
 
@@ -735,7 +756,7 @@ def otsu_threshold(scores: list[float], *, bins: int = 100) -> float:
     import numpy as np
 
     values = np.asarray(scores, dtype=float)
-    hist, edges = np.histogram(values, bins=bins, range=(0.0, 100.0))
+    hist, edges = np.histogram(values, bins=bins, range=(VOCAL_SCORE_MIN, VOCAL_SCORE_MAX))
     total = float(hist.sum())
     if total <= 0:
         return DEFAULT_VOCAL_THRESHOLD
@@ -812,8 +833,6 @@ def _calibrate_energy(cfg: config.Config, folder: Path, paths: list[Path]) -> di
 
 
 def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> dict[str, str | None]:
-    from cratekit.analysis import vocal
-
     scores = [
         float(level)
         for level in (tags.read_vox_from_file(path) for path in paths)
@@ -842,15 +861,22 @@ def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> di
             f"holding both instrumental and vocal tracks is what a cut needs",
             Remedy.FIX_COMMAND_LINE,
         )
-    target = energy.write_json(
-        vocal_calibration_path(cfg),
-        {
-            "threshold": threshold,
-            "gender_margin": vocal.DEFAULT_GENDER_MARGIN,
-            "n_tracks": len(scores),
-            "method": "otsu",
-            "note": f"fitted over {folder}",
-        },
+    try:
+        _, before = _previous_vocal_cut(cfg)
+    except CratekitError as exc:
+        # The energy half is already written by now, so a refusal raised from
+        # here would report the whole verb as failed over a write that
+        # happened. The vocal half fails in its own check instead (U90, driven).
+        return _check(
+            "calibrate.vocals",
+            "vocal cut",
+            "failed",
+            f"the vocal cut on record could not be opened ({exc.cause.message}), "
+            f"so no cut was written over it",
+            exc.cause.remediation.remedy,
+        )
+    target = _write_vocal_calibration(
+        cfg, threshold, method="otsu", note=f"fitted over {folder}", n_tracks=len(scores)
     )
     above = sum(1 for score in scores if score >= threshold)
     return _check(
@@ -858,8 +884,113 @@ def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> di
         "vocal cut",
         "ok",
         f"cut at {threshold:.1f} over {len(scores)} scored tracks, {above} above it, "
-        f"written to {target}; no routing pass in this build reads it yet",
+        f"written to {target}; {before}",
         None,
+    )
+
+
+def _today() -> str:
+    """The UTC date a hand cut is recorded under. A function so a test can pin it."""
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def _write_vocal_calibration(
+    cfg: config.Config, threshold: float, *, method: str, note: str, **extra: Any
+) -> Path:
+    """THE ONE WRITER of the vocal calibration, for the fit and the hand cut alike.
+
+    Atomic through ``energy.write_json``, so a reader meets the old file or the
+    new one and never half of either. Neither path fits a gender margin, so
+    both record the model's default. The reader is
+    ``write.metadata_cli.load_vocal_calibration``, and nothing else reads it.
+    """
+    from cratekit.analysis import vocal
+
+    return energy.write_json(
+        vocal_calibration_path(cfg),
+        {
+            "threshold": threshold,
+            "gender_margin": vocal.DEFAULT_GENDER_MARGIN,
+            "method": method,
+            "note": note,
+            **extra,
+        },
+    )
+
+
+def _previous_vocal_cut(cfg: config.Config) -> tuple[float | None, str]:
+    """The cut a write is about to replace, as a number and a clause for the report.
+
+    Read through the one reader. An unreadable file is reported rather than
+    refused, because writing a new cut over it is the remedy that refusal
+    names. A file the account cannot open still refuses: ``cause.classified``
+    turns a refusal chained from a PermissionError into
+    ``path-permission-denied`` at the raise, so it is not the slug caught here,
+    and a cut is never written over a file nobody could read (driven, U90).
+    """
+    from cratekit.write import metadata_cli
+
+    try:
+        record = metadata_cli.load_vocal_calibration(cfg)
+    except CratekitError as exc:
+        if exc.cause.reason != "vocal-calibration-unreadable":
+            raise
+        return None, "the calibration on record before could not be read, and this replaces it"
+    if record is None:
+        return None, (
+            f"no cut was on record before, so My Tags used the default "
+            f"{DEFAULT_VOCAL_THRESHOLD:g}"
+        )
+    threshold = record["threshold"]
+    if record.get("method") == VOCAL_METHOD_HAND:
+        return threshold, (
+            f"this replaces the cut of {threshold:g} {record.get('note') or 'set by hand'}"
+        )
+    origin = record.get("note") or record.get("method") or "origin not recorded"
+    return threshold, f"this replaces the cut of {threshold:g} ({origin})"
+
+
+def _set_vocal_cut(ctx, cfg: config.Config, cut: float) -> Envelope:
+    """``--vocal-cut``: record a cut a person chose, through the fit's own writer.
+
+    The source system's calibrate verb took a threshold, and the library's
+    real cut, 5.0, was chosen by hand after reading named tracks because the
+    fitted one was too tight (R-374). The energy calibration is not touched.
+    """
+    # NaN fails both comparisons, so it is refused here with the infinities.
+    if not VOCAL_SCORE_MIN <= cut <= VOCAL_SCORE_MAX:
+        raise refuse(
+            "vocal-cut-out-of-range",
+            f"a with vox cut of {cut} is outside the presence score's range, "
+            f"{VOCAL_SCORE_MIN:g} to {VOCAL_SCORE_MAX:g}, so nothing was written",
+            steps=(
+                f"give a cut from {VOCAL_SCORE_MIN:g} to {VOCAL_SCORE_MAX:g}, the "
+                f"percentage of a track the model hears singing in",
+            ),
+            origin=_ORIGIN,
+            detail={"cut": str(cut)},
+        )
+    _require_library_root(cfg)
+    previous, before = _previous_vocal_cut(cfg)
+    today = _today()
+    target = _write_vocal_calibration(
+        cfg, cut, method=VOCAL_METHOD_HAND, note=f"set by hand on {today}", set_on=today
+    )
+    return ctx.envelope(
+        data={
+            "checks": [
+                _check(
+                    "calibrate.vocals",
+                    "vocal cut",
+                    "ok",
+                    f"cut set by hand at {cut:g}, written to {target}; {before}; "
+                    f"the energy calibration was not touched",
+                    None,
+                )
+            ],
+            "summary": {"folder": None, "vocal_cut": cut, "previous_vocal_cut": previous},
+        },
+        outcome=Outcome.OK,
     )
 
 
@@ -896,6 +1027,8 @@ def analyze_calibrate(ctx) -> Envelope:
     cannot support either says so in the check rather than in a warning.
     """
     cfg = _load()
+    if ctx.args.vocal_cut is not None:
+        return _set_vocal_cut(ctx, cfg, ctx.args.vocal_cut)
     if not ctx.args.folder:
         return ctx.envelope(
             data={

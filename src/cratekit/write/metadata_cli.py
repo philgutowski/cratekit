@@ -103,10 +103,22 @@ def vocal_cut(cfg: config.Config) -> float:
 def load_vocal_threshold(cfg: config.Config) -> float | None:
     """The library's fitted with-vox cut, or None when it was never calibrated.
 
+    The threshold of :func:`load_vocal_calibration`, which is the one reader.
+    """
+    record = load_vocal_calibration(cfg)
+    return None if record is None else record["threshold"]
+
+
+def load_vocal_calibration(cfg: config.Config) -> dict[str, Any] | None:
+    """The library's vocal calibration record, or None when there is none.
+
     THE ONE READER OF THE VOCAL CALIBRATION. The tagging verb, the routing
     passes, the rebuild and resort workers and the convergence report all come
     through here, so a corrupt file refuses the same way on every surface and
-    no surface can read it more leniently than another.
+    no surface can read it more leniently than another. The record comes back
+    whole, with ``threshold`` already checked and made a float, because the
+    calibrate verb reports the ``method`` and ``note`` of the cut it replaces
+    (U90) and a second reader for those would be a second opinion on the file.
 
     A MISSING file is None rather than the default cut, and the difference is
     the routing contract (R-276): the default was never fitted to this library,
@@ -128,7 +140,8 @@ def load_vocal_threshold(cfg: config.Config) -> float | None:
     # boolean would read as a cut of 1.0 and an integer too large for a float
     # raises OverflowError, and both are refused for the same reason.
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))["threshold"]
+        record = json.loads(path.read_text(encoding="utf-8"))
+        raw = record["threshold"]
         if isinstance(raw, bool):
             raise TypeError(f"threshold {raw} is a boolean, not a number")
         threshold = float(raw)
@@ -149,7 +162,7 @@ def load_vocal_threshold(cfg: config.Config) -> float | None:
             origin=_ORIGIN,
             detail={"calibration": str(path), "kind": type(exc).__name__},
         ) from exc
-    return threshold
+    return {**record, "threshold": threshold}
 
 
 def _prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:

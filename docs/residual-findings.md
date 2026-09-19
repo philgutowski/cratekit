@@ -16604,6 +16604,28 @@ note naming its origin.
 **Closes when:** `analyze calibrate` accepts a threshold, or a documented
 verb carries a cut over.
 
+**Closed 2026-09-19 on `relay/135`, U90.** `crate analyze calibrate
+--vocal-cut N` sets the cut by hand. It is mutually exclusive with the folder
+in the parser, so fitting and setting cannot share a call. A cut outside the
+presence score's range, 0 to 100, or not a number, refuses
+`vocal-cut-out-of-range` (PRECONDITION) and writes nothing. A valid one goes
+through `_write_vocal_calibration`, the writer the Otsu fit now uses too, as
+`method` hand, `note` "set by hand on DATE" and `set_on` DATE, and the report
+gives the cut it replaced and the new one. The one reader is still
+`write/metadata_cli`: `load_vocal_calibration` returns the checked record and
+`load_vocal_threshold` wraps it, so the fit can say it replaced a cut set by
+hand, with that cut's date. A corrupt calibration is replaced by a hand cut and
+reported as unreadable. A file the account cannot open still refuses the hand
+cut as `path-permission-denied`. Under the fit, that same case fails the vocal
+check instead of the verb, because the energy calibration is written first
+(driven: before the fix the verb exited as refused over an energy write that
+had happened). Driven in `tests/test_analysis_workers.py`. Mutation tables
+`docs/mutation/u90-notes.md`, 22 rows, 21 killing on the first run and the
+zero, C5, killed by a new test; the author's and not independent. The
+source system's 5.0 still sits in the live library's file as the sitting
+wrote it. Nothing here rewrites it, and the next hand cut or fit replaces it
+and names it.
+
 ---
 
 ## R-375. A gated write leaves no session record, and the gate's docstring says the workflow is recorded in the session log
