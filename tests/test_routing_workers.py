@@ -1707,3 +1707,18 @@ def test_a_rating_pass_never_changes_a_tempo_or_bpm(configured, tagged, tmp_path
 
     assert tempo(after) == tempo(before)
     assert tempo(before)["21"][1], "the analysed track has no tempo child, so this proves nothing"
+
+
+def test_two_rows_naming_one_file_are_both_rated(configured, tagged, tmp_path):
+    """rekordbox can hold one file under two ids, and the pass reads the file
+    once; each row it files is a row the rating is owed on."""
+    tracks = RATING_TRACKS | {"26": RATING_TRACKS["21"]}
+    ratings = {tid: "0" for tid in tracks}
+    export = _write_export(
+        configured, tmp_path / "exports", tracks=tracks, ratings=ratings, folders=RATING_FOLDERS
+    )
+    _apply_export(export)
+    written = _routed(export).read_bytes()
+    assert set(_sub_keys(written, "Tech House", "High")) == {"21", "23", "26"}
+    rated = _ratings_of(written)
+    assert (rated["21"], rated["26"]) == (FIVE_STARS, FIVE_STARS)
