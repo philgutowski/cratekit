@@ -4,7 +4,36 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-359, issue #104, `relay/104`, 2026-09-18.**
+**Last merged: U72, issue #117, `relay/117`, 2026-09-18.**
+`crate intake land [FOLDER] --export XML [--name NAME]` lands a staged batch,
+which closes R-413. It is `src/cratekit/intake/land_cli.py`, registry entry
+`intake.land`, appended at the end of the tuple, `plan/1`, writes `xml` and
+`files`, destructive, one gate `intake.land.confirm` with apply and abort and
+`digest_source="plan"`. FOLDER defaults to download staging and NAME to the
+run id with its colons removed, since a colon cannot be in an exFAT folder
+name. The batch goes to `library.root / music_dir / NAME` and the intake file
+to `library.root / NAME_inboxed.xml`, a suffix `pending_intake_xml` walks. The
+first run stops at the gate and moves nothing, and the gate screen shows the
+folder, where the files land, the intake file and every file name. The digest
+covers folder, batch, target, intake file, export and the engine fingerprint.
+An answered run ends PENDING, exit PENDING_HUMAN, with a `rekordbox_import`
+pending action naming the intake file, `verify_verb` `route.pending`, `blocks`
+empty. A file the engine refused is a warning and is marked in the payload.
+**An empty folder is a plan of nothing, not a refusal**, gated and then NO_OP,
+because conformance 3 drives every gated verb to OK on an empty library and
+`name apply` and `route inbox` set the precedent; the engine gained a public
+`landing.listing` for it. GUIDE's acquisition walkthrough now runs tag, name
+with `--root` staging, land, route inbox, route pending, and the gate table has
+the new row. Mutation tables `docs/mutation/u72.md` and `u72-b.md`, 24 rows,
+all killing, read in `u72-notes.md`. R-432 is now reachable through this verb
+and narrowed by the unique default name. R-436 filed, not on the board: before
+any tree is database native, `route pending` answers OK without reading the
+import it is named as verifying. `tests/test_reserved_causes.py` did not move,
+since the new module names no cause. Owed to an attended sitting: one real
+staged batch landed and imported, the same sitting U71 owes. **Main's highest
+residual number is R-436.**
+
+**The session before: R-359, issue #104, `relay/104`, 2026-09-18.**
 Swept means resolved, not acquired, and `crate sync all` now says so on both
 surfaces. Every playlists block in `summary.playlists` carries `swept_means`,
 `resolved-not-acquired`. The `sync.playlists` check, which is what the default

@@ -1,0 +1,109 @@
+name = "u72"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_abort_applies"
+description = "An abort no longer stops the verb: only an empty plan returns NO_OP"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    if option != "apply" or not planned.items:'''
+new = '''    if not planned.items:'''
+
+[[rows]]
+id = "M2_empty_plan_applied"
+description = "An empty plan is handed to the engine after the answer instead of returning NO_OP"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    if option != "apply" or not planned.items:'''
+new = '''    if option != "apply":'''
+
+[[rows]]
+id = "M3_digest_drops_where"
+description = "The digest drops the batch, the target and the intake file, so an answer for one name applies under another"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        "batch": planned.batch,
+        "target": str(target),
+        "destination": str(destination),
+'''
+new = ""
+
+[[rows]]
+id = "M4_digest_drops_files"
+description = "The digest drops the engine's file fingerprint, so a file arriving after the answer is landed"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        "files": planned.digest,
+'''
+new = ""
+
+[[rows]]
+id = "M5_digest_drops_export"
+description = "The digest drops the export path"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        "export": str(export),
+'''
+new = ""
+
+[[rows]]
+id = "M6_digest_drops_folder"
+description = "The digest drops the folder path, so a twin folder with the same names applies"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        "folder": str(planned.folder),
+        "batch": planned.batch,'''
+new = '''        "batch": planned.batch,'''
+
+[[rows]]
+id = "M7_gate_digest_none"
+description = "The gate is asked with no digest, so no answer is ever stale"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        digest=payload["digest"],'''
+new = '''        digest=None,'''
+
+[[rows]]
+id = "M8_registry_digest_source"
+description = "The registry gate declares no digest source"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''                prompt="Move these files into the library and write the intake file?",
+                digest_source="plan",'''
+new = '''                prompt="Move these files into the library and write the intake file?",'''
+
+[[rows]]
+id = "M9_default_name_colons"
+description = "The default batch name keeps the run id's colons"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    return run_id.replace(":", "")'''
+new = '''    return run_id'''
+
+[[rows]]
+id = "M10_default_folder"
+description = "The default folder is the library root, not download staging"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.paths.download_staging)'''
+new = '''    folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.library.root)'''
+
+[[rows]]
+id = "M11_intake_file_in_staging"
+description = "The intake file is written under download staging instead of beside the library"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    return Path(cfg.library.root) / f"{batch}{INTAKE_SUFFIX}"'''
+new = '''    return Path(cfg.paths.download_staging) / f"{batch}{INTAKE_SUFFIX}"'''
+
+[[rows]]
+id = "M12_pending_blocks"
+description = "The pending import blocks route inbox"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        verify_verb=VERIFY_VERB,
+        artifact=str(destination),'''
+new = '''        verify_verb=VERIFY_VERB,
+        blocks=("route.inbox",),
+        artifact=str(destination),'''
