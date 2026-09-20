@@ -2350,6 +2350,27 @@ def test_a_walk_that_left_a_folder_out_is_not_the_library(cfg, silence, monkeypa
     )
 
 
+def test_a_folder_the_walk_could_not_list_is_not_the_library_either(
+    cfg, silence, monkeypatch
+):
+    """The second omission, counted alone: ``os.walk`` swallows it by default."""
+    root, seen = genre_tree(cfg, silence, monkeypatch)
+    shut = root / "Music" / "Locked"
+    shut.mkdir()
+    shutil.copy2(silence, shut / "hidden.flac")
+    shut.chmod(0o000)
+    try:
+        code, refused = drive(["analyze", "calibrate", str(root), "--recursive"])
+    finally:
+        shut.chmod(0o755)
+    assert code == int(ExitCode.OK), refused
+    (check,) = refused["data"]["checks"]
+    assert check["key"] == "calibrate.sample" and check["status"] == "failed"
+    (warning,) = [w for w in refused["warnings"] if w["code"] == "folder-unreadable"]
+    assert "Locked" in warning["message"] and "was read" in warning["message"]
+    assert seen == [] and energy.load_calibration(cfg) is None
+
+
 def test_a_run_where_only_the_vocal_half_wrote_does_not_answer_no_op(
     cfg, silence, monkeypatch
 ):

@@ -1,0 +1,88 @@
+name = "u94-a"
+pass_kind = "light"
+
+# U94, batch A of three: the calibrate.sample check, what counts as the library.
+
+[[rows]]
+id = "S1_floor_dropped"
+description = "analyze_calibrate: never refuse a sample below the fit floor, so --sample 3 measures three tracks and fails after the walk instead of before it"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if sample < MIN_CALIBRATION_TRACKS:
+        return _calibrate_refusal('''
+new = '''    if sample < 0:
+        return _calibrate_refusal('''
+
+[[rows]]
+id = "S2_floor_off_by_one"
+description = "analyze_calibrate: move the floor one below MIN_CALIBRATION_TRACKS, a nearby value, so a sample of nine is accepted"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if sample < MIN_CALIBRATION_TRACKS:
+        return _calibrate_refusal('''
+new = '''    if sample < MIN_CALIBRATION_TRACKS - 1:
+        return _calibrate_refusal('''
+
+[[rows]]
+id = "S3_partial_refusal_dropped"
+description = "analyze_calibrate: never refuse a walk known to be partial before it is made, which is R-409 itself: one genre folder fits and writes"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if partial is not None and not accepted:
+        return _calibrate_refusal(ctx, _refused(partial), summary)
+'''
+new = '''    if False:
+        return _calibrate_refusal(ctx, _refused(partial), summary)
+'''
+
+[[rows]]
+id = "S4_accept_flag_dead"
+description = "analyze_calibrate: read --accept-partial as always false, so the flag the refusal names does nothing"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    accepted = bool(ctx.args.accept_partial)'''
+new = '''    accepted = False'''
+
+[[rows]]
+id = "S5_recursive_not_required"
+description = "_partial_before_walk: treat the root read one level deep as the whole library, so only its loose files are fitted and the check says ok"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if wide and recursive:
+        return None'''
+new = '''    if wide:
+        return None'''
+
+[[rows]]
+id = "S6_music_folder_not_wide"
+description = "_is_library_wide: accept the root alone, so the music folder every module places tracks under is refused as not the library"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    for candidate in (root, root / cfg.library.music_dir):'''
+new = '''    for candidate in (root,):'''
+
+[[rows]]
+id = "S7_samefile_to_spelling"
+description = "_is_library_wide: compare two spellings instead of asking the filesystem, so the root reached through a link is not the root"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''            if os.path.samefile(folder, candidate):'''
+new = '''            if str(folder) == str(candidate):'''
+
+[[rows]]
+id = "S8_after_walk_never_asked"
+description = "analyze_calibrate: never ask what the walk left out, so a root missing a linked or unreadable genre reads ok"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''        partial = _partial_after_walk(scan)'''
+new = '''        partial = None'''
+
+[[dropped]]
+id = "D_heavy_before_standing"
+description = "Move _require_heavy above the standing check, so a missing extra is said before a wrong folder"
+reason = "a reordering of two statements is not an exact single site replacement the driver can hold; test_the_wrong_folder_is_said_before_the_missing_extra asserts it directly"
+
+[[dropped]]
+id = "D_samefile_oserror_branch"
+description = "_is_library_wide: let the OSError from a candidate that cannot be statted propagate"
+reason = "ranked below the cap: a maintainer facing branch, and the music folder absent under a present root is the only producer, which the cfg fixture does not make"
