@@ -1,0 +1,260 @@
+name = "u93-recursive-analysis"
+pass_kind = "light"
+
+# U93. The new guards are the walker in core/discovery.py, the checked join that
+# replaced a path operator, the two warning builders, and the wiring in the two
+# queued verbs. A fixed sample of the walker's pre-existing guards is included
+# because they moved modules in this unit and a move is where a guard goes quiet.
+
+[[rows]]
+id = "D1_dotfile"
+description = "Drop the dotfile clause from _is_audio, which is what lets an AppleDouble sidecar become an item"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''        path.is_file()
+        and not path.name.startswith(".")
+        and path.suffix.lower() in AUDIO_EXTS'''
+new = '''        path.is_file()
+        and path.suffix.lower() in AUDIO_EXTS'''
+
+[[rows]]
+id = "D2_is_file"
+description = "is_file becomes exists, so a directory named track.flac becomes an item"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''        path.is_file()
+        and not path.name.startswith(".")'''
+new = '''        path.exists()
+        and not path.name.startswith(".")'''
+
+[[rows]]
+id = "D3_suffix"
+description = "Drop the audio suffix clause, so cover art and text files become items"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''        and not path.name.startswith(".")
+        and path.suffix.lower() in AUDIO_EXTS
+    )'''
+new = '''        and not path.name.startswith(".")
+    )'''
+
+[[rows]]
+id = "D4_default_mode"
+description = "Drop the one level early return, so every caller walks the tree whether it asked or not"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''    if not recursive:
+        return Scan(
+            items=tuple(sorted(path.name for path in folder.iterdir() if _is_audio(path))),
+            skipped_links=(),
+            unreadable=(),
+        )
+'''
+new = ""
+
+[[rows]]
+id = "D5_dot_directory"
+description = "Stop pruning dot directories, so .Trashes and .Spotlight-V100 are walked"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''            if name.startswith("."):
+                continue
+            if (here / name).is_symlink():'''
+new = '''            if (here / name).is_symlink():'''
+
+[[rows]]
+id = "D6_link_declined"
+description = "Walk a directory symlink and report nothing, which is the loop hazard and the silent skip at once"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''            if (here / name).is_symlink():
+                skipped.append(_relative(folder, here / name))
+                continue
+            kept.append(name)'''
+new = '''            kept.append(name)'''
+
+[[rows]]
+id = "D7_prune_in_place"
+description = "Assign the filtered list to a new name instead of the slice, which leaves os.walk descending everything"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''        dirnames[:] = kept'''
+new = '''        dirnames = kept  # noqa: F841'''
+
+[[rows]]
+id = "D8_followlinks"
+description = "Follow links in the walk itself, which is the symlink loop"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''os.walk(root, followlinks=False, onerror=note)'''
+new = '''os.walk(root, followlinks=True, onerror=note)'''
+
+[[rows]]
+id = "D9_onerror"
+description = "Drop the error callback, so an unreadable folder contributes nothing and is never named"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''os.walk(root, followlinks=False, onerror=note)'''
+new = '''os.walk(root, followlinks=False)'''
+
+[[rows]]
+id = "D10_sorted_items"
+description = "Return the items in walk order rather than sorted"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''        items=tuple(sorted(items)),'''
+new = '''        items=tuple(items),'''
+
+[[rows]]
+id = "D11_absolute_id"
+description = "Drop the absolute clause from item_path, so an absolute id discards the frozen folder"
+file = "src/cratekit/core/discovery.py"
+surface = "maintainer"
+old = '''    if candidate.is_absolute() or ".." in candidate.parts:'''
+new = '''    if ".." in candidate.parts:'''
+
+[[rows]]
+id = "D12_parent_id"
+description = "Drop the dot dot clause from item_path, so an id walks out of the frozen folder"
+file = "src/cratekit/core/discovery.py"
+surface = "maintainer"
+old = '''    if candidate.is_absolute() or ".." in candidate.parts:
+        raise _escapes(folder, item_id)'''
+new = '''    if candidate.is_absolute():
+        raise _escapes(folder, item_id)'''
+
+[[rows]]
+id = "D13_singular"
+description = "Drop the singular branch, so one declined folder reads as 1 folders"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''    return f"{count} folder" if count == 1 else f"{count} folders"'''
+new = '''    return f"{count} folders"'''
+
+[[rows]]
+id = "D14_link_empty"
+description = "link_warning reports over an empty list, so every non recursive call carries a false omission"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''    """What a recursive walk declined to enter, phrased for an envelope."""
+    if not paths:
+        return None
+'''
+new = '''    """What a recursive walk declined to enter, phrased for an envelope."""
+'''
+
+[[rows]]
+id = "D15_unreadable_empty"
+description = "unreadable_warning reports over an empty list, the same false omission on the other code"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''    """What a recursive walk could not list, phrased for an envelope."""
+    if not paths:
+        return None
+'''
+new = '''    """What a recursive walk could not list, phrased for an envelope."""
+'''
+
+[[rows]]
+id = "D16_none_filter"
+description = "walk_warnings stops dropping the Nones, so an envelope carries a null warning"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''    return tuple(one for one in said if one is not None)'''
+new = '''    return said'''
+
+[[rows]]
+id = "D17_and_more"
+description = "Drop the and N more tail, so a warning names five and silently omits the rest"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''    return ", ".join(shown) + (f", and {rest} more" if rest else "")'''
+new = '''    return ", ".join(shown)'''
+
+[[rows]]
+id = "D18_strings_shape"
+description = "Drop the shape check on a frozen payload list, so a string payload is read character by character"
+file = "src/cratekit/core/discovery.py"
+surface = "maintainer"
+old = '''    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(str(one) for one in value)'''
+new = '''    return tuple(str(one) for one in value or ())'''
+
+[[rows]]
+id = "D19_resume_half"
+description = "warnings_of reads only the links, so an unreadable folder is on the queue and never on the resume"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''    return walk_warnings(
+        _strings(held.get(PAYLOAD_SKIPPED_LINKS)),
+        _strings(held.get(PAYLOAD_UNREADABLE)),
+    )'''
+new = '''    return walk_warnings(_strings(held.get(PAYLOAD_SKIPPED_LINKS)))'''
+
+[[rows]]
+id = "D20_frozen_links"
+description = "frozen stops recording the declined links, so the resume has nothing to read back"
+file = "src/cratekit/core/discovery.py"
+surface = "user"
+old = '''        PAYLOAD_SKIPPED_LINKS: list(scan.skipped_links),'''
+new = '''        PAYLOAD_SKIPPED_LINKS: [],'''
+
+[[rows]]
+id = "D21_restamp_flag"
+description = "The restamp queue ignores the flag and always scans one level"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    recursive = bool(getattr(ctx.args, "recursive", False))
+    scan = discovery.scan_audio(folder, recursive=recursive)'''
+new = '''    recursive = bool(getattr(ctx.args, "recursive", False))
+    scan = discovery.scan_audio(folder, recursive=False)'''
+
+[[rows]]
+id = "D22_restamp_resume_warning"
+description = "The restamp resume drops the walk's omissions, leaving them on the queue envelope only"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''        warnings = (*warnings, *discovery.warnings_of(job.payload))
+        if job.handler_key == "analyze.restamp":'''
+new = '''        if job.handler_key == "analyze.restamp":'''
+
+[[rows]]
+id = "D23_vocals_resume_warning"
+description = "The vocals resume drops the walk's omissions, the same hole on the other verb"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+old = '''        warnings = (*warnings, *discovery.warnings_of(job.payload))
+        unscored = _unscored_warning(summary)'''
+new = '''        unscored = _unscored_warning(summary)'''
+
+[[rows]]
+id = "D24_restamp_join"
+description = "The restamp worker joins the item id with the operator instead of the checked rule"
+file = "src/cratekit/analysis/cli.py"
+surface = "maintainer"
+old = '''    return folder, discovery.item_path(folder, str(item.item_id))'''
+new = '''    return folder, folder / item.item_id'''
+
+[[rows]]
+id = "D25_vocals_join"
+description = "The vocals worker joins with the operator, the same reversion one file over"
+file = "src/cratekit/vocals/cli.py"
+surface = "maintainer"
+old = '''    return folder, discovery.item_path(folder, str(item.item_id))'''
+new = '''    return folder, folder / item.item_id'''
+
+[[dropped]]
+id = "D26_as_posix"
+description = "_relative returns str(relative_to(...)) instead of as_posix()"
+reason = "ranked below the cap because it is INERT on this platform: on darwin PurePath.__str__ already joins with '/', so the mutation is a null control wearing a guard's name and would report a zero that means nothing. The separator claim is a statement about a Windows checkout and this suite cannot measure it here."
+
+[[dropped]]
+id = "D27_shown_cap"
+description = "SHOWN drops from 5 to 3"
+reason = "ranked below the cap because the coefficient carries no correctness claim: the count in the sentence is measured by D13's neighbour test and the 'and N more' tail by D17, so the only thing 5 decides is how long a line is."
+
+[[dropped]]
+id = "D28_unreadable_dedupe"
+description = "Drop the set() around unreadable, so one folder erroring twice is named twice"
+reason = "ranked below the cap because os.walk calls onerror at most once per unlistable directory, so the dedupe is belt and braces over a producer that was driven and does not produce the duplicate."

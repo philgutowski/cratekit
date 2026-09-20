@@ -4,7 +4,69 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U95, issue #140, `relay/140`, 2026-09-20.**
+**Last merged: U93, issue #138, `relay/138`, 2026-09-20.**
+`analyze restamp` and `analyze vocals` take `--recursive` and queue a whole tree
+as ONE resumable job, which CLOSES R-376 on its first arm and NARROWS R-409 to
+the calibrate half. One invocation over the library root replaces the 343 leaf
+folder invocations R-376 measured.
+**ONE WALKER, IN A NEW FILE, `core/discovery.py`.** Both verbs carried an
+identical one level `iterdir` scan and both needed the same recursive mode, so
+the copy that would have had to stay in agreement is gone: `vocals/cli.py` has
+no `_audio_in` and a test fails if one grows back.
+**THE ITEM ID BECOMES A POSIX RELATIVE PATH, AND THAT IS FORCED RATHER THAN
+CHOSEN.** `job_items` is keyed `PRIMARY KEY (job_id, item_id)`, `core/jobs.py`,
+so a recursive walk keeping bare filenames fails the insert the first time a
+library holds one track name in two genre folders, which is every library. The
+brief called this a decision; the schema had already made it.
+**THE DEFAULT IS UNCHANGED AND THE MODE IS FROZEN.** One level is still the
+default, byte for byte, so every existing job, every existing resume and
+`analyze calibrate` are untouched. The payload now records `recursive` plus the
+two omission lists beside `folder`.
+**`analyze run` DOES NOT GET THE FLAG.** Its last act on a track is a rename and
+its resume marker is the Camelot head on the NAME. The parser rejects
+`--recursive` on it and a test drives that.
+**THE JOIN IS NOW A GUARD.** `Path(folder) / "/etc/passwd"` is `/etc/passwd`, so
+`discovery.item_path` refuses an absolute or `..` id as a defect instead of
+joining it. Both verbs' `_folder_and_path` route through it.
+**WHAT THE WALK DOES NOT READ IS DECLARED, ON BOTH EXITS.** A directory symlink
+is not entered, `followlinks=False`, which makes a loop impossible rather than
+survivable, and `linked-folder-skipped` names the ones declined. `os.walk`
+swallows an `OSError` without `onerror`, so a folder the process cannot list is
+collected too and carries its own code, `folder-unreadable`, because it has its
+own remedy. Both ride the RESUME as well as the queue, read back off the frozen
+payload and never re-walked, since re-walking would report the tree as it is now
+over a job queued against the tree as it was.
+**The built in code review raised four findings and all four were driven.** The
+swallowed `os.walk` error and the resume half were fixed, the single link case
+read "1 folders" and both messages now inflect, and the symlinked FILE case was
+pinned and filed rather than changed.
+Battery: ruff clean, **9330 passed** and 1 skipped in 63 seconds, 9331
+collected, scan clean. No new slow test, and no test identifier removed by this
+branch, 60 added.
+Mutation table, `docs/mutation/u93-recursive-analysis.md` with its rows file
+beside it: **25 rows, the author's own, 24 killed and one zero, D8, promoted to
+the full suite.** `followlinks=False` kills nothing because the explicit decline
+prunes the link before `os.walk` reaches the question; its composite, D6,
+removing the decline, kills 6, and both counts are in the table. The pair was
+deliberately not mutated together, because that IS the symlink loop and it would
+hang the suite rather than fail it. Three rows logged as dropped. An earlier
+pass had a second zero, D19, which was a real test gap and is now one kill. Null
+control at zero, baseline green at 9331, every restore verified against
+`git show HEAD:`. The driver ran in the FOREGROUND and finished inside the tool
+ceiling, because the subset rule keeps a killing row cheap.
+Filed: **R-588**, a symlinked TRACK is an item and is tagged through the link
+while a symlinked FOLDER is declined, which is what the one level scan always
+did and narrowing it would change the default mode; **R-589**, the covered
+keyword above; **R-590**, the real library pass has still never been run and
+every U93 number is from a fixture; **R-591**, one intermittent in
+`test_session_cli.py` seen once, not reproduced, not this unit's code. **None
+meets the board bar, so none owes an issue.**
+One learning, `docs/solutions/workflow-issues/`, widening a queued verb's item
+from a name to a path is decided by the item table's primary key. `CONCEPTS.md`
+gains "Frozen walk" and the Item entry gains its uniqueness clause.
+**Main's highest residual number is R-591.**
+
+**The session before: U95, issue #140, `relay/140`, 2026-09-20.**
 `restore.plan` and `restore.run` derive every path from the directory the open
 session authorises, which CLOSES R-20, REOPENS R-8 item 3 and NARROWS R-412. A
 `Held` from `bare_metal_session` could be spent on nothing since 2026-08-02,
@@ -63,7 +125,7 @@ inside the ten minute tool ceiling, the longest at 5:09.
 One learning, `docs/solutions/integration-issues/`, a containment check admits
 the directory itself and the operation reaches its parent. `CONCEPTS.md` is
 unchanged.
-**Main's highest residual number is R-587.**
+**Main's highest residual number was R-587 at that merge.**
 
 **The session before: U92, issue #137, `relay/137`, 2026-09-20.**
 A file too large to decode is refused before vocal scoring, which HALF closes

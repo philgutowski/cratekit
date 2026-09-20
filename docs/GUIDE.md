@@ -458,6 +458,7 @@ so that version can be acquired again.
 ```bash
 crate analyze run /path/to/staging
 crate analyze vocals /path/to/one-folder
+crate analyze vocals /path/to/library --recursive
 crate metadata mytags-vocals
 crate metadata mytags-vocals --apply
 ```
@@ -467,9 +468,15 @@ the backup acknowledgment.
 
 Analysis needs the `analysis` extra and vocals needs the `vocals` extra, both in
 the README. Cratekit never writes a beat grid, a tempo element or an average BPM
-field, in any container, and no flag turns that on. The vocal scorer takes one
-folder per call. `analyze calibrate` and `analyze restamp` fit a threshold and
-carry it across the back catalogue.
+field, in any container, and no flag turns that on. `analyze calibrate` and
+`analyze restamp` fit a threshold and carry it across the back catalogue.
+
+`analyze vocals` and `analyze restamp` take `--recursive`, which queues every
+folder under the one you name as a single resumable job, so a back catalogue
+pass is one invocation rather than one per genre folder. A folder that is a
+symbolic link is not walked, and the answer says which ones it left alone.
+`analyze run` has no such flag, because it renames each track as it finishes and
+that resume is keyed to the filename. `analyze calibrate` still reads one folder.
 
 ### Build a set, master a recording
 

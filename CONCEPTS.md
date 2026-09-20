@@ -677,6 +677,31 @@ of a multi item job comes to do the same piece of work.
 A job with no items is not an error. The driver reports it as a success over
 nothing, which is exactly what a verb that queues without items produces.
 
+The identifier is UNIQUE per job, not merely stable: `job_items` is keyed
+`PRIMARY KEY (job_id, item_id)`. That is why widening a verb's items from one
+folder to a tree widens the id from a filename to a relative path, U93. Two
+folders holding one filename are two items and the bare name would fail the
+insert.
+
+*Avoid:* treating an item id as a label a worker happens to read. It is a
+uniqueness constraint first, and the shape it has to take is decided by the item
+table before it is decided by the worker.
+
+### Frozen walk
+The record a queued verb writes, beside the folder it froze, of what its item
+list was a walk OF: whether the mode was recursive, which directory symlinks the
+walk declined to enter, and which folders it could not read. Introduced by U93
+for `analyze restamp --recursive` and `analyze vocals --recursive`.
+
+It exists because a resume never re-walks. Re-walking would measure the tree as
+it is now and report that over a job queued against the tree as it was, so the
+resume phrases the frozen lists instead and the two commands cannot describe one
+omission two ways.
+
+*Avoid:* reading a frozen walk's omission lists as a statement about the tree
+today. They are a statement about the moment the job was queued, which is the
+only moment the item list is a statement about either.
+
 ### Rename intent
 The record a worker writes, before it renames the file its item identifies, of
 the name the file is about to take. It lives in the item's staging directory,

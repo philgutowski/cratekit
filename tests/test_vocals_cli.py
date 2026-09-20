@@ -326,3 +326,200 @@ def test_owed_by_unit_no_longer_lists_25():
     assert 25 not in owed
     assert registry.entry("analyze.vocals").planned_in is None
     assert registry.entry("metadata.mytags-vocals").planned_in is None
+
+
+# ---------------------------------------------------------------------------
+# U93: a recursive vocals pass queues a whole tree as one resumable job
+# ---------------------------------------------------------------------------
+
+
+def nest(folder: Path, silence: Path, relative: str, **fields) -> Path:
+    """``place``, one level down or more. The item id becomes this relative path."""
+    path = folder / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(silence, path)
+    if fields:
+        assert tags.write_tags(path, fields), f"the fixture could not tag {relative}"
+    return path
+
+
+def item_causes(job_id: str) -> dict[str, str]:
+    with jobs.open_store() as store:
+        return {
+            item.item_id: item.cause.reason
+            for item in jobs.items(store, job_id)
+            if item.cause is not None
+        }
+
+
+def test_a_recursive_vocals_pass_queues_every_nested_file_once_in_sorted_order(
+    cfg, folder, silence, monkeypatch
+):
+    """R-376 itself: 343 leaf folders and about 7.7 hours become one invocation."""
+    bind_scoring(monkeypatch)
+    nest(folder, silence, "house/a.flac")
+    nest(folder, silence, "techno/deep/b.flac")
+    place(folder, silence, "top")
+
+    code, queued = drive(["analyze", "vocals", str(folder), "--recursive"])
+    assert code == int(ExitCode.OK), queued
+    job = vocals_job()
+    assert sorted(item_states(job.job_id)) == [
+        "house/a.flac",
+        "techno/deep/b.flac",
+        "top.flac",
+    ]
+    assert job.payload["recursive"] is True
+
+
+def test_a_vocals_pass_without_the_flag_stays_one_level(cfg, folder, silence, monkeypatch):
+    """The default is unchanged, so an existing job and an existing resume are too."""
+    bind_scoring(monkeypatch)
+    place(folder, silence, "top")
+    nest(folder, silence, "house/a.flac")
+
+    code, queued = drive(["analyze", "vocals", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    job = vocals_job()
+    assert sorted(item_states(job.job_id)) == ["top.flac"]
+    assert job.payload["recursive"] is False
+
+
+def test_a_recursive_vocals_pass_scores_the_nested_file_the_item_names(
+    cfg, folder, silence, monkeypatch
+):
+    bind_scoring(monkeypatch)
+    nested = nest(folder, silence, "house/deep/a.flac")
+
+    drive(["analyze", "vocals", str(folder), "--recursive"])
+    job = vocals_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert tags.read_vox_from_file(nested) is not None
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert reports["house/deep/a.flac"]["path"] == str(nested)
+
+
+def test_two_nested_folders_holding_the_same_filename_are_two_vocals_items(
+    cfg, folder, silence, monkeypatch
+):
+    """``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide."""
+    bind_scoring(monkeypatch)
+    nest(folder, silence, "house/track.flac")
+    nest(folder, silence, "techno/track.flac")
+
+    code, queued = drive(["analyze", "vocals", str(folder), "--recursive"])
+    assert code == int(ExitCode.OK), queued
+    assert sorted(item_states(vocals_job().job_id)) == [
+        "house/track.flac",
+        "techno/track.flac",
+    ]
+
+
+def test_a_nested_sidecar_and_a_dot_directory_are_not_vocals_items(
+    cfg, folder, silence, monkeypatch
+):
+    bind_scoring(monkeypatch)
+    nest(folder, silence, "house/track.flac")
+    nest(folder, silence, "house/._track.flac")
+    nest(folder, silence, ".Trashes/deleted.flac")
+
+    drive(["analyze", "vocals", str(folder), "--recursive"])
+    assert sorted(item_states(vocals_job().job_id)) == ["house/track.flac"]
+
+
+def test_a_nested_file_deleted_after_the_vocals_queue_refuses_that_item_only(
+    cfg, folder, silence, monkeypatch
+):
+    bind_scoring(monkeypatch)
+    kept = nest(folder, silence, "house/kept.flac")
+    doomed = nest(folder, silence, "techno/doomed.flac")
+
+    drive(["analyze", "vocals", str(folder), "--recursive"])
+    job = vocals_job()
+    doomed.unlink()
+    code, _ = drive(resume_argv(job.job_id))
+
+    assert code != int(ExitCode.OK), "a failed item is not a clean run"
+    assert item_states(job.job_id) == {
+        "house/kept.flac": jobs.ItemState.DONE,
+        "techno/doomed.flac": jobs.ItemState.FAILED,
+    }
+    assert item_causes(job.job_id) == {"techno/doomed.flac": "source-missing"}
+    assert tags.read_vox_from_file(kept) is not None
+
+
+def test_a_recursive_vocals_pass_says_which_linked_folders_it_did_not_walk(
+    cfg, folder, silence, tmp_path, monkeypatch
+):
+    bind_scoring(monkeypatch)
+    nest(folder, silence, "house/track.flac")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.copy2(silence, elsewhere / "other.flac")
+    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+
+    code, queued = drive(["analyze", "vocals", str(folder), "--recursive"])
+    assert code == int(ExitCode.OK), queued
+    assert sorted(item_states(vocals_job().job_id)) == ["house/track.flac"]
+    assert any(w["code"] == "linked-folder-skipped" for w in queued["warnings"]), queued
+
+
+def test_a_vocals_item_that_would_leave_the_frozen_folder_is_refused(cfg, folder):
+    """``Path("/library") / "/etc/passwd"`` is ``/etc/passwd``, silently."""
+    from cratekit.core.cause import CratekitError
+    from cratekit.vocals import cli as vocals_cli
+
+    class Escaping:
+        item_id = "../../etc/passwd"
+
+    class Job:
+        payload = {"folder": str(folder), "recursive": True}
+
+    with pytest.raises(CratekitError) as raised:
+        vocals_cli._folder_and_path(Job(), Escaping())
+    assert raised.value.cause.reason == "internal-error"
+
+
+def test_the_two_queued_verbs_share_one_walker(cfg):
+    """The second copy of the scan is gone, which is why it cannot drift again."""
+    from cratekit.analysis import cli as analysis_cli
+    from cratekit.core import discovery
+    from cratekit.vocals import cli as vocals_cli
+
+    assert not hasattr(vocals_cli, "_audio_in"), (
+        "the vocals module grew its own scan back; there is one walker and it is "
+        "cratekit.core.discovery"
+    )
+    assert analysis_cli.discovery is discovery
+    assert vocals_cli.discovery is discovery
+
+
+def test_the_vocals_resume_repeats_what_the_walk_left_out(
+    cfg, folder, silence, tmp_path, monkeypatch
+):
+    bind_scoring(monkeypatch)
+    nest(folder, silence, "house/track.flac")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.copy2(silence, elsewhere / "other.flac")
+    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+
+    drive(["analyze", "vocals", str(folder), "--recursive"])
+    job = vocals_job()
+    assert job.payload["skipped_links"] == ["linked"]
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert any(w["code"] == "linked-folder-skipped" for w in resumed["warnings"]), resumed
+
+
+def test_a_one_level_vocals_resume_says_nothing_about_a_walk_it_never_did(
+    cfg, folder, silence, monkeypatch
+):
+    bind_scoring(monkeypatch)
+    place(folder, silence, "top")
+    drive(["analyze", "vocals", str(folder)])
+    code, resumed = drive(resume_argv(vocals_job().job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert [w["code"] for w in resumed["warnings"]] == []

@@ -133,9 +133,15 @@ stricter because it writes both files and database metadata.
 
 ```bash
 crate doctor
-crate analyze restamp /path/to/library
+crate analyze restamp /path/to/library --recursive
 crate job resume JOB_ID
 ```
+
+`--recursive` queues every folder under the one you name as ONE resumable job,
+which is what a back catalogue pass wants: without it the command reads only the
+tracks sitting directly in that folder, and a library filed by genre needs one
+invocation per folder. `analyze vocals` takes the same flag. A folder that is a
+symbolic link is not walked, and the answer names the ones it left alone.
 
 Check the health report first rather than finding out from a driver's log file.
 Two of its rows decide whether a restamp can write at all. The library volume

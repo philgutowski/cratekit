@@ -12,10 +12,16 @@ torch at load time, which the slim profile does not declare. A worker
 binds the shipped loader inside the function that needs it. Tests bind a
 fake the same way ``analyze.run`` does.
 
-THE ITEM IS A FILENAME, RELATIVE TO THE FROZEN FOLDER, AND THE FOLDER IS
-FROZEN ABSOLUTE, for the same resume reason ``cratekit.analysis.cli``
-states: ``jobs.spawn`` starts the child in the resuming process's working
-directory.
+THE ITEM IS A PATH RELATIVE TO THE FROZEN FOLDER, AND THE FOLDER IS FROZEN
+ABSOLUTE, for the same resume reason ``cratekit.analysis.cli`` states:
+``jobs.spawn`` starts the child in the resuming process's working directory.
+
+``--recursive`` (U93) makes that path more than one segment, so one
+invocation over the library root replaces the 343 leaf folder invocations
+R-376 measured at about 7.7 hours. The walk and the join both live in
+``core.discovery``: this module used to carry its own copy of the scan, the
+copy had to agree with the analysis module's, and it now cannot drift
+because there is one.
 """
 
 from __future__ import annotations
@@ -26,10 +32,9 @@ from typing import Any, Mapping
 from cratekit.analysis import artifacts
 from cratekit.analysis import vocals as scoring
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs, tags
+from cratekit.core import config, discovery, jobs, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.naming import AUDIO_EXTS
 
 _ORIGIN = ("vocals", "cli")
 
@@ -71,22 +76,9 @@ def _folder_of(named: str) -> Path:
     return Path(named).expanduser().absolute()
 
 
-def _audio_in(folder: Path) -> list[str]:
-    """Audio filenames in the folder, sorted, not recursive, no dotfiles."""
-    if not folder.is_dir():
-        return []
-    return sorted(
-        path.name
-        for path in folder.iterdir()
-        if path.is_file()
-        and not path.name.startswith(".")
-        and path.suffix.lower() in AUDIO_EXTS
-    )
-
-
-def _nothing_to_queue(ctx, folder: Path) -> Envelope:
+def _nothing_to_queue(ctx, folder: Path, extra: tuple[dict[str, str], ...] = ()) -> Envelope:
     if folder.is_dir():
-        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP)
+        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP, warnings=extra)
     return ctx.envelope(
         data=_no_op("folder-absent"),
         outcome=Outcome.NO_OP,
@@ -95,6 +87,7 @@ def _nothing_to_queue(ctx, folder: Path) -> Envelope:
                 "code": "folder-absent",
                 "message": f"{folder} is not a folder on this machine, so nothing was queued",
             },
+            *extra,
         ),
     )
 
@@ -160,8 +153,15 @@ def _write_or_refuse(path: Path, fields: dict[str, Any]) -> None:
 
 
 def _folder_and_path(job, item) -> tuple[Path, Path]:
+    """The frozen folder and the item's file in it, joined by the checked rule.
+
+    Since U93 an item id may carry separators, so the join is
+    ``discovery.item_path`` rather than an operator: an absolute id would
+    otherwise discard the frozen folder and the worker would read a file the
+    job never queued.
+    """
     folder = Path(str((job.payload or {}).get("folder") or ""))
-    return folder, folder / item.item_id
+    return folder, discovery.item_path(folder, str(item.item_id))
 
 
 def _item_path(job, item) -> Path:
@@ -201,6 +201,14 @@ def _unscored_warning(summary: Mapping[str, Any]) -> dict[str, str] | None:
 def build(parser, entry) -> None:
     del entry
     parser.add_argument("folder", help="folder of audio to score for vocals")
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "queue every folder under this one as a single resumable job, "
+            "instead of only the tracks directly inside it"
+        ),
+    )
     parser.add_argument(
         "--job",
         default=None,
@@ -253,6 +261,10 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     with jobs.open_store() as store:
         job, warnings = _advance(ctx, store, jobs.get(store, ctx.args.job))
         summary = _summary(cfg, job.job_id)
+        # THE RESUME CARRIES THE WALK'S OMISSIONS TOO, off the frozen payload.
+        # This is the report a person keeps, and the queue envelope is the one
+        # they scroll past.
+        warnings = (*warnings, *discovery.warnings_of(job.payload))
         unscored = _unscored_warning(summary)
         if unscored is not None:
             warnings = (*warnings, unscored)
@@ -267,19 +279,24 @@ def analyze_vocals(ctx) -> Envelope:
     if ctx.args.job:
         return _resume(ctx, cfg)
     folder = _folder_of(ctx.args.folder)
-    items = _audio_in(folder)
-    if not items:
-        return _nothing_to_queue(ctx, folder)
+    recursive = bool(getattr(ctx.args, "recursive", False))
+    scan = discovery.scan_audio(folder, recursive=recursive)
+    extra = discovery.walk_warnings(scan.skipped_links, scan.unreadable)
+    if not scan.items:
+        return _nothing_to_queue(ctx, folder, extra)
     _require_extra()
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload={"folder": str(folder)},
+            # FROZEN WITH THE FOLDER. The resume replays the item list off the
+            # store and never re-scans, so this records what the queue meant and
+            # what it left out rather than feeding either back in.
+            payload={"folder": str(folder), **discovery.frozen_walk(scan, recursive=recursive)},
             cfg=cfg,
-            item_ids=items,
+            item_ids=list(scan.items),
         )
-        return ctx.envelope(data=_reported(store, job))
+        return ctx.envelope(data=_reported(store, job), warnings=extra)
 
 
 def handle(job, item, cfg) -> jobs.Produced:

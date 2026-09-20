@@ -1718,3 +1718,325 @@ def test_the_verb_module_never_imports_the_model_module_at_module_scope():
     for node in tree.body:
         if isinstance(node, ast.ImportFrom) and node.module == "cratekit.analysis":
             assert "vocal" not in {alias.name for alias in node.names}
+
+
+# ---------------------------------------------------------------------------
+# U93: a recursive restamp queues a whole tree as one resumable job
+# ---------------------------------------------------------------------------
+
+
+def nest(folder: Path, silence: Path, relative: str, **fields) -> Path:
+    """``place``, one level down or more. The item id becomes this relative path."""
+    path = folder / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(silence, path)
+    if fields:
+        assert tags.write_tags(path, fields), f"the fixture could not tag {relative}"
+    return path
+
+
+def test_a_recursive_restamp_queues_every_nested_file_once_in_sorted_order(
+    cfg, folder, silence, monkeypatch
+):
+    """R-376's shape on the restamp half: one invocation instead of one per folder."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/a.flac", energylevel=7)
+    nest(folder, silence, "techno/deep/b.flac", energylevel=7)
+    place(folder, silence, "top", energylevel=7)
+    bind_measuring(monkeypatch, {"a": 0, "b": 19, "top": 10})
+
+    code, queued = drive(["analyze", "restamp", str(folder), "--recursive"])
+    assert code == int(ExitCode.OK), queued
+    job = analysis_job("analyze.restamp")
+    assert sorted(item_states(job.job_id)) == [
+        "house/a.flac",
+        "techno/deep/b.flac",
+        "top.flac",
+    ]
+
+
+def test_a_recursive_restamp_freezes_the_flag_in_the_payload(cfg, folder, silence, monkeypatch):
+    """The payload records what the queue meant, so a job is readable after the fact."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/a.flac", energylevel=7)
+    bind_measuring(monkeypatch, {"a": 5})
+    drive(["analyze", "restamp", str(folder), "--recursive"])
+    assert analysis_job("analyze.restamp").payload["recursive"] is True
+
+
+def test_a_restamp_without_the_flag_stays_one_level_and_says_so_in_the_payload(
+    cfg, folder, silence, monkeypatch
+):
+    """The default is unchanged, which is what every existing job and resume assumed."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    place(folder, silence, "top", energylevel=7)
+    nest(folder, silence, "house/a.flac", energylevel=7)
+    bind_measuring(monkeypatch, {"top": 5})
+
+    code, queued = drive(["analyze", "restamp", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    job = analysis_job("analyze.restamp")
+    assert sorted(item_states(job.job_id)) == ["top.flac"]
+    assert job.payload["recursive"] is False
+
+
+def test_a_recursive_restamp_runs_every_nested_item_to_done_and_writes_the_right_file(
+    cfg, folder, silence, monkeypatch
+):
+    """The item id is a path, so the worker has to resolve it against the frozen folder."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    low = nest(folder, silence, "house/low.flac", energylevel=7)
+    high = nest(folder, silence, "techno/deep/high.flac", energylevel=7)
+    bind_measuring(monkeypatch, {"low": 0, "high": 19})
+
+    drive(["analyze", "restamp", str(folder), "--recursive"])
+    job = analysis_job("analyze.restamp")
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert tags.read_energy_from_file(low) == energy.LEVEL_MIN
+    assert tags.read_energy_from_file(high) == energy.LEVEL_MAX
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert reports["house/low.flac"]["path"] == str(low)
+    assert reports["techno/deep/high.flac"]["path"] == str(high)
+
+
+def test_two_nested_folders_holding_the_same_filename_are_two_items(
+    cfg, folder, silence, monkeypatch
+):
+    """``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide.
+
+    Every real library holds one track name in more than one genre folder. Under
+    bare names the second insert raises and no recursive queue exists at all.
+    """
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    nest(folder, silence, "techno/track.flac", energylevel=7)
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+
+    code, queued = drive(["analyze", "restamp", str(folder), "--recursive"])
+    assert code == int(ExitCode.OK), queued
+    job = analysis_job("analyze.restamp")
+    assert sorted(item_states(job.job_id)) == ["house/track.flac", "techno/track.flac"]
+
+
+def test_a_nested_appledouble_sidecar_and_a_dot_directory_are_not_items(
+    cfg, folder, silence, monkeypatch
+):
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    nest(folder, silence, "house/._track.flac")
+    nest(folder, silence, ".Trashes/deleted.flac")
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+
+    drive(["analyze", "restamp", str(folder), "--recursive"])
+    assert sorted(item_states(analysis_job("analyze.restamp").job_id)) == ["house/track.flac"]
+
+
+def test_a_nested_file_deleted_after_the_queue_refuses_that_item_only(
+    cfg, folder, silence, monkeypatch
+):
+    energy.save_calibration(cfg, calibration_over(count=20))
+    kept = nest(folder, silence, "house/kept.flac", energylevel=7)
+    doomed = nest(folder, silence, "techno/doomed.flac", energylevel=7)
+    bind_measuring(monkeypatch, {"kept": 19, "doomed": 0})
+
+    drive(["analyze", "restamp", str(folder), "--recursive"])
+    job = analysis_job("analyze.restamp")
+    doomed.unlink()
+    code, _ = drive(resume_argv(job.job_id))
+
+    assert code != int(ExitCode.OK), "a failed item is not a clean run"
+    assert item_states(job.job_id) == {
+        "house/kept.flac": jobs.ItemState.DONE,
+        "techno/doomed.flac": jobs.ItemState.FAILED,
+    }
+    assert item_causes(job.job_id) == {"techno/doomed.flac": "source-missing"}
+    assert tags.read_energy_from_file(kept) == energy.LEVEL_MAX
+
+
+def test_a_recursive_restamp_resumes_after_a_kill_and_finishes_the_rest(
+    cfg, folder, silence, monkeypatch
+):
+    """A real SIGINT through the engine's own checkpoint, not a hand edited store."""
+    import os
+    import signal
+
+    energy.save_calibration(cfg, calibration_over(count=20))
+    for relative in ("house/a.flac", "house/b.flac", "techno/c.flac", "techno/d.flac"):
+        nest(folder, silence, relative, energylevel=7)
+
+    measured: list[str] = []
+
+    def interrupting(path):
+        measured.append(Path(path).name)
+        if len(measured) == 2:
+            os.kill(os.getpid(), signal.SIGINT)
+        return features(19)
+
+    monkeypatch.setattr(energy, "_EXTRACTOR", interrupting)
+    drive(["analyze", "restamp", str(folder), "--recursive"])
+    job = analysis_job("analyze.restamp")
+    drive(resume_argv(job.job_id))
+    done_after_kill = [
+        item for item, state in item_states(job.job_id).items() if state is jobs.ItemState.DONE
+    ]
+    assert done_after_kill, "the kill landed before any item settled"
+    assert len(done_after_kill) < 4, "the kill did not stop the driver"
+
+    # A KILL CANCELS THE JOB, which is not FAILED (R22), and a cancelled job is
+    # re-armed before it is driven again. ``crate job resume`` does exactly this
+    # and then spawns a detached child; the arming is taken by hand here so the
+    # driving stays in this process where the bound extractor lives.
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(19))
+    with jobs.open_store() as store:
+        jobs.retry(store, job.job_id)
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert sorted(item_states(job.job_id)) == [
+        "house/a.flac",
+        "house/b.flac",
+        "techno/c.flac",
+        "techno/d.flac",
+    ]
+
+
+def test_a_recursive_restamp_says_which_linked_folders_it_did_not_walk(
+    cfg, folder, silence, tmp_path, monkeypatch
+):
+    """A silent skip would be a clean report over a subtree nothing read."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.copy2(silence, elsewhere / "other.flac")
+    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+
+    code, queued = drive(["analyze", "restamp", str(folder), "--recursive"])
+    assert code == int(ExitCode.OK), queued
+    assert sorted(item_states(analysis_job("analyze.restamp").job_id)) == ["house/track.flac"]
+    assert any(w["code"] == "linked-folder-skipped" for w in queued["warnings"]), queued
+
+
+def test_a_tree_whose_only_folders_are_links_says_so_on_the_zero(
+    cfg, folder, silence, tmp_path
+):
+    """The one place the omission changes the answer completely."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.copy2(silence, elsewhere / "other.flac")
+    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+
+    code, said = drive(["analyze", "restamp", str(folder), "--recursive"])
+    assert code == int(ExitCode.OK), said
+    assert said["data"]["state"] == "no-audio"
+    assert any(w["code"] == "linked-folder-skipped" for w in said["warnings"]), said
+
+
+def test_analyze_run_does_not_take_the_recursive_flag(cfg, folder):
+    """Its last act on a track is a rename, and its resume marker is the NAME."""
+    code, refused = drive(["analyze", "run", str(folder), "--recursive"])
+    assert code != int(ExitCode.OK), refused
+
+
+def test_a_restamp_item_that_would_leave_the_frozen_folder_is_refused(cfg, folder, silence):
+    """``Path("/library") / "/etc/passwd"`` is ``/etc/passwd``, silently."""
+
+    class Escaping:
+        item_id = "/etc/passwd"
+
+    class Job:
+        payload = {"folder": str(folder), "recursive": True}
+
+    with pytest.raises(CratekitError) as raised:
+        analysis_cli._folder_and_path(Job(), Escaping())
+    assert raised.value.cause.reason == "internal-error"
+
+
+def test_the_resume_repeats_what_the_walk_left_out_rather_than_only_the_queue(
+    cfg, folder, silence, tmp_path, monkeypatch
+):
+    """The resume is the report a person keeps. The queue is the one they scroll past."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.copy2(silence, elsewhere / "other.flac")
+    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+
+    drive(["analyze", "restamp", str(folder), "--recursive"])
+    job = analysis_job("analyze.restamp")
+    assert job.payload["skipped_links"] == ["linked"]
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert any(w["code"] == "linked-folder-skipped" for w in resumed["warnings"]), resumed
+
+
+def test_an_unreadable_nested_folder_is_named_rather_than_quietly_contributing_nothing(
+    cfg, folder, silence, monkeypatch
+):
+    """``os.walk`` swallows the error by default, and nothing in the output shows it."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    shut = folder / "locked"
+    shut.mkdir()
+    shutil.copy2(silence, shut / "hidden.flac")
+    shut.chmod(0o000)
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+    try:
+        code, queued = drive(["analyze", "restamp", str(folder), "--recursive"])
+    finally:
+        shut.chmod(0o755)
+
+    assert code == int(ExitCode.OK), queued
+    assert sorted(item_states(analysis_job("analyze.restamp").job_id)) == ["house/track.flac"]
+    unreadable = [w for w in queued["warnings"] if w["code"] == "folder-unreadable"]
+    assert unreadable, queued
+    assert "locked" in unreadable[0]["message"]
+
+
+def test_a_one_level_restamp_resume_says_nothing_about_a_walk_it_never_did(
+    cfg, folder, silence, monkeypatch
+):
+    """The default mode's envelope is unchanged, which is what U93 promised."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    place(folder, silence, "top", energylevel=7)
+    bind_measuring(monkeypatch, {"top": 5})
+    drive(["analyze", "restamp", str(folder)])
+    code, resumed = drive(resume_argv(analysis_job("analyze.restamp").job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert [w["code"] for w in resumed["warnings"]] == ["db-metadata-not-written"]
+
+
+def test_the_restamp_resume_names_an_unreadable_folder_and_not_only_a_link(
+    cfg, folder, silence, monkeypatch
+):
+    """Both halves of the walk's omission are frozen, so both are read back.
+
+    Added after the U93 mutation table: D19 killed zero because every resume
+    case in the suite froze declined links and never an unreadable folder.
+    """
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    shut = folder / "locked"
+    shut.mkdir()
+    shutil.copy2(silence, shut / "hidden.flac")
+    shut.chmod(0o000)
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+    try:
+        drive(["analyze", "restamp", str(folder), "--recursive"])
+    finally:
+        shut.chmod(0o755)
+
+    job = analysis_job("analyze.restamp")
+    assert job.payload["unreadable_folders"] == ["locked"]
+    assert job.payload["skipped_links"] == []
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    unreadable = [w for w in resumed["warnings"] if w["code"] == "folder-unreadable"]
+    assert unreadable, resumed
+    assert "locked" in unreadable[0]["message"]
