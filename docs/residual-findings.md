@@ -22415,6 +22415,15 @@ facing.
 **Closes when:** the probe's measurement is made independent of how loaded the
 machine is, or the test says what load it tolerates.
 
+**Second sighting, 2026-09-19 on `relay/154`, and this time OUTSIDE the driver.**
+Four full suite runs were made by hand on this branch and the test died in one
+of them, the third, with the other three at 9033 passed. Alone it then passed
+three of three, 10.9 seconds on the first and under half a second after. The
+eight full runs inside `scripts/mutate.py` on this branch, two baselines, two
+null controls and none promoted, had no death. The branch touches nothing the
+test reads. So the first entry's guess that the driver's load is what kills it
+does not hold: an ordinary parallel suite run does too, one in four here.
+
 ---
 
 ## R-549. The archive rotation purges the newest dated archive when a stray folder sorts after it

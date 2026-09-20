@@ -43,6 +43,11 @@ default. `CONCEPTS.md` gains Rotation floor and Twin.
 Filed: R-556 to R-558, none meeting the board bar today, and R-549 gained a
 note: a stray folder under the archive root is now HELD for ever instead of
 being kept as the newest, same closing condition, **its issue still owed**.
+**R-548 was seen a second time, outside the mutation driver**: the pool sizing
+test that times a freshly spawned child died in one of four hand made full suite
+runs on this branch and passed three of three alone. A red gate naming only
+`tests/test_pool_sizing.py::test_the_real_probe_measures_a_freshly_spawned_child`
+is that flake and not this unit.
 **Main's highest residual number is R-558.**
 
 **The session before: R-154 with R-153, issue #153, `relay/153`, 2026-09-19.**
