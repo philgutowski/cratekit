@@ -174,6 +174,12 @@ IDENTITY_MARKER_PREFIX = "library-volume."
 #: tolerates. It is a parameter everywhere below so a user with room can keep
 #: more; what is NOT negotiable is that pruning happens only after the mirror
 #: succeeds, so a failed run never touches the safety net.
+#:
+#: WHAT IT COUNTS IS RUNS, NOT ATTEMPTS. Every attempt at the mirror stamps its
+#: own dated folder, so a mirror that failed partway and was retried to success
+#: leaves two, and the first holds the only copies of what that attempt
+#: overwrote. :func:`_prune_archive` holds every folder written since the last
+#: COMPLETED mirror as one slot of this number.
 DEFAULT_ARCHIVE_KEEP = 1
 
 
@@ -683,7 +689,9 @@ def _plan_files(
         portion=backup_facts.Portion.FILES,
         commands=tuple(commands),
         detail=(
-            f"keeping the newest {archive_keep} dated archive folder(s)"
+            f"keeping the newest {archive_keep} dated archive folder(s), and "
+            f"counting every folder written since the last completed mirror as "
+            f"one of them"
             if archive_keep >= 0
             else "keeping every dated archive folder"
         ),
@@ -1007,6 +1015,39 @@ def _destination_for(cfg: config.Config, portion: backup_facts.Portion) -> str:
     return str(cfg.backup.dest or "")
 
 
+def _rotation_floor(cfg: config.Config) -> str | None:
+    """The stamp of the last COMPLETED mirror to this destination, or None.
+
+    A dated folder named after this belongs to the run now finishing, whichever
+    attempt wrote it, and one at or before it belongs to a run that is over.
+    That is what lets the rotation count runs rather than attempts (R-222)
+    without a record of attempts: the age fact is already published only on
+    success and only after the prune, so at prune time it names the previous
+    completed run and nothing later.
+
+    NONE IS NOT "NOTHING TO HOLD". It is "no completed mirror to THIS destination
+    is on record", which is a first backup onto a remote something else already
+    mirrored to, a first attempt that failed, or a reconfigured destination. No
+    folder can be called settled then, and the caller purges none.
+
+    A FILE THAT CANNOT BE READ RAISES, and is neither of the answers above. The
+    publish a few lines after the prune reads the same file through the same
+    reader and would raise the same exception, so nothing reachable changes
+    except that the purge, the one command here that deletes, does not run on a
+    record nobody could read.
+
+    AS A STAMP AND NOT AS A TIME, because the folders are compared by name, which
+    is how the rotation has always ordered them and the only ordering a folder
+    the source system wrote can join. A record from a clock running ahead sorts
+    after every folder, so nothing is held and the rotation is exactly what it
+    was before this rule: the kept set is never smaller than it used to be.
+    """
+    fact = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
+    if fact is None or fact.destination != _destination_for(cfg, backup_facts.Portion.FILES):
+        return None
+    return stamp_for(fact.completed_at)
+
+
 def _prune_archive(
     cfg: config.Config,
     listing: Command,
@@ -1041,6 +1082,22 @@ def _prune_archive(
     ``purge`` is the rehearsal seam. False lists and deletes nothing, which is
     what a preview owes a user; it defaults to True so a caller that says
     nothing gets the real rotation rather than a silent no-op.
+
+    THE FLOOR IS WHAT MAKES A SLOT A RUN (R-222), and :func:`_rotation_floor` is
+    where it comes from. Every folder named after it was written by an attempt at
+    the run now finishing, so they are HELD together as one slot, and the rest of
+    ``keep`` is spent on the settled folders, newest first. No floor holds
+    everything. The held names are the top of the sort order, so whatever this
+    keeps includes what counting attempts kept. A ``keep`` of zero is the one
+    case nothing is held: it asks for no archive at all, and holding a run
+    against it would overrule that.
+
+    IT IS READ HERE, AFTER THE MIRROR, BEFORE THE PUBLISH, AND ONLY TO DELETE.
+    The position is the mechanism: this portion's own age is published by the
+    caller once every command has returned, so the record still names the run
+    BEFORE this one. And it sits below the rehearsal's return, so a preview
+    never opens a file it has no use for, and ``purge`` stays the one thing
+    standing between a rehearsal and a deletion rather than one of two.
     """
     out: list[CommandResult] = []
     result = runner(listing)
@@ -1057,9 +1114,13 @@ def _prune_archive(
         }
     if keep < 0 or not purge:
         return out, None
+    floor = _rotation_floor(cfg)
     names = sorted(line.strip().rstrip("/") for line in result.stdout.splitlines() if line.strip())
+    held = [name for name in names if keep > 0 and (floor is None or name > floor)]
+    settled = names[: len(names) - len(held)]
+    slots = keep - 1 if held else keep
     unremoved = 0
-    for stale in names[: max(0, len(names) - keep)]:
+    for stale in settled[: max(0, len(settled) - slots)]:
         purged = runner(
             Command(
                 label=PRUNE_ARCHIVE_FOLDER,

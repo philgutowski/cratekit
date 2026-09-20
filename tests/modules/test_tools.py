@@ -1108,6 +1108,27 @@ def library_with_database(cfg):
     return database
 
 
+#: Four dated folders older than any completed mirror a test below records, in
+#: the spelling ``stamp_for`` writes, because the rotation compares names with
+#: the record's stamp and a word like "one" sorts after every date.
+SETTLED_ARCHIVES = "".join(f"2026-0{month}-01T000000Z/\n" for month in (1, 2, 3, 4))
+
+
+@pytest.fixture
+def a_completed_mirror(cfg):
+    """A completed mirror to this destination on record, so folders can be settled.
+
+    The rotation purges only what is older than the last completed mirror
+    and with no record it purges nothing. A test about WHICH folders a
+    purge takes therefore has to start where a second backup starts.
+    """
+    when = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    backup_facts.record(
+        cfg, backup_facts.Portion.FILES, completed_at=when, destination=str(cfg.backup.dest)
+    )
+    return when
+
+
 def test_backup_with_rekordbox_running_skips_the_database_and_says_why(
     cfg, library_with_database, rclone_on_path
 ):
@@ -1320,15 +1341,17 @@ def test_a_dry_run_publishes_no_backup_age(cfg, library_with_database, rclone_on
     assert backup.backup_facts.read_facts(cfg) == {}
 
 
-def test_a_dry_run_never_purges(cfg, library_with_database, rclone_on_path):
-    recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: "one/\ntwo/\nthree/\n"})
+def test_a_dry_run_never_purges(
+    cfg, library_with_database, rclone_on_path, a_completed_mirror
+):
+    recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: SETTLED_ARCHIVES})
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     backup.run_backup(cfg, plan, runner=recorder, dry_run=True)
     assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels()
 
 
 def test_the_prune_keeps_the_newest_and_removes_the_rest(
-    cfg, library_with_database, rclone_on_path
+    cfg, library_with_database, rclone_on_path, a_completed_mirror
 ):
     recorder = Recorder(
         stdout_for={backup.PRUNE_ARCHIVE: "2026-01-01T000000Z/\n2026-02-01T000000Z/\n2026-03-01T000000Z/\n"}
@@ -1342,7 +1365,7 @@ def test_the_prune_keeps_the_newest_and_removes_the_rest(
 
 
 def test_the_retention_the_plan_declared_is_the_retention_the_run_applies(
-    cfg, library_with_database, rclone_on_path
+    cfg, library_with_database, rclone_on_path, a_completed_mirror
 ):
     """One decision, made once.
 
@@ -1350,8 +1373,7 @@ def test_the_retention_the_plan_declared_is_the_retention_the_run_applies(
     two can disagree: a plan built to keep three, executed with a keep of one,
     deletes two archives the preview said it would leave alone.
     """
-    listing = "one/\ntwo/\nthree/\nfour/\n"
-    recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: listing})
+    recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: SETTLED_ARCHIVES})
     plan = backup.plan_backup(cfg, process_lister=no_processes, archive_keep=3)
     assert plan.archive_keep == 3
     backup.run_backup(cfg, plan, runner=recorder)
@@ -1421,7 +1443,7 @@ def test_a_failed_listing_reports_the_rotation_and_leaves_the_backup_successful(
 
 
 def test_a_failed_purge_reports_how_many_folders_survived_it(
-    cfg, library_with_database, rclone_on_path
+    cfg, library_with_database, rclone_on_path, a_completed_mirror
 ):
     """The second condition, which has a different fix from the first.
 
@@ -1432,7 +1454,9 @@ def test_a_failed_purge_reports_how_many_folders_survived_it(
     branch on.
     """
     recorder = Recorder(
-        stdout_for={backup.PRUNE_ARCHIVE: "one/\ntwo/\nthree/\n"},
+        stdout_for={
+            backup.PRUNE_ARCHIVE: "2026-01-01T000000Z/\n2026-02-01T000000Z/\n2026-03-01T000000Z/\n"
+        },
         fail_labels={backup.PRUNE_ARCHIVE_FOLDER},
     )
     plan = backup.plan_backup(cfg, process_lister=no_processes)
@@ -1449,7 +1473,7 @@ def test_a_failed_purge_reports_how_many_folders_survived_it(
 
 
 def test_a_prune_that_completed_warns_about_nothing(
-    cfg, library_with_database, rclone_on_path
+    cfg, library_with_database, rclone_on_path, a_completed_mirror
 ):
     """The companion to the two above, and not an assertion of absence.
 
@@ -1504,7 +1528,7 @@ def test_a_rehearsal_reports_a_failed_listing_and_still_purges_nothing(
 
 
 def test_a_rehearsal_whose_listing_succeeded_warns_about_nothing_and_purges_nothing(
-    cfg, library_with_database, rclone_on_path
+    cfg, library_with_database, rclone_on_path, a_completed_mirror
 ):
     """What the fold must not have changed.
 
@@ -1512,7 +1536,7 @@ def test_a_rehearsal_whose_listing_succeeded_warns_about_nothing_and_purges_noth
     rehearsal still passes False and that suppressing the purge did not start
     reporting a rotation that was never attempted.
     """
-    recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: "one/\ntwo/\nthree/\n"})
+    recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: SETTLED_ARCHIVES})
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     outcome = backup.run_backup(cfg, plan, runner=recorder, dry_run=True)
 
@@ -1581,6 +1605,233 @@ def test_the_settings_location_is_resolved_per_platform_not_assumed(platform, tm
     assert resolved and all(p.is_dir() for p in resolved)
     # A platform with no row contributes nothing rather than guessing.
     assert backup.settings_directories(home=home, platform="haiku") == ()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The rotation counts a run, not an attempt
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class ArchiveRemote:
+    """A runner that HOLDS the dated archive folders, the way a remote does.
+
+    ``Recorder`` answers a listing with a canned string, which cannot reproduce
+    the retried portion at all: the defect is that one attempt's purge removes a folder an
+    earlier attempt wrote, so the folders have to outlive a single run. Here a
+    mirror writes the folder its ``--backup-dir`` names, as rclone does the
+    moment it overwrites one file, a listing reads the set back, and a purge
+    removes from it.
+    """
+
+    def __init__(self, *folders, fail_mirror=False, overwrites=True):
+        self.folders = set(folders)
+        self.fail_mirror = fail_mirror
+        self.overwrites = overwrites
+        self.purged = []
+
+    def __call__(self, command):
+        if command.label == backup.MIRROR:
+            if self.overwrites:
+                archive = command.argv[command.argv.index("--backup-dir") + 1]
+                self.folders.add(archive.rsplit("/", 1)[1])
+            if self.fail_mirror:
+                return backup.CommandResult(returncode=1, stderr="connection reset")
+        if command.label == backup.PRUNE_ARCHIVE:
+            return backup.CommandResult(
+                returncode=0, stdout="".join(f"{name}/\n" for name in sorted(self.folders))
+            )
+        if command.label == backup.PRUNE_ARCHIVE_FOLDER:
+            name = command.argv[-1].rsplit("/", 1)[1]
+            self.folders.discard(name)
+            self.purged.append(name)
+        return backup.CommandResult(returncode=0)
+
+
+def _mirror_at(cfg, remote, at, *, keep=backup.DEFAULT_ARCHIVE_KEEP):
+    """One attempt at the whole plan at one instant, the way one claim makes it."""
+    plan = backup.plan_backup(cfg, now=at, process_lister=no_processes, archive_keep=keep)
+    return backup.run_backup(cfg, plan, runner=remote, now=at)
+
+
+ROTATION_DAY = datetime(2026, 9, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _stamp(days: float) -> str:
+    return backup.stamp_for(ROTATION_DAY + timedelta(days=days))
+
+
+def test_a_retried_mirror_does_not_purge_the_archive_its_failed_attempt_wrote(
+    cfg, library_with_database, rclone_on_path
+):
+    """The retried portion's closing condition, driven against a remote that remembers.
+
+    The failed attempt overwrote files before it died, and its dated folder holds
+    the only copies of what they were. At a keep of one, counting ATTEMPTS, the
+    retry that succeeds purges it. Counting the RUN, both attempts are one slot.
+    The settled folder from the run before still rotates out, so this is the
+    rotation still working and not a rotation that stopped.
+    """
+    remote = ArchiveRemote()
+    _mirror_at(cfg, remote, ROTATION_DAY)
+    settled = _stamp(0)
+    assert remote.folders == {settled}
+
+    remote.fail_mirror = True
+    failed = _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1))
+    assert _files_outcome(failed).ran is False
+    remote.fail_mirror = False
+    retried = _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1, hours=2))
+    assert _files_outcome(retried).ran is True
+
+    assert _stamp(1) in remote.folders, (
+        f"the retry purged {remote.purged}, which includes the failed attempt's "
+        f"archive: the only copies of what that attempt overwrote are gone"
+    )
+    assert remote.folders == {_stamp(1), _stamp(1 + 2 / 24)}
+    assert remote.purged == [settled]
+
+
+def test_the_run_after_a_retried_one_rotates_every_attempt_out_together(
+    cfg, library_with_database, rclone_on_path
+):
+    """Held is not kept for ever. One run is one slot, and the slot rotates."""
+    remote = ArchiveRemote()
+    _mirror_at(cfg, remote, ROTATION_DAY)
+    remote.fail_mirror = True
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1))
+    remote.fail_mirror = False
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1, hours=2))
+
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=2))
+    assert remote.folders == {_stamp(2)}
+
+
+def test_a_remote_with_no_completed_mirror_on_record_is_never_purged(
+    cfg, library_with_database, rclone_on_path
+):
+    """No record is not a record of nothing (METHOD's first pattern).
+
+    This is a first backup onto a remote something else already mirrored to, or a
+    first attempt that failed: with no completed mirror on record, no folder can
+    be called settled, because any of them may be what an unfinished run wrote.
+    The next completed run has a record and rotates them.
+    """
+    remote = ArchiveRemote("2026-08-01T000000Z", "2026-08-02T000000Z", fail_mirror=True)
+    _mirror_at(cfg, remote, ROTATION_DAY)
+    remote.fail_mirror = False
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(hours=1))
+    assert remote.purged == []
+
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1))
+    assert remote.folders == {_stamp(1)}
+
+
+def test_a_completed_mirror_to_another_destination_settles_nothing_here(
+    cfg, library_with_database, rclone_on_path
+):
+    """The record names a destination, and a floor taken from another remote's
+    run says nothing about which folders on this one are finished."""
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=ROTATION_DAY,
+        destination="elsewhere:mirror",
+    )
+    remote = ArchiveRemote("2026-08-01T000000Z", "2026-08-02T000000Z")
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1))
+    assert remote.purged == []
+
+
+def test_a_run_that_overwrote_nothing_still_keeps_the_newest_settled_archive(
+    cfg, library_with_database, rclone_on_path
+):
+    """rclone writes no dated folder for a run that replaced nothing, so nothing
+    is held and the keep applies to the settled folders exactly as it did."""
+    remote = ArchiveRemote("2026-08-01T000000Z", "2026-08-02T000000Z", overwrites=False)
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=ROTATION_DAY,
+        destination=str(cfg.backup.dest),
+    )
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1))
+    assert remote.folders == {"2026-08-02T000000Z"}
+
+
+def test_the_folder_the_last_completed_run_wrote_is_settled_not_held(
+    cfg, library_with_database, rclone_on_path
+):
+    """THE BOUNDARY. The last completed run's own folder carries the stamp of the
+    instant on record, so the comparison has to be strict: at or before the floor
+    is settled. Held at equality, that folder would survive every later run."""
+    remote = ArchiveRemote(_stamp(0), overwrites=False)
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=ROTATION_DAY,
+        destination=str(cfg.backup.dest),
+    )
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1), keep=0)
+    assert remote.folders == set()
+
+
+def test_a_wider_keep_counts_the_held_run_as_one_of_its_slots(
+    cfg, library_with_database, rclone_on_path
+):
+    remote = ArchiveRemote("2026-08-01T000000Z", "2026-08-02T000000Z", "2026-08-03T000000Z")
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=ROTATION_DAY,
+        destination=str(cfg.backup.dest),
+    )
+    remote.fail_mirror = True
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1))
+    remote.fail_mirror = False
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=2), keep=2)
+    assert remote.folders == {"2026-08-03T000000Z", _stamp(1), _stamp(2)}
+
+
+def test_a_keep_of_zero_is_still_a_keep_of_zero(cfg, library_with_database, rclone_on_path):
+    """Asking to keep no archive is a choice, and holding a run's folders against
+    it would be this rule overruling the person who made it."""
+    remote = ArchiveRemote("2026-08-01T000000Z")
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=ROTATION_DAY,
+        destination=str(cfg.backup.dest),
+    )
+    _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1), keep=0)
+    assert remote.folders == set()
+
+
+def test_a_record_that_cannot_be_read_purges_nothing(
+    cfg, library_with_database, rclone_on_path
+):
+    """Unreadable is not absent, and it is not a floor either. The purge is the
+    one command here that deletes, so it does not run on a record nobody could
+    read, and the exception is the one the publish would raise a moment later."""
+    backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
+    backup_facts.path_for(cfg).write_text("{ not json")
+    remote = ArchiveRemote("2026-08-01T000000Z", "2026-08-02T000000Z")
+    with pytest.raises(backup_facts.BackupFactsUnreadable):
+        _mirror_at(cfg, remote, ROTATION_DAY)
+    assert remote.purged == []
+
+
+def test_a_rehearsal_does_not_read_the_record_to_list_a_rotation(
+    cfg, library_with_database, rclone_on_path
+):
+    """A rehearsal purges nothing, so it needs no floor, and reading the record
+    for one would fail a preview over a file the preview never touches."""
+    backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
+    backup_facts.path_for(cfg).write_text("{ not json")
+    remote = ArchiveRemote("2026-08-01T000000Z")
+    plan = backup.plan_backup(cfg, now=ROTATION_DAY, process_lister=no_processes)
+    outcome = backup.run_backup(cfg, plan, runner=remote, now=ROTATION_DAY, dry_run=True)
+    assert _files_outcome(outcome).ran is True
+    assert remote.purged == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
