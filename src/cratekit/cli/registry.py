@@ -726,6 +726,40 @@ ENTRIES: tuple[Entry, ...] = (
         # module, so landing either lands both.
     ),
     Entry(
+        name="restore.bare-metal",
+        summary="recover the mirror and the database onto a replacement drive",
+        module="cratekit.session.restore_cli",
+        builder="build_bare_metal",
+        handler_key="restore.bare-metal",
+        feature_rows=(12,),
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("binary.rclone", "rekordbox.closed"),
+        # U96. THE CASE ``restore.run`` CANNOT SERVE, which is why it is a verb
+        # and not a flag on that one: the library volume is gone, and every gate
+        # that verb passes is read from beside the library.
+        #
+        # ``library.mounted`` AND ``library.identity`` ARE ABSENT ON PURPOSE.
+        # Both are checks this verb requires to FAIL, since the engine refuses
+        # a recovery while the recorded volume can be read, so declaring them
+        # would tell a person their machine is unfit for the one verb that
+        # needs it that way.
+        #
+        # IT DECLARES NO GATE, on ``master``'s precedent and for a harder
+        # reason. An explicit gate is a decision recorded against a run, which
+        # conformance 3 requires to end in OK on a machine whose library is
+        # present, and this verb refuses on exactly that machine.
+        # ``--accept-replacement`` is the explicit act, and the engine refuses
+        # it from an invocation with no controlling terminal, so the flag
+        # cannot be answered by a detached job. What that substitute is worth
+        # is written at ``core.restore.bare_metal_session``.
+        #
+        # ``files`` AND NOT ``db_tree``. The database arrives as a file copied
+        # from the remote; no row is written through the guarded writer.
+    ),
+    Entry(
         name="converge",
         summary="report, per governed tree, whether declared membership matches the database",
         module="cratekit.cli.converge",

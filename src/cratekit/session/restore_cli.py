@@ -1,4 +1,4 @@
-"""``crate restore list`` and ``crate restore run``: the history, and its one undo.
+"""``crate restore list``, ``run`` and ``bare-metal``: the history, and its undo.
 
 WHAT THIS MODULE IS FOR. A capture nobody can spend is a directory of files, and
 until this module existed the whole restore engine was reachable only from a
@@ -55,6 +55,13 @@ path. One acquisition and two labels are mutually exclusive, and this unit chose
 the acquisition. The consequence, that the session log cannot tell a run which
 pulled a mirror from one which did not, is recorded rather than papered over.
 
+THE THIRD VERB IS THE CASE THE OTHER TWO CANNOT SERVE. Everything above is
+about a library that is present. When the volume itself is gone, every gate
+``restore run`` passes is on the disk that died, and the recovery at the foot of
+this module spends :func:`cratekit.core.restore.bare_metal_session` instead: the
+off-machine mirror and the database, onto a named replacement drive, with no
+session rolled back because no session log survived to read.
+
 Layer: modules. It names :mod:`cratekit.cli.output` and
 :mod:`cratekit.cli.exit_codes` and nothing else from the command-line layer, and
 both of those are foundation-ranked under KTD25 for the reason
@@ -67,7 +74,7 @@ every verb on purpose.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -839,8 +846,8 @@ def restore_under_one_session(
     rolled back on the configured one. ``_restore_target`` refuses that
     combination outright, so the flag can only ever produce the off-machine half
     alone, which is a database restored into a named directory and nothing else
-    (R-368). Recovering a whole volume is still a different verb with a different
-    set of gates, which is what ``core.restore.bare_metal_session`` exists for.
+    (R-368). Recovering a whole volume is a different verb with a different set
+    of gates, :func:`recover_under_bare_metal_session` below.
 
     THIS FUNCTION STILL TAKES BOTH, and that is deliberate rather than an
     oversight. The parameter remains a seam, and the composition test drives both
@@ -1100,6 +1107,371 @@ def perform_restore(ctx) -> Envelope:
     return ctx.envelope(data=_performed(report, offered))
 
 
+# ---------------------------------------------------------------------------
+# restore bare-metal
+# ---------------------------------------------------------------------------
+
+#: The two halves of a bare-metal recovery, as the report and a refusal name
+#: them. The music and everything else the mirror carried, then the database and
+#: the companions a restore writes back, which is the source system's order and
+#: the only order in which a failure of the first leaves nothing of the second.
+MIRROR_HALF = "mirror"
+DATABASE_HALF = "database"
+
+
+def build_bare_metal(parser, entry) -> None:
+    """Declare the recovery's arguments. The parameters are unannotated on purpose.
+
+    ``--target`` IS REQUIRED AND HAS NO DEFAULT. The source system defaulted its
+    destination to the configured volume, which is the one directory this verb
+    can never be pointed at: the engine refuses unless that volume is gone, and
+    the path it was mounted at is then the empty folder on the internal disk the
+    stub check exists for.
+
+    ``--accept-replacement`` IS THE ACKNOWLEDGMENT, and it is a flag because
+    there is nothing else it could be. Every other destructive restore is
+    answered by a decision recorded against a run, beside an acknowledgment
+    recorded beside the library, and the second of those is on the volume that
+    died. The engine says what the substitute is worth and refuses an invocation
+    with no controlling terminal, so the flag is typed by a person or not at all.
+
+    THERE IS NO FLAG THAT NAMES AN OCCUPIED TARGET FOR REPLACEMENT. The engine
+    has the parameter and this verb never passes it, so a target that already
+    holds a database is always refused.
+    """
+    del entry
+    parser.add_argument(
+        "--target",
+        required=True,
+        metavar="DIRECTORY",
+        help=(
+            "the mounted replacement volume to recover onto; it must exist, hold "
+            "no database, and not be the folder the lost volume left behind"
+        ),
+    )
+    parser.add_argument(
+        "--accept-replacement",
+        action="store_true",
+        dest="accept_replacement",
+        help=(
+            "accept that a whole library is written onto the target; refused "
+            "without it, and refused with it when nobody is at a terminal"
+        ),
+    )
+    parser.add_argument(
+        "--snapshot",
+        default=None,
+        metavar="STAMP",
+        help="which dated off-machine snapshot to pull; the newest by default",
+    )
+    parser.add_argument(
+        "--snapshot-volume",
+        default=None,
+        dest="snapshot_volume",
+        metavar="IDENTITY",
+        help=(
+            "the volume identity the snapshot is expected to record, when it is "
+            "not the one this installation remembers; used once, never recorded"
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="rehearse both halves and transfer nothing, under the same gates",
+    )
+    parser.set_defaults(_handler=perform_bare_metal)
+
+
+@dataclass(frozen=True, slots=True)
+class BareMetalReport:
+    """What one recovery did, a half at a time.
+
+    ``mirror`` and ``database`` are the transfers that RAN, by label, read off
+    the results rather than off the plan, for the reason
+    :func:`restore_under_one_session` gives. ``target`` is the directory the
+    session authorised, which is the only place either half was pointed.
+    """
+
+    target: Path
+    database_target: Path
+    mirror: tuple[str, ...]
+    database: tuple[str, ...]
+    dry_run: bool
+    absent: tuple[str, ...] = ()
+    snapshot: str | None = None
+    recorded_volume: str | None = None
+
+
+def _halves(decided: backup.RestorePlan) -> tuple[tuple[str, backup.RestorePlan], ...]:
+    """One plan, read as the two halves it already holds. Nothing is re-planned.
+
+    ``backup.run_restore`` RUNS EVERY COMMAND BEFORE IT READS A RETURN CODE, so
+    handing it the whole plan lets the database land after the mirror failed. On
+    the live library that is a restore to run again. Here it is a dead end: a
+    target holding a database is refused outright and this verb has no flag that
+    names one for replacement, so the rerun the failure asks for is the one thing
+    it has just made impossible. Spent a half at a time, a mirror that fails
+    leaves no database behind it.
+
+    THE SPLIT IS BY LABEL AND KEEPS THE PLAN'S ORDER, so it cannot disagree with
+    the plan about what is transferred. Every other field rides along unchanged,
+    which means the companions are cleared before each half exactly as the
+    engine clears them before the whole.
+    """
+    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)
+    database = tuple(c for c in decided.commands if c.label != backup.RESTORE_MIRROR)
+    return (
+        (MIRROR_HALF, replace(decided, commands=mirror)),
+        (DATABASE_HALF, replace(decided, commands=database)),
+    )
+
+
+def _half_failed(
+    exc: backup.BackupRefused,
+    half: str,
+    *,
+    completed: Sequence[str],
+    decided: backup.RestorePlan,
+    dry_run: bool,
+) -> CratekitError:
+    """A refusal from inside one half, saying which half and what is on the target.
+
+    THE RESERVED SENTENCE FOR A FAILED TRANSFER IS FALSE HERE, which is why it
+    is not reused. It says the live companion files were cleared and tells the
+    person to run the restore again. Nothing was cleared, because the target
+    held no database, and whether a rerun is possible depends on which half
+    failed. The slug and its exit code are kept; the engine's own sentence,
+    which carries the return code, rides in the detail.
+    """
+    slug = str(exc.refusal)
+    detail: dict[str, Any] = {
+        "refusal": slug,
+        "half": half,
+        "completed_halves": list(completed),
+        "target": str(decided.target),
+        "dry_run": dry_run,
+        "engine": exc.detail,
+    }
+    if exc.refusal is not backup.Refusal.RESTORE_TRANSFER_FAILED:
+        return CratekitError(
+            Cause(
+                reason=slug,
+                message=exc.detail,
+                remediation=reservations.remediation_for(slug),
+                origin=("modules.tools.backup", "session.restore_cli"),
+                detail=detail,
+            )
+        )
+    if dry_run:
+        message = (
+            f"the rehearsal's {half} half failed against the remote and nothing "
+            f"was written to {decided.target}"
+        )
+        steps = ("check the remote is reachable, then rehearse again",)
+    elif half == MIRROR_HALF:
+        message = (
+            f"the mirror half of the recovery onto {decided.target} failed part "
+            f"way, and the database half was not attempted, so the target holds "
+            f"no database from this run"
+        )
+        steps = (
+            "check the remote is reachable, then run the recovery again; files "
+            "that already arrived are not transferred twice",
+            "if the rerun is refused because the target holds a database file "
+            "the mirror carried, move that file aside and run it again",
+        )
+    else:
+        message = (
+            f"the mirror half completed and the database half of the recovery "
+            f"onto {decided.target} failed, so {decided.database_target.name} or "
+            f"one of its companions may have arrived without the rest"
+        )
+        steps = (
+            f"do not open the library; remove {decided.database_target} and its "
+            f"companion files, because a target holding a database is refused",
+            "check the remote is reachable, then run the recovery again; the "
+            "mirror that already arrived is not transferred twice",
+        )
+    return CratekitError(
+        Cause(
+            reason=slug,
+            message=message,
+            remediation=Remediation(steps=steps),
+            origin=("modules.tools.backup", "session.restore_cli"),
+            detail=detail,
+        )
+    )
+
+
+def recover_under_bare_metal_session(
+    cfg: config.Config,
+    *,
+    target: Path | str,
+    accepted: bool,
+    dry_run: bool = False,
+    snapshot: str | None = None,
+    snapshot_volume: str | None = None,
+    terminal: object | None = None,
+    identity_provider: object | None = None,
+    mount_enumerator: object | None = None,
+    mount_probe: object | None = None,
+    runner: object | None = None,
+    process_lister: object | None = None,
+) -> BareMetalReport:
+    """The mirror and the database, onto a replacement drive, inside ONE session.
+
+    THIS IS THE CALLER :func:`cratekit.core.restore.bare_metal_session` WAITED
+    FOR. That guard substitutes the three library-scoped gates, which all sit on
+    the disk that died, and says what each substitute is worth. Nothing here
+    softens one: the library must be genuinely gone, the target must be a real
+    filesystem holding no database, a person must be at a terminal, and
+    ``accepted`` is the acknowledgment. All four are the engine's refusals and
+    are raised before its lock is taken, so a refused recovery leaves the disk
+    as it found it.
+
+    ``held.guard`` IS THE ``gates`` SEAM FOR BOTH ENGINE CALLS, for the reason
+    :func:`restore_under_one_session` gives, and with one more here: left to
+    default, ``backup.plan_restore`` would ask for the library-scoped gates and
+    refuse with an instruction to mount the volume this verb exists to replace.
+
+    THE TARGET HANDED DOWN IS ``held.authorises`` AND NEVER THE ARGUMENT. The
+    session validated one directory and carries it; reading the path off the
+    value rather than off the invocation is what makes that validation the only
+    place a path can come from.
+
+    ``confirmed=True`` IS NOT A SECOND DECISION. The block below is reached only
+    through a session the engine opened over an explicit acknowledgment at a
+    terminal, and ``plan_restore``'s parameter is how a caller states that a
+    named decision exists (R33).
+
+    NO SESSION IS ROLLED BACK. The session log and every capture were on the
+    lost volume, so there is nothing for a plan to read. What arrives is the
+    library as the last backup saw it.
+
+    A REHEARSAL PASSES THE SAME GATES, acknowledgment included, for the reasons
+    ``backup.run_restore`` gives for the live restore.
+    """
+    with restore.bare_metal_session(
+        cfg,
+        target=target,
+        acknowledged=accepted,
+        terminal=terminal,
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
+        mount_probe=mount_probe,
+    ) as held:
+        try:
+            decided = backup.plan_restore(
+                cfg,
+                target=held.authorises,
+                confirmed=True,
+                snapshot=snapshot,
+                snapshot_volume=snapshot_volume,
+                include_mirror=True,
+                gates=held.guard,
+                **_seam("runner", runner),
+                **_seam("process_lister", process_lister),
+            )
+        except backup.BackupRefused as exc:
+            raise _refused(exc) from exc
+        ran_labels: dict[str, tuple[str, ...]] = {}
+        for half, portion in _halves(decided):
+            try:
+                ran = backup.run_restore(
+                    portion,
+                    cfg,
+                    dry_run=dry_run,
+                    gates=held.guard,
+                    **_seam("runner", runner),
+                )
+            except backup.BackupRefused as exc:
+                raise _half_failed(
+                    exc,
+                    half,
+                    completed=tuple(ran_labels),
+                    decided=decided,
+                    dry_run=dry_run,
+                ) from exc
+            ran_labels[half] = tuple(
+                command.label
+                for command, _result in zip(portion.commands, ran, strict=True)
+            )
+        return BareMetalReport(
+            target=decided.target,
+            database_target=decided.database_target,
+            mirror=ran_labels[MIRROR_HALF],
+            database=ran_labels[DATABASE_HALF],
+            dry_run=dry_run,
+            absent=decided.absent_sidecars,
+            snapshot=decided.snapshot,
+            recorded_volume=decided.recorded_volume,
+        )
+
+
+def _recovered(report: BareMetalReport) -> dict[str, Any]:
+    """The recovery as a ``plan/1`` payload, one item per transfer, named by half.
+
+    EACH HALF HAS ITS OWN COUNT, so a report cannot fold hundreds of gigabytes
+    of music and one database into a single number that says neither.
+
+    THE DIGEST IS AN IDENTITY AND AUTHORISES NOTHING. This verb declares no
+    gate, so no recorded decision is ever compared with it; it is here because
+    the schema carries one and because two reports over the same recovery
+    should say so.
+    """
+    items: list[dict[str, Any]] = [
+        {"half": MIRROR_HALF, "transfer": label} for label in report.mirror
+    ]
+    items += [{"half": DATABASE_HALF, "transfer": label} for label in report.database]
+    return {
+        "digest": digest_of(
+            {
+                "kind": "restore.bare-metal",
+                "target": str(report.target),
+                "snapshot": report.snapshot,
+                "recorded_volume": report.recorded_volume,
+                "dry_run": report.dry_run,
+            }
+        ),
+        "items": items,
+        "totals": {
+            "mirror_transfers": len(report.mirror),
+            "database_transfers": len(report.database),
+            "dry_run": report.dry_run,
+            "absent_sidecars": list(report.absent),
+            "snapshot": report.snapshot,
+            "recorded_volume": report.recorded_volume,
+            "target": str(report.target),
+            "database_target": str(report.database_target),
+        },
+        "chunk": None,
+    }
+
+
+def perform_bare_metal(ctx) -> Envelope:
+    """Recover the mirror and the database onto the named replacement drive.
+
+    NO GATE IS ASKED, and the registry entry says why at length. The short form:
+    the acknowledgment a recorded decision would sit beside is on the lost
+    volume, the flag is the explicit act, and the engine refuses it from an
+    invocation nobody is sitting at.
+
+    THE PATH IS MADE ABSOLUTE AND NOTHING ELSE. Every judgement about the
+    target, that it exists, that it is a filesystem of its own, that it holds no
+    database, is the engine's, made once under its own name.
+    """
+    cfg = _load()
+    report = recover_under_bare_metal_session(
+        cfg,
+        target=Path(ctx.args.target).expanduser().absolute(),
+        accepted=ctx.args.accept_replacement,
+        dry_run=ctx.args.dry_run,
+        snapshot=ctx.args.snapshot,
+        snapshot_volume=ctx.args.snapshot_volume,
+    )
+    return ctx.envelope(data=_recovered(report))
+
+
 def _snapshot_offered(cfg: config.Config, args) -> backup.ResolvedSnapshot:
     """Which snapshot this restore would pull, asked of the remote BEFORE the gate.
 
@@ -1126,11 +1498,17 @@ def _snapshot_offered(cfg: config.Config, args) -> backup.ResolvedSnapshot:
 
 
 __all__ = [
+    "DATABASE_HALF",
     "LISTING",
+    "MIRROR_HALF",
+    "BareMetalReport",
     "RestoreReport",
+    "build_bare_metal",
     "build_list",
     "build_run",
     "list_restorable",
+    "perform_bare_metal",
     "perform_restore",
+    "recover_under_bare_metal_session",
     "restore_under_one_session",
 ]
