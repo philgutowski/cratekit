@@ -1,0 +1,75 @@
+name = "r118-b"
+pass_kind = "light"
+
+# Table b of two for item 4 of the five-places residual finding. Table a holds
+# the twelve rows over the reader itself, this one the six over the slug it
+# registers, the two wizard legs that catch it and the fixed sample of guards
+# already around the credential cycle. 18 rows across both, against a cap of 25.
+
+# ── The slug ─────────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "B1_slug_is_a_defect"
+description = "credential-index-unreadable maps to INTERNAL, so a sidecar the person can repair is reported as a defect to file"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+old = '''        "credential-index-unreadable": ExitCode.PRECONDITION,'''
+new = '''        "credential-index-unreadable": ExitCode.INTERNAL,'''
+
+# ── The wizard's two legs ────────────────────────────────────────────────────
+
+[[rows]]
+id = "C1_wizard_probe_escapes"
+description = "The presence probe raises out of the wizard, discarding the whole report over a configuration already saved"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+old = '''            try:
+                already = secrets.exists(str(name))
+            except CratekitError as exc:'''
+new = '''            try:
+                already = secrets.exists(str(name))
+            except ArithmeticError as exc:'''
+
+[[rows]]
+id = "C2_wizard_write_escapes"
+description = "The record write raises out of the wizard through the same reader, which is the leg the first fix round missed"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+old = '''            except CratekitError as exc:
+                # THE SAME REFUSAL AS THE PROBE ABOVE, REACHED THROUGH THE WRITE.'''
+new = '''            except ArithmeticError as exc:
+                # THE SAME REFUSAL AS THE PROBE ABOVE, REACHED THROUGH THE WRITE.'''
+
+[[rows]]
+id = "C3_wizard_probe_note_is_advisory"
+description = "An unanswerable presence question is reported as INFO, so setup exits clean over a question it could not answer"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+old = '''                    doctor.Status.FAIL,
+                    f"whether {name} is recorded could not be answered, {cause.message}",'''
+new = '''                    doctor.Status.INFO,
+                    f"whether {name} is recorded could not be answered, {cause.message}",'''
+
+# ── A fixed sample of the guards already around the credential cycle ─────────
+
+[[rows]]
+id = "D1_index_written_before_the_read_back"
+description = "set notes the name in the index before the keychain write is read back, so a null backend records a credential it discarded"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''        if stored != value:
+            raise _unavailable('''
+new = '''        _record_name(str(name))
+        if stored != value:
+            raise _unavailable('''
+
+[[rows]]
+id = "D2_keychain_removed_before_the_index"
+description = "delete removes the keychain entry before the index entry, the order that made exists answer True for a credential that was gone"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''        _forget_name(str(name))
+        try:
+            keyring.delete_password(SERVICE, str(name))'''
+new = '''        try:
+            keyring.delete_password(SERVICE, str(name))'''
