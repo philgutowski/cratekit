@@ -4,7 +4,64 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U93, issue #138, `relay/138`, 2026-09-20.**
+**Last merged: U96, issue #141, `relay/141`, 2026-09-20.**
+`crate restore bare-metal --target DIR --accept-replacement` recovers the mirror
+and then the database onto a replacement drive, which CLOSES R-412 and R-8 item
+3, and NARROWS R-396 in its last paragraph and R-585. Until now the restore that
+uses a backup on a NEW drive had no shipped command, and
+`restore.bare_metal_session` had no caller in `src`.
+**A NEW VERB, NO GATE, AND THE FLAG IS THE ACKNOWLEDGMENT.** It opens the bare
+metal session once and hands `held.guard` to `backup.plan_restore` and
+`backup.run_restore`, with the target read off the session. The recorded
+acknowledgment was on the drive that died, the engine refuses with no
+controlling terminal, and conformance 3 would require a gated verb to exit OK on
+a machine whose library is present, which this verb refuses on. It declares
+`rekordbox.closed` and deliberately neither library check, since it needs both
+to fail. It rolls no session back and never passes `replacing_existing`.
+**THE PLAN IS SPENT A HALF AT A TIME.** `run_restore` runs every command before
+it reads a return code, so spent whole, a failed mirror still lands the
+database and the engine then refuses the rerun. One plan, split by label.
+**The built in code review raised nine findings and all nine were driven.**
+Five had a cost and were fixed. The mirror carries the state directory, so it
+lands `queue.db` and every capture, and ANY interrupted recovery is refused on
+rerun: every such failure now carries one true step, remove every file ending
+`.db` under the target, and a test follows it and sees the rerun complete.
+rekordbox is asked about a second time before the database half. A database
+configured outside the library root, rekordbox's default, was never on the lost
+volume, so the mirror half runs alone instead of writing a stray `master.db` to
+the top of the target. The prose claiming the session log does not arrive was
+false and is corrected in the docstrings, the guide and the restore skill, which
+now also say to record the new root and volume identity in setup afterwards.
+Battery: ruff clean, **9360 passed** and 1 skipped in 64 seconds, 9361
+collected, scan clean. No new slow test, no test identifier removed, 30 added.
+Mutation tables, `docs/mutation/u96-a.md`, `u96-b.md` and `u96-notes.md`, rows
+files beside them: **22 rows, the author's own, all killed, on the second run of
+table B.** The first run had one zero and it was the important one. C5 answers
+"gone" for a library that is mounted, the gate that keeps this verb apart from a
+live restore, and it killed nothing on the full suite: all three tests of that
+refusal, one of them the engine's since it landed, used a target beside the
+configured root, which the stub check also refuses, in a sentence containing
+"unmounted", and they asserted on "mounted". The tests now make the stub check
+pass and assert the identity gate's own sentence, and the row kills 3. Null
+control at zero, baseline green, every restore verified against `git show HEAD:`.
+The driver ran in the FOREGROUND, two tables to stay inside the tool ceiling.
+It also refused its first baseline, correctly: the fix round had added a slug
+shaped literal that moved the pinned census in `test_reserved_causes.py`, and
+the report field became a boolean instead.
+Filed: **R-592**, the rerun that needs the manual step, with three options and
+the conservative one taken; **R-593**, the recovered coupled state and database
+can describe different moments; **R-594**, a mirror only recovery still needs a
+snapshot to plan; **R-595**, neither restore verb declares the rclone check;
+**R-596**, no real drive and no real remote has been driven, ATTENDED and owed
+by the brief; **R-597**, a busy recovery lock is called the library lock.
+**R-592 meets the board bar, clause (c), and owes an issue**, which the session
+opened as its one follow up. The rest do not.
+One learning, `docs/solutions/workflow-issues/`, a refusal asserted by a
+substring can be held up by a different refusal. `CONCEPTS.md` gains "Bare metal
+recovery".
+**Main's highest residual number is R-597.**
+
+**The session before: U93, issue #138, `relay/138`, 2026-09-20.**
 `analyze restamp` and `analyze vocals` take `--recursive` and queue a whole tree
 as ONE resumable job, which CLOSES R-376 on its first arm and NARROWS R-409 to
 the calibrate half. One invocation over the library root replaces the 343 leaf
