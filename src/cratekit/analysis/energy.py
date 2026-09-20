@@ -449,7 +449,10 @@ def load_calibration(cfg: config.Config) -> Calibration | None:
             "energy-calibration-unreadable",
             f"this library's energy calibration at {path} could not be read "
             f"({type(exc).__name__}: {exc}), so no level can be scored against it",
-            steps=("run `crate analyze calibrate FOLDER` again to rewrite it",),
+            steps=(
+                "run `crate analyze calibrate LIBRARY_ROOT --recursive` again to "
+                "rewrite it",
+            ),
             origin=("analysis", "energy"),
             detail={"calibration": str(path), "kind": type(exc).__name__},
         ) from exc

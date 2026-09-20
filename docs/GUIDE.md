@@ -476,7 +476,17 @@ folder under the one you name as a single resumable job, so a back catalogue
 pass is one invocation rather than one per genre folder. A folder that is a
 symbolic link is not walked, and the answer says which ones it left alone.
 `analyze run` has no such flag, because it renames each track as it finishes and
-that resume is keyed to the filename. `analyze calibrate` still reads one folder.
+that resume is keyed to the filename.
+
+`analyze calibrate` takes `--recursive` too, and for it the flag is not a
+convenience. A calibration describes the whole library, so the verb fits only
+over the library root walked recursively, `crate analyze calibrate ROOT
+--recursive`, and any other folder fails its `calibrate.sample` check with
+nothing measured and nothing written. `--accept-partial` fits over that folder
+anyway and warns that the numbers are on its scale. The energy half measures an
+even stride sample of the walk, 500 tracks unless `--sample N` says otherwise,
+so the same library gives the same fit twice. The vocal cut reads every tagged
+track.
 
 ### Build a set, master a recording
 

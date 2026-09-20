@@ -5523,7 +5523,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Both are the same kind of literal as db-metadata-not-written and
     # library-row-not-updated above, nothing refuses with either, so the cause
     # population does not move and both halves rise together.
-    assert (len(literals), len(literals - set(causes))) == (471, 302), (
+    # Re-pinned on U94, calibrate over a library wide sample, 2026-09-20: 471 to
+    # 472 distinct, 302 to 303 non-keys. ONE literal joined and NOTHING left,
+    # differenced as SETS by running this collector over main's own
+    # `src/cratekit` extracted with `git archive` into a scratch directory,
+    # rather than inferred from the total moving by one. It is
+    # calibration-partial-sample in `analysis/cli.py`, a holder already, and it
+    # is not a cause: it is the WARNING code a calibration carries when it was
+    # fitted over something other than the library root walked recursively
+    # because the person said to. The refusal it replaces is a failed check row
+    # and not a raised cause, so the cause population does not move.
+    assert (len(literals), len(literals - set(causes))) == (472, 303), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

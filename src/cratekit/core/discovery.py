@@ -88,8 +88,9 @@ def scan_audio(folder: Path, *, recursive: bool = False) -> Scan:
     """The item ids for the audio under ``folder``, sorted, dotfiles skipped.
 
     One level by default, which is byte for byte what both queued verbs did
-    before U93, so an existing job, an existing resume and ``analyze calibrate``
-    are unchanged. Recursive walks the tree and returns POSIX relative paths.
+    before U93, so an existing job and an existing resume are unchanged.
+    Recursive walks the tree and returns POSIX relative paths. ``analyze
+    calibrate`` reads both modes too (U94), synchronously and with no job.
 
     The two modes agree where they overlap: a top level file's relative path is
     its own name, so switching a folder of loose tracks to recursive produces
