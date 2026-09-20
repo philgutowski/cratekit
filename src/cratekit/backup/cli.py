@@ -247,7 +247,7 @@ def _with_rehearsal_step(error: CratekitError, job) -> CratekitError:
     A REAL RUN IS RETURNED UNCHANGED, OBJECT FOR OBJECT, so this cannot add a
     step to a refusal it has nothing to say about. Telling a person whose real
     backup failed that nothing was copied is false in the direction that stops
-    them looking for the half that was. :func:`_refuse` is what raises the
+    them looking for the half that was. :func:`_raise_refusal` is what raises the
     result, and the identity above is the thing it branches on.
     """
     if not _is_rehearsal(job):
@@ -264,8 +264,14 @@ def _with_rehearsal_step(error: CratekitError, job) -> CratekitError:
     )
 
 
-def _refuse(error: CratekitError, job) -> NoReturn:
+def _raise_refusal(error: CratekitError, job) -> NoReturn:
     """Raise one refusal, carrying the rehearsal sentence when the job is one.
+
+    NOT ``_refuse``, which is what this was called for one round. This module
+    already imports ``cause.refuse``, which BUILDS a cause and raises nothing,
+    and a second name a letter apart that raises and returns nothing is the
+    "one symbol meaning two things" METHOD lists among what a green suite
+    cannot see. A reader grepping ``refuse`` here should find the builder.
 
     THE BRANCH IS WHAT THIS EXISTS FOR, and the first cut did not have it.
     ``raise extended from error`` reads correctly and becomes ``raise error from
@@ -555,7 +561,7 @@ def backup_library(ctx) -> Envelope:
                     # rehearsal in which nothing ran leaves here rather than
                     # through the re-raise further down, and an advisory placed
                     # only there would miss exactly the run that copied least.
-                    _refuse(exc, job)
+                    _raise_refusal(exc, job)
                 job = jobs.get(store, job.job_id)
             # A JOB THAT ENDED BADLY IS NOT AN OK EXIT, and this is the only
             # place that can say so. ``jobs.drive`` raises only when EVERY
@@ -589,7 +595,7 @@ def backup_library(ctx) -> Envelope:
             # condition is how the two come to disagree about which one a run
             # met.
             if not job.is_open() and job.cause is not None:
-                _refuse(CratekitError(job.cause), job)
+                _raise_refusal(CratekitError(job.cause), job)
             reported = _reported(store, job)
             # READ BACK HERE AND NOWHERE INSIDE THE ITEM. This is the same call
             # the work body deliberately does not make under the driver, and the
@@ -618,7 +624,7 @@ def backup_library(ctx) -> Envelope:
             try:
                 reported["ages"] = published_ages(jobs.frozen_config(job))
             except CratekitError as exc:
-                _refuse(exc, job)
+                _raise_refusal(exc, job)
             # THE SHARE WARNING IS ASKED HERE AND NOT READ FROM THE ITEM. The work
             # body's report does not leave a claimed item (R-221), so the warning
             # the plan carries would reach nobody. It is a fact about the frozen

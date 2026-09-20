@@ -1,0 +1,281 @@
+{
+  "name": "r221-b",
+  "pass_kind": "light",
+  "branch": "relay/159",
+  "head": "a1cc1eb",
+  "when": "2026-09-20 16:58 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9085,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/backup/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/backup/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d0e3df3c44e5ca83",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9085,
+    "baseline_collected": 9085,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_refusal_step_dropped",
+      "description": "No refusal carries the sentence, so a rehearsal that failed reads as a real backup attempt that fell over",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d9e944b470b46dcb",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 84,
+      "baseline_collected": 84,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal",
+        "tests/test_backup_cli.py::test_a_refusal_this_verb_re_raises_is_never_its_own_cause",
+        "tests/test_backup_cli.py::test_a_rehearsal_that_ended_badly_still_says_it_was_a_rehearsal",
+        "tests/test_backup_cli.py::test_an_unreadable_fact_file_under_a_rehearsal_says_which_kind_of_run_it_was"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not _is_rehearsal(job):\n        return error\n    cause = error.cause",
+      "new": "    return error\n    cause = error.cause"
+    },
+    {
+      "id": "M2_refusal_step_unconditional",
+      "description": "Every refusal gains the sentence, so a person whose REAL backup failed is told nothing was copied and stops looking for the half that was",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8576472f2614e1f5",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 84,
+      "baseline_collected": 84,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal",
+        "tests/test_backup_cli.py::test_a_real_backup_that_ended_badly_gains_no_rehearsal_step",
+        "tests/test_backup_cli.py::test_a_refusal_this_verb_re_raises_is_never_its_own_cause",
+        "tests/test_backup_cli.py::test_a_rehearsal_that_ended_badly_still_says_it_was_a_rehearsal",
+        "tests/test_backup_cli.py::test_an_unreadable_fact_file_under_a_real_run_gains_no_rehearsal_step"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not _is_rehearsal(job):\n        return error\n    cause = error.cause",
+      "new": "    cause = error.cause"
+    },
+    {
+      "id": "M3_cause_rebuilt_losing_the_trail",
+      "description": "Hand build a plausible Cause instead of replacing two fields, dropping retryable, scope and the rest. This is the rebuild the code review measured passing green before the control comparison landed",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dcd37df8acd29a96",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 84,
+      "baseline_collected": 84,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal",
+        "tests/test_backup_cli.py::test_a_rehearsal_that_ended_badly_still_says_it_was_a_rehearsal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return CratekitError(\n        replace(\n            cause,\n            remediation=replace(\n                cause.remediation,\n                steps=(*cause.remediation.steps, rehearsal_warning()[\"message\"]),\n            ),\n        )\n    )",
+      "new": "    return CratekitError(\n        Cause(\n            reason=cause.reason,\n            message=cause.message,\n            remediation=Remediation(\n                remedy=cause.remediation.remedy,\n                steps=(*cause.remediation.steps, rehearsal_warning()[\"message\"]),\n            ),\n            origin=cause.origin,\n            detail=cause.detail,\n            inner=cause.inner,\n        )\n    )"
+    },
+    {
+      "id": "M4_steps_replaced_not_joined",
+      "description": "The sentence replaces the failure's own steps rather than joining them, so the thing a person has to do to fix it is gone",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9ddc6ca02dfb9687",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 84,
+      "baseline_collected": 84,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal",
+        "tests/test_backup_cli.py::test_a_rehearsal_that_ended_badly_still_says_it_was_a_rehearsal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                steps=(*cause.remediation.steps, rehearsal_warning()[\"message\"]),",
+      "new": "                steps=(rehearsal_warning()[\"message\"],),"
+    },
+    {
+      "id": "R1_refusal_is_its_own_cause",
+      "description": "Raise the result from the original unconditionally, which is `raise exc from exc` on a real run and truncates the chain cause.classified walks. This is the defect the code review found",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ccbf776bfefbe9ea",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 84,
+      "baseline_collected": 84,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_refusal_this_verb_re_raises_is_never_its_own_cause"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    extended = _with_rehearsal_step(error, job)\n    if extended is error:\n        raise error\n    raise extended from error",
+      "new": "    raise _with_rehearsal_step(error, job) from error"
+    },
+    {
+      "id": "R2_drive_raise_unextended",
+      "description": "The exit jobs.drive raises from, when every item failed, loses the sentence. That is the run that copied least of all",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dd546630f412b14b",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 84,
+      "baseline_collected": 84,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_rehearsal_that_ended_badly_still_says_it_was_a_rehearsal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    _refuse(exc, job)",
+      "new": "                    raise"
+    },
+    {
+      "id": "R3_second_exit_unextended",
+      "description": "The half failed run's refusal loses the sentence, which is the exit the envelope's warning cannot reach",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b52399fa31d7982a",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 84,
+      "baseline_collected": 84,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                _refuse(CratekitError(job.cause), job)",
+      "new": "                raise CratekitError(job.cause)"
+    },
+    {
+      "id": "R4_read_back_outside_the_try",
+      "description": "The unreadable fact file refuses saying the backup ran and its published age cannot be read back, over a rehearsal that published nothing",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0df4fec1b9aa20d9",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.backup.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 84,
+      "baseline_collected": 84,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_an_unreadable_fact_file_under_a_rehearsal_says_which_kind_of_run_it_was"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            try:\n                reported[\"ages\"] = published_ages(jobs.frozen_config(job))\n            except CratekitError as exc:\n                _refuse(exc, job)",
+      "new": "            reported[\"ages\"] = published_ages(jobs.frozen_config(job))"
+    }
+  ],
+  "dropped": []
+}

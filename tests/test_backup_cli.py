@@ -2495,7 +2495,7 @@ def test_a_refusal_this_verb_re_raises_is_never_its_own_cause(cfg):
             )
         )
         try:
-            backup_cli._refuse(original, job)
+            backup_cli._raise_refusal(original, job)
         except CratekitError as raised:
             assert raised.__cause__ is not raised, (
                 "the refusal is its own cause, so the declared chain ends here "
