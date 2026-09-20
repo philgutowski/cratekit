@@ -2263,6 +2263,29 @@ def test_u95_staging_inside_the_library_but_not_under_its_store_is_refused(
     assert _tree_bytes(cfg.library.root) == before
 
 
+def test_u95_plan_checks_its_own_answer_rather_than_trusting_the_derivation(
+    cfg, held, tmp_path, monkeypatch
+):
+    """The plan side copy of the guard, which no honest derivation can trip.
+
+    Every path a plan names comes from the rooted configuration, so nothing a
+    caller can pass produces an outside one, and that is the point. It also means
+    the plan side check is dead weight unless something forces the derivation to
+    be wrong, so the staging derivation is replaced through its seam, which is
+    what a later edit to it would amount to. A PREVIEW must refuse as loudly as a
+    write: no ``run`` is called here.
+    """
+    record, _captured = completed_session(cfg)
+    stray = tmp_path / "not-the-library" / "staged" / "attempt"
+    monkeypatch.setattr(restore, "_pre_restore_root", lambda _cfg, now=None: stray)
+
+    with pytest.raises(CratekitError) as refused:
+        restore.plan(cfg, record.session_id, held=held)
+
+    assert refused.value.cause.detail["writing"] == str(stray)
+    assert not stray.exists()
+
+
 def test_u95_a_step_aimed_at_the_authorised_directory_itself_is_refused(cfg, held):
     """The root passes authorisation and is not a path any restore may replace.
 
