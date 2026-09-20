@@ -1,0 +1,74 @@
+name = "r289-a"
+pass_kind = "light"
+
+# The guards this branch introduced, and nothing else. R-289 is the tagging
+# walk's two skips, R-291 is the staging sweep and its three call sites, and
+# jobs.states_of is the reader the sweep asks its question through.
+
+# ---------------------------------------------------------------------------
+# A. The tagging walk, R-289
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A1_appledouble_gone"
+description = "Drop the AppleDouble skip, so a sidecar is walked as a track"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        and not path.name.startswith(APPLEDOUBLE_PREFIX)'''
+new = '''        and True'''
+
+[[rows]]
+id = "A2_appledouble_one_dot"
+description = "Widen the sidecar prefix to a bare dot, the defect the review caught"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''APPLEDOUBLE_PREFIX = "._"'''
+new = '''APPLEDOUBLE_PREFIX = "."'''
+
+[[rows]]
+id = "A3_staging_dirs_gone"
+description = "Drop the staging tree skip, so a partial download is queued as a track"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        and not SKIPPED_DIRNAMES.intersection(path.relative_to(root).parts[:-1])'''
+new = '''        and True'''
+
+[[rows]]
+id = "A4_staging_dirs_acquire_only"
+description = "Forget the master staging tree, keeping the acquisition one"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''SKIPPED_DIRNAMES: frozenset[str] = frozenset(
+    {".cratekit-acquire-staging", ".cratekit-master-staging"}
+)'''
+new = '''SKIPPED_DIRNAMES: frozenset[str] = frozenset({".cratekit-acquire-staging"})'''
+
+[[rows]]
+id = "A5_staging_dirs_absolute"
+description = "Match the staging names on the absolute path, not relative to the root"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        and not SKIPPED_DIRNAMES.intersection(path.relative_to(root).parts[:-1])'''
+new = '''        and not SKIPPED_DIRNAMES.intersection(path.parts)'''
+
+[[rows]]
+id = "A6_staging_dirs_include_filename"
+description = "Include the file's own name in the directory match, dropping the slice"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        and not SKIPPED_DIRNAMES.intersection(path.relative_to(root).parts[:-1])'''
+new = '''        and not SKIPPED_DIRNAMES.intersection(path.relative_to(root).parts)'''
+
+# ---------------------------------------------------------------------------
+# Ranked below the cap
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "E3_skipped_dirnames_empty"
+description = "Empty SKIPPED_DIRNAMES whole"
+reason = "ranked below the cap: A3 removes the same guard at its use and A4 measures the set's membership, so this row would re-measure both at once"
+
+[[dropped]]
+id = "E4_appledouble_suffix_not_prefix"
+description = "Match the AppleDouble marker anywhere in the name rather than at the front"
+reason = "ranked below the cap: no fixture in this suite holds ._ inside a name, so the row would measure the absence of a fixture"

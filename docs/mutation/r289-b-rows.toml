@@ -1,0 +1,192 @@
+name = "r289-b"
+pass_kind = "light"
+
+# The staging sweep, its three call sites and the reader it asks through.
+# The tagging walk's rows are the first batch, docs/mutation/r289-a-rows.toml,
+# split only because one batch of 21 rows can pass the harness time ceiling.
+
+# ---------------------------------------------------------------------------
+# B. The staging sweep, R-291
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "B1_reclaim_rmtree"
+description = "Reclaim with rmtree, so a refused landing kept as evidence is deleted"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    try:
+        directory.rmdir()
+    except OSError:
+        return
+    removed.append(directory)'''
+new = '''    try:
+        shutil.rmtree(directory)
+    except OSError:
+        return
+    removed.append(directory)'''
+
+[[rows]]
+id = "B2_reclaim_reports_a_failure_as_a_removal"
+description = "Report a directory that could not be removed as one that was"
+file = "src/cratekit/acquire/cli.py"
+surface = "maintainer"
+old = '''    try:
+        directory.rmdir()
+    except OSError:
+        return
+    removed.append(directory)'''
+new = '''    try:
+        directory.rmdir()
+    except OSError:
+        pass
+    removed.append(directory)'''
+
+[[rows]]
+id = "B3_terminal_filter_gone"
+description = "Sweep every job's staging, open ones included"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''        if states.get(job_dir.name) not in jobs.TERMINAL_STATES:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B4_unknown_job_read_as_terminal"
+description = "Read a directory naming a job this queue does not hold as finished"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''        if states.get(job_dir.name) not in jobs.TERMINAL_STATES:'''
+new = '''        if states.get(job_dir.name, jobs.JobState.SUCCEEDED) not in jobs.TERMINAL_STATES:'''
+
+[[rows]]
+id = "B5_job_directory_before_its_items"
+description = "Reclaim the job directory first, so its item directories never go"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''        for item_dir in _children(job_dir):
+            if item_dir.is_dir():
+                _reclaim(item_dir, removed)
+        _reclaim(job_dir, removed)'''
+new = '''        _reclaim(job_dir, removed)
+        for item_dir in _children(job_dir):
+            if item_dir.is_dir():
+                _reclaim(item_dir, removed)'''
+
+[[rows]]
+id = "B6_job_directory_never_reclaimed"
+description = "Reclaim the item directories and leave the job directory behind"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''                _reclaim(item_dir, removed)
+        _reclaim(job_dir, removed)'''
+new = '''                _reclaim(item_dir, removed)'''
+
+[[rows]]
+id = "B7_absent_tree_not_guarded"
+description = "Drop the missing tree guard, so a machine that never acquired raises"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    tree = root / ACQUIRE_STAGING_DIRNAME
+    if not tree.is_dir():
+        return ()'''
+new = '''    tree = root / ACQUIRE_STAGING_DIRNAME'''
+
+[[rows]]
+id = "B8_children_unsorted"
+description = "Walk the tree in filesystem order, so two runs can disagree"
+file = "src/cratekit/acquire/cli.py"
+surface = "maintainer"
+old = '''        return tuple(sorted(directory.iterdir()))'''
+new = '''        return tuple(directory.iterdir())'''
+
+[[rows]]
+id = "B9_children_unreadable_raises"
+description = "Let an unlistable directory raise out of the sweep and fail the verb"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    try:
+        return tuple(sorted(directory.iterdir()))
+    except OSError:
+        return ()'''
+new = '''    return tuple(sorted(directory.iterdir()))'''
+
+# ---------------------------------------------------------------------------
+# C. The three call sites
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "C1_download_call_site"
+description = "Drop the sweep at the head of acquire download"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''        sweep_staging(Path(cfg.paths.download_staging), store)
+'''
+new = ''''''
+
+[[rows]]
+id = "C2_fallback_resume_call_site"
+description = "Drop the sweep on the fallback fetch resume path"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+old = '''            acquire_cli.sweep_staging(
+                Path(jobs.frozen_config(job).paths.download_staging), store
+            )
+'''
+new = ''''''
+
+[[rows]]
+id = "C3_fallback_queue_call_site"
+description = "Drop the sweep on the fallback fetch queue path"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+old = '''        acquire_cli.sweep_staging(Path(cfg.paths.download_staging), store)
+'''
+new = ''''''
+
+# ---------------------------------------------------------------------------
+# D. jobs.states_of
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "D1_no_chunking"
+description = "Ask about every name in one statement, past the parameter limit"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = '''_ID_CHUNK = 500'''
+new = '''_ID_CHUNK = 1_000_000'''
+
+[[rows]]
+id = "D2_chunk_halved"
+description = "Halve the chunk, a coefficient the bound must tolerate in both directions"
+file = "src/cratekit/core/jobs.py"
+surface = "maintainer"
+old = '''_ID_CHUNK = 500'''
+new = '''_ID_CHUNK = 250'''
+
+[[rows]]
+id = "D3_unknown_name_gets_a_state"
+description = "Answer for every name asked about, inventing queued for the unknown ones"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = '''    found: dict[str, JobState] = {}
+    wanted = list(job_ids)'''
+new = '''    wanted = list(job_ids)
+    found: dict[str, JobState] = dict.fromkeys(wanted, JobState.QUEUED)'''
+
+# ---------------------------------------------------------------------------
+# Ranked below the cap
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "E1_states_of_state_column"
+description = "Read the handler_key column instead of the state column"
+reason = "ranked below the cap: a wrong column raises at _coerce_job_state rather than answering, so it measures the coercion and not this reader"
+
+[[dropped]]
+id = "E2_sweep_root_not_frozen"
+description = "Resolve the fallback resume path's staging root from a live config load"
+reason = "ranked below the cap: the suite configures one machine, so the live and the frozen root are the same path in every test here and the row cannot be honest about what it measures"
+
+[[dropped]]
+id = "E5_present_filter_drops_is_dir"
+description = "Let a FILE sitting directly under the staging tree be treated as a job"
+reason = "ranked below the cap: _reclaim's rmdir refuses a non directory, so the mutation is behaviour preserving and a zero here would say nothing"
