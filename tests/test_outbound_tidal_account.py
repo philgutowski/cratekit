@@ -86,6 +86,19 @@ class Track:
         self.version = version
         self.artists = [Artist(one) for one in artists]
         self.artist = self.artists[0] if self.artists else None
+        #: The client's own name for "the provider will play this".
+        self.available = True
+
+
+def withdrawn(track: Track) -> Track:
+    """The track as the client hands out one the provider will not play.
+
+    The client reads ``version`` only inside ``if self.available``, so a
+    withdrawn extended mix arrives with no version and reads as the plain record.
+    """
+    track.available = False
+    track.version = None
+    return track
 
 
 class Playlist:
@@ -484,7 +497,50 @@ def test_a_row_billing_two_artists_agrees_with_a_track_billing_the_same_two():
     assert match_row(found, "Sun Path", artist="Nova Reef, Mira Vale") == "101"
     assert match_row(found, "Sun Path", artist="Nova Reef & Mira Vale") == "101"
     assert match_row(found, "Sun Path", artist="Nova Reef") == "101"
-    assert match_row(found, "Sun Path", artist="Mira Vale") is None
+    assert match_row(found, "Sun Path", artist="Mira Vale") is None, "the guest alone"
+    assert match_row(found, "Sun Path", artist="Mira Vale, Nova Reef") == "101"
+    assert match_row(found, "Sun Path", artist="Nova Reef feat. Mira Vale") == "101"
+    assert match_row(found, "Sun Path", artist="Nova Reef, Mira Vale, Kai Tern") is None
+    assert match_row(found, "Sun Path", artist="Nova") is None, "half a name"
+
+
+def test_a_remixer_the_provider_bills_and_the_row_does_not_is_still_agreement():
+    client = releases(
+        Track("101", "Sun Path", "Kai Tern Remix", ("Nova Reef", "Kai Tern")),
+        Track("202", "Sun Path", None, ("Nova Reef",)),
+    )
+    assert match_row(adapter(client), "Sun Path (Kai Tern Remix)") == "101"
+
+
+def test_a_track_the_provider_will_not_play_is_never_the_choice():
+    """Its version was never read, so a withdrawn extended mix looks like the plain record."""
+    client = releases(
+        Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
+        withdrawn(Track("202", "Sun Path", "Extended Mix", ("Nova Reef",))),
+    )
+    found = adapter(client)
+    assert match_row(found, "Sun Path") is None
+    reason = found.unmatched_reason("7")
+    assert "1 cannot be streamed" in reason and "none of the rest agrees" in reason
+    client.user.favorites.hearts = ["202"]
+    assert match_row(adapter(client), "Sun Path") is None, "a heart does not revive it"
+
+
+def test_a_withdrawn_release_does_not_stop_the_one_that_plays_from_being_chosen():
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef",)),
+        withdrawn(Track("202", "Sun Path", None, ("Nova Reef",))),
+    )
+    assert match_row(adapter(client), "Sun Path") == "101"
+
+
+def test_a_provider_title_that_reads_two_ways_agrees_under_either_too():
+    """The same recording must resolve whichever side spelled the version with a dash."""
+    client = releases(
+        Track("101", "Sun Path - Live", None, ("Nova Reef",)),
+        Track("202", "Sun Path", "Radio Edit", ("Nova Reef",)),
+    )
+    assert match_row(adapter(client), "Sun Path (Live)") == "101"
 
 
 def test_a_row_carrying_no_names_chooses_nothing_and_asks_the_hearts_nothing():
@@ -1231,10 +1287,14 @@ def test_a_sweep_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_co
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["unmatched"] == ["2"]
     (reason,) = outbound["reasons"]
-    assert reason.startswith("2: ") and "names 2 provider tracks" in reason
-    assert "2 of them agree" in reason
+    assert reason.startswith("Artist 2 - Track 2 (row 2): "), reason
+    assert "names 2 provider tracks" in reason and "2 of them agree" in reason
     reports = artifacts.committed(installed, job_id)
-    assert [sorted(report["reasons"]) for report in reports] == [[], ["2"], []]
+    assert [[one["row"] for one in report["reasons"]] for report in reports] == [
+        [],
+        ["2"],
+        [],
+    ]
 
 
 def test_an_export_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_could_not(
@@ -1256,7 +1316,8 @@ def test_an_export_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["unmatched"] == ["2"]
     (reason,) = outbound["reasons"]
-    assert reason.startswith("2: ") and "names 2 provider tracks" in reason
+    assert reason.startswith("Artist 2 - 08A - 124 - Track 2 (row 2): "), reason
+    assert "names 2 provider tracks" in reason
     (row,) = [
         row for report in artifacts.committed(installed, job_id) for row in report["unmatched"]
     ]

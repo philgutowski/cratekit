@@ -137,8 +137,6 @@ def _billed(track: Any) -> str:
 
     A library row spells a record by two artists as one artist field holding
     both, and the matcher's reader keeps only the first a provider row names.
-    Joined with a space because ``match.fold`` takes a comma and an ampersand
-    off alike, so "A, B" and "A & B" both fold to this.
     """
     names = []
     for entry in getattr(track, "artists", None) or ():
@@ -148,27 +146,64 @@ def _billed(track: Any) -> str:
     return " ".join(names)
 
 
+#: Words a library row puts BETWEEN artists that no artist is billed under. A
+#: comma and an ampersand need no entry, since ``match.fold`` takes them off.
+_JOINERS = frozenset({"feat", "ft", "featuring", "with", "and", "vs", "x"})
+
+
+def _artist_agrees(row_artist: str, first_billed: str, track: Any) -> bool:
+    """Whether the row's artist field names this track's artists and no others.
+
+    COMPARED AS WORDS AND NEVER SPLIT INTO NAMES, because a comma is legal inside
+    an artist's own name and guessing where one artist ends is the wrong join
+    ``match._first_named`` refuses to make. Two conditions, each removable alone.
+    Every word of the FIRST billed artist is in the row, so a row naming only the
+    guest does not agree. And the row holds no word the track does not bill,
+    joiners aside, so another act sharing a word does not agree either. Between
+    them a row may bill the artists in another order, may leave out a remixer the
+    provider bills, and may spell the join as a comma, an ampersand or "feat.".
+    """
+    ours = set(match.fold(row_artist).split())
+    first = set(match.fold(first_billed).split())
+    billed = first | set(match.fold(_billed(track)).split())
+    return bool(first) and first <= ours and ours - billed <= _JOINERS
+
+
 def _agrees(row: match.Wanted, track: Any) -> bool | None:
     """Whether a provider track is the row's recording AND version.
 
     ``None`` when the track cannot be read at all, which is not a disagreement:
-    see :meth:`TidalAccount._among`. EITHER READING OF THE ROW'S TITLE COUNTS,
-    since "Sun Path - Live" is a version or the end of a title and the string
-    cannot say which; the caller still needs exactly one track to agree. The
-    artist agrees as the track's first billed name or as all of them.
+    see :meth:`TidalAccount._among`.
+
+    EITHER READING OF EITHER TITLE COUNTS, since "Sun Path - Live" is a version
+    or the end of a title and the string cannot say which, whichever side spelled
+    it that way. ``intake.candidates.sole_exact`` refuses a row that reads two
+    ways outright, and this does not, ON PURPOSE: there the candidates came from
+    a text search and anything may be among them, and here every candidate
+    already carries the row's own ISRC and the caller still needs exactly one of
+    them to agree. That module's reader is not reused because it scores every row
+    with a fuzzy matcher this path has no use for.
     """
     try:
         listed = match.read_row(track, origin=match.TIDAL, position=1)
     except match.UnreadableList:
         return None
-    recordings = {
-        listed.recording,
-        match.recording_token(_billed(track), listed.title),
-    }
-    return any(
-        one.version_key == listed.version_key and one.recording in recordings
-        for one in row.readings
-    )
+    if not _artist_agrees(row.artist, listed.artist, track):
+        return False
+    ours = {(match.fold(one.title), one.version_key) for one in row.readings}
+    theirs = {(match.fold(one.title), one.version_key) for one in listed.readings}
+    return bool(ours & theirs)
+
+
+def _streamable(track: Any) -> bool:
+    """Whether the provider will play this track, absent a statement that it will not.
+
+    THE CLIENT READS A TRACK'S VERSION ONLY WHEN IT IS AVAILABLE, so an extended
+    mix the provider has withdrawn arrives with no version at all and reads as
+    the plain record. It is left out of the choice rather than compared, for that
+    reason and because a heart on a track nobody can play is not the favourite.
+    """
+    return getattr(track, "available", True) is not False
 
 
 class TidalAccount:
@@ -293,35 +328,49 @@ class TidalAccount:
 
         A TRACK THAT CANNOT BE READ STOPS THE FIRST RULE FROM CHOOSING, on
         ``intake.candidates.sole_exact``'s argument: one agreeing track beside
-        one unreadable one is not known to be the only one that agrees.
+        one unreadable one is not known to be the only one that agrees. A track
+        the provider will not play is never a candidate, see :func:`_streamable`.
+
+        RELEASES SPELLED ALIKE WITH NONE HEARTED STAY UNMATCHED, and that is
+        the larger half of what was measured. Nothing the seam carries tells a
+        single from its album cut, and the first, the earliest or the lowest
+        numbered is a policy rather than a fact about the row.
         """
-        count = len(tracks)
-        named = f"the ISRC {isrc} names {count} provider tracks"
+        named = f"the ISRC {isrc} names {len(tracks)} provider tracks"
         row = _row_of(title, artist)
         if row is None:
             return None, (
                 f"{named} and this row carries no artist and title to choose "
                 f"among them by"
             )
-        verdicts = {remote: _agrees(row, track) for remote, track in tracks.items()}
+        verdicts = {
+            remote: _agrees(row, track)
+            for remote, track in tracks.items()
+            if _streamable(track)
+        }
+        withdrawn = len(tracks) - len(verdicts)
         unreadable = sum(1 for verdict in verdicts.values() if verdict is None)
         agreeing = [remote for remote, verdict in verdicts.items() if verdict]
         if len(agreeing) == 1 and not unreadable:
             return agreeing[0], ""
+        aside = (
+            (f", {withdrawn} cannot be streamed" if withdrawn else "")
+            + (f", {unreadable} could not be read" if unreadable else "")
+        )
         if not agreeing:
+            rest = "the rest" if aside else "them"
             return None, (
-                f"{named} and none of them agrees with this row's artist, title "
-                f"and version"
+                f"{named}{aside} and none of {rest} agrees with this row's "
+                f"artist, title and version"
             )
         hearts = self._favorites()
         hearted = [remote for remote in agreeing if remote in hearts]
         if len(hearted) == 1:
             return hearted[0], ""
         return None, (
-            f"{named}, {len(agreeing)} of them agree with this row's artist, "
-            f"title and version"
-            + (f", {unreadable} could not be read" if unreadable else "")
-            + f" and the account hearts {len(hearted)} of those, so none was chosen"
+            f"{named}{aside}, {len(agreeing)} of them agree with this row's "
+            f"artist, title and version and the account hearts {len(hearted)} "
+            f"of those, so none was chosen"
         )
 
     def unmatched_reason(self, identity: str) -> str:

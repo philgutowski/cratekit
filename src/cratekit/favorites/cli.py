@@ -116,7 +116,10 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
         # One sentence per favourite the account would not choose a release for
         # (R-356). A report written before that key existed carries none.
         reasons.extend(
-            f"{row}: {reason}" for row, reason in (report.get("reasons") or {}).items()
+            f"{one.get('artist') or ''} - {one.get('title') or ''} "
+            f"(row {one.get('row') or ''}): {one.get('reason') or ''}"
+            for one in report.get("reasons") or ()
+            if isinstance(one, dict)
         )
     return {
         "hearted": hearted,
@@ -374,12 +377,25 @@ def run_heart_item(
             detail={"row": row_id},
         )
     report = hearts.heart_back(cfg, remote, candidates, colors=None)
+    named = {item.row_id: item for item in candidates}
     return {
         "row": row_id,
         "hearted": list(report.hearted),
         "already": list(report.already),
         "unmatched": list(report.unmatched),
-        "reasons": dict(report.reasons),
+        # WITH THE ROW'S OWN NAMES, because the engine reports a row by its
+        # identifier and a person reading why a favourite was not hearted needs
+        # to know which favourite. The title is the release title, head off,
+        # which is the only one a heart candidate carries.
+        "reasons": [
+            {
+                "row": row,
+                "title": named[row].release_title if row in named else "",
+                "artist": named[row].artist if row in named else "",
+                "reason": reason,
+            }
+            for row, reason in report.reasons
+        ],
     }
 
 

@@ -90,8 +90,11 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
         # sentence per row and only for a row it said something about. A row the
         # provider has three releases of and a row it has never heard of are both
         # unmatched, and only the first is something a person can act on.
+        # NAMED AS THE LIBRARY SHOWS THE ROW, since this is the one string here
+        # written for a person and nobody finds a track by its row number.
         reasons.extend(
-            f"{_identity(item)}: {item['reason']}"
+            f"{item.get('artist') or ''} - {item.get('title') or ''} "
+            f"(row {_identity(item)}): {item['reason']}"
             for item in report.get("unmatched") or ()
             if isinstance(item, dict) and item.get("reason") not in (None, "", "unmatched")
         )
