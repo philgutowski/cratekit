@@ -105,8 +105,27 @@ def _apply(folder: Path) -> dict:
     return _drive(folder, "apply")
 
 
+def _answer(folder: Path) -> tuple[int, dict]:
+    """Status and whole envelope from one apply, whatever it exits with.
+
+    ``_apply`` asserts a zero exit, which is right for a sweep that carried out
+    every rename it promised. R-172's whole content is that an apply which could
+    not is a non-success answer carrying its plan, so these tests read both
+    halves rather than the payload alone.
+    """
+    code, out, _ = drive([
+        "--output", "json", "-d", "name.apply.confirm=apply",
+        "name", "apply", "--root", str(folder),
+    ])
+    return code, json.loads(out)
+
+
 def _moves(plan: dict) -> list[tuple[str, str]]:
     return [(item["from"], item["to"]) for item in plan["items"]]
+
+
+def _actions(plan: dict) -> dict[str, str]:
+    return {item["from"]: item["action"] for item in plan["items"]}
 
 
 def test_a_folder_already_in_convention_proposes_no_rename(configured):
@@ -518,11 +537,7 @@ def _pair(folder: Path) -> tuple[Path, Path]:
 
 
 def _refusal(folder: Path) -> tuple[int, dict]:
-    code, out, _ = drive([
-        "--output", "json", "-d", "name.apply.confirm=apply",
-        "name", "apply", "--root", str(folder),
-    ])
-    return code, json.loads(out)
+    return _answer(folder)
 
 
 def test_a_referenced_file_is_untouched_and_its_sibling_is_renamed(collected):
@@ -535,7 +550,7 @@ def test_a_referenced_file_is_untouched_and_its_sibling_is_renamed(collected):
         held.name: "referenced",
         free.name: "rename",
     }
-    assert plan["totals"] == {"count": 1, "referenced": 1}
+    assert plan["totals"] == {"count": 1, "referenced": 1, "collides": 0}
     _apply(folder)
     assert held.is_file() and held.read_bytes() == before
     assert not free.exists() and (folder / "02A - 124 - Free.flac").is_file()
@@ -825,12 +840,22 @@ def test_an_empty_folder_needs_no_database(collected):
 def test_a_row_that_appears_after_the_gate_still_protects_its_file(collected, monkeypatch):
     """The re-check before the rename, on its own. The plan is built over an
     empty collection and the apply pass reads one that references the file,
-    which is rekordbox importing while the gate waits on a person."""
+    which is rekordbox importing while the gate waits on a person.
+
+    R-172 added the second half: the file is still protected AND the run says
+    the rename a person approved did not happen. The protection is not a reason
+    to report success over a plan that was carried out in part, and the next run
+    shows the same file as referenced and exits 0.
+    """
     folder = _folder(collected)
     held, free = _pair(folder)
     reads = iter([(), (str(held),)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
-    _apply(folder)
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    incomplete = envelope["cause"]["detail"]["incomplete"]
+    assert [item["from"] for item in incomplete] == [held.name]
+    assert "began referencing it" in incomplete[0]["why"]
     assert held.is_file()
     assert not free.exists()
 
@@ -921,11 +946,215 @@ def test_a_rename_onto_a_name_another_file_holds_overwrites_nothing(configured):
     """Two files that render to one name. The padded one is already in
     convention, and the unpadded one would be renamed onto it, which on this
     platform replaces the file silently. The claim on the target is what
-    stops that, and nothing drove it until the U67 mutation table asked."""
+    stops that, and nothing drove it until the U67 mutation table asked.
+
+    R-172 added the second half: the file that stays put is NAMED. The target
+    is a file on disk that nothing is moving, so the collision is known while
+    the plan is built and the rename is never promised.
+    """
     folder = _folder(configured)
     kept = _track(folder, "01A - 124 - Cola.flac", title="01A - 124 - Cola", key="01A")
     other = _track(folder, "1A - 124 - Cola.flac", title="1A - 124 - Cola", key="1A")
     tags.write_tags(kept, {"artist": "the one already in place"})
-    _apply(folder)
+    assert _actions(_plan(folder)) == {other.name: "collides"}
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "rename-incomplete"
+    assert other.name in envelope["cause"]["message"]
     assert other.is_file()
     assert tags.read_tag(kept, "artist") == "the one already in place"
+
+
+# ---------------------------------------------------------------------------
+# R-172: a rename the plan promised is never skipped in silence
+# ---------------------------------------------------------------------------
+#
+# The recorded cost: "An operator sweeping the library is told a rename happened
+# when it did not, with nothing in the report naming which file stayed put."
+# Every test below drives the real dispatcher over real audio files.
+
+
+def _colliding_pair(folder: Path) -> tuple[Path, Path]:
+    """Two files that render to one name, each of which needs a rename.
+
+    The dedupe rule drops a trailing body segment repeating the lead, so these
+    two differ on disk and render identically. This is the ledger's own driven
+    case, with the dedupe standing in for its 05A song.
+    """
+    first = _track(
+        folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A"
+    )
+    second = _track(folder, "5A - 120 - Song - Artist.flac", title="5A - 120 - Song", key="5A")
+    return first, second
+
+
+def test_two_files_rendering_to_one_name_are_not_promised_two_renames(configured):
+    """The plan pass owns the collision, which is where the ledger put it.
+
+    Before this, the plan promised both renames, the apply performed one, the
+    other file was skipped at the claim and the envelope still answered ok.
+    Neither is promised now, both are named, and ``totals.count`` is the number
+    of renames that can actually happen.
+    """
+    folder = _folder(configured)
+    first, second = _colliding_pair(folder)
+    plan = _plan(folder)
+    assert _actions(plan) == {first.name: "collides", second.name: "collides"}
+    assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 2}
+    assert first.is_file() and second.is_file()
+
+
+def test_a_collision_answers_with_the_files_that_stayed_put(configured):
+    """The apply over that plan renames nothing and says so.
+
+    Answering ok here is the whole finding: every later sweep detects the same
+    collision, so a library that can never converge would report success for
+    ever. The cause names both files and the remediation says what to do.
+    """
+    folder = _folder(configured)
+    first, second = _colliding_pair(folder)
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    cause = envelope["cause"]
+    assert cause["reason"] == "rename-incomplete"
+    assert sorted(cause["detail"]["incomplete"], key=lambda item: item["from"]) == [
+        {
+            "from": first.name,
+            "path": str(first),
+            "why": f"{second.name} renders to the same name, and neither is renamed",
+        },
+        {
+            "from": second.name,
+            "path": str(second),
+            "why": f"{first.name} renders to the same name, and neither is renamed",
+        },
+    ]
+    assert envelope["data"]["totals"] == {
+        "count": 0,
+        "referenced": 0,
+        "collides": 2,
+        "renamed": 0,
+        "incomplete": 2,
+    }
+    assert first.is_file() and second.is_file()
+
+
+def test_a_sweep_that_carried_out_every_rename_still_answers_ok(configured):
+    """The other half of the outcome, so the new answer cannot swallow the old
+    one. Two files with nothing in each other's way both land and the envelope
+    is ok at exit 0, which is what every earlier test in this file drives."""
+    folder = _folder(configured)
+    _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
+    _track(folder, "2A - 124 - Beta.flac", title="2A - 124 - Beta", key="2A")
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    assert envelope["cause"] is None
+    assert envelope["data"]["totals"] == {
+        "count": 2,
+        "referenced": 0,
+        "collides": 0,
+        "renamed": 2,
+        "incomplete": 0,
+    }
+    assert (folder / "01A - 124 - Alpha.flac").is_file()
+    assert (folder / "02A - 124 - Beta.flac").is_file()
+
+
+def test_a_target_another_mover_still_holds_is_promised_and_then_reported(configured):
+    """The collision the plan CANNOT rule out, driven with nothing faked.
+
+    ``lead`` dedupes onto the name ``marked`` currently holds, and ``marked`` is
+    itself moving because its title carries the lossy marker. Sort order decides
+    whether the chain resolves: a hyphen sorts before a dot, so ``lead`` is
+    attempted first and its target is still occupied. Holding it back in the
+    plan would lose a rename that succeeds whenever the order runs the other
+    way, so it stays promised and the apply reports what happened.
+    """
+    folder = _folder(configured)
+    marker = configured.naming.lossy_marker
+    lead = _track(
+        folder,
+        "01A - 120 - Alpha - Artist - Alpha.flac",
+        title="01A - 120 - Alpha",
+        key="01A",
+    )
+    marked = _track(
+        folder,
+        "01A - 120 - Alpha - Artist.flac",
+        title=f"01A - 120 - Alpha {marker}",
+        key="01A",
+    )
+    assert _actions(_plan(folder)) == {lead.name: "rename", marked.name: "rename"}
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    incomplete = envelope["cause"]["detail"]["incomplete"]
+    assert [item["from"] for item in incomplete] == [lead.name]
+    assert "already taken" in incomplete[0]["why"]
+    assert envelope["data"]["totals"]["renamed"] == 1
+    assert lead.is_file()
+    assert not marked.exists()
+
+
+def test_a_file_gone_after_the_plan_is_named_rather_than_skipped(configured, monkeypatch):
+    """A file moved or deleted while the gate waits on a person. The plan
+    promised its rename, and a report that shows the promise with no mark on it
+    is the cost R-172 names."""
+    folder = _folder(configured)
+    vanishing = _track(folder, "1A - 124 - Gone.flac", title="1A - 124 - Gone", key="1A")
+    staying = _track(folder, "2A - 124 - Here.flac", title="2A - 124 - Here", key="2A")
+    real = naming_cli._plan_for
+
+    def _plan_then_delete(root, *, cfg):
+        plan = real(root, cfg=cfg)
+        vanishing.unlink()
+        return plan
+
+    monkeypatch.setattr(naming_cli, "_plan_for", _plan_then_delete)
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    incomplete = envelope["cause"]["detail"]["incomplete"]
+    assert [item["from"] for item in incomplete] == [vanishing.name]
+    assert "no longer there" in incomplete[0]["why"]
+    assert not staying.exists() and (folder / "02A - 124 - Here.flac").is_file()
+
+
+def test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim(configured, monkeypatch):
+    """The ``OSError`` branch. The claim it created is removed, which was
+    already true, and the file it could not rename is now named as well."""
+    folder = _folder(configured)
+    track = _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
+    original = Path.rename
+
+    def _refuse_rename(self, target):
+        if self.name == track.name:
+            raise OSError(28, "no space left on device")
+        return original(self, target)
+
+    monkeypatch.setattr(Path, "rename", _refuse_rename)
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    incomplete = envelope["cause"]["detail"]["incomplete"]
+    assert [item["from"] for item in incomplete] == [track.name]
+    assert "no space left on device" in incomplete[0]["why"]
+    assert track.is_file()
+    assert not (folder / "01A - 124 - Alpha.flac").exists()
+
+
+def test_a_title_tag_that_could_not_be_written_is_named(configured, monkeypatch):
+    """The same shape one file over, which METHOD's fifth pattern asks for.
+
+    ``write_tags`` returns False on any failure rather than raising, and nothing
+    read the answer, so a file whose title never got the head was reported as a
+    rename that happened in full. The rename itself stands and is counted.
+    """
+    folder = _folder(configured)
+    track = _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
+    monkeypatch.setattr(naming_cli.tags, "write_tags", lambda path, fields: False)
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    incomplete = envelope["cause"]["detail"]["incomplete"]
+    assert [item["from"] for item in incomplete] == [track.name]
+    assert "title tag" in incomplete[0]["why"]
+    assert envelope["data"]["totals"]["renamed"] == 1
+    assert (folder / "01A - 124 - Alpha.flac").is_file()
