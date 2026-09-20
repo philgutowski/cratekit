@@ -14,9 +14,12 @@ Builders take an untyped ``entry`` so this file does not import the CLI registry
 The house pattern for a destructive verb is a confirm gate against a plan digest,
 and ``export.playlist`` beside it has one. The distinction that separates them is
 the one ``run_backup`` and ``run_restore`` are separated on: this verb ADDS files
-into the configured download staging directory and replaces nothing, deletes
-nothing, and publishes nothing outward. An accidental run costs network time and
-disk, both of which a person can simply delete. ``export.playlist`` is gated
+into the configured download staging directory, replaces nothing, and publishes
+nothing outward. The one thing it removes is its own litter, and the argument
+survives that: :func:`sweep_staging` reclaims EMPTY directories under this
+product's own staging tree, never a file and never anything a person put there.
+An accidental run costs network time and disk, both of which a person can simply
+delete. ``export.playlist`` is gated
 because it writes to a remote service, which is an act the user cannot take back.
 
 The provider-side cost is the real argument for a gate and it does not survive
@@ -422,16 +425,24 @@ def sweep_staging(root: Path, store: jobs.JobStore) -> tuple[Path, ...]:
     another store's staging on that reading is the one mistake here that would
     cost somebody a file. Recorded rather than swept.
 
+    THE QUEUE IS ASKED ABOUT THE DIRECTORIES THAT ARE THERE, through
+    ``jobs.states_of``, rather than asked for every terminal job it holds. The
+    tree is small and the queue only grows, so the other direction makes a verb
+    that runs in milliseconds pay for the whole history of the installation:
+    measured at 224 ms on a store of 2000 succeeded jobs, each freezing a two
+    hundred track list, because ``list_jobs`` decodes every payload it returns.
+
     Returns what it removed, deepest first within a job, so a caller that wants
     to report or assert on the sweep can. The callers today want neither.
     """
     tree = root / ACQUIRE_STAGING_DIRNAME
     if not tree.is_dir():
         return ()
-    terminal = {job.job_id for job in jobs.list_jobs(store, states=sorted(jobs.TERMINAL_STATES))}
+    present = [entry for entry in _children(tree) if entry.is_dir()]
+    states = jobs.states_of(store, [entry.name for entry in present])
     removed: list[Path] = []
-    for job_dir in _children(tree):
-        if job_dir.name not in terminal or not job_dir.is_dir():
+    for job_dir in present:
+        if states.get(job_dir.name) not in jobs.TERMINAL_STATES:
             continue
         for item_dir in _children(job_dir):
             if item_dir.is_dir():

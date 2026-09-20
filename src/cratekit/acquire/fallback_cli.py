@@ -445,15 +445,27 @@ def acquire_fallback_fetch(ctx) -> Envelope:
     """Queue one item per accepted second source candidate, or drive the job.
 
     No gate, for the reason ``acquire download`` declares none: the verb ADDS
-    files into the configured download staging directory and replaces nothing,
-    deletes nothing and publishes nothing. Every upload it fetches was chosen by
-    a person in review, which is the decision a gate would have asked for.
+    files into the configured download staging directory and publishes nothing.
+    Every upload it fetches was chosen by a person in review, which is the
+    decision a gate would have asked for.
+
+    THE STAGING SWEEP RUNS ON BOTH PATHS, because this verb stages through
+    ``acquire_cli.staging_dir`` and so shares one tree with ``acquire download``.
+    Leaving the sweep to that verb alone would let the tree grow without bound
+    for anybody who works the second source path and never runs the first, which
+    is R-291 unfixed for half its writers. The resume path sweeps the root the
+    JOB froze rather than a fresh load, which is both the root this job actually
+    staged into (KTD9) and the reason this path still reads no live
+    configuration.
     """
     if ctx.args.job:
         with jobs.open_store() as store:
             # RECONCILE FIRST. A claim left behind by a driver that died is
             # state the queue cannot see for itself.
             job = jobs.reconcile(store, ctx.args.job)
+            acquire_cli.sweep_staging(
+                Path(jobs.frozen_config(job).paths.download_staging), store
+            )
             warnings: tuple[dict[str, str], ...] = ()
             if job.is_open():
                 _, warnings = ctx.run_job(store, job)
@@ -472,6 +484,7 @@ def acquire_fallback_fetch(ctx) -> Envelope:
             outcome=Outcome.NO_OP,
         )
     with jobs.open_store() as store:
+        acquire_cli.sweep_staging(Path(cfg.paths.download_staging), store)
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,

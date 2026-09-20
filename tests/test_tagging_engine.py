@@ -37,6 +37,7 @@ import pytest
 
 from cratekit.acquire import cli as acquire_cli
 from cratekit.core import art, tags, taxonomy
+from cratekit.master import cli as master_cli
 from cratekit.tagging import retag, tag
 from cratekit.tagging.tag import SearchHit
 from tests._containers import synth_container
@@ -179,8 +180,8 @@ def test_the_walk_does_not_descend_into_the_acquisition_staging_tree(folder, sil
     assert [found.name for found in tag.audio_files(folder)] == ["keep.flac"]
 
 
-def test_the_walk_skips_a_dot_file_beside_a_real_track(folder, silence):
-    """The AppleDouble sidecar ``_audio_in`` names as its own reason to skip.
+def test_the_walk_skips_the_appledouble_sidecar_beside_a_real_track(folder, silence):
+    """The sidecar ``_audio_in`` names as its own reason to skip.
 
     macOS writes ``._track.flac`` beside every file on an exFAT volume, which is
     what a DJ stick is, and the sidecar carries the audio suffix. Queued as a
@@ -192,10 +193,31 @@ def test_the_walk_skips_a_dot_file_beside_a_real_track(folder, silence):
     assert [found.name for found in tag.audio_files(folder)] == ["track.flac"]
 
 
-def test_the_dot_skip_does_not_stop_the_walk_recursing(folder, silence):
-    """The guard is about dot names, not about depth, and the two are separable.
+def test_a_title_that_opens_with_dots_is_walked_and_so_is_the_album_holding_it(
+    folder, silence
+):
+    """The counterexample that decided the shape of the guard, driven.
 
-    A guard that skipped every nested file would pass the two tests above for
+    A leading dot is not reserved on any filesystem this product runs on, and a
+    real library is full of names that begin with one. ``...And Justice For All``
+    is an album directory and ``...Ready For It.flac`` is a track. The first cut
+    of this guard skipped every dot name, so both disappeared and the verb then
+    reported the folder held no audio it could tag: a clean report over files the
+    tool declined to see, which is worse than the defect the guard is for.
+    """
+    place(folder, silence, "...Ready For It")
+    place(folder, silence, "Metallica/...And Justice For All/01 Blackened")
+
+    assert sorted(found.name for found in tag.audio_files(folder)) == [
+        "...Ready For It.flac",
+        "01 Blackened.flac",
+    ]
+
+
+def test_the_skip_does_not_stop_the_walk_recursing(folder, silence):
+    """The guard is about two names, not about depth, and the two are separable.
+
+    A guard that skipped every nested file would pass the tests above for
     entirely the wrong reason, and the walk's recursion is what a folder of
     per release sub directories depends on.
     """
@@ -204,18 +226,51 @@ def test_the_dot_skip_does_not_stop_the_walk_recursing(folder, silence):
     assert [found.name for found in tag.audio_files(folder)] == ["a.flac"]
 
 
-def test_a_root_that_is_itself_a_dot_directory_is_still_walked(tmp_path, silence):
-    """Named deliberately, so it is walked. The check is RELATIVE to the root.
+def test_a_root_that_is_itself_a_staging_tree_is_still_walked(folder, silence):
+    """Named deliberately, so it is walked. The names are matched RELATIVE to root.
 
-    Anchoring the dot check on the absolute path would empty the walk for
-    anyone whose library sits under a dot directory anywhere in its path, and
-    ``~/.cratekit`` is a directory this product creates itself.
+    Somebody pointing the verb straight at a staging directory has said what
+    they mean. What is skipped is a staging tree the walk descended into on its
+    own, and anchoring on the absolute path instead would empty the walk for
+    anyone whose library sits under one of these names anywhere in its path.
     """
-    hidden = tmp_path / ".hidden" / "Music"
-    hidden.mkdir(parents=True)
-    place(hidden, silence, "track")
+    named = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0"
+    named.mkdir(parents=True)
+    place(named, silence, "1")
 
-    assert [found.name for found in tag.audio_files(hidden)] == ["track.flac"]
+    assert [found.name for found in tag.audio_files(named)] == ["1.flac"]
+
+
+def test_the_skipped_dirnames_are_the_two_constants_that_own_them():
+    """The hand copy, pinned. An unpinned copy survives the rename it should follow.
+
+    ``tag`` cannot import either shell: the shells sit on top of the engines
+    (KTD23), so the names are duplicated here and this is what makes the
+    duplicate a copy rather than a second opinion. Asserted as set equality, so
+    a THIRD staging tree added to one of the shells and not to this set fails
+    here rather than being walked into.
+    """
+    assert tag.SKIPPED_DIRNAMES == {
+        acquire_cli.ACQUIRE_STAGING_DIRNAME,
+        master_cli.MASTER_STAGING_DIRNAME,
+    }
+
+
+def test_the_master_staging_tree_is_skipped_too(folder, silence):
+    """The same shape one file over, and it lands under the LIBRARY rather than
+    under the download root.
+
+    ``master.cli.staging_dir`` stages its encode under ``final.parent``, which is
+    the destination folder in the music library, so a tagging sweep of the
+    library walks into it. Its contents are the partial encode a killed ffmpeg
+    run left behind.
+    """
+    place(folder, silence, "track")
+    staged = folder / master_cli.MASTER_STAGING_DIRNAME / "job-1" / "0"
+    staged.mkdir(parents=True)
+    place(staged, silence, "partial")
+
+    assert [found.name for found in tag.audio_files(folder)] == ["track.flac"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

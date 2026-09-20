@@ -234,6 +234,39 @@ def test_a_lossy_file_lands_marked(permissive, tmp_path, monkeypatch):
     assert not (directory / f"{fallback.FETCH_STEM}.mp3").exists()
 
 
+def test_this_verb_sweeps_the_staging_tree_it_shares_with_the_download_verb(
+    permissive, tmp_path, monkeypatch
+):
+    """R-291 for the other writer of the tree, on both of this verb's paths.
+
+    ``handle_fetch`` stages through ``acquire_cli.staging_dir``, so it fills the
+    same tree ``acquire download`` fills. Leaving the sweep to that verb alone
+    would grow the tree without bound for anybody who works the second source
+    path and never runs the first.
+
+    BOTH PATHS ARE ASSERTED, because they are two call sites and they resolve
+    the staging root two different ways. The resume path reads no live
+    configuration at all, so it takes the root off the job's own frozen copy,
+    which is also the root that job actually staged into (KTD9).
+    """
+    accepted(permissive)
+    bind(monkeypatch, FakeFetcher())
+    first = queued(tracklist(tmp_path, BOOT))
+    run(first)
+    assert job_of(first).state is jobs.JobState.SUCCEEDED
+    tree = staging(permissive) / ".cratekit-acquire-staging"
+    assert (tree / first).is_dir(), "the fixture did not leave a staging tree"
+
+    run(first)
+    assert not (tree / first).exists(), "the resume path never reclaimed the staging"
+
+    (tree / first / "0").mkdir(parents=True)
+    accepted(permissive, line=TIDE, url=OTHER_UPLOAD)
+    queued(tracklist(tmp_path, TIDE))
+
+    assert not (tree / first).exists(), "the queue path never reclaimed the staging"
+
+
 def test_a_strict_policy_refuses_that_item_before_anything_downloads(
     strict, tmp_path, monkeypatch
 ):

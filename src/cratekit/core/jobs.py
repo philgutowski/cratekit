@@ -514,6 +514,43 @@ def list_jobs(store: JobStore, *, states: Sequence[JobState] | None = None) -> t
     return tuple(_job_from_row(row) for row in rows)
 
 
+#: How many identifiers go into one ``IN`` clause. SQLite's compiled parameter
+#: limit is the floor this respects, and the caller that needs chunking at all is
+#: the one sweeping a staging tree that has never been swept, which is exactly the
+#: state that produces thousands of names at once.
+_ID_CHUNK = 500
+
+
+def states_of(store: JobStore, job_ids: Sequence[str]) -> dict[str, JobState]:
+    """Where each named job got to, leaving out the names this queue does not hold.
+
+    TWO COLUMNS, WHICH IS THE POINT OF IT EXISTING beside ``get`` and
+    ``list_jobs``. Both of those hydrate a whole :class:`Job`, so both JSON
+    decode the payload and carry the frozen configuration TOML of every row they
+    touch. A caller that only wants to know where a job got to pays for all of
+    it: measured 2026-09-20 over a store of succeeded download jobs each
+    freezing a two hundred track list, ``list_jobs`` filtered to the terminal
+    states took a median 54 ms at 500 jobs and 224 ms at 2000, and the store
+    grows about 16 kB per job. Answering from ``job_id`` and ``state`` alone is
+    flat in the payload size.
+
+    AN IDENTIFIER WITH NO ROW IS ABSENT FROM THE RESULT rather than mapped to
+    anything. "This queue has never heard of it" is not a state a job can be in,
+    and folding it into one would take the difference away from the caller that
+    needs to act on it.
+    """
+    found: dict[str, JobState] = {}
+    wanted = list(job_ids)
+    for start in range(0, len(wanted), _ID_CHUNK):
+        chunk = wanted[start : start + _ID_CHUNK]
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = store.conn.execute(
+            f"SELECT job_id, state FROM jobs WHERE job_id IN ({placeholders})", tuple(chunk)
+        ).fetchall()
+        found.update({row["job_id"]: _coerce_job_state(row["state"]) for row in rows})
+    return found
+
+
 def items(store: JobStore, job_id: str) -> tuple[Item, ...]:
     rows = store.conn.execute(
         "SELECT * FROM job_items WHERE job_id = ? ORDER BY ordinal", (job_id,)
@@ -1542,6 +1579,7 @@ __all__ = [
     "reopen",
     "retry",
     "spawn",
+    "states_of",
     "store_dir",
     "transition",
 ]

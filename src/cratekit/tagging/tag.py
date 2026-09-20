@@ -47,6 +47,27 @@ from cratekit.core.naming import AUDIO_EXTS
 
 Searcher = Callable[[str, str], "SearchHit | None"]
 
+#: Directory names :func:`audio_files` does not descend into: this product's own
+#: per item staging trees, whose contents belong to an attempt rather than to the
+#: library.
+#:
+#: THE NAMES ARE A HAND COPY AND THE COPY IS PINNED. The authoritative constants
+#: are ``acquire.cli.ACQUIRE_STAGING_DIRNAME`` and
+#: ``master.cli.MASTER_STAGING_DIRNAME``, and importing either one here would put
+#: a CLI shell behind an engine that the shells are supposed to sit on top of
+#: (KTD23). ``tests/test_tagging_engine.py`` asserts this set equals those two
+#: constants, because an unpinned hand copy is the shape that survives the rename
+#: it was supposed to follow.
+SKIPPED_DIRNAMES: frozenset[str] = frozenset(
+    {".cratekit-acquire-staging", ".cratekit-master-staging"}
+)
+
+#: What macOS names its AppleDouble sidecar with. The finder writes
+#: ``._track.flac`` beside every file on an exFAT or FAT volume, carrying the
+#: audio suffix and none of the audio. Two characters rather than one, because
+#: one would take ``...Ready For It.flac`` with it.
+APPLEDOUBLE_PREFIX = "._"
+
 #: Given a picture's URL, its bytes, or None when there are none to be had. The
 #: shipped one is :func:`cratekit.tagging.searchers.default_image_fetch`, paced
 #: like every other catalogue touch.
@@ -163,24 +184,37 @@ def audio_files(root: Path) -> tuple[Path, ...]:
     caller that meets that case first is a shell deciding whether it has
     anything to queue, and "nothing to do" is the honest answer to give it.
 
-    NO DOTFILES, and no file under a dot directory either, which is the rule
-    ``analysis/cli._audio_in`` already holds for its own one level walk. This
-    walk RECURSES, so it needs both halves rather than one. Two producers put
-    audio under a dot name on this machine and neither is a track:
-    ``acquire``'s per item staging tree, whose whole comment says it is safe
-    because "the folder walks that queue tagging and analysis skip dotfiles",
-    and macOS's AppleDouble sidecar ``._track.flac`` beside every file on the
-    exFAT volume a DJ stick is. Driven before the guard: ``audio_files`` over a
-    download root holding ``.cratekit-acquire-staging/<job>/0/1.mp3`` returned
-    that file, so ``crate tag folder <download_staging>`` queued the partial
-    downloads of a killed attempt and the landings ``checked_landing`` refused
-    and left as evidence on purpose.
+    TWO PRODUCERS ARE SKIPPED BY NAME, and the walk is otherwise total. Both
+    put files carrying an audio suffix under this root and neither one is a
+    track:
 
-    The dot check is taken RELATIVE TO ``root``. A person who points the verb
-    at a dot directory has named it deliberately and gets its files; what is
-    skipped is a dot name this walk descended into on its own. Anchoring on the
-    absolute path instead would empty the walk for anyone whose library lives
-    under a dot directory.
+    * this product's own per item staging trees, :data:`SKIPPED_DIRNAMES`, whose
+      contents are the partial download a killed attempt left and the landing
+      ``checked_landing`` refused and deliberately left as evidence. Driven
+      before this guard: ``audio_files`` over a download root holding
+      ``.cratekit-acquire-staging/<job>/0/1.mp3`` returned that file, so
+      ``crate tag folder <download_staging>`` queued both kinds as items and a
+      tag write would have altered the evidence;
+    * macOS's AppleDouble sidecar, :data:`APPLEDOUBLE_PREFIX`. The finder writes
+      ``._track.flac`` beside every file on an exFAT or FAT volume, which is what
+      a DJ stick is, and the sidecar carries the audio suffix. It is the reason
+      ``analysis/cli._audio_in`` skips what it skips.
+
+    **NOT "every dot name", which is what this said first and is wrong here.**
+    A leading dot is not reserved on any filesystem this product runs on, and
+    the DJ library it walks is full of counterexamples: ``...And Justice For
+    All`` is an album directory and ``...Ready For It.flac`` is a track. A broad
+    hidden-name rule drops both, silently, and the verb then reports that the
+    folder holds no audio it can tag. That is a worse defect than the one the
+    guard exists for, and it is worse in the direction this project's merge bar
+    cares about, a clean report over files the tool declined to see. Skipping
+    the two producers by name costs nothing, because both names are this
+    product's own or the operating system's own and neither is a title.
+
+    The directory names are matched RELATIVE TO ``root``. A person who points
+    the verb straight at a staging tree has named it deliberately and gets its
+    files; what is skipped is a staging tree this walk descended into on its
+    own.
     """
     if not root.is_dir():
         return ()
@@ -189,7 +223,8 @@ def audio_files(root: Path) -> tuple[Path, ...]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
         and path.suffix.lower() in AUDIO_EXTS
-        and not any(part.startswith(".") for part in path.relative_to(root).parts)
+        and not path.name.startswith(APPLEDOUBLE_PREFIX)
+        and not SKIPPED_DIRNAMES.intersection(path.relative_to(root).parts[:-1])
     )
 
 
@@ -348,6 +383,7 @@ def tag_folder(
 
 
 __all__ = [
+    "APPLEDOUBLE_PREFIX",
     "ART_EMBEDDED",
     "ART_ERROR",
     "ART_FETCH_STATUSES",
@@ -355,6 +391,7 @@ __all__ = [
     "ART_UNAVAILABLE",
     "ART_UNCHECKED",
     "HAS_GENRE",
+    "SKIPPED_DIRNAMES",
     "NO_HIT",
     "UNMAPPED_GENRE",
     "FetchImage",
