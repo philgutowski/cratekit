@@ -18,12 +18,21 @@ from cratekit.modules.outbound.service import RemoteAccount
 
 @dataclass(frozen=True, slots=True)
 class LocalTrack:
-    """One library row offered for export. ``identity`` is stable; the name is not."""
+    """One library row offered for export. ``identity`` is stable; the name is not.
+
+    ``title`` is the row AS THE LIBRARY SHOWS IT, naming head and all, and is
+    what an unmatched row is reported under. ``release_title`` is the same title
+    with the head off, which is the only spelling a provider's own title can be
+    compared against (R-356). Two fields because they answer two questions, and
+    a report that dropped the head would name a row the person cannot find by
+    looking.
+    """
 
     identity: str
     title: str = ""
     artist: str = ""
     isrc: str = ""
+    release_title: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +78,12 @@ def plan(
     matched: list[tuple[str, str]] = []
     unmatched: list[Unmatched] = []
     for track in tracks:
-        remote = account.match_track(identity=track.identity, isrc=track.isrc)
+        remote = account.match_track(
+            identity=track.identity,
+            isrc=track.isrc,
+            title=track.release_title,
+            artist=track.artist,
+        )
         if remote:
             matched.append((track.identity, remote))
         else:
@@ -78,6 +92,7 @@ def plan(
                     identity=track.identity,
                     title=track.title,
                     artist=track.artist,
+                    reason=account.unmatched_reason(track.identity) or "unmatched",
                 )
             )
     return ExportPlan(

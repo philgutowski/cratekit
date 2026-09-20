@@ -19,6 +19,9 @@ is not one.
 * A match is exact or it is ``None``. ``export.plan`` reports a ``None`` as an
   unmatched row and ``hearts.heart_back`` as an unmatched favourite, so a guess
   returned here is a heart on somebody else's recording with nothing reported.
+  A ``None`` that had candidates says so through ``unmatched_reason``, because
+  "the provider has never heard of this" and "the provider has three of these
+  and nothing here could choose" are different things to do something about.
 * ``has_heart`` answers from ONE paged read of the favourites per adapter, and
   the seam hands a run one adapter. The rejected alternative asked the provider
   per candidate, and a sweep of a thousand hearts would have made a thousand
@@ -54,7 +57,7 @@ from urllib.parse import urlsplit
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi  # noqa: F401
 
-from cratekit.acquire import listing, provider_session
+from cratekit.acquire import listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core.cause import Scope, refuse
 from cratekit.modules.outbound import account
@@ -109,10 +112,70 @@ def track_reference(identity: str) -> str | None:
     return None
 
 
-class TidalAccount:
-    """The seven ``RemoteAccount`` members, over one logged in client.
+def _row_of(title: str, artist: str) -> match.Wanted | None:
+    """The library row in the shape the product's matcher reads, or ``None``.
 
-    Six add only, and one that retitles a playlist the account owns.
+    READ BY ``match.read_row`` AND BY NOTHING WRITTEN HERE, so a version in
+    brackets, a version after a dash, a featured credit and a title that reads
+    two ways all mean to this adapter what they mean to intake. ``None`` for a
+    row naming no artist or no title: half a name is not unique to a recording,
+    which is that reader's own refusal, and a row with nothing to compare
+    chooses nothing.
+    """
+    try:
+        return match.read_row(
+            {"title": str(title or ""), "artist": str(artist or "")},
+            origin=match.TEXT,
+            position=1,
+        )
+    except match.UnreadableList:
+        return None
+
+
+def _billed(track: Any) -> str:
+    """Every artist a provider track bills, in its order, as one string.
+
+    A library row spells a record by two artists as one artist field holding
+    both, and the matcher's reader keeps only the first a provider row names.
+    Joined with a space because ``match.fold`` takes a comma and an ampersand
+    off alike, so "A, B" and "A & B" both fold to this.
+    """
+    names = []
+    for entry in getattr(track, "artists", None) or ():
+        name = entry if isinstance(entry, str) else getattr(entry, "name", "")
+        if isinstance(name, str) and name.strip():
+            names.append(name.strip())
+    return " ".join(names)
+
+
+def _agrees(row: match.Wanted, track: Any) -> bool | None:
+    """Whether a provider track is the row's recording AND version.
+
+    ``None`` when the track cannot be read at all, which is not a disagreement:
+    see :meth:`TidalAccount._among`. EITHER READING OF THE ROW'S TITLE COUNTS,
+    since "Sun Path - Live" is a version or the end of a title and the string
+    cannot say which; the caller still needs exactly one track to agree. The
+    artist agrees as the track's first billed name or as all of them.
+    """
+    try:
+        listed = match.read_row(track, origin=match.TIDAL, position=1)
+    except match.UnreadableList:
+        return None
+    recordings = {
+        listed.recording,
+        match.recording_token(_billed(track), listed.title),
+    }
+    return any(
+        one.version_key == listed.version_key and one.recording in recordings
+        for one in row.readings
+    )
+
+
+class TidalAccount:
+    """The eight ``RemoteAccount`` members, over one logged in client.
+
+    Six add only, one that retitles a playlist the account owns, and one that
+    says why the last match of a row came back empty.
     """
 
     def __init__(
@@ -124,6 +187,7 @@ class TidalAccount:
         self._sleep = sleep or time.sleep
         self._hearts: set[str] | None = None
         self._members: dict[str, list[str]] = {}
+        self._reasons: dict[str, str] = {}
 
     def _call(self, doing: str, fn: Callable[[], Any], *, retries: int = WRITE_RETRIES) -> Any:
         """One provider call, retried ``retries`` times, translated on failure.
@@ -157,18 +221,27 @@ class TidalAccount:
 
     # ── matching ────────────────────────────────────────────────────────────
 
-    def match_track(self, *, identity: str, isrc: str = "") -> str | None:
+    def match_track(
+        self, *, identity: str, isrc: str = "", title: str = "", artist: str = ""
+    ) -> str | None:
         """The one provider track this row names exactly, or ``None``.
 
         ISRC FIRST. One ISRC can name several provider tracks, the single, the
-        album cut and every compilation that carries the recording. When the
-        answer holds more than one distinct identifier this returns ``None``
-        rather than the first, because which release gets the heart is not
-        something the ISRC decides.
+        album cut and every compilation that carries the recording, and which
+        release gets the heart is not something the ISRC decides. So several
+        distinct identifiers go to :meth:`_among`, which chooses by what the ROW
+        says and by what the account already hearts, never by position, and
+        otherwise answers ``None`` and leaves the count in
+        :meth:`unmatched_reason`. Measured live on 2026-09-17, returning ``None``
+        for every such answer left half of a small playlist unmatched (R-356).
 
         IDENTITY SECOND, and only an exact provider track reference, see
-        :func:`track_reference`. Never a text search over title and artist.
+        :func:`track_reference`. Never a text search over title and artist:
+        ``title`` and ``artist`` choose among tracks the ISRC already named and
+        are never sent to the provider.
         """
+        key = str(identity)
+        self._reasons.pop(key, None)
         wanted = str(isrc or "").strip()
         if wanted:
             found = self._call(
@@ -176,12 +249,19 @@ class TidalAccount:
                 lambda: self._session.get_tracks_by_isrc(wanted),
             )
             if found is not _ABSENT:
-                distinct = {str(getattr(track, "id", "") or "") for track in found or ()}
-                distinct.discard("")
-                if len(distinct) == 1:
-                    return distinct.pop()
-                if len(distinct) > 1:
-                    return None
+                tracks = {
+                    str(getattr(track, "id", "") or ""): track for track in found or ()
+                }
+                tracks.pop("", None)
+                if len(tracks) == 1:
+                    return next(iter(tracks))
+                if len(tracks) > 1:
+                    chosen, reason = self._among(
+                        tracks, isrc=wanted, title=title, artist=artist
+                    )
+                    if chosen is None:
+                        self._reasons[key] = reason
+                    return chosen
         reference = track_reference(identity)
         if reference is None:
             return None
@@ -192,6 +272,65 @@ class TidalAccount:
             return None
         resolved = str(getattr(track, "id", "") or "")
         return resolved if resolved == reference else None
+
+    def _among(
+        self, tracks: dict[str, Any], *, isrc: str, title: str, artist: str
+    ) -> tuple[str | None, str]:
+        """One of several tracks sharing an ISRC, or ``None`` and why not.
+
+        TWO RULES, IN ORDER, AND NEITHER IS A GUESS.
+
+        1. The tracks that agree with the row's artist, title and version under
+           the product's own fold, see :func:`_agrees`. Exactly one is the match.
+           This is what separates a radio edit from an extended mix filed under
+           one code, and what refuses a code the provider filed on the wrong
+           record.
+        2. When several agree, which is the ordinary case since a single and its
+           album cut are spelled alike, the one the account ALREADY HEARTS. The
+           person chose that release once and nothing here chooses it for them.
+           It is asked of the agreeing tracks only, so a heart on a track the
+           row does not name decides nothing.
+
+        A TRACK THAT CANNOT BE READ STOPS THE FIRST RULE FROM CHOOSING, on
+        ``intake.candidates.sole_exact``'s argument: one agreeing track beside
+        one unreadable one is not known to be the only one that agrees.
+        """
+        count = len(tracks)
+        named = f"the ISRC {isrc} names {count} provider tracks"
+        row = _row_of(title, artist)
+        if row is None:
+            return None, (
+                f"{named} and this row carries no artist and title to choose "
+                f"among them by"
+            )
+        verdicts = {remote: _agrees(row, track) for remote, track in tracks.items()}
+        unreadable = sum(1 for verdict in verdicts.values() if verdict is None)
+        agreeing = [remote for remote, verdict in verdicts.items() if verdict]
+        if len(agreeing) == 1 and not unreadable:
+            return agreeing[0], ""
+        if not agreeing:
+            return None, (
+                f"{named} and none of them agrees with this row's artist, title "
+                f"and version"
+            )
+        hearts = self._favorites()
+        hearted = [remote for remote in agreeing if remote in hearts]
+        if len(hearted) == 1:
+            return hearted[0], ""
+        return None, (
+            f"{named}, {len(agreeing)} of them agree with this row's artist, "
+            f"title and version"
+            + (f", {unreadable} could not be read" if unreadable else "")
+            + f" and the account hearts {len(hearted)} of those, so none was chosen"
+        )
+
+    def unmatched_reason(self, identity: str) -> str:
+        """Why the last match of this row came back ``None``, or ``""``.
+
+        Empty for a row the provider simply does not have, which the workers
+        already report as unmatched, and for a row that matched.
+        """
+        return self._reasons.get(str(identity), "")
 
     # ── hearts ──────────────────────────────────────────────────────────────
 

@@ -76,6 +76,7 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
     added: list[str] = []
     already: list[str] = []
     unmatched: list[str] = []
+    reasons: list[str] = []
     for report in artifacts.committed(cfg, job_id):
         added.extend(str(item) for item in report.get("added") or ())
         already.extend(str(item) for item in report.get("already") or ())
@@ -85,7 +86,21 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
         # put a Python dict repr in a JSON envelope, which is a value nothing
         # downstream can key on. Measured by the first drive of this summary.
         unmatched.extend(_identity(item) for item in report.get("unmatched") or ())
-    return {"added": added, "already": already, "unmatched": unmatched}
+        # WHAT THE ACCOUNT SAID ABOUT A ROW IT WOULD NOT CHOOSE FOR (R-356), one
+        # sentence per row and only for a row it said something about. A row the
+        # provider has three releases of and a row it has never heard of are both
+        # unmatched, and only the first is something a person can act on.
+        reasons.extend(
+            f"{_identity(item)}: {item['reason']}"
+            for item in report.get("unmatched") or ()
+            if isinstance(item, dict) and item.get("reason") not in (None, "", "unmatched")
+        )
+    return {
+        "added": added,
+        "already": already,
+        "unmatched": unmatched,
+        "reasons": reasons,
+    }
 
 
 def _identity(row: Any) -> str:
@@ -278,7 +293,12 @@ def run_export_item(
         "added": list(report.added),
         "already": list(report.already),
         "unmatched": [
-            {"identity": row.identity, "title": row.title, "artist": row.artist}
+            {
+                "identity": row.identity,
+                "title": row.title,
+                "artist": row.artist,
+                "reason": row.reason,
+            }
             for row in report.unmatched
         ],
     }

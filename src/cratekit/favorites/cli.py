@@ -108,11 +108,22 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
     hearted: list[str] = []
     already: list[str] = []
     unmatched: list[str] = []
+    reasons: list[str] = []
     for report in artifacts.committed(cfg, job_id):
         hearted.extend(str(item) for item in report.get("hearted") or ())
         already.extend(str(item) for item in report.get("already") or ())
         unmatched.extend(str(item) for item in report.get("unmatched") or ())
-    return {"hearted": hearted, "already": already, "unmatched": unmatched}
+        # One sentence per favourite the account would not choose a release for
+        # (R-356). A report written before that key existed carries none.
+        reasons.extend(
+            f"{row}: {reason}" for row, reason in (report.get("reasons") or {}).items()
+        )
+    return {
+        "hearted": hearted,
+        "already": already,
+        "unmatched": unmatched,
+        "reasons": reasons,
+    }
 
 
 def build_sync(parser, entry) -> None:
@@ -368,6 +379,7 @@ def run_heart_item(
         "hearted": list(report.hearted),
         "already": list(report.already),
         "unmatched": list(report.unmatched),
+        "reasons": dict(report.reasons),
     }
 
 
