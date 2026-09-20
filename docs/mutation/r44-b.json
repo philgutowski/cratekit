@@ -1,0 +1,251 @@
+{
+  "name": "r44-b",
+  "pass_kind": "light",
+  "branch": "relay/152",
+  "head": "a3de77d",
+  "when": "2026-09-20 00:29 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 8953,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/deletion/run.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/deletion/run.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "b2719fd72ca96004",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 8953,
+    "baseline_collected": 8953,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "R1_rules_drop_identity",
+      "description": "Build the pass's rules from configuration without each rule's recorded identity",
+      "file": "src/cratekit/deletion/run.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8e831d8195123de5",
+      "subset": [
+        "tests/test_deletion.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 327,
+      "baseline_collected": 327,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_deletion.py::test_the_rules_the_pass_builds_from_configuration_carry_each_recorded_identity"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        locations.PrefixRule(source, target, volume_id)",
+      "new": "        locations.PrefixRule(source, target)"
+    },
+    {
+      "id": "R2_no_gate_at_the_plan",
+      "description": "Drop the assertion of every mapped target before the plan resolves a path",
+      "file": "src/cratekit/deletion/run.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b709c544687287d3",
+      "subset": [
+        "tests/test_deletion.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 327,
+      "baseline_collected": 327,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_deletion.py::test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions",
+        "tests/test_deletion.py::test_a_file_under_the_library_root_asks_nothing_of_any_rule_before_it_moves",
+        "tests/test_deletion.py::test_a_rule_onto_the_wrong_volume_refuses_rather_than_trashing_the_only_copy",
+        "tests/test_deletion.py::test_a_volume_holding_only_removed_rows_does_not_settle_off_an_empty_mount_point"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    session.assert_mapped_volume_identities(\n        cfg, rules, identity_provider=identity_provider, mount_enumerator=mount_enumerator\n    )\n",
+      "new": ""
+    },
+    {
+      "id": "R3_no_look_at_the_loop_top",
+      "description": "Drop the look at the top of the apply loop, before a retirement or a settlement of the plan's answer",
+      "file": "src/cratekit/deletion/run.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "556265b06c86a386",
+      "subset": [
+        "tests/test_deletion.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 327,
+      "baseline_collected": 327,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_deletion.py::test_a_disk_swapped_after_the_plan_retires_nothing_nobody_answered_for",
+        "tests/test_deletion.py::test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            _assert_the_volume_this_file_is_on(\n                cfg,\n                item,\n                rules,\n                identity_provider=identity_provider,\n                mount_enumerator=mount_enumerator,\n            )\n",
+      "new": ""
+    },
+    {
+      "id": "R4_no_look_after_the_recheck",
+      "description": "Drop the look after the re-check, before its answer is settled or moved on",
+      "file": "src/cratekit/deletion/run.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "94b79c847cda00f7",
+      "subset": [
+        "tests/test_deletion.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 327,
+      "baseline_collected": 327,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_deletion.py::test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            _assert_the_volume_this_file_is_on(\n                cfg,\n                fresh,\n                rules,\n                identity_provider=identity_provider,\n                mount_enumerator=mount_enumerator,\n            )\n",
+      "new": ""
+    },
+    {
+      "id": "R5_both_looks_gone",
+      "description": "Composite for R3 and R4: make the per file look a no-op, so only the plan's gate stands",
+      "file": "src/cratekit/deletion/run.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": "R3_no_look_at_the_loop_top",
+      "fingerprint": "43a003d136bec9d2",
+      "subset": [
+        "tests/test_deletion.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 327,
+      "baseline_collected": 327,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_deletion.py::test_a_disk_swapped_after_the_plan_retires_nothing_nobody_answered_for",
+        "tests/test_deletion.py::test_a_disk_swapped_after_the_plan_stops_a_confirmed_move",
+        "tests/test_deletion.py::test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions",
+        "tests/test_deletion.py::test_a_file_in_a_volume_nested_under_the_rules_target_is_not_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if answered.resolved is None:\n        return\n    resolved = locations.resolve_recorded_path(",
+      "new": "    return\n    resolved = locations.resolve_recorded_path("
+    },
+    {
+      "id": "X1_library_root_gate",
+      "description": "Existing guard, sampled: drop the library root's own volume assertion from the pass",
+      "file": "src/cratekit/deletion/run.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6cbec9b6e5f32773",
+      "subset": [
+        "tests/test_deletion.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 327,
+      "baseline_collected": 327,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_deletion.py::test_a_decoy_volume_at_the_configured_path_refuses_before_anything_resolves"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    session.assert_volume_identity(\n        cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator\n    )\n    session.assert_mapped_volume_identities(",
+      "new": "    session.assert_mapped_volume_identities("
+    },
+    {
+      "id": "X2_suspect_anchor",
+      "description": "Existing guard, sampled: never hold a row because its anchor proved nothing",
+      "file": "src/cratekit/deletion/run.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d54421d451f731b0",
+      "subset": [
+        "tests/test_deletion.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 327,
+      "baseline_collected": 327,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_deletion.py::test_a_stale_empty_mount_point_writes_no_tombstone_and_retires_no_row",
+        "tests/test_deletion.py::test_an_unanswered_removal_under_a_stale_mount_point_is_not_retired_either"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return answered.anchor is not None and answered.anchor in references.suspect_anchors",
+      "new": "    return False"
+    }
+  ],
+  "dropped": []
+}
