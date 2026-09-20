@@ -2234,10 +2234,18 @@ class _Remote:
     names the labels that exit non-zero, and a failing transfer writes nothing.
     """
 
-    def __init__(self, cfg_value, *, failing=(), mirrored=(MIRRORED,)):
+    def __init__(
+        self,
+        cfg_value,
+        *,
+        failing=(),
+        mirrored=(MIRRORED,),
+        holds=("master.db", "master.db-wal"),
+    ):
         self.cfg = cfg_value
         self.failing = frozenset(failing)
         self.mirrored = tuple(mirrored)
+        self.holds = tuple(holds)
         self.calls: list[backup.Command] = []
 
     def __call__(self, command: backup.Command) -> backup.CommandResult:
@@ -2249,7 +2257,7 @@ class _Remote:
                 0, f"{backup.identity_marker(self.cfg.library.volume_id)}\n"
             )
         if command.label == backup.LIST_SNAPSHOT_CONTENTS:
-            return backup.CommandResult(0, "master.db\nmaster.db-wal\n")
+            return backup.CommandResult(0, "".join(f"{name}\n" for name in self.holds))
         if command.label in self.failing:
             return backup.CommandResult(3)
         if "--dry-run" in command.argv:
@@ -2410,6 +2418,12 @@ def test_a_target_that_already_holds_a_database_is_refused_with_no_way_to_name_i
         cli.build_parser().parse_args(
             ["restore", "bare-metal", "--target", str(target), "--replace-existing"]
         )
+
+
+def test_the_verb_cannot_be_typed_without_naming_a_target():
+    """No default, because the only default there could be is the lost volume."""
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["restore", "bare-metal", "--accept-replacement"])
 
 
 def test_a_recovery_is_refused_underneath_a_running_rekordbox(cfg, tmp_path):
@@ -2598,7 +2612,9 @@ def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_
         "the fixture does not reproduce the layout, so this pins nothing"
     )
     target = _replacement(tmp_path)
-    remote = _Remote(outside)
+    # A snapshot with no write ahead log, so the plan DOES name an absent
+    # companion and the report's silence about it is a decision under test.
+    remote = _Remote(outside, holds=("master.db",))
 
     report = restore_cli.recover_under_bare_metal_session(
         outside, target=target, accepted=True, runner=remote, **_gone(outside)
