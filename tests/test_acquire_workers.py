@@ -446,7 +446,8 @@ def test_a_job_directory_that_cannot_be_LISTED_does_not_fail_the_verb(cfg, scrip
         with pytest.raises(OSError):
             list(blind.iterdir())
 
-        code, envelope = drive(["acquire", "download", str(listed(library, [("2", "B", "U")], name="second.json"))])
+        second = listed(library, [("2", "B", "U")], name="second.json")
+        code, envelope = drive(["acquire", "download", str(second)])
     finally:
         blind.chmod(0o700)
 
