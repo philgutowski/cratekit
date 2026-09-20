@@ -280,6 +280,22 @@ companion. Recording a credited deletion writes both records in one write and
 lifting the tombstone lifts both in one write, and a companion two deletions
 share stays until the last of them is lifted.
 
+## Backup and restore
+
+### Snapshot marker
+The empty file a backup writes beside `db/` in a dated snapshot folder, named
+`library-volume.` followed by the library's volume identity in its folded
+spelling. The NAME is the record and the file holds nothing, which is what lets
+a backup plan stay plain data, with no temporary file and no standard input.
+
+It is written after the whole database set, so a folder carries a marker only
+when it holds a database, and a restore reads it back before it puts a snapshot
+into a single path. Marked for this library, a snapshot can be the default. With
+no marker, which is every snapshot older than the marker and every one the
+source system wrote, it is never the default and is pulled only when a person
+names it. A **named** snapshot is one whose stamp a person typed: a stamp the
+verb resolved off a listing and handed down is not named, however it arrives.
+
 ## Verification
 
 ### Guard
