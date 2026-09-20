@@ -1801,3 +1801,237 @@ def test_the_ages_reported_are_the_ones_this_job_published(
             f"the envelope answered from the live library rather than the one this "
             f"job copied"
         )
+
+
+# ---------------------------------------------------------------------------
+# One run is one rotation slot, through the queue (R-222)
+# ---------------------------------------------------------------------------
+
+
+class _ArchiveRemote:
+    """A runner that HOLDS the dated archive folders, the way a remote does.
+
+    The stand-in program answers every listing with the same two names, so it
+    cannot show a purge taking a folder an earlier attempt wrote. Here a mirror
+    writes the folder its ``--backup-dir`` names, a listing reads the set back and
+    a purge removes from it.
+    """
+
+    def __init__(self, *folders: str) -> None:
+        self.folders = set(folders)
+        self.fail_mirror = False
+
+    def __call__(self, command: backup.Command) -> backup.CommandResult:
+        if command.label == backup.MIRROR:
+            archive = command.argv[command.argv.index("--backup-dir") + 1]
+            self.folders.add(archive.rsplit("/", 1)[1])
+            if self.fail_mirror:
+                return backup.CommandResult(returncode=1, stderr="connection reset")
+        if command.label == backup.PRUNE_ARCHIVE:
+            return backup.CommandResult(
+                returncode=0, stdout="".join(f"{name}/\n" for name in sorted(self.folders))
+            )
+        if command.label == backup.PRUNE_ARCHIVE_FOLDER:
+            self.folders.discard(command.argv[-1].rsplit("/", 1)[1])
+        return backup.CommandResult(returncode=0)
+
+
+def _stepped_clock(monkeypatch, start: datetime) -> None:
+    """Every reading of the engine's clock is an hour after the last.
+
+    The queued path takes no ``now``, and two attempts inside one test land in one
+    real second and so in ONE dated folder, which would pass this whole section
+    without the rule it is about.
+    """
+
+    class Clock(datetime):
+        current = start
+
+        @classmethod
+        def now(cls, tz=None):
+            cls.current += timedelta(hours=1)
+            return cls.current
+
+    monkeypatch.setattr(backup, "datetime", Clock)
+
+
+def test_a_retried_portion_keeps_the_archive_its_failed_attempt_wrote(
+    cfg, rclone, monkeypatch
+):
+    """R-222 by the route a person takes: queue, fail, ``jobs.retry``, resume.
+
+    The record of a completed mirror and the folder older than it are what make
+    this discriminate in both directions. The failed attempt's folder has to
+    survive the retry, and the settled one has to go, so neither "purge
+    everything but the newest" nor "purge nothing" passes.
+    """
+    _stepped_clock(monkeypatch, MOMENT)
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=MOMENT - timedelta(days=1),
+        destination=str(cfg.backup.dest),
+    )
+    remote = _ArchiveRemote("2026-08-01T000000Z")
+    remote.fail_mirror = True
+    monkeypatch.setattr(backup, "subprocess_runner", remote)
+
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+    code, failed = _drive(["backup", "run", "--job", job_id])
+    assert code != int(ExitCode.OK), failed
+    first_attempt = remote.folders - {"2026-08-01T000000Z"}
+    assert len(first_attempt) == 1, remote.folders
+
+    remote.fail_mirror = False
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+
+    assert first_attempt <= remote.folders, (
+        f"the retry left {sorted(remote.folders)}, so it purged the failed "
+        f"attempt's archive and the only copies of what that attempt overwrote"
+    )
+    assert len(remote.folders) == 2, (
+        f"the retry left {sorted(remote.folders)}: two attempts in one folder means "
+        f"the clock did not step, and the settled folder still present means the "
+        f"rotation stopped"
+    )
+    assert "2026-08-01T000000Z" not in remote.folders
+
+
+# ---------------------------------------------------------------------------
+# Asking twice is one backup (R-223)
+# ---------------------------------------------------------------------------
+
+
+def _codes(envelope: dict) -> list[str]:
+    return [warning["code"] for warning in envelope.get("warnings") or ()]
+
+
+def _job_count() -> int:
+    with jobs.open_store() as store:
+        return len(jobs.list_jobs(store))
+
+
+def test_asking_for_a_backup_twice_reports_the_open_job_rather_than_a_second(cfg):
+    """R-223's closing condition. The verb prints an identifier and appears to
+    have done nothing, which is the shape that invites typing it again."""
+    code, first = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), first
+    assert backup_cli.ALREADY_QUEUED not in _codes(first), first
+
+    code, second = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), second
+    assert second["data"]["job_id"] == first["data"]["job_id"], second
+    assert _job_count() == 1
+    assert _codes(second).count(backup_cli.ALREADY_QUEUED) == 1, second
+    said = next(w for w in second["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED)
+    assert first["data"]["job_id"] in said["message"], said
+
+
+def test_a_rehearsal_and_a_real_run_are_two_jobs(cfg):
+    """A rehearsal copies nothing, so it cannot interleave with a transfer, and
+    answering a request for a real backup with an open rehearsal would report a
+    job that will never copy a byte as the backup the person asked for."""
+    _, rehearsal = _drive(["backup", "run", "--dry-run"])
+    _, real = _drive(["backup", "run"])
+    assert real["data"]["job_id"] != rehearsal["data"]["job_id"]
+    assert backup_cli.ALREADY_QUEUED not in _codes(real), real
+    assert _job_count() == 2
+
+
+def test_a_backup_to_a_destination_nobody_is_backing_up_to_is_its_own_job(cfg):
+    """The open job is read by its FROZEN destinations. Another mirror and another
+    archive cannot interleave with this one, and a person who reconfigured on
+    purpose is owed the job they asked for."""
+    _, first = _drive(["backup", "run"])
+    config.save(
+        replace(
+            cfg,
+            backup=replace(
+                cfg.backup, dest="remote:second-mirror", archive_root="remote:second-archive"
+            ),
+        )
+    )
+    config.reset_cache()
+    _, second = _drive(["backup", "run"])
+    assert second["data"]["job_id"] != first["data"]["job_id"]
+    assert _job_count() == 2
+
+
+@pytest.mark.parametrize("shared", ["dest", "archive_root"])
+def test_either_shared_destination_is_the_same_backup(cfg, shared):
+    """Two syncs into one mirror interleave, and two rotations over one archive
+    root prune each other, so sharing EITHER is enough."""
+    _, first = _drive(["backup", "run"])
+    moved = {"dest": "remote:second-mirror", "archive_root": "remote:second-archive"}
+    del moved[shared]
+    config.save(replace(cfg, backup=replace(cfg.backup, **moved)))
+    config.reset_cache()
+    _, second = _drive(["backup", "run"])
+    assert second["data"]["job_id"] == first["data"]["job_id"], second
+    assert _job_count() == 1
+
+
+@pytest.mark.parametrize(
+    "ending", [jobs.JobState.SUCCEEDED, jobs.JobState.FAILED, jobs.JobState.CANCELLED]
+)
+def test_a_backup_that_is_over_does_not_stand_in_for_a_new_one(cfg, ending):
+    _, first = _drive(["backup", "run"])
+    with jobs.open_store() as store:
+        jobs.transition(store, first["data"]["job_id"], jobs.JobState.RUNNING)
+        jobs.transition(store, first["data"]["job_id"], ending)
+    _, second = _drive(["backup", "run"])
+    assert second["data"]["job_id"] != first["data"]["job_id"]
+    assert backup_cli.ALREADY_QUEUED not in _codes(second), second
+
+
+def test_a_job_that_can_never_run_does_not_stand_in_for_a_backup(cfg):
+    """The itemless job a previous build queued refuses when driven, so reporting
+    it would answer a request for a backup with one that cannot happen."""
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store,
+            handler_key="backup.run",
+            payload=backup_cli.frozen_payload(False),
+            cfg=cfg,
+        )
+    _, queued = _drive(["backup", "run"])
+    assert backup_cli.ALREADY_QUEUED not in _codes(queued), queued
+    assert _job_count() == 2
+
+
+def test_another_verb_s_open_job_is_not_a_backup(cfg):
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store,
+            handler_key="master.run",
+            payload=backup_cli.frozen_payload(False),
+            item_ids=backup_cli.backup_items(),
+            cfg=cfg,
+        )
+    _, queued = _drive(["backup", "run"])
+    assert backup_cli.ALREADY_QUEUED not in _codes(queued), queued
+    assert _job_count() == 2
+
+
+def test_an_open_backup_whose_destinations_cannot_be_read_is_not_read_as_elsewhere(
+    cfg, monkeypatch
+):
+    """Could not read is not the same as somewhere else (METHOD's first pattern).
+
+    A job whose frozen configuration no longer rebuilds may well name this
+    destination, and filing a second beside it is the cost this guard exists to
+    end. It is reported, and driving it says what is wrong with it.
+    """
+    _, first = _drive(["backup", "run"])
+
+    def unreadable(job):
+        raise ValueError("a configuration this build cannot rebuild")
+
+    monkeypatch.setattr(jobs, "frozen_config", unreadable)
+    _, second = _drive(["backup", "run"])
+    assert second["data"]["job_id"] == first["data"]["job_id"], second
+    assert _job_count() == 1

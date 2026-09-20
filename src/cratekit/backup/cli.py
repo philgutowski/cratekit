@@ -108,6 +108,12 @@ from cratekit.modules.tools import backup
 #: is a resume that quietly does different work from the run it continues.
 DRY_RUN = "dry_run"
 
+#: The warning a second ``backup run`` carries when it reports the open job in
+#: place of filing another (R-223). A warning and not a refusal, because nothing
+#: went wrong: the backup the person asked for is already in the queue, and the
+#: envelope they get back is that job's.
+ALREADY_QUEUED = "backup-already-queued"
+
 
 def _load() -> config.Config:
     try:
@@ -284,6 +290,67 @@ def _refuse_an_empty_job(store, job) -> None:
     )
 
 
+def _open_twin(store, *, handler_key: str, payload: dict[str, Any], cfg: config.Config):
+    """The open job that already IS the backup being asked for, or None.
+
+    THE VERB PRINTS AN IDENTIFIER AND APPEARS TO HAVE DONE NOTHING, which is the
+    shape that invites typing it again, and until R-223 closed the second
+    invocation filed a second job. Each job takes its own driver lock, so the
+    locks do not see each other, and two drivers then run ``rclone sync`` into one
+    mirror at once.
+
+    A TWIN IS THE SAME REQUEST AGAINST THE SAME PLACE. The same verb, the same
+    frozen payload, and a frozen configuration sharing this one's mirror OR its
+    archive root, since two syncs into one mirror interleave and two rotations
+    over one archive root are each other's purge. The database snapshot root is
+    not compared: every snapshot is its own dated folder, so two of them do not
+    touch.
+
+    THE PAYLOAD IS PART OF IT, so a rehearsal and a real run stay two jobs. A
+    rehearsal copies nothing and deletes nothing, and answering a request for a
+    real backup with an open rehearsal would hand a person a job that will never
+    copy a byte as the backup they asked for.
+
+    THE DESTINATIONS ARE THE JOB'S FROZEN ONES (KTD9), because those are where
+    its driver will write whatever the file on disk says today. A job whose
+    configuration cannot be rebuilt is a twin and not a stranger: could not read
+    is not somewhere else, and what is wrong with it is said when it is driven.
+
+    A JOB WITH NO ITEMS IS SKIPPED. It was queued by a build with no worker,
+    :func:`_refuse_an_empty_job` refuses to drive it, and reporting it would
+    answer a request for a backup with one that cannot happen.
+
+    ONLY WHAT IS OPEN COUNTS. A failed or cancelled backup is a recorded answer
+    and not a claim on the destination, and a person is free to file a new one
+    rather than resume it.
+    """
+    for job in jobs.list_jobs(store):
+        if not job.is_open() or job.handler_key != handler_key:
+            continue
+        if dict(job.payload or {}) != payload or not jobs.items(store, job.job_id):
+            continue
+        try:
+            frozen = jobs.frozen_config(job).backup
+        except Exception:
+            return job
+        if frozen.dest == cfg.backup.dest or frozen.archive_root == cfg.backup.archive_root:
+            return job
+    return None
+
+
+def _already_queued(job, cfg: config.Config) -> dict[str, str]:
+    return {
+        "code": ALREADY_QUEUED,
+        "message": (
+            f"backup job {job.job_id} is already open against {cfg.backup.dest}, so "
+            f"it is reported here and no second job was filed. Two backups into "
+            f"one destination run at once and interleave. Continue it with: crate "
+            f"job resume {job.job_id}. Or cancel it with: crate job cancel "
+            f"{job.job_id}, and ask again"
+        ),
+    }
+
+
 def backup_library(ctx) -> Envelope:
     """Freeze the rehearsal flag and queue, or continue the job already queued.
 
@@ -378,10 +445,26 @@ def backup_library(ctx) -> Envelope:
                 *map(dict, backup.snapshot_identity_warning(jobs.frozen_config(job))),
             )
             return ctx.envelope(data=reported, warnings=warnings)
+        payload = frozen_payload(ctx.args.dry_run)
+        twin = _open_twin(
+            store, handler_key=ctx.entry.handler_key, payload=payload, cfg=cfg
+        )
+        if twin is not None:
+            # THE SAME ENVELOPE A FIRST ASK GETS, plus one warning, so a script
+            # reading ``data.job_id`` continues the backup that exists whether it
+            # asked first or second.
+            return ctx.envelope(
+                data=_reported(store, twin),
+                warnings=(
+                    _already_queued(twin, cfg),
+                    *map(dict, backup.uncovered_analysis_share(cfg)),
+                    *map(dict, backup.snapshot_identity_warning(cfg)),
+                ),
+            )
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload=frozen_payload(ctx.args.dry_run),
+            payload=payload,
             # ONE PORTION IS ONE ITEM. Without this the queue holds a job with
             # nothing to claim, and ``jobs.drive`` transitions a job whose item
             # count is zero straight to SUCCEEDED, so the driver reports a backup
@@ -776,6 +859,7 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
 
 
 __all__ = [
+    "ALREADY_QUEUED",
     "DRY_RUN",
     "backup_argv",
     "backup_items",
