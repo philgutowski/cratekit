@@ -1334,13 +1334,20 @@ def test_bare_metal_recovery_is_refused_while_the_library_is_reachable(cfg, tmp_
             target=target,
             acknowledged=True,
             terminal=lambda: True,
+            # THE PROBE ANSWERS YES, so the stub check cannot be what refuses.
+            # This target sits beside the configured root, which that check also
+            # refuses, in a sentence containing "unmounted". The assertion used
+            # to be on the word "mounted", which both sentences hold, and the
+            # identity gate could be deleted with this test green. Found by U96's
+            # mutation table, row C5.
+            mount_probe=lambda _path: True,
             **gate_seams(cfg),
         ):
             raise AssertionError("unreachable")
 
     cause = excinfo.value.cause
     assert cause.reason == "recovery-target-refused"
-    assert "mounted" in cause.message
+    assert "nothing to recover from bare metal" in cause.message
 
 
 def test_a_volume_mounted_elsewhere_is_not_the_same_as_a_volume_that_is_gone(cfg, tmp_path):

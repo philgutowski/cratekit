@@ -397,7 +397,8 @@ question: clearing is itself destructive, so a rehearsal that cleared and then
 transferred nothing would do the damage and skip the repair.
 
 **All three were still open, and all three were recorded CLOSED 2026-08-02, by
-U32. Item 3 is REOPENED 2026-09-20, see the item.** Each
+U32. Item 3 was REOPENED 2026-09-20 by U95 and CLOSED the same day by U96, see
+the item.** Each
 was registered in `tests/_pending.py` against `cratekit.core.restore` so it was a
 countdown rather than a note, and clearing that entry is what armed the guard.
 What closed each is recorded beneath it. One residue survives, and it is the
@@ -445,6 +446,17 @@ re-pointing it left legible.
    volume, and the live case would lose a real check. What this needs is a
    recovery path that does not read its gates from the library it is rebuilding,
    which is a decision U32 owns.
+
+   **CLOSED 2026-09-20, by U96 on `relay/141`.** The verb shipped:
+   `crate restore bare-metal --target DIR --accept-replacement` opens
+   `restore.bare_metal_session` once and spends it on the off machine restore,
+   the mirror and then the database, with the target read off the session. It
+   reads none of its gates from the library it is rebuilding, which is what this
+   item asked for. What it does NOT do is recorded where it lives: an interrupted
+   recovery is refused on rerun until the database files it landed are removed
+   (R-592), the coupled state and the database can describe different moments
+   (R-593), and no real drive or real remote has been driven (R-596). The
+   reopening note below is kept as written.
 
    **REOPENED 2026-09-20, by U95 on `relay/140`. This item did not close, and
    the paragraph below records a mechanism rather than a capability.** Read R-20
@@ -17937,6 +17949,15 @@ assert the literal `pip install 'cratekit[analysis]'` change with it.
 
 ## R-396. A restore into a scratch directory still takes the live library's lock and still needs rekordbox closed
 
+**NARROWED 2026-09-20, by U96 on `relay/141`, in its last paragraph only.**
+`core.restore.bare_metal_session` now HAS a caller in `src`, the recovery verb,
+so the sentence below saying it has none is no longer true. That does not move
+this finding. The session refuses unless the recorded library is genuinely
+unreachable, so it cannot serve a rehearsal, which by definition runs while the
+library is present, and U96 was scoped not to loosen the rehearsal's gates.
+Everything else here is open exactly as written, and "a gate set that fits a
+target" is still unbuilt for the case where the library is alive.
+
 **Found:** 2026-09-18, landing the restore rehearsal target, and named in that
 unit's brief as the leftover it would file.
 
@@ -18773,6 +18794,19 @@ perform it.
 ---
 
 ## R-412. R-8 records the bare metal restore closed, and its session has no caller
+
+**CLOSED 2026-09-20, by U96 on `relay/141`.** The first closing condition is met:
+a restore onto a volume that is not the recorded library runs from a shipped
+verb, `crate restore bare-metal`, and `bare_metal_session` has its caller in
+`src/cratekit/session/restore_cli.py`. Driven against fakes only: a runner that
+performs each copy as a file write, and the shell stand in for rclone through
+the real dispatcher. The happy path writes only under the target and the four
+refusals before the lock leave the disk byte for byte as they found it. One
+sentence below is now known to be wrong and is kept as written: nothing needs to
+bring the dead library's session log and captures onto the target, because the
+state directory sits beside the library and the mirror already carries it
+(R-593). **Owed to an attended sitting:** a real restore onto a spare drive
+(R-596).
 
 **NARROWED 2026-09-20, by U95 on `relay/140`.** The ledger half is done: R-8 item
 3 now reads reopened and points here, so a person reading the ledger is no longer
@@ -23791,6 +23825,19 @@ derived from one, or the number is affirmed as correct for this library.
 
 ## R-585. A spendable bare metal session holds the installation lock and never the target library's own
 
+**NARROWED 2026-09-20, by U96 on `relay/141`, the first caller this entry named
+as its owner.** The shipped verb never passes `replacing_existing`, and has no
+flag that could, so the target it writes to held no database when the session
+opened. A second process cannot be part way through a commit against a library
+with no database, so the race below is not reachable through any shipped verb.
+Driven: `test_a_target_that_already_holds_a_database_is_refused_with_no_way_to_name_it`.
+The lock was deliberately not taken. The mirror carries the dead library's state
+directory, its lock file included, so a lock taken on the target before the
+mirror lands is replaced underneath its holder by the transfer, which is a lock
+that reports held and guards nothing. **Still open:** any future caller that
+passes `replacing_existing=True`, which R-592's repair may be, inherits this
+whole entry.
+
 **Found:** at the built in review of U95, 2026-09-20. Read from the source, not
 driven with a second process.
 
@@ -24008,3 +24055,144 @@ looks time or identity dependent.
 **Closes when:** the test is driven under `-n auto` in a loop until it fails
 again and the shared state behind it is named, or it is made independent of
 whatever it is sharing.
+
+---
+
+## R-592. An interrupted bare metal recovery is refused on rerun until every database file it landed is removed
+
+**Found:** 2026-09-20, by U96's built in review on `relay/141`, driven by
+`test_a_rerun_is_refused_until_the_step_the_refusal_gave_is_followed`.
+
+`restore.assert_recovery_target` refuses a target holding any file ending `.db`,
+recursively, unless `replacing_existing` is passed, and U96's brief fixed that
+parameter at False. The mirror excludes this library's own database fileset and
+nothing else with that suffix, `backup._mirror_excludes`, and it carries the
+state directory beside the library, which holds the review queue, `queue.db`,
+and every capture, each a copy of the database. So ANY run cut off after the
+mirror starts, a dropped network, a failed database transfer, rekordbox opened
+before the second half, leaves an occupied target, and the rerun is refused.
+
+**What U96 did about it, short of the repair.** Every failure that ends in a
+rerun carries one step, `restore_cli.RERUN_STEP`: remove every file ending `.db`
+under the target, because each came from the mirror or the snapshot and is
+transferred again. The test follows that step exactly and sees the rerun
+complete with the removed files back. The verb also spends the plan a half at a
+time, so a failed mirror does not land the database behind it.
+
+**Measured cost:** a person whose recovery of hundreds of gigabytes was
+interrupted has to delete files by suffix on the new drive, by hand, before the
+product will continue. Nothing is lost if they follow the step. The cost of
+getting it wrong is theirs. Unmeasured on a real library: how many such files a
+real mirror carries.
+
+**The options, because the choice is the person's.** (1) Test occupancy against
+where THIS library's database lands, `backup.database_target_for`, and its
+companions, rather than against any `.db` anywhere. (2) Have the verb leave a
+recovery marker on the target once the session opens over an empty one, and
+honour it on rerun, which needs `replacing_existing=True` and so inherits R-585.
+(3) Keep the rule and the step. U96 took (3), the conservative one.
+
+**Closes when:** an interrupted recovery can be run again with no manual step,
+and a test interrupts one and reruns it.
+
+---
+
+## R-593. A bare metal recovery lands coupled state and a database that can describe different moments
+
+**Found:** 2026-09-20, by U96's built in review. Read, not driven.
+
+The state directory sits beside the library, `config.library_state_dir`, so the
+mirror carries the session log, the captures, the declines and the review queue
+as the last backup saw them. The database comes from a dated snapshot. Those are
+the same moment only when that backup's database portion ran, and it refuses
+while rekordbox is open, so a person who backs up with the application running
+has a mirror newer than their newest snapshot. `--snapshot` naming an older stamp
+widens it on purpose. KTD21b's capture exists so the database and its coupled
+state go back together, and this verb puts them down apart.
+
+U96's first docstrings and guide text said the session log does not arrive. That
+was false and is corrected. The guide now tells a person to ask the convergence
+question of the recovered library. `restore run --from-backup --include-mirror`
+has the same shape and always did.
+
+**Measured cost:** unmeasured. A later `restore list` on the recovered drive
+lists sessions the recovered database may predate.
+
+**Closes when:** a recovery reports the mirror's and the snapshot's dates side
+by side, or refuses a pair that disagree unless told to proceed.
+
+---
+
+## R-594. A mirror only recovery still plans the database half, so a remote with no snapshot refuses it
+
+**Found:** 2026-09-20, building U96's fix for a database configured outside the
+library root. Read, not driven.
+
+When the database was never on the lost volume, the recovery verb runs the mirror
+half alone. It still calls `backup.plan_restore` for the whole plan, which
+resolves a snapshot first, so a remote holding a mirror and no database snapshot
+refuses with `no-snapshot-available` although nothing from a snapshot was going
+to be used. The alternative was a second planner for the mirror half, which is
+the two code paths `run_restore`'s docstring warns about.
+
+**Measured cost:** unmeasured. It needs a library whose backups never included a
+database portion.
+
+**Closes when:** `plan_restore` can plan the mirror without resolving a snapshot.
+
+---
+
+## R-595. Neither restore verb declares the rclone check, so doctor never ties a missing rclone to a restore
+
+**Found:** 2026-09-20, U96's first full suite run.
+
+`restore.bare-metal` first declared `binary.rclone` and
+`test_a_binary_no_enabled_verb_needs_is_a_note_rather_than_a_failure` went red:
+the verb is core, so on a slim install with no backup module a missing rclone
+became a failure. `restore.run`, whose off machine pull needs the same program,
+is core and declares none either. U96 followed that precedent. Both verbs refuse
+by name with the install token before anything is written, which a test holds
+for the new one.
+
+**Measured cost:** a person learns a restore needs rclone when they run one and
+not from doctor. No data is at risk.
+
+**Closes when:** doctor can grade a check by whether the verb needing it is one
+the person has reason to use, or the two verbs move behind the backup module.
+
+---
+
+## R-596. The bare metal recovery has never run against a real remote or a real drive
+
+**Found:** 2026-09-20, at U96's verification. **Attended, and owed by the brief.**
+
+Every number in U96 is from a fake: a Python runner that performs a copy as a
+file write, and a shell stand in for rclone. The mount probe answers yes in every
+test that reaches the work, because a temporary directory is a mount point on no
+platform, and the terminal probe is injected. What is unmeasured is therefore
+exactly what matters on the day: whether rclone accepts these argument vectors
+against the real remote (R-9 is the same gap for the backup), whether
+`_is_mount_point` answers yes for a freshly formatted external drive, and how
+long the two halves take.
+
+**Closes when:** a person recovers onto a spare drive from the real remote, with
+the dry run first, and records what happened.
+
+---
+
+## R-597. A busy recovery lock is reported as "the library lock", which it is not
+
+**Found:** 2026-09-20, driving the engine's busy path through U96's verb,
+`test_a_recovery_already_running_here_refuses_the_second_one`.
+
+`session.session_lock` writes its refusal as "the library lock at PATH is held".
+A bare metal recovery hands it the installation scoped `recovery.lock`, so a
+second recovery on the same machine is told the library lock is held, on the day
+the library does not exist. The path in the sentence is right and the reason,
+`session-lock-held`, is right. The noun is wrong.
+
+**Measured cost:** one misleading word in a refusal a person meets only by
+running two recoveries at once. Maintainer facing in practice.
+
+**Closes when:** the lock's refusal names the lock it was given.
+

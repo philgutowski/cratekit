@@ -1640,6 +1640,17 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # backup: the session is opened only by the code that touches the volume.
         "restore.list": [],
         "restore.run": [],
+        # U96. The recovery names a target and accepts the replacement, and in
+        # this sandbox it REFUSES, which is the behaviour under test rather than
+        # a shortfall of the drive: the configured library is present, and the
+        # engine refuses a bare-metal recovery whenever the recorded volume can
+        # be read. It declares no gate, so nothing requires it to exit OK here,
+        # and the machine on which it does is one whose library is gone.
+        "restore.bare-metal": [
+            "--target",
+            str(library / "replacement"),
+            "--accept-replacement",
+        ],
         # U33. Export takes the playlist identifier and queues after its
         # own confirm gate. Favourites sync takes no positional: the
         # confirm is the remote half, separate from any local colour write.

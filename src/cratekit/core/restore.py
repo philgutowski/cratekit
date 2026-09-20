@@ -2749,14 +2749,18 @@ def bare_metal_session(
     now root their configuration at ``Held.authorises`` through :func:`_rooted`,
     so the target validated here is the only place a path can come from.
 
-    WHAT IS STILL MISSING IS A CALLER. No shipped verb composes this session with
-    a plan, and nothing here brings the dead library's contents onto the target,
-    so the session log and the capture a plan reads must already be there.
+    THE CALLER IS THE RECOVERY VERB IN ``cratekit.session.restore_cli``, which
+    spends this session on the off-machine restore: the mirror and the database,
+    copied onto the target. It spends it on no :func:`plan`. The dead library's
+    session log and captures do arrive, inside the mirror, as the last backup saw
+    them, and nothing rolls the recovered library back to one of them.
 
     AND THE LOCK ARGUMENT ABOVE PREDATES THE WRITE PATH. "Nothing is lost" was
     written when this session could write nothing. A target that already holds a
     recovered library holds that library's own lock, which this does not take.
-    The ledger records it, owned by whichever unit writes the first caller.
+    That needs ``replacing_existing``, because a target holding a database is
+    otherwise refused, and the shipped verb never passes it. The ledger records
+    what is left, owned by whichever unit first does.
     """
     assert_library_volume_is_gone(
         cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator

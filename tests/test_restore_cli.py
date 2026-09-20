@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import subprocess
 import sys
 from dataclasses import replace
@@ -2213,3 +2214,576 @@ def test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled(
     assert not (home / f"{REMOTE_SNAPSHOTS}.next").exists(), "the remote never moved"
     copied = _copied_from(log)
     assert copied and all(f"/{STAMP}/db/" in source for source in copied), copied
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# restore bare-metal: the library volume is gone
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: A file the mirror carries, relative to the volume it was taken from.
+MIRRORED = "Music/a-track.flac"
+
+
+class _Remote:
+    """A runner that answers the listings and PERFORMS a copy as a file write.
+
+    The shell stand-in above transfers nothing, which is enough to read what
+    rclone was asked and not enough to say where bytes landed. This one writes a
+    file at every destination it is handed, so "only under the target" is
+    measured on the disk rather than read off an argument list. ``failing``
+    names the labels that exit non-zero, and a failing transfer writes nothing.
+    """
+
+    def __init__(
+        self,
+        cfg_value,
+        *,
+        failing=(),
+        mirrored=(MIRRORED,),
+        holds=("master.db", "master.db-wal"),
+    ):
+        self.cfg = cfg_value
+        self.failing = frozenset(failing)
+        self.mirrored = tuple(mirrored)
+        self.holds = tuple(holds)
+        self.calls: list[backup.Command] = []
+
+    def __call__(self, command: backup.Command) -> backup.CommandResult:
+        self.calls.append(command)
+        if command.label == backup.LIST_SNAPSHOTS:
+            return backup.CommandResult(0, f"{STAMP}/\n")
+        if command.label == backup.LIST_SNAPSHOT_IDENTITY:
+            return backup.CommandResult(
+                0, f"{backup.identity_marker(self.cfg.library.volume_id)}\n"
+            )
+        if command.label == backup.LIST_SNAPSHOT_CONTENTS:
+            return backup.CommandResult(0, "".join(f"{name}\n" for name in self.holds))
+        if command.label in self.failing:
+            return backup.CommandResult(3)
+        if "--dry-run" in command.argv:
+            return backup.CommandResult(0)
+        source, destination = command.argv[2], Path(command.argv[3])
+        if command.label == backup.RESTORE_MIRROR:
+            for relative in self.mirrored:
+                landed = destination / relative
+                landed.parent.mkdir(parents=True, exist_ok=True)
+                landed.write_bytes(b"mirrored")
+        else:
+            destination.mkdir(parents=True, exist_ok=True)
+            (destination / source.rsplit("/", 1)[-1]).write_bytes(b"from the snapshot")
+        return backup.CommandResult(0)
+
+    @property
+    def transfers(self) -> list[backup.Command]:
+        return [c for c in self.calls if c.label in (backup.RESTORE_MIRROR, backup.RESTORE_DATABASE)]
+
+
+def _everything_on_disk(*roots: Path) -> dict[str, bytes | None]:
+    """Every path under the roots with its bytes, directories as ``None``."""
+    seen: dict[str, bytes | None] = {}
+    for root in roots:
+        for path in sorted(root.rglob("*")):
+            seen[str(path)] = path.read_bytes() if path.is_file() else None
+    return seen
+
+
+def _gone(cfg_value, **overrides) -> dict:
+    """The engine suite's dead volume, plus a person at a terminal."""
+    seams = restore_suite._volume_is_gone(cfg_value)
+    seams["terminal"] = lambda: True
+    seams["process_lister"] = lambda: ()
+    seams.update(overrides)
+    return seams
+
+
+def _replacement(tmp_path) -> Path:
+    target = tmp_path / "replacement"
+    target.mkdir()
+    return target
+
+
+def test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target(cfg, tmp_path):
+    target = _replacement(tmp_path)
+    seams = _gone(cfg)
+    remote = _Remote(cfg)
+    state = Path(config.installation_state_dir())
+    before = _everything_on_disk(tmp_path, state)
+
+    report = restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, runner=remote, **seams
+    )
+
+    assert (target / MIRRORED).read_bytes() == b"mirrored"
+    assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
+    assert (target / "db" / "master.db-wal").exists()
+    assert report.target == target
+    assert report.database_target == target / "db" / "master.db"
+    assert report.mirror == (backup.RESTORE_MIRROR,)
+    assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
+    assert report.snapshot == STAMP
+    assert [c.label for c in remote.transfers][0] == backup.RESTORE_MIRROR
+
+    after = _everything_on_disk(tmp_path, state)
+    outside = {
+        path
+        for path in after.keys() - before.keys()
+        if not Path(path).is_relative_to(target)
+    }
+    assert outside == {str(restore.recovery_lock_path())}, outside
+    assert {p: b for p, b in after.items() if p in before} == before
+    assert not Path(cfg.library.root).exists(), "the lost library's path was recreated"
+
+
+def test_every_transfer_is_pointed_under_the_target_and_nowhere_else(cfg, tmp_path):
+    target = _replacement(tmp_path)
+    remote = _Remote(cfg)
+
+    restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, runner=remote, **_gone(cfg)
+    )
+
+    destinations = [Path(c.argv[3]) for c in remote.transfers]
+    assert len(destinations) == 3
+    assert all(d == target or d.is_relative_to(target) for d in destinations), destinations
+
+
+def _mounted(cfg_value, tmp_path):
+    """A library that is present and is the recorded volume, and NOTHING ELSE WRONG.
+
+    The mount probe answers yes on purpose. The replacement directory sits beside
+    the configured root, which is the second shape the stub check refuses, and
+    that refusal's sentence contains the word "unmounted". Without the probe, a
+    test asserting on "mounted" is held up by the stub check alone, and the
+    identity gate, the one that keeps the two restores apart, can be deleted
+    with the suite green. Measured: that is what the mutation table's row found.
+    """
+    return _replacement(tmp_path), {
+        **gate_seams(cfg_value),
+        "terminal": lambda: True,
+        "mount_probe": lambda _path: True,
+    }
+
+
+def _a_stub(cfg_value, tmp_path):
+    seams = _gone(cfg_value, mount_probe=lambda _path: False)
+    stub = Path(cfg_value.library.root)
+    stub.mkdir()
+    return stub, seams
+
+
+def _no_terminal(cfg_value, tmp_path):
+    return _replacement(tmp_path), _gone(cfg_value, terminal=lambda: False)
+
+
+REFUSED_BEFORE_THE_LOCK = {
+    "the library is still mounted": (_mounted, True, "nothing to recover from bare metal"),
+    "the target is the stub on the internal disk": (_a_stub, True, "internal disk"),
+    "nobody is at a terminal": (_no_terminal, True, "no controlling terminal"),
+    "the replacement was not accepted": (
+        lambda c, t: (_replacement(t), _gone(c)),
+        False,
+        "explicit decision",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(REFUSED_BEFORE_THE_LOCK))
+def test_a_refusal_before_the_lock_leaves_the_disk_untouched(cfg, tmp_path, case):
+    arrange, accepted, said = REFUSED_BEFORE_THE_LOCK[case]
+    target, seams = arrange(cfg, tmp_path)
+    seams.setdefault("process_lister", lambda: ())
+    remote = _Remote(cfg)
+    state = Path(config.installation_state_dir())
+    before = _everything_on_disk(tmp_path, state)
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=accepted, runner=remote, **seams
+        )
+
+    assert excinfo.value.cause.reason == "recovery-target-refused"
+    assert said in excinfo.value.cause.message
+    assert remote.calls == [], "the remote was asked something by a refused recovery"
+    assert _everything_on_disk(tmp_path, state) == before
+    assert not restore.recovery_lock_path().exists()
+
+
+def test_a_target_that_already_holds_a_database_is_refused_with_no_way_to_name_it(
+    cfg, tmp_path
+):
+    """The verb never passes ``replacing_existing``, and has no flag that could."""
+    target = _replacement(tmp_path)
+    (target / "deep" / "er").mkdir(parents=True)
+    (target / "deep" / "er" / "master.db").write_bytes(b"somebody's library")
+    remote = _Remote(cfg)
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, runner=remote, **_gone(cfg)
+        )
+
+    assert excinfo.value.cause.reason == "recovery-target-refused"
+    assert "already holds master.db" in excinfo.value.cause.message
+    assert remote.calls == []
+    assert (target / "deep" / "er" / "master.db").read_bytes() == b"somebody's library"
+    # A usage error prints no envelope, so the parser is asked rather than driven.
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(
+            ["restore", "bare-metal", "--target", str(target), "--replace-existing"]
+        )
+
+
+def test_both_halves_run_inside_one_holding_of_the_recovery_lock(cfg, tmp_path):
+    """Asked from a REAL second interpreter, while each transfer is in flight."""
+    target = _replacement(tmp_path)
+    seams = _gone(cfg)
+    observed: list[int] = []
+
+    class _Watching(_Remote):
+        def __call__(self, command):
+            if command.label in (backup.RESTORE_MIRROR, backup.RESTORE_DATABASE):
+                observed.append(_lock_taken_in_another_process(restore.recovery_lock_path()))
+            return super().__call__(command)
+
+    restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, runner=_Watching(cfg), **seams
+    )
+
+    assert observed == [3, 3, 3], observed
+    assert _lock_taken_in_another_process(restore.recovery_lock_path()) == 0
+
+
+def test_a_recovery_already_running_here_refuses_the_second_one(cfg, tmp_path):
+    """The engine's busy path, which this verb is the first caller to own."""
+    import fcntl  # noqa: PLC0415
+
+    target = _replacement(tmp_path)
+    seams = _gone(cfg)
+    remote = _Remote(cfg)
+    lock = restore.recovery_lock_path()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock, "a+") as other:
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(CratekitError) as excinfo:
+            restore_cli.recover_under_bare_metal_session(
+                cfg, target=target, accepted=True, runner=remote, **seams
+            )
+
+    assert excinfo.value.cause.reason == "session-lock-held", excinfo.value.cause
+    assert str(lock) in excinfo.value.cause.message
+    assert remote.calls == []
+    assert list(target.iterdir()) == []
+
+
+def test_the_verb_cannot_be_typed_without_naming_a_target():
+    """No default, because the only default there could be is the lost volume."""
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["restore", "bare-metal", "--accept-replacement"])
+
+
+def test_a_recovery_is_refused_underneath_a_running_rekordbox(cfg, tmp_path):
+    target = _replacement(tmp_path)
+    remote = _Remote(cfg)
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg,
+            target=target,
+            accepted=True,
+            runner=remote,
+            **_gone(cfg, process_lister=lambda: ("rekordbox",)),
+        )
+
+    assert excinfo.value.cause.reason == "rekordbox-running"
+    assert remote.transfers == []
+    assert list(target.iterdir()) == []
+
+
+def test_a_failed_mirror_stops_the_recovery_before_the_database(cfg, tmp_path):
+    """The engine runs every command before reading one; the verb runs a half."""
+    target = _replacement(tmp_path)
+    seams = _gone(cfg)
+    remote = _Remote(cfg, failing={backup.RESTORE_MIRROR})
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, runner=remote, **seams
+        )
+
+    cause = excinfo.value.cause
+    assert cause.reason == "restore-transfer-failed"
+    assert cause.detail["half"] == restore_cli.MIRROR_HALF
+    assert cause.detail["completed_halves"] == []
+    assert "exited 3" in cause.detail["engine"]
+    assert "database half was not attempted" in cause.message
+    assert "cleared" not in cause.message
+    assert cause.remediation.steps[-1] == restore_cli.RERUN_STEP
+    assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
+    assert not list(target.rglob("*.db"))
+
+    again = restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, runner=_Remote(cfg), **seams
+    )
+    assert again.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
+
+
+def test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove(cfg, tmp_path):
+    target = _replacement(tmp_path)
+    remote = _Remote(cfg, failing={backup.RESTORE_DATABASE})
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, runner=remote, **_gone(cfg)
+        )
+
+    cause = excinfo.value.cause
+    assert cause.reason == "restore-transfer-failed"
+    assert cause.detail["half"] == restore_cli.DATABASE_HALF
+    assert cause.detail["completed_halves"] == [restore_cli.MIRROR_HALF]
+    assert "mirror half completed" in cause.message
+    assert "master.db" in cause.message
+    assert cause.remediation.steps[0] == "do not open the library"
+    assert cause.remediation.steps[-1] == restore_cli.RERUN_STEP
+    assert (target / MIRRORED).exists()
+
+
+def test_a_rehearsal_passes_the_same_gates_and_writes_nothing(cfg, tmp_path):
+    target = _replacement(tmp_path)
+    remote = _Remote(cfg)
+
+    report = restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, dry_run=True, runner=remote, **_gone(cfg)
+    )
+
+    assert report.dry_run is True
+    assert report.mirror == (backup.RESTORE_MIRROR,)
+    assert len(report.database) == 2
+    assert all("--dry-run" in c.argv for c in remote.transfers)
+    assert list(target.iterdir()) == []
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=False, dry_run=True, runner=remote, **_gone(cfg)
+        )
+    assert "explicit decision" in excinfo.value.cause.message
+
+
+def test_a_failed_rehearsal_says_nothing_was_written(cfg, tmp_path):
+    target = _replacement(tmp_path)
+    remote = _Remote(cfg, failing={backup.RESTORE_MIRROR})
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, dry_run=True, runner=remote, **_gone(cfg)
+        )
+
+    assert "nothing was written" in excinfo.value.cause.message
+    assert excinfo.value.cause.detail["dry_run"] is True
+    assert restore_cli.RERUN_STEP not in excinfo.value.cause.remediation.steps
+
+
+def test_a_rerun_is_refused_until_the_step_the_refusal_gave_is_followed(cfg, tmp_path):
+    """DRIVEN, AND A KNOWN LIMIT RATHER THAN A PROPERTY ANYBODY WANTS.
+
+    The mirror excludes this library's own database and nothing else with that
+    suffix, and it carries the state directory beside the library, which holds
+    the review queue and every capture. So any run cut off after the mirror has
+    started leaves an occupied target, the engine refuses an occupied target,
+    and the verb has no flag that names one for replacement. What this holds is
+    that the step the failure gives is TRUE: followed exactly, the rerun
+    completes, and what was removed comes back. The ledger entry titled "An
+    interrupted bare metal recovery is refused on rerun until every database
+    file it landed is removed" records the limit. When that closes, the first
+    half of this test is what changes.
+    """
+    target = _replacement(tmp_path)
+    seams = _gone(cfg)
+    carried = (MIRRORED, ".cratekit/queue.db", ".cratekit/snapshots/one/master.db")
+    first = _Remote(cfg, failing={backup.RESTORE_DATABASE}, mirrored=carried)
+    with pytest.raises(CratekitError) as failed:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, runner=first, **seams
+        )
+    assert failed.value.cause.remediation.steps[-1] == restore_cli.RERUN_STEP
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=carried), **seams
+        )
+    assert "already holds" in excinfo.value.cause.message
+
+    for landed in list(target.rglob("*.db")):
+        landed.unlink()
+    report = restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=carried), **seams
+    )
+
+    assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
+    assert (target / ".cratekit" / "queue.db").exists()
+    assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
+
+
+def test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half(cfg, tmp_path):
+    """Asked twice, because the first answer is hours old by the second half."""
+    target = _replacement(tmp_path)
+    remote = _Remote(cfg)
+    answers = iter([(), ("rekordbox",)])
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg,
+            target=target,
+            accepted=True,
+            runner=remote,
+            **_gone(cfg, process_lister=lambda: next(answers)),
+        )
+
+    cause = excinfo.value.cause
+    assert cause.reason == "rekordbox-running"
+    assert cause.detail["half"] == restore_cli.DATABASE_HALF
+    assert cause.detail["completed_halves"] == [restore_cli.MIRROR_HALF]
+    assert "mirror half completed" in cause.message
+    assert cause.remediation.steps[-1] == restore_cli.RERUN_STEP
+    assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
+    assert not list(target.rglob("master.db*"))
+
+
+def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one(
+    cfg, tmp_path
+):
+    """rekordbox's own default layout: the database is on the internal disk."""
+    home = tmp_path / "home" / "rekordbox"
+    home.mkdir(parents=True)
+    (home / "master.db").write_bytes(b"alive, and never on the lost volume")
+    outside = replace(
+        cfg,
+        library=replace(
+            cfg.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-18",
+        ),
+    )
+    assert backup.database_target_for(outside, tmp_path) == tmp_path / "master.db", (
+        "the fixture does not reproduce the layout, so this pins nothing"
+    )
+    target = _replacement(tmp_path)
+    # A snapshot with no write ahead log, so the plan DOES name an absent
+    # companion and the report's silence about it is a decision under test.
+    remote = _Remote(outside, holds=("master.db",))
+
+    report = restore_cli.recover_under_bare_metal_session(
+        outside, target=target, accepted=True, runner=remote, **_gone(outside)
+    )
+
+    assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
+    assert not (target / "master.db").exists()
+    assert (home / "master.db").read_bytes() == b"alive, and never on the lost volume"
+    assert report.database == ()
+    assert report.absent == ()
+    assert report.database_elsewhere == home / "master.db"
+    totals = restore_cli._recovered(report)["totals"]
+    assert totals["database_was_on_the_lost_volume"] is False
+    assert totals["database_target"] == str(home / "master.db")
+
+
+@pytest.fixture
+def lost(cfg, monkeypatch):
+    """A machine whose library volume is gone, with the PLATFORM seams answered.
+
+    The dispatcher takes its arguments from a command line, so there is nowhere
+    to hand a probe in. What is replaced is what ``installed`` replaces and for
+    its reason, plus the two answers a temporary directory cannot give: that a
+    person is at a terminal, and that the target is a mount point.
+    """
+    shutil.rmtree(cfg.library.root)
+    monkeypatch.setattr(
+        preflight, "default_identity_provider", lambda: (lambda _path: "0000-not-this-disk")
+    )
+    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    monkeypatch.setattr(session, "has_controlling_terminal", lambda: True)
+    monkeypatch.setattr(restore, "_is_mount_point", lambda _path: True)
+    return cfg
+
+
+def test_the_verb_recovers_both_halves_and_reports_them_apart(lost, monkeypatch, tmp_path):
+    target = _replacement(tmp_path)
+    log = _fake_rclone(lost, monkeypatch)
+
+    code, envelope = _drive(
+        ["restore", "bare-metal", "--target", str(target), "--accept-replacement"]
+    )
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["verb"] == "restore.bare-metal"
+    totals = envelope["data"]["totals"]
+    assert totals["mirror_transfers"] == 1
+    assert totals["database_transfers"] == 1
+    assert totals["absent_sidecars"] == ["-wal"]
+    assert totals["target"] == str(target)
+    assert totals["database_was_on_the_lost_volume"] is True
+    assert totals["database_target"] == str(target / "db" / "master.db")
+    assert totals["snapshot"] == STAMP
+    assert [item["half"] for item in envelope["data"]["items"]] == [
+        restore_cli.MIRROR_HALF,
+        restore_cli.DATABASE_HALF,
+    ]
+    # THE THIRD WORD, not the last: the mirror transfer ends in its tuning flags.
+    destinations = [
+        Path(line.split()[2]) for line in log.read_text().splitlines() if line.startswith("copy ")
+    ]
+    assert len(destinations) == 2
+    assert all(d == target or d.is_relative_to(target) for d in destinations), destinations
+
+
+def test_the_verb_refuses_without_the_acceptance_flag(lost, monkeypatch, tmp_path):
+    target = _replacement(tmp_path)
+    log = _fake_rclone(lost, monkeypatch)
+
+    code, envelope = _drive(["restore", "bare-metal", "--target", str(target)])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "recovery-target-refused"
+    assert "explicit decision" in envelope["cause"]["message"]
+    assert not log.exists() or "copy" not in log.read_text()
+
+
+def test_the_verb_refuses_while_the_library_is_mounted(installed, monkeypatch, tmp_path):
+    monkeypatch.setattr(session, "has_controlling_terminal", lambda: True)
+    # So the stub check cannot be what refuses. See ``_mounted``.
+    monkeypatch.setattr(restore, "_is_mount_point", lambda _path: True)
+    target = _replacement(tmp_path)
+    log = _fake_rclone(installed, monkeypatch)
+
+    code, envelope = _drive(
+        ["restore", "bare-metal", "--target", str(target), "--accept-replacement"]
+    )
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "recovery-target-refused"
+    assert "nothing to recover from bare metal" in envelope["cause"]["message"]
+    assert not log.exists() or log.read_text() == ""
+    assert list(target.iterdir()) == []
+
+
+def test_the_recovery_verb_declares_no_gate_and_no_check_it_needs_to_fail():
+    entry = registry.entry("restore.bare-metal")
+    assert entry.gates == ()
+    assert entry.destructive is True
+    assert not {"library.mounted", "library.identity"} & set(entry.doctor_checks)
+
+
+def test_a_recovery_with_no_rclone_installed_refuses_by_name_and_writes_nothing(
+    cfg, tmp_path, monkeypatch
+):
+    """The registry entry declares no check for the program, so the verb says it."""
+    monkeypatch.setenv("CRATEKIT_BIN_RCLONE", str(tmp_path / "no-such-program"))
+    monkeypatch.setenv("PATH", str(tmp_path))
+    target = _replacement(tmp_path)
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, **_gone(cfg)
+        )
+
+    assert excinfo.value.cause.reason == "rclone-missing"
+    assert list(target.iterdir()) == []

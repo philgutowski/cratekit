@@ -162,6 +162,37 @@ A run that pulled a whole mirror and named no session is not a run that did
 nothing, and the report says which half happened rather than reporting zero steps
 over hundreds of gigabytes of transfer.
 
+Everything above needs the library mounted where this installation expects it.
+When the replacement is a new, empty volume and the recorded library cannot be
+read at all, there is a separate verb, because the acknowledgment, the lock and
+the session log were all on the disk that died:
+
+```bash
+crate restore bare-metal --target DIRECTORY --accept-replacement --dry-run
+crate restore bare-metal --target DIRECTORY --accept-replacement
+```
+
+It pulls the mirror and then the database onto the target and reports each half
+separately. It refuses while the recorded library is reachable, refuses the empty
+folder a lost volume leaves behind on the internal disk, refuses a target that
+already holds a database, and refuses when nobody is at a terminal, so it is a
+person's to run and never an agent's to run detached.
+
+It rolls no session back. The session log and the captures arrive inside the
+mirror as the last backup saw them, while the database comes from a dated
+snapshot, so ask the convergence question below of the recovered library. A
+database configured outside the library root was never on the lost drive, so
+only the mirror half runs and the report names where the database is.
+
+A recovery that stops part way is refused on the next run, because the target
+then holds database files. The failure gives the step: remove every file ending
+in the database suffix under the target and run it again. Each one came from the
+mirror or the snapshot and is transferred again.
+
+Afterwards the configuration still names the drive that died, so every gated
+verb refuses on the recovered library until setup records the new root and the
+new volume identity, which doctor prints.
+
 ## Convergence is the question a recovery leaves behind
 
 Once a tree cuts over to the database, the database is the only copy of its

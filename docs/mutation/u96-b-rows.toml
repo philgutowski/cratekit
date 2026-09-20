@@ -1,0 +1,65 @@
+name = "u96-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_no_library_check_declared"
+description = "registry: declare library.mounted on the recovery verb, a check it needs to FAIL"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_cli_contract.py"]
+old = '''        doctor_checks=("rekordbox.closed",),
+        # U96.'''
+new = '''        doctor_checks=("rekordbox.closed", "library.mounted"),
+        # U96.'''
+
+[[rows]]
+id = "C1_engine_terminal"
+description = "SAMPLE of the engine's guards, now reachable from a verb. bare_metal_session: disarm the controlling terminal refusal"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '''    if not probe():
+        raise _refuse_target(
+            "this invocation has no controlling terminal'''
+new = '''    if False:
+        raise _refuse_target(
+            "this invocation has no controlling terminal'''
+
+[[rows]]
+id = "C2_engine_acknowledged"
+description = "SAMPLE. bare_metal_session: disarm the acknowledgment refusal"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '''    if not acknowledged:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C3_engine_occupied_target"
+description = "SAMPLE. assert_recovery_target: disarm the refusal of a target that already holds a database"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '''    if existing and not replacing_existing:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C4_engine_stub"
+description = "SAMPLE. assert_recovery_target: disarm the refusal of the stub an unmounted volume leaves on the internal disk"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '''    if (inside_configured or beside_configured) and not probe(where):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C5_engine_library_is_mounted"
+description = "SAMPLE. assert_library_volume_is_gone: answer gone when the library is mounted and is the recorded volume"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '''    raise _refuse_target(
+        f"the library at {cfg.library.root} is mounted and is the volume this "'''
+new = '''    return preflight.MountState.NOT_MOUNTED
+    raise _refuse_target(
+        f"the library at {cfg.library.root} is mounted and is the volume this "'''

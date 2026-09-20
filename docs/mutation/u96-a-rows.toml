@@ -1,0 +1,165 @@
+name = "u96-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_acceptance_reaches_the_engine"
+description = "recover_under_bare_metal_session: hand the engine acknowledged=True whatever the caller accepted, so the replacement is never a person's decision"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        acknowledged=accepted,'''
+new = '''        acknowledged=True,'''
+
+[[rows]]
+id = "A2_flag_reaches_the_function"
+description = "perform_bare_metal: pass accepted=True instead of the flag, so the verb recovers without --accept-replacement"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        accepted=ctx.args.accept_replacement,'''
+new = '''        accepted=True,'''
+
+[[rows]]
+id = "A3_plan_inside_the_held_session"
+description = "Drop gates=held.guard from the plan_restore call, so the plan asks for the library scoped gates on the volume that is gone"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''                include_mirror=True,
+                gates=held.guard,'''
+new = '''                include_mirror=True,'''
+
+[[rows]]
+id = "A4_run_inside_the_held_session"
+description = "Drop gates=held.guard from the run_restore call of each half"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''                    portion,
+                    cfg,
+                    dry_run=dry_run,
+                    gates=held.guard,'''
+new = '''                    portion,
+                    cfg,
+                    dry_run=dry_run,'''
+
+[[rows]]
+id = "A5_the_mirror_is_pulled"
+description = "Plan with include_mirror=False, so a recovery onto an empty drive brings a database and no music"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''                include_mirror=True,'''
+new = '''                include_mirror=False,'''
+
+[[rows]]
+id = "A6_a_half_at_a_time"
+description = "_halves: put every command in the mirror half, which is spending the plan whole, so a failed mirror still lands the database"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)'''
+new = '''    mirror = decided.commands'''
+
+[[rows]]
+id = "A7_rekordbox_asked_again"
+description = "Disarm the second rekordbox check, the one before the database half"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''                    if running:
+                        raise backup.BackupRefused('''
+new = '''                    if False:
+                        raise backup.BackupRefused('''
+
+[[rows]]
+id = "A8_database_elsewhere_is_skipped"
+description = "Run the database half even when the configured database was never on the lost volume"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''            if half == DATABASE_HALF and elsewhere is not None:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "A9_a_rehearsal_stays_a_rehearsal"
+description = "Pass dry_run=False to run_restore whatever was asked, so a rehearsal transfers"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''                    portion,
+                    cfg,
+                    dry_run=dry_run,'''
+new = '''                    portion,
+                    cfg,
+                    dry_run=False,'''
+
+[[rows]]
+id = "A10_rerun_step_is_given"
+description = "_half_failed: never add the rerun step, so a failure tells a person to run again and the rerun is refused"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        steps = (*steps, RERUN_STEP)'''
+new = '''        steps = (*steps,)'''
+
+[[rows]]
+id = "A11_rerun_step_not_given_to_a_rehearsal"
+description = "_half_failed: add the rerun step to a failed rehearsal too, sending a person to delete files that are not there"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    if not dry_run:
+        steps = (*steps, RERUN_STEP)'''
+new = '''    if True:
+        steps = (*steps, RERUN_STEP)'''
+
+[[rows]]
+id = "A12_which_half_failed"
+description = "_half_failed: swap the two failure sentences, so a failed mirror is reported as a failed database half"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    elif half == MIRROR_HALF:
+        message = ('''
+new = '''    elif half == DATABASE_HALF:
+        message = ('''
+
+[[rows]]
+id = "A13_completed_halves_recorded"
+description = "Never record a completed half, so a database failure does not say the mirror arrived"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''            completed.append(half)'''
+new = '''            pass'''
+
+[[rows]]
+id = "A14_target_is_required"
+description = "build_bare_metal: make --target optional, so the verb can be typed with no destination"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        "--target",
+        required=True,
+        metavar="DIRECTORY",'''
+new = '''        "--target",
+        metavar="DIRECTORY",'''
+
+[[rows]]
+id = "A15_report_names_where_the_database_is"
+description = "_recovered: always report the rebased database path, so a database that was never recovered is reported at the top of the target"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''            "database_target": str(report.database_elsewhere or report.database_target),'''
+new = '''            "database_target": str(report.database_target),'''
+
+[[rows]]
+id = "A16_no_absent_companion_for_a_half_that_did_not_run"
+description = "Report the plan's absent companions even when the database half was skipped"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''            absent=decided.absent_sidecars if elsewhere is None else (),'''
+new = '''            absent=decided.absent_sidecars,'''
