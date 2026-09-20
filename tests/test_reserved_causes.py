@@ -5510,7 +5510,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # same kind of literal as vocal-audio-undecodable and vocal-model-unavailable
     # beside it, none of which is registered either. Nothing refuses with it, so
     # the cause population does not move and both halves rise together.
-    assert (len(literals), len(literals - set(causes))) == (469, 300), (
+    # Re-pinned on U93, the recursive mode on the two queued analysis verbs,
+    # 2026-09-20: 469 to 470 distinct, 300 to 301 non-keys. ONE literal joined
+    # and NOTHING left, differenced as SETS by running this collector over main's
+    # own `src/cratekit` read back through `git show`, rather than inferred from
+    # the total moving by one. It is linked-folder-skipped in
+    # `core/discovery.py`, and it is not a cause: it is the WARNING code a
+    # recursive walk carries to name the directory symlinks it declined to
+    # enter, the same kind of literal as db-metadata-not-written and
+    # library-row-not-updated above. Nothing refuses with it, because declining
+    # a link is not a failure, so the cause population does not move and both
+    # halves rise together.
+    assert (len(literals), len(literals - set(causes))) == (470, 301), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6011,7 +6022,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # slug, so the file held no cause literal until now. It holds 0 and 2 and
     # nothing in the exit code range. Measured by differencing both populations
     # as SETS against main's own src tree extracted into a scratch directory.
-    assert (len(literal_holders), len(literal_both)) == (102, 22), (
+    # Re-pinned on U93, 2026-09-20: 102 to 103 holders, the other half UNCHANGED
+    # at 22. ONE module joined and none left, and it is a new file.
+    # core/discovery.py names internal-error through cause.refuse, the refusal a
+    # job item id that would leave its frozen folder meets, and carries
+    # linked-folder-skipped as a warning code. The only integer in it is the 5 of
+    # the slice that caps how many declined symlinks the warning spells out
+    # before it counts the rest, which is below the reserved range and is never
+    # an exit status. Measured by listing this file's own holders on the branch
+    # and asking the same walk whether that one file holds an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (103, 22), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
