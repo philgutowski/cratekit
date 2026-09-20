@@ -196,6 +196,51 @@ def test_an_unknown_job_refuses_with_a_code_from_the_vocabulary(queue):
     assert excinfo.value.cause.remediation.steps
 
 
+def test_states_of_answers_for_the_names_it_knows_and_omits_the_rest(queue, cfg):
+    """An identifier with no row is ABSENT, never mapped to a state.
+
+    "This queue has never heard of it" is not a state a job can be in, and the
+    caller this exists for, ``acquire.cli.sweep_staging``, acts on exactly that
+    difference: a staging directory naming an unknown job is another
+    installation's and is left where it is.
+    """
+    store, _ = queue
+    open_job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    done = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    jobs.transition(store, done.job_id, jobs.JobState.SUCCEEDED)
+
+    answered = jobs.states_of(store, [open_job.job_id, done.job_id, "no-such-job"])
+
+    assert answered == {
+        open_job.job_id: jobs.JobState.QUEUED,
+        done.job_id: jobs.JobState.SUCCEEDED,
+    }
+    assert jobs.states_of(store, []) == {}
+
+
+def test_states_of_answers_past_the_parameter_limit_of_one_statement(queue, cfg):
+    """More names than fit one ``IN`` clause, which is the case that reaches it.
+
+    The caller is sweeping a staging tree that has never been swept, so the
+    number of names it asks about is the number of jobs the installation ever
+    ran. A single statement would raise ``sqlite3.OperationalError`` there, and
+    the failure would land on the machine with the most to reclaim.
+    """
+    store, _ = queue
+    made = [
+        jobs.enqueue(
+            store, handler_key="job.resume", payload={}, cfg=cfg, job_id=f"job-{n:05d}"
+        ).job_id
+        for n in range(jobs._ID_CHUNK + 7)
+    ]
+
+    answered = jobs.states_of(store, [*made, "no-such-job"])
+
+    assert len(answered) == len(made)
+    assert set(answered) == set(made)
+    assert set(answered.values()) == {jobs.JobState.QUEUED}
+
+
 def test_a_stored_cause_that_cannot_be_read_back_is_not_read_as_success(queue, cfg):
     """None means "no failure". An unparseable cause must never mean that."""
     store, _ = queue

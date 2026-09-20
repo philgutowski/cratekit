@@ -14334,6 +14334,26 @@ acquisition consequence of the same shape.
 **Closes when:** `audio_files` gains the dot skip its neighbour has, or the
 acquisition staging tree moves outside the configured download root.
 
+**CLOSED on `relay/167`, 2026-09-20, by the first half in a narrower and safer
+form than the condition asked for.** `audio_files` did not gain "the dot skip its
+neighbour has", because the code review drove what that skip costs and it is
+worse than the defect: a leading dot is not reserved on any filesystem this
+product runs on, and a DJ library is full of names that begin with one.
+`...And Justice For All` is an album directory and `...Ready For It.flac` is a
+track. Over a folder holding both, a broad dot skip returned nothing and
+`crate tag folder` then reported the folder held no audio it could tag, which is
+a clean report over files the tool declined to see. What landed instead names
+the two producers: `tag.SKIPPED_DIRNAMES`, holding this product's own staging
+tree names, matched against the directory components below the root, and
+`tag.APPLEDOUBLE_PREFIX`, two characters rather than one for exactly the reason
+above. The master staging tree is covered as a consequence and was not before,
+which matters more than the acquisition one, because it lands inside the music
+library rather than under the download root. The staging names are a hand copy,
+since an engine cannot import a shell (KTD23), and
+`test_the_skipped_dirnames_are_the_two_constants_that_own_them` pins the copy as
+set equality so a third tree added to a shell fails there rather than being
+walked into. The neighbour's own broad dot skip is untouched and is now R-563.
+
 ## R-290. A blocked job reports outcome `ok` and exits 0, in every queued verb
 
 **Found:** at U54's review, 2026-09-08, on the park path this unit added.
@@ -14369,6 +14389,39 @@ sweep would pick up.
 **Why not fixed here.** The worker cannot clean up after itself: the engine
 commits the staged file AFTER `handle` returns, so the only correct sweep point
 is in the engine or in a maintenance verb, and neither is this unit.
+
+**CLOSED on `relay/167`, 2026-09-20.** `acquire.cli.sweep_staging` reclaims the
+staging directories of jobs the queue reports terminal, and only the ones that
+hold nothing. Empty only is the whole shape of it, and it is what lets the
+deliberate half of this entry survive: a refused landing's job is FAILED, which
+is terminal, so a sweep keyed on the job state alone would have deleted the
+evidence. The emptiness question is put to `rmdir` rather than to a listing, so
+the filesystem refuses a directory with anything in it atomically and this
+function never has to know which files are deliberate. A directory naming a job
+the queue does not hold is left where it is, because no code path in this
+product deletes a job row, so an unresolvable identifier means the tree and the
+queue are not from the same installation.
+
+The sweep point is the HEAD of the verb rather than the engine or a maintenance
+verb, and neither of the two this entry named would have worked. The engine
+commits after `handle` returns, so at the only moment the worker is still
+running the directory is not yet empty, and the end of a drive knows one job
+while the tree holds every job ever run. It runs on `acquire download` and on
+both paths of `acquire fallback fetch`, which is the second writer of the same
+tree and was missed until the code review drove it. The fallback's resume path
+takes the staging root off the job's own frozen configuration, which is both the
+root that job staged into (KTD9) and what keeps that path from reading any live
+configuration.
+
+`jobs.states_of` is the reader it asks through, two columns for the names
+actually present in the tree. `list_jobs`, which it used first, hydrates every
+row it returns: measured 2026-09-20 over a store of succeeded download jobs each
+freezing a two hundred track list, a median 54 ms at 500 jobs and 224 ms at
+2000, on a verb that had not started its real work yet.
+
+**What is still open and is now R-564:** the refused landing files themselves.
+They stay for good, by design, and nothing reports how many there are or offers
+to clear them.
 
 ## R-292. An unreadable file under a permissive policy is committed unmarked
 
@@ -22770,3 +22823,123 @@ would have been a guard on nothing.
 **Closes when:** the head grammar accepts a lowercase Camelot letter and the
 rename pads its case, or a doctor check reports files whose names look like a
 head the engine will not read.
+
+---
+
+## R-563. The one level audio walks skip every dot name, so a real title is dropped
+
+**Found:** 2026-09-20, on `relay/167`, by the code review of R-289's first cut,
+and driven against that cut before it was narrowed.
+
+`analysis/cli._audio_in` and `write/routing_cli.py`'s walk both skip a file whose
+name starts with a dot, and their stated reason is the AppleDouble sidecar
+`._track.flac`. The rule is wider than the reason. A leading dot is not reserved
+on any filesystem this product runs on, and a DJ library is full of titles that
+open with one.
+
+**Measured cost.** Driven on the identical rule inside `tagging.tag.audio_files`
+before it was narrowed: over a folder holding `...Ready For It.flac` and
+`Metallica/...And Justice For All/01 Blackened.flac`, the walk returned nothing
+and the verb reported that the folder held no audio it could tag. The same input
+through `crate analysis` is NOT driven, so the reachability at that verb is
+unmeasured, but the walk is the item derivation there too, so a track named this
+way is never queued for analysis and no report says it was skipped.
+
+**Why not fixed here.** Out of scope by this unit's brief, which names
+`audio_files` and nothing else, and R-288 already owns the consolidation of these
+walks into one helper in `core` taking the recursion and dotfile rules as
+arguments. A fix here would be a third opinion about a rule R-288 is going to
+move.
+
+**Closes when:** the one level walks skip the AppleDouble prefix and the product's
+own staging directory names rather than every dot name, the way
+`tagging.tag.audio_files` does since `relay/167`, or R-288's shared helper lands
+carrying that rule for all of them.
+
+---
+
+## R-564. A refused landing is kept as evidence for ever and nothing says so
+
+**Found:** 2026-09-20, on `relay/167`, as the half of R-291 the sweep
+deliberately does not touch.
+
+`checked_landing` refuses a landing the lossless policy does not admit and the
+file stays in its item's staging directory on purpose, because it is the evidence
+for diagnosing the next demotion. `sweep_staging` reclaims only empty
+directories, so every such file and the directory holding it survive every sweep
+for the life of the installation. Nothing counts them, nothing reports them, and
+no verb offers to clear them.
+
+**Measured cost.** Unmeasured in size and certain in direction. One refused
+landing per refused item, under the configured download root, on a disk the
+person is also filling with the tracks the run did acquire. `acquire audit` walks
+the music library rather than the staging root, so it does not see them either.
+
+**Why not fixed here.** Reporting them needs a surface and clearing them needs a
+gate, since deleting evidence a person may be about to read is a destructive act
+and this unit's brief names neither. Choosing an age at which the evidence stops
+being evidence is the person's decision rather than a session's.
+
+**Closes when:** a report names what is sitting in the staging tree, or a gated
+verb clears landings older than a declared age.
+
+---
+
+## R-565. `sweep` means two unrelated things across the acquisition and label verbs
+
+**Found:** 2026-09-20, on `relay/167`, by METHOD's hunt for one symbol meaning
+two things in two modules.
+
+Everywhere else in this product a sweep is a productive pass that queues work:
+`label_cli.queue_sweep`, `favorites_cli.resolve_sweep`, `sweep_items`, and the
+tagging verbs' own "nothing to sweep" no-op, which means nothing to tag.
+`acquire.cli.sweep_staging` means the opposite kind of pass, reclaiming litter.
+
+**Measured cost.** Maintainer facing and nothing else. The two live in different
+modules, share no key, no registry and no cause slug, so there is no surface on
+which they can collide the way `lossy-refused` did as both a cause key and a
+finding kind.
+
+**Why not fixed here.** `reclaim_staging` is the better name and renaming it
+after the fact would invalidate the `old` text of eight rows across three
+mutation tables measured against `sweep_staging`, which are the evidence for
+every guard in this unit. A word is not worth spending that.
+
+**Closes when:** somebody renames it in a unit that is measuring those guards
+again anyway.
+
+---
+
+## R-566. Two different tests each failed once under the parallel suite and passed alone
+
+**Found:** 2026-09-20, on `relay/167`. The first when `scripts/mutate.py` refused
+a batch on a red baseline, the second on this unit's own final battery run.
+
+Two failures, in unrelated modules, neither of them anything this branch touches:
+
+- `tests/test_write_session.py::test_an_unresolved_session_keeps_its_capture_out_of_the_pruner`
+- `tests/test_pool_sizing.py::test_the_real_probe_measures_a_freshly_spawned_child`,
+  which asserts a spawned child that allocated 256 MiB measures at least three
+  quarters of that, and measured 219021312 against an empty child's 33144832,
+  which is 185.9 MiB against a floor of 192.
+
+Each passed on its own file immediately afterwards, and the full suite was green
+on the run before and the run after each one. Six full `-n auto` runs on this
+branch, two of them red, never the same test twice.
+
+**Measured cost.** Maintainer facing. A flaky merge gate answers differently to
+the same tree, so a session either merges on a re-run it did not justify or goes
+looking for damage on a branch that has none. The pool sizing one names its own
+likely mechanism in the assertion message, a child that has already freed what it
+was asked to measure, and both appeared while eleven cores were saturated, which
+this session did for over an hour.
+
+**Why not fixed here.** Neither module is this unit's, and one observation each
+is not a rate. The honest statement is two reds in six full runs, different
+tests, on a loaded machine.
+
+**Closes when:** each is run under `-n auto` on a loaded machine until it either
+reproduces and is fixed, or enough clean runs accumulate to write the observation
+off. The pool sizing one should be measured against machine load explicitly,
+since a real memory probe racing the allocator is a timing assertion wearing a
+size assertion's clothes.

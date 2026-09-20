@@ -313,6 +313,171 @@ def test_a_partial_file_left_in_staging_does_not_poison_the_next_attempt(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# The staging sweep, R-291
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def staging_tree(cfg: config.Config) -> Path:
+    return Path(cfg.paths.download_staging) / acquire_cli.ACQUIRE_STAGING_DIRNAME
+
+
+def test_the_emptied_staging_of_a_finished_job_is_reclaimed_by_the_next_run(
+    cfg, script, library
+):
+    """R-291's cost. One directory per item of every job ever run, kept for good.
+
+    The sweep is at the HEAD of the verb, so the tree the first job left is
+    still there when that job returns and goes on the second invocation. That
+    ordering is asserted on purpose rather than worked around: it is what lets
+    a person look at the staging of the run that just finished.
+    """
+    script.landings = landings("1", "2")
+    first = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
+    drive(resume_argv(first))
+    assert job_of(first).state is jobs.JobState.SUCCEEDED
+    assert sorted(path.name for path in (staging_tree(cfg) / first).iterdir()) == ["0", "1"]
+
+    queued(listed(library, [("3", "C", "V")], name="second.json"))
+
+    assert not (staging_tree(cfg) / first).exists(), (
+        "the finished job's emptied staging directories were never reclaimed"
+    )
+
+
+def test_an_open_jobs_staging_survives_the_sweep(cfg, script, library):
+    """Nothing moves out of a terminal job. Everything may still move out of this one.
+
+    The item is still PENDING, so a resume is entitled to redo it and a driver
+    working it right now is writing into exactly this directory.
+    """
+    script.landings = landings("1")
+    open_job = queued(listed(library, [("1", "A", "T")]))
+    held = staging_tree(cfg) / open_job / "0"
+    held.mkdir(parents=True)
+
+    queued(listed(library, [("2", "B", "U")], name="second.json"))
+
+    assert job_of(open_job).state is jobs.JobState.QUEUED
+    assert held.is_dir(), "an open job's staging was swept"
+
+
+def test_the_refused_landing_left_as_evidence_survives_the_sweep(cfg, script, library):
+    """The deliberate half of R-291, and the reason the sweep removes only empties.
+
+    A landing ``checked_landing`` refused stays where it fell because it is the
+    evidence for diagnosing the next demotion. The job FAILS, which is terminal,
+    so a sweep keyed on the job state alone would delete it. Keyed on the
+    filesystem refusing to remove a directory with something in it, it cannot.
+    """
+    script.landings = landings("1", kind="lossy", offer_lossless=True)
+    failed = queued(listed(library, [("1", "A", "T")]))
+    drive(resume_argv(failed))
+    evidence = staging_tree(cfg) / failed / "0" / "1.mp3"
+    assert evidence.is_file(), "the fixture did not leave a refused landing"
+    assert job_of(failed).state is jobs.JobState.FAILED
+
+    queued(listed(library, [("2", "B", "U")], name="second.json"))
+
+    assert evidence.is_file(), "the refused landing kept as evidence was swept"
+    assert (staging_tree(cfg) / failed).is_dir()
+
+
+def test_a_directory_naming_a_job_this_queue_does_not_hold_is_left_alone(
+    cfg, script, library
+):
+    """No code path deletes a job row, so an unresolvable name is another store's.
+
+    Removing it on the reading "the job is gone, so the work is over" is the one
+    mistake in this sweep that would cost somebody a file, and an unresolvable
+    identifier does not distinguish that reading from "this tree and this queue
+    are not from the same installation".
+    """
+    stranger = staging_tree(cfg) / "job-from-somewhere-else" / "0"
+    stranger.mkdir(parents=True)
+
+    queued(listed(library, [("1", "A", "T")]))
+
+    assert stranger.is_dir(), "a staging directory of an unknown job was swept"
+
+
+def test_the_sweep_reports_what_it_removed_deepest_first(cfg, script, library):
+    """The return value, which no caller reads today, asserted where it is made.
+
+    A sweep that removed the job directory before its items would leave the
+    items behind on every run, and the order is the only place that shows.
+    """
+    script.landings = landings("1")
+    done = queued(listed(library, [("1", "A", "T")]))
+    drive(resume_argv(done))
+
+    with jobs.open_store() as store:
+        removed = acquire_cli.sweep_staging(Path(cfg.paths.download_staging), store)
+
+    assert removed == (staging_tree(cfg) / done / "0", staging_tree(cfg) / done)
+
+
+def test_a_staging_root_that_was_never_created_sweeps_to_nothing(cfg):
+    """The verb runs on a machine that has never acquired anything."""
+    with jobs.open_store() as store:
+        assert acquire_cli.sweep_staging(Path(cfg.paths.download_staging), store) == ()
+
+
+def test_a_job_directory_that_cannot_be_LISTED_does_not_fail_the_verb(cfg, script, library):
+    """``_children`` swallows ``OSError`` and nothing drove the swallow.
+
+    Found by mutation: deleting the ``try``/``except`` and letting the error
+    escape killed NOTHING across the whole suite, while the sweep runs at the
+    head of a verb that has not started its real work yet. An unreadable
+    directory under the staging tree must not turn ``acquire download`` into an
+    unhandled ``PermissionError`` over housekeeping nobody asked for.
+
+    Mode ``0o111`` is the shape that reaches it: the account may traverse the
+    directory and may not list it, so ``is_dir`` still answers and ``iterdir``
+    raises. The directory is left where it is, which is the honest outcome,
+    because a sweep that could not see inside has not established that it is
+    empty.
+    """
+    script.landings = landings("1")
+    done = queued(listed(library, [("1", "A", "T")]))
+    drive(resume_argv(done))
+    blind = staging_tree(cfg) / done
+    blind.chmod(0o111)
+    try:
+        with pytest.raises(OSError):
+            list(blind.iterdir())
+
+        second = listed(library, [("2", "B", "U")], name="second.json")
+        code, envelope = drive(["acquire", "download", str(second)])
+    finally:
+        blind.chmod(0o700)
+
+    assert code == int(ExitCode.OK), envelope
+    assert blind.is_dir(), "an unlistable directory was removed on a guess"
+
+
+def test_the_sweep_does_not_report_a_directory_it_could_not_remove(cfg, script, library):
+    """The return value is a record of removals, so a failure must not enter it.
+
+    Found by mutation: turning ``_reclaim``'s ``return`` into ``pass``, so every
+    directory it touched was appended whether or not it went, killed nothing.
+    The refused landing case is the reachable one: that directory holds evidence
+    on purpose and will never be removed, and a caller reading this tuple as
+    what is gone would be reading the opposite of the truth.
+    """
+    script.landings = landings("1", kind="lossy", offer_lossless=True)
+    failed = queued(listed(library, [("1", "A", "T")]))
+    drive(resume_argv(failed))
+    kept = staging_tree(cfg) / failed / "0"
+    assert (kept / "1.mp3").is_file(), "the fixture did not leave a refused landing"
+
+    with jobs.open_store() as store:
+        removed = acquire_cli.sweep_staging(Path(cfg.paths.download_staging), store)
+
+    assert removed == ()
+    assert kept.is_dir()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Failure paths of the engine this unit is the first to call
 # ═══════════════════════════════════════════════════════════════════════════
 

@@ -35,6 +35,7 @@ from pathlib import Path
 
 import pytest
 
+from cratekit.acquire import cli as acquire_cli
 from cratekit.cli import handlers, output, registry
 from cratekit.core import art, config, jobs, review, tags
 from cratekit.core.cause import CratekitError, refuse
@@ -977,6 +978,54 @@ def test_an_empty_folder_argument_never_sweeps_the_working_directory(
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
     assert tags.read_genre_from_file(folder / "a.flac") in (None, "")
+
+
+def test_tagging_the_download_root_queues_nothing_from_the_acquisition_staging_tree(
+    cfg, folder, silence
+):
+    """R-289's measured cost, reproduced through the shipped verb.
+
+    The folder a person points this at is their download staging root, and
+    ``acquire`` stages every item of every job under a dot directory inside it.
+    Before the dot skip this verb queued one item per staged file, which is the
+    partial download a killed attempt left and the landing ``checked_landing``
+    refused on the lossless policy and left in place as evidence. Both are
+    files the person never asked to have tagged and the second is evidence a
+    tag write would alter.
+
+    A fourth zero, and it reports as the SAME zero as an empty folder, which is
+    correct: there genuinely is no audio here this build should tag, and the
+    person's next move is to put some in.
+    """
+    staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
+    place(staged.parent, silence, staged.name)
+
+    code, envelope = drive(["tag", "folder", str(folder)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["job_id"] == ""
+    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-folder-no-audio"]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_a_real_track_beside_the_staging_tree_is_still_queued(cfg, folder, silence):
+    """The other half, because the test above passes for a verb that queues NOTHING.
+
+    A download root normally holds committed tracks as well as the staging
+    tree, and skipping the tree must not cost the person the sweep they asked
+    for. The item identifier is asserted too, since it is derived relative to
+    the frozen folder and a skipped directory changes nothing about that.
+    """
+    place(folder, silence, "committed")
+    staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
+    place(staged.parent, silence, staged.name)
+
+    code, envelope = drive(["tag", "folder", str(folder)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert list(item_states(tag_job().job_id)) == ["committed.flac"]
 
 
 def test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one(cfg, tmp_path):
