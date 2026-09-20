@@ -79,17 +79,6 @@ new = '''    _assert_rekordbox_closed(process_lister)
     record = session.read_record(session_id, cfg)'''
 
 [[rows]]
-id = "C9_run_root_assertion_removed"
-description = "run drops the same assertion, leaving the still-open question to the per step checks"
-file = "src/cratekit/core/restore.py"
-surface = "user"
-old = '''    assert_gates_are_open(held, writing=cfg.library.root)
-    _assert_rekordbox_closed(process_lister)
-    _preflight('''
-new = '''    _assert_rekordbox_closed(process_lister)
-    _preflight('''
-
-[[rows]]
 id = "S1_authorises_everything"
 description = "EXISTING GUARD, fixed sample: Held.authorises_path answers yes to every path, which is the original bypass"
 file = "src/cratekit/core/restore.py"
@@ -105,3 +94,8 @@ surface = "user"
 old = '''        if terms != (self.issued_by, str(self.authorises), str(self.lock.absolute())):
             return False'''
 new = ""
+
+[[dropped]]
+id = "C9_run_root_assertion_removed"
+description = "run drops its assertion on the rooted root, leaving the still-open question to the per step checks"
+reason = "ranked below the cap: the same assertion as C8 at the second call site, and C3 removes the per step layer that would otherwise cover it. Not run, so its count is unknown"

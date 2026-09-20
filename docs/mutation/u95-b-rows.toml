@@ -51,13 +51,6 @@ old = '''    parts = Path(os.path.normpath(str(recorded))).parts'''
 new = '''    parts = recorded.parts'''
 
 [[rows]]
-id = "B7_recorded_root_not_normalised"
-description = "Compare the configured root's raw parts, so a root spelled with dots matches nothing and nothing is carried"
-file = "src/cratekit/core/restore.py"
-old = '''    there = Path(os.path.normpath(str(recorded_root))).parts'''
-new = '''    there = recorded_root.parts'''
-
-[[rows]]
 id = "B8_outside_path_moved_anyway"
 description = "A path under NEITHER root is joined onto the target instead of left where it says it is"
 file = "src/cratekit/core/restore.py"
@@ -72,3 +65,8 @@ new = '''    if parts[: len(here)] == here:
 id = "B9_equal_roots_shortcut_removed"
 description = "Delete the early return for equal roots in _rebased and _rebased_capture"
 reason = "an equivalent mutant: with equal roots every path under the root is already under the new root and is returned as it came, so the shortcut only saves work. The object identity it gives _rebased_capture is asserted by the golden test and would be the only death, which measures the assertion rather than a behaviour"
+
+[[dropped]]
+id = "B7_recorded_root_not_normalised"
+description = "Compare the configured root's raw parts, so a root spelled with dots matches nothing and nothing is carried"
+reason = "ranked below the cap: same guard family and same test as B6, which is measured. The dotted ROOT spelling has its own assertion in the re-basing test, so this is not believed to be a zero, and it was not run"
