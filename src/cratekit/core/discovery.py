@@ -242,8 +242,13 @@ PAYLOAD_SKIPPED_LINKS = "skipped_links"
 PAYLOAD_UNREADABLE = "unreadable_folders"
 
 
-def frozen(scan: Scan, *, recursive: bool) -> dict[str, object]:
-    """The part of a job payload that records what the walk was and what it missed."""
+def frozen_walk(scan: Scan, *, recursive: bool) -> dict[str, object]:
+    """The part of a job payload that records what the walk was and what it missed.
+
+    NOT named ``frozen``. ``intake/cli.py`` already has a ``frozen``, one Wanted
+    row as a dict, and one word meaning two things in two modules is a shape this
+    project files as a defect rather than as a coincidence.
+    """
     return {
         PAYLOAD_RECURSIVE: recursive,
         PAYLOAD_SKIPPED_LINKS: list(scan.skipped_links),

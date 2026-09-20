@@ -292,7 +292,7 @@ def analyze_vocals(ctx) -> Envelope:
             # FROZEN WITH THE FOLDER. The resume replays the item list off the
             # store and never re-scans, so this records what the queue meant and
             # what it left out rather than feeding either back in.
-            payload={"folder": str(folder), **discovery.frozen(scan, recursive=recursive)},
+            payload={"folder": str(folder), **discovery.frozen_walk(scan, recursive=recursive)},
             cfg=cfg,
             item_ids=list(scan.items),
         )

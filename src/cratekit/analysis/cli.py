@@ -690,7 +690,7 @@ def analyze_restamp(ctx) -> Envelope:
             # because the resume is the report that says the pass finished.
             # The resume never re-scans: it would be measuring the tree as it
             # is now over a job queued against the tree as it was.
-            payload={"folder": str(folder), **discovery.frozen(scan, recursive=recursive)},
+            payload={"folder": str(folder), **discovery.frozen_walk(scan, recursive=recursive)},
             cfg=cfg,
             item_ids=list(scan.items),
         )

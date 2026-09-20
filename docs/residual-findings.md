@@ -17382,6 +17382,14 @@ whole library in one skip idempotent, resumable command.
 **Closes when:** the verb takes many folders or walks a tree, or a scripted
 full pass is run and recorded.
 
+**CLOSED 2026-09-20 on `relay/138`, U93.** `crate analyze vocals FOLDER
+--recursive` walks the tree and queues it as one resumable job, so the 343
+invocations are one. The first arm of the closing condition is met and the
+second is not: no full pass has been run, and R-590 records that the recursive
+walk has met only fixtures. The 7.7 hours stands as R-376 measured it, unbeaten
+by measurement, since the saving U93 delivers is in the 342 queues and resumes
+that no longer have to be typed rather than in the scoring itself.
+
 ---
 
 ## R-377. The chunk floor is a rounded cover for the network's real floor, clamped by the caller's chunk size
@@ -18695,6 +18703,18 @@ verb, so the three should move together.
 
 **Closes when:** a library-wide analysis pass exists, or calibrate refuses a
 sample it cannot treat as representative.
+
+**NARROWED 2026-09-20 on `relay/138`, U93, to the calibrate half.** `analyze
+restamp` now takes `--recursive` and queues a whole tree as one resumable job,
+so the restamp half of this entry is closed with R-376. What is still open is
+the half this entry itself calls the worse one: `analyze calibrate` still reads
+`_audio_in` at one level, `analysis/cli.py`, and a decile fit or a vocal cut
+taken over one genre folder is still not the library's distribution. U93
+deliberately left it alone rather than giving calibrate the same flag, because
+a recursive calibrate that a person can ask for is not the same answer as a
+calibrate that refuses an unrepresentative sample, and choosing between those is
+U94's. Until U94 lands, the convenient way to calibrate still silently fits the
+wrong population.
 
 ---
 
@@ -23871,3 +23891,120 @@ person's call and needs a migration.
 **Closes when:** a capture taken under one library root restores under another
 through the ordinary session, by a rule that does not depend on which guard is
 open.
+
+---
+
+## R-588. A track that is a symlink is an item and is tagged through the link, while a folder that is a symlink is declined
+
+**Found:** at the built in review of U93, 2026-09-20, on `relay/138`. Driven
+against the walker in a temporary directory, not against a real library.
+
+U93's walker declines a DIRECTORY symlink, records it, and names it on the
+envelope. A FILE symlink is not declined: `_is_audio` in `core/discovery.py`
+asks `path.is_file()`, which follows a link, so `linked.flac` pointing at a
+track on another volume is queued as an item and `analyze restamp` writes its
+`energylevel` tag, or `analyze vocals` writes its three vocal tags, THROUGH the
+link onto a file outside the tree the person named.
+
+**Why it was not changed in U93.** That is exactly what the one level scan has
+always done, at `analysis/cli.py` and at its deleted twin in `vocals/cli.py`,
+and this unit's whole promise about the default mode is that it is byte for byte
+unchanged. Narrowing it would silently drop items from every existing
+non recursive queue, which is the larger harm. So the behaviour is PINNED by
+`test_a_symlinked_audio_file_is_still_an_item` rather than left implicit, and the
+walker's docstring now claims only what is true, that a directory link is not
+walked.
+
+**Measured cost, driven on a fixture.** One file symlink into a sibling
+directory: the item list is `("linked.flac",)` in both modes and the write lands
+on the link's target. Nobody is told the write left the named tree. Unmeasured
+on a real library, where the author does not keep tracks as links, so the
+reachability of the harm is a reading and not a measurement.
+
+**Closes when:** the walk either declines a file link the way it declines a
+folder link, or follows it and says so, and whichever is chosen is chosen for
+both modes at once.
+
+---
+
+## R-589. `followlinks=False` is a guard that kills nothing, because the explicit decline above it covers it
+
+**Found:** by U93's own mutation table, 2026-09-20, `docs/mutation/u93-recursive-analysis.md`, row `D8_followlinks`. Promoted to a full suite run before it was reported.
+
+`scan_audio` declines a directory symlink explicitly, pruning it out of
+`dirnames` before `os.walk` ever asks whether to follow it. `os.walk` is ALSO
+called with `followlinks=False`. Flipping that keyword to `True` kills zero
+tests across the whole suite, because by the time the keyword would matter there
+is no link left in the list for it to act on.
+
+**The composite, reported with it.** Row `D6_link_declined`, removing the
+explicit decline and leaving the keyword alone, kills 6. So the loop hazard the
+unit's brief names is held by the decline and not by the keyword, and both
+counts are in the table rather than argued from reading.
+
+**Why the keyword stays.** It is the one of the two whose correctness does not
+depend on the other being right, and keeping a redundant guard costs one word.
+The pair was deliberately not mutated together: removing the decline AND
+following links is the symlink loop itself, which would hang the suite rather
+than fail it, and a hung driver is how a partial mutation gets left in a source
+file.
+
+**Author's table, no independent verifier.** This reads as "the author could not
+kill it", not as "it cannot be killed".
+
+**Closes when:** somebody either measures a case only the keyword holds, or
+removes it and records that the decline is the whole guard.
+
+---
+
+## R-590. The real library pass U93 was cut to make possible has still never been run
+
+**Found:** at U93's record, 2026-09-20. Not driven, by design.
+
+U93's brief names the numbers it exists to beat: 343 leaf folders, 9868 files,
+about 7.7 hours, measured in R-376 on the author's real library. Every number
+U93 itself produced is from fixtures in temporary directories holding a handful
+of synthesised containers. The recursive walk has never met a real tree, a real
+volume, a cloud sync placeholder, a folder of 400 tracks, or a name the
+filesystem normalises differently from the way it was read.
+
+**Why it was not driven here.** The live library is off limits by standing
+constraint and a real pass is hours of writing to the back catalogue. The brief
+says so itself: "Owed to an attended sitting: the real full library pass."
+
+**What is unmeasured, specifically.** Wall clock and memory over 9868 items in
+ONE job rather than 343; whether `job_items` at that size resumes at the speed
+a person will sit through; whether any real folder name produces an item id the
+store round trips differently from the way the walk spelled it.
+
+**Closes when:** an attended sitting runs one recursive pass over the real
+library and records what it measured, including the failures.
+
+---
+
+## R-591. `test_a_spent_acknowledgment_decision_cannot_be_replayed` fails intermittently under the parallel suite
+
+**Found:** at U93's verification, 2026-09-20, on `relay/138`. Observed once,
+reproduced never.
+
+One full suite run failed
+`tests/test_session_cli.py::test_a_spent_acknowledgment_decision_cannot_be_replayed`
+with exit code 10, `decision-required` over verb `run.decide`, while the branch
+under it had touched nothing in the session or decision path. The same file
+passed whole on the next run, the test passed alone with `-n 0`, and three
+later full suite runs on the same commit were green.
+
+**Why it is recorded rather than chased.** It is not U93's code and U93 could
+not reproduce it, so chasing it here would be an unbounded detour inside a unit
+that is otherwise finished. It is recorded because an intermittent nobody wrote
+down is an intermittent the next session rediscovers from scratch, and because a
+red run that carries no information is the shape R-115 already bought a rule
+about.
+
+**Measured cost.** One false red on a merge gate. Nothing user facing: the verb
+behaves correctly, and it is the test's fixture state, not the product, that
+looks time or identity dependent.
+
+**Closes when:** the test is driven under `-n auto` in a loop until it fails
+again and the shared state behind it is named, or it is made independent of
+whatever it is sharing.

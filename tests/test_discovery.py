@@ -98,8 +98,14 @@ def test_the_same_filename_in_two_folders_is_two_items(tmp_path):
 
 
 def test_a_top_level_file_has_the_same_id_in_both_modes(tmp_path):
-    """The modes agree where they overlap, so switching one on is not a renumber."""
+    """The modes agree where they overlap, so switching one on is not a renumber.
+
+    ANTI-VACUITY FIRST. Both sides of the comparison below call the code under
+    test, so two empty tuples would satisfy it while measuring nothing, which is
+    the X equals X shape this project sweeps for.
+    """
     touch(tmp_path, "top.flac")
+    assert discovery.scan_audio(tmp_path).items == ("top.flac",)
     assert discovery.scan_audio(tmp_path).items == (
         discovery.scan_audio(tmp_path, recursive=True).items
     )
@@ -262,7 +268,9 @@ def test_a_path_outside_the_tree_is_reported_whole_rather_than_dropped(tmp_path)
 def test_the_frozen_payload_carries_the_mode_and_both_omissions(tmp_path):
     touch(tmp_path, "track.flac")
     (tmp_path / "linked").symlink_to(tmp_path.parent, target_is_directory=True)
-    frozen = discovery.frozen(discovery.scan_audio(tmp_path, recursive=True), recursive=True)
+    frozen = discovery.frozen_walk(
+        discovery.scan_audio(tmp_path, recursive=True), recursive=True
+    )
     assert frozen == {
         "recursive": True,
         "skipped_links": ["linked"],
