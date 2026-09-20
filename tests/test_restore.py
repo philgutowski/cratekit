@@ -39,6 +39,7 @@ needs a library volume.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import inspect
 import json
 import os
@@ -1867,8 +1868,17 @@ def test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refus
     the database and the whole coupled tree rewritten on the volume the identity
     gate had just refused, with no acknowledgment, with the library lock free for
     a second process, while the validated target received nothing.
+
+    THE REFUSAL CHANGED SHAPE WITH U95 AND THE BYPASS IS STILL SHUT. ``plan`` now
+    derives every path from the session, so this composition no longer refuses
+    for authorising the wrong directory: it looks for the session under the
+    replacement, where nothing has been recovered yet, and refuses because it is
+    not there. What matters is unchanged and is what is asserted: the call
+    refuses, the refusal is about the replacement and never the library, and the
+    library the identity gate refused is byte for byte as it was.
     """
     record, _captured = completed_session(cfg)
+    before = _tree_bytes(cfg.library.root)
     seams = _foreign_volume(cfg)
     library_seams = {
         key: value for key, value in seams.items() if key != "mount_probe"
@@ -1897,12 +1907,332 @@ def test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refus
             restore.plan(cfg, record.session_id, held=bare_metal)
 
     cause = refused.value.cause
-    assert "authorises" in cause.message
-    assert cause.detail["issued_by"] == str(restore.Guard.BARE_METAL)
-    assert cause.detail["authorises"] == str(replacement)
+    assert "no session is recorded" in cause.message
+    assert str(replacement) in cause.message
+    assert str(cfg.library.root) not in cause.message
+    assert _tree_bytes(cfg.library.root) == before
     assert config.state_path("rekordbox_db", cfg).read_bytes() == (
         b"database, generation one"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U95: every path comes from the directory the session authorises
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _tree_bytes(root) -> dict[str, bytes]:
+    """Every file under ``root`` and its bytes, so "untouched" means the whole tree."""
+    base = Path(root)
+    return {
+        str(path.relative_to(base)): path.read_bytes()
+        for path in sorted(base.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _under(path, root) -> bool:
+    where, base = Path(path).resolve(), Path(root).resolve()
+    return where == base or base in where.parents
+
+
+def _recovered_onto(cfg, replacement: Path) -> Path:
+    """Stand in for the mirror pull: the dead library's contents, on the new drive.
+
+    A plain copy, so every manifest and every session record on the replacement
+    still names the configured root in absolute paths, which is exactly what a
+    real recovery would find and is the case the re-basing exists for.
+    """
+    shutil.copytree(cfg.library.root, replacement)
+    return replacement
+
+
+def _bare_metal(cfg, replacement: Path):
+    return restore.bare_metal_session(
+        cfg,
+        target=replacement,
+        acknowledged=True,
+        replacing_existing=True,
+        terminal=lambda: True,
+        **_foreign_volume(cfg),
+    )
+
+
+def _rendered(decided, *, library, capture) -> list[tuple[str, str, str]]:
+    """A plan with its temporary directories named rather than spelled."""
+
+    def name(path):
+        if path is None:
+            return "-"
+        for label, base in (("<capture>", capture), ("<library>", library)):
+            if _under(path, base):
+                relative = Path(path).resolve().relative_to(Path(base).resolve())
+                return f"{label}/{relative}" if str(relative) != "." else label
+        return f"<elsewhere>/{Path(path).name}"
+
+    return [(str(step.act), name(step.target), name(step.source)) for step in decided.steps]
+
+
+def test_u95_a_bare_metal_session_plans_and_runs_entirely_under_its_target(cfg, tmp_path):
+    """The capability R-8 item 3 asked for, end to end, against a recovered copy."""
+    write_state(cfg, "label_watermarks", {"source": "before"})
+    record, _captured = completed_session(cfg)
+    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    write_state(cfg, "label_watermarks", {"source": "after"})
+    replacement = _recovered_onto(cfg, tmp_path / "replacement")
+    library_before = _tree_bytes(cfg.library.root)
+
+    with _bare_metal(cfg, replacement) as bare_metal:
+        decided = restore.plan(cfg, record.session_id, held=bare_metal)
+
+        written = [step.target for step in decided.steps if step.target is not None]
+        read = [step.source for step in decided.steps if step.source is not None]
+        assert written and read
+        for path in (*written, *read, decided.pre_restore_root, decided.capture_root):
+            assert _under(path, replacement), path
+            assert not _under(path, cfg.library.root), path
+
+        outcome = restore.run(decided, cfg, held=bare_metal)
+
+    assert outcome.performed == decided.steps
+    assert restore.Act.REPLACE_TREE in {step.act for step in decided.steps}
+    recovered_db = replacement / "db" / "master.db"
+    assert recovered_db.read_bytes() == b"database, generation one"
+    recovered_marks = replacement / config.state_path("label_watermarks", cfg).relative_to(
+        cfg.library.root
+    )
+    assert json.loads(recovered_marks.read_bytes()) == {"source": "before"}
+    assert _tree_bytes(cfg.library.root) == library_before
+
+
+def test_u95_a_bare_metal_plan_is_the_library_plan_moved_and_nothing_else(cfg, tmp_path):
+    """Same steps, same order, same relative positions: only the root differs."""
+    write_state(cfg, "label_watermarks", {"source": "before"})
+    record, captured = completed_session(cfg)
+    replacement = _recovered_onto(cfg, tmp_path / "replacement")
+
+    acknowledge(cfg)
+    with restore.recovery_session(cfg, **gate_seams(cfg)) as library_session:
+        at_home = restore.plan(cfg, record.session_id, held=library_session)
+    with _bare_metal(cfg, replacement) as bare_metal:
+        moved = restore.plan(cfg, record.session_id, held=bare_metal)
+
+    moved_capture = replacement / captured.root.relative_to(cfg.library.root)
+    assert _rendered(moved, library=replacement, capture=moved_capture) == _rendered(
+        at_home, library=cfg.library.root, capture=captured.root
+    )
+
+
+def test_u95_a_bare_metal_plan_never_reads_the_capture_the_refused_library_holds(
+    cfg, tmp_path
+):
+    """The session record made it across and the capture did not.
+
+    The capture is sitting right there at the configured root, readable, and
+    taking it would be the bypass run in the other direction: bytes from a volume
+    the identity gate refused, written onto the replacement. It refuses, and the
+    refusal names the replacement's store.
+    """
+    record, captured = completed_session(cfg)
+    replacement = _recovered_onto(cfg, tmp_path / "replacement")
+    moved_capture = replacement / captured.root.relative_to(cfg.library.root)
+    shutil.rmtree(moved_capture)
+    library_before = _tree_bytes(cfg.library.root)
+    replacement_before = _tree_bytes(replacement)
+
+    with _bare_metal(cfg, replacement) as bare_metal:
+        with pytest.raises(CratekitError) as refused:
+            restore.plan(cfg, record.session_id, held=bare_metal)
+
+    assert not moved_capture.exists() and captured.root.is_dir()
+    assert str(replacement) in refused.value.cause.message
+    assert str(cfg.library.root) not in refused.value.cause.message
+    assert _tree_bytes(cfg.library.root) == library_before
+    assert _tree_bytes(replacement) == replacement_before
+
+
+def test_u95_a_live_recovery_session_plan_is_unchanged_by_golden(cfg, held):
+    """The library path is pinned, so the re-rooting cannot leak into it.
+
+    The literal below was produced by ``main`` before U95 and is reproduced by
+    this branch. ``_rooted`` handing back the SAME OBJECT is the stronger half:
+    there is no second configuration for a library session to drift towards.
+    """
+    write_state(cfg, "label_watermarks", {"source": "before"})
+    record, captured = completed_session(cfg)
+
+    assert restore._rooted(cfg, held) is cfg
+    assert restore._rebased(captured.root, cfg, held) == captured.root
+    manifest = snapshot.read_manifest(captured.root)
+    assert restore._rebased_capture(manifest, cfg, held) is manifest
+
+    decided = restore.plan(cfg, record.session_id, held=held)
+
+    assert _rendered(decided, library=cfg.library.root, capture=captured.root) == GOLDEN_PLAN
+    assert _under(decided.pre_restore_root, cfg.library.root / "db" / restore.PRE_RESTORE_DIR)
+    assert decided.capture_root == captured.root
+
+
+GOLDEN_PLAN = [
+    ("record-reconciliation", "-", "-"),
+    ("clear-companion", "<library>/db/master.db-wal", "-"),
+    ("clear-companion", "<library>/db/master.db-shm", "-"),
+    ("replace-file", "<library>/db/master.db", "<capture>/master.db"),
+    ("remove-absent", "<library>/db/masterPlaylists6.xml", "-"),
+    ("replace-directory", "<library>/.cratekit/coupled", "<capture>/coupled"),
+    ("release-restore-latch", "-", "-"),
+]
+
+
+def test_u95_a_plan_built_for_the_library_is_refused_under_a_bare_metal_session(
+    cfg, tmp_path
+):
+    """A plan is a value, and its targets were fixed when it was built."""
+    record, _captured = completed_session(cfg)
+    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    replacement = _recovered_onto(cfg, tmp_path / "replacement")
+    acknowledge(cfg)
+    with restore.recovery_session(cfg, **gate_seams(cfg)) as library_session:
+        for_the_library = restore.plan(cfg, record.session_id, held=library_session)
+    library_before = _tree_bytes(cfg.library.root)
+    replacement_before = _tree_bytes(replacement)
+
+    with _bare_metal(cfg, replacement) as bare_metal:
+        for dry_run in (True, False):
+            with pytest.raises(CratekitError) as refused:
+                restore.run(for_the_library, cfg, held=bare_metal, dry_run=dry_run)
+            cause = refused.value.cause
+            assert "authorises" in cause.message
+            assert cause.detail["authorises"] == str(replacement)
+            assert _under(cause.detail["writing"], cfg.library.root)
+
+    assert _tree_bytes(cfg.library.root) == library_before
+    assert _tree_bytes(replacement) == replacement_before
+
+
+def test_u95_a_plan_built_for_the_target_is_refused_under_a_library_session(cfg, tmp_path):
+    record, _captured = completed_session(cfg)
+    replacement = _recovered_onto(cfg, tmp_path / "replacement")
+    with _bare_metal(cfg, replacement) as bare_metal:
+        for_the_target = restore.plan(cfg, record.session_id, held=bare_metal)
+    replacement_before = _tree_bytes(replacement)
+
+    acknowledge(cfg)
+    with restore.recovery_session(cfg, **gate_seams(cfg)) as library_session:
+        # Compared INSIDE the block, because opening and closing a library session
+        # writes its own record, which is not what is under test.
+        inside = _tree_bytes(cfg.library.root)
+        with pytest.raises(CratekitError) as refused:
+            restore.run(for_the_target, cfg, held=library_session)
+        assert _tree_bytes(cfg.library.root) == inside
+
+    cause = refused.value.cause
+    assert "authorises" in cause.message
+    assert cause.detail["authorises"] == str(cfg.library.root)
+    assert _under(cause.detail["writing"], replacement)
+    assert _tree_bytes(replacement) == replacement_before
+
+
+def test_u95_a_library_session_still_refuses_a_configuration_for_another_library(
+    cfg, held, tmp_path
+):
+    """The re-rooting is for the bare-metal guard alone.
+
+    A library session passed its gates against ONE configured library. Handing
+    ``plan`` a configuration naming another must refuse, as it always did, rather
+    than be quietly re-aimed at the directory the session authorises.
+    """
+    record, _captured = completed_session(cfg)
+    other = tmp_path / "another-library"
+    (other / "db").mkdir(parents=True)
+    elsewhere = dataclasses.replace(
+        cfg,
+        library=dataclasses.replace(
+            cfg.library, root=other, db_path=other / "db" / "master.db"
+        ),
+    )
+
+    with pytest.raises(CratekitError) as refused:
+        restore.plan(elsewhere, record.session_id, held=held)
+
+    cause = refused.value.cause
+    assert "authorises" in cause.message
+    assert cause.detail["writing"] == str(other)
+    assert cause.detail["authorises"] == str(cfg.library.root)
+
+
+def test_u95_a_database_outside_the_library_is_not_carried_onto_the_target(cfg, tmp_path):
+    """The acknowledged layout: the database was never under the library root.
+
+    It is not relative to the library, so there is no position to carry it to,
+    and it sits outside the one directory this session authorises. The plan
+    refuses naming it rather than writing a database somewhere nobody validated.
+    """
+    outside = tmp_path / "home" / "rekordbox" / "master.db"
+    outside.parent.mkdir(parents=True)
+    outside.write_bytes(b"a database outside the library")
+    apart = dataclasses.replace(
+        cfg, library=dataclasses.replace(cfg.library, db_path=outside)
+    )
+    record, _captured = completed_session(apart)
+    replacement = _recovered_onto(apart, tmp_path / "replacement")
+    replacement_before = _tree_bytes(replacement)
+
+    with _bare_metal(apart, replacement) as bare_metal:
+        assert restore._rooted(apart, bare_metal).library.db_path == outside
+        with pytest.raises(CratekitError) as refused:
+            restore.plan(apart, record.session_id, held=bare_metal)
+
+    cause = refused.value.cause
+    assert "authorises" in cause.message
+    assert _under(cause.detail["writing"], outside.parent)
+    assert outside.read_bytes() == b"a database outside the library"
+    assert _tree_bytes(replacement) == replacement_before
+
+
+def test_u95_the_staging_directory_is_a_write_location_and_is_authorised_too(
+    cfg, held, tmp_path
+):
+    """Companions are RENAMED into it, and it is not a step target.
+
+    So the per-step check never saw it. A plan whose staging directory has been
+    aimed outside the session refuses, in both modes, before any log is moved.
+    """
+    record, _captured = completed_session(cfg)
+    database = config.state_path("rekordbox_db", cfg)
+    log = database.with_name(database.name + "-wal")
+    log.write_bytes(b"transactions no capture holds")
+    decided = restore.plan(cfg, record.session_id, held=held)
+    stray = tmp_path / "not-the-library" / "staged"
+    aimed_away = dataclasses.replace(decided, pre_restore_root=stray)
+
+    for dry_run in (True, False):
+        with pytest.raises(CratekitError) as refused:
+            restore.run(aimed_away, cfg, held=held, dry_run=dry_run)
+        assert refused.value.cause.detail["writing"] == str(stray)
+
+    assert log.read_bytes() == b"transactions no capture holds"
+    assert not stray.exists()
+
+
+def test_u95_a_recorded_path_outside_the_configured_root_is_not_moved(cfg, tmp_path):
+    """Re-basing answers "where under the library was this", and only that."""
+    replacement = tmp_path / "replacement"
+    replacement.mkdir()
+    stranger = tmp_path / "somewhere" / "else.db"
+
+    with _bare_metal(cfg, replacement) as bare_metal:
+        assert restore._rebased(stranger, cfg, bare_metal) == stranger
+        assert restore._rebased(cfg.library.root, cfg, bare_metal) == replacement
+        assert restore._rebased(
+            cfg.library.root / "db" / "master.db", cfg, bare_metal
+        ) == replacement / "db" / "master.db"
+        rooted = restore._rooted(cfg, bare_metal)
+
+    assert rooted.library.root == replacement
+    assert rooted.library.db_path == replacement / "db" / "master.db"
+    assert rooted.library.volume_id == cfg.library.volume_id
+    assert cfg.library.root != replacement
 
 
 def test_blocking_1_a_held_naming_an_unrelated_lock_this_process_holds_is_refused(

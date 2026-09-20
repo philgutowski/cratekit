@@ -83,7 +83,7 @@ import os
 import shutil
 import tempfile
 from contextlib import AbstractContextManager, contextmanager, nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -155,7 +155,9 @@ RESIDUAL_CAPTURE_VOLUME_UNREPORTED = (
     "R30's second sentence is computed and never reported"
 )
 
-#: The bare-metal write path that closing the bypass removed. Owner U27.
+#: The bare-metal write path that closing the bypass removed, and that U95 put
+#: back by deriving every path from the session. The entry is closed in place and
+#: still cited, because it is where "what must NOT close it" is written down.
 RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH = (
     "Closing the bare-metal bypass removed the bare-metal write path"
 )
@@ -322,6 +324,9 @@ class Held:
     are about to write. ``authorises`` is a directory: a bare-metal recovery
     authorises its validated target and nothing else, and a library session
     authorises the configured library root and nothing else.
+
+    ``authorises`` IS ALSO WHERE THE PATHS COME FROM, which is what lets a
+    bare-metal session be spent at all. See :func:`_rooted`.
     """
 
     workflow: str
@@ -485,6 +490,143 @@ def _issued(
         yield held
     finally:
         _ISSUED.pop(id(token), None)
+
+
+# ---------------------------------------------------------------------------
+# Where a session's paths come from
+# ---------------------------------------------------------------------------
+
+
+def _rooted(cfg: config.Config, held: Held) -> config.Config:
+    """The configuration :func:`plan` and :func:`run` resolve every path from.
+
+    ONE SOURCE FOR ONE ANSWER. Both functions used to resolve every path from
+    ``cfg.library.root`` and then ask whether the session authorised that root,
+    which left a bare-metal session, whose whole point is that it authorises
+    somewhere else, with no composition that reached a plan at all. The repair
+    that was refused in advance is a ``target=`` parameter, because the two
+    functions would then have to agree with the session about it, and a validated
+    target that was then dropped is how the original bypass was built. So nothing
+    is passed: the directory the guard minted into the ``Held`` is the directory
+    the paths are derived from, and the authorisation check reads that same field.
+
+    A LIBRARY SESSION GETS ``cfg`` BACK UNCHANGED, the same object. Its gates were
+    passed against the configured library, so a configuration naming a different
+    one is refused by the caller's assertion exactly as before rather than
+    quietly re-aimed at the directory the session happens to authorise.
+
+    A BARE-METAL SESSION GETS A COPY ROOTED AT ITS TARGET, and A RELOCATED ROOT
+    CARRIES ITS DATABASE, which is the rule ``config._apply_env_overrides``
+    already states for the same reason: what the configuration records is where
+    the database sits RELATIVE to the library. A database that was never under
+    the configured root is left exactly where it is, deliberately. It then
+    resolves outside the target and :func:`_assert_plan_is_authorised` refuses
+    it, which is the honest answer: this session authorises one directory and the
+    database is not in it.
+
+    Built with ``dataclasses.replace`` and never through ``config.from_dict``,
+    which applies the environment's relocation override and would hand back a
+    root that is neither the configured one nor the authorised one.
+    """
+    if held.issued_by is not Guard.BARE_METAL:
+        return cfg
+    target = Path(held.authorises)
+    return replace(
+        cfg,
+        library=replace(
+            cfg.library,
+            root=target,
+            db_path=_rebased(cfg.library.db_path, cfg, held),
+        ),
+    )
+
+
+def _rebased(path: Path | str, cfg: config.Config, held: Held) -> Path:
+    """One recorded path, moved from the configured root onto the authorised one.
+
+    A capture manifest and a session record both hold ABSOLUTE paths, written
+    while the library sat at the configured root. After that disk has died and
+    its contents have been brought back onto a replacement, every one of those
+    paths still names the dead root, so a bare-metal plan that read them as
+    written would either refuse every file as outside the restorable set or, far
+    worse, write at the configured root after all. Same relative position, under
+    the directory the session authorises.
+
+    LEXICAL, not resolved: both spellings come from one configuration, and
+    resolving would make the answer depend on whether the dead root still exists
+    as a stub. A path that was never under the configured root is returned as it
+    came. On the write side that then fails both the restorable-set membership
+    test and the authorisation check; on the read side it is a capture store
+    somebody placed outside the library, which is still where it says it is.
+
+    Identity for a library session, by the same rule as :func:`_rooted`.
+    """
+    recorded = Path(path)
+    if held.issued_by is not Guard.BARE_METAL:
+        return recorded
+    try:
+        relative = recorded.relative_to(Path(cfg.library.root))
+    except ValueError:
+        return recorded
+    return Path(held.authorises) / relative
+
+
+def _rebased_capture(
+    captured: snapshot.Capture, cfg: config.Config, held: Held
+) -> snapshot.Capture:
+    """A manifest as read from disk, with every path it names re-based.
+
+    ALL FOUR FIELDS OR NONE. Re-basing the sources alone would aim the writes at
+    the target while the reads still named the dead volume, and re-basing the
+    captured paths alone would do the reverse, which is the original bypass with
+    the capture pulled from the replacement.
+    """
+    if held.issued_by is not Guard.BARE_METAL:
+        return captured
+    return replace(
+        captured,
+        root=_rebased(captured.root, cfg, held),
+        database=(
+            _rebased(captured.database, cfg, held)
+            if captured.database is not None
+            else None
+        ),
+        sources=tuple(
+            replace(
+                entry,
+                source=_rebased(entry.source, cfg, held),
+                captured=(
+                    _rebased(entry.captured, cfg, held)
+                    if entry.captured is not None
+                    else None
+                ),
+            )
+            for entry in captured.sources
+        ),
+    )
+
+
+def _assert_plan_is_authorised(
+    steps: Iterable[Step], pre_restore_root: Path, held: Held
+) -> None:
+    """Refuse a plan that names any write location the session does not authorise.
+
+    Asked of every step target AND of the staging directory. The staging directory
+    is not a step target, so the per-step check alone never covered it, and it is
+    a write location all the same: every live companion file is renamed into it.
+
+    ASKED TWICE, in :func:`plan` and again in :func:`_preflight`. At plan time it
+    makes "a plan cannot name a path outside its session" a property of every
+    ``Plan`` value rather than of the run that may never happen, so a preview is
+    refused as loudly as a write. At run time it is asked again because a plan is
+    a value: one built under a session for one directory can be handed to ``run``
+    under a session for another, and the rooted configuration is no defence there
+    because the targets were fixed when the plan was built.
+    """
+    for step in steps:
+        if step.target is not None:
+            assert_gates_are_open(held, writing=step.target)
+    assert_gates_are_open(held, writing=pre_restore_root)
 
 
 # ---------------------------------------------------------------------------
@@ -677,15 +819,26 @@ def plan(
     interpreted generously.
 
     IT NAMES THE PATH IT IS PLANNING AGAINST. Every target below resolves from
-    ``cfg.library.root``, so that is what the open session has to authorise; a
-    session opened against a different library is refused here rather than
-    discovered at the copy.
+    the configuration :func:`_rooted` returns and from nothing else, so ``cfg`` is
+    rebound on the first line, and the caller's spelling survives only as
+    ``configured``, the root recorded paths are re-based FROM. For a library session that is ``cfg`` itself, so a session opened
+    against a different library is still refused here rather than discovered at
+    the copy. For a bare-metal session it is a copy rooted at the validated
+    target, which is what lets that session reach a plan at all, and every
+    recorded path it reads is re-based the same way.
+
+    AND IT CHECKS ITS OWN ANSWER. The assertion on the root is, for a bare-metal
+    session, a statement about a value derived from the session, so it cannot be
+    the check that catches a path escaping. :func:`_assert_plan_is_authorised`
+    is: it asks the session about every location the finished plan writes at.
 
     REKORDBOX IS ASSERTED CLOSED HERE TOO, and the docstring on :func:`run` used
     to claim it while this function did not do it. Planning reads the live coupled
     state to decide what a restore cannot undo, so a library changing underneath
     the read produces a marker set about a library that no longer exists.
     """
+    configured = cfg
+    cfg = _rooted(configured, held)
     assert_gates_are_open(held, writing=cfg.library.root)
     _assert_rekordbox_closed(process_lister)
     record = session.read_record(session_id, cfg)
@@ -697,8 +850,8 @@ def plan(
             remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": session_id},
         )
-    root = capture_root_of(record.snapshot_path)
-    captured = snapshot.read_manifest(root)
+    root = capture_root_of(_rebased(record.snapshot_path, configured, held))
+    captured = _rebased_capture(snapshot.read_manifest(root), configured, held)
     # A capture that did not pass its integrity check is not a smaller recovery
     # point, it is the absence of one, and restoring FROM one would put a live
     # library behind a file nobody has established can be opened. Both halves are
@@ -800,12 +953,15 @@ def plan(
         )
     )
 
+    pre_restore_root = _pre_restore_root(cfg, now=now)
+    _assert_plan_is_authorised(steps, pre_restore_root, held)
+
     return Plan(
         session_id=session_id,
         capture_root=root,
         steps=tuple(steps),
         latch=latch,
-        pre_restore_root=_pre_restore_root(cfg, now=now),
+        pre_restore_root=pre_restore_root,
         discarded_sessions=tuple(entry.session_id for entry in later),
         discarded_change=_merged_change(later),
         # EFFECTS ONLY. The tree markers ride on ``tree_markers`` and are handed to
@@ -1105,10 +1261,18 @@ def run(
     rehearsal that passes is evidence the real run reaches its work. On the real
     run the same checks are the reason the first destructive step is not taken
     until the last one is known to be possible.
+
+    EVERY PATH COMES FROM THE SESSION, as in :func:`plan` and through the same
+    :func:`_rooted`. The latch, the tree markers, the resolved records and the
+    retraction are all written through the rooted configuration, so under a
+    bare-metal session they land on the target beside the files the steps put
+    there, and never at the configured root.
     """
+    configured = cfg
+    cfg = _rooted(configured, held)
     assert_gates_are_open(held, writing=cfg.library.root)
     _assert_rekordbox_closed(process_lister)
-    _preflight(decided, cfg, held=held)
+    _preflight(decided, cfg, held=held, configured=configured)
     performed: list[Step] = []
     resolved: list[str] = []
     for step in decided.steps:
@@ -1148,13 +1312,16 @@ def run(
     )
 
 
-def _preflight(decided: Plan, cfg: config.Config, *, held: Held) -> None:
+def _preflight(
+    decided: Plan, cfg: config.Config, *, held: Held, configured: config.Config
+) -> None:
     """Evaluate every predicate the plan's steps depend on. Writes nothing.
 
     Six questions, and each one is a failure the old rehearsal could not see:
 
-    * does this session AUTHORISE every path the plan writes at, which is the
-      per-step half of the check :func:`assert_gates_are_open` makes once;
+    * does this session AUTHORISE every path the plan writes at, the staging
+      directory included, which is the per-location half of the check
+      :func:`assert_gates_are_open` makes once;
     * is the capture still whole, asked again rather than trusted from plan time,
       because a plan is a value that can be held across a store being pruned;
     * does every source a replacement reads still exist, and is it still the kind
@@ -1178,21 +1345,25 @@ def _preflight(decided: Plan, cfg: config.Config, *, held: Held) -> None:
     nothing while the real run refused. Asked here, both modes answer the same
     way, which is the property that makes a rehearsal evidence about the run.
 
+    ``cfg`` IS THE ROOTED CONFIGURATION and ``configured`` is the one the caller
+    passed, kept only because the manifest is read again here and its recorded
+    paths are re-based from the configured root, exactly as :func:`plan` did.
+
     IT ALSO RE-DERIVES WHAT THE RESTORE DISCARDS. A plan is a value and a session
     can commit between building one and running it, so a plan built before that
     commit used to execute unchanged and destroy it, while a freshly built plan
     refused. The check that decides is the same one :func:`plan` made, asked again
     against the log as it stands now.
     """
-    for step in decided.steps:
-        if step.target is not None:
-            assert_gates_are_open(held, writing=step.target)
+    _assert_plan_is_authorised(decided.steps, decided.pre_restore_root, held)
 
     record = session.read_record(decided.session_id, cfg)
     later = _later_committed(cfg, record)
     _assert_override_names_them(record, later, decided.discarded_sessions)
 
-    captured = snapshot.read_manifest(decided.capture_root)
+    captured = _rebased_capture(
+        snapshot.read_manifest(decided.capture_root), configured, held
+    )
     snapshot.assert_verified(captured)
     snapshot.assert_sources_present(captured)
 
@@ -2508,16 +2679,20 @@ def bare_metal_session(
     assertions run before the one gate that creates a file, so a refused recovery
     leaves the disk exactly as it found it.
 
-    NOTHING CAN YET SPEND THE SESSION THIS YIELDS, and that is written down in
-    ``docs/residual-findings.md`` under the title named by
-    :data:`RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH` rather than left to be
-    discovered. The value it hands back authorises the
-    replacement target, while :func:`plan` and :func:`run` resolve every path from
-    ``cfg.library.root`` and refuse a session that does not authorise what they are
-    about to write. That refusal is what closed a verified bypass in which this
-    function's session was spent on the library the identity gate had just refused,
-    and the cost of closing it that way is that R-8's third open item is unserved
-    again. See ``docs/residual-findings.md`` for what closes it and who owns it.
+    THE SESSION THIS YIELDS IS SPENT THROUGH :func:`plan` AND :func:`run`, WHICH
+    DERIVE EVERY PATH FROM IT. For a while nothing could spend it at all: a
+    verified bypass, in which this function's session was spent on the library the
+    identity gate had just refused, was closed by having both functions refuse a
+    session that did not authorise ``cfg.library.root``, and since this session
+    never does, the write path went with the bypass. That history, and the two
+    repairs refused in advance, are in ``docs/residual-findings.md`` under the
+    title named by :data:`RESIDUAL_BARE_METAL_HAS_NO_WRITE_PATH`. Both functions
+    now root their configuration at ``Held.authorises`` through :func:`_rooted`,
+    so the target validated here is the only place a path can come from.
+
+    WHAT IS STILL MISSING IS A CALLER. No shipped verb composes this session with
+    a plan, and nothing here brings the dead library's contents onto the target,
+    so the session log and the capture a plan reads must already be there.
     """
     assert_library_volume_is_gone(
         cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
