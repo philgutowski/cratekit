@@ -782,6 +782,21 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "config-unusable": ExitCode.PRECONDITION,
         "module-extras-missing": ExitCode.MODULE_UNAVAILABLE,
         "credential-missing": ExitCode.PRECONDITION,
+        # Item 4 of the residual finding "Five places where "I could not look"
+        # is still not said out loud". The presence sidecar ``core.secrets`` keeps so doctor can
+        # ask "is this recorded" without retrieving a value could not be read, so
+        # this installation cannot say which credentials it holds. DISTINCT FROM
+        # ``credential-missing`` on the distinction that entry exists to draw: one
+        # is an answer and the other is the absence of one, and a person told a
+        # credential is missing records one the keychain may already hold, which
+        # is the loop R-116 measured.
+        #
+        # PRECONDITION rather than INTERNAL because the sidecar is this
+        # installation's own state and repairing it is an act the person can
+        # take. An OS refusal underneath is reclassified by ``classified`` to
+        # ``path-permission-denied``, which is a different act again, so this slug
+        # is what is left once nothing granted or mounted explains it.
+        "credential-index-unreadable": ExitCode.PRECONDITION,
         # U10. A named job that is not in this installation's queue, and a queue
         # written by a different build of the product. Both are 3x rather than a
         # command-line class because ``USAGE`` belongs to the argument parser and

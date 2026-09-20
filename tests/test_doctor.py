@@ -416,6 +416,137 @@ def test_a_module_enabled_without_its_credential_is_reported_with_the_fix(librar
     assert find(off, "credential.recognition").status is doctor.Status.INFO
 
 
+def _break_the_presence_index(monkeypatch) -> Path:
+    """Leave a credential recorded and the index unreadable. Returns its path.
+
+    Driven through the REAL ``secrets.exists`` rather than a probe that raises,
+    because the finding being closed is that the reader answered False and the
+    report believed it. A seam handed a prepared exception would pass over a
+    reader that still answers False.
+    """
+    secrets.set(secrets.Credential.PROVIDER_SESSION, "value-from-the-user")
+    index = config.state_path("credential_index")
+    real = Path.read_text
+
+    def refuse(self, *args, **kwargs):
+        if self == index:
+            raise PermissionError(13, "Permission denied", str(index))
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", refuse)
+    return index
+
+
+def test_an_unreadable_credential_index_is_reported_as_unread_not_as_unrecorded(
+    library, monkeypatch
+):
+    """Item 4 of the five-places residual finding, and the second half of its
+    closing condition: doctor says which
+    it saw.
+
+    "Not recorded, record it" over a credential the keychain is holding is the
+    loop R-116 measured, and the remedy never completes because recording it
+    again does not move the index. The report now names the file and sends the
+    person to the permission instead.
+    """
+    index = _break_the_presence_index(monkeypatch)
+    machine = probes(credential_recorded=secrets.exists)
+
+    report = doctor.run(config.from_dict(document_for(library)), probes=machine)
+    finding = find(report, "credential.provider")
+
+    assert finding.status is doctor.Status.FAIL
+    assert str(index) in finding.detail
+    assert "not recorded" not in finding.detail
+    assert finding.remedy is not Remedy.AUTHENTICATE_PROVIDER
+    assert finding.remedy is Remedy.GRANT_PATH_ACCESS
+    assert render.remedy_text(finding.remedy), "the fix must render to something"
+
+
+def test_an_unreadable_credential_index_costs_one_check_and_not_the_report(
+    library, monkeypatch
+):
+    """Every other check still answers, which is doctor's standing contract: a
+    report whose length depends on the machine is a report a consumer cannot diff.
+    """
+    _break_the_presence_index(monkeypatch)
+    machine = probes(credential_recorded=secrets.exists)
+
+    keys = {f.key for f in doctor.run(config.from_dict(document_for(library)), probes=machine).findings}
+    green = {f.key for f in doctor.run(config.from_dict(document_for(library)), probes=probes()).findings}
+    assert keys == green
+
+
+def test_the_wizard_notes_an_unreadable_credential_index_rather_than_dying(
+    configured, monkeypatch
+):
+    """``_capture_credentials`` runs AFTER the configuration is saved, so a raise
+    here loses the whole report over a file already on disk. That is the shape
+    the same residual's third item spent four rounds closing, and the presence
+    question is a new way
+    into it.
+    """
+    index = _break_the_presence_index(monkeypatch)
+    wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes"], ["k3y", "s1gn", "s3cret"]))
+
+    setup_verb._capture_credentials(wizard, configured)
+
+    offered = [note for note in wizard.notes if note.key.startswith("setup.credential.")]
+    assert offered, "no credential was reported, so nothing here was exercised"
+    broken = [note for note in offered if note.status is doctor.Status.FAIL]
+    assert broken, "an unanswerable presence question was not reported at all"
+    assert all(str(index) in note.detail for note in broken)
+    assert all(note.remedy is Remedy.GRANT_PATH_ACCESS for note in broken)
+
+
+def test_the_wizard_notes_an_index_that_refuses_the_write_rather_than_dying(
+    configured, monkeypatch
+):
+    """The other way into the wizard, and it was open after the first leg closed.
+
+    ``secrets.set`` notes the name in the presence index after the keychain write,
+    through the same reader, so an unusable index refuses on the WRITE as well as
+    on the probe. ``secrets.CredentialError`` is not a ``CratekitError``, so the
+    handler already beside it does not catch this, and the window is a person
+    typing a secret.
+
+    DAMAGED WHILE THE SECRET IS BEING TYPED, which is the only arrangement that
+    reaches the write leg at all: an index that is already unusable refuses at the
+    probe one line above and the write is never attempted. Writing it that way
+    passed against the build this test was written to fail, and the window it
+    models is the real one, since a person at a password prompt is as long as
+    windows in this product get.
+    """
+    index = config.state_path("credential_index")
+    answers = ["yes", "yes", "yes"]
+    held = ["k3y", "s1gn", "s3cret"]
+
+    def read_secret(_question):
+        index.parent.mkdir(parents=True, exist_ok=True)
+        index.write_text("{not json at all")
+        return held.pop(0) if held else _eof()
+
+    scripted = prompt.Prompter(
+        read_line=lambda: (answers.pop(0) + "\n") if answers else _eof(),
+        read_secret=read_secret,
+        write=lambda _text: None,
+    )
+    wizard = setup_verb._Wizard({}, scripted)
+
+    setup_verb._capture_credentials(wizard, configured)
+
+    offered = [note for note in wizard.notes if note.key.startswith("setup.credential.")]
+    assert offered, "no credential was reported, so nothing here was exercised"
+    assert all(note.status is doctor.Status.FAIL for note in offered)
+    assert all(str(index) in note.detail for note in offered)
+    assert all(note.remedy is Remedy.REPAIR_CREDENTIAL_STORE for note in offered)
+    # And no typed value reaches the report, which is the standing rule for every
+    # note this function writes and is worth re-asserting on a new branch of it.
+    rendered = json.dumps([note.to_json() for note in wizard.notes])
+    for value in ("k3y", "s1gn", "s3cret"):
+        assert value not in rendered
+
+
 def test_a_missing_binary_is_reported_with_where_it_comes_from(library):
     """The brief's fourth scenario. Reported BEFORE any spend, which is what a
     precondition means: the alternative is discovering it part way through a

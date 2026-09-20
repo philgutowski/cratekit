@@ -1,0 +1,161 @@
+name = "r118-a"
+pass_kind = "light"
+
+# Item 4 of the five-places residual finding. The table is scoped to the round's
+# own diff, the three-state reader in core/secrets.py, the slug it registers in
+# core/cause.py and the two wizard legs that catch it, plus a fixed sample of the
+# guards already around the credential cycle. 17 rows against a cap of 25.
+
+# ── The reader's three states ────────────────────────────────────────────────
+
+[[rows]]
+id = "A1_blanket_returns_empty"
+description = "The whole three-state reader reverts to the old blanket, so OSError and ValueError alike answer nothing recorded"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''    path = _index_path()
+    try:
+        raw = path.read_text()
+    except FileNotFoundError:
+        return frozenset()
+    except OSError as exc:
+        raise refuse(
+            "credential-index-unreadable",
+            f"the credential presence index at {path} is present and could not "
+            f"be read ({type(exc).__name__}), so this installation cannot say "
+            f"which credentials it has recorded. {left}",
+            remedy=ProductRemedy.REPAIR_CREDENTIAL_STORE,
+            origin=("core", "secrets"),
+            detail={"path": str(path), "index": "unreadable"},
+        ) from exc
+    try:
+        payload = json.loads(raw)
+    except ValueError as exc:
+        raise _damaged(
+            path, f"is not readable as JSON ({type(exc).__name__})", left
+        ) from exc
+    names = payload.get("recorded") if isinstance(payload, dict) else None
+    if not isinstance(names, Iterable) or isinstance(names, str):
+        raise _damaged(path, "does not carry a list of recorded credential names", left)
+    return frozenset(str(n) for n in names)'''
+new = '''    del left
+    path = _index_path()
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return frozenset()
+    names = payload.get("recorded") if isinstance(payload, dict) else None
+    if not isinstance(names, Iterable) or isinstance(names, str):
+        return frozenset()
+    return frozenset(str(n) for n in names)'''
+
+[[rows]]
+id = "A2_enoent_refuses_too"
+description = "A fresh installation with no index refuses instead of answering nothing recorded, so the product cannot be set up"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''    except FileNotFoundError:
+        return frozenset()
+    except OSError as exc:'''
+new = '''    except OSError as exc:'''
+
+[[rows]]
+id = "A3_unparseable_returns_empty"
+description = "Bytes that are not JSON answer nothing recorded again, the ValueError half of the old blanket"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''    except ValueError as exc:
+        raise _damaged(
+            path, f"is not readable as JSON ({type(exc).__name__})", left
+        ) from exc'''
+new = '''    except ValueError:
+        return frozenset()'''
+
+[[rows]]
+id = "A4_wrong_shape_returns_empty"
+description = "A payload whose recorded key is not a list of names answers nothing recorded"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''    if not isinstance(names, Iterable) or isinstance(names, str):
+        raise _damaged(path, "does not carry a list of recorded credential names", left)'''
+new = '''    if not isinstance(names, Iterable) or isinstance(names, str):
+        return frozenset()'''
+
+[[rows]]
+id = "A5_refusal_drops_the_path"
+description = "The unreadable refusal names the exception type and not the file it could not read"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''            f"the credential presence index at {path} is present and could not "
+            f"be read ({type(exc).__name__}), so this installation cannot say "'''
+new = '''            f"the credential presence index is present and could not "
+            f"be read ({type(exc).__name__}), so this installation cannot say "'''
+
+[[rows]]
+id = "A6_refusal_not_raised_from"
+description = "The unreadable refusal is raised without from, so cause.classified cannot see the kernel's own refusal and a permission stays repair-credential-store"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''            detail={"path": str(path), "index": "unreadable"},
+        ) from exc'''
+new = '''            detail={"path": str(path), "index": "unreadable"},
+        )'''
+
+[[rows]]
+id = "A7_unreadable_remedy_is_set_credential"
+description = "The unreadable refusal carries set-credential, which is the advice the finding exists to stop"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''            remedy=ProductRemedy.REPAIR_CREDENTIAL_STORE,
+            origin=("core", "secrets"),
+            detail={"path": str(path), "index": "unreadable"},'''
+new = '''            remedy=ProductRemedy.SET_CREDENTIAL,
+            origin=("core", "secrets"),
+            detail={"path": str(path), "index": "unreadable"},'''
+
+[[rows]]
+id = "A8_damaged_reports_as_unreadable"
+description = "Both states report index unreadable in detail, so a machine consumer cannot tell a file it could not open from one it read and could not use"
+file = "src/cratekit/core/secrets.py"
+surface = "maintainer"
+old = '''        detail={"path": str(path), "index": "damaged"},'''
+new = '''        detail={"path": str(path), "index": "unreadable"},'''
+
+# ── The caller's sentence about the two stores ───────────────────────────────
+
+[[rows]]
+id = "A9_record_uses_the_read_sentence"
+description = "A refusal from the record half says nothing was stored, over a value the keychain already holds"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''    names = _index_read(RECORD_ALREADY_IN_THE_KEYCHAIN)'''
+new = '''    names = _index_read()'''
+
+[[rows]]
+id = "A10_forget_uses_the_record_sentence"
+description = "A refusal from the remove half says the value is in the keychain because of this call, which is a claim about a write that never happened"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''    names = _index_read(REMOVE_NOTHING_TOUCHED)'''
+new = '''    names = _index_read(RECORD_ALREADY_IN_THE_KEYCHAIN)'''
+
+[[rows]]
+id = "A11_record_sentence_reworded"
+description = "The record sentence no longer says the value reached the keychain, only that the index could not be updated"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''    "THE VALUE IS IN THE KEYCHAIN. It was stored and read back before this index "'''
+new = '''    "The index could not be updated. It was opened after the keychain write "'''
+
+# ── The presence question and its one legitimate shortcut ────────────────────
+
+[[rows]]
+id = "A12_env_override_no_longer_short_circuits"
+description = "exists consults the index even when the opted-in environment fallback is supplying the value, so a machine that has no index by design is refused"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''    if _env_override(str(name)):
+        return True
+    return str(name) in _index_read()'''
+new = '''    return str(name) in _index_read()'''
+

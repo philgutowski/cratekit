@@ -4250,6 +4250,13 @@ CITED_RESIDUALS = (
     # that unit's new rename member is the first refusal the provider adapter
     # spells itself.
     "A swept playlist is never marked on the account",
+    # Declared on relay/171, 2026-09-20, by the closure of that finding's fourth
+    # item. A LEADING PHRASE and not the whole heading, which the resolver above
+    # allows for the two that read badly inline and which this one needs for a
+    # different reason: the heading quotes a sentence, and the citation form ends
+    # at the first double quote inside it, so the full title cannot be written in
+    # the form at all. It still resolves to exactly one heading.
+    "Five places where",
 )
 
 #: WHAT A CITATION LOOKS LIKE, as a form rather than as a convention: the word
@@ -4983,7 +4990,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # registered and not in the reserved table, exactly as
     # collection-row-unmapped beside it is. Population 168 to 169, non-reserved
     # 141 to 142, reserved half UNCHANGED at 27.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (169, 142, 27)
+    #
+    # Re-pinned on the fourth item of the residual "Five places where", which is
+    # the leading phrase of a heading whose own quotation marks cannot appear in
+    # a citation, 2026-09-20. ONE slug, named rather than counted:
+    # credential-index-unreadable, which the credential module raises when the
+    # sidecar that answers "is this recorded" could not be read or does not say,
+    # so an index nobody could open is never reported as nothing recorded. It is
+    # that module's own, registered and not in the reserved table, exactly as
+    # credential-missing beside it is. Population 169 to 170, non-reserved 142 to
+    # 143, reserved half UNCHANGED at 27.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (170, 143, 27)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5475,7 +5492,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # move. The same sentence rides a failed rehearsal's refusal as a
     # remediation STEP rather than as a second slug, for the reason
     # `_with_rehearsal_step` gives.
-    assert (len(literals), len(literals - set(causes))) == (467, 299), (
+    # Re-pinned on the fourth item of the residual "Five places where",
+    # 2026-09-20: 467 to 468 distinct, non-keys UNCHANGED at 299. ONE literal
+    # joined and NOTHING left, differenced as SETS by running this collector over
+    # main's own src tree extracted into a scratch directory, rather than inferred
+    # from the total moving by one. It is credential-index-unreadable, and unlike
+    # the two re-pins above it IS a cause, which is why the non-key half does not
+    # move with it: a slug that is registered leaves the literal population and
+    # the key population in step.
+    assert (len(literals), len(literals - set(causes))) == (468, 299), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5967,7 +5992,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # importing a verb's command line module from inside a function.
     # fallback_cli.py still names unavailable-transient and the rest, so it
     # stays a holder. The new file holds no integer at all.
-    assert (len(literal_holders), len(literal_both)) == (101, 22), (
+    # Re-pinned on the fourth item of the residual "Five places where",
+    # 2026-09-20: 101 to 102 holders, the other half UNCHANGED at 22. ONE module
+    # joined and none left, and it is not a new file. core/secrets.py names
+    # credential-index-unreadable through cause.refuse, which is the first
+    # structured refusal that module has ever raised: its other four failures are
+    # exception TYPES of its own carrying a remedy token, and a type carries no
+    # slug, so the file held no cause literal until now. It holds 0 and 2 and
+    # nothing in the exit code range. Measured by differencing both populations
+    # as SETS against main's own src tree extracted into a scratch directory.
+    assert (len(literal_holders), len(literal_both)) == (102, 22), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

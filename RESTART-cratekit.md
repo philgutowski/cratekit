@@ -4,7 +4,82 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-356, issue #158, `relay/158`, 2026-09-20.**
+**Last merged: R-118 item 4, issue #171, `relay/171`, 2026-09-20.**
+An unreadable credential presence index refuses instead of answering absent,
+which CLOSES item 4 of R-118 and leaves the other four items open. The cost was
+driven before it was fixed: with a credential in the keychain and its index
+unreadable, doctor answered `credential.provider` FAIL, "not recorded
+(provider-session) ... Recording it before the run is the difference between a
+refusal now and a refusal after the first paid call", remedy
+`authenticate-provider`. Every word of that is false about that machine, and the
+act it names cannot move the file that refused.
+**THREE STATES WHERE THERE WAS ONE.** `secrets._index_read` answers empty for
+`FileNotFoundError` ALONE, because a fresh installation has no index and refusing
+there would mean the product could not be set up at all. Any other `OSError`
+raises a structured refusal naming the file, raised `from` the original so
+`cause.classified` turns a permission into `path-permission-denied` with
+`grant-path-access`, which is R-118 item 3's machinery doing what it was bought
+for. Bytes that are not JSON, or a payload whose `recorded` key is not a list of
+names, raise the same slug with a different sentence and keep
+`repair-credential-store`. `cause.REASONS` declares `credential-index-unreadable`
+on the reserved `PRECONDITION` code, the first structured refusal `core/secrets`
+has ever raised: its other four failures are exception types of its own.
+**A `CratekitError` RATHER THAN `CredentialIndexUnusable`**, the sibling type the
+lock raises. That one is converted at both call sites that take the lock; the
+READ has five call sites and a handler at none, so a bare exception would reach
+the dispatcher's unstructured blanket and come out as `internal-error` with
+"report this defect" over a person's own state directory.
+**THE WRITE HALF MATTERED MORE THAN THE READ.** `_record_name` reads the existing
+names and writes them back with one added, so an empty answer from a failed read
+rewrote the whole index down to a single name.
+**WHAT A PERSON MAY MEET.** Doctor's credential checks now FAIL naming the index
+file and the act that repairs it, rather than naming a credential they already
+have. `crate setup` writes a note for both legs instead of dying after
+`config.save`. Nothing changes on a machine whose index reads.
+**The code review raised two findings and both were applied.** The refusal
+claimed nothing had been stored, over the one call path where the value HAD:
+`_record_name` runs only after `keyring.set_password` and its read back have both
+succeeded. The sentence about the two stores is now the caller's, three declared
+constants, one per position in the cycle, the shape `_index_locked` already uses
+for its `action`. And the wizard caught the refusal on the presence PROBE and not
+on the WRITE, which reaches the same reader; `CredentialError` is not a
+`CratekitError`, so none of the three handlers beside it saw that one.
+**The fifth pattern, looked for one file over.** Six readers share the
+`except (OSError, ValueError): return empty` shape. Four are caches whose empty
+answer costs a re-crawl, `deletion.candidates` errs toward refusing, and one is
+the same class: `acrcloud.Ledger._read`, the monthly recognition spend counter.
+Its read half is argued in its own docstring and is harmless while
+`Budget.monthly` is `None` everywhere; its RECORD half rebuilds the file from a
+read that failed, which is the truncation this unit just removed from the
+credential index. R-578.
+Battery: ruff clean, **9127 passed** and 1 skipped in about a minute, scan clean,
+11 of them new. Mutation tables `docs/mutation/r118-a.md`, `r118-b.md` and
+`r118-c.md`, summary `r118-notes.md`: **18 distinct mutations and two
+re-measures, 20 driver rows under the cap of 25, the author's own, all 18
+killed**, null control at zero in each batch, every restore verified against
+`git show HEAD:`, three FOREGROUND batches of 6 minutes 48, 6 minutes 41 and 4
+minutes 26.
+**The two zeros had one cause and it was a test gap, not an inert mutation.**
+The remedy the unreadable branch declares and the exit code its slug maps to both
+killed nothing, because every test reaching that branch reached it through
+`PermissionError` and `cause.classified` discards the site's own slug and act for
+a permission. An index path that is a DIRECTORY raises `IsADirectoryError`, which
+no classification claims; a test drives that on a real filesystem and `r118-c`
+then kills both. Carry that past this unit: a zero under a classification layer
+may be measuring the layer.
+Two learnings are under `docs/solutions/workflow-issues/`, the one about
+`monkeypatch.undo` rolling back the autouse fixtures and running the rest of a
+test against the real keychain, and the one about the citation rule's coverage
+being contagious. `CONCEPTS.md` is unchanged.
+Filed: R-578 and R-579. **Neither meets the board bar**, so neither gets an
+issue: R-578's cost is unreachable until a monthly bound is configurable, and
+R-579 costs a machine consumer one slug over a report whose code, message and
+remedy are all right. The issues OWED from earlier sessions are unchanged:
+R-572's, R-570's, R-563's, R-549's, R-523's, R-517's, R-515's, R-512's, R-482's
+and R-477's.
+**Main's highest residual number is R-579.**
+
+**The session before: R-356, issue #158, `relay/158`, 2026-09-20.**
 An ISRC several provider tracks share is resolved by the row's own names, which
 DISCHARGES R-356's closing condition and moves what it cannot choose to R-572.
 `TidalAccount.match_track` takes the row's title and artist, and several tracks

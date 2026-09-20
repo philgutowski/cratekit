@@ -1,0 +1,29 @@
+name = "r118-c"
+pass_kind = "light"
+
+# Table c of three, the two zero rows from tables a and b re-measured after the
+# test each one was missing was written. Both were zero for one reason: every
+# test reaching the unreadable branch reached it through EACCES, which
+# cause.classified re-slugs and re-acts, so the branch's own slug, act and code
+# were unobservable. A directory where the index should be raises EISDIR, which
+# no classification claims, and that is the arrangement the new test drives.
+
+[[rows]]
+id = "A7_unreadable_remedy_is_set_credential"
+description = "The unreadable refusal carries set-credential, which is the advice the finding exists to stop"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+old = '''            remedy=ProductRemedy.REPAIR_CREDENTIAL_STORE,
+            origin=("core", "secrets"),
+            detail={"path": str(path), "index": "unreadable"},'''
+new = '''            remedy=ProductRemedy.SET_CREDENTIAL,
+            origin=("core", "secrets"),
+            detail={"path": str(path), "index": "unreadable"},'''
+
+[[rows]]
+id = "B1_slug_is_a_defect"
+description = "credential-index-unreadable maps to INTERNAL, so a sidecar the person can repair is reported as a defect to file"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+old = '''        "credential-index-unreadable": ExitCode.PRECONDITION,'''
+new = '''        "credential-index-unreadable": ExitCode.INTERNAL,'''

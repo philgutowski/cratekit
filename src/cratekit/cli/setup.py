@@ -921,6 +921,16 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
     never reaches a command line, and never reaches a shell history. What is
     offered is derived from the same registry question doctor asks, so a module
     switched on above is a credential offered here with no edit.
+
+    A REFUSAL HERE IS A NOTE AND NEVER A RAISE, which is the rule ``_seed_taxonomy``
+    already follows one screen up and for the same reason: this runs AFTER
+    ``config.save``, so a wizard that dies here loses the whole report over a
+    configuration that is already on disk. Item 4 of the residual finding this
+    file already cites at ``_seed_taxonomy`` gave the presence question
+    a refusal of its own, for an index this account cannot read, and that refusal
+    reaches the line below with nothing between it and the verb. The note carries
+    the refusal's own remedy, so a person is told to repair the sidecar rather
+    than to record a credential the keychain may already hold.
     """
     membership = profiles.resolve(cfg.profile.name, dict(cfg.modules.explicit))
     for key in sorted(doctor.CREDENTIALS_BY_CHECK):
@@ -931,7 +941,20 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
         # the same key twice in one report and any consumer keying on it would
         # keep whichever arrived last.
         for name in doctor.CREDENTIALS_BY_CHECK[key]:
-            if secrets.exists(str(name)):
+            try:
+                already = secrets.exists(str(name))
+            except CratekitError as exc:
+                cause = exc.cause
+                wizard.note(
+                    f"setup.credential.{name}",
+                    f"credential {name}",
+                    doctor.Status.FAIL,
+                    f"whether {name} is recorded could not be answered, {cause.message}",
+                    cause.remediation.remedy,
+                    error=exc,
+                )
+                continue
+            if already:
                 continue
             if not wizard.optional(f"Record the credential {name} now?"):
                 wizard.note(
@@ -975,6 +998,24 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
                     doctor.Status.FAIL,
                     f"{name} could not be recorded: {exc}",
                     Remedy(str(exc.remedy)),
+                )
+                continue
+            except CratekitError as exc:
+                # THE SAME REFUSAL AS THE PROBE ABOVE, REACHED THROUGH THE WRITE.
+                # ``secrets.set`` notes the name in the presence index after the
+                # keychain write, through the same reader, so an index it cannot
+                # use refuses here too. A leg of its own because the three above
+                # cannot see it: ``CredentialError`` is not a ``CratekitError``,
+                # so catching one does not catch the other, and the window is a
+                # person typing a secret, which is as wide as windows get.
+                cause = exc.cause
+                wizard.note(
+                    f"setup.credential.{name}",
+                    f"credential {name}",
+                    doctor.Status.FAIL,
+                    f"{name} could not be recorded, {cause.message}",
+                    cause.remediation.remedy,
+                    error=exc,
                 )
                 continue
             wizard.note(
