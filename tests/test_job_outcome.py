@@ -22,6 +22,7 @@ check that refusal would pass as the property under test.
 from __future__ import annotations
 
 import ast
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -157,6 +158,21 @@ def test_a_blocked_job_raises_the_blocked_type_carrying_the_jobs_own_cause(machi
         jobs.raise_for_state(job)
 
     assert caught.value.cause == job.cause
+
+
+def test_a_blocked_job_recording_no_reason_is_still_not_a_success(machine):
+    """``transition`` refuses to park without a cause, so this row was written by
+    something other than the engine. The mapping must not read a missing reason
+    as a missing problem, which is the first defect pattern METHOD lists."""
+    job = dataclasses.replace(
+        _job_in(machine, jobs.JobState.BLOCKED, cause=_block().cause), cause=None
+    )
+
+    with pytest.raises(CratekitError) as caught:
+        jobs.raise_for_state(job)
+
+    assert caught.value.cause.reason == "internal-error"
+    assert job.job_id in caught.value.cause.message
 
 
 @pytest.mark.parametrize("state", [jobs.JobState.FAILED, jobs.JobState.CANCELLED])
