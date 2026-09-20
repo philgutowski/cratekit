@@ -782,7 +782,8 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "config-unusable": ExitCode.PRECONDITION,
         "module-extras-missing": ExitCode.MODULE_UNAVAILABLE,
         "credential-missing": ExitCode.PRECONDITION,
-        # R-118 item 4. The presence sidecar ``core.secrets`` keeps so doctor can
+        # Item 4 of the residual finding "Five places where "I could not look"
+        # is still not said out loud". The presence sidecar ``core.secrets`` keeps so doctor can
         # ask "is this recorded" without retrieving a value could not be read, so
         # this installation cannot say which credentials it holds. DISTINCT FROM
         # ``credential-missing`` on the distinction that entry exists to draw: one

@@ -1832,7 +1832,7 @@ def test_the_presence_index_records_names_and_never_values():
     assert "value-from-the-user" not in json.dumps(payload)
 
 
-# ── R-118 item 4. Three states, not one ──────────────────────────────────────
+# ── Item 4 of the five-places residual finding. Three states, not one ───────
 #
 # ``_index_read`` caught ``OSError`` and ``ValueError`` alike and answered with an
 # empty set, so an index this account could not open read as "nothing recorded".
@@ -1876,7 +1876,7 @@ def _unreadable_index(monkeypatch, path: Path):
 def test_a_presence_index_that_could_not_be_read_is_not_answered_as_not_recorded(
     monkeypatch,
 ):
-    """R-118 item 4, the cost, reproduced.
+    """Item 4 of the five-places residual finding, its cost reproduced.
 
     ``exists`` answering False here is what made doctor report a stored credential
     as not recorded with "record it" beside it, and made three verbs refuse
@@ -1894,7 +1894,8 @@ def test_a_presence_index_that_could_not_be_read_is_not_answered_as_not_recorded
     cause = excinfo.value.cause
     assert str(index) in cause.message, "the refusal must name the file it could not read"
     # The remedy follows the KIND of refusal the operating system made rather than
-    # the one this site declared, which is the classification R-118 item 3 bought.
+    # the one this site declared, which is the classification that residual's
+    # third item bought.
     # A permission is granted, not repaired.
     assert cause.remediation.remedy is not Remedy.SET_CREDENTIAL
     assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
@@ -1968,6 +1969,53 @@ def test_recording_a_credential_does_not_truncate_an_index_it_could_not_read(
     disarm()
     assert index.read_text() == before, "the index was rewritten from a read that failed"
     assert secrets.recorded() == frozenset({secrets.Credential.IDENTIFY_KEY.value})
+
+
+def test_a_refusal_from_the_record_half_says_the_value_reached_the_keychain(
+    monkeypatch,
+):
+    """The reader is reached from three places that leave two stores in three
+    states, and one sentence for all three was wrong twice.
+
+    ``_record_name`` runs only after the keychain write and its read back have
+    both succeeded, so a refusal there is raised over a value that LANDED. Told
+    "nothing was stored", the person records it again, which succeeds at the
+    keychain, refuses at the same file, and leaves them exactly where they were.
+    """
+    secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+    index = config.state_path("credential_index")
+    disarm = _unreadable_index(monkeypatch, index)
+
+    with pytest.raises(CratekitError) as excinfo:
+        secrets.set(secrets.Credential.IDENTIFY_SIGNING_KEY, "another-value")
+    message = excinfo.value.cause.message
+
+    disarm()
+    # DRIVEN rather than argued. The keychain is asked what it holds, and the
+    # refusal's own sentence is checked against that answer.
+    assert secrets.get(secrets.Credential.IDENTIFY_SIGNING_KEY) == "another-value"
+    assert "THE VALUE IS IN THE KEYCHAIN" in message
+    assert "Nothing was stored" not in message
+
+
+def test_a_refusal_from_the_remove_half_says_neither_store_was_touched(monkeypatch):
+    """The other end of the same distinction. ``delete`` clears the index entry
+    first, so a refusal from the read at the start of that cycle has touched
+    neither store, and saying so is what stops a person re-running a removal they
+    believe half happened.
+    """
+    secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+    index = config.state_path("credential_index")
+    disarm = _unreadable_index(monkeypatch, index)
+
+    with pytest.raises(CratekitError) as excinfo:
+        secrets.delete(secrets.Credential.IDENTIFY_KEY)
+    message = excinfo.value.cause.message
+
+    disarm()
+    assert secrets.get(secrets.Credential.IDENTIFY_KEY) == "value-from-the-user"
+    assert "Nothing was removed" in message
+    assert "THE VALUE IS IN THE KEYCHAIN" not in message
 
 
 def test_removing_a_credential_does_not_truncate_an_index_it_could_not_read(

@@ -467,7 +467,36 @@ def _index_path() -> Path:
     return config.state_path("credential_index")
 
 
-def _index_read() -> frozenset[str]:
+#: What a refusal from the reader says about the two stores, one sentence per
+#: caller. Declared here rather than written inline so the three read as a set and
+#: a fourth caller has to pick one rather than inherit whichever was nearest.
+READ_LEFT_UNTOUCHED = (
+    "Nothing was stored or removed by the attempt to read it, and the keychain "
+    "still holds whatever it held; what is unknown is the list of names, never "
+    "the values."
+)
+
+#: ``_record_name`` is reached from ``set`` only after the keychain write and its
+#: read back have both succeeded, so this one has to say that the value LANDED.
+#: Without it the person repairs the sidecar believing nothing was written, and
+#: the act they would otherwise take, recording it again, cannot move the file
+#: that refused.
+RECORD_ALREADY_IN_THE_KEYCHAIN = (
+    "THE VALUE IS IN THE KEYCHAIN. It was stored and read back before this index "
+    "was opened, and what could not be done is note its name here, so it reads "
+    "as not recorded until the index is repaired. Recording it again is harmless "
+    "and does not fix that."
+)
+
+#: ``delete`` clears the index entry BEFORE the keychain entry, so a refusal from
+#: the read at the start of that cycle has touched neither store.
+REMOVE_NOTHING_TOUCHED = (
+    "Nothing was removed. The index entry is cleared before the keychain entry, "
+    "so a refusal here leaves both stores exactly as they were."
+)
+
+
+def _index_read(left: str = READ_LEFT_UNTOUCHED) -> frozenset[str]:
     """Read the recorded names, or refuse. THREE STATES, NOT ONE.
 
     Returns a FROZEN set, and the helpers below build new ones with ``|`` and
@@ -477,7 +506,7 @@ def _index_read() -> frozenset[str]:
     writer instead of constructing a container. Working in immutable sets removes
     the landmine rather than stepping around it.
 
-    WHAT THIS USED TO DO AND WHY IT WAS WRONG, R-118 item 4. It caught ``OSError``
+    WHAT THIS USED TO DO AND WHY IT WAS WRONG. It caught ``OSError``
     and ``ValueError`` alike and answered with an empty set, on the argument that
     the index is derived data and the keychain remains the truth. The argument is
     correct about the DATA and wrong about the ANSWER. Nothing downstream re-reads
@@ -513,6 +542,16 @@ def _index_read() -> frozenset[str]:
     person's own state directory. A ``CratekitError`` lands with its reserved
     code through the ``except CratekitError`` leg that doctor's check runner and
     the dispatcher both already have.
+
+    ``left`` IS THE CALLER'S SENTENCE ABOUT THE TWO STORES, and it is a parameter
+    for the same reason ``_index_locked`` takes ``action``: this function is
+    reached from a plain read, from the middle of a record and from the start of
+    a remove, and those leave the keychain in three different states. Written as
+    one sentence here it was wrong twice. It said nothing had been stored, while
+    ``_record_name`` is only reached from ``set`` AFTER the keychain write and its
+    read back have both succeeded, so the person was told to repair the sidecar
+    believing the value had not landed, and the obvious next act, recording it
+    again, cannot fix the thing that actually refused.
     """
     path = _index_path()
     try:
@@ -524,9 +563,7 @@ def _index_read() -> frozenset[str]:
             "credential-index-unreadable",
             f"the credential presence index at {path} is present and could not "
             f"be read ({type(exc).__name__}), so this installation cannot say "
-            f"which credentials it has recorded. Nothing was stored or removed "
-            f"by the attempt, and the keychain still holds whatever it held; "
-            f"what is unknown is the list of names, not the values",
+            f"which credentials it has recorded. {left}",
             remedy=ProductRemedy.REPAIR_CREDENTIAL_STORE,
             origin=("core", "secrets"),
             detail={"path": str(path), "index": "unreadable"},
@@ -534,14 +571,16 @@ def _index_read() -> frozenset[str]:
     try:
         payload = json.loads(raw)
     except ValueError as exc:
-        raise _damaged(path, f"is not readable as JSON ({type(exc).__name__})") from exc
+        raise _damaged(
+            path, f"is not readable as JSON ({type(exc).__name__})", left
+        ) from exc
     names = payload.get("recorded") if isinstance(payload, dict) else None
     if not isinstance(names, Iterable) or isinstance(names, str):
-        raise _damaged(path, "does not carry a list of recorded credential names")
+        raise _damaged(path, "does not carry a list of recorded credential names", left)
     return frozenset(str(n) for n in names)
 
 
-def _damaged(path: Path, what: str) -> CratekitError:
+def _damaged(path: Path, what: str, left: str) -> CratekitError:
     """The refusal for an index that was READ and does not say what is recorded.
 
     One slug with the unreadable case above, because the act that repairs both is
@@ -552,9 +591,8 @@ def _damaged(path: Path, what: str) -> CratekitError:
     return refuse(
         "credential-index-unreadable",
         f"the credential presence index at {path} {what}, so this installation "
-        f"cannot say which credentials it has recorded. The keychain is "
-        f"unaffected and still holds whatever it held. Removing that file and "
-        f"recording each credential again rebuilds it",
+        f"cannot say which credentials it has recorded. {left} Removing that file "
+        f"and recording each credential again rebuilds it",
         remedy=ProductRemedy.REPAIR_CREDENTIAL_STORE,
         origin=("core", "secrets"),
         detail={"path": str(path), "index": "damaged"},
@@ -656,15 +694,20 @@ def _record_name(name: str) -> None:
     description, so a second acquisition from inside a cycle that already holds
     one deadlocks against itself. ``set`` and ``delete`` take the lock around
     their whole operation, keychain included, so they call these directly.
+
+    EACH HALF TELLS THE READER WHAT ITS OWN POSITION IN THE CYCLE LEFT BEHIND.
+    This one runs after the keychain already holds the value; the other runs
+    before the keychain has been touched at all. The reader cannot see which it
+    was called from, so the sentence comes from here.
     """
-    names = _index_read()
+    names = _index_read(RECORD_ALREADY_IN_THE_KEYCHAIN)
     if name not in names:
         _index_write(names | {name})
 
 
 def _forget_name(name: str) -> None:
     """The removal half, WITHOUT taking the lock. See :func:`_record_name`."""
-    names = _index_read()
+    names = _index_read(REMOVE_NOTHING_TOUCHED)
     if name in names:
         _index_write(names - {name})
 
