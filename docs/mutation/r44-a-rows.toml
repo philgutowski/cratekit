@@ -1,0 +1,158 @@
+name = "r44-a"
+pass_kind = "light"
+
+# R-44 and R-51, batch a: the session level assertion and the config shape.
+# Author run. Every zero below reads as "the author could not kill it".
+
+[[rows]]
+id = "S1_empty_slot"
+description = "Never refuse an empty mount slot, so an identity read through an ejected drive's leftover directory is compared and can match"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''        source = preflight.identity_source(probe)
+        if source is None:'''
+new = '''        source = preflight.identity_source(probe)
+        if False:'''
+
+[[rows]]
+id = "S2_proved_widened"
+description = "Let NOT_MOUNTED count as a proved identity, which is the pass set widening by one verdict"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''    {preflight.MountState.OK, preflight.MountState.LIBRARY_PATH_MISSING}
+)'''
+new = '''    {
+        preflight.MountState.OK,
+        preflight.MountState.LIBRARY_PATH_MISSING,
+        preflight.MountState.NOT_MOUNTED,
+    }
+)'''
+
+[[rows]]
+id = "S3_default_to_library"
+description = "Hold a rule outside the library root with nothing recorded to the LIBRARY'S identity instead of refusing it"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''    if inside.resolution is locations.Resolution.UNDER_ROOT:
+        return cfg.library.volume_id
+    return None'''
+new = '''    if inside.resolution is locations.Resolution.UNDER_ROOT:
+        return cfg.library.volume_id
+    return cfg.library.volume_id'''
+
+[[rows]]
+id = "S4_inside_root_unheld"
+description = "Hold a rule inside the library root to nothing of the library's, so a nested foreign volume is judged as unrecorded rather than foreign"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''    if inside.resolution is locations.Resolution.UNDER_ROOT:
+        return cfg.library.volume_id
+    return None'''
+new = '''    return None'''
+
+[[rows]]
+id = "S5_not_destructive"
+description = "Assert a rule target at read strength, where an unreadable or unrecorded identity is tolerated"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''                expected_rule_identity(cfg, rule),
+                destructive=True,'''
+new = '''                expected_rule_identity(cfg, rule),
+                destructive=False,'''
+
+[[rows]]
+id = "S6_oserror_escapes"
+description = "Let an OSError from the walk or the identity read escape the gate instead of becoming a refusal"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''    except OSError as exc:
+        # "I COULD NOT LOOK" IS ITS OWN ANSWER.'''
+new = '''    except KeyboardInterrupt as exc:
+        # "I COULD NOT LOOK" IS ITS OWN ANSWER.'''
+
+[[rows]]
+id = "S7_probe_the_target"
+description = "Probe the rule's target for a file instead of the file's own directory, so a volume nested under the target is never seen"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''        rules[index],
+        Path(path).parent,'''
+new = '''        rules[index],
+        Path(rules[index].target or "/"),'''
+
+[[rows]]
+id = "S8_wording_held_to"
+description = "Say the volume was recorded on the rule when the identity compared was the library's"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''    return "the library's volume, which a target inside the library root is held to"'''
+new = '''    return "the volume recorded on that rule"'''
+
+[[rows]]
+id = "S9_offer_to_record_nested"
+description = "Offer to record the foreign volume's identity on a rule that recorded none"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''        if rule.volume_id and observed:'''
+new = '''        if observed:'''
+
+[[rows]]
+id = "S10_default_slug"
+description = "Look the slug up with a default, so a verdict in neither table wears the mismatch slug"
+file = "src/cratekit/core/session.py"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''            reason = _MAPPED_REASONS[status.state]'''
+new = '''            reason = _MAPPED_REASONS.get(status.state, "mapped-volume-mismatch")'''
+
+[[rows]]
+id = "S11_handed_identity_by_walk"
+description = "Read the identity to hand over by walking up from the probe instead of from the mount identity_source accepted. Expected equivalent while S1 holds, which is what this row measures"
+file = "src/cratekit/core/session.py"
+tests = ["tests/test_write_session.py", "tests/test_deletion.py"]
+old = '''                observed = identity_of(source)'''
+new = '''                observed = identity_of(preflight.containing_mount(probe))'''
+
+[[rows]]
+id = "C1_rule_identity_may_be_a_path"
+description = "Accept a mount path as a rule's volume identity"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''                problems += _mount_path_problem(key, identity)'''
+new = '''                pass'''
+
+[[rows]]
+id = "C2_blank_identity_is_absence"
+description = "Read a blank rule identity as none recorded instead of as a problem"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''            if not isinstance(identity, str) or not identity.strip():'''
+new = '''            if not isinstance(identity, str):'''
+
+[[rows]]
+id = "C3_identity_not_written"
+description = "Never write a rule's identity back out, so a saved configuration loses it"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''        if PREFIX_VOLUME_IDENTITY_KEY in out:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C4_identity_not_read"
+description = "Never read a rule's identity in, so every configured rule arrives unrecorded"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_deletion.py"]
+old = '''                    volume_id=entry.get(PREFIX_VOLUME_IDENTITY_KEY),'''
+new = '''                    volume_id=None,'''

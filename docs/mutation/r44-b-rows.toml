@@ -1,0 +1,91 @@
+name = "r44-b"
+pass_kind = "light"
+
+# R-44 and R-51, batch b: the deletion pass, plus a fixed sample of two guards
+# the pass already had. Author run.
+
+[[rows]]
+id = "R1_rules_drop_identity"
+description = "Build the pass's rules from configuration without each rule's recorded identity"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''        locations.PrefixRule(source, target, volume_id)'''
+new = '''        locations.PrefixRule(source, target)'''
+
+[[rows]]
+id = "R2_no_gate_at_the_plan"
+description = "Drop the assertion of every mapped target before the plan resolves a path"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''    session.assert_mapped_volume_identities(
+        cfg, rules, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+    )
+'''
+new = ""
+
+[[rows]]
+id = "R3_no_look_at_the_loop_top"
+description = "Drop the look at the top of the apply loop, before a retirement or a settlement of the plan's answer"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''            _assert_the_volume_this_file_is_on(
+                cfg,
+                item,
+                rules,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+            )
+'''
+new = ""
+
+[[rows]]
+id = "R4_no_look_after_the_recheck"
+description = "Drop the look after the re-check, before its answer is settled or moved on"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''            _assert_the_volume_this_file_is_on(
+                cfg,
+                fresh,
+                rules,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+            )
+'''
+new = ""
+
+[[rows]]
+id = "R5_both_looks_gone"
+description = "Composite for R3 and R4: make the per file look a no-op, so only the plan's gate stands"
+file = "src/cratekit/deletion/run.py"
+pairs_with = "R3_no_look_at_the_loop_top"
+tests = ["tests/test_deletion.py"]
+old = '''    if answered.resolved is None:
+        return
+    resolved = locations.resolve_recorded_path('''
+new = '''    return
+    resolved = locations.resolve_recorded_path('''
+
+[[rows]]
+id = "X1_library_root_gate"
+description = "Existing guard, sampled: drop the library root's own volume assertion from the pass"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''    session.assert_volume_identity(
+        cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+    )
+    session.assert_mapped_volume_identities('''
+new = '''    session.assert_mapped_volume_identities('''
+
+[[rows]]
+id = "X2_suspect_anchor"
+description = "Existing guard, sampled: never hold a row because its anchor proved nothing"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''    return answered.anchor is not None and answered.anchor in references.suspect_anchors'''
+new = '''    return False'''
