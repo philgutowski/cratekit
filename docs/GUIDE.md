@@ -535,6 +535,25 @@ so the refusal prints that identity and you pass it back as
 one restore, and never written to the config. `--snapshot`, `--snapshot-volume`
 and `--include-mirror` are refused without `--from-backup` rather than ignored.
 
+When the drive itself died and its replacement is a new, empty volume, the verb
+above cannot help, because every gate it passes was recorded beside the library
+that is gone. Mount the replacement and recover onto it:
+
+```bash
+crate restore bare-metal --target /path/to/mounted/replacement --accept-replacement --dry-run
+crate restore bare-metal --target /path/to/mounted/replacement --accept-replacement
+```
+
+It pulls the mirror first and the database second, and reports each half
+separately. It refuses while the recorded library can still be read, refuses a
+target that is the empty folder the lost volume left behind on the internal
+disk, refuses a target that already holds a database, and refuses when nobody is
+at a terminal. `--accept-replacement` is the acknowledgment, since the recorded
+one was on the drive that died. It rolls no session back, because the session
+log was on that drive too. If the mirror half fails, run it again and what
+already arrived is not copied twice. If the database half fails, remove the
+database file it names from the target first.
+
 ## Answering a gate
 
 A gated verb exits asking for a decision and prints the gate's name, its options
