@@ -1517,7 +1517,10 @@ def _recovered(report: BareMetalReport) -> dict[str, Any]:
             # was never on the lost volume is named where it lives, so the zero
             # beside it reads as "not this recovery's" rather than as a failure.
             "database_target": str(report.database_elsewhere or report.database_target),
-            "database_half": "ran" if report.database_elsewhere is None else "not-on-the-lost-volume",
+            # A BOOLEAN AND NOT A WORD FOR IT. A slug shaped value here joins the
+            # package's census of cause shaped literals, which is pinned, and
+            # this is a fact with two answers rather than a vocabulary.
+            "database_was_on_the_lost_volume": report.database_elsewhere is None,
         },
         "chunk": None,
     }

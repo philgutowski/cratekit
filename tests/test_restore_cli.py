@@ -2627,7 +2627,7 @@ def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_
     assert report.absent == ()
     assert report.database_elsewhere == home / "master.db"
     totals = restore_cli._recovered(report)["totals"]
-    assert totals["database_half"] == "not-on-the-lost-volume"
+    assert totals["database_was_on_the_lost_volume"] is False
     assert totals["database_target"] == str(home / "master.db")
 
 
@@ -2665,7 +2665,7 @@ def test_the_verb_recovers_both_halves_and_reports_them_apart(lost, monkeypatch,
     assert totals["database_transfers"] == 1
     assert totals["absent_sidecars"] == ["-wal"]
     assert totals["target"] == str(target)
-    assert totals["database_half"] == "ran"
+    assert totals["database_was_on_the_lost_volume"] is True
     assert totals["database_target"] == str(target / "db" / "master.db")
     assert totals["snapshot"] == STAMP
     assert [item["half"] for item in envelope["data"]["items"]] == [
