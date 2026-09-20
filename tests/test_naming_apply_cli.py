@@ -1080,6 +1080,52 @@ def test_a_target_a_collider_holds_is_held_back_too(configured):
     assert first.is_file() and second.is_file() and third.is_file()
 
 
+def test_two_targets_differing_only_in_case_are_one_name(configured):
+    """The collision is keyed through ``_key``, NFC and casefolded.
+
+    The two names on disk differ by more than case, since a volume that ignores
+    case cannot hold two that do not, and their RENDERED names differ only in
+    case. That is one name on the volume this product ships for: the first would
+    take it and the second's claim would fail against the file the first just
+    created. Comparing the targets as written promises both renames there. On a
+    volume that respects case the cost is two files left unrenamed, which is the
+    direction ``_key`` already chose for the referenced guard.
+    """
+    folder = _folder(configured)
+    upper = _track(
+        folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A"
+    )
+    lower = _track(folder, "5A - 120 - song - artist.flac", title="5A - 120 - song", key="5A")
+    assert _actions(_plan(folder)) == {upper.name: "collides", lower.name: "collides"}
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["data"]["totals"]["renamed"] == 0
+    assert upper.is_file() and lower.is_file()
+
+
+def test_a_referenced_file_does_not_hold_a_name_it_will_never_take(collected):
+    """A file the collection references is not a mover, so it cannot collide.
+
+    Both of these render to one name and the referenced one is never going to be
+    renamed, so the name is free and its sibling takes it. Passing the held back
+    file to the collision pass would lose that rename to a file that is not
+    moving, which is the same cost this unit exists to stop, with the sign
+    reversed.
+    """
+    folder = _folder(collected)
+    held = _track(
+        folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A"
+    )
+    free = _track(folder, "5A - 120 - Song - Artist.flac", title="5A - 120 - Song", key="5A")
+    _record(collected, str(held), identifier="10")
+    plan = _plan(folder)
+    assert _actions(plan) == {held.name: "referenced", free.name: "rename"}
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.OK), envelope
+    assert held.is_file()
+    assert (folder / "05A - 120 - Song - Artist.flac").is_file()
+
+
 def test_the_remediation_only_names_a_hand_rename_over_a_real_collision(
     configured, monkeypatch
 ):

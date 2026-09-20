@@ -1,0 +1,157 @@
+name = "r172-a"
+pass_kind = "light"
+
+# R-172, batch a: the plan pass owns a collision.
+# Author run. Every zero below reads as "the author could not kill it".
+
+[[rows]]
+id = "A1_nothing_collides"
+description = "Hold nothing, which is the finding itself: two files rendering to one name are promised two renames and the apply performs one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        if not found:
+            return held
+        held.update(found)'''
+new = '''        return held'''
+
+[[rows]]
+id = "A2_one_round_only"
+description = "Ask once rather than to a fixpoint, so a file whose target a collider still holds reads as a chain sort order would resolve. This is the review's first finding, reintroduced"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        if not found:
+            return held
+        held.update(found)'''
+new = '''        held.update(found)
+        return held'''
+
+[[rows]]
+id = "A3_shared_target_ignored"
+description = "Stop holding several movers that render to one target, keeping only the occupied target half, so an arbitrary winner in sort order takes the name again"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            sharing = sorted(
+                other.name for other in holders[_key(str(target))] if other != path
+            )'''
+new = '''            sharing = []'''
+
+[[rows]]
+id = "A4_occupied_target_ignored"
+description = "Stop holding a mover whose rendered name a file on disk already carries, which is the collision the U67 table drove"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            elif _key(str(target)) not in sources and target.exists():'''
+new = '''            elif False:'''
+
+[[rows]]
+id = "A5_chain_held_too"
+description = "Hold a target another mover still holds, which loses a rename that succeeds whenever sort order reaches the occupant first"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            elif _key(str(target)) not in sources and target.exists():'''
+new = '''            elif target.exists():'''
+
+[[rows]]
+id = "A7_targets_compared_exactly"
+description = "Compare targets as written instead of through _key, so two names differing only in case are two names on a volume that treats them as one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        for path, target in moving:
+            holders.setdefault(_key(str(target)), []).append(path)
+        sources = {_key(str(path)) for path, _ in moving}
+        found: dict[str, str] = {}
+        for path, target in moving:
+            sharing = sorted(
+                other.name for other in holders[_key(str(target))] if other != path
+            )
+            if len(sharing) == 1:
+                found[str(path)] = (
+                    f"{sharing[0]} renders to the same name, and neither is renamed"
+                )
+            elif sharing:
+                found[str(path)] = (
+                    f"{', '.join(sharing)} render to the same name, and none of them "
+                    f"is renamed"
+                )
+            elif _key(str(target)) not in sources and target.exists():'''
+new = '''        for path, target in moving:
+            holders.setdefault(str(target), []).append(path)
+        sources = {str(path) for path, _ in moving}
+        found: dict[str, str] = {}
+        for path, target in moving:
+            sharing = sorted(
+                other.name for other in holders[str(target)] if other != path
+            )
+            if len(sharing) == 1:
+                found[str(path)] = (
+                    f"{sharing[0]} renders to the same name, and neither is renamed"
+                )
+            elif sharing:
+                found[str(path)] = (
+                    f"{', '.join(sharing)} render to the same name, and none of them "
+                    f"is renamed"
+                )
+            elif str(target) not in sources and target.exists():'''
+
+[[rows]]
+id = "A8_collides_counted_as_a_rename"
+description = "Leave a held collision inside totals.count, so the plan says it will rename a file it is holding back"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            "count": len(items) - held - len(collides),'''
+new = '''            "count": len(items) - held,'''
+
+[[rows]]
+id = "A9_collides_reported_as_a_rename"
+description = "Mark a collision as an ordinary rename in the plan, so nothing in the report says which file is held and the apply attempts it"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        elif str(path) in collides:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "A11_referenced_files_collide"
+description = "Pass every candidate to the collision pass including the referenced ones, so a file held back for rekordbox also holds its rendered name against a file that could take it"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    collides = _collisions([(path, filename) for path, filename, ref in decided if not ref])'''
+new = '''    collides = _collisions([(path, filename) for path, filename, ref in decided])'''
+
+[[dropped]]
+id = "A13_digest_over_totals"
+description = "Fold totals into the plan digest"
+reason = "ranked below the cap: the digest's contents are unchanged by this unit and are pinned by test_the_digest_changes_when_a_row_starts_referencing_a_file"
+
+[[dropped]]
+id = "A14_items_order"
+description = "Build items from the two partitions instead of in candidate order"
+reason = "ranked below the cap: order feeds the digest, which A13's note covers, and no user facing claim in this unit depends on it"
+
+[[dropped]]
+id = "A15_sources_from_targets"
+description = "Build the sources set from targets rather than from the moving paths"
+reason = "ranked below the cap: A4 and A5 already measure both sides of the sources test, and A7 rewrites how it is keyed"
+
+[[dropped]]
+id = "A6_target_existence_assumed"
+description = "Hold every mover whose target belongs to no mover, whether or not a file is there, so an ordinary rename into a free name is refused"
+reason = "ranked below the cap: A4 and A5 measure both halves of the same condition, and this one only moves which half is wrong"
+
+[[dropped]]
+id = "A10_reason_dropped_from_the_item"
+description = "Hold the collision without saying why, so the plan names the file and not what is wrong with it"
+reason = "ranked below the cap: the plan's own why is asserted by the collision test's whole item comparison, so the row would measure a string the suite already pins character for character"
+
+[[dropped]]
+id = "A12_candidate_filter_dropped"
+description = "A sample of an EXISTING guard: propose a rename for every audio file, whether or not its rendered name differs from the one it carries"
+reason = "ranked below the cap: existing and untouched by this unit, and b's two existing guard rows are the sample this pass spends on guards that were already here"
