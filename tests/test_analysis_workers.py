@@ -733,14 +733,20 @@ def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
     assert scored["vocal_reason"] == vocals.REASON_AUDIO_UNDECODABLE
 
 
-def test_an_oversize_track_is_never_warned_about_as_a_missing_model():
+def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch):
     """``unscored_warning`` counts one reason of the five, and this is not it.
 
     It tells the person to install the vocals extra. No install makes a live
-    set decodable, so a summary holding only size refusals warns about nothing.
+    set decodable, so a summary holding only size refusals warns about nothing,
+    and a mixed summary warns about the one track the install would help.
+
+    ``missing_requirement`` is stubbed for the mixed half only because the real
+    one imports ``panns_inference``, which is twelve seconds on this machine and
+    is not what this test is about. The count is the assertion.
     """
     summary = {"by_vocal_reason": {vocals.REASON_AUDIO_TOO_LARGE: 4}}
     assert vocals.unscored_warning(summary, verb="analysed") is None
+    monkeypatch.setattr(vocals, "missing_requirement", lambda: "the extra is not here")
     mixed = {
         "by_vocal_reason": {
             vocals.REASON_AUDIO_TOO_LARGE: 4,
