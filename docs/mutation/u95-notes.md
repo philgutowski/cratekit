@@ -31,9 +31,9 @@ the driver in `u95-b1`: 1 kill.
 
 **Why the end to end test strips the configured root.** The built in review
 pointed out that a byte identical twin left at the configured root answers any
-read that still goes there. Rows A5, A7, B2 and B4 each have exactly one kill,
-and in each case that kill depends on the twin being gone. Those four are the
-thinnest rows in the table.
+read that still goes there. Rows A5, A7 and B2 have exactly one kill and B4 has
+two, and those kills depend on the twin being gone. They are the thinnest rows
+in the table.
 
 **One kill rows, 12 of 25.** A4, A5, A7, A8, B2, B5, B6, C1, C4, C7, C8, S2. A
 single test is a single point of failure for the guard it pins.
