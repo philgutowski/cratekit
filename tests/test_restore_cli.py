@@ -2433,6 +2433,48 @@ def test_a_target_that_already_holds_a_database_is_refused_with_no_way_to_name_i
         )
 
 
+def test_both_halves_run_inside_one_holding_of_the_recovery_lock(cfg, tmp_path):
+    """Asked from a REAL second interpreter, while each transfer is in flight."""
+    target = _replacement(tmp_path)
+    seams = _gone(cfg)
+    observed: list[int] = []
+
+    class _Watching(_Remote):
+        def __call__(self, command):
+            if command.label in (backup.RESTORE_MIRROR, backup.RESTORE_DATABASE):
+                observed.append(_lock_taken_in_another_process(restore.recovery_lock_path()))
+            return super().__call__(command)
+
+    restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, runner=_Watching(cfg), **seams
+    )
+
+    assert observed == [3, 3, 3], observed
+    assert _lock_taken_in_another_process(restore.recovery_lock_path()) == 0
+
+
+def test_a_recovery_already_running_here_refuses_the_second_one(cfg, tmp_path):
+    """The engine's busy path, which this verb is the first caller to own."""
+    import fcntl  # noqa: PLC0415
+
+    target = _replacement(tmp_path)
+    seams = _gone(cfg)
+    remote = _Remote(cfg)
+    lock = restore.recovery_lock_path()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock, "a+") as other:
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(CratekitError) as excinfo:
+            restore_cli.recover_under_bare_metal_session(
+                cfg, target=target, accepted=True, runner=remote, **seams
+            )
+
+    assert excinfo.value.cause.reason == "session-lock-held", excinfo.value.cause
+    assert str(lock) in excinfo.value.cause.message
+    assert remote.calls == []
+    assert list(target.iterdir()) == []
+
+
 def test_the_verb_cannot_be_typed_without_naming_a_target():
     """No default, because the only default there could be is the lost volume."""
     with pytest.raises(SystemExit):

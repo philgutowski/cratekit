@@ -24177,3 +24177,22 @@ long the two halves take.
 
 **Closes when:** a person recovers onto a spare drive from the real remote, with
 the dry run first, and records what happened.
+
+---
+
+## R-597. A busy recovery lock is reported as "the library lock", which it is not
+
+**Found:** 2026-09-20, driving the engine's busy path through U96's verb,
+`test_a_recovery_already_running_here_refuses_the_second_one`.
+
+`session.session_lock` writes its refusal as "the library lock at PATH is held".
+A bare metal recovery hands it the installation scoped `recovery.lock`, so a
+second recovery on the same machine is told the library lock is held, on the day
+the library does not exist. The path in the sentence is right and the reason,
+`session-lock-held`, is right. The noun is wrong.
+
+**Measured cost:** one misleading word in a refusal a person meets only by
+running two recoveries at once. Maintainer facing in practice.
+
+**Closes when:** the lock's refusal names the lock it was given.
+
