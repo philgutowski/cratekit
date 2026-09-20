@@ -316,16 +316,18 @@ def _calls(function: ast.AST, attribute: str) -> list[ast.Call]:
     ]
 
 
-def _shells() -> list[tuple[Path, ast.FunctionDef]]:
-    """Every function outside the driver's own two modules that runs a job."""
+def _shells() -> list[tuple[Path, ast.FunctionDef, frozenset[str]]]:
+    """Every function outside the driver's own two modules that runs a job, with
+    the names its module declares as never returning."""
     own = {SRC / "cli" / "__init__.py", SRC / "cli" / "handlers.py"}
     found = []
     for path in sorted(SRC.rglob("*.py")):
         if path in own:
             continue
-        for function in _functions(ast.parse(path.read_text())):
+        module = ast.parse(path.read_text())
+        for function in _functions(module):
             if _calls(function, "run_job"):
-                found.append((path, function))
+                found.append((path, function, _never_returns(module)))
     return found
 
 
@@ -357,7 +359,7 @@ def _path_to(block: list[ast.stmt], target: ast.AST) -> list[tuple[list[ast.stmt
     return None
 
 
-def _is_the_mapping(statement: ast.stmt) -> bool:
+def _is_the_call(statement: ast.stmt) -> bool:
     return (
         isinstance(statement, ast.Expr)
         and isinstance(statement.value, ast.Call)
@@ -366,7 +368,55 @@ def _is_the_mapping(statement: ast.stmt) -> bool:
     )
 
 
-def unmapped_reason(function: ast.FunctionDef) -> str | None:
+def _never_returns(module: ast.AST) -> frozenset[str]:
+    """The module's own functions annotated ``-> NoReturn``, by name."""
+    return frozenset(
+        function.name
+        for function in _functions(module)
+        if function.returns is not None and ast.unparse(function.returns) == "NoReturn"
+    )
+
+
+def _leaves(handler: ast.ExceptHandler, never_returns: frozenset[str]) -> bool:
+    """Whether a handler's last act is to raise, itself or through a helper."""
+    last = handler.body[-1]
+    if isinstance(last, ast.Raise):
+        return True
+    return (
+        isinstance(last, ast.Expr)
+        and isinstance(last.value, ast.Call)
+        and isinstance(last.value.func, ast.Name)
+        and last.value.func.id in never_returns
+    )
+
+
+def _is_the_mapping(statement: ast.stmt, never_returns: frozenset[str] = frozenset()) -> bool:
+    """The mapping as a plain statement, or wrapped by a verb that words its exit.
+
+    THE SECOND SHAPE IS ``backup``'s. Its refusals leave through a helper that
+    adds the rehearsal sentence, so the mapping sits alone in a ``try`` whose
+    handler re-raises what it caught, extended. That is still the mapping ONLY IF
+    NO HANDLER CAN SWALLOW IT: a handler that falls through turns the refusal
+    back into the normal envelope this file exists to forbid. So every handler
+    must end in a ``raise`` or in a call to a function the same module annotates
+    ``NoReturn``, and the ``try`` may carry nothing but the call.
+    """
+    if _is_the_call(statement):
+        return True
+    return (
+        isinstance(statement, ast.Try)
+        and len(statement.body) == 1
+        and _is_the_call(statement.body[0])
+        and bool(statement.handlers)
+        and not statement.orelse
+        and not statement.finalbody
+        and all(_leaves(handler, never_returns) for handler in statement.handlers)
+    )
+
+
+def unmapped_reason(
+    function: ast.FunctionDef, never_returns: frozenset[str] = frozenset()
+) -> str | None:
     """Why this function's drive can reach a report unmapped, or None.
 
     BY CONTROL FLOW AND NOT BY LINE NUMBER, which is what the first version of
@@ -383,7 +433,7 @@ def unmapped_reason(function: ast.FunctionDef) -> str | None:
         mapped = False
         for depth, (block, index) in enumerate(reversed(path)):
             for later in block[index + 1 :]:
-                if _is_the_mapping(later):
+                if _is_the_mapping(later, never_returns):
                     mapped = True
                     break
                 if any(isinstance(node, ast.Return) for node in ast.walk(later)):
@@ -412,8 +462,8 @@ def test_every_function_that_drives_a_job_maps_its_ending_afterwards():
     """
     shells = _shells()
     assert len(shells) >= 13, "the walk stopped finding the shells it exists to read"
-    for path, function in shells:
-        reason = unmapped_reason(function)
+    for path, function, never_returns in shells:
+        reason = unmapped_reason(function, never_returns)
         assert reason is None, (
             f"{path.relative_to(SRC)}:{function.lineno} {function.name} {reason}, so a "
             f"parked or half failed job leaves through a normal envelope and exits 0"
@@ -422,6 +472,18 @@ def test_every_function_that_drives_a_job_maps_its_ending_afterwards():
 
 def _shell(source: str) -> ast.FunctionDef:
     return next(_functions(ast.parse(source)))
+
+
+_WORDED = (
+    "def resume(ctx, store, job):\n"
+    "    if job.is_open():\n"
+    "        ctx.run_job(store, job)\n"
+    "    try:\n"
+    "        jobs.raise_for_state(job)\n"
+    "    except CratekitError as exc:\n"
+    "        {handler}\n"
+    "    return ctx.envelope(data={{}})\n"
+)
 
 
 @pytest.mark.parametrize(
@@ -468,13 +530,19 @@ def _shell(source: str) -> ast.FunctionDef:
             "    return ctx.envelope(data={})\n",
             "returns at line 6",
         ),
+        (_WORDED.format(handler="raise extended(exc) from exc"), None),
+        (_WORDED.format(handler="_raise_refusal(exc, job)"), None),
+        (_WORDED.format(handler="_log_and_carry_on(exc, job)"), "returns at line 8"),
+        (_WORDED.format(handler="pass"), "returns at line 8"),
     ],
 )
 def test_the_static_guard_refuses_the_shapes_it_exists_for(source, expected):
     """The guard's own teeth, because a guard that reads source is only as good as
-    the shapes it has been shown. The last two are the review's: a later line is
-    not a later point in the run."""
-    reason = unmapped_reason(_shell(source))
+    the shapes it has been shown. The fourth and fifth are the review's: a later
+    line is not a later point in the run. The last four are ``backup``'s exit, a
+    mapping wrapped so the verb can word its refusal, which holds only while no
+    handler can swallow what the mapping raised."""
+    reason = unmapped_reason(_shell(source), frozenset({"_raise_refusal"}))
     if expected is None:
         assert reason is None
     else:
