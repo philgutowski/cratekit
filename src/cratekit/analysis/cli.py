@@ -291,8 +291,7 @@ def _advance(ctx, store, job):
             )
         _result, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
-    if not job.is_open() and job.cause is not None:
-        raise CratekitError(job.cause)
+    jobs.raise_for_state(job)
     return job, warnings
 
 

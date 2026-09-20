@@ -51,7 +51,7 @@ from cratekit.acquire import match, match_cli
 from cratekit.acquire.match import Wanted
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import artifacts, binaries, binary_refusal, config, jobs, review
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import fetch, ingest, normalize, pipeline, recognize
 from cratekit.label import catalogue
@@ -437,8 +437,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             )
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
-    if not job.is_open() and job.cause is not None:
-        raise CratekitError(job.cause)
+    jobs.raise_for_state(job)
     cfg = jobs.frozen_config(job)
     return ctx.envelope(data=_reported(store, job, extra=_summary(cfg, job)), warnings=warnings)
 
@@ -632,7 +631,7 @@ def _named_for_the_address(exc: CratekitError, held: SetRecording) -> CratekitEr
         for key, value in dict(cause.detail).items()
     }
     detail.setdefault("source", held.ref)
-    return CratekitError(replace(cause, message=message, detail=detail))
+    return rebuilt(exc, replace(cause, message=message, detail=detail))
 
 
 def _coverage_or_refuse(

@@ -213,6 +213,13 @@ def master_recording(ctx) -> Envelope:
                 # failed and the refusal carries the item's own cause.
                 _, warnings = ctx.run_job(store, job)
                 job = jobs.get(store, job.job_id)
+            # A JOB THAT DID NOT END CLEANLY IS NOT AN OK EXIT, and this branch
+            # returned one for every such job until R-225 was closed here. A
+            # total failure raises out of the drive above, and nothing else did:
+            # a job already failed on entry, a cancelled one and a parked one all
+            # reached the report and exited 0. OUTSIDE the ``is_open`` branch so
+            # the second ask about a failed job answers the way the first did.
+            jobs.raise_for_state(job)
             return ctx.envelope(data=_reported(store, job), warnings=warnings)
         # THE RECORDING IS NOT STATTED HERE, deliberately. Queueing needs neither
         # the file nor ffmpeg, and a stat in this handler would make the verb

@@ -421,9 +421,10 @@ def test_the_resume_of_a_half_failed_export_does_not_exit_ok(
 ):
     """R-225, pinned where the branch was written rather than inherited.
 
-    ``master/cli.py``'s resume branch reports a half failed job through a normal
-    envelope and exits OK, so a person whose export wrote nothing is told it
-    finished. Copying that branch is what this asserts did not happen.
+    ``master/cli.py``'s resume branch reported a half failed job through a normal
+    envelope and exited OK when this was written, so a person whose export wrote
+    nothing was told it finished. Copying that branch is what this asserts did
+    not happen. Every shell calls ``jobs.raise_for_state`` now.
     """
     del installed
     bind(

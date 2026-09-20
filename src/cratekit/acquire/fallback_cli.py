@@ -470,6 +470,10 @@ def acquire_fallback_fetch(ctx) -> Envelope:
             if job.is_open():
                 _, warnings = ctx.run_job(store, job)
                 job = jobs.get(store, job.job_id)
+            # The same tail as ``acquire download``, for the same two reasons: a
+            # job parked on a missing ``yt-dlp`` reported ``ok`` (R-290), and a
+            # list half fetched exited 0 (R-225).
+            jobs.raise_for_state(job)
             return ctx.envelope(data=_reported(store, job), warnings=warnings)
     path = Path(str(ctx.args.list)).expanduser().absolute()
     subject: dict[str, Any] = {"list_in": str(path)}

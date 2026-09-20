@@ -55,7 +55,16 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import new_run_id, timestamp
 from cratekit.core import config
-from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, name_the_database, refuse
+from cratekit.core.cause import (
+    Cause,
+    CratekitError,
+    JobBlocked,
+    JobCancelled,
+    Remediation,
+    Scope,
+    name_the_database,
+    refuse,
+)
 from cratekit.core.exit_codes import Remedy
 
 #: The queue's own schema version. A cross-version resume REFUSES rather than
@@ -766,6 +775,64 @@ def block(store: JobStore, job_id: str, cause: Cause) -> Job:
     tells a throttled provider apart from a gate nobody has answered.
     """
     return transition(store, job_id, JobState.BLOCKED, cause=cause)
+
+
+def raise_for_state(job: Job) -> None:
+    """Refuse for a job that did not end cleanly. THE ONE MAPPING every shell uses.
+
+    A queued verb's resume drives the job and then reports it, and a report is a
+    normal envelope the dispatcher exits 0 over. Two endings must never reach it:
+
+    * ``blocked``, a run a worker PARKED. It raises :class:`JobBlocked`, which the
+      dispatcher reads as ``Outcome.BLOCKED``. A blocked job is OPEN, so the
+      predicate below never saw it, and thirteen shells reported ``ok`` over a
+      provider that had just refused the client (R-290).
+    * any CLOSED job carrying a cause, ``failed`` or ``cancelled``. ``drive``
+      raises only when EVERY attempted item failed, so a job where one item
+      completed and another did not returns normally, recorded failed (R-225).
+      Cancelled is included deliberately: a run stopped with a signal left work
+      undone. It raises :class:`JobCancelled`, which the dispatcher reads as
+      ``Outcome.CANCELLED``, so a person who stopped a run is not told it broke.
+      ``succeeded`` carries no cause and is not reached.
+
+    CALL IT OUTSIDE THE ``is_open`` BRANCH THAT DRIVES. A job already failed on
+    entry is not open, so the drive is skipped, and a check inside that branch is
+    skipped with it: the second ask about a half failed job then exits 0 for ever.
+    ``backup`` paid for that placement first.
+
+    THE JOB'S OWN CAUSE IS RE-RAISED, never reworded. It already carries the
+    counts, the retryable flag that follows the items (R-380), the remedy those
+    items earned and the failing item's cause nested inside it, and a second
+    wording for one condition is how two surfaces come to disagree about it.
+
+    WHY ONE FUNCTION. The predicate was copied into ten shells by hand and
+    forgotten in three, and no copy could have known about a state added after it
+    was written. ``tests/test_job_outcome.py`` refuses a shell that drives without
+    calling this, and refuses a hand rolled copy.
+    """
+    if job.state is JobState.BLOCKED:
+        # ``transition`` refuses to park a job without a cause, so a blocked row
+        # with none was written by something other than this engine. It is still
+        # not a success, and the refusal says what is actually known.
+        #
+        # STILL AS THE BLOCKED TYPE. The first version raised the plain refusal,
+        # and the envelope then said ``failed`` over a row ``job show`` calls
+        # blocked, the disagreement this function exists to remove.
+        if job.cause is None:
+            raise JobBlocked(
+                refuse(
+                    "internal-error",
+                    f"job {job.job_id} is blocked and records no reason for it",
+                    remedy=Remedy.REPORT_DEFECT,
+                    origin=("jobs",),
+                    detail={"job_id": job.job_id, "state": str(job.state)},
+                ).cause
+            )
+        raise JobBlocked(job.cause)
+    if not job.is_open() and job.cause is not None:
+        if job.state is JobState.CANCELLED:
+            raise JobCancelled(job.cause)
+        raise CratekitError(job.cause)
 
 
 def cancel(store: JobStore, job_id: str, *, stage: str | None = None) -> Job:
@@ -1574,6 +1641,7 @@ __all__ = [
     "open_store",
     "progress",
     "queue_path",
+    "raise_for_state",
     "reconcile",
     "release_claims",
     "reopen",

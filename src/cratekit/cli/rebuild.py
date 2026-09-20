@@ -193,8 +193,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             *warnings,
             *engine.not_compared_warnings(engine.governed_not_compared(threshold)),
         )
-    if not job.is_open() and job.cause is not None:
-        raise CratekitError(job.cause)
+    jobs.raise_for_state(job)
     return ctx.envelope(
         data=_reported(store, job),
         outcome=Outcome.OK,

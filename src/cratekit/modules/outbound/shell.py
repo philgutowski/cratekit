@@ -8,10 +8,11 @@ confirm, and until this module existed each of those was written out twice.
 **THE RESUME BRANCH IS THE ONE THAT MATTERED.** It carries the R-225 fix: a job
 that half failed must exit with its own cause rather than through a normal
 envelope, because a person whose export wrote nothing must not be told it
-finished. Two copies of a fix is one copy that gets updated. ``master/cli.py``
-still has the unfixed shape and this module is deliberately not reaching into
-it: that verb is another unit's file, and changing its exit code from here would
-be a second opinion about a surface this unit does not own.
+finished. Two copies of a fix is one copy that gets updated, and the predicate
+itself is now ``jobs.raise_for_state``, the one mapping every shell calls. It is
+also what added the parked job, which leaves as ``JobBlocked`` (R-290).
+``master/cli.py`` had the unfixed shape when this module was written and calls
+the same mapping now.
 
 **WHAT IS DELIBERATELY NOT HERE.** ``confirm_digest`` stays one function per
 shell, because the two verbs digest different key sets and a single digest
@@ -219,11 +220,12 @@ def resume(
     claim left behind by a driver that died is state the queue cannot see for
     itself.
 
-    IT RAISES ON A FAILED JOB RATHER THAN REPORTING ONE. That is R-225:
-    ``master/cli.py``'s resume branch returns a normal envelope for a job that
-    half failed and exits OK, so a person whose work did not happen is told it
-    finished. U50 fixed it for ``backup.run`` by re-raising the job's own cause,
-    and this is that fix with one owner instead of two.
+    IT RAISES ON A FAILED JOB RATHER THAN REPORTING ONE. That is R-225: a resume
+    branch that returns a normal envelope for a job that half failed exits OK, so
+    a person whose work did not happen is told it finished. U50 fixed it for
+    ``backup.run`` by re-raising the job's own cause, and since R-290 that fix
+    has one owner for every queued verb, ``jobs.raise_for_state``, which also
+    refuses a PARKED job the copied predicate could not see.
     """
     with jobs.open_store() as store:
         queued = jobs.get(store, job_id)
@@ -268,8 +270,7 @@ def resume(
         # 2026-09-02 as exit 0 over a job with 0 of 3 items done and one track
         # already on the remote playlist. SUCCEEDED carries no cause, so it is
         # unaffected. ``backup/cli.py`` already uses this predicate.
-        if not job.is_open() and job.cause is not None:
-            raise CratekitError(job.cause)
+        jobs.raise_for_state(job)
         return ctx.envelope(
             data=reported(store, job, frozen, summary),
             # THE STANDING ONES FIRST, because they are true whether or not the

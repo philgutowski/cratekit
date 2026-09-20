@@ -2400,6 +2400,50 @@ def test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal(cfg, monkeypat
     _assert_extended_not_rebuilt(refused["cause"], control["cause"])
 
 
+def test_a_parked_rehearsal_is_still_blocked_after_the_rehearsal_word_is_added(
+    cfg, monkeypatch
+):
+    """THE HOP THAT WORDS THE EXIT MUST NOT CHANGE WHAT KIND OF EXIT IT IS (R-290).
+
+    A parked job leaves as ``JobBlocked`` and the dispatcher reads that TYPE as
+    the blocked outcome, nothing on the cause. ``_with_rehearsal_step`` rebuilds
+    the refusal to add its sentence, and a rebuild as a plain ``CratekitError``
+    says ``failed`` over a job whose state is blocked. ``tag retag`` made exactly
+    that hop first. The population test in ``tests/test_job_outcome.py`` cannot
+    see this one, because the job it queues is not a rehearsal and a real run is
+    handed back object for object.
+
+    THE STATE IS ASSERTED BEFORE THE OUTCOME, so a refusal on some precondition
+    cannot pass as the property.
+    """
+    from cratekit.cli import handlers
+    from cratekit.core.cause import Outcome, refuse
+
+    def parks(job, item, cfg):
+        raise jobs.Parked(
+            refuse(
+                "provider-blocked",
+                "the provider refused this client",
+                remedy=Remedy.RETRY_LATER,
+                origin=("test",),
+            ).cause
+        )
+
+    _, queued = _drive(["backup", "run", "--dry-run"])
+    job_id = queued["data"]["job_id"]
+    monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
+
+    code, refused = _drive(["backup", "run", "--job", job_id])
+
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is jobs.JobState.BLOCKED, refused
+    assert refused["outcome"] == str(Outcome.BLOCKED), refused
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "provider-blocked", refused
+    steps = refused["cause"]["remediation"]["steps"]
+    assert any("copies nothing" in step for step in steps), refused
+
+
 def test_an_unreadable_fact_file_under_a_rehearsal_says_which_kind_of_run_it_was(
     cfg, rclone
 ):

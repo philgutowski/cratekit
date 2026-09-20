@@ -49,6 +49,8 @@ from cratekit.core import config, profiles
 from cratekit.core.cause import (
     Cause,
     CratekitError,
+    JobBlocked,
+    JobCancelled,
     Outcome,
     Remediation,
     Scope,
@@ -404,16 +406,34 @@ def run(argv: list[str], *, stdout, stderr) -> int:
         gates.save(state)
     except CratekitError as exc:
         cause = exc.cause
-        resumable = cause.code in gates.GATE_CODES
+        # A PARKED JOB IS BLOCKED TOO, AND IT IS NOT RESUMABLE IN THIS FIELD'S
+        # SENSE (R-290). ``resumable`` names the GATE RUN: it tells a caller that
+        # ``crate run`` can continue this run id, and it is what saves the run
+        # state below. A parked job continues through its own verb with the job
+        # id, never through the run, so setting it here would send a wrapper to a
+        # command that cannot advance the work. The outcome carries the block.
+        #
+        # ``and not parked`` IS WHAT MAKES THAT TRUE. The flag came off the
+        # cause's code alone, and ``jobs.transition`` names a missing
+        # acknowledgment among the reasons to park, which is a gate code. The
+        # comment above was a claim about every worker until this enforced it.
+        parked = isinstance(exc, JobBlocked)
+        resumable = cause.code in gates.GATE_CODES and not parked
         if state is not None and resumable:
             gates.save(state)
+        if resumable or parked:
+            outcome = Outcome.BLOCKED
+        elif isinstance(exc, JobCancelled):
+            outcome = Outcome.CANCELLED
+        else:
+            outcome = Outcome.FAILED
         envelope = output.from_cause(
             verb=entry.name,
             run_id=state.run_id if state is not None else output.new_run_id(),
             started=started,
             cause=cause,
             resumable=resumable,
-            outcome=Outcome.BLOCKED if resumable else Outcome.FAILED,
+            outcome=outcome,
         )
     except config.ConfigError as exc:
         # U2 already models configuration failures as five types with five

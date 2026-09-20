@@ -99,7 +99,7 @@ from typing import Any, NoReturn
 from cratekit.cli import exit_codes as reservations
 from cratekit.cli.output import Envelope
 from cratekit.core import backup_facts, config, jobs
-from cratekit.core.cause import Cause, CratekitError, Remediation, refuse
+from cratekit.core.cause import Cause, CratekitError, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.tools import backup
 
@@ -249,11 +249,18 @@ def _with_rehearsal_step(error: CratekitError, job) -> CratekitError:
     backup failed that nothing was copied is false in the direction that stops
     them looking for the half that was. :func:`_raise_refusal` is what raises the
     result, and the identity above is the thing it branches on.
+
+    THE TYPE IS CARRIED THROUGH AS WELL, BY ``cause.rebuilt`` (R-290). A parked
+    job leaves as ``JobBlocked`` and the dispatcher reads that type, nothing on
+    the cause, as the blocked outcome. Rebuilt as a plain ``CratekitError``, a
+    rehearsal the worker parked would say ``failed`` over a job whose state is
+    blocked, which is the hop ``retag_cli.with_reload_step`` was caught making.
     """
     if not _is_rehearsal(job):
         return error
     cause = error.cause
-    return CratekitError(
+    return rebuilt(
+        error,
         replace(
             cause,
             remediation=replace(
@@ -594,8 +601,16 @@ def backup_library(ctx) -> Envelope:
             # failing item's cause nested inside it, and a second wording for one
             # condition is how the two come to disagree about which one a run
             # met.
-            if not job.is_open() and job.cause is not None:
-                _raise_refusal(CratekitError(job.cause), job)
+            #
+            # THE MAPPING IS THE SHARED ONE AND THE EXIT IS THIS VERB'S OWN
+            # (R-290). ``raise_for_state`` decides WHETHER the job leaves as a
+            # refusal and as which type, a parked job as ``JobBlocked``, and
+            # ``_raise_refusal`` adds the rehearsal word on the way out, keeping
+            # that type.
+            try:
+                jobs.raise_for_state(job)
+            except CratekitError as exc:
+                _raise_refusal(exc, job)
             reported = _reported(store, job)
             # READ BACK HERE AND NOWHERE INSIDE THE ITEM. This is the same call
             # the work body deliberately does not make under the driver, and the

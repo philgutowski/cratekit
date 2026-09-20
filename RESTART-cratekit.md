@@ -4,7 +4,64 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-118 item 4, issue #171, `relay/171`, 2026-09-20.**
+**Last merged: R-290 with R-225, issue #160, `relay/160`, 2026-09-20.**
+How a queued job ended now decides how its verb exits, in every queued verb,
+which CLOSES R-290 and R-225. Before it, a job a worker PARKED left every queued
+verb with `outcome: ok` and exit 0, the block legible only inside `data.cause`,
+so a wrapper or a sync pass read success while the provider had just walled the
+account. A half failed job did the same in three shells, `master`, `acquire
+download` and `acquire fallback fetch`.
+**ONE MAPPING, `jobs.raise_for_state`.** Every shell that drives a job calls it
+outside the branch that drives, so a job already failed on entry answers the
+same way the second time it is asked. A blocked job raises `cause.JobBlocked`, a
+cancelled one `cause.JobCancelled`, a failed one its own cause, and the
+dispatcher reads the first two as `Outcome.BLOCKED` and `Outcome.CANCELLED`.
+The second was declared from the start and had no producer until now.
+**THE CAUSE WAS NOT THIRTEEN OMISSIONS.** Every shell had copied one predicate,
+closed and carrying a cause, and `blocked` is an OPEN state, so no copy could see
+it. A rule about job state that lives in a shell cannot learn about a state
+added later.
+**THE BIT RIDES THE EXCEPTION TYPE, and that has a cost.** Nothing on a parked
+job's cause says parked, since the adapter's own slug also fails single items.
+So any hop that rewords a refusal on its way out and builds a new
+`CratekitError` turns blocked into failed. Retag did. Then `backup` did, one
+merge later, on a `main` that moved while this unit sat unmerged, and it showed
+up only as a cherry-pick conflict. `cause.rebuilt` is now the one owner of a
+reworded refusal, retag, backup and intake go through it, and a static test
+refuses the rebuild spelled by hand.
+**THIS UNIT WAS BUILT TWICE.** The first sitting died on 2026-09-20 when the
+machine ran out of memory with the mutation table unmeasured. Its commits are
+kept under the tag `abandoned/r290-2026-09-20`. This sitting cherry-picked the
+code, the tests and the spec, resolved `backup`, ran the review again and redid
+the record with fresh numbers, because R-570 to R-574 had been given to other
+findings in between. The tag can be deleted once this is on `main`.
+**WHAT A PERSON MAY MEET.** `crate master --job ID` over a failed job exits non
+zero. Any queued verb over a parked job exits with the cause's own code and says
+`blocked`, with `resumable` false, because that field names the gate run and a
+parked job continues through its verb with the job id. A cancelled job says
+`cancelled` with exit 50. A refusal envelope carries no job data, R-580.
+**The code review raised eight findings.** Five were code and were applied, each
+reproduced first: the one owner above, the cancelled outcome, a blocked row with
+no cause keeping the blocked type, `resumable` excluding a parked job rather than
+trusting the cause's code, and five comments this unit made false. Three were
+the record and the table, which this commit is.
+Battery: ruff clean, **9246 passed** and 1 skipped in about a minute, 9247
+collected, scan clean. Mutation table `docs/mutation/r290-author.md`: **25 rows
+at the light cap, the author's own, all 25 killed**, two shell rows logged as
+dropped, null control at zero, every restore verified against `git show HEAD:`.
+Measured in two FOREGROUND passes of 511 and 473 seconds, the first stopped with
+an interrupt before the harness ceiling and resumed from the sidecar, which is
+the second of the two learnings below.
+Two learnings are under `docs/solutions/workflow-issues/`, the one about an
+outcome carried on an exception type being dropped by any hop that rebuilds the
+exception, and the one about a red mutation baseline on a loaded machine being
+starvation before it is a failure. `CONCEPTS.md` is unchanged.
+Filed: R-580, R-581 and R-582. **None meets the board bar**, so none gets an
+issue: nothing false is said by any of them, R-581's reachability is unmeasured
+and R-582 has no producer. The issues OWED from earlier sessions are unchanged.
+**Main's highest residual number is R-582.**
+
+**The session before: R-118 item 4, issue #171, `relay/171`, 2026-09-20.**
 An unreadable credential presence index refuses instead of answering absent,
 which CLOSES item 4 of R-118 and leaves the other four items open. The cost was
 driven before it was fixed: with a credential in the keychain and its index
@@ -77,7 +134,7 @@ R-579 costs a machine consumer one slug over a report whose code, message and
 remedy are all right. The issues OWED from earlier sessions are unchanged:
 R-572's, R-570's, R-563's, R-549's, R-523's, R-517's, R-515's, R-512's, R-482's
 and R-477's.
-**Main's highest residual number is R-579.**
+**Main's highest residual number was R-579 at that merge.**
 
 **The session before: R-356, issue #158, `relay/158`, 2026-09-20.**
 An ISRC several provider tracks share is resolved by the row's own names, which
@@ -3088,7 +3145,8 @@ onto it.
 
 **R-289**, the acquisition staging tree is a dotfile and `tagging.tag.audio_files`
 walks dotfiles. **R-290**, a blocked job reports outcome `ok` and exits 0 in every
-queued verb, which is the envelope contract rather than any one verb's line.
+queued verb, was CLOSED on `relay/160`, 2026-09-20, without the envelope contract
+change its entry feared. See the top of this file.
 
 **The resume reads a rename intent, never the folder**, filed at
 `docs/solutions/workflow-issues/a-worker-that-renames-its-item-owes-the-resume-an-exact-record.md`.

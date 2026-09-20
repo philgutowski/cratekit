@@ -40,7 +40,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 from cratekit.core import jobs
-from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 
 
@@ -100,7 +100,10 @@ def advance(ctx, store, job, *, origin: Sequence[str], nothing_to_run: str):
     build.
 
     Returns the job as it stands after the drive, and the warnings the driver
-    produced. Raises rather than returning when the job closed carrying a cause.
+    produced. Raises rather than returning when the job did not end cleanly,
+    through ``jobs.raise_for_state``: a job closed carrying a cause leaves through
+    that cause, and a PARKED job, which is open, leaves as ``JobBlocked``. A caller
+    that rewords what this raises goes through ``cause.rebuilt`` to keep the type.
     """
     job = jobs.reconcile(store, job.job_id)
     warnings: tuple[dict[str, str], ...] = ()
@@ -117,8 +120,7 @@ def advance(ctx, store, job, *, origin: Sequence[str], nothing_to_run: str):
             )
         _result, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
-    if not job.is_open() and job.cause is not None:
-        raise CratekitError(job.cause)
+    jobs.raise_for_state(job)
     return job, warnings
 
 

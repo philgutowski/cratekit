@@ -1775,6 +1775,76 @@ class CratekitError(Exception):
         return self._declared
 
 
+class JobBlocked(CratekitError):
+    """A queued job PARKED, leaving its verb through the refusal exit as blocked.
+
+    ``jobs.drive`` returns normally when a worker parks the run, because a park is
+    not a failure of any item, and the job it returns is ``blocked``, which is an
+    OPEN state. Every shell that reported "the job is not closed badly" through a
+    normal envelope therefore reported a parked job as ``ok`` and exited 0 over a
+    provider that had just walled the account (R-290). This is the type
+    ``jobs.raise_for_state`` raises for that job, and the dispatcher reads it as
+    ``Outcome.BLOCKED``.
+
+    WHY A TYPE AND NOT A TEST ON THE CAUSE, which is ``jobs.Parked``'s reason
+    again. The cause a parked job carries is the adapter's own, ``auth-failed`` or
+    ``provider-blocked`` or a missing program, and the same slugs fail single
+    items in jobs that were never parked. Nothing on the cause says "the job is
+    parked". The job's state says it, and this type carries that one bit across
+    the raise without the dispatcher importing the job engine, which imports the
+    dispatcher's package for the envelope.
+
+    IT LIVES HERE RATHER THAN IN ``core.jobs`` for that cycle and no other reason.
+
+    A HOP THAT REBUILDS THE REFUSAL MUST REBUILD IT AS THIS TYPE, and
+    :func:`rebuilt` is how. The bit rides the exception and not the cause, so
+    ``CratekitError(replace(exc.cause, ...))`` in an ``except`` between the shell
+    and the dispatcher silently turns blocked into failed.
+    ``tagging.retag_cli.with_reload_step`` did exactly that, found by the review
+    of the change that introduced this type, and ``backup`` did it again one
+    merge later.
+    """
+
+
+class JobCancelled(CratekitError):
+    """A queued job somebody STOPPED, leaving its verb as cancelled and not failed.
+
+    ``Outcome.CANCELLED`` was declared from the start and nothing produced it, so
+    a run stopped with a signal read ``failed`` in the outcome word while its exit
+    code and its job state both said otherwise. ``jobs.raise_for_state`` raises
+    this for a cancelled job and the dispatcher reads it as that outcome.
+
+    A TYPE FOR THE SAME REASON ``JobBlocked`` IS ONE, even though this cause does
+    carry a reason of its own: one way of carrying a job's ending to the
+    dispatcher, so one rule for every hop in between, which is :func:`rebuilt`.
+    """
+
+
+#: The types whose whole meaning is the type. Order is irrelevant, no job is both.
+_CARRIED: tuple[type[CratekitError], ...] = (JobBlocked, JobCancelled)
+
+
+def rebuilt(error: CratekitError, cause: Cause) -> CratekitError:
+    """The refusal ``error`` carrying ``cause`` instead, keeping what its type says.
+
+    THE ONE OWNER OF A REWORDED REFUSAL. A shell that adds a sentence to a refusal
+    on its way out builds a new exception around an extended cause, and a new
+    ``CratekitError`` drops the one bit :class:`JobBlocked` and
+    :class:`JobCancelled` exist to carry. Two shells selected the type by hand and
+    one of them forgot; a third hop would have had nothing to remind it.
+    ``tests/test_job_outcome.py`` refuses a rebuild spelled any other way.
+
+    ONLY THE CARRIED TYPES SURVIVE, deliberately. Every other subclass takes
+    constructor arguments of its own, so ``type(error)(cause)`` is not a thing
+    this can promise, and no reader downstream of a reworded refusal branches on
+    any of them.
+    """
+    for kind in _CARRIED:
+        if isinstance(error, kind):
+            return kind(cause)
+    return CratekitError(cause)
+
+
 def refuse(
     reason: str,
     message: str,
@@ -1828,6 +1898,8 @@ __all__ = [
     "AccessRefusal",
     "Cause",
     "CratekitError",
+    "JobBlocked",
+    "JobCancelled",
     "Outcome",
     "Remediation",
     "Scope",
@@ -1837,6 +1909,7 @@ __all__ = [
     "classified",
     "name_the_database",
     "permission_denied",
+    "rebuilt",
     "refuse",
     "widest_scope",
 ]
