@@ -1031,8 +1031,10 @@ def test_a_named_portion_runs_only_its_own_half(cfg):
     backup_cli.perform_backup(
         {}, portion=backup_facts.Portion.DATABASE, cfg=cfg, runner=database, now=MOMENT
     )
-    assert _labels(database) == [backup.SNAPSHOT_DATABASE], (
-        f"the database portion ran {_labels(database)}, not the snapshot alone"
+    # The snapshot and the marker that says whose it is, which belongs to the
+    # database portion because it describes the database in that dated folder.
+    assert _labels(database) == [backup.SNAPSHOT_DATABASE, backup.SNAPSHOT_IDENTITY], (
+        f"the database portion ran {_labels(database)}, not the snapshot and its marker"
     )
 
 
