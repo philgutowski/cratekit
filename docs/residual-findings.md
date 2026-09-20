@@ -12391,6 +12391,23 @@ place both verbs reach, or `master` grows the same three lines, with a test
 driving a partially failed job through each bound verb and asserting the exit
 code.
 
+**CLOSED 2026-09-20 on `relay/160`, by the first of the two, and the entry
+undercounted.** It named `master` as the only verb still exposed. Read on
+2026-09-20, three shells had never copied the re-raise: `master/cli.py`,
+`acquire/cli.py` and `acquire/fallback_cli.py`, the last two bound after this
+entry was written, which is the inheritance its second paragraph predicted. The
+branch now lives in one place every queued verb reaches,
+`jobs.raise_for_state`, and every shell that calls `ctx.run_job` calls it outside
+the branch that drives. `tests/test_job_outcome.py` drives a half failed job, one
+item done and one failed, through every key bound in `handlers.HANDLERS` by the
+command line the verb itself declares for a resume, asserts the job reached
+`failed` and the exit is non zero, and asks a second time, which is the
+placement `backup` paid for. `adopt.apply` needs a destructive session machine
+and is driven in `tests/test_adopt_workers.py` instead. Two existing tests had
+pinned the cost as correct, `tests/test_master_cli.py` asserting `ExitCode.OK` on
+the second look at a failed job and `tests/test_acquire_workers.py` asserting
+only `data.state`, and both are corrected. See R-290, closed by the same change.
+
 ---
 
 ## R-226. No streaming provider adapter ships, so both outbound workers end at the seam
@@ -14507,6 +14524,62 @@ and `ctx.envelope` has no cause parameter, while `output.envelope_problems`
 requires a top level cause exactly when the outcome is not a success. Reporting
 `BLOCKED` honestly therefore means changing the envelope contract for every
 queued verb at once, which is a unit rather than a line.
+
+**CLOSED 2026-09-20 on `relay/160`, and the contract change it feared was not
+needed.** Reproduced first, by driving rather than reading: a worker that parks,
+swapped in behind every key bound in `handlers.HANDLERS` and driven through each
+verb's own resume command line. Thirteen of the nineteen keys then bound reached
+a `blocked` job and every one of the thirteen reported `outcome: ok` and exit 0.
+The other six stopped earlier, on a payload field or a gate that first probe did
+not supply, so they were NOT measured before the fix, only after it. The cause
+was not thirteen separate omissions. Every shell had copied one predicate,
+closed and carrying a cause, and `blocked` is an OPEN state, so no copy could
+see it.
+
+The refusal exit already satisfies `envelope_problems`: `output.from_cause`
+puts the cause at the top level and takes the exit code from it. What was
+missing was a way to tell the dispatcher that THIS refusal is a block, and
+nothing on the cause says so, since a parked job carries the adapter's own
+slug. So the bit rides a type. `jobs.raise_for_state` raises the new
+`cause.JobBlocked` for a blocked job, `cause.JobCancelled` for a cancelled one
+and the job's own cause for a failed one, and the dispatcher reads the first as
+`Outcome.BLOCKED` and the second as `Outcome.CANCELLED`, which was declared from
+the start and had no producer. The types live in `core.cause` because
+`cli/__init__` cannot import `core.jobs`, which imports the CLI package for the
+envelope. Measured after: every key answers `blocked` with the cause's own non
+zero code, on the first ask and the second.
+
+`resumable` stays false on that envelope, deliberately and now by construction.
+The field names the GATE run `crate run` can continue, and a parked job continues
+through its verb with the job id. It was read off the cause's code alone, so a
+worker parking on a gate coded cause would have set it, and the dispatcher now
+excludes a parked job.
+
+The population test is `tests/test_job_outcome.py`. Its keys come from
+`handlers.HANDLERS`, so a verb bound later is in it the moment it is bound. It
+also reads the source: a function that calls `run_job` must reach
+`raise_for_state` on the way out, by control flow and not by line number, not
+only inside its `is_open` branch, and no condition outside `core/jobs.py` may
+read both `is_open` and `cause`. The mapping may sit alone inside a `try` only
+when every handler ends in a raise or in a call its module annotates
+`NoReturn`, which is `backup`'s shape.
+
+**The same hop was found twice, which is METHOD's fifth pattern measured.**
+`tagging.retag_cli.with_reload_step` REBUILDS its refusal to append a step, and
+built a plain `CratekitError`, so a retag parked after correcting a file said
+`failed` over a blocked job. The built in review found it. This unit was then
+rebuilt on a later `main`, where `backup` had gained a rehearsal and the same
+rebuild with it, one merge after the first was fixed. The population test sees
+neither, because the job it queues corrects nothing and is not a rehearsal.
+`cause.rebuilt` is now the one owner of a reworded refusal, the retag, backup
+and intake hops go through it, and a static test refuses a
+`CratekitError(replace(...))` spelled by hand or either carried type built
+outside the mapping. `sync.cli.compose` is exempted by name, since it raises
+from a recorded cause with no exception in hand and drives no job.
+
+What the review raised and this change did not fix is R-580 to R-582. Mutation
+table: `docs/mutation/r290-author.md`, 25 rows at the light cap, all 25 killed,
+two shell rows logged as dropped.
 
 ## R-291. Per item staging directories are created and never removed
 
@@ -23460,3 +23533,86 @@ about this unit.
 **Closes when:** `Finding` lifts the declared cause off a `CratekitError` in
 `error`, the way `__post_init__` already lifts one off an access refusal, or a
 consumer needs to tell the two index states apart from the envelope.
+
+---
+
+## R-580. A refused job's envelope carries no job id, state or progress
+
+**Found:** at the built in review of the R-290 fix, 2026-09-20. Driven.
+
+A queued verb whose job did not end cleanly leaves through
+`output.from_cause`, whose `data` is the diagnostic surface's empty
+`{"checks": [], "summary": {}}`. The job report, id, state and progress counts,
+rode the normal envelope and does not ride this one.
+
+**Measured.** A `backup run --job ID` over a parked rehearsal, captured while
+proving the backup hop: `data` is `{"checks": [], "summary": {}}` and
+`cause.detail` is `{}`, because `drive` parks with the adapter's own cause and
+adds nothing to it. A failed job is better off only by accident,
+`_partial_failure_cause` happens to carry the counts, and a cancelled one
+carries its job id because `jobs.cancel` writes it.
+
+**Cost.** A wrapper learns THAT the run is blocked, which is what R-290 asked
+for, and not how many items landed first, without a second call to `crate job
+show`. The three shells read for this, `acquire download`, `master` and `backup
+run`, drive only on the branch that was handed a job id, so whoever ran the
+command still has it; the other shells were not read for it. Nothing false is
+said, so this does not meet the board bar.
+
+**Why it is not fixed here.** It was true of the failed exit in ten shells before
+this change and R-290 widened it to the blocked exit. `from_cause` accepts
+`data`, and what it may carry on the diagnostic schema is the envelope contract
+question R-290's own entry deferred, for every refusal rather than for jobs.
+
+**Closes when:** a job refusal names its job and its progress, in `cause.detail`
+or in a declared `data` shape, with a population test over `handlers.HANDLERS`.
+
+---
+
+## R-581. Drift warnings never reach a job that did not end cleanly
+
+**Found:** at the built in review of the R-290 fix, 2026-09-20. Read, NOT driven.
+
+`ctx.run_job` returns the configuration drift warnings beside the result, and
+every shell attaches them to the normal envelope. `raise_for_state` raises
+before that envelope is built and `output.from_cause` has no warnings parameter,
+so a run that parked or half failed drops them. That was already true of ten
+shells. `master`, `acquire download` and `acquire fallback-fetch` delivered the
+warning on exactly these endings until this change, and no longer do.
+
+**Cost, unmeasured.** A person debugging a failed resume is not shown that the
+live configuration differs from the frozen one, which can be the explanation.
+The reachability is unmeasured: no drifted configuration was driven into a
+failing job here.
+
+This is the general form of
+`docs/solutions/workflow-issues/a-queued-verb-has-two-exits-and-an-advisory-on-the-envelope-only-reaches-one.md`.
+
+**Closes when:** the refusal envelope can carry warnings, or the drift rides the
+cause's steps the way the retag reload and the backup rehearsal word do.
+
+---
+
+## R-582. Run state is not saved when a job leaves blocked, and no producer was found
+
+**Found:** at the built in review of the R-290 fix, 2026-09-20. Driven by the
+first sitting of this unit, not reproduced, and NOT driven again at the second.
+
+The dispatcher saves gate run state on the normal exit and on a gate refusal.
+A parked job used to take the normal exit and now takes a refusal that is not
+resumable, so state mutated during that invocation is dropped. The review's
+scenario was an inline `-d gate=option` on a fresh run whose decision is then
+lost.
+
+**Measured, at the first sitting on 2026-09-20.** Three gated queued verbs were
+driven, `tag.retag`, `export.playlist` and `sync.favorites`, and none produces
+it. All three gates are explicit and refuse the inline decision before the job
+is touched, and a decision recorded by `crate run decide` is saved by that verb.
+A parked job asked three times under one approving run answered `blocked` each
+time. `adopt.apply` was not driven for this. 3 candidates were driven and none
+produces it, which is not the same as nothing producing it. The population test
+at the second sitting answers each gate through `run decide` and resumes under
+the run, over every gated key, and every one answers `blocked` on both asks.
+
+**Closes when:** a queued verb gains a gate that accepts an inline decision, at
+which point this is reachable and the save belongs on the blocked exit too.
