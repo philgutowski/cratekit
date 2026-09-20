@@ -1650,3 +1650,29 @@ def test_the_commit_witness_leaves_the_handle_as_it_found_it(cfg, gates_pass, db
         db.session.commit()
         assert witness.landed is True
     assert not event.contains(db.session, "after_commit", witness._mark)
+
+
+def test_the_commit_witness_does_not_read_a_commit_that_never_landed_as_landed(
+    cfg, gates_pass, db, adopted_root
+):
+    """The other half: a commit refused on its way IN recorded nothing durable.
+
+    The refusing listener is registered after the witness's own, so a witness
+    listening one event too early would already have marked itself by the time
+    this raises.
+    """
+    from sqlalchemy import event
+
+    def refuse(_session):
+        raise RuntimeError("the transaction was refused before it landed")
+
+    with rb_writer.commit_witness(db) as witness:
+        event.listen(db.session, "before_commit", refuse)
+        try:
+            rb_writer.ensure_folder(db, "a folder that never lands")
+            with pytest.raises(RuntimeError, match="before it landed"):
+                db.session.commit()
+        finally:
+            event.remove(db.session, "before_commit", refuse)
+            db.session.rollback()
+        assert witness.landed is False
