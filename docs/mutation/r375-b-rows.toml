@@ -1,0 +1,150 @@
+name = "r375-b"
+pass_kind = "light"
+
+# R-375 and R-12, batch B of three: the membership writer and the mytags verb.
+
+[[rows]]
+id = "T1_capture_never_attached"
+description = "write_tree_membership: take the capture and never attach it, which is R-12 itself with a record beside it"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''        session.attach_capture(record, capture.root, cfg)
+        snapshot.assert_verified(capture)'''
+new = '''        snapshot.assert_verified(capture)'''
+
+[[rows]]
+id = "T2_attached_only_once_verified"
+description = "write_tree_membership: attach the capture AFTER it is judged, so one that fails its check is a directory no record names"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''        session.attach_capture(record, capture.root, cfg)
+        snapshot.assert_verified(capture)'''
+new = '''        snapshot.assert_verified(capture)
+        session.attach_capture(record, capture.root, cfg)'''
+
+[[rows]]
+id = "T3_a_noop_claims_a_commit"
+description = "_record_membership_commit: record a commit for a pass that added nothing, so a restore refuses over sessions that created nothing"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''    if added <= 0:
+        return
+    session.record_commit('''
+new = '''    session.record_commit('''
+
+[[rows]]
+id = "T4_noop_bound_off_by_one"
+description = "_record_membership_commit: move the no-op bound by one, so a pass that added exactly one membership claims no commit"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''    if added <= 0:
+        return
+    session.record_commit('''
+new = '''    if added <= 1:
+        return
+    session.record_commit('''
+
+[[rows]]
+id = "T5_witnessed_commit_not_recorded"
+description = "write_tree_membership: ignore the witness, so a commit that landed and then raised closes as though nothing landed"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''            if witness.landed:
+                _record_membership_commit(record, tree_id, added, cfg)'''
+new = '''            if False:
+                _record_membership_commit(record, tree_id, added, cfg)'''
+
+[[rows]]
+id = "T6_every_raise_read_as_a_commit"
+description = "write_tree_membership: record a commit on every raise, so a write that never committed is work a restore refuses to discard"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''            if witness.landed:
+                _record_membership_commit(record, tree_id, added, cfg)'''
+new = '''            if True:
+                _record_membership_commit(record, tree_id, added, cfg)'''
+
+[[rows]]
+id = "T7_commit_recorded_after_the_fingerprint"
+description = "write_tree_membership: record the commit AFTER the fingerprint write, so a failure there closes a committed write as empty"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''        _record_membership_commit(record, tree_id, added, cfg)
+
+        # THE FINGERPRINT IS TAKEN AT THE CLOSE, AFTER THE COMMIT. It is what
+        # lets the next run tell a database recovered out of band from one this
+        # product changed itself, and taking it before the commit would record a
+        # database this session then moved, so the next run would read its own
+        # write as somebody else's restore. It sits outside the try above because
+        # by here the commit has landed and there is nothing pending to roll
+        # back; a failure now is a state write that failed, not a database write
+        # that half happened.
+        convergence.record_fingerprint(cfg, db)
+'''
+new = '''
+        # THE FINGERPRINT IS TAKEN AT THE CLOSE, AFTER THE COMMIT. It is what
+        # lets the next run tell a database recovered out of band from one this
+        # product changed itself, and taking it before the commit would record a
+        # database this session then moved, so the next run would read its own
+        # write as somebody else's restore. It sits outside the try above because
+        # by here the commit has landed and there is nothing pending to roll
+        # back; a failure now is a state write that failed, not a database write
+        # that half happened.
+        convergence.record_fingerprint(cfg, db)
+        _record_membership_commit(record, tree_id, added, cfg)
+'''
+
+[[rows]]
+id = "T8_counts_filed_as_updates"
+description = "_record_membership_commit: file the added memberships as updated rather than created"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''session.TreeChange(tree=tree_id, created=added)'''
+new = '''session.TreeChange(tree=tree_id, updated=added)'''
+
+[[rows]]
+id = "M1_capture_never_attached"
+description = "mytags_vocals: take the capture and never attach it, which is R-375 itself with a record beside it"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''            session.attach_capture(record, capture.root, cfg)
+'''
+new = ''''''
+
+[[rows]]
+id = "M2_a_noop_claims_a_commit"
+description = "_record_mytags_commit: record a commit for an apply that wrote nothing"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''    if written <= 0:
+        return
+'''
+new = ''''''
+
+[[rows]]
+id = "M3_witnessed_commit_not_recorded"
+description = "mytags_vocals: ignore the witness, so a commit that landed and then raised closes as though nothing landed"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''                if witness.landed:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "M4_summary_keyed_on_the_display_name"
+description = "_record_mytags_commit: key the change summary on the category's display name, which a person can rename (R19)"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''session.TreeChange(tree=CHANGE_KEY, created=written)'''
+new = '''session.TreeChange(tree=CATEGORY, created=written)'''
