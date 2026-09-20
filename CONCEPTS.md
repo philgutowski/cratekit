@@ -296,6 +296,20 @@ source system wrote, it is never the default and is pulled only when a person
 names it. A **named** snapshot is one whose stamp a person typed: a stamp the
 verb resolved off a listing and handed down is not named, however it arrives.
 
+### Bare metal recovery
+Recovery onto a replacement drive when the library volume itself is gone, as
+opposed to a **restore**, which puts a library that is present back to an
+earlier state. The difference is where the gates are read from. A restore passes
+the three library scoped gates, the lock, the backup acknowledgment and the
+volume identity, and all three sit beside the library, so none can be read once
+that disk has died. A bare metal recovery passes **substitute gates** instead:
+the recorded library must be genuinely unreachable, the target must be a
+filesystem of its own holding no database, a person must be at a terminal and
+accept the replacement, and the lock is installation scoped. It runs in two
+**halves**, the mirror and then the database, reported separately, and it rolls
+no session back. The refusal that keeps the two apart is the first one, and a
+target that is the empty folder a lost volume leaves behind is a **stub**.
+
 ### Rotation floor
 The stamp of the last COMPLETED mirror to the configured destination, taken from
 the files portion's published backup age. The archive rotation compares dated
