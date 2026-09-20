@@ -30,7 +30,14 @@ import pytest
 from cratekit.cli import handlers
 from cratekit.cli import jobs as cli_jobs
 from cratekit.core import config, jobs
-from cratekit.core.cause import CratekitError, JobBlocked, Outcome, refuse
+from cratekit.core.cause import (
+    CratekitError,
+    JobBlocked,
+    JobCancelled,
+    Outcome,
+    rebuilt,
+    refuse,
+)
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests.cli_drive import drive
 from tests.test_config import valid_data
@@ -168,27 +175,40 @@ def test_a_blocked_job_recording_no_reason_is_still_not_a_success(machine):
         _job_in(machine, jobs.JobState.BLOCKED, cause=_block().cause), cause=None
     )
 
-    with pytest.raises(CratekitError) as caught:
+    with pytest.raises(JobBlocked) as caught:
         jobs.raise_for_state(job)
 
+    # THE TYPE AS WELL AS THE REASON, which the first version of this test did not
+    # pin. A plain refusal here reads ``failed`` in the envelope over a row whose
+    # state reads ``blocked``, the disagreement the type exists to remove.
     assert caught.value.cause.reason == "internal-error"
     assert job.job_id in caught.value.cause.message
 
 
-@pytest.mark.parametrize("state", [jobs.JobState.FAILED, jobs.JobState.CANCELLED])
-def test_a_job_closed_with_a_cause_raises_that_cause_and_is_not_called_blocked(
-    machine, state
-):
-    """The two are different answers. ``failed`` sends a person to look at what
-    broke, ``blocked`` sends them to their account, and a closed job reported as
-    blocked would send them to the wrong place."""
+def test_a_failed_job_raises_its_own_cause_as_neither_carried_type(machine):
+    """The answers differ. ``failed`` sends a person to look at what broke,
+    ``blocked`` sends them to their account, and a closed job reported as blocked
+    would send them to the wrong place."""
     cause = refuse("source-missing", "it is gone", origin=("test",)).cause
-    job = _job_in(machine, state, cause=cause)
+    job = _job_in(machine, jobs.JobState.FAILED, cause=cause)
 
     with pytest.raises(CratekitError) as caught:
         jobs.raise_for_state(job)
 
-    assert not isinstance(caught.value, JobBlocked)
+    assert type(caught.value) is CratekitError
+    assert caught.value.cause == job.cause
+
+
+def test_a_cancelled_job_raises_the_cancelled_type_carrying_its_own_cause(machine):
+    """``Outcome.CANCELLED`` was declared and nothing produced it, which is the
+    state ``Outcome.BLOCKED`` was in when R-290 was filed. A person who stopped a
+    run is not told it broke."""
+    with jobs.open_store() as store:
+        job = jobs.cancel(store, queued(machine, "master", ("one",)).job_id)
+
+    with pytest.raises(JobCancelled) as caught:
+        jobs.raise_for_state(job)
+
     assert caught.value.cause == job.cause
 
 
@@ -213,6 +233,54 @@ def test_the_dispatcher_reads_the_blocked_type_as_the_blocked_outcome(machine, m
     assert envelope["outcome"] == str(Outcome.BLOCKED), envelope
     assert code == int(_block().cause.code), envelope
     assert envelope["resumable"] is False, envelope
+
+
+def _gate_coded_park(job, item, cfg):
+    """A worker parking on a cause whose code is one of the gate codes."""
+    raise jobs.Parked(
+        refuse(
+            "decision-required",
+            "an acknowledgment this run needs was never recorded",
+            origin=("test",),
+        ).cause
+    )
+
+
+def test_a_park_on_a_gate_coded_cause_is_still_not_resumable_through_the_run(
+    machine, monkeypatch
+):
+    """``resumable`` was derived from the cause's code alone, so the claim above
+    held only while no worker parked on a gate coded cause, and ``transition``'s
+    own text names a missing acknowledgment as a reason to park. The code must be
+    a gate code here or this drives nothing: asserted, not assumed."""
+    from cratekit.cli import gates
+
+    monkeypatch.setattr(handlers, "resolve", lambda _key: _gate_coded_park)
+    job = queued(machine, "master", ("one",))
+
+    # NOT ``resumed``, which reads this very exit code as a gate to answer.
+    # ``master`` has no gate, so the code can only have come from the park.
+    code, envelope = drive(cli_jobs.argv_for(job))
+
+    assert job_of(job.job_id).state is jobs.JobState.BLOCKED, envelope
+    assert ExitCode(code) in gates.GATE_CODES, envelope
+    assert envelope["outcome"] == str(Outcome.BLOCKED), envelope
+    assert envelope["resumable"] is False, envelope
+
+
+@pytest.mark.parametrize("key", QUEUED_KEYS)
+def test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero(machine, key):
+    """The third ending, over the whole population. A cancelled job is closed, so
+    no worker runs and none is swapped in."""
+    with jobs.open_store() as store:
+        job = jobs.cancel(store, queued(machine, key, ("one",)).job_id)
+
+    code, envelope = resumed(job)
+
+    assert job_of(job.job_id).state is jobs.JobState.CANCELLED, envelope
+    assert envelope["outcome"] == str(Outcome.CANCELLED), envelope
+    assert code == int(ExitCode.INTERRUPTED), envelope
+    assert envelope["cause"]["reason"] == "cancelled", envelope
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -571,3 +639,69 @@ def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
             if {"is_open", "cause"} <= names:
                 offenders.append(f"{path.relative_to(SRC)}:{node.lineno}")
     assert offenders == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The hop between a shell and the dispatcher
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: A refusal built from a cause where NO EXCEPTION IS IN HAND, so there is no type
+#: to keep. ``sync`` collects the causes of sources that refused at the queue and
+#: raises the first one over the whole pass. It drives no job.
+NO_ERROR_IN_HAND = {"sync/cli.py": "compose"}
+
+
+def _is_a_replace(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and ast.unparse(node.func) in {"replace", "dataclasses.replace"}
+    )
+
+
+def test_a_reworded_refusal_is_rebuilt_in_one_place_only():
+    """The blocked and cancelled bits ride the exception's TYPE, so every hop that
+    rewords a refusal on its way out has to keep it, and two shells in a row got
+    that wrong by building ``CratekitError(replace(...))``. ``cause.rebuilt`` owns
+    the choice now. This refuses the two ways of going round it: the rebuild
+    spelled by hand, and either carried type constructed outside the mapping."""
+    by_hand, constructed = [], []
+    for path in sorted(SRC.rglob("*.py")):
+        where = str(path.relative_to(SRC))
+        if where == "core/cause.py":
+            continue
+        for function in _functions(ast.parse(path.read_text())):
+            for node in ast.walk(function):
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+                    continue
+                if (
+                    node.func.id == "CratekitError"
+                    and node.args
+                    and _is_a_replace(node.args[0])
+                    and NO_ERROR_IN_HAND.get(where) != function.name
+                ):
+                    by_hand.append(f"{where}:{node.lineno}")
+                if node.func.id in {"JobBlocked", "JobCancelled"} and where != "core/jobs.py":
+                    constructed.append(f"{where}:{node.lineno}")
+    assert by_hand == []
+    assert constructed == []
+
+
+def test_the_exemption_from_the_rebuild_rule_still_names_a_real_function():
+    for where, name in NO_ERROR_IN_HAND.items():
+        assert f"def {name}(" in (SRC / where).read_text(), f"{where} has no {name}"
+
+
+@pytest.mark.parametrize("kind", [JobBlocked, JobCancelled, CratekitError])
+def test_a_rebuilt_refusal_keeps_a_carried_type_and_takes_the_new_cause(kind):
+    before, after = _block().cause, refuse("source-missing", "gone", origin=("test",)).cause
+
+    again = rebuilt(kind(before), after)
+
+    assert type(again) is kind
+    assert again.cause == after
+
+
+def test_a_rebuilt_refusal_of_any_other_type_is_the_plain_one():
+    """``Parked`` takes a cause like the base type, and it is still not carried:
+    only the two types the dispatcher reads are, and the docstring says why."""
+    assert type(rebuilt(jobs.Parked(_block().cause), _block().cause)) is CratekitError

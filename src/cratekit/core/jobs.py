@@ -59,6 +59,7 @@ from cratekit.core.cause import (
     Cause,
     CratekitError,
     JobBlocked,
+    JobCancelled,
     Remediation,
     Scope,
     name_the_database,
@@ -790,7 +791,9 @@ def raise_for_state(job: Job) -> None:
       raises only when EVERY attempted item failed, so a job where one item
       completed and another did not returns normally, recorded failed (R-225).
       Cancelled is included deliberately: a run stopped with a signal left work
-      undone. ``succeeded`` carries no cause and is not reached.
+      undone. It raises :class:`JobCancelled`, which the dispatcher reads as
+      ``Outcome.CANCELLED``, so a person who stopped a run is not told it broke.
+      ``succeeded`` carries no cause and is not reached.
 
     CALL IT OUTSIDE THE ``is_open`` BRANCH THAT DRIVES. A job already failed on
     entry is not open, so the drive is skipped, and a check inside that branch is
@@ -811,16 +814,24 @@ def raise_for_state(job: Job) -> None:
         # ``transition`` refuses to park a job without a cause, so a blocked row
         # with none was written by something other than this engine. It is still
         # not a success, and the refusal says what is actually known.
+        #
+        # STILL AS THE BLOCKED TYPE. The first version raised the plain refusal,
+        # and the envelope then said ``failed`` over a row ``job show`` calls
+        # blocked, the disagreement this function exists to remove.
         if job.cause is None:
-            raise refuse(
-                "internal-error",
-                f"job {job.job_id} is blocked and records no reason for it",
-                remedy=Remedy.REPORT_DEFECT,
-                origin=("jobs",),
-                detail={"job_id": job.job_id, "state": str(job.state)},
+            raise JobBlocked(
+                refuse(
+                    "internal-error",
+                    f"job {job.job_id} is blocked and records no reason for it",
+                    remedy=Remedy.REPORT_DEFECT,
+                    origin=("jobs",),
+                    detail={"job_id": job.job_id, "state": str(job.state)},
+                ).cause
             )
         raise JobBlocked(job.cause)
     if not job.is_open() and job.cause is not None:
+        if job.state is JobState.CANCELLED:
+            raise JobCancelled(job.cause)
         raise CratekitError(job.cause)
 
 

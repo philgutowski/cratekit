@@ -99,7 +99,7 @@ from typing import Any, NoReturn
 from cratekit.cli import exit_codes as reservations
 from cratekit.cli.output import Envelope
 from cratekit.core import backup_facts, config, jobs
-from cratekit.core.cause import Cause, CratekitError, JobBlocked, Remediation, refuse
+from cratekit.core.cause import Cause, CratekitError, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.tools import backup
 
@@ -250,17 +250,17 @@ def _with_rehearsal_step(error: CratekitError, job) -> CratekitError:
     them looking for the half that was. :func:`_raise_refusal` is what raises the
     result, and the identity above is the thing it branches on.
 
-    THE TYPE IS CARRIED THROUGH AS WELL (R-290). A parked job leaves as
-    ``JobBlocked`` and the dispatcher reads that type, nothing on the cause, as
-    the blocked outcome. Rebuilt as a plain ``CratekitError``, a rehearsal the
-    worker parked would say ``failed`` over a job whose state is blocked, which
-    is the hop ``retag_cli.with_reload_step`` was caught making.
+    THE TYPE IS CARRIED THROUGH AS WELL, BY ``cause.rebuilt`` (R-290). A parked
+    job leaves as ``JobBlocked`` and the dispatcher reads that type, nothing on
+    the cause, as the blocked outcome. Rebuilt as a plain ``CratekitError``, a
+    rehearsal the worker parked would say ``failed`` over a job whose state is
+    blocked, which is the hop ``retag_cli.with_reload_step`` was caught making.
     """
     if not _is_rehearsal(job):
         return error
     cause = error.cause
-    rebuilt = JobBlocked if isinstance(error, JobBlocked) else CratekitError
     return rebuilt(
+        error,
         replace(
             cause,
             remediation=replace(

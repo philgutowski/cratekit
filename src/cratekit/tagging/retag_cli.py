@@ -76,9 +76,9 @@ from cratekit.core import config, jobs, review, tags, taxonomy
 from cratekit.core.cause import (
     Cause,
     CratekitError,
-    JobBlocked,
     Outcome,
     Remediation,
+    rebuilt,
     refuse,
 )
 from cratekit.core.exit_codes import Remedy
@@ -178,8 +178,8 @@ def with_reload_step(error: CratekitError, folder: str) -> CratekitError:
     """
     cause = error.cause
     reload_step = library_row_warning(folder)["message"]
-    rebuilt = JobBlocked if isinstance(error, JobBlocked) else CratekitError
     return rebuilt(
+        error,
         replace(
             cause,
             remediation=replace(

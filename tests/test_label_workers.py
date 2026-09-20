@@ -1092,7 +1092,8 @@ def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(
     entry is not open, so the drive is skipped, and a re-raise written inside the
     branch would be skipped with it: the first ask answers "failed" and every ask
     after it exits 0 over the same unfinished work. ``master/cli.py``'s resume
-    branch has no re-raise at all, which is what this asserts was not copied.
+    branch had no re-raise at all when this was written, which is what this
+    asserts was not copied. Every shell calls ``jobs.raise_for_state`` now.
     """
     del installed
     register(LABELS[0])

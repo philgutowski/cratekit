@@ -108,8 +108,11 @@ def advance(ctx, store, job, *, origin: Sequence[str], nothing_to_run: str):
     an older build.
 
     Returns the job as it stands after the drive, along with the warnings the
-    driver produced. Raises rather than returning when the job closed carrying a
-    cause.
+    driver produced. Raises rather than returning when the job did not end
+    cleanly, through ``jobs.raise_for_state``: a job closed carrying a cause
+    leaves through that cause, and a PARKED job, which is open, leaves as
+    ``JobBlocked``. A caller that rewords what this raises goes through
+    ``cause.rebuilt`` to keep the type, which ``retag_cli`` once did not.
     """
     job = jobs.reconcile(store, job.job_id)
     warnings: tuple[dict[str, str], ...] = ()
