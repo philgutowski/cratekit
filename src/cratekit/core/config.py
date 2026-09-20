@@ -2181,9 +2181,23 @@ class PrefixMapping:
 
     from_prefix: str
     to_prefix: str
+    #: R38, per rule. The recorded identity of the volume ``to`` sits on, in the
+    #: shape ``library.volume_id`` has and for the same reason: a destructive
+    #: pass that follows this rule writes to that volume, and a mount path does
+    #: not say which disk is mounted there today. Unset is correct for a target
+    #: inside the library root, which the library's own identity answers for. A
+    #: target anywhere else with nothing recorded here refuses a destructive pass
+    #: rather than being trusted because its directory exists.
+    volume_id: str | None = None
 
 
 _PREFIX_TOML_KEYS = (("from", "from_prefix"), ("to", "to_prefix"))
+
+#: The one OPTIONAL key of a prefix mapping, and its TOML spelling is its field
+#: name. Separate from the pairs above because those are required and this is
+#: written only when set: a rule with no identity must serialize to the bytes it
+#: always did, or every existing configuration changes fingerprint (KTD9).
+PREFIX_VOLUME_IDENTITY_KEY = "volume_id"
 
 #: The one interpolation token a prefix mapping's ``to`` may contain. Keeping the
 #: map interpolated rather than absolute is what lets it survive the user
@@ -2441,6 +2455,23 @@ class Config:
             for m in self.library.location_prefix_map
         )
 
+    def resolved_prefix_rules(self) -> tuple[tuple[str, str, str | None], ...]:
+        """The resolved prefix map with each rule's recorded volume identity.
+
+        A SECOND SHAPE RATHER THAN A WIDER FIRST ONE. Every reader of
+        ``resolved_prefix_map`` unpacks pairs, and only a pass that WRITES through
+        a rule has any use for the identity, so widening the pairs would break
+        ten callers to serve one. Built from the pairs rather than beside them so
+        the interpolation is written once and the two cannot disagree about where
+        a rule points.
+        """
+        return tuple(
+            (source, target, mapping.volume_id)
+            for (source, target), mapping in zip(
+                self.resolved_prefix_map(), self.library.location_prefix_map, strict=True
+            )
+        )
+
     # -- serialization and identity ---------------------------------------
 
     def to_toml_dict(self) -> dict:
@@ -2649,17 +2680,7 @@ def validate(data: Mapping) -> list[str]:
 
     volume_id = _dig(data, "library.volume_id")
     if isinstance(volume_id, str) and volume_id.strip():
-        # R38 identifies a volume by RECORDED IDENTITY, not by mount path. A
-        # value shaped like a path means somebody recorded where the drive
-        # happened to be mounted, which is the failure the requirement names:
-        # the next drive to mount there would pass the assertion.
-        if volume_id.startswith(("/", "\\")) or ":\\" in volume_id:
-            problems.append(
-                f"{VOLUME_IDENTITY_KEY} looks like a mount path ({volume_id!r}). "
-                f"Record the volume's own identity, a UUID or serial, so a "
-                f"different drive mounted at the same path fails the assertion "
-                f"instead of passing it (R38)."
-            )
+        problems += _mount_path_problem(VOLUME_IDENTITY_KEY, volume_id)
 
     template = _dig(data, TAXONOMY_TEMPLATE_KEY)
     if template is not None and not template_name_is_usable(template):
@@ -2881,6 +2902,26 @@ def _validate_db_containment(data: Mapping) -> list[str]:
     ]
 
 
+def _mount_path_problem(key: str, volume_id: str) -> list[str]:
+    """Refuse a volume identity that is shaped like a path. One rule, two keys.
+
+    R38 identifies a volume by RECORDED IDENTITY, not by mount path. A value
+    shaped like a path means somebody recorded where the drive happened to be
+    mounted, which is the failure the requirement names: the next drive to mount
+    there would pass the assertion. Shared by ``library.volume_id`` and by every
+    prefix rule's ``volume_id`` so the two cannot come to mean different things
+    by an identity.
+    """
+    if volume_id.startswith(("/", "\\")) or ":\\" in volume_id:
+        return [
+            f"{key} looks like a mount path ({volume_id!r}). "
+            f"Record the volume's own identity, a UUID or serial, so a "
+            f"different drive mounted at the same path fails the assertion "
+            f"instead of passing it (R38)."
+        ]
+    return []
+
+
 def _validate_prefix_map(raw: object) -> list[str]:
     """Validate the ordered array-of-tables prefix map (S1)."""
     if raw is None:
@@ -2910,6 +2951,20 @@ def _validate_prefix_map(raw: object) -> list[str]:
                     f"{', '.join(sorted(unknown))}; only {LIBRARY_ROOT_TOKEN} is "
                     f"interpolated"
                 )
+        if PREFIX_VOLUME_IDENTITY_KEY in entry:
+            # PRESENT AND UNUSABLE IS A PROBLEM, NEVER A DEFAULT. Reading a blank
+            # or mistyped identity as "none recorded" would send the rule down
+            # the library's own identity for a target inside the root, which is
+            # a check passing on a value the person got wrong.
+            identity = entry[PREFIX_VOLUME_IDENTITY_KEY]
+            key = f"{where}.{PREFIX_VOLUME_IDENTITY_KEY}"
+            if not isinstance(identity, str) or not identity.strip():
+                problems.append(
+                    f"{key} must be a non-empty string when it is given; leave "
+                    f"the key out for a target inside the library root"
+                )
+            else:
+                problems += _mount_path_problem(key, identity)
     return problems
 
 
@@ -2963,6 +3018,7 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
                 PrefixMapping(
                     from_prefix=entry["from"],
                     to_prefix=entry["to"],
+                    volume_id=entry.get(PREFIX_VOLUME_IDENTITY_KEY),
                 )
                 for entry in prefix_raw
             ),
@@ -3060,7 +3116,10 @@ def _apply_toml_key_aliases(source, out: dict) -> dict:
     that distinction is a code concern the user should never have to type.
     """
     if isinstance(source, PrefixMapping):
-        return {toml_key: out[field_name] for toml_key, field_name in _PREFIX_TOML_KEYS}
+        aliased = {toml_key: out[field_name] for toml_key, field_name in _PREFIX_TOML_KEYS}
+        if PREFIX_VOLUME_IDENTITY_KEY in out:
+            aliased[PREFIX_VOLUME_IDENTITY_KEY] = out[PREFIX_VOLUME_IDENTITY_KEY]
+        return aliased
     if isinstance(source, ModulesConfig):
         return out.get("explicit", {})
     return out
