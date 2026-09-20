@@ -5463,7 +5463,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # reload that brings the library rows back into agreement with the files it
     # corrected, the same kind of literal as db-metadata-not-written beside it.
     # Nothing refuses with it, so the cause population does not move.
-    assert (len(literals), len(literals - set(causes))) == (466, 298), (
+    # Re-pinned on the residual finding "The queued backup reports its ages and
+    # nothing else the run learned", 2026-09-20: 466 to 467 distinct, 298 to 299
+    # non-keys. ONE literal joined and NOTHING left, differenced as SETS by
+    # running this collector over main's own src tree extracted into a scratch
+    # directory, rather than inferred from the total moving by one. It is
+    # backup-rehearsal in `backup/cli.py`, a holder already, and it is not a
+    # cause: it is the WARNING code every branch of a rehearsal carries to say
+    # the run copies nothing and publishes no backup age. Nothing refuses with
+    # it, because nothing about it is a failure, so the cause population does not
+    # move. The same sentence rides a failed rehearsal's refusal as a
+    # remediation STEP rather than as a second slug, for the reason
+    # `_with_rehearsal_step` gives.
+    assert (len(literals), len(literals - set(causes))) == (467, 299), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

@@ -12152,6 +12152,41 @@ warnings reach nobody on the queued path.
 needs a way for a handler to return a report alongside its `Produced`, and a test
 drives a queued rehearsal and asserts the envelope says so.
 
+**NARROWED 2026-09-20 on `relay/159`, issue 159. The rehearsal half is closed
+and the outcome half is not.** The second half of the closing condition was met
+exactly: a queued rehearsal is driven and the envelope says so. The first half
+was not attempted, deliberately.
+
+**What closed: the rehearsal is legible from data the job already holds.**
+`BackupOutcome` now records `dry_run` and `outcome_payload` renders it, so a
+rendered run says which kind it was from the run itself rather than from
+whoever remembered to write the flag on afterwards; `perform_backup` had been
+writing it by hand, which made it a field correct where somebody remembered and
+absent everywhere else. On the queued path the source is the job's FROZEN
+PAYLOAD, never the command line, so `--dry-run` typed beside `--job` cannot make
+a run that really copied report itself as a rehearsal. The word rides all four
+of the verb's endings: `backup-rehearsal` as a warning at queue time, on the
+reported twin and on the resume, and as an appended remediation step on the
+three refusals a failed resume can raise, with the cause extended and never
+rebuilt. `dry_run` itself rides UNDER `progress`, because `job_state/1` is a
+closed surface.
+
+**What is still open, and it is not this unit's to build.** The rotation
+warnings the worker built still reach nobody on the queued path. That needs the
+channel this entry names, a way for a handler to return a report alongside its
+`Produced`, and that channel is **R-349's closing condition word for word**:
+the outcome payload persisted with the job, the foreground envelope carrying
+it, and `job show` printing it. R-349 is issue 102 and is open. Building it here
+would have made 102 a stranger to its own ledger entry, so the entry stays open
+and points there.
+
+**Why the two warnings this verb already lifts did not answer it.**
+`uncovered_analysis_share` and `snapshot_identity_warning` are facts about the
+CONFIGURATION, so the shell can ask the configuration again and get the same
+answer. The prune warning is a fact about how the transfer went, which only the
+claimed item knows, and there is nowhere for it to go: `jobs.Produced` carries
+two paths and `job_items.artifact` is a single `TEXT` column.
+
 ## R-222. A retried portion takes the last rotation slot, and the default keeps one
 
 **Found:** during U50, 2026-09-02, while binding the backup worker.
@@ -23087,3 +23122,74 @@ about which envelope a person is assumed to read.
 **Closes when:** the resume's envelope reaches the person who typed the command,
 or the queueing envelope can predict that a sweep will write nothing, which is
 the lookup itself and is the work the gate exists to defer.
+
+---
+
+## R-570. The backup resume emits a field its own declared surface does not have
+
+**Found:** during R-221, 2026-09-20, when the conformance guard refused this
+unit's first placement of `dry_run`.
+
+The registry declares `backup.run` as `job_state/1`. `cli.output` closes that
+surface at four fields, `job_id`, `state`, `cause` and `progress`, and
+`envelope_problems` reports anything else as an undeclared field. The resume
+branch of `backup_library` writes `reported["ages"]` beside them, so a consumer
+generated from the committed schema rejects every envelope
+`crate backup run --job` emits.
+
+**Driven, at the envelope and not by reading.** `output.envelope_problems` over
+a real resume returns `["undeclared field 'ages'"]`. The producer is the shipped
+verb itself and it was driven: queue, resume, read the envelope. The test
+`test_the_new_key_rides_under_progress_and_the_surface_gains_nothing_else` pins
+that list, so the set cannot grow in silence while this entry is open.
+
+**Why nothing caught it.** `test_conformance_1_structured_output_is_actually_emitted`
+drives ONE sample invocation per verb, and for this verb that is the queueing
+form. The resume envelope has never been put through `envelope_problems` at all,
+which is R-571.
+
+**How wide it is, measured rather than guessed.** An AST sweep of every `job_state`
+payload in `src` for a top level key outside the declared four returns this one
+site and no other. `cli/jobs.py` is the counter-example that shows the right
+shape: `job show` puts its whole per job summary UNDER `progress`, and
+`adopt.shell.reported` and `analysis/cli._reported` state the rule in their
+docstrings, both bought by U51 and R-234.
+
+**Cost:** a script reading this verb's JSON through a generated consumer rejects
+the resume envelope, which is the one that carries the result. At a terminal
+nothing is visible.
+
+**Board bar (b).** The product declares a payload surface in the registry and
+emits a different one, which is the same shape as a declared write it never
+performs. An issue is OWED, and a Relay session cannot file it before the merge
+puts the number on `main`.
+
+**Closes when:** `ages` rides under `progress` like every other verb's detail,
+or the declared surface gains the field, with the pinned problem list emptied in
+the same commit.
+
+---
+
+## R-571. The conformance guard drives one invocation per verb, so a resume envelope is unchecked
+
+**Found:** during R-221, 2026-09-20, as the mechanism behind R-570.
+
+`test_conformance_1_structured_output_is_actually_emitted` builds one argv per
+landed entry from `_sample_arguments` and checks that envelope against the
+declared surface. A queued verb has a SECOND envelope, the one a resume returns,
+and it is never built, so a field added there meets no schema check at all. That
+is how R-570 shipped, and it is why this unit's own first cut of `dry_run` was
+caught on the queueing branch and would not have been caught one branch over.
+
+**Not fixed here.** A sample resume per queued verb means queueing and driving a
+job for each of them inside the contract suite, which is real work in the
+suite's slowest file, and the shape of the fix is a decision rather than an
+omission: the guard could drive each verb, or it could check the payload builder
+statically the way the AST sweep above does, and the two catch different things.
+
+**Cost:** maintainer facing. Nothing a person using the shipped verbs pays for
+directly; what they pay for is R-570, which this is the reason for.
+
+**Closes when:** a queued verb's resume envelope is checked against its declared
+surface by something derived from the registry rather than by one verb's own
+test file.

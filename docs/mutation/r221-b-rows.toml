@@ -1,0 +1,103 @@
+name = "r221-b"
+pass_kind = "light"
+
+# Batch b of the r221 table: the refusing exits. Split from batch a only so
+# each foreground invocation stays under the harness tool ceiling, which is
+# how a Relay session runs this driver. One pass, one unit, two batches.
+
+# -- The refusing exits, which an envelope never reaches ---------------------
+
+[[rows]]
+id = "M1_refusal_step_dropped"
+description = "No refusal carries the sentence, so a rehearsal that failed reads as a real backup attempt that fell over"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    if not _is_rehearsal(job):
+        return error
+    cause = error.cause'''
+new = '''    return error
+    cause = error.cause'''
+
+[[rows]]
+id = "M2_refusal_step_unconditional"
+description = "Every refusal gains the sentence, so a person whose REAL backup failed is told nothing was copied and stops looking for the half that was"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    if not _is_rehearsal(job):
+        return error
+    cause = error.cause'''
+new = '''    cause = error.cause'''
+
+[[rows]]
+id = "M3_cause_rebuilt_losing_the_trail"
+description = "Hand build a plausible Cause instead of replacing two fields, dropping retryable, scope and the rest. This is the rebuild the code review measured passing green before the control comparison landed"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    return CratekitError(
+        replace(
+            cause,
+            remediation=replace(
+                cause.remediation,
+                steps=(*cause.remediation.steps, rehearsal_warning()["message"]),
+            ),
+        )
+    )'''
+new = '''    return CratekitError(
+        Cause(
+            reason=cause.reason,
+            message=cause.message,
+            remediation=Remediation(
+                remedy=cause.remediation.remedy,
+                steps=(*cause.remediation.steps, rehearsal_warning()["message"]),
+            ),
+            origin=cause.origin,
+            detail=cause.detail,
+            inner=cause.inner,
+        )
+    )'''
+
+[[rows]]
+id = "M4_steps_replaced_not_joined"
+description = "The sentence replaces the failure's own steps rather than joining them, so the thing a person has to do to fix it is gone"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''                steps=(*cause.remediation.steps, rehearsal_warning()["message"]),'''
+new = '''                steps=(rehearsal_warning()["message"],),'''
+
+[[rows]]
+id = "R1_refusal_is_its_own_cause"
+description = "Raise the result from the original unconditionally, which is `raise exc from exc` on a real run and truncates the chain cause.classified walks. This is the defect the code review found"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    extended = _with_rehearsal_step(error, job)
+    if extended is error:
+        raise error
+    raise extended from error'''
+new = '''    raise _with_rehearsal_step(error, job) from error'''
+
+[[rows]]
+id = "R2_drive_raise_unextended"
+description = "The exit jobs.drive raises from, when every item failed, loses the sentence. That is the run that copied least of all"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''                    _refuse(exc, job)'''
+new = '''                    raise'''
+
+[[rows]]
+id = "R3_second_exit_unextended"
+description = "The half failed run's refusal loses the sentence, which is the exit the envelope's warning cannot reach"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''                _refuse(CratekitError(job.cause), job)'''
+new = '''                raise CratekitError(job.cause)'''
+
+[[rows]]
+id = "R4_read_back_outside_the_try"
+description = "The unreadable fact file refuses saying the backup ran and its published age cannot be read back, over a rehearsal that published nothing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''            try:
+                reported["ages"] = published_ages(jobs.frozen_config(job))
+            except CratekitError as exc:
+                _refuse(exc, job)'''
+new = '''            reported["ages"] = published_ages(jobs.frozen_config(job))'''
