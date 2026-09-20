@@ -186,29 +186,50 @@ def _rules(
     of the three resolve its own would be two resolvers answering one question,
     and the cost of them disagreeing is a file that looks unreferenced to the
     proof and referenced to nothing.
+
+    EACH RULE CARRIES THE IDENTITY RECORDED FOR ITS TARGET, which is what makes
+    this pass's rules differ from every reader's. A reader follows a rule to
+    look; this follows one to move a file, so where the rule points has to be
+    provable and not only present.
     """
     if prefix_map is not None:
         return list(prefix_map)
-    return [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
+    return [
+        locations.PrefixRule(source, target, volume_id)
+        for source, target, volume_id in cfg.resolved_prefix_rules()
+    ]
 
 
 def _assert_library_is_still(
     cfg: config.Config,
     db: Any,
     *,
+    rules: Sequence[locations.PrefixRule],
     identity_provider: preflight.IdentityProvider | None = None,
     mount_enumerator: preflight.MountEnumerator | None = None,
 ) -> None:
-    """The three assertions that make every later answer mean anything.
+    """The four assertions that make every later answer mean anything.
 
     Volume identity first, because it is the one that decides whether the other
     two are being asked about the right disk at all. Then the refusal while
     rekordbox or its background agent is running, then the cloud canary, because
     both of those are asking the same question from two directions: is anything
     else changing this library while this run reads it.
+
+    THE IDENTITY IS ASKED OF EVERY VOLUME THIS PASS CAN REACH, not only the one
+    the library root sits on. A prefix rule sends a row onto whatever is mounted
+    at its target, and both halves of the pass follow it: the reference set reads
+    there to prove a file unreferenced, and the move writes there. Asserting the
+    root alone left the first half proving things about the wrong directory and
+    the second trashing files on a disk nobody had identified. ``rules`` is
+    required rather than defaulted to none, because an empty default is a caller
+    who forgot being read as a library with no rules.
     """
     session.assert_volume_identity(
         cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+    )
+    session.assert_mapped_volume_identities(
+        cfg, rules, identity_provider=identity_provider, mount_enumerator=mount_enumerator
     )
     rb_writer.assert_rekordbox_closed("reviewing tracks removed from the collection")
     rb_writer.canary(db)
@@ -233,8 +254,13 @@ def plan(
     than presenting them, and accepting them is a decision that has to be
     recorded or the next run makes it again.
     """
+    rules = _rules(cfg, prefix_map)
     _assert_library_is_still(
-        cfg, db, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+        cfg,
+        db,
+        rules=rules,
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
     )
     identity = library.database_identity(db)
     counter = library.current_sequence(db)
@@ -269,7 +295,6 @@ def plan(
     # behind a parameter the only caller permanently disabled, which is one rule
     # written twice with one copy unreachable, so neither copy could be measured.
     removed = tuple(row for row in seen.removed if row.sequence > mark.sequence)
-    rules = _rules(cfg, prefix_map)
     references = candidate_rules.reference_set(
         seen.active, root=cfg.library.root, prefix_map=rules, stat=stat
     )
@@ -698,6 +723,35 @@ def _reopen_for_the_path_it_now_resolves_to(
         review.clear(store, item_id, actor=actor)
 
 
+def _assert_the_volume_this_file_is_on(
+    cfg: config.Config,
+    item: Candidate,
+    rules: Sequence[locations.PrefixRule],
+    *,
+    identity_provider: preflight.IdentityProvider | None = None,
+    mount_enumerator: preflight.MountEnumerator | None = None,
+) -> None:
+    """Re-assert the identity of the one mapped volume a file is about to leave.
+
+    Resolved through the same resolver and the same rules that produced the path
+    being moved, so the rule asserted is the rule that was followed. A row under
+    the library root goes through no rule and is not this function's: the
+    session asserts the root when it opens and again when it closes.
+    """
+    resolved = locations.resolve_recorded_path(
+        item.row.recorded, root=cfg.library.root, prefix_map=rules
+    )
+    if resolved.rule_index is None:
+        return
+    session.assert_mapped_volume_identities(
+        cfg,
+        rules,
+        only=(resolved.rule_index,),
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
+    )
+
+
 def apply(
     cfg: config.Config,
     db: Any,
@@ -956,6 +1010,19 @@ def apply(
                 handled.append((item.row.sequence, False))
                 continue
 
+            # THE VOLUME IS ASKED AGAIN IMMEDIATELY BEFORE THE WRITE, for the rule
+            # this one file goes through. The plan's assertion is about the
+            # moment the plan was built, and a pass over a long queue is long
+            # enough for a drive to be swapped under a mount path. The library
+            # root gets the same second look from the session's close. It costs
+            # one system call and no subprocess, which is why it is per file.
+            _assert_the_volume_this_file_is_on(
+                cfg,
+                item,
+                rules,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+            )
             layout = trash.assert_usable(fresh.resolved, home=home)
             try:
                 target = trash.move_to_trash(fresh.resolved, layout=layout)
