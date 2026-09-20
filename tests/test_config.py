@@ -1916,6 +1916,38 @@ def test_an_absent_presence_index_still_answers_nothing_recorded():
     assert secrets.recorded() == frozenset()
 
 
+def test_an_index_refused_for_something_other_than_a_permission_keeps_its_own_act():
+    """THE DECLARED ACT, on the one arrangement where it is observable.
+
+    ``cause.classified`` replaces the slug and the remedy whenever the declared
+    chain carries a permission, which is right and is what the permission test
+    above asserts. It also means the act this site writes for itself is invisible
+    there, and a mutation table found exactly that: substituting
+    ``set-credential`` on that branch killed nothing, because every test reaching
+    it was reaching it through EACCES.
+
+    A directory where the index should be raises EISDIR, which no classification
+    claims, so the site's own answer is what a person reads. Driven on a real
+    filesystem rather than through a patched reader, since the arrangement is one
+    a filesystem can actually be in.
+    """
+    index = config.state_path("credential_index")
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.mkdir()
+
+    with pytest.raises(CratekitError) as excinfo:
+        secrets.exists(secrets.Credential.IDENTIFY_KEY)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "credential-index-unreadable"
+    assert cause.remediation.remedy is Remedy.REPAIR_CREDENTIAL_STORE
+    assert cause.detail["index"] == "unreadable"
+    assert str(index) in cause.message
+    # The reserved code the slug maps to. A precondition the person can repair,
+    # never a defect for them to report.
+    assert cause.code is ExitCode.PRECONDITION
+
+
 def test_a_damaged_presence_index_refuses_and_says_it_was_read(monkeypatch):
     """The second half of the old blanket. ``ValueError`` was caught with
     ``OSError`` and answered the same way, and it is a different act to repair:
@@ -1932,6 +1964,7 @@ def test_a_damaged_presence_index_refuses_and_says_it_was_read(monkeypatch):
     assert cause.reason == "credential-index-unreadable"
     assert cause.remediation.remedy is Remedy.REPAIR_CREDENTIAL_STORE
     assert cause.detail["index"] == "damaged"
+    assert cause.code is ExitCode.PRECONDITION
     assert str(index) in cause.message
 
 
