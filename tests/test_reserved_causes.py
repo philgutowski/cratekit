@@ -5511,17 +5511,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # beside it, none of which is registered either. Nothing refuses with it, so
     # the cause population does not move and both halves rise together.
     # Re-pinned on U93, the recursive mode on the two queued analysis verbs,
-    # 2026-09-20: 469 to 470 distinct, 300 to 301 non-keys. ONE literal joined
+    # 2026-09-20: 469 to 471 distinct, 300 to 302 non-keys. TWO literals joined
     # and NOTHING left, differenced as SETS by running this collector over main's
     # own `src/cratekit` read back through `git show`, rather than inferred from
-    # the total moving by one. It is linked-folder-skipped in
-    # `core/discovery.py`, and it is not a cause: it is the WARNING code a
-    # recursive walk carries to name the directory symlinks it declined to
-    # enter, the same kind of literal as db-metadata-not-written and
-    # library-row-not-updated above. Nothing refuses with it, because declining
-    # a link is not a failure, so the cause population does not move and both
-    # halves rise together.
-    assert (len(literals), len(literals - set(causes))) == (470, 301), (
+    # the total moving by two. Both are in `core/discovery.py` and neither is a
+    # cause. linked-folder-skipped is the WARNING code a recursive walk carries
+    # to name the directory symlinks it declined to enter; folder-unreadable is
+    # the one it carries for a folder the walk could not list at all, which
+    # `os.walk` drops silently without a callback. They are two codes and not one
+    # because they have two remedies, nothing to do against fix the permission.
+    # Both are the same kind of literal as db-metadata-not-written and
+    # library-row-not-updated above, nothing refuses with either, so the cause
+    # population does not move and both halves rise together.
+    assert (len(literals), len(literals - set(causes))) == (471, 302), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

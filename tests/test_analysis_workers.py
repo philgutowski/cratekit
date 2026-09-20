@@ -1954,3 +1954,59 @@ def test_a_restamp_item_that_would_leave_the_frozen_folder_is_refused(cfg, folde
     with pytest.raises(CratekitError) as raised:
         analysis_cli._folder_and_path(Job(), Escaping())
     assert raised.value.cause.reason == "internal-error"
+
+
+def test_the_resume_repeats_what_the_walk_left_out_rather_than_only_the_queue(
+    cfg, folder, silence, tmp_path, monkeypatch
+):
+    """The resume is the report a person keeps. The queue is the one they scroll past."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.copy2(silence, elsewhere / "other.flac")
+    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+
+    drive(["analyze", "restamp", str(folder), "--recursive"])
+    job = analysis_job("analyze.restamp")
+    assert job.payload["skipped_links"] == ["linked"]
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert any(w["code"] == "linked-folder-skipped" for w in resumed["warnings"]), resumed
+
+
+def test_an_unreadable_nested_folder_is_named_rather_than_quietly_contributing_nothing(
+    cfg, folder, silence, monkeypatch
+):
+    """``os.walk`` swallows the error by default, and nothing in the output shows it."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    shut = folder / "locked"
+    shut.mkdir()
+    shutil.copy2(silence, shut / "hidden.flac")
+    shut.chmod(0o000)
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+    try:
+        code, queued = drive(["analyze", "restamp", str(folder), "--recursive"])
+    finally:
+        shut.chmod(0o755)
+
+    assert code == int(ExitCode.OK), queued
+    assert sorted(item_states(analysis_job("analyze.restamp").job_id)) == ["house/track.flac"]
+    unreadable = [w for w in queued["warnings"] if w["code"] == "folder-unreadable"]
+    assert unreadable, queued
+    assert "locked" in unreadable[0]["message"]
+
+
+def test_a_one_level_restamp_resume_says_nothing_about_a_walk_it_never_did(
+    cfg, folder, silence, monkeypatch
+):
+    """The default mode's envelope is unchanged, which is what U93 promised."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    place(folder, silence, "top", energylevel=7)
+    bind_measuring(monkeypatch, {"top": 5})
+    drive(["analyze", "restamp", str(folder)])
+    code, resumed = drive(resume_argv(analysis_job("analyze.restamp").job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert [w["code"] for w in resumed["warnings"]] == ["db-metadata-not-written"]

@@ -35,8 +35,10 @@ DIRECTORY is the same argument one level up: ``.Spotlight-V100`` and
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
@@ -47,15 +49,20 @@ _ORIGIN = ("core", "discovery")
 
 @dataclass(frozen=True)
 class Scan:
-    """One walk's answer: the item ids, and what the walk declined to enter.
+    """One walk's answer: the item ids, and the two kinds of thing it did not read.
 
-    ``skipped_links`` is carried beside the items rather than logged, because
-    the only honest place for it is the envelope of the verb that asked, and a
-    walker that printed it would be a lower layer deciding how a CLI reports.
+    The omissions are carried beside the items rather than logged, because the
+    only honest place for either is the envelope of the verb that asked, and a
+    walker that printed them would be a lower layer deciding how a CLI reports.
+
+    They are two lists and not one because they have two remedies. A declined
+    link is a choice this module made and there is nothing to fix; an unreadable
+    folder is a permission or a failing disk and somebody has to act.
     """
 
     items: tuple[str, ...]
     skipped_links: tuple[str, ...]
+    unreadable: tuple[str, ...]
 
 
 def _is_audio(path: Path) -> bool:
@@ -63,6 +70,12 @@ def _is_audio(path: Path) -> bool:
 
     The dotfile clause is not tidiness. ``._track.flac`` is a sidecar with the
     audio suffix, and it is the one that fails a whole job on the next claim.
+
+    ``is_file`` FOLLOWS A LINK, so a track that is a symlink to a file on
+    another volume is an item and is tagged through the link. That is what the
+    one level scan has always done and U93 did not narrow it, because narrowing
+    it would change the default mode every existing job was queued under. Only
+    a DIRECTORY link is declined, and the docstring above says only that.
     """
     return (
         path.is_file()
@@ -83,17 +96,32 @@ def scan_audio(folder: Path, *, recursive: bool = False) -> Scan:
     the same item list rather than a second spelling of it.
     """
     if not folder.is_dir():
-        return Scan(items=(), skipped_links=())
+        return Scan(items=(), skipped_links=(), unreadable=())
     if not recursive:
         return Scan(
             items=tuple(sorted(path.name for path in folder.iterdir() if _is_audio(path))),
             skipped_links=(),
+            unreadable=(),
         )
 
     items: list[str] = []
     skipped: list[str] = []
+    unreadable: list[str] = []
+
+    def note(error: OSError) -> None:
+        """``os.walk`` SWALLOWS AN ERROR BY DEFAULT, which is the whole hazard.
+
+        Without a callback a folder the process cannot list, a permission the
+        library volume carries or an enclosure failing under the walk, simply
+        contributes no items and the pass reports cleanly over it. Unlike a
+        declined link there is nothing in the output a person could notice, so
+        the omission has to be collected here to be sayable at all.
+        """
+        named = getattr(error, "filename", None)
+        unreadable.append(_relative_or_absolute(folder, named))
+
     root = str(folder)
-    for parent, dirnames, filenames in os.walk(root, followlinks=False):
+    for parent, dirnames, filenames in os.walk(root, followlinks=False, onerror=note):
         here = Path(parent)
         # PRUNE IN PLACE, which is the only thing ``os.walk`` reads back. A
         # filtered copy assigned to a new name leaves the walk descending
@@ -114,7 +142,11 @@ def scan_audio(folder: Path, *, recursive: bool = False) -> Scan:
             path = here / name
             if _is_audio(path):
                 items.append(_relative(folder, path))
-    return Scan(items=tuple(sorted(items)), skipped_links=tuple(sorted(skipped)))
+    return Scan(
+        items=tuple(sorted(items)),
+        skipped_links=tuple(sorted(skipped)),
+        unreadable=tuple(sorted(set(unreadable))),
+    )
 
 
 def _relative(folder: Path, path: Path) -> str:
@@ -122,25 +154,121 @@ def _relative(folder: Path, path: Path) -> str:
     return path.relative_to(folder).as_posix()
 
 
-def skipped_links_warning(scan: Scan) -> dict[str, str] | None:
-    """What a recursive walk declined to enter, phrased for an envelope.
+def _relative_or_absolute(folder: Path, named: str | None) -> str:
+    """An error's path named relatively when it can be, and never dropped.
 
-    Here rather than at each verb so the two queued verbs cannot describe one
-    omission two ways. ``None`` when there is nothing to say, which is every non
-    recursive call and every tree with no links in it.
+    ``OSError.filename`` is whatever the platform put there, and on some failures
+    it is absent or outside the tree. A path that will not relativise is reported
+    whole rather than discarded, because the point of collecting it is that it is
+    the only trace of the omission.
     """
-    if not scan.skipped_links:
+    if named is None:
+        return "an unnamed folder under this tree"
+    try:
+        return _relative(folder, Path(named))
+    except ValueError:
+        return named
+
+
+#: How many omitted paths a warning spells out before it counts the rest. Small
+#: because the sentence is read in a terminal, and the count carries the size.
+SHOWN = 5
+
+
+def _named(paths: tuple[str, ...]) -> str:
+    shown = list(paths[:SHOWN])
+    rest = len(paths) - len(shown)
+    return ", ".join(shown) + (f", and {rest} more" if rest else "")
+
+
+def _folders(count: int) -> str:
+    """"1 folder" and "2 folders". A plural only sentence reads as a defect."""
+    return f"{count} folder" if count == 1 else f"{count} folders"
+
+
+def link_warning(paths: tuple[str, ...]) -> dict[str, str] | None:
+    """What a recursive walk declined to enter, phrased for an envelope."""
+    if not paths:
         return None
-    shown = list(scan.skipped_links[:5])
-    rest = len(scan.skipped_links) - len(shown)
-    named = ", ".join(shown) + (f", and {rest} more" if rest else "")
     return {
         "code": "linked-folder-skipped",
         "message": (
-            f"{len(scan.skipped_links)} folders under this tree are symbolic links "
-            f"and were not walked, so no track inside one was queued: {named}"
+            f"{_folders(len(paths))} under this tree "
+            f"{'is a symbolic link' if len(paths) == 1 else 'are symbolic links'} "
+            f"and {'was' if len(paths) == 1 else 'were'} not walked, so no track "
+            f"inside {'it' if len(paths) == 1 else 'one'} was queued: {_named(paths)}"
         ),
     }
+
+
+def unreadable_warning(paths: tuple[str, ...]) -> dict[str, str] | None:
+    """What a recursive walk could not list, phrased for an envelope."""
+    if not paths:
+        return None
+    return {
+        "code": "folder-unreadable",
+        "message": (
+            f"{_folders(len(paths))} under this tree could not be read, so no "
+            f"track inside {'it' if len(paths) == 1 else 'one'} was queued; check "
+            f"the permissions on {'it' if len(paths) == 1 else 'them'} and that the "
+            f"volume is healthy: {_named(paths)}"
+        ),
+    }
+
+
+def walk_warnings(
+    skipped_links: Sequence[str] = (), unreadable: Sequence[str] = ()
+) -> tuple[dict[str, str], ...]:
+    """Both omissions as envelope warnings, in the order they are read.
+
+    TAKES THE LISTS AND NOT A ``Scan`` so a RESUME can say the same thing. The
+    resume never re-walks, because re-walking would report a tree as it is now
+    over a job queued against the tree as it was; it reads the lists the queue
+    froze into the payload and phrases them here, through this one function, so
+    the queue and the resume cannot describe one omission two ways.
+    """
+    said = (
+        link_warning(tuple(skipped_links)),
+        unreadable_warning(tuple(unreadable)),
+    )
+    return tuple(one for one in said if one is not None)
+
+
+#: The payload keys a queued verb freezes a walk under, spelled once. A resume
+#: reads them back, so two verbs spelling them two ways would make one of the
+#: two resumes report nothing while looking correct.
+PAYLOAD_RECURSIVE = "recursive"
+PAYLOAD_SKIPPED_LINKS = "skipped_links"
+PAYLOAD_UNREADABLE = "unreadable_folders"
+
+
+def frozen(scan: Scan, *, recursive: bool) -> dict[str, object]:
+    """The part of a job payload that records what the walk was and what it missed."""
+    return {
+        PAYLOAD_RECURSIVE: recursive,
+        PAYLOAD_SKIPPED_LINKS: list(scan.skipped_links),
+        PAYLOAD_UNREADABLE: list(scan.unreadable),
+    }
+
+
+def warnings_of(payload: Mapping[str, Any] | None) -> tuple[dict[str, str], ...]:
+    """The walk's omissions read back off a frozen payload, for a resume.
+
+    Tolerant of a payload written by an older build, which carries neither key
+    and produces no warnings, which is the correct answer for a job that was
+    queued one level.
+    """
+    held = payload or {}
+    return walk_warnings(
+        _strings(held.get(PAYLOAD_SKIPPED_LINKS)),
+        _strings(held.get(PAYLOAD_UNREADABLE)),
+    )
+
+
+def _strings(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(str(one) for one in value)
 
 
 def item_path(folder: Path, item_id: str) -> Path:

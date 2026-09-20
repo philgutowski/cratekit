@@ -261,6 +261,10 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     with jobs.open_store() as store:
         job, warnings = _advance(ctx, store, jobs.get(store, ctx.args.job))
         summary = _summary(cfg, job.job_id)
+        # THE RESUME CARRIES THE WALK'S OMISSIONS TOO, off the frozen payload.
+        # This is the report a person keeps, and the queue envelope is the one
+        # they scroll past.
+        warnings = (*warnings, *discovery.warnings_of(job.payload))
         unscored = _unscored_warning(summary)
         if unscored is not None:
             warnings = (*warnings, unscored)
@@ -277,8 +281,7 @@ def analyze_vocals(ctx) -> Envelope:
     folder = _folder_of(ctx.args.folder)
     recursive = bool(getattr(ctx.args, "recursive", False))
     scan = discovery.scan_audio(folder, recursive=recursive)
-    linked = discovery.skipped_links_warning(scan)
-    extra: tuple[dict[str, str], ...] = () if linked is None else (linked,)
+    extra = discovery.walk_warnings(scan.skipped_links, scan.unreadable)
     if not scan.items:
         return _nothing_to_queue(ctx, folder, extra)
     _require_extra()
@@ -287,9 +290,9 @@ def analyze_vocals(ctx) -> Envelope:
             store,
             handler_key=ctx.entry.handler_key,
             # FROZEN WITH THE FOLDER. The resume replays the item list off the
-            # store and never re-scans, so this records what the queue meant
-            # rather than feeding it back in.
-            payload={"folder": str(folder), "recursive": recursive},
+            # store and never re-scans, so this records what the queue meant and
+            # what it left out rather than feeding either back in.
+            payload={"folder": str(folder), **discovery.frozen(scan, recursive=recursive)},
             cfg=cfg,
             item_ids=list(scan.items),
         )

@@ -159,21 +159,132 @@ def test_a_one_level_scan_reports_no_links_even_when_one_is_there(tmp_path):
     assert discovery.scan_audio(tmp_path).skipped_links == ()
 
 
-def test_the_warning_is_none_when_no_link_was_declined(tmp_path):
+def test_a_symlinked_audio_file_is_still_an_item(tmp_path):
+    """``is_file`` follows a link, which is what the one level scan always did.
+
+    Pinned deliberately rather than left implicit: only a DIRECTORY link is
+    declined, and narrowing this would change the default mode every existing
+    job was queued under. R-589 records the cost.
+    """
+    elsewhere = tmp_path.parent / "elsewhere"
+    touch(elsewhere, "real.flac")
+    (tmp_path / "linked.flac").symlink_to(elsewhere / "real.flac")
+    assert discovery.scan_audio(tmp_path).items == ("linked.flac",)
+    assert discovery.scan_audio(tmp_path, recursive=True).items == ("linked.flac",)
+
+
+def test_there_is_nothing_to_say_when_no_link_was_declined(tmp_path):
     touch(tmp_path, "track.flac")
-    assert discovery.skipped_links_warning(discovery.scan_audio(tmp_path, recursive=True)) is None
+    assert discovery.walk_warnings(*_omissions(tmp_path)) == ()
 
 
 def test_the_warning_names_the_links_and_counts_the_rest(tmp_path):
     touch(tmp_path, "track.flac")
     for index in range(7):
         (tmp_path / f"link{index}").symlink_to(tmp_path.parent, target_is_directory=True)
-    warning = discovery.skipped_links_warning(discovery.scan_audio(tmp_path, recursive=True))
-    assert warning is not None
+    (warning,) = discovery.walk_warnings(*_omissions(tmp_path))
     assert warning["code"] == "linked-folder-skipped"
     assert "7 folders" in warning["message"]
     assert "link0" in warning["message"]
     assert "and 2 more" in warning["message"]
+
+
+def test_one_declined_link_reads_as_one_folder_and_not_as_one_folders(tmp_path):
+    """A plural only sentence is a defect a person sees on the commonest case."""
+    touch(tmp_path, "track.flac")
+    (tmp_path / "linked").symlink_to(tmp_path.parent, target_is_directory=True)
+    (warning,) = discovery.walk_warnings(*_omissions(tmp_path))
+    assert "1 folder under this tree is a symbolic link and was not walked" in (
+        warning["message"]
+    )
+    assert "1 folders" not in warning["message"]
+    assert "and 0 more" not in warning["message"]
+
+
+def _omissions(folder: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    scan = discovery.scan_audio(folder, recursive=True)
+    return scan.skipped_links, scan.unreadable
+
+
+# ---------------------------------------------------------------------------
+# A folder the walk cannot read, which no symlink rule covers
+# ---------------------------------------------------------------------------
+
+
+def test_an_unreadable_folder_is_collected_rather_than_silently_dropped(tmp_path):
+    """``os.walk`` swallows the error by default and the pass reports cleanly."""
+    touch(tmp_path, "house/track.flac")
+    shut = tmp_path / "locked"
+    shut.mkdir()
+    (shut / "hidden.flac").write_bytes(b"")
+    shut.chmod(0o000)
+    try:
+        scan = discovery.scan_audio(tmp_path, recursive=True)
+    finally:
+        shut.chmod(0o755)
+    assert scan.items == ("house/track.flac",)
+    assert scan.unreadable == ("locked",)
+
+
+def test_the_unreadable_warning_is_its_own_code_with_its_own_remedy(tmp_path):
+    """A declined link needs no action. An unreadable folder needs one."""
+    (warning,) = discovery.walk_warnings(unreadable=("locked",))
+    assert warning["code"] == "folder-unreadable"
+    assert "1 folder under this tree could not be read" in warning["message"]
+    assert "permissions" in warning["message"]
+    assert "locked" in warning["message"]
+
+
+def test_both_omissions_ride_together_links_first(tmp_path):
+    said = discovery.walk_warnings(("linked",), ("locked",))
+    assert [one["code"] for one in said] == ["linked-folder-skipped", "folder-unreadable"]
+
+
+def test_an_error_carrying_no_filename_is_still_reported(tmp_path):
+    """The collected trace is the only evidence the omission happened at all."""
+    (warning,) = discovery.walk_warnings(
+        unreadable=(discovery._relative_or_absolute(tmp_path, None),)
+    )
+    assert "an unnamed folder under this tree" in warning["message"]
+
+
+def test_a_path_outside_the_tree_is_reported_whole_rather_than_dropped(tmp_path):
+    assert discovery._relative_or_absolute(tmp_path, "/elsewhere/locked") == (
+        "/elsewhere/locked"
+    )
+
+
+# ---------------------------------------------------------------------------
+# What a resume reads back, because it never re-walks
+# ---------------------------------------------------------------------------
+
+
+def test_the_frozen_payload_carries_the_mode_and_both_omissions(tmp_path):
+    touch(tmp_path, "track.flac")
+    (tmp_path / "linked").symlink_to(tmp_path.parent, target_is_directory=True)
+    frozen = discovery.frozen(discovery.scan_audio(tmp_path, recursive=True), recursive=True)
+    assert frozen == {
+        "recursive": True,
+        "skipped_links": ["linked"],
+        "unreadable_folders": [],
+    }
+
+
+def test_a_resume_says_what_the_queue_said_from_the_payload_alone(tmp_path):
+    frozen = {"folder": str(tmp_path), "recursive": True, "skipped_links": ["linked"]}
+    said = discovery.warnings_of(frozen)
+    assert [one["code"] for one in said] == ["linked-folder-skipped"]
+    assert said == discovery.walk_warnings(("linked",))
+
+
+def test_a_payload_from_a_build_that_never_walked_a_tree_says_nothing():
+    """An older job carries neither key, and silence is the right answer for it."""
+    assert discovery.warnings_of({"folder": "/somewhere"}) == ()
+    assert discovery.warnings_of(None) == ()
+
+
+def test_a_payload_whose_lists_are_the_wrong_shape_says_nothing_rather_than_raising():
+    assert discovery.warnings_of({"skipped_links": "linked"}) == ()
 
 
 # ---------------------------------------------------------------------------

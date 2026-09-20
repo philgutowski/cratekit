@@ -314,6 +314,11 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     with jobs.open_store() as store:
         job, warnings = _advance(ctx, store, jobs.get(store, ctx.args.job))
         summary = _summary(cfg, job.job_id)
+        # THE RESUME IS THE REPORT THAT SAYS THE PASS FINISHED, so what the walk
+        # left out rides it too, read back off the frozen payload rather than
+        # re-measured. A queue envelope alone would put the omission on the
+        # cheaper of the two commands and leave the one a person keeps silent.
+        warnings = (*warnings, *discovery.warnings_of(job.payload))
         if job.handler_key == "analyze.restamp":
             warnings = (*warnings, DB_NOT_WRITTEN)
         else:
@@ -668,8 +673,7 @@ def analyze_restamp(ctx) -> Envelope:
     folder = _folder_of(ctx.args.folder)
     recursive = bool(getattr(ctx.args, "recursive", False))
     scan = discovery.scan_audio(folder, recursive=recursive)
-    linked = discovery.skipped_links_warning(scan)
-    extra: tuple[dict[str, str], ...] = () if linked is None else (linked,)
+    extra = discovery.walk_warnings(scan.skipped_links, scan.unreadable)
     if not scan.items:
         # BEFORE THE CALIBRATION CHECK: a folder with nothing to restamp is a
         # complete answer whether or not the library is calibrated.
@@ -682,10 +686,11 @@ def analyze_restamp(ctx) -> Envelope:
             store,
             handler_key=ctx.entry.handler_key,
             # FROZEN WITH THE FOLDER, because a resume must not be able to
-            # disagree with the queue about what the item list meant. The
-            # resume never re-scans, so this is a record rather than an input,
-            # and a record is what makes a job readable after the fact.
-            payload={"folder": str(folder), "recursive": recursive},
+            # disagree with the queue about what the item list meant, and
+            # because the resume is the report that says the pass finished.
+            # The resume never re-scans: it would be measuring the tree as it
+            # is now over a job queued against the tree as it was.
+            payload={"folder": str(folder), **discovery.frozen(scan, recursive=recursive)},
             cfg=cfg,
             item_ids=list(scan.items),
         )

@@ -494,3 +494,32 @@ def test_the_two_queued_verbs_share_one_walker(cfg):
     )
     assert analysis_cli.discovery is discovery
     assert vocals_cli.discovery is discovery
+
+
+def test_the_vocals_resume_repeats_what_the_walk_left_out(
+    cfg, folder, silence, tmp_path, monkeypatch
+):
+    bind_scoring(monkeypatch)
+    nest(folder, silence, "house/track.flac")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.copy2(silence, elsewhere / "other.flac")
+    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+
+    drive(["analyze", "vocals", str(folder), "--recursive"])
+    job = vocals_job()
+    assert job.payload["skipped_links"] == ["linked"]
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert any(w["code"] == "linked-folder-skipped" for w in resumed["warnings"]), resumed
+
+
+def test_a_one_level_vocals_resume_says_nothing_about_a_walk_it_never_did(
+    cfg, folder, silence, monkeypatch
+):
+    bind_scoring(monkeypatch)
+    place(folder, silence, "top")
+    drive(["analyze", "vocals", str(folder)])
+    code, resumed = drive(resume_argv(vocals_job().job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert [w["code"] for w in resumed["warnings"]] == []
