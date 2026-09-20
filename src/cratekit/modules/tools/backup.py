@@ -175,11 +175,14 @@ IDENTITY_MARKER_PREFIX = "library-volume."
 #: more; what is NOT negotiable is that pruning happens only after the mirror
 #: succeeds, so a failed run never touches the safety net.
 #:
-#: WHAT IT COUNTS IS RUNS, NOT ATTEMPTS. Every attempt at the mirror stamps its
-#: own dated folder, so a mirror that failed partway and was retried to success
-#: leaves two, and the first holds the only copies of what that attempt
+#: THE NEWEST SLOT IS A RUN, NOT AN ATTEMPT. Every attempt at the mirror stamps
+#: its own dated folder, so a mirror that failed partway and was retried to
+#: success leaves two, and the first holds the only copies of what that attempt
 #: overwrote. :func:`_prune_archive` holds every folder written since the last
-#: COMPLETED mirror as one slot of this number.
+#: COMPLETED mirror as one slot of this number. Only that newest slot is grouped:
+#: once a run is settled its folders are counted one by one again, which costs
+#: nothing at the one value any verb passes and is recorded as a residual for a
+#: wider keep.
 DEFAULT_ARCHIVE_KEEP = 1
 
 
@@ -688,13 +691,25 @@ def _plan_files(
     return PortionPlan(
         portion=backup_facts.Portion.FILES,
         commands=tuple(commands),
-        detail=(
-            f"keeping the newest {archive_keep} dated archive folder(s), and "
-            f"counting every folder written since the last completed mirror as "
-            f"one of them"
-            if archive_keep >= 0
-            else "keeping every dated archive folder"
-        ),
+        detail=_rotation_detail(archive_keep),
+    )
+
+
+def _rotation_detail(archive_keep: int) -> str:
+    """What the plan says the rotation will keep, in the three cases it has.
+
+    Three sentences because :func:`_prune_archive` has three behaviours, and a
+    preview that described the held run at a keep of zero would promise a
+    retention the run does not apply.
+    """
+    if archive_keep < 0:
+        return "keeping every dated archive folder"
+    if archive_keep == 0:
+        return "keeping no dated archive folder"
+    return (
+        f"keeping the newest {archive_keep} dated archive folder(s), and "
+        f"counting every folder written since the last completed mirror as "
+        f"one of them"
     )
 
 

@@ -290,8 +290,11 @@ def _refuse_an_empty_job(store, job) -> None:
     )
 
 
-def _open_twin(store, *, handler_key: str, payload: dict[str, Any], cfg: config.Config):
+def _open_twin(store, *, handler_key: str, dry_run: bool, cfg: config.Config):
     """The open job that already IS the backup being asked for, or None.
+
+    Returns the job WITH the configuration it was frozen against, and None in that
+    second place when the configuration could not be rebuilt.
 
     THE VERB PRINTS AN IDENTIFIER AND APPEARS TO HAVE DONE NOTHING, which is the
     shape that invites typing it again, and until R-223 closed the second
@@ -299,53 +302,80 @@ def _open_twin(store, *, handler_key: str, payload: dict[str, Any], cfg: config.
     locks do not see each other, and two drivers then run ``rclone sync`` into one
     mirror at once.
 
-    A TWIN IS THE SAME REQUEST AGAINST THE SAME PLACE. The same verb, the same
-    frozen payload, and a frozen configuration sharing this one's mirror OR its
-    archive root, since two syncs into one mirror interleave and two rotations
-    over one archive root are each other's purge. The database snapshot root is
-    not compared: every snapshot is its own dated folder, so two of them do not
-    touch.
+    A TWIN IS THE SAME REQUEST, FOR THE SAME LIBRARY, AGAINST THE SAME PLACE. The
+    same verb, the same library identity, the same rehearsal flag, and a frozen
+    configuration sharing this one's mirror OR its archive root, since two syncs
+    into one mirror interleave and two rotations over one archive root are each
+    other's purge. The database snapshot root is not compared: every snapshot is
+    its own dated folder, so two of them do not touch. The library is compared
+    because the envelope says "this is your backup", and a job copying another
+    library is not.
 
-    THE PAYLOAD IS PART OF IT, so a rehearsal and a real run stay two jobs. A
-    rehearsal copies nothing and deletes nothing, and answering a request for a
-    real backup with an open rehearsal would hand a person a job that will never
-    copy a byte as the backup they asked for.
+    THE REHEARSAL FLAG IS READ THE WAY THE WORK BODY READS IT, ``bool`` of one
+    key, and the rest of the payload is not compared. :func:`backup_argv`
+    already tolerates a key a later build may add, and whole-payload equality
+    would make every job queued before such a build a stranger to every ask
+    after it. A rehearsal and a real run stay two jobs: a rehearsal copies
+    nothing, and answering a request for a real backup with an open rehearsal
+    would hand a person a job that will never copy a byte.
 
     THE DESTINATIONS ARE THE JOB'S FROZEN ONES (KTD9), because those are where
     its driver will write whatever the file on disk says today. A job whose
     configuration cannot be rebuilt is a twin and not a stranger: could not read
-    is not somewhere else, and what is wrong with it is said when it is driven.
+    is not somewhere else. Only the configuration's own failures are caught, so
+    a defect in the rebuild stays loud, and the warning for this case claims no
+    destination because none was read.
 
     A JOB WITH NO ITEMS IS SKIPPED. It was queued by a build with no worker,
     :func:`_refuse_an_empty_job` refuses to drive it, and reporting it would
     answer a request for a backup with one that cannot happen.
 
-    ONLY WHAT IS OPEN COUNTS. A failed or cancelled backup is a recorded answer
-    and not a claim on the destination, and a person is free to file a new one
-    rather than resume it.
+    ONLY WHAT IS OPEN IS ASKED FOR. A failed or cancelled backup is a recorded
+    answer and not a claim on the destination, and the queue's history grows for
+    ever across every verb, so the terminal rows are never read at all.
     """
-    for job in jobs.list_jobs(store):
-        if not job.is_open() or job.handler_key != handler_key:
+    open_states = [state for state in jobs.JobState if state not in jobs.TERMINAL_STATES]
+    for job in jobs.list_jobs(store, states=open_states):
+        if job.handler_key != handler_key or job.library_id != cfg.library.volume_id:
             continue
-        if dict(job.payload or {}) != payload or not jobs.items(store, job.job_id):
+        if bool((job.payload or {}).get(DRY_RUN)) != dry_run:
+            continue
+        if not jobs.items(store, job.job_id):
             continue
         try:
-            frozen = jobs.frozen_config(job).backup
-        except Exception:
-            return job
-        if frozen.dest == cfg.backup.dest or frozen.archive_root == cfg.backup.archive_root:
-            return job
+            frozen = jobs.frozen_config(job)
+        except (config.ConfigError, ValueError):
+            return job, None
+        if (
+            frozen.backup.dest == cfg.backup.dest
+            or frozen.backup.archive_root == cfg.backup.archive_root
+        ):
+            return job, frozen
     return None
 
 
-def _already_queued(job, cfg: config.Config) -> dict[str, str]:
+def _already_queued(job, frozen: config.Config | None) -> dict[str, str]:
+    """The one warning a reported twin carries, in the JOB's terms.
+
+    The destinations named are the frozen ones, because a twin can match on the
+    archive root alone while its mirror differs from the one on disk today, and
+    naming the live mirror would tell a person their new destination is being
+    backed up by a job that will never write to it.
+    """
+    where = (
+        "its frozen configuration could not be rebuilt, so where it writes is "
+        "not known and it is treated as this backup"
+        if frozen is None
+        else f"it mirrors to {frozen.backup.dest} and archives under "
+        f"{frozen.backup.archive_root}"
+    )
     return {
         "code": ALREADY_QUEUED,
         "message": (
-            f"backup job {job.job_id} is already open against {cfg.backup.dest}, so "
-            f"it is reported here and no second job was filed. Two backups into "
-            f"one destination run at once and interleave. Continue it with: crate "
-            f"job resume {job.job_id}. Or cancel it with: crate job cancel "
+            f"backup job {job.job_id} is already open: {where}. It is reported "
+            f"here and no second job was filed, because two backups sharing a "
+            f"destination run at once and interleave. Continue it with: crate job "
+            f"resume {job.job_id}. Or cancel it with: crate job cancel "
             f"{job.job_id}, and ask again"
         ),
     }
@@ -446,19 +476,29 @@ def backup_library(ctx) -> Envelope:
             )
             return ctx.envelope(data=reported, warnings=warnings)
         payload = frozen_payload(ctx.args.dry_run)
-        twin = _open_twin(
-            store, handler_key=ctx.entry.handler_key, payload=payload, cfg=cfg
+        found = _open_twin(
+            store,
+            handler_key=ctx.entry.handler_key,
+            dry_run=payload[DRY_RUN],
+            cfg=cfg,
         )
-        if twin is not None:
+        if found is not None:
+            twin, frozen = found
             # THE SAME ENVELOPE A FIRST ASK GETS, plus one warning, so a script
             # reading ``data.job_id`` continues the backup that exists whether it
             # asked first or second.
+            #
+            # THE OTHER WARNINGS DESCRIBE THE JOB REPORTED, for the reason the
+            # resume branch above gives: the envelope describes THIS job, which
+            # runs under the configuration it was frozen against. The live one
+            # stands in only when the frozen one could not be rebuilt.
+            described = cfg if frozen is None else frozen
             return ctx.envelope(
                 data=_reported(store, twin),
                 warnings=(
-                    _already_queued(twin, cfg),
-                    *map(dict, backup.uncovered_analysis_share(cfg)),
-                    *map(dict, backup.snapshot_identity_warning(cfg)),
+                    _already_queued(twin, frozen),
+                    *map(dict, backup.uncovered_analysis_share(described)),
+                    *map(dict, backup.snapshot_identity_warning(described)),
                 ),
             )
         job = jobs.enqueue(

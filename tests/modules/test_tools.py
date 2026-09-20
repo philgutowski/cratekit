@@ -1806,6 +1806,24 @@ def test_a_keep_of_zero_is_still_a_keep_of_zero(cfg, library_with_database, rclo
     assert remote.folders == set()
 
 
+@pytest.mark.parametrize(
+    ("keep", "said", "unsaid"),
+    [
+        (-1, "keeping every", "last completed mirror"),
+        (0, "keeping no", "last completed mirror"),
+        (1, "last completed mirror", "keeping no"),
+    ],
+)
+def test_the_plan_describes_the_rotation_the_run_applies(
+    cfg, library_with_database, rclone_on_path, keep, said, unsaid
+):
+    """The preview and the run are one decision. A keep of zero holds nothing, so
+    a plan that described the held run there would promise what the run undoes."""
+    plan = backup.plan_backup(cfg, process_lister=no_processes, archive_keep=keep)
+    detail = plan.portion(backup_facts.Portion.FILES).detail
+    assert said in detail and unsaid not in detail, detail
+
+
 def test_a_record_that_cannot_be_read_purges_nothing(
     cfg, library_with_database, rclone_on_path
 ):

@@ -1973,6 +1973,13 @@ def test_either_shared_destination_is_the_same_backup(cfg, shared):
     _, second = _drive(["backup", "run"])
     assert second["data"]["job_id"] == first["data"]["job_id"], second
     assert _job_count() == 1
+    # THE JOB'S DESTINATIONS, NOT TODAY'S. Matched on one of the two, the other
+    # has moved on disk, and naming the live one would tell a person their new
+    # destination is being backed up by a job that will never write to it.
+    said = next(w for w in second["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED)
+    assert "remote:mirror " in said["message"], said
+    assert "remote:mirror-archive" in said["message"], said
+    assert "remote:second-" not in said["message"], said
 
 
 @pytest.mark.parametrize(
@@ -2035,3 +2042,84 @@ def test_an_open_backup_whose_destinations_cannot_be_read_is_not_read_as_elsewhe
     _, second = _drive(["backup", "run"])
     assert second["data"]["job_id"] == first["data"]["job_id"], second
     assert _job_count() == 1
+    said = next(w for w in second["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED)
+    assert "could not be rebuilt" in said["message"], said
+    assert "remote:mirror" not in said["message"], (
+        f"the warning names a destination nobody read: {said}"
+    )
+
+
+def test_a_defect_in_rebuilding_a_configuration_is_not_reported_as_a_queued_backup(
+    cfg, monkeypatch
+):
+    """Only the configuration's own failures mean "could not read". Anything else
+    is a defect in this program, and reporting it as an open backup with exit 0
+    is how it would stay unfound."""
+    _drive(["backup", "run"])
+
+    def broken(job):
+        raise AttributeError("a defect, not an unreadable configuration")
+
+    monkeypatch.setattr(jobs, "frozen_config", broken)
+    code, second = _drive(["backup", "run"])
+    assert code != int(ExitCode.OK), second
+    assert _job_count() == 1
+
+
+def test_a_payload_key_this_build_does_not_read_does_not_make_a_stranger(cfg):
+    """The rehearsal flag is compared the way the work body reads it. A job queued
+    by a build that froze one more key is still the same backup."""
+    with jobs.open_store() as store:
+        older = jobs.enqueue(
+            store,
+            handler_key="backup.run",
+            payload={**backup_cli.frozen_payload(False), "a_later_key": "anything"},
+            item_ids=backup_cli.backup_items(),
+            cfg=cfg,
+        )
+    _, second = _drive(["backup", "run"])
+    assert second["data"]["job_id"] == older.job_id, second
+    assert _job_count() == 1
+
+
+def test_another_library_s_open_backup_is_not_this_library_s(cfg):
+    """The envelope says "this is your backup", and a job copying another library
+    is not, whatever destination the two were pointed at."""
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store,
+            handler_key="backup.run",
+            payload=backup_cli.frozen_payload(False),
+            item_ids=backup_cli.backup_items(),
+            cfg=replace(cfg, library=replace(cfg.library, volume_id="0A0B-0C0D")),
+        )
+    _, queued = _drive(["backup", "run"])
+    assert backup_cli.ALREADY_QUEUED not in _codes(queued), queued
+    assert _job_count() == 2
+
+
+def test_the_warnings_beside_a_reported_job_describe_that_job(cfg, tmp_path):
+    """The open job was frozen with its analysis share off the volume, and the
+    configuration on disk has since moved it back. The job reported will still run
+    under the first, so that is the one the envelope describes."""
+    home = tmp_path / "home" / "rekordbox"
+    home.mkdir(parents=True)
+    config.save(
+        replace(
+            cfg,
+            library=replace(
+                cfg.library,
+                db_path=home / "master.db",
+                db_outside_root_acknowledged_on="2026-09-11",
+            ),
+        )
+    )
+    config.reset_cache()
+    _, first = _drive(["backup", "run"])
+    assert len(_share_warnings(first)) == 1, first
+
+    config.save(cfg)
+    config.reset_cache()
+    _, second = _drive(["backup", "run"])
+    assert second["data"]["job_id"] == first["data"]["job_id"], second
+    assert len(_share_warnings(second)) == 1, second
