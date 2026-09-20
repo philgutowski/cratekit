@@ -317,6 +317,13 @@ def acquire_download(ctx) -> Envelope:
                     )
                 _, warnings = ctx.run_job(store, job)
                 job = jobs.get(store, job.job_id)
+            # THE VERB R-290 WAS FOUND ON. This worker is the one that parks, on
+            # a provider block or a dead session, and the park reached this
+            # report as ``ok`` with exit 0, legible only inside ``data.cause``. A
+            # list where one track landed and another did not did the same
+            # (R-225). OUTSIDE the ``is_open`` branch, so a job already failed on
+            # entry is answered the same way however many times it is asked.
+            jobs.raise_for_state(job)
             return ctx.envelope(data=_reported(store, job), warnings=warnings)
         # READ FROM THE PATH AS TYPED, freeze it absolute. ``read_list`` refuses a
         # pasted URL by matching a scheme at the front of the string, and

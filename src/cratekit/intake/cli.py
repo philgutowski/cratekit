@@ -437,8 +437,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             )
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
-    if not job.is_open() and job.cause is not None:
-        raise CratekitError(job.cause)
+    jobs.raise_for_state(job)
     cfg = jobs.frozen_config(job)
     return ctx.envelope(data=_reported(store, job, extra=_summary(cfg, job)), warnings=warnings)
 

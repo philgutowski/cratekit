@@ -1775,6 +1775,29 @@ class CratekitError(Exception):
         return self._declared
 
 
+class JobBlocked(CratekitError):
+    """A queued job PARKED, leaving its verb through the refusal exit as blocked.
+
+    ``jobs.drive`` returns normally when a worker parks the run, because a park is
+    not a failure of any item, and the job it returns is ``blocked``, which is an
+    OPEN state. Every shell that reported "the job is not closed badly" through a
+    normal envelope therefore reported a parked job as ``ok`` and exited 0 over a
+    provider that had just walled the account (R-290). This is the type
+    ``jobs.raise_for_state`` raises for that job, and the dispatcher reads it as
+    ``Outcome.BLOCKED``.
+
+    WHY A TYPE AND NOT A TEST ON THE CAUSE, which is ``jobs.Parked``'s reason
+    again. The cause a parked job carries is the adapter's own, ``auth-failed`` or
+    ``provider-blocked`` or a missing program, and the same slugs fail single
+    items in jobs that were never parked. Nothing on the cause says "the job is
+    parked". The job's state says it, and this type carries that one bit across
+    the raise without the dispatcher importing the job engine, which imports the
+    dispatcher's package for the envelope.
+
+    IT LIVES HERE RATHER THAN IN ``core.jobs`` for that cycle and no other reason.
+    """
+
+
 def refuse(
     reason: str,
     message: str,
@@ -1828,6 +1851,7 @@ __all__ = [
     "AccessRefusal",
     "Cause",
     "CratekitError",
+    "JobBlocked",
     "Outcome",
     "Remediation",
     "Scope",

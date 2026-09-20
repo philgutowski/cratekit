@@ -49,6 +49,7 @@ from cratekit.core import config, profiles
 from cratekit.core.cause import (
     Cause,
     CratekitError,
+    JobBlocked,
     Outcome,
     Remediation,
     Scope,
@@ -407,13 +408,20 @@ def run(argv: list[str], *, stdout, stderr) -> int:
         resumable = cause.code in gates.GATE_CODES
         if state is not None and resumable:
             gates.save(state)
+        # A PARKED JOB IS BLOCKED TOO, AND IT IS NOT RESUMABLE IN THIS FIELD'S
+        # SENSE (R-290). ``resumable`` names the GATE RUN: it tells a caller that
+        # ``crate run`` can continue this run id, and it is what saves the run
+        # state above. A parked job continues through its own verb with the job
+        # id, never through the run, so setting it here would send a wrapper to a
+        # command that cannot advance the work. The outcome carries the block.
+        blocked = resumable or isinstance(exc, JobBlocked)
         envelope = output.from_cause(
             verb=entry.name,
             run_id=state.run_id if state is not None else output.new_run_id(),
             started=started,
             cause=cause,
             resumable=resumable,
-            outcome=Outcome.BLOCKED if resumable else Outcome.FAILED,
+            outcome=Outcome.BLOCKED if blocked else Outcome.FAILED,
         )
     except config.ConfigError as exc:
         # U2 already models configuration failures as five types with five

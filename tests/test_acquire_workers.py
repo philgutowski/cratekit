@@ -494,10 +494,12 @@ def test_a_mid_batch_refusal_fails_that_item_leaves_the_job_resumable_and_the_re
 
     code, envelope = drive(resume_argv(job_id))
 
-    # A partial failure is reported, not raised: the successes are durable and
-    # the envelope's job state says failed. The exit code is the shared shell's
-    # answer and is not what this unit asserts.
-    assert envelope["data"]["state"] == "failed", envelope
+    # A partial failure is REFUSED, not reported (R-225). The successes are
+    # durable, the job is recorded failed, and the verb leaves through the job's
+    # own cause with a non zero exit. Until R-225 closed here this asserted a
+    # normal envelope whose ``data.state`` said failed beside an exit of 0.
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "failed", envelope
     assert states(job_id) == {
         "1": jobs.ItemState.DONE,
         "2": jobs.ItemState.FAILED,
@@ -538,9 +540,12 @@ def test_an_authentication_failure_parks_the_run_and_names_the_replacement_path(
 
     code, envelope = drive(resume_argv(job_id))
 
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["state"] == "blocked"
-    cause = envelope["data"]["cause"]
+    # BLOCKED, and not an OK exit (R-290). This asserted ``ExitCode.OK`` with the
+    # block legible only inside ``data.cause``, which is the entry's measured cost.
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "blocked", envelope
+    assert job_of(job_id).state is jobs.JobState.BLOCKED
+    cause = envelope["cause"]
     assert cause["reason"] == "auth-failed"
     assert cause["remediation"]["remedy"] == Remedy.REAUTHENTICATE_PROVIDER
     assert "streamrip" in cause["message"]
@@ -597,10 +602,11 @@ def test_a_provider_block_parks_the_job_and_makes_no_further_request(
 
     code, envelope = drive(resume_argv(job_id))
 
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["state"] == "blocked"
-    assert envelope["data"]["cause"]["reason"] == "provider-blocked"
-    assert envelope["data"]["cause"]["retryable"] is False
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "blocked", envelope
+    assert job_of(job_id).state is jobs.JobState.BLOCKED
+    assert envelope["cause"]["reason"] == "provider-blocked"
+    assert envelope["cause"]["retryable"] is False
     assert states(job_id) == {
         "1": jobs.ItemState.DONE,
         "2": jobs.ItemState.PENDING,

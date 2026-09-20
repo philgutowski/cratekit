@@ -676,8 +676,10 @@ def test_a_failed_job_stays_resumable_and_the_second_attempt_redoes_that_item(
 
     The two halves are asserted separately because the split is easy to read the
     wrong way round. Re-entering the verb on a job the engine has already recorded
-    as failed REPORTS it: a terminal job is not re-driven, and ``jobs.drive``
-    refuses one outright. What reopens it is ``crate job resume``, which calls
+    as failed does not re-drive it, a terminal job is not re-driven and
+    ``jobs.drive`` refuses one outright, and it REFUSES with the job's own cause
+    rather than reporting it (R-225: this asserted ``ExitCode.OK`` over the failed
+    job until that closed here). What reopens it is ``crate job resume``, which calls
     ``jobs.retry`` and then spawns the child that arrives here. This drives
     ``retry`` directly rather than the spawning verb, because the child that verb
     starts is detached and the item's row is what this measures.
@@ -688,7 +690,8 @@ def test_a_failed_job_stays_resumable_and_the_second_attempt_redoes_that_item(
     assert _items(job_id)[0].state == jobs.ItemState.FAILED
 
     code, reported = _drive(["master", str(source), "--job", job_id])
-    assert code == int(ExitCode.OK), reported
+    assert code != int(ExitCode.OK), reported
+    assert reported["outcome"] == "failed", reported
     assert _items(job_id)[0].state == jobs.ItemState.FAILED
 
     _recording(configured.library.root)

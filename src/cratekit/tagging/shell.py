@@ -44,7 +44,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 from cratekit.core import jobs
-from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 
 
@@ -126,8 +126,7 @@ def advance(ctx, store, job, *, origin: Sequence[str], nothing_to_run: str):
             )
         _result, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
-    if not job.is_open() and job.cause is not None:
-        raise CratekitError(job.cause)
+    jobs.raise_for_state(job)
     return job, warnings
 
 

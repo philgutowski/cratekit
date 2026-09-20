@@ -580,15 +580,17 @@ def _resume(ctx, job_id: str) -> Envelope:
         # records that putting it inside was its first draft's bug: a job already
         # FAILED on entry is not open, so the drive is skipped and the check would
         # be skipped with it, and the second ask about a half failed job exits 0
-        # for ever after. ``master/cli.py``'s resume branch has no re-raise at all,
-        # which is R-225 and is the thing this is deliberately not a copy of.
+        # for ever after.
         #
         # ANY CLOSED JOB CARRYING A CAUSE, not FAILED alone. A run stopped with a
         # signal is CANCELLED and carries the cause ``jobs.cancel`` builds; the
         # narrower predicate was measured on 2026-09-02 as exit 0 over a job with
         # 0 of 3 items done. SUCCEEDED carries no cause and is unaffected.
-        if not job.is_open() and job.cause is not None:
-            raise CratekitError(job.cause)
+        #
+        # AND A PARKED JOB, which that predicate never saw because ``blocked`` is
+        # an open state (R-290). The predicate now has one owner,
+        # ``jobs.raise_for_state``, which every queued verb's shell calls.
+        jobs.raise_for_state(job)
         return ctx.envelope(data=_reported(store, job), warnings=warnings)
 
 

@@ -223,9 +223,10 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     behind by a driver that died is state the queue cannot see for itself.
 
     IT RAISES ON A JOB THAT DID NOT FINISH rather than reporting one. That is
-    R-225: ``master/cli.py``'s resume branch returns a normal envelope for a job
-    that half failed and exits OK, so a person whose census did not happen is
-    told it did. The predicate is ANY CLOSED JOB CARRYING A CAUSE rather than
+    R-225: a resume branch that returns a normal envelope for a job that half
+    failed exits OK, so a person whose census did not happen is told it did, and
+    ``master/cli.py`` did exactly that until R-225 closed. The predicate, owned
+    by ``jobs.raise_for_state`` since R-290, is ANY CLOSED JOB CARRYING A CAUSE rather than
     FAILED alone, because a run stopped with a signal is CANCELLED and carries
     the cause ``jobs.cancel`` builds; SUCCEEDED carries none, so it is unaffected.
     """

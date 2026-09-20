@@ -30,6 +30,7 @@ from cratekit.adopt import apply_cli, artifacts, collection, scan_cli
 from cratekit.adopt import scan as adopt_scan
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, preflight, rb_writer, session, taxonomy, tree_registry
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
 from tests import adopt_fixtures
 from tests.cli_drive import approve_and_queue, drive
@@ -846,6 +847,31 @@ def test_an_interrupted_job_exits_with_its_own_cause_and_not_ok(machine, verb):
         "whose work did not happen is told it finished"
     )
     assert envelope["cause"]["reason"] == cancelled.cause.reason
+
+
+def test_a_parked_adoption_leaves_blocked_and_non_zero(machine, monkeypatch):
+    """R-290 for the one key ``tests/test_job_outcome.py`` cannot drive.
+
+    ``adopt apply`` opens its destructive session before it looks at the job, and
+    that needs this file's machine. The population test names this function as
+    the place the key is covered, and fails if it is ever removed.
+    """
+
+    def parks(job, item, cfg):
+        raise jobs.Parked(
+            refuse("provider-blocked", "the run must stop", origin=("test",)).cause
+        )
+
+    run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
+
+    code, envelope = drive(["--run", run_id, "adopt", "apply", "--job", job_id])
+
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is jobs.JobState.BLOCKED, envelope
+    assert envelope["outcome"] == "blocked", envelope
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "provider-blocked"
 
 
 def test_an_apply_whose_entries_failed_raises_rather_than_reporting_success(
