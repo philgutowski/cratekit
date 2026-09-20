@@ -1,0 +1,115 @@
+name = "r154-b"
+pass_kind = "light"
+
+# R-154 and R-153, batch b: whose a snapshot is, the newest-by-default walk, and the capture.
+# Author run. Every zero below reads as "the author could not kill it".
+
+[[rows]]
+id = "B1_named_mismatch"
+description = "Accept a named snapshot carrying ANY marker, which is the finding's real half: a well formed stamp from another library is pulled"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''        if recorded == (expected,):
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=expected, named=True)'''
+new = '''        if recorded:
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=expected, named=True)'''
+
+[[rows]]
+id = "B2_two_markers"
+description = "Accept a named snapshot when the expected identity is AMONG its markers, so a folder two libraries wrote passes on either one"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''        if recorded == (expected,):
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=expected, named=True)'''
+new = '''        if expected in recorded:
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=expected, named=True)'''
+
+[[rows]]
+id = "B3_handed_down_stamp"
+description = "Ignore accept_unrecorded, so a stamp the verb resolved and handed down arrives looking typed and an unmarked one is pulled"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''        accepted = True if accept_unrecorded is None else accept_unrecorded'''
+new = '''        accepted = True'''
+
+[[rows]]
+id = "B4_stated_volume_over_unmarked"
+description = "Pull an unmarked named snapshot even when a person stated the volume it should record, so the statement is checked against nothing"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''        if not recorded and snapshot_volume is None and accepted:'''
+new = '''        if not recorded and accepted:'''
+
+[[rows]]
+id = "B5_veto_not_select"
+description = "Read only the newest folder, which is the first cut: a shared root refuses whenever the other library backed up last"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''    newest = names[::-1][:NEWEST_WALK]'''
+new = '''    newest = names[::-1][:1]'''
+
+[[rows]]
+id = "B6_walk_bound"
+description = "Multiply the walk bound by ten, so a remote of foreign snapshots is read far past what the refusal says it looked at"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''NEWEST_WALK = 8'''
+new = '''NEWEST_WALK = 80'''
+
+[[rows]]
+id = "B7_walk_order"
+description = "Walk oldest first, so the default pulls the OLDEST snapshot that is this library's"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''    newest = names[::-1][:NEWEST_WALK]'''
+new = '''    newest = names[:NEWEST_WALK]'''
+
+[[rows]]
+id = "B8_walk_match"
+description = "Stop the walk at the first folder carrying ANY marker, so the default pulls another library's snapshot under a shared root"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''        if seen[name] == (expected,):
+            return ResolvedSnapshot(stamp=name, recorded_volume=expected, named=False)'''
+new = '''        if seen[name]:
+            return ResolvedSnapshot(stamp=name, recorded_volume=expected, named=False)'''
+
+[[rows]]
+id = "B9_marker_failure_fails_the_portion"
+description = "Let a marker that cannot be written fail the database portion, which skips the settings and publishes no age over a good copy"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''            if result.returncode != 0 and command.label == SNAPSHOT_IDENTITY:'''
+new = '''            if False and command.label == SNAPSHOT_IDENTITY:'''
+
+[[rows]]
+id = "B10_marker_in_a_rehearsal"
+description = "Take the marker's label out of the transferring set, so a dry run really writes a marker into a folder holding no database"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''        SNAPSHOT_SETTINGS,
+        SNAPSHOT_IDENTITY,
+        RESTORE_MIRROR,'''
+new = '''        SNAPSHOT_SETTINGS,
+        RESTORE_MIRROR,'''
+
+[[rows]]
+id = "B11_marker_name_safety"
+description = "Write a marker for any identity at all, so one carrying a separator or a dot segment is interpolated into a remote path"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''    if not _MARKER_IDENTITY.fullmatch(folded):
+        return None'''
+new = '''    if False:
+        return None'''
