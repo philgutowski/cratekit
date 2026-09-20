@@ -543,14 +543,18 @@ def _the_anchor_proved_nothing(
     without a threshold: the question is whether ANY active row found a file
     there, not how many.
 
-    WHICH WAY THIS FAILS. An anchor with no active rows through it at all is not
-    suspect, because ``missing_under`` never records it, so a mapped volume
-    holding only removed rows still settles off an empty mount point. Nothing
-    local can do better: with no active row through that anchor there is no
-    evidence either way, and the alternative is a threshold over how many removed
-    rows look gone, which is the same all-or-nothing rule ``suspect_anchors``
-    replaced. It is recorded as its own residual finding rather than papered
-    over.
+    WHICH WAY THIS FAILS, AND WHAT NOW STANDS BEHIND IT. An anchor with no active
+    rows through it at all is not suspect, because ``missing_under`` never
+    records it, so on this signal alone a mapped volume holding only removed
+    rows settles off an empty mount point. Nothing local can do better: with no
+    active row through that anchor there is no evidence either way, and the
+    alternative is a threshold over how many removed rows look gone, which is
+    the same all-or-nothing rule ``suspect_anchors`` replaced. The evidence that
+    closes it comes from outside the walk. An empty mount point is on the disk
+    that holds the mount directory, not on the volume the rule recorded, so
+    ``_assert_the_volume_this_file_is_on`` refuses before this is ever asked.
+    This signal stays for the case identity cannot see, which is the right disk
+    with the wrong directory named.
     """
     return answered.anchor is not None and answered.anchor in references.suspect_anchors
 

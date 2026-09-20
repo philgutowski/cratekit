@@ -2380,6 +2380,14 @@ disagree, asserted.
 reproduced end to end. Three are fixed here and named so the fix is findable;
 two are recorded and open.
 
+**Where each open item stands, 2026-09-19 on `relay/152`.** Open 1 is CLOSED.
+Open 4 is NARROWED to a wrong directory on the right disk. Open 5 is open and
+its closing condition is smaller. Opens 2 and 3 were read again and left, each
+with the reason under it. The residual finding "An anchor with no active rows
+through it can still settle a removal off an empty directory" closed in the same
+change. Mutation tables `docs/mutation/r44-a.md` and `r44-b.md`, 22 rows, 21
+killing, author run.
+
 **Fixed here, listed because a reader of the review needs to know they are gone:**
 
 1. A prefix rule whose target directory does not exist made every active row
@@ -2410,6 +2418,31 @@ the pass asserts the identity of every volume it is about to write to rather
 than only the one the library root sits on. That is a config shape change, so it
 belongs with a unit that owns the config surface.
 
+**CLOSED 2026-09-19 on `relay/152`, by both halves.** A rule in
+`library.location_prefix_map` takes an optional `volume_id`, validated as the
+library's is and written only when set, so no existing fingerprint moves.
+`session.assert_mapped_volume_identities` asks `preflight.assert_library_volume`
+about every rule target at destructive strength, and `deletion/run.py` calls it
+in `_assert_library_is_still`, before a path resolves. A rule is held to its own
+identity, or to the library's when its target is inside the library root, or to
+nothing, and nothing recorded REFUSES, naming the rule by its config key and the
+identity the disk shows. `session.assert_mapped_file_volume` then probes the
+directory of each file, not the rule's target, before every permanent act in the
+apply loop: at the top of the loop, and again after the re-check. Reproduced
+first: twenty confirmed removals on a mapped volume with a different disk at the
+mount path all moved, and now none does.
+
+The built in review drove four holes into the first cut, all fixed in the same
+change. The refusal read the identity to hand over by walking upward, which for
+an ejected drive is the boot disk, and told the person to record it, which would
+have reopened the empty mount point for good, so `preflight.identity_source` is
+asked first and an empty mount slot refuses whatever is recorded. The second
+look sat before the move only, which is the one branch an ejected drive never
+reaches, since its re-check answers GONE and GONE is settled with a tombstone.
+The rule's target was probed instead of the file's directory, so a volume
+mounted inside the target went unseen. An `OSError` from the walk escaped as an
+internal defect.
+
 **Open 2: a permanently non-deletable candidate pins the watermark forever.**
 `present` offers only `DELETABLE`, so `COLLIDES_WITH_ACTIVE_ROW`,
 `STILL_REFERENCED`, `SIZE_MISMATCH`, `UNRESOLVED` and `UNIDENTIFIABLE` can never
@@ -2428,6 +2461,12 @@ so the cost is one dictionary lookup per run rather than a filesystem call.
 through the review queue rather than through the watermark, so "I have seen this
 and there is nothing to do" is a recorded decision instead of a permanent pin.
 
+**Read again 2026-09-19 on `relay/152`, and left.** Nothing in the volume
+identity change touches it. The closing line asks for a new verdict in the review
+queue, which is a product surface and a decision about what retiring means for a
+row that may become deletable later. Its cost is a plan that grows by one row
+per run, not a file, so it does not meet the board bar alone.
+
 **Open 3: a crash between the exclusive create and the rename leaves a
 zero-byte file carrying the track's exact name in the Trash.** Verified. The
 placeholder is removed on every failure the process survives, including
@@ -2440,6 +2479,12 @@ file that was supposed to be there.
 a file, so a later run can tell an interrupted reservation from a real trashed
 track and reclaim it. Every shape of that costs a second name or a sidecar, and
 choosing one is a decision rather than a repair.
+
+**Read again 2026-09-19 on `relay/152`, and left.** It needs a hard kill inside a
+window of one rename, its cost is a zero byte file in the Trash and one name
+attempt, and the entry's own last sentence still holds: the marker's shape is a
+choice between a second name and a sidecar, and an unattended session picking
+one would be deciding the Trash layout by default.
 
 **Open 4: the anchor check asks whether the anchor is THERE, never whether it is
 RIGHT.** Added 2026-08-03, after the second review round reproduced it end to
@@ -2471,6 +2516,34 @@ split closed it.
 merely present, which needs something on the volume to identify it, in the shape
 `R38`'s volume identity already has for the library root. That is the same
 config change Open 1 needs, and the two should land together.
+
+**NARROWED 2026-09-19 on `relay/152`, to a wrong directory on the RIGHT disk.**
+They did land together. A rule whose target exists on ANOTHER disk, a mistyped
+volume name or a different drive at the old name, now refuses as
+`mapped-volume-mismatch` before a path resolves, and the reproduction above with
+the wrong directory on a second volume is
+`test_a_rule_onto_the_wrong_volume_refuses_rather_than_trashing_the_only_copy`,
+with the correct rule's `COLLIDES_WITH_ACTIVE_ROW` as its control.
+
+What is still open is exactly what a volume identity cannot see. Two
+directories on one disk share an identity, so a rule aimed at the wrong one
+passes the gate and the original defect is intact, DRIVEN end to end and pinned
+in `test_the_wrong_directory_on_the_right_volume_is_still_offered_and_is_recorded_as_open`:
+the only copy of a still referenced file is `DELETABLE`. The per anchor warning
+is still the only signal.
+
+**The decision it is waiting on, with the options.** (a) Refuse the pass on any
+suspect anchor. No threshold in it, and it refuses the ordinary library with one
+rule matching a handful of rows whose files were all moved by hand. (b) Hold
+back only candidates whose file sits on the same volume as a suspect anchor.
+Narrower, and it still holds back a whole library when the suspect anchor is on
+the library volume. (c) A marker file written into each rule target at setup and
+asked for here, which is an identity for a directory and costs a file on the
+user's disk. (d) Leave the warning. This session took (d), the conservative call
+for an unattended change, because (a) and (b) spend availability the entry
+already argued is a product decision, and (c) writes to a music volume.
+
+**Closes when:** one of (a), (b) or (c) is chosen by a person and built.
 
 **Open 5: a mapped volume that is not plugged in refuses the WHOLE pass, and
 that is an availability regression this round introduced.** A two drive library
@@ -2504,6 +2577,21 @@ offline, so the user asserts once that those rows live on that volume and the
 pass may then scope the refusal to candidates resolving through it. That is a
 deliberate assertion by a named person, in the same class as the backup
 acknowledgment, and it is config surface rather than a repair.
+
+**Still open 2026-09-19 on `relay/152`, and one step smaller.** The config
+surface now exists: a rule records the volume it points at. That is NOT yet the
+assertion this needs. A recorded identity says which disk the rule's `to` side
+is, and says nothing about whether its `from` side matches the right rows, so a
+rule with the right disk and the wrong prefix would still hide root resident
+files from a scoped proof. The refusal did widen by one case and that is
+recorded here rather than hidden: the identity gate asks every rule, so a
+detached mapped volume now refuses as `mapped-volume-unmounted` even when no row
+resolves through its rule, where before it refused only when a row did. Removing
+the unused rule is the way through, and the refusal names the rule.
+
+**Closes when:** a rule can carry an explicit "expected offline" assertion beside
+its `volume_id`, and the pass, having confirmed that volume is mounted nowhere,
+scopes the refusal to candidates resolving through that rule.
 
 **Now pinned:** that step was the round 2 remediation and NOTHING asserted it.
 `grep '\.steps' tests/test_deletion.py` returned zero hits, so deleting the
@@ -2908,6 +2996,31 @@ all-or-nothing rule `suspect_anchors` was built to replace.
 point and whether the volume mounted there is the one the prefix rule names,
 which is the same volume identity question `core.preflight` already answers for
 the library root and would need extending to every mapped target.
+
+**CLOSED 2026-09-19 on `relay/152`, by both halves of the closing line.** The
+evidence comes from outside the walk. An empty directory standing where a volume
+mounts is on the disk that holds the mount directory, so the identity read there
+is not the one the rule recorded and the pass refuses as
+`mapped-volume-mismatch`. Reproduced first in
+`test_a_volume_holding_only_removed_rows_does_not_settle_off_an_empty_mount_point`:
+no active row through the rule, twenty removed rows confirmed, the volume
+emptied, and before the gate that was twenty tombstones and a watermark past
+all of them. Now none and the watermark unmoved.
+
+The first cut did not fully close it and the review showed why. With the library
+on the boot disk, a rule that recorded the BOOT disk's identity matches the
+leftover directory, and the first cut's own refusal offered exactly that
+identity to record. So the mount point question is asked separately and first:
+`preflight.identity_source` answers None for a place this platform mounts
+volumes with nothing mounted in it, and that refuses as
+`mapped-volume-unmounted` whatever the rule recorded.
+`test_an_empty_mount_slot_refuses_even_when_the_recorded_identity_matches_it`.
+
+One limit, inherited and stated: `identity_source` knows the mount directories
+in `preflight._VOLUME_MOUNT_LOCATIONS`. A volume hand mounted somewhere that
+table does not name is accepted while detached if the rule recorded the identity
+of the disk holding that path. That is the residual `identity_source`'s own
+docstring already records for the library root.
 
 ## R-52. The active half of the collection walk carries no identity, so nothing can be proved about an active row's version
 
@@ -22079,3 +22192,123 @@ same as likely.
 **Closes when:** each site is driven with two spellings of one folder, and
 either asks the filesystem as U104's guard does or is recorded as unreachable
 with the drive that showed it. One shared helper is the likely shape.
+
+---
+
+## R-545. Only the deletion pass asserts the identity of a volume a prefix rule points at
+
+**Found:** 2026-09-19, on `relay/152`, by the built in review of the mapped
+volume gate and then a sweep of every `PrefixRule(` and `resolve_recorded_path`
+caller under `src`. Read line by line, NOT driven, except where it says so.
+
+`session.assert_gates` asserts the library root's volume and nothing else. The
+deletion pass now also asserts every rule target. No other pass does. The review
+claimed the My Tags pass writes tags into files on whatever disk a rule reaches.
+Read to the write, that is false: nine sites were read and none writes, renames,
+moves or deletes a file through a rule today.
+
+- `write/metadata_cli.py`, `write/routing_cli.py` and
+  `modules/outbound/source.py` READ tags through a rule, and what they read
+  decides database rows, an emitted XML's buckets and ratings, and provider
+  matching. A different disk at the target mostly answers "not a file" and the
+  row is skipped. A clone answers with the same tags.
+- `write/routing_pass.py`, `write/rebuild.py` and `write/trees.py` use the
+  resolved path as a dictionary key only.
+- `write/naming_cli.py` renames files from a walk of the library root. A
+  resolved path only decides which files are held back.
+- `adopt/apply.py` DOES write a tag into a rule resolved file, through
+  `revert.write_tag_with_record`, inside a gated session. It is disarmed: the
+  shipped worker passes no `tag_value` and the write is skipped without one.
+  `adopt/revert.py` writes to a recorded path that came from a rule, and its
+  verb was not traced to a registry entry.
+
+**Measured cost:** none today, nine sites read and none driven, so this entry
+says "none of nine writes through a rule", never "nothing does". It becomes a
+cost the day adopt's tag write is armed.
+
+**Why not fixed here.** The brief is the deletion pass. Moving the assertion
+into `session.assert_gates` would cover every destructive session at once, and
+would also start refusing sessions that never follow a rule over a detached
+archive drive, which is the availability question the residual finding "Five
+findings the U24 review accepted, and the reason each stands" records as open.
+
+**Closes when:** the unit that arms adopt's tag write asserts
+`session.assert_mapped_file_volume` before it, or the assertion moves into
+`assert_gates` with the offline assertion that finding asks for.
+
+---
+
+## R-546. A volume nested under the library root is not asserted for the files inside it
+
+**Found:** 2026-09-19, on `relay/152`. Read and NOT driven, so its reachability
+is unmeasured.
+
+The mapped volume gate probes the directory of each file that went through a
+RULE. A file under the library root goes through no rule, and the root's own
+assertion asks about the root directory's volume once at open and once at close.
+So a second volume mounted at a directory inside the library root, or a
+directory there symlinked onto another disk, holds files the deletion pass would
+trash with only the outer volume identified. The same probe closes it: ask
+`containing_mount` of the file's directory against `library.volume_id`.
+
+**Measured cost:** none measured. The layout is unusual and nothing was driven
+to show a shipped setup produces it.
+
+**Why not fixed here.** The refusal for a root resident file is the library
+volume's and lives in `session.assert_volume_identity`, which takes no path.
+Giving it one changes the gate every destructive session shares.
+
+**Closes when:** `assert_volume_identity` can be asked about a path under the
+root, and the deletion pass asks it per file as it now does for a mapped one.
+
+---
+
+## R-547. Nothing records a rule's volume identity for a person, and a target inside the root by another spelling refuses as unrecorded
+
+**Found:** 2026-09-19, on `relay/152`, while deciding what an existing
+configuration meets on the day the gate arrives.
+
+Two edges of one rule. A prefix rule whose target is outside the library root
+and records no `volume_id` now refuses `delete review` and `delete apply` as
+`mapped-volume-mismatch`. The refusal names the rule's config key and the
+identity the disk shows now, so the way through is one line typed into the
+configuration file by hand. Setup writes no `volume_id` for a rule, no verb
+records one, and doctor does not report a rule that will refuse. A rule whose
+target is inside the library root, which is what `docs/cutover.md` describes for
+the live library, needs nothing and is not affected.
+
+"Inside" is the resolver's lexical test on folded text. A target under the root
+by another spelling, a symlink or a different letter case on a case insensitive
+volume, is answered as outside and refuses the same way, with a sentence that
+says "not under the library root as configuration spells it". That errs toward
+asking, on purpose, and it is the same two spellings shape the residual finding
+about `Path.resolve` and letter case records for thirteen other sites.
+
+**Measured cost:** a refusal with its remedy in it, on two verbs, for a
+configuration with a rule onto another directory outside the root. Not driven
+against a real configuration: the live one was not read.
+
+**Closes when:** setup or a verb records a rule's identity from the mounted
+volume the way setup records the library's, through `identity_source`, and
+doctor names a rule that the deletion pass would refuse.
+
+---
+
+## R-548. The pool sizing test that times a freshly spawned child died once under the mutation driver's load
+
+**Found:** 2026-09-19, on `relay/152`. `scripts/mutate.py` declared batch
+`r44-a` INVALID on its first run because the null control, a comment line,
+killed `tests/test_pool_sizing.py::test_the_real_probe_measures_a_freshly_spawned_child`.
+The test passes alone, 267 of 267 in its file, passed in the full suite run made
+on the branch before the review, and passed in the rerun of the same batch and
+in batch b.
+
+**Measured cost:** one invalid batch, about three minutes. Eight full suite runs
+on this machine in this session: seven inside the driver, which are three
+baselines, three null controls and one promoted zero, with one death among
+them, and one outside it with none. Maintainer
+facing.
+
+**Closes when:** the probe's measurement is made independent of how loaded the
+machine is, or the test says what load it tolerates.
+

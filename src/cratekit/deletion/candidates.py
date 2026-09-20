@@ -69,8 +69,12 @@ anchor IS THERE. It cannot ask whether the anchor is RIGHT. A rule whose target
 exists and is the wrong directory produces the original defect in full: every row
 through it is missing, nothing is indexed under it, ``complete`` is true, and a
 candidate that would have collided with an active row is judged deletable and
-trashed. A drive somebody renamed only reaches the refusing branch while nothing
-else is mounted at the old name; mount anything there and it does not. This is
+trashed. This module still cannot ask it. The pass that calls it now asks a
+narrower question first, in ``run._assert_library_is_still``: is the volume at
+each rule's target the one recorded for that rule. So a wrong directory on
+ANOTHER DISK, a mistyped volume name or a different drive at the old name,
+refuses before this module resolves a path. A wrong directory on the RIGHT disk
+shares that disk's identity and still gets through. That remainder is
 recorded rather than fixed, and the residual finding
 "Five findings the U24 review accepted, and the reason each stands"
 in ``docs/residual-findings.md`` carries the
