@@ -9582,6 +9582,25 @@ unreachable remote for a restore that may not even use the mirror.
 **Closes when:** the offer resolves and shows the stamp it is offering, and the
 digest carries it.
 
+**CLOSED 2026-09-19 on `relay/153`.** `restore run` resolves the snapshot before
+its gate through `backup.resolve_snapshot`, and only when `--from-backup` was
+given, so a restore that spends a local capture still reaches nothing before it
+is answered, which a test holds by reading the fake program's log. The resolved
+stamp, whether a person named it, the identity its marker records and the
+expected identity a person stated all enter the offer item and so the digest.
+The item is also handed to the gate as context and arrives as `shown`, because
+the verb had never put anything in front of the person answering. Driven as this
+entry measured it: offer and answer over one snapshot, a second appears, and the
+resumed drive is refused `decision-stale` with nothing copied. The worry recorded
+above held in one respect and the entry said so: an unreachable remote now
+refuses the OFFER. Nothing is lost by that, since the run refused on the same
+listing a moment later.
+
+The window INSIDE the second act, between the listing the answer is checked
+against and the engine's plan, is closed separately: the stamp that was offered
+is what the engine is handed, never the flag, with `accept_unrecorded` saying
+whether it was typed. Mutation rows `C1` and `C3` in `docs/mutation/r154-c.md`.
+
 ---
 
 ## R-154. Nothing asserts a pulled snapshot belongs to this library
@@ -9608,6 +9627,43 @@ is a change to the capture side.
 
 **Closes when:** a snapshot carries the recorded volume identity of the library it
 was taken from, and the restore refuses one that does not match.
+
+**CLOSED 2026-09-19 on `relay/153`, by both halves, with the remainder filed
+under its own number.** The measured cost was reproduced first on main's code:
+the traversal value planned
+`copy remote:database-snapshots/../another-library-snapshots/2020-01-01T000000Z/db/master.db`.
+
+The narrow half: `backup.resolve_snapshot` refuses a named value that is not a
+dated folder name as `snapshot-name-invalid`, before the remote is asked
+anything, and `plan_restore` calls it under the gates, so the check is on the
+path every caller takes and not only in the verb. **The first cut of the shape
+check was a regression and the built in review caught it**: the source system
+spells its dated folder `2026-08-01_123456`, in the same layout and commonly the
+same remote directory, so every snapshot a person owns on the day of a cutover
+was refused by name and hidden from the listing. `is_snapshot_name` accepts both
+spellings, each by pattern and by a real date. The listing that picks the newest
+ignores any other folder name, the same shape one function over.
+
+The real half: the database portion of a backup ends by writing an empty marker
+file, `library-volume.<identity>`, beside `db/` in the dated folder, with
+`rclone touch`. The identity is the library's `library.volume_id` folded through
+`preflight.normalize_identity`. It follows the whole database set, so a failed
+copy never leaves a marked folder, and a marker that cannot be written warns and
+does not fail the portion. A restore lists it back. A named snapshot marked for
+another volume, or carrying two markers, refuses as `snapshot-library-mismatch`,
+and a marker listing that FAILED refuses and is never read as unmarked. With no
+stamp named, ownership SELECTS: the newest eight folders are read newest first
+and the first one marked for this library is pulled, so another library's
+snapshot under a shared root is stepped over.
+
+**Two decisions a person may want to revisit, both taken conservatively.** A
+replaced drive is a new volume, so a strict compare would refuse exactly the
+restore a mirror exists for. `--snapshot-volume IDENTITY` states the identity
+the snapshot is expected to record, for one call, in the digest, recorded
+nowhere. And a snapshot with NO marker, which is every snapshot taken before
+this landed, is pulled only when its stamp is named, and refuses as
+`snapshot-identity-unrecorded` otherwise. That second one is what is still open,
+and it is R-550. Mutation tables `docs/mutation/r154-a.md` to `r154-c.md`.
 
 ---
 
@@ -22311,4 +22367,167 @@ facing.
 
 **Closes when:** the probe's measurement is made independent of how loaded the
 machine is, or the test says what load it tolerates.
+
+---
+
+## R-549. The archive rotation purges the newest dated archive when a stray folder sorts after it
+
+**Found:** 2026-09-19, on `relay/153`, looking for the shape this unit fixed one
+function over. `latest_snapshot` sorted every folder name under the snapshot root
+and took the last, so a folder made by hand was the newest snapshot.
+`_prune_archive` in `modules/tools/backup.py` has the same line on the path that
+DELETES: it sorts every name `lsf` returns under the archive root and purges all
+but the last `archive_keep`.
+
+**Driven at the engine, over a fake listing.** With the default keep of one and
+a listing of `2026-08-01T000000Z`, `2026-08-02T000000Z`, `zz-kept-by-hand` and
+`aa-notes`, the rotation purged BOTH dated archives and `aa-notes`, and kept the
+stray folder. The newest dated archive is the one run of rollback the rotation
+exists to keep.
+
+**Measured cost, and what was not measured.** A person loses the only rollback
+of their last backup, and a folder they made by hand, with the backup reporting
+success. The PRODUCER was not driven: nothing in this product writes a non dated
+folder under the archive root, so the input is a person's own folder or an
+archive root shared with something else. One candidate was considered and none
+was driven against a real remote.
+
+**Closes when:** the rotation considers only names `is_snapshot_name` accepts,
+which is already in the module, and never purges a name it did not write. Board
+bar (a) and (d). **Its issue is owed**, since a Relay session cannot open one
+before the merge puts the number on `main`.
+
+---
+
+## R-550. A snapshot with no identity marker is pulled on the word of the person who named it
+
+**Found:** 2026-09-19, on `relay/153`. It is what is left of the residual finding
+about a pulled snapshot belonging to this library, and it is a decision rather
+than an oversight.
+
+Every snapshot taken before the marker existed carries none, and so does every
+snapshot the source system wrote. Refusing them would strand a person whose
+drive dies before their first marked backup, so `--snapshot STAMP` over an
+unmarked folder is accepted, and the offer shows `recorded_volume` as null.
+
+**Measured cost:** under a remote root two libraries share, a person who names
+the other library's PRE MARKER stamp restores that library's database over this
+one, which is the original finding narrowed to a typed stamp, an unmarked
+folder and a shared root at once. Driven at the engine and at the verb as the
+accepted case. No shared root was looked for on a real remote.
+
+**The options, for a person to choose between.** Keep it, which is what landed.
+Require a second explicit word for an unmarked snapshot, which costs a flag on
+the day somebody's drive has died. Or write markers onto existing snapshots
+from an attended sitting, after which unmarked can simply refuse. Does not meet
+the board bar: it takes a deliberate act over a value the offer shows as null.
+
+**Closes when:** a person picks one.
+
+---
+
+## R-551. The identity marker has never been written to, or read from, a real remote
+
+**Found:** 2026-09-19, on `relay/153`. The capture writes its marker with
+`rclone touch <root>/<stamp>/library-volume.<identity>` and the restore reads it
+with `rclone lsf <root>/<stamp>/ --files-only`. Both were built over fakes, as
+the brief directs. **No test runs rclone.**
+
+What has not been seen: that `touch` creates a zero length file in an existing
+folder on the configured backend, that `--dry-run` neutralizes it, and that the
+marker comes back from `lsf` spelled as it was written. A backend that cannot
+hold an empty file is handled, the marker failure warns as
+`snapshot-identity-not-written` and the portion still succeeds, and that path
+was driven over a fake only.
+
+**Measured cost:** none measured. If `touch` fails on the live remote every
+snapshot is unmarked, a backup says so at resume, and the newest by default
+restore asks for a stamp to be named.
+
+**Closes when:** one real backup shows the marker on the remote, and one
+`restore run --from-backup --target` into a scratch directory resolves it.
+Attended.
+
+---
+
+## R-552. A snapshot's identity is its volume's, which two libraries on one disk share
+
+**Found:** 2026-09-19, on `relay/153`, by reading. METHOD's second pattern, an
+identity that is not unique to the thing it identifies.
+
+The marker records `library.volume_id`, because that is the only identity a
+library has here. Two library roots on ONE volume, backing up to one remote
+root, write the same marker, and each is offered the other's snapshots as its
+own. On Windows the identity is a 32 bit serial, which the adapter's own
+docstring calls weaker. Read and NOT driven, and no configuration of that shape
+was looked for.
+
+**Closes when:** a library has an identity of its own, or the marker also
+carries the library root and the restore compares both.
+
+---
+
+## R-553. What the newest by default walk costs was chosen and not measured
+
+**Found:** 2026-09-19, on `relay/153`.
+
+- `backup.NEWEST_WALK` is eight, a judgement. A remote holding only unmarked
+  snapshots, which is every remote on the day this landed, costs nine listings
+  before the restore refuses. No listing was timed against a real remote.
+- A `--from-backup` restore makes about four small listings per act where it
+  made two. The built in review proposed merging the marker listing into the
+  contents listing, and it was NOT applied: `snapshot_filenames` is a seam
+  twelve tests key on by label.
+- The two folder spellings sort together as text. Across them the order is only
+  roughly by time, since one is UTC and one is local, and on a shared date the
+  source system's underscore sorts after this product's letter. Harmless while
+  a source system snapshot never carries a marker, because the walk steps over
+  it, and wrong the day somebody marks one.
+
+Maintainer facing. **Closes when:** the listings are timed at an attended
+sitting and the bound is set from the number.
+
+---
+
+## R-554. A marker that failed to write at run time is said where a queued backup cannot be heard
+
+**Found:** 2026-09-19, on `relay/153`, by reading. `run_backup` turns a failed
+marker into a `snapshot-identity-not-written` warning on the portion's outcome.
+The backup verb runs through the job queue, and the comment in `backup/cli.py`
+beside the analysis share warning says a work body's report does not leave a
+claimed item. The CONFIGURATION time half of this warning was moved to the verb
+for that reason and is driven at queue and at resume. The RUN time half cannot
+be asked of the configuration, so it rides the outcome only, exactly as
+`archive-purge-failed` beside it does. Read and NOT driven.
+
+**Measured cost:** none measured. If it is as read, a backup whose marker failed
+reports clean and the snapshot is unmarked, which the restore then says.
+
+**Closes when:** a claimed item's warnings reach the envelope, which is the
+residual finding the comment cites, or the verb lists the newest snapshot's
+marker after a run.
+
+---
+
+## R-555. A snapshot holding no database file is planned, and the live sidecars are cleared before its copy fails
+
+**Found:** 2026-09-19, on `relay/153`, while writing the refusal that tells a
+person an unmarked newest snapshot may be an unfinished backup.
+
+`_plan_restore_inside_the_gates` lists what the snapshot holds and uses the
+answer for the SIDECARS only. **Driven at the engine:** over a listing holding
+`master.db-wal` and no `master.db`, the plan came back with a copy of
+`master.db`, a copy of the log, and two clears. `run_restore` clears the live
+sidecars before the first command, so the database copy then fails as
+`restore-transfer-failed` with the live write ahead log already gone, which is
+the loss that refusal's own docstring describes. The listing that would have
+refused it for nothing is already in hand.
+
+**What was not measured:** the producer. A backup cut off between two files of
+the database set is the candidate, and it was not driven. One candidate
+considered, none driven.
+
+**Closes when:** the plan refuses a snapshot whose listing does not hold the
+database file, before anything is cleared. Could meet board bar (a); it says a
+producer has to be driven first.
 

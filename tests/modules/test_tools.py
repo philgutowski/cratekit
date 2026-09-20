@@ -2156,3 +2156,553 @@ def test_the_backup_payload_carries_a_version(cfg, library_with_database, rclone
 
     outcome = backup.run_backup(cfg, plan, runner=Recorder())
     assert backup.outcome_payload(outcome)["ok"] is True
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Snapshot provenance. A pulled snapshot is a stamp, and it is this library's.
+# ═══════════════════════════════════════════════════════════════════════════
+
+STAMP = "2026-08-01T000000Z"
+
+
+def marker_for(identity):
+    """The marker filename the capture writes for one identity."""
+    name = backup.identity_marker(identity)
+    assert name is not None, f"{identity!r} produced no marker at all"
+    return name
+
+
+def marked(cfg, identity=None, *, snapshots=None):
+    """A recorder whose remote holds the database and one identity marker."""
+    stdout_for = {
+        backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg),
+        backup.LIST_SNAPSHOT_IDENTITY: marker_for(identity or cfg.library.volume_id) + "\n",
+    }
+    if snapshots is not None:
+        stdout_for[backup.LIST_SNAPSHOTS] = "".join(name + "/\n" for name in snapshots)
+    return Recorder(stdout_for=stdout_for)
+
+
+@pytest.mark.parametrize(
+    "typed",
+    [
+        "../another-library-snapshots/2020-01-01T000000Z",
+        "2026-08-01T000000Z/../../elsewhere",
+        "2026-08-01",
+        "newest",
+        "",
+        "2026-13-01T000000Z",
+        "2026-08-01T000000Z ",
+        # A real date the calendar parse accepts and the pattern does not: the
+        # parser is lenient about padding, which is why neither check stands alone.
+        "2026-8-01T000000Z",
+    ],
+)
+def test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked(
+    cfg, tmp_path, rclone_on_path, typed
+):
+    """The ledger's measured cost, reproduced: the first value is its own.
+
+    It reached the remote path by interpolation and planned a copy out of
+    another directory with exit 0. Refused on SHAPE, and before any listing, so
+    a value that is a path never becomes part of an argument to the program that
+    talks to the remote.
+    """
+    recorder = marked(cfg)
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, snapshot=typed,
+            runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_NAME_INVALID
+    assert recorder.commands == [], (
+        f"the remote was asked {recorder.labels()} about a value that is not a stamp"
+    )
+
+
+def test_every_stamp_the_backup_writes_passes_the_shape_the_restore_demands():
+    """The two ends of one coupling, held together by a test rather than by hope.
+
+    A shape check written from memory of the format drifts the day the format
+    does, and would then refuse every snapshot this product takes.
+    """
+    for moment in (
+        datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+        datetime(1999, 12, 31, 23, 59, 59, tzinfo=timezone.utc),
+        datetime(2026, 8, 1, 9, 5, 7, tzinfo=timezone(timedelta(hours=-4))),
+    ):
+        assert backup.is_stamp(backup.stamp_for(moment)), backup.stamp_for(moment)
+    assert backup.is_stamp(backup.STAMP_EXAMPLE), "the refusal shows a stamp it would refuse"
+
+
+def test_a_snapshot_marked_for_another_library_is_refused(cfg, tmp_path, rclone_on_path):
+    """The half the shape check cannot close: a well formed stamp, someone else's.
+
+    Two libraries sharing one remote root write into one directory of stamps, so
+    a perfectly spelled stamp can name the other library's database.
+    """
+    recorder = marked(cfg, "0000-AAAA")
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
+            runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
+    assert "0000-aaaa" in excinfo.value.detail, excinfo.value.detail
+    assert not any(c.label in backup.TRANSFERRING_LABELS for c in recorder.commands)
+
+
+def test_a_snapshot_marked_for_this_library_is_planned_and_says_so(
+    cfg, tmp_path, rclone_on_path
+):
+    plan = backup.plan_restore(
+        cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
+        runner=marked(cfg), process_lister=no_processes, gates=open_gates)
+    assert plan.snapshot == STAMP
+    assert plan.recorded_volume == "f1e2-d3c4"
+
+
+def test_the_identity_is_compared_case_blind_like_the_volume_gate(
+    cfg, tmp_path, rclone_on_path
+):
+    """``diskutil`` prints uppercase and the adapters report lowercase."""
+    recorder = Recorder(
+        stdout_for={
+            backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg),
+            backup.LIST_SNAPSHOT_IDENTITY: "library-volume.F1E2-d3c4\n",
+        }
+    )
+    plan = backup.plan_restore(
+        cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
+        runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert plan.recorded_volume == "f1e2-d3c4"
+
+
+def test_a_snapshot_carrying_two_identities_is_refused(cfg, tmp_path, rclone_on_path):
+    """Two libraries backing up in one second share one dated folder.
+
+    One of the markers is this library's, and the database beside them is
+    whichever copy landed last, so a match on either marker proves nothing.
+    """
+    recorder = Recorder(
+        stdout_for={
+            backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg),
+            backup.LIST_SNAPSHOT_IDENTITY: (
+                marker_for(cfg.library.volume_id) + "\n" + marker_for("0000-AAAA") + "\n"
+            ),
+        }
+    )
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
+            runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
+
+
+def test_a_marker_with_no_identity_after_its_prefix_is_not_read_as_unmarked(
+    cfg, tmp_path, rclone_on_path
+):
+    recorder = Recorder(
+        stdout_for={
+            backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg),
+            backup.LIST_SNAPSHOT_IDENTITY: "library-volume.\n",
+        }
+    )
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
+            runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
+
+
+def test_an_identity_listing_that_fails_is_not_read_as_an_unmarked_snapshot(
+    cfg, tmp_path, rclone_on_path
+):
+    """Absence read as evidence of absence, the first pattern.
+
+    A named snapshot with no marker is accepted, so a listing that FAILED must
+    not arrive looking like one, or an unreachable remote becomes the way past
+    the identity check.
+    """
+    recorder = Recorder(
+        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)},
+        fail_labels={backup.LIST_SNAPSHOT_IDENTITY},
+    )
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
+            runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert not any(c.label in backup.TRANSFERRING_LABELS for c in recorder.commands)
+
+
+def test_an_unmarked_snapshot_is_pulled_only_when_a_person_named_it(
+    cfg, tmp_path, rclone_on_path
+):
+    """Every snapshot taken before the marker existed is unmarked.
+
+    Refusing them all would strand a person whose drive died the day after this
+    landed, and accepting them as the default would leave the hole open for the
+    newest folder under a shared root. Naming the stamp is the act that tells
+    the two apart.
+    """
+    unmarked = {
+        backup.LIST_SNAPSHOTS: STAMP + "/\n",
+        backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg),
+    }
+    named = backup.plan_restore(
+        cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
+        runner=Recorder(stdout_for=unmarked), process_lister=no_processes, gates=open_gates)
+    assert named.snapshot == STAMP
+    assert named.recorded_volume is None
+
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True,
+            runner=Recorder(stdout_for=unmarked), process_lister=no_processes,
+            gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_IDENTITY_UNRECORDED
+    assert STAMP in excinfo.value.detail
+
+
+def test_a_resolved_stamp_handed_down_is_not_mistaken_for_one_a_person_named(
+    cfg, tmp_path, rclone_on_path
+):
+    """The verb resolves the newest stamp for its offer and passes it on.
+
+    Without the flag, a stamp that came off the listing would arrive looking
+    typed, and the unmarked refusal above would never fire on the path a person
+    actually takes.
+    """
+    unmarked = {backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, snapshot=STAMP, accept_unrecorded=False,
+            runner=Recorder(stdout_for=unmarked), process_lister=no_processes,
+            gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_IDENTITY_UNRECORDED
+
+
+def test_a_replaced_drive_restores_the_old_volumes_snapshot_by_naming_it(
+    cfg, tmp_path, rclone_on_path
+):
+    """A dead drive is the reason to pull a mirror, and its replacement is a new volume.
+
+    A strict compare against the configured identity would refuse exactly the
+    restore this verb exists for, so the person states the identity the snapshot
+    is expected to record. The statement is held to: it excuses nothing else.
+    """
+    plan = backup.plan_restore(
+        cfg, target=tmp_path, confirmed=True, snapshot=STAMP, snapshot_volume="0000-AAAA",
+        runner=marked(cfg, "0000-aaaa"), process_lister=no_processes, gates=open_gates)
+    assert plan.recorded_volume == "0000-aaaa"
+
+    for recorder in (
+        marked(cfg),
+        marked(cfg, "9999-BBBB"),
+        Recorder(stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}),
+    ):
+        with pytest.raises(backup.BackupRefused) as excinfo:
+            backup.plan_restore(
+                cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
+                snapshot_volume="0000-AAAA", runner=recorder,
+                process_lister=no_processes, gates=open_gates)
+        assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
+
+
+def test_the_newest_snapshot_ignores_folders_that_are_not_stamps(cfg, rclone_on_path):
+    """The same shape one function over. A stray folder sorts after every stamp."""
+    recorder = Recorder(
+        stdout_for={
+            backup.LIST_SNAPSHOTS: "2026-01-01T000000Z/\nold/\n2026-03-01T000000Z/\nzz-scratch/\n"
+        }
+    )
+    assert backup.latest_snapshot(cfg, runner=recorder) == "2026-03-01T000000Z"
+
+
+def test_the_capture_marks_the_snapshot_after_the_database_and_never_before_it(
+    cfg, library_with_database, rclone_on_path
+):
+    """The marker says "this folder holds this library's database".
+
+    Written first, a run whose database copy then failed would leave a folder
+    that claims an identity and holds nothing, so it follows every file of the
+    database set and the executor stops before it when one of them fails.
+    """
+    plan = backup.plan_backup(
+        cfg, now=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        process_lister=no_processes, settings_dirs=())
+    database = next(p for p in plan.portions if p.portion is backup_facts.Portion.DATABASE)
+    labels = [c.label for c in database.commands]
+    assert labels.count(backup.SNAPSHOT_IDENTITY) == 1
+    assert labels.index(backup.SNAPSHOT_IDENTITY) > max(
+        i for i, label in enumerate(labels) if label == backup.SNAPSHOT_DATABASE
+    )
+    marker = next(c for c in database.commands if c.label == backup.SNAPSHOT_IDENTITY)
+    # SPELLED OUT, not built with the helper the other tests use for their INPUT.
+    # An expected value that came from ``identity_marker`` would hold this to
+    # whatever that function returns, which is X equals X.
+    assert marker.argv[1] == "touch"
+    assert marker.argv[-1] == f"{cfg.backup.db_dest_root}/{STAMP}/library-volume.f1e2-d3c4"
+    assert backup.SNAPSHOT_IDENTITY in backup.TRANSFERRING_LABELS
+    assert backup.dry_run_argv(marker)[-1] == "--dry-run"
+
+    failing = Recorder(fail_labels={backup.SNAPSHOT_DATABASE})
+    backup.run_backup(cfg, plan, runner=failing, publish=False)
+    assert backup.SNAPSHOT_IDENTITY not in failing.labels()
+
+
+def test_what_the_capture_writes_is_what_the_restore_reads(
+    cfg, library_with_database, tmp_path, rclone_on_path
+):
+    """One round trip through both ends, so the two cannot drift apart.
+
+    Every other test here hands the restore a marker built by the helper. This
+    one takes the name off the capture's own command.
+    """
+    plan = backup.plan_backup(
+        cfg, now=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        process_lister=no_processes, settings_dirs=())
+    database = next(p for p in plan.portions if p.portion is backup_facts.Portion.DATABASE)
+    marker = next(c for c in database.commands if c.label == backup.SNAPSHOT_IDENTITY)
+    written = marker.argv[-1].rsplit("/", 1)[-1]
+    recorder = Recorder(
+        stdout_for={
+            backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg),
+            backup.LIST_SNAPSHOT_IDENTITY: written + "\n",
+        }
+    )
+    restored = backup.plan_restore(
+        cfg, target=tmp_path, confirmed=True, snapshot=plan.stamp,
+        runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert restored.recorded_volume == "f1e2-d3c4"
+
+
+@pytest.mark.parametrize("identity", [None, "has/slash", "has space", "..", ".hidden"])
+def test_an_identity_that_cannot_be_a_filename_writes_no_marker_and_says_so(
+    cfg, library_with_database, rclone_on_path, identity
+):
+    """No marker is better than a marker that names a path, and silence is worse than both."""
+    import dataclasses
+
+    bare = dataclasses.replace(
+        cfg, library=dataclasses.replace(cfg.library, volume_id=identity)
+    )
+    plan = backup.plan_backup(bare, process_lister=no_processes, settings_dirs=())
+    database = next(p for p in plan.portions if p.portion is backup_facts.Portion.DATABASE)
+    assert backup.SNAPSHOT_IDENTITY not in [c.label for c in database.commands]
+    assert backup.SNAPSHOT_IDENTITY_NOT_WRITTEN in [w["code"] for w in database.warnings]
+
+
+# ── The review round. Every one of these is a finding the built in review drove. ──
+
+LEGACY = "2026-08-01_123456"
+
+
+class RemoteOf:
+    """A runner over a remote described as ``{snapshot name: marker identities}``.
+
+    The label keyed recorder above answers one string per label, which cannot
+    say that two dated folders carry different markers, and the newest-by-default
+    walk is exactly the code that reads more than one folder.
+    """
+
+    def __init__(self, cfg, holds, *, fail=()):
+        self.cfg, self.holds, self.fail = cfg, dict(holds), set(fail)
+        self.commands = []
+
+    def __call__(self, command):
+        self.commands.append(command)
+        if command.label in self.fail:
+            return backup.CommandResult(returncode=1)
+        if command.label == backup.LIST_SNAPSHOTS:
+            return backup.CommandResult(0, "".join(f"{name}/\n" for name in self.holds))
+        if command.label == backup.LIST_SNAPSHOT_IDENTITY:
+            name = command.argv[2].rstrip("/").rsplit("/", 1)[-1]
+            return backup.CommandResult(
+                0, "".join(f"{marker_for(i)}\n" for i in self.holds[name])
+            )
+        if command.label == backup.LIST_SNAPSHOT_CONTENTS:
+            return backup.CommandResult(0, snapshot_listing(self.cfg))
+        return backup.CommandResult(0)
+
+    def asked_about(self):
+        return [
+            c.argv[2].rstrip("/").rsplit("/", 1)[-1]
+            for c in self.commands
+            if c.label == backup.LIST_SNAPSHOT_IDENTITY
+        ]
+
+
+def test_a_snapshot_the_source_system_wrote_is_still_a_name_and_still_pulled(
+    cfg, tmp_path, rclone_on_path
+):
+    """The source system spells its dated folder with an underscore, in local time.
+
+    It writes the same layout into what is commonly the same remote directory,
+    so on the day of a cutover this is how EVERY snapshot a person owns is
+    spelled. The first cut of the shape check refused them all by name and hid
+    them from the listing, which the built in review drove.
+    """
+    assert backup.is_snapshot_name(LEGACY)
+    assert not backup.is_stamp(LEGACY), "the narrow check is what a backup WRITES"
+    assert not backup.is_snapshot_name("2026-08-01_1234567")
+    assert not backup.is_snapshot_name("2026-02-30_123456")
+
+    plan = backup.plan_restore(
+        cfg, target=tmp_path, confirmed=True, snapshot=LEGACY,
+        runner=RemoteOf(cfg, {LEGACY: ()}), process_lister=no_processes, gates=open_gates)
+    assert plan.snapshot == LEGACY
+
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True,
+            runner=RemoteOf(cfg, {LEGACY: ()}), process_lister=no_processes,
+            gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_IDENTITY_UNRECORDED
+    assert LEGACY in excinfo.value.detail
+
+
+def test_the_default_takes_the_newest_snapshot_that_is_this_librarys(
+    cfg, tmp_path, rclone_on_path
+):
+    """Ownership selects. It does not veto the newest and stop.
+
+    Under a shared root the newest folder is whichever library backed up last,
+    and a backup cut off before its marker leaves an unmarked folder in front of
+    a good one. Both are stepped over, and the walk stops at the first match.
+    """
+    remote = RemoteOf(
+        cfg,
+        {
+            "2026-08-01T000000Z": ("F1E2-D3C4",),
+            "2026-08-02T000000Z": ("F1E2-D3C4",),
+            "2026-08-03T000000Z": ("0000-AAAA",),
+            "2026-08-04T000000Z": (),
+        },
+    )
+    plan = backup.plan_restore(
+        cfg, target=tmp_path, confirmed=True, runner=remote,
+        process_lister=no_processes, gates=open_gates)
+    assert plan.snapshot == "2026-08-02T000000Z"
+    assert remote.asked_about()[:3] == [
+        "2026-08-04T000000Z", "2026-08-03T000000Z", "2026-08-02T000000Z",
+    ]
+    assert "2026-08-01T000000Z" not in remote.asked_about()
+
+
+def test_the_default_walk_is_bounded_and_the_refusal_says_how_far_it_looked(
+    cfg, tmp_path, rclone_on_path
+):
+    own_but_old = {"2026-01-01T000000Z": ("F1E2-D3C4",)}
+    foreign = {
+        f"2026-08-{day:02d}T000000Z": ("0000-AAAA",)
+        for day in range(1, backup.NEWEST_WALK + 1)
+    }
+    remote = RemoteOf(cfg, {**own_but_old, **foreign})
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, runner=remote,
+            process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
+    assert len(remote.asked_about()) == backup.NEWEST_WALK
+    assert f"{backup.NEWEST_WALK} newest" in excinfo.value.detail
+    assert "0000-aaaa" in excinfo.value.detail
+
+
+def test_the_replaced_drive_identity_selects_the_newest_of_the_old_volumes(
+    cfg, tmp_path, rclone_on_path
+):
+    remote = RemoteOf(
+        cfg,
+        {
+            "2026-08-01T000000Z": ("0000-AAAA",),
+            "2026-08-02T000000Z": ("0000-AAAA",),
+            "2026-08-03T000000Z": ("F1E2-D3C4",),
+        },
+    )
+    plan = backup.plan_restore(
+        cfg, target=tmp_path, confirmed=True, snapshot_volume="0000-aaaa",
+        runner=remote, process_lister=no_processes, gates=open_gates)
+    assert (plan.snapshot, plan.recorded_volume) == ("2026-08-02T000000Z", "0000-aaaa")
+
+
+@pytest.mark.parametrize("stated", ["", "   "])
+def test_an_empty_expected_identity_never_matches_an_empty_marker(
+    cfg, tmp_path, rclone_on_path, stated
+):
+    """A marker with nothing after its prefix reads back as the empty string.
+
+    An expected value of nothing folds to the same, so the two matched each
+    other and a snapshot naming nobody was pulled as verified.
+    """
+    recorder = Recorder(
+        stdout_for={
+            backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg),
+            backup.LIST_SNAPSHOT_IDENTITY: "library-volume.\n",
+        }
+    )
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, snapshot=STAMP, snapshot_volume=stated,
+            runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
+
+
+def test_two_markers_are_refused_without_offering_an_identity_to_pass(
+    cfg, tmp_path, rclone_on_path
+):
+    """The reserved step says to pass the volume the refusal names.
+
+    With two markers no stated volume can ever be accepted, so a message that
+    named two and sent the person to that step would have them retry for ever.
+    """
+    remote = RemoteOf(cfg, {STAMP: ("F1E2-D3C4", "0000-AAAA")})
+    for stated in (None, "0000-AAAA", "F1E2-D3C4"):
+        with pytest.raises(backup.BackupRefused) as excinfo:
+            backup.plan_restore(
+                cfg, target=tmp_path, confirmed=True, snapshot=STAMP, snapshot_volume=stated,
+                runner=remote, process_lister=no_processes, gates=open_gates)
+        assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
+        assert "No expected volume can vouch" in excinfo.value.detail
+
+
+def test_a_snapshot_root_that_cannot_be_listed_is_not_reported_as_empty(
+    cfg, tmp_path, rclone_on_path
+):
+    remote = RemoteOf(cfg, {STAMP: ("F1E2-D3C4",)}, fail={backup.LIST_SNAPSHOTS})
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, runner=remote,
+            process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert "could not be listed" in excinfo.value.detail
+
+
+def test_a_marker_that_cannot_be_written_warns_and_does_not_fail_the_backup(
+    cfg, library_with_database, tmp_path, rclone_on_path
+):
+    """By the time the marker is tried, the database set has already copied.
+
+    Failing the portion skipped the settings, published no age and reported a
+    failed backup over a remote holding a good one, on every run, for a remote
+    that cannot hold an empty file.
+    """
+    settings = tmp_path / "rekordbox-settings"
+    settings.mkdir()
+    plan = backup.plan_backup(cfg, process_lister=no_processes, settings_dirs=(settings,))
+    failing = Recorder(fail_labels={backup.SNAPSHOT_IDENTITY})
+    outcome = backup.run_backup(cfg, plan, runner=failing, publish=False)
+    database = next(p for p in outcome.portions if p.portion is backup_facts.Portion.DATABASE)
+    assert database.ran is True
+    assert backup.SNAPSHOT_SETTINGS in failing.labels(), "the settings were skipped"
+    assert backup.SNAPSHOT_IDENTITY_NOT_WRITTEN in [w["code"] for w in database.warnings]
+
+
+def test_the_identity_warning_can_be_asked_of_the_configuration_alone(cfg):
+    """The backup verb asks it this way, because a plan's warning reaches nobody there."""
+    import dataclasses
+
+    assert backup.snapshot_identity_warning(cfg) == ()
+    bare = dataclasses.replace(cfg, library=dataclasses.replace(cfg.library, volume_id=None))
+    assert [w["code"] for w in backup.snapshot_identity_warning(bare)] == [
+        backup.SNAPSHOT_IDENTITY_NOT_WRITTEN
+    ]

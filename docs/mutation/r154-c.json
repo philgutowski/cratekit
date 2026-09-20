@@ -1,0 +1,219 @@
+{
+  "name": "r154-c",
+  "pass_kind": "light",
+  "branch": "relay/153",
+  "head": "ef17663",
+  "when": "2026-09-20 01:17 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9005,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/session/restore_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/session/restore_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "75425845a3c9423d",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9005,
+    "baseline_collected": 9005,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_digest_the_word",
+      "description": "Digest a constant where the resolved stamp goes, which is R-153 itself: a backup landing between the two acts leaves the digest where it was",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "63b0331925971e43",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_between_the_two_acts_moves_the_digest",
+        "tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"snapshot\": snapshot.stamp,",
+      "new": "                \"snapshot\": \"newest\","
+    },
+    {
+      "id": "C2_expected_volume_outside_the_digest",
+      "description": "Leave the stated volume out of the offer, so an answer given without the flag is honoured against a run carrying it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "37051276b63d05c7",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_expected_volume_is_stated",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"expected_volume\": snapshot_volume,",
+      "new": "                \"expected_volume\": None,"
+    },
+    {
+      "id": "C3_hand_down_the_flag",
+      "description": "Hand the engine the flag instead of the stamp that was offered, so it resolves the newest snapshot again after the approval",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7f18d3b41f5cb148",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        snapshot=pulling.stamp if pulling is not None else None,",
+      "new": "        snapshot=ctx.args.snapshot,"
+    },
+    {
+      "id": "C4_pull_flags_dropped",
+      "description": "Never refuse a flag about the pull typed without the pull, so it is dropped in silence ahead of a capture rollback",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bfea9fc4146f8fe1",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags0]",
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags1]",
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags2]",
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _refuse_pull_flags_without_the_pull(ctx.args)\n    requested = ctx.args.session_id",
+      "new": "    requested = ctx.args.session_id"
+    },
+    {
+      "id": "C5_stated_volume_stops_at_the_verb",
+      "description": "Show and digest the stated volume and never pass it to the engine, so the replaced drive restore is approved and then refused under the gates",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dfa023b056ff910c",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        snapshot_volume=ctx.args.snapshot_volume,\n        accept_unrecorded=pulling.named if pulling is not None else None,",
+      "new": "        snapshot_volume=None,\n        accept_unrecorded=pulling.named if pulling is not None else None,"
+    },
+    {
+      "id": "C6_warning_lost_at_resume",
+      "description": "Say the unmarked snapshot warning at queue time only, so the run that actually wrote the snapshot says nothing",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7fc232b87a5f1b88",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_library_whose_identity_cannot_be_a_marker_is_told_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                *map(dict, backup.uncovered_analysis_share(jobs.frozen_config(job))),\n                *map(dict, backup.snapshot_identity_warning(jobs.frozen_config(job))),",
+      "new": "                *map(dict, backup.uncovered_analysis_share(jobs.frozen_config(job))),"
+    }
+  ],
+  "dropped": []
+}

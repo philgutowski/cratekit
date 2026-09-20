@@ -1278,11 +1278,26 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # person told their directory is the live library will go looking at the
         # directory, which in these two is not where the mistake is.
         "restore-target-invalid": ExitCode.PRECONDITION,
+        # The same shape as the entry above, one flag family over: a flag that
+        # describes the off-machine pull, typed without asking for the pull. The
+        # parser accepted it, so not USAGE, and it is the verb's own, so it is
+        # registered here and not reserved.
+        "restore-flag-needs-pull": ExitCode.PRECONDITION,
         # Appended in U27's second fix round rather than with the eight above,
         # because it did not exist when they landed: the review found that
         # ``run_restore`` never read a return code, so this is the slug the
         # reading now raises under.
         "restore-transfer-failed": ExitCode.PRECONDITION,
+        # R-154's three, beside the restore refusals they extend. PRECONDITION for
+        # each, on the judgement the target slugs above are given: the parser
+        # accepted the invocation, because any string is a valid argument to a
+        # flag that takes one, and what is wrong is a fact about the value or
+        # about the remote. A stamp that is not a stamp, a snapshot whose marker
+        # names another volume, and a newest snapshot with no marker at all are
+        # three different acts to undo, so they are three slugs.
+        "snapshot-name-invalid": ExitCode.PRECONDITION,
+        "snapshot-library-mismatch": ExitCode.PRECONDITION,
+        "snapshot-identity-unrecorded": ExitCode.PRECONDITION,
         # ── U40's refusal, appended for the reason every block above gives ─────
         #
         # The genre correction verb was invoked with an empty folder. PRECONDITION

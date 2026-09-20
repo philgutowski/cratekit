@@ -513,6 +513,21 @@ refuses a directory that is the library, holds it, sits inside it, or would land
 the database on the live file. The gates are the live restore's: the backup
 acknowledgment, the library lock, and rekordbox closed.
 
+Each snapshot records the volume identity of the library it was taken from.
+`--from-backup` pulls the newest snapshot that is this library's, stepping over
+another library's under a shared remote, unless `--snapshot STAMP` names one,
+and a named snapshot that records another volume is refused. The confirmation
+shows which stamp it resolved, so a backup that lands before you answer makes
+the answer stale rather than changing what arrives. A stamp is the dated folder
+name a backup wrote, this product's or the one it replaces, and nothing else is
+accepted. Two cases need a word from you. A snapshot taken before identities
+were recorded is never the default and is pulled only when you name it with
+`--snapshot`. And after a drive is replaced, its snapshots name the old volume,
+so the refusal prints that identity and you pass it back as
+`--snapshot-volume IDENTITY`. It is checked against the snapshot, used for that
+one restore, and never written to the config. `--snapshot`, `--snapshot-volume`
+and `--include-mirror` are refused without `--from-backup` rather than ignored.
+
 ## Answering a gate
 
 A gated verb exits asking for a decision and prints the gate's name, its options

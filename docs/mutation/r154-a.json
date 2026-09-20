@@ -1,0 +1,282 @@
+{
+  "name": "r154-a",
+  "pass_kind": "light",
+  "branch": "relay/153",
+  "head": "76f4ba1",
+  "when": "2026-09-20 01:09 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9005,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/modules/tools/backup.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/modules/tools/backup.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "195112d3adbc833a",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9005,
+    "baseline_collected": 9005,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_stamp_pattern",
+      "description": "Drop the pattern half of is_stamp, so the calendar parse alone decides and its lenient padding admits 2026-8-01T000000Z",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9622cd4e530d4672",
+      "subset": [
+        "tests/modules/test_tools.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 173,
+      "baseline_collected": 173,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[2026-8-01T000000Z]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not _STAMP_SHAPE.fullmatch(value):\n        return False\n    try:\n        datetime.strptime(value, _STAMP_FORMAT)",
+      "new": "    try:\n        datetime.strptime(value, _STAMP_FORMAT)"
+    },
+    {
+      "id": "A2_stamp_calendar",
+      "description": "Drop the calendar half of is_stamp, so the pattern alone decides and a thirteenth month is a stamp",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "deed51629b80c22b",
+      "subset": [
+        "tests/modules/test_tools.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 173,
+      "baseline_collected": 173,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[2026-13-01T000000Z]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        datetime.strptime(value, _STAMP_FORMAT)\n    except ValueError:\n        return False\n    return True",
+      "new": "    return True"
+    },
+    {
+      "id": "A3_named_shape_check",
+      "description": "Never refuse a named snapshot on shape, which is the finding itself: the traversal value reaches the remote path again",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f77981241f9856db",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 240,
+      "baseline_collected": 240,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[../another-library-snapshots/2020-01-01T000000Z]",
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[2026-08-01T000000Z ]",
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[2026-08-01T000000Z/../../elsewhere]",
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[2026-08-01]",
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[2026-13-01T000000Z]",
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[2026-8-01T000000Z]",
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[]",
+        "tests/modules/test_tools.py::test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked[newest]",
+        "tests/test_restore_cli.py::test_the_ledgers_traversal_value_is_refused_at_the_verb"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not is_snapshot_name(snapshot):",
+      "new": "        if False:"
+    },
+    {
+      "id": "A4_legacy_spelling",
+      "description": "Accept only this product's stamp as a snapshot name, so every snapshot the source system wrote is refused by name and hidden from the listing",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bfcc8ab4d0548ff5",
+      "subset": [
+        "tests/modules/test_tools.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 173,
+      "baseline_collected": 173,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_a_snapshot_the_source_system_wrote_is_still_a_name_and_still_pulled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if is_stamp(value):\n        return True\n    if not _LEGACY_SHAPE.fullmatch(value):\n        return False",
+      "new": "    if is_stamp(value):\n        return True\n    return False\n    if not _LEGACY_SHAPE.fullmatch(value):\n        return False"
+    },
+    {
+      "id": "A5_listing_filter",
+      "description": "List every folder under the snapshot root as a snapshot, so a stray folder sorting last is the newest",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0508d5b4227a20fb",
+      "subset": [
+        "tests/modules/test_tools.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 173,
+      "baseline_collected": 173,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_the_newest_snapshot_ignores_folders_that_are_not_stamps"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if is_snapshot_name(name)",
+      "new": "            if name"
+    },
+    {
+      "id": "A6_failed_marker_listing",
+      "description": "Read a marker listing that FAILED as a folder with no marker, so an unreachable remote is the way past the identity check for a named snapshot",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "90e662522c68e322",
+      "subset": [
+        "tests/modules/test_tools.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 173,
+      "baseline_collected": 173,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_an_identity_listing_that_fails_is_not_read_as_an_unmarked_snapshot"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if result.returncode != 0:\n        raise BackupRefused(\n            Refusal.NO_SNAPSHOT_AVAILABLE,\n            f\"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not \"\n            f\"be listed, so which",
+      "new": "    if False:\n        raise BackupRefused(\n            Refusal.NO_SNAPSHOT_AVAILABLE,\n            f\"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not \"\n            f\"be listed, so which"
+    },
+    {
+      "id": "A7_read_normalization",
+      "description": "Compare a marker's identity as spelled on the remote, so a marker written in another letter case names a foreign volume",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "88e9665631df0e83",
+      "subset": [
+        "tests/modules/test_tools.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 173,
+      "baseline_collected": 173,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_the_identity_is_compared_case_blind_like_the_volume_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        preflight.normalize_identity(name[len(IDENTITY_MARKER_PREFIX):])",
+      "new": "        name[len(IDENTITY_MARKER_PREFIX):]"
+    },
+    {
+      "id": "A8_empty_expected",
+      "description": "Let an expected identity of nothing stay the empty string, so it matches a marker with nothing after its prefix",
+      "file": "src/cratekit/modules/tools/backup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8028b6a3e77b4c66",
+      "subset": [
+        "tests/modules/test_tools.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 173,
+      "baseline_collected": 173,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_an_empty_expected_identity_never_matches_an_empty_marker[   ]",
+        "tests/modules/test_tools.py::test_an_empty_expected_identity_never_matches_an_empty_marker[]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    expected = (preflight.normalize_identity(wanted) or None) if wanted is not None else None",
+      "new": "    expected = preflight.normalize_identity(wanted) if wanted is not None else None"
+    }
+  ],
+  "dropped": []
+}

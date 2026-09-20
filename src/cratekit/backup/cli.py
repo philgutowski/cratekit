@@ -367,9 +367,15 @@ def backup_library(ctx) -> Envelope:
             # the plan carries would reach nobody. It is a fact about the frozen
             # configuration rather than about how the transfer went, so asking the
             # configuration again is the same answer rather than a second rule.
+            #
+            # THE SNAPSHOT IDENTITY WARNING RIDES WITH IT, for the same reason and
+            # with a sharper cost: left on the plan alone, every backup of a
+            # library with no recorded identity would write an unmarked snapshot
+            # in silence, and the first word of it would be a restore refusing.
             warnings = (
                 *warnings,
                 *map(dict, backup.uncovered_analysis_share(jobs.frozen_config(job))),
+                *map(dict, backup.snapshot_identity_warning(jobs.frozen_config(job))),
             )
             return ctx.envelope(data=reported, warnings=warnings)
         job = jobs.enqueue(
@@ -387,7 +393,10 @@ def backup_library(ctx) -> Envelope:
         # by hand would otherwise learn about the share only from a later run.
         return ctx.envelope(
             data=_reported(store, job),
-            warnings=tuple(map(dict, backup.uncovered_analysis_share(cfg))),
+            warnings=(
+                *map(dict, backup.uncovered_analysis_share(cfg)),
+                *map(dict, backup.snapshot_identity_warning(cfg)),
+            ),
         )
 
 

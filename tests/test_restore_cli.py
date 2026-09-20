@@ -146,7 +146,15 @@ def _offered_digest(refused: dict) -> str:
     return offered
 
 
-def _fake_rclone(cfg_value, monkeypatch) -> Path:
+#: The fake remote's two listings, as files beside the fake program.
+REMOTE_SNAPSHOTS = "fake-remote-snapshots"
+REMOTE_MARKERS = "fake-remote-markers"
+#: "Marked for the library under test", as distinct from None, which is unmarked.
+OWN = object()
+STAMP = "2026-08-01T000000Z"
+
+
+def _fake_rclone(cfg_value, monkeypatch, *, snapshots=(STAMP,), marker=OWN) -> Path:
     """Put a stand-in for rclone on the ONE seam the product ships for it.
 
     ``CRATEKIT_BIN_RCLONE`` is ``core.binaries``'s per binary override, read
@@ -156,10 +164,17 @@ def _fake_rclone(cfg_value, monkeypatch) -> Path:
     cannot do this from a command line drive, because ``plan_restore`` binds its
     default runner at definition time and no flag reaches it.
 
-    It answers ``lsf`` with one dated snapshot so a plan can be built, exits 0 on
-    everything else, and appends each invocation to a log the caller reads. The
-    log is what the assertions are taken over, so what is measured is the
-    program's own view of what it was asked to do.
+    It answers the three listings a restore makes, exits 0 on everything else,
+    and appends each invocation to a log the caller reads. The log is what the
+    assertions are taken over, so what is measured is the program's own view of
+    what it was asked to do.
+
+    THE THREE LISTINGS ARE TOLD APART, which the first version of this did not
+    do: it answered every ``lsf`` with one dated folder, and that was enough
+    while nothing read a snapshot's identity. The dated folders and the identity
+    markers are read from two files ``_remote_holds`` rewrites, so a test can
+    move the remote BETWEEN the two acts of one restore, which is the only way
+    to drive what a backup landing in that window does.
     """
     home = Path(config.installation_state_dir())
     home.mkdir(parents=True, exist_ok=True)
@@ -168,13 +183,35 @@ def _fake_rclone(cfg_value, monkeypatch) -> Path:
     program.write_text(
         "#!/bin/sh\n"
         f'printf "%s\\n" "$*" >> "{log}"\n'
-        'case " $* " in *" lsf "*) echo "2026-08-01T000000Z/" ;; esac\n'
+        'case " $* " in\n'
+        f'  *" lsf "*" --dirs-only "*) cat "{home / REMOTE_SNAPSHOTS}"\n'
+        f'    if [ -f "{home / REMOTE_SNAPSHOTS}.next" ]; then\n'
+        f'      mv "{home / REMOTE_SNAPSHOTS}.next" "{home / REMOTE_SNAPSHOTS}"; fi ;;\n'
+        '  *" lsf "*"/db/ "*) ;;\n'
+        f'  *" lsf "*) cat "{home / REMOTE_MARKERS}" ;;\n'
+        "esac\n"
         "exit 0\n"
     )
     program.chmod(0o755)
     monkeypatch.setenv("CRATEKIT_BIN_RCLONE", str(program))
-    del cfg_value
+    _remote_holds(snapshots, marker=marker, cfg_value=cfg_value)
     return log
+
+
+def _remote_holds(snapshots, *, marker=OWN, cfg_value=None) -> None:
+    """Say what the fake remote lists from now on. Callable between two acts.
+
+    ONE MARKER FOR EVERY SNAPSHOT, because the fake program does not read which
+    dated folder it was asked about. That is enough for every test here and it
+    is a limit worth stating: no test in this file can hold one marked and one
+    unmarked snapshot at once, and the engine's own suite is where that is driven.
+    """
+    home = Path(config.installation_state_dir())
+    (home / REMOTE_SNAPSHOTS).write_text("".join(f"{name}/\n" for name in snapshots))
+    if marker is OWN:
+        marker = cfg_value.library.volume_id
+    name = backup.identity_marker(marker) if marker is not None else None
+    (home / REMOTE_MARKERS).write_text(f"{name}\n" if name else "")
 
 
 def _lock_taken_in_another_process(path: Path) -> int:
@@ -826,7 +863,7 @@ def test_the_digest_moves_when_the_discard_set_moves(installed):
     )
 
 
-def test_the_digest_moves_when_the_mirror_half_is_added(installed):
+def test_the_digest_moves_when_the_mirror_half_is_added(installed, monkeypatch):
     """Approving one session must not also authorise pulling a mirror off the network.
 
     Measured on the author's own table, row
@@ -837,6 +874,9 @@ def test_the_digest_moves_when_the_mirror_half_is_added(installed):
     be honoured against the expensive one.
     """
     record, _captured = completed_session(installed)
+    # The offer now asks the remote which snapshot it is offering, so the
+    # off-machine half needs a remote to ask.
+    _fake_rclone(installed, monkeypatch)
 
     _code, capture_only = _drive(["restore", "run", record.session_id])
     _code, with_mirror = _drive(["restore", "run", record.session_id, "--from-backup"])
@@ -1591,7 +1631,7 @@ def test_a_target_run_rolls_no_session_back_even_by_default(installed, tmp_path,
 
 
 def test_the_digest_moves_when_the_restore_is_pointed_somewhere_else(
-    installed, tmp_path
+    installed, tmp_path, monkeypatch
 ):
     """A decision about a rehearsal must not be honoured against the live restore.
 
@@ -1602,6 +1642,7 @@ def test_the_digest_moves_when_the_restore_is_pointed_somewhere_else(
     restore over the live library that nobody agreed to.
     """
     acknowledge(installed)
+    _fake_rclone(installed, monkeypatch)
     scratch = tmp_path / "rehearsal"
     scratch.mkdir()
 
@@ -1905,3 +1946,270 @@ def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(
             f"this filesystem holds the two spellings as two directories, so the "
             f"database would land in {shouted} and not where the live one belongs"
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Snapshot provenance, at the verb. What is approved is what arrives.
+# ═══════════════════════════════════════════════════════════════════════════
+
+LATER = "2026-08-22T235959Z"
+
+
+def _shown(refused: dict) -> dict:
+    """The off-machine half as the refusal put it in front of the person."""
+    assert refused["cause"]["reason"] == "decision-required", refused
+    return refused["cause"]["detail"]["shown"]["off_machine"]
+
+
+def _copied_from(log: Path) -> list[str]:
+    """The source argument of every copy the fake program was asked to make."""
+    lines = log.read_text().splitlines() if log.exists() else []
+    return [line.split()[1] for line in lines if line.startswith("copy ")]
+
+
+def test_a_backup_landing_between_the_two_acts_moves_the_digest(installed, monkeypatch):
+    """The ledger's measurement, driven: offer and answer, then a second snapshot.
+
+    The word for "whichever is newest" was what entered the digest, so the
+    resumed drive kept its digest and pulled the snapshot that had appeared
+    since. Now the answer is refused as stale and nothing is copied, and the
+    offer that replaces it names the snapshot a person would really get.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+
+    _code, refused = _drive(["restore", "run", "--from-backup"])
+    item = _shown(refused)
+    assert item["snapshot"] == STAMP
+    _answer(refused["run_id"], "restore")
+
+    _remote_holds((STAMP, LATER), cfg_value=installed)
+    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
+
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    assert code != int(ExitCode.OK)
+    assert _copied_from(log) == [], (
+        f"a decision made about {STAMP} was honoured and pulled {_copied_from(log)}"
+    )
+
+
+def test_what_is_offered_is_what_is_pulled(installed, monkeypatch):
+    """The newest stamp is resolved once, shown, approved, and then used."""
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch, snapshots=(STAMP, LATER))
+
+    _code, refused = _drive(["restore", "run", "--from-backup"])
+    item = _shown(refused)
+    assert item["snapshot"] == LATER
+    assert item["snapshot_named"] is False
+    assert item["recorded_volume"] == preflight.normalize_identity(installed.library.volume_id)
+    _answer(refused["run_id"], "restore")
+    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
+
+    assert code == int(ExitCode.OK), envelope
+    copied = _copied_from(log)
+    assert copied and all(f"/{LATER}/db/" in source for source in copied), copied
+
+
+def test_the_ledgers_traversal_value_is_refused_at_the_verb(installed, monkeypatch):
+    """Through the dispatcher, with the value the finding was measured with.
+
+    Before the gate is asked, so a person is never invited to approve it, and
+    with nothing but the refusal in the program's own log: the value never
+    reached an argument list.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+
+    code, envelope = _drive(
+        [
+            "restore", "run", "--from-backup",
+            "--snapshot", "../another-library-snapshots/2020-01-01T000000Z",
+        ]
+    )
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_NAME_INVALID)
+    assert envelope["cause"]["remediation"]["steps"], envelope["cause"]
+    assert not log.exists() or log.read_text() == ""
+
+
+def test_another_librarys_snapshot_is_refused_at_the_verb_and_names_both_volumes(
+    installed, monkeypatch
+):
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch, marker="0000-AAAA")
+
+    code, envelope = _drive(["restore", "run", "--from-backup", "--snapshot", STAMP])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH)
+    message = envelope["cause"]["message"]
+    assert "0000-aaaa" in message
+    assert preflight.normalize_identity(installed.library.volume_id) in message
+    assert _copied_from(log) == []
+
+
+def test_the_replaced_drive_flag_reaches_the_engine_and_the_digest(installed, monkeypatch):
+    """``--snapshot-volume``, driven end to end, and held to what it names.
+
+    In the digest because it is most of what is being approved when a snapshot
+    is not plainly this library's own: an answer given to a restore of this
+    library's snapshot must not be honoured against one that names another.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch, marker="0000-AAAA")
+    named = ["restore", "run", "--from-backup", "--snapshot", STAMP]
+
+    _code, refused = _drive([*named, "--snapshot-volume", "0000-aaaa"])
+    item = _shown(refused)
+    assert item["expected_volume"] == "0000-aaaa"
+    assert item["recorded_volume"] == "0000-aaaa"
+    _answer(refused["run_id"], "restore")
+
+    # The same answer, against the invocation without the flag: refused, and
+    # refused as a mismatch before the recorded decision is even consulted.
+    code, envelope = _drive(["--run", refused["run_id"], *named])
+    assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH)
+    assert _copied_from(log) == []
+
+    code, envelope = _drive(
+        ["--run", refused["run_id"], *named, "--snapshot-volume", "0000-aaaa"]
+    )
+    assert code == int(ExitCode.OK), envelope
+    assert _copied_from(log), "the flag was accepted and nothing was pulled"
+
+    _remote_holds((STAMP,), marker="9999-BBBB")
+    code, envelope = _drive([*named, "--snapshot-volume", "0000-aaaa"])
+    assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH)
+
+
+def test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled(
+    installed, monkeypatch
+):
+    """Every snapshot that exists on the day this lands is unmarked.
+
+    The refusal has to work with no new backup, because a person whose drive
+    just died cannot take one, so it names the stamp and naming it is enough.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch, marker=None)
+
+    code, envelope = _drive(["restore", "run", "--from-backup"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == str(backup.Refusal.SNAPSHOT_IDENTITY_UNRECORDED)
+    assert STAMP in envelope["cause"]["message"]
+
+    named = ["restore", "run", "--from-backup", "--snapshot", STAMP]
+    _code, refused = _drive(named)
+    item = _shown(refused)
+    assert item["snapshot_named"] is True
+    assert item["recorded_volume"] is None
+    _answer(refused["run_id"], "restore")
+    code, envelope = _drive(["--run", refused["run_id"], *named])
+    assert code == int(ExitCode.OK), envelope
+    assert _copied_from(log)
+
+
+def test_a_restore_that_pulls_nothing_off_the_machine_still_asks_the_remote_nothing(
+    installed, monkeypatch
+):
+    """The early listing is paid only by the half that needs it.
+
+    The reason the stamp was left out of the digest in the first place was that
+    resolving it reaches the network before the gate. That is now true of
+    ``--from-backup`` and must stay false of everything else.
+    """
+    record, _captured = completed_session(installed)
+    log = _fake_rclone(installed, monkeypatch)
+
+    _drive(["restore", "run", record.session_id])
+
+    assert not log.exists() or log.read_text() == ""
+
+
+def test_the_digest_moves_when_the_expected_volume_is_stated(installed, monkeypatch):
+    """The flag is part of what is approved, measured where it changes nothing else.
+
+    Stating this library's own identity resolves exactly as saying nothing does,
+    so the two offers differ in the flag and in no other field, and an answer
+    given to one must still not be honoured against the other.
+    """
+    acknowledge(installed)
+    _fake_rclone(installed, monkeypatch)
+
+    _code, plain = _drive(["restore", "run", "--from-backup"])
+    _code, stated = _drive(
+        ["restore", "run", "--from-backup", "--snapshot-volume", installed.library.volume_id]
+    )
+
+    assert _shown(plain)["recorded_volume"] == _shown(stated)["recorded_volume"]
+    assert _offered_digest(plain) != _offered_digest(stated)
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--snapshot-volume", "0000-aaaa"],
+        ["--snapshot", STAMP],
+        ["--include-mirror"],
+        ["--snapshot", STAMP, "--include-mirror"],
+    ],
+)
+def test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for(installed, flags):
+    """They were dropped in silence, ahead of a rollback nobody meant.
+
+    A person typing the expected volume believes they authorised a replaced
+    drive's snapshot, and with the pull flag forgotten the verb went on to offer
+    a capture rollback of the live library without a word about the flag.
+    """
+    record, _captured = completed_session(installed)
+
+    code, envelope = _drive(["restore", "run", record.session_id, *flags])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "restore-flag-needs-pull"
+    assert envelope["cause"]["detail"]["flags"] == [f for f in flags if f.startswith("--")]
+    assert envelope["cause"]["remediation"]["steps"]
+
+
+def test_the_report_names_the_snapshot_that_arrived(installed, monkeypatch):
+    acknowledge(installed)
+    _fake_rclone(installed, monkeypatch, snapshots=(STAMP, LATER))
+
+    _code, refused = _drive(["restore", "run", "--from-backup"])
+    _answer(refused["run_id"], "restore")
+    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
+
+    assert code == int(ExitCode.OK), envelope
+    totals = envelope["data"]["totals"]
+    assert totals["snapshot"] == LATER
+    assert totals["recorded_volume"] == preflight.normalize_identity(
+        installed.library.volume_id
+    )
+
+
+def test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled(
+    installed, monkeypatch
+):
+    """The window INSIDE the second act, which the digest cannot see.
+
+    The answer is checked against an offer built from one listing, and the
+    engine plans a moment later. Were it handed the flag rather than the stamp
+    that was offered, it would resolve the newest snapshot again, after the
+    approval, and pull whatever had landed in between. The fake remote changes
+    its answer after the first listing of the second act to stand in for that.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+    home = Path(config.installation_state_dir())
+
+    _code, refused = _drive(["restore", "run", "--from-backup"])
+    _answer(refused["run_id"], "restore")
+    (home / f"{REMOTE_SNAPSHOTS}.next").write_text(f"{STAMP}/\n{LATER}/\n")
+    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert not (home / f"{REMOTE_SNAPSHOTS}.next").exists(), "the remote never moved"
+    copied = _copied_from(log)
+    assert copied and all(f"/{STAMP}/db/" in source for source in copied), copied

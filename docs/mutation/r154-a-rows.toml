@@ -1,0 +1,100 @@
+name = "r154-a"
+pass_kind = "light"
+
+# R-154 and R-153, batch a: what counts as a snapshot name, and how a marker is read.
+# Author run. Every zero below reads as "the author could not kill it".
+
+[[rows]]
+id = "A1_stamp_pattern"
+description = "Drop the pattern half of is_stamp, so the calendar parse alone decides and its lenient padding admits 2026-8-01T000000Z"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''    if not _STAMP_SHAPE.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(value, _STAMP_FORMAT)'''
+new = '''    try:
+        datetime.strptime(value, _STAMP_FORMAT)'''
+
+[[rows]]
+id = "A2_stamp_calendar"
+description = "Drop the calendar half of is_stamp, so the pattern alone decides and a thirteenth month is a stamp"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''    try:
+        datetime.strptime(value, _STAMP_FORMAT)
+    except ValueError:
+        return False
+    return True'''
+new = '''    return True'''
+
+[[rows]]
+id = "A3_named_shape_check"
+description = "Never refuse a named snapshot on shape, which is the finding itself: the traversal value reaches the remote path again"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
+old = '''        if not is_snapshot_name(snapshot):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A4_legacy_spelling"
+description = "Accept only this product's stamp as a snapshot name, so every snapshot the source system wrote is refused by name and hidden from the listing"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''    if is_stamp(value):
+        return True
+    if not _LEGACY_SHAPE.fullmatch(value):
+        return False'''
+new = '''    if is_stamp(value):
+        return True
+    return False
+    if not _LEGACY_SHAPE.fullmatch(value):
+        return False'''
+
+[[rows]]
+id = "A5_listing_filter"
+description = "List every folder under the snapshot root as a snapshot, so a stray folder sorting last is the newest"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''            if is_snapshot_name(name)'''
+new = '''            if name'''
+
+[[rows]]
+id = "A6_failed_marker_listing"
+description = "Read a marker listing that FAILED as a folder with no marker, so an unreachable remote is the way past the identity check for a named snapshot"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''    if result.returncode != 0:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed, so which'''
+new = '''    if False:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed, so which'''
+
+[[rows]]
+id = "A7_read_normalization"
+description = "Compare a marker's identity as spelled on the remote, so a marker written in another letter case names a foreign volume"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''        preflight.normalize_identity(name[len(IDENTITY_MARKER_PREFIX):])'''
+new = '''        name[len(IDENTITY_MARKER_PREFIX):]'''
+
+[[rows]]
+id = "A8_empty_expected"
+description = "Let an expected identity of nothing stay the empty string, so it matches a marker with nothing after its prefix"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''    expected = (preflight.normalize_identity(wanted) or None) if wanted is not None else None'''
+new = '''    expected = preflight.normalize_identity(wanted) if wanted is not None else None'''
