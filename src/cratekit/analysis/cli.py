@@ -11,12 +11,18 @@ active calibration, and :mod:`cratekit.cli.handlers` binds them under
 ITEM, never from the payload, because a handler that reads its subject from
 the payload does the same work for every item of a multi item job.
 
-THE ITEM IS A FILENAME, RELATIVE TO THE FROZEN FOLDER, AND THE FOLDER IS
-FROZEN ABSOLUTE. The first version queued absolute paths, which made the
-frozen folder a second copy of a fact every item already carried. The folder
-is resolved before it is frozen because ``jobs.spawn`` starts the resume
-child in the RESUMING process's working directory, not the queueing one's,
-so a relative folder would make every item of a resumed job go missing.
+THE ITEM IS A PATH RELATIVE TO THE FROZEN FOLDER, AND THE FOLDER IS FROZEN
+ABSOLUTE. The first version queued absolute paths, which made the frozen
+folder a second copy of a fact every item already carried. The folder is
+resolved before it is frozen because ``jobs.spawn`` starts the resume child
+in the RESUMING process's working directory, not the queueing one's, so a
+relative folder would make every item of a resumed job go missing.
+
+``analyze restamp --recursive`` (U93) makes that relative path more than one
+segment. ``analyze run`` does NOT take the flag: its last act on a track is a
+rename, and its resume marker is the Camelot head on the NAME, so its item
+identity is bound to the filename in a way a tree walk would not survive.
+``core.discovery`` owns the walk and the join for both verbs.
 
 THE SEAMS ARE BOUND AT CALL TIME. The detector, the vocal model loader, the
 decoder and the feature extractor are each module state the worker looks up
@@ -42,10 +48,10 @@ from typing import Any, Mapping
 
 from cratekit.analysis import artifacts, detect, energy, light, vocals
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs, naming, tags
+from cratekit.core import config, discovery, jobs, naming, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.naming import AUDIO_EXTS, MarkerRule, NameBudget, NameSpec, NameTemplate
+from cratekit.core.naming import MarkerRule, NameBudget, NameSpec, NameTemplate
 
 _ORIGIN = ("analysis", "cli")
 
@@ -134,33 +140,33 @@ def _folder_of(named: str) -> Path:
 def _audio_in(folder: Path) -> list[str]:
     """The item identifiers: audio FILENAMES in the folder, sorted, not recursive.
 
-    NO DOTFILES. macOS writes an AppleDouble sidecar, ``._track.flac``, beside
-    every file on an exFAT or FAT volume, which is what a DJ stick is, and the
-    sidecar carries the audio suffix. Queued as an item it is decoded, refused
-    as undecodable, and then, because the finder moves the sidecar with the
-    file it shadows when the track is renamed, refused as missing on the next
-    claim and the job fails. ``write/routing_cli.py`` skips the same names.
+    The one level reading, which is what ``analyze run`` and ``analyze
+    calibrate`` take. NO DOTFILES: macOS writes an AppleDouble sidecar,
+    ``._track.flac``, beside every file on an exFAT or FAT volume, which is what
+    a DJ stick is, and the sidecar carries the audio suffix. Queued as an item it
+    is decoded, refused as undecodable, and then, because the finder moves the
+    sidecar with the file it shadows when the track is renamed, refused as
+    missing on the next claim and the job fails. ``write/routing_cli.py`` skips
+    the same names. The rule itself lives in ``core.discovery``, because
+    ``analyze vocals`` needs the same one and two copies of a rule that has to
+    agree do not stay agreed.
     """
-    if not folder.is_dir():
-        return []
-    return sorted(
-        path.name
-        for path in folder.iterdir()
-        if path.is_file()
-        and not path.name.startswith(".")
-        and path.suffix.lower() in AUDIO_EXTS
-    )
+    return list(discovery.scan_audio(folder).items)
 
 
-def _nothing_to_queue(ctx, folder: Path) -> Envelope:
+def _nothing_to_queue(ctx, folder: Path, extra: tuple[dict[str, str], ...] = ()) -> Envelope:
     """The two zeros, told apart: an empty folder and a folder that is not there.
 
     A mistyped path or an unmounted volume must not read as "nothing new to
     analyse", which is what one shared no-op would say. The tagging verbs make
     the same split.
+
+    ``extra`` carries the recursive walk's declined links onto the zero as well
+    as onto the queue, because "nothing to do" over a tree whose every folder is
+    a link is the one place the omission changes the answer completely.
     """
     if folder.is_dir():
-        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP)
+        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP, warnings=extra)
     return ctx.envelope(
         data=_no_op("folder-absent"),
         outcome=Outcome.NO_OP,
@@ -169,6 +175,7 @@ def _nothing_to_queue(ctx, folder: Path) -> Envelope:
                 "code": "folder-absent",
                 "message": f"{folder} is not a folder on this machine, so nothing was queued",
             },
+            *extra,
         ),
     )
 
@@ -245,6 +252,14 @@ def build_validate(parser, entry) -> None:
 
 def build_restamp(parser, entry) -> None:
     parser.add_argument("folder", help="folder whose analysed values should be restamped")
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "queue every folder under this one as a single resumable job, "
+            "instead of only the tracks directly inside it"
+        ),
+    )
     parser.add_argument(
         "--job",
         default=None,
@@ -368,9 +383,14 @@ def _refuse_missing(item, folder: Path, path: Path, what: str) -> CratekitError:
 
 
 def _folder_and_path(job, item) -> tuple[Path, Path]:
-    """The frozen folder and the item's path in it, the one rule both workers use."""
+    """The frozen folder and the item's path in it, the one rule both workers use.
+
+    Through ``core.discovery.item_path``, which refuses an id that would leave
+    the folder. Since U93 an id may carry separators, and a plain join with an
+    absolute right hand side discards the base without saying so.
+    """
     folder = Path(str((job.payload or {}).get("folder") or ""))
-    return folder, folder / item.item_id
+    return folder, discovery.item_path(folder, str(item.item_id))
 
 
 def _item_path(job, item, what: str) -> Path:
@@ -646,11 +666,14 @@ def analyze_restamp(ctx) -> Envelope:
     if ctx.args.job:
         return _resume(ctx, cfg)
     folder = _folder_of(ctx.args.folder)
-    items = _audio_in(folder)
-    if not items:
+    recursive = bool(getattr(ctx.args, "recursive", False))
+    scan = discovery.scan_audio(folder, recursive=recursive)
+    linked = discovery.skipped_links_warning(scan)
+    extra: tuple[dict[str, str], ...] = () if linked is None else (linked,)
+    if not scan.items:
         # BEFORE THE CALIBRATION CHECK: a folder with nothing to restamp is a
         # complete answer whether or not the library is calibrated.
-        return _nothing_to_queue(ctx, folder)
+        return _nothing_to_queue(ctx, folder, extra)
     # REFUSED AT THE QUEUE, not only in the worker: a job whose every item
     # would fail on the same absence is a report over work nothing could do.
     _calibration_or_refuse(cfg)
@@ -658,11 +681,17 @@ def analyze_restamp(ctx) -> Envelope:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload={"folder": str(folder)},
+            # FROZEN WITH THE FOLDER, because a resume must not be able to
+            # disagree with the queue about what the item list meant. The
+            # resume never re-scans, so this is a record rather than an input,
+            # and a record is what makes a job readable after the fact.
+            payload={"folder": str(folder), "recursive": recursive},
             cfg=cfg,
-            item_ids=items,
+            item_ids=list(scan.items),
         )
-        return ctx.envelope(data=_reported(store, job), warnings=(DB_NOT_WRITTEN,))
+        return ctx.envelope(
+            data=_reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)
+        )
 
 
 def handle_restamp(job, item, cfg) -> jobs.Produced:
