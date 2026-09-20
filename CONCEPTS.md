@@ -310,6 +310,23 @@ accept the replacement, and the lock is installation scoped. It runs in two
 no session back. The refusal that keeps the two apart is the first one, and a
 target that is the empty folder a lost volume leaves behind is a **stub**.
 
+### Kept record
+The session record the gates hold open for a body that asked for one with
+`keep=Keep.RECORD`, handed over as `Gates.record`. It is what makes a **capture**
+an undo rather than a directory, because `restore list` and the pruning scan
+both read the session log and nothing else. A body that takes a capture owes
+three acts: the declaration, attaching the capture the instant it exists, and
+recording the commit the instant it lands. The gates own the record, and a
+writer does not nest one of its own, because the gates judge the session on the
+way OUT, at the analysis watch, and a record that closed before that has already
+called the session finished. A gated body that takes no capture keeps no record.
+
+### Commit witness
+The engine's own answer to whether a database commit landed,
+`rb_writer.commit_witness`, read in an except block instead of inferring it from
+the exception. The binding commits the transaction and then saves rekordbox's
+playlist file, so an error can arrive over rows that are already durable.
+
 ### Rotation floor
 The stamp of the last COMPLETED mirror to the configured destination, taken from
 the files portion's published backup age. The archive rotation compares dated
