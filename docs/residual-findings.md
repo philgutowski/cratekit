@@ -742,6 +742,19 @@ appears in `restore.list` with its per-tree counts. The natural owner is U32,
 which owns the restore verb and already carries three registered obligations, or
 U26, which is the first workflow that will call the membership writer in anger.
 
+**CLOSED 2026-09-20 on `relay/173`, with R-375, which is the same shape.**
+`write_tree_membership` asks the gates for a record with `keep=Keep.RECORD`,
+attaches its capture the instant the capture exists, and records the commit
+with `TreeChange(tree_id, created=added)` the instant it lands. Both
+consequences are driven: the real protection scan is read from inside the
+guarded commit and names the capture, and `restore.list_sessions` lists the
+write as restorable with its per tree count. The composition question this
+entry left open is answered by not composing: the record is the write's own,
+so a routing pass over three trees leaves three records, each naming the
+capture taken before that tree's commit, and the source R29 asks for is the
+tree. A pass that added nothing keeps its record and claims no commit, because
+a restore reads a committed source as work it would discard.
+
 ---
 
 ## R-13. Four routing verbs name a CLI module no unit's file list declares
@@ -17378,6 +17391,31 @@ committed. What is lost is the ledger the docstring promises.
 **Closes when:** the docstring stops claiming a record, or the gate writes
 one.
 
+**CLOSED 2026-09-20 on `relay/173`, by both halves.** The gate writes one when
+asked, `assert_gates(keep=Keep.RECORD)`, and its docstring now says the
+workflow reaches the log only then. The two callers that take a capture ask:
+`metadata.mytags-vocals --apply` and `write_tree_membership`, which is R-12.
+Driven through both verbs a person types: an apply, then `restore list`, shows
+one restorable session with `my-tags.vocals: 2 created`.
+
+The entry named five callers and three of them still leave no record, on
+purpose. `deletion/run.py`, `adopt/apply_cli.py` and the backup restore pass
+the gates and take NO capture, so there is no undo for a record to make
+reachable, and a record with no capture lists as unusable. An AST guard,
+`test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recorded`,
+reads every function in `src` that calls `snapshot.capture` and asks each for
+the declaration, the attach and the recorded commit, so the next writer cannot
+repeat the shape.
+
+The review found the record could not live in the writer's body. Nested there
+it exits before the gates do, so it closed CLOSED and released its capture and
+THEN the analysis watch refused the session over a moved grid. The gates own
+it for that reason. `restore.recovery_session` had the same fault one file
+over and now asks the gates too. What this unit found and did not fix is
+R-598, R-599 and R-600. Mutation tables `docs/mutation/r375-a`, `-b`, `-c`: 25
+rows, 25 killed, one of them a zero on first reading that a new test killed.
+The author ran them, so every row reads as "the author could kill it".
+
 ---
 
 ## R-376. The vocal restamp is one folder per invocation, and the library is 343 folders
@@ -24196,3 +24234,84 @@ running two recoveries at once. Maintainer facing in practice.
 
 **Closes when:** the lock's refusal names the lock it was given.
 
+---
+
+## R-598. A gated write that is hard killed leaves an open session record, and no verb abandons one
+
+**Found:** 2026-09-20 on `relay/173`, by the built in review, and then driven.
+
+R-375's fix makes the membership writer and `metadata.mytags-vocals --apply`
+keep a session record. The record ends terminal on every path that can still
+run code: a raise closes it abandoned, and so does a clean close that refuses.
+A SIGKILL, a power loss or a volume pulled mid write runs no code, so the
+record stays `open`, naming its capture. Before R-375 these two writers could
+leave no such record. `restore.recovery_session` and the intake landing have
+always had the same exposure.
+
+**Driven, in a temporary library:** the gates were entered with
+`keep=Keep.RECORD` and never exited, which is what a kill is. The record on
+disk read `open`. `tree_registry.assert_cutover_ready` then refused with
+`cutover-open-run`, and its first step is "close or abandon every open run",
+which no verb offers for a record whose workflow is not intake. Doctor lists
+the session as open at INFO. `restore.prune` with no session named refuses on
+it too. A grep of `src` for a caller of that function found none, so that half
+costs nothing today.
+
+**Measured cost:** after a hard kill during a database write, the cutover of
+any tree is refused until somebody edits a file in the session log by hand,
+and the capture that record names is kept for ever. Conservative in the
+direction that matters, since nothing is lost, and a dead end all the same.
+
+**Closes when:** a verb ends an open record whose holder is provably gone. The
+natural home is `session release-lock`, which already establishes that the
+lock's holder is dead before it acts, and a record opened under that lock
+belongs to the same dead process. Bar met: c.
+
+---
+
+## R-599. Every gated database write adds a session record that nothing ever removes, and the gate parses the whole log on every write
+
+**Found:** 2026-09-20 on `relay/173`, by the built in review. NOT measured.
+
+The inbox sweep calls `write_tree_membership` once per database native tree on
+every run, and each call now leaves one closed record, a no-op included,
+because the capture it names is real. Captures are pruned by retention and
+records are not pruned by anything. `assert_no_unresolved_session` reads and
+parses every record at every gate, and `restore list` shows every one. Each
+record also costs four atomic writes to the library volume, open, attach,
+commit and close, and the gated close asserts the volume identity and the
+convergence record a second time while the lock that makes both redundant is
+still held.
+
+**Measured cost:** none taken. On a library with a dozen native trees and a
+daily sweep this is a few thousand small files a year and a `restore list`
+that is mostly sessions which created nothing. Maintainer facing until
+somebody measures a gate that got slow.
+
+**Closes when:** a record whose capture retention has already deleted, and
+which committed nothing, is removed with it, or the cost is measured on a real
+log and found not to matter.
+
+---
+
+## R-600. The My Tags write files its counts under a key in a field documented as a tree, and counts associations only
+
+**Found:** 2026-09-20 on `relay/173`, by the built in review.
+
+`ChangeSummary` is a tuple of `TreeChange`, and `TreeChange.tree` is documented
+as a stable tree identifier. A My Tag category is no tree, so
+`metadata_cli.CHANGE_KEY`, `my-tags.vocals`, is filed there and as the
+record's source. A grep of `src` for readers of `.change.trees` found only the two
+places that render it, `restore list` and
+the refusal a restore raises before discarding later work. So a person reads
+`my-tags.vocals: 2 created` in a list headed by trees. `created` counts the
+associations written and not the value rows `ensure_my_tag_value` creates on
+the way, which are zero on every library that already has the three values.
+
+Beside it, and older than this unit: `session.verify_commit` still has no
+caller in `src`. These two writers now hold the record it needs.
+
+**Measured cost:** one line of wording in two reports. Maintainer facing.
+
+**Closes when:** the change summary carries a surface beside the key, or a
+second non tree writer arrives and makes the overload worth a field.

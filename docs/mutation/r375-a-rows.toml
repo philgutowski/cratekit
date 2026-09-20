@@ -1,0 +1,173 @@
+name = "r375-a"
+pass_kind = "light"
+
+# R-375 and R-12, batch A of three: the record the gates keep, core/session.py.
+# Three batches rather than one because a Relay session may not background a
+# driver and the harness kills a foreground command at 600 seconds.
+
+[[rows]]
+id = "S1_keep_is_ignored"
+description = "assert_gates: keep a record for nobody, so Keep.RECORD yields Gates.record None"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''            if keep is Keep.RECORD
+            else nullcontext()'''
+new = '''            if keep is Keep.NOTHING
+            else nullcontext()'''
+
+[[rows]]
+id = "S2_record_inside_the_watch"
+description = "assert_gates: open the record INSIDE the analysis watch, the ordering fault the review found, so it closes CLOSED before the watch judges"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''        with keeping as record:
+            with analysis_files_unmoved(watched) if watched else nullcontext():
+                yield Gates('''
+new = '''        with analysis_files_unmoved(watched) if watched else nullcontext():
+            with keeping as record:
+                yield Gates('''
+
+[[rows]]
+id = "S3_a_raise_is_not_abandoned"
+description = "_recorded: drop the abandoning close, so a body that raised leaves its record OPEN"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''            close_session(record, cfg, state=SessionState.ABANDONED, now=now)
+        except Exception:  # noqa: BLE001 - the session's own error is the one to surface'''
+new = '''            pass
+        except Exception:  # noqa: BLE001 - the session's own error is the one to surface'''
+
+[[rows]]
+id = "S4_abandon_failure_replaces_the_error"
+description = "_recorded: re-raise a failed abandonment instead of logging it, so it replaces the error that ended the session"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''            logger.warning(
+                "session %s could not be recorded as abandoned", record.session_id, exc_info=True
+            )
+        raise'''
+new = '''            raise
+        raise'''
+
+[[rows]]
+id = "S5_clean_close_refusal_leaves_it_open"
+description = "_recorded: move the clean close out of the try, so a close that refuses leaves the record OPEN with no verb to abandon it"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''    try:
+        yield record
+        close_session(
+            record,
+            cfg,
+            state=SessionState.CLOSED,
+            intent=intent,
+            identity_provider=identity_provider,
+            mount_enumerator=mount_enumerator,
+            now=now,
+        )
+    except BaseException:
+        try:
+            close_session(record, cfg, state=SessionState.ABANDONED, now=now)
+        except Exception:  # noqa: BLE001 - the session's own error is the one to surface
+            logger.warning(
+                "session %s could not be recorded as abandoned", record.session_id, exc_info=True
+            )
+        raise
+'''
+new = '''    try:
+        yield record
+    except BaseException:
+        try:
+            close_session(record, cfg, state=SessionState.ABANDONED, now=now)
+        except Exception:  # noqa: BLE001 - the session's own error is the one to surface
+            logger.warning(
+                "session %s could not be recorded as abandoned", record.session_id, exc_info=True
+            )
+        raise
+    close_session(
+        record,
+        cfg,
+        state=SessionState.CLOSED,
+        intent=intent,
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
+        now=now,
+    )
+'''
+
+[[rows]]
+id = "S6_close_ignores_the_intent"
+description = "_recorded: close every record as an ordinary WRITE, so a recovery's close is gated by the latch it is the remedy for"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''            state=SessionState.CLOSED,
+            intent=intent,
+            identity_provider=identity_provider,'''
+new = '''            state=SessionState.CLOSED,
+            intent=Intent.WRITE,
+            identity_provider=identity_provider,'''
+
+[[rows]]
+id = "S7_close_drops_the_identity_seam"
+description = "_recorded: do not forward the identity provider to the gated close, so it asserts the volume through this machine's default"
+file = "src/cratekit/core/session.py"
+surface = "maintainer"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''            intent=intent,
+            identity_provider=identity_provider,
+            mount_enumerator=mount_enumerator,
+            now=now,
+        )
+    except BaseException:'''
+new = '''            intent=intent,
+            mount_enumerator=mount_enumerator,
+            now=now,
+        )
+    except BaseException:'''
+
+[[rows]]
+id = "S8_record_names_no_actor"
+description = "_recorded: record no actor, so the log cannot say who acknowledged the backup this write ran behind"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''        actor=acknowledgment.actor,'''
+new = '''        actor=None,'''
+
+[[rows]]
+id = "S9_record_names_no_acknowledgment"
+description = "_recorded: record no acknowledgment instant"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''        acknowledged_at=acknowledgment.recorded_at.isoformat(),'''
+new = '''        acknowledged_at=None,'''
+
+[[rows]]
+id = "S10_commit_not_persisted_at_once"
+description = "record_commit: mark the source in memory and leave the write to the close, so a hard kill after the commit leaves a record that claims none"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''    record.sources[source] = str(SourceState.COMMITTED)
+    record.change = record.change.merged(change)
+    write_record(record, cfg)'''
+new = '''    record.sources[source] = str(SourceState.COMMITTED)
+    record.change = record.change.merged(change)'''
+
+[[rows]]
+id = "S11_commit_replaces_the_summary"
+description = "record_commit: replace the change summary instead of merging into it, so a second source erases the first one's counts"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
+old = '''    record.sources[source] = str(SourceState.COMMITTED)
+    record.change = record.change.merged(change)'''
+new = '''    record.sources[source] = str(SourceState.COMMITTED)
+    record.change = change'''

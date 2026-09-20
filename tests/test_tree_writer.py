@@ -1072,6 +1072,13 @@ def test_a_grid_rewritten_during_a_membership_write_refuses_the_session(
     assert cause.reason == "anlz-modified"
     assert cause.code is ExitCode.REFUSED_BY_POLICY
     assert any(str(grid) in line for line in cause.detail["changed"])
+    # THE RECORD CLOSES AFTER THE WATCH HAS JUDGED, so a session refused over a
+    # moved grid is not on record as cleanly finished. The commit landed before
+    # the watch looked, and the record says that too, which is what lets a
+    # restore see rows this refused session left behind.
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == (TREE_ID,)
 
 
 def test_membership_lands_in_the_named_folder_and_sub(cfg, gates_pass, db, adopted_root):
@@ -1382,3 +1389,329 @@ def test_a_missing_acknowledgment_refuses_before_the_database_is_touched(
             root_id=str(adopted_root.ID),
         )
     assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+
+
+# ── R-12 and R-375: the capture a membership write pays for is a reachable undo ──
+
+
+def _the_one_record(cfg) -> session.SessionRecord:
+    recorded = session.records(cfg)
+    assert len(recorded) == 1, [entry.session_id for entry in recorded]
+    return recorded[0]
+
+
+def test_a_membership_write_is_listed_as_restorable_with_its_per_tree_counts(
+    cfg, gates_pass, db, adopted_root
+):
+    """The cost R-375 names, reproduced: the write took a capture nothing could list.
+
+    Read through ``restore.list_sessions``, which is what ``restore list`` shows a
+    person, rather than through the record alone. A record naming a capture the
+    restore side cannot read is the same stranded undo with a file beside it.
+    """
+    from cratekit.core import restore
+
+    _write(
+        cfg,
+        db,
+        plan={
+            (FOLDER_DISPLAY, SUB_DISPLAY): [
+                f"{cfg.library.root}/Music/one.flac",
+                f"{cfg.library.root}/Music/two.flac",
+            ]
+        },
+        root_id=str(adopted_root.ID),
+    )
+
+    listed = restore.list_sessions(cfg)
+    assert len(listed) == 1
+    only = listed[0]
+    assert only.workflow == trees.MEMBERSHIP_WORKFLOW
+    assert only.restorable, only.unusable
+    assert only.change.trees == (session.TreeChange(tree=TREE_ID, created=2, updated=0),)
+    assert only.record.state is session.SessionState.CLOSED
+    assert only.record.ended is not None
+    # What a LATER restore reads to decide this write is work it would discard.
+    assert only.record.committed_sources() == (TREE_ID,)
+    assert only.record.actor and only.record.acknowledged_at
+
+
+def test_the_capture_is_protected_from_pruning_for_the_life_of_the_write(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """R-12's first consequence, asked at the moment it matters: mid write.
+
+    The real protection scan is read from inside the guarded commit, so the
+    answer is about a write still in flight and not about a record opened after
+    the fact.
+    """
+    seen: dict[str, object] = {}
+    real_commit = rb_writer.commit_guarded
+
+    def commit_and_look(handle, *args, **kwargs):
+        seen["protected"] = rb_writer.default_protected_snapshot_paths(cfg)
+        seen["state"] = _the_one_record(cfg).state
+        return real_commit(handle, *args, **kwargs)
+
+    monkeypatch.setattr(trees.rb_writer, "commit_guarded", commit_and_look)
+    _write(
+        cfg,
+        db,
+        plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
+        root_id=str(adopted_root.ID),
+    )
+
+    record = _the_one_record(cfg)
+    assert seen["state"] is session.SessionState.OPEN
+    assert seen["protected"] == {Path(record.snapshot_path).resolve()}
+    # And the finished write RELEASES it, or every capture is kept for ever.
+    assert rb_writer.default_protected_snapshot_paths(cfg) == set()
+
+
+def test_a_membership_write_that_fails_is_abandoned_and_claims_no_commit(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """Closed on BOTH paths. An open record refuses pruning and the cutover for ever."""
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("the library went away mid-sweep")
+
+    monkeypatch.setattr(db, "add_to_playlist", explode)
+    with pytest.raises(RuntimeError, match="mid-sweep"):
+        _write(
+            cfg,
+            db,
+            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
+            root_id=str(adopted_root.ID),
+        )
+
+    record = _the_one_record(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.snapshot_path
+    assert record.committed_sources() == ()
+    assert record.change.trees == ()
+
+
+def test_a_failure_after_the_commit_still_reads_as_committed_work(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """The commit is recorded the instant it lands, not at the clean end.
+
+    The fingerprint is written AFTER the commit, so a failure there leaves rows in
+    the library behind a record that closes abandoned. A later restore decides
+    whether it is discarding work by reading committed sources, and a record that
+    only learned of its commit on the clean path would let that restore reach
+    back past these rows without asking.
+    """
+    from cratekit.core import convergence
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("the state write failed")
+
+    monkeypatch.setattr(convergence, "record_fingerprint", explode)
+    with pytest.raises(RuntimeError, match="state write failed"):
+        _write(
+            cfg,
+            db,
+            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
+            root_id=str(adopted_root.ID),
+        )
+
+    record = _the_one_record(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == (TREE_ID,)
+    assert record.change.trees == (session.TreeChange(tree=TREE_ID, created=1, updated=0),)
+
+
+def test_a_refused_gate_leaves_no_record(cfg, monkeypatch, db, adopted_root):
+    """A refusal writes nothing. No acknowledgment is minted here."""
+    monkeypatch.setattr(
+        preflight,
+        "default_identity_provider",
+        lambda: (lambda _path: cfg.library.volume_id),
+    )
+    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    with pytest.raises(CratekitError):
+        _write(
+            cfg,
+            db,
+            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
+            root_id=str(adopted_root.ID),
+        )
+    assert session.records(cfg) == ()
+
+
+def test_a_capture_that_did_not_verify_is_recorded_before_the_refusal(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """Attached the instant it exists, which is BEFORE it is judged.
+
+    An unverified capture is still a directory on disk a person may go looking
+    for, and ``restore list`` lists an unusable entry rather than dropping it.
+    """
+    import cratekit.core.snapshot as snapshot_module
+
+    real_capture = snapshot_module.capture
+
+    def unverified(*args, **kwargs):
+        taken = real_capture(*args, **kwargs)
+        return type(taken)(
+            stamp=taken.stamp,
+            root=taken.root,
+            database=taken.database,
+            integrity_verified=False,
+            sources=taken.sources,
+            manifest=taken.manifest,
+        )
+
+    monkeypatch.setattr(trees.snapshot, "capture", unverified)
+    with pytest.raises(CratekitError):
+        _write(
+            cfg,
+            db,
+            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
+            root_id=str(adopted_root.ID),
+        )
+    record = _the_one_record(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.snapshot_path and Path(record.snapshot_path).is_dir()
+
+
+def test_a_pass_that_added_nothing_claims_no_commit(cfg, gates_pass, db, adopted_root):
+    """The inbox sweep re-runs this writer on every tree, and most runs add nothing.
+
+    A restore reads a committed source as work it would discard, so a no-op that
+    claimed one would make restoring to last week refuse over a list of sessions
+    that each created nothing. The record itself stays, because its capture is
+    real.
+    """
+    from cratekit.core import restore
+
+    plan = {(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]}
+    _write(cfg, db, plan=plan, root_id=str(adopted_root.ID))
+    again = _write(cfg, db, plan=plan, root_id=str(adopted_root.ID))
+    assert again.added == 0
+
+    # By recorded start, which carries microseconds. The identifier's tail is
+    # random, so two sessions inside one second do not sort by it.
+    first, noop = sorted(session.records(cfg), key=lambda entry: entry.started)
+    assert first.committed_sources() == (TREE_ID,)
+    assert noop.committed_sources() == ()
+    assert noop.state is session.SessionState.CLOSED
+    assert noop.change.trees == ()
+    assert noop.snapshot_path
+    # The question a restore to the first session asks, answered by the function
+    # that asks it: the no-op after it is not work that restore would discard.
+    assert restore._later_committed(cfg, first) == ()
+
+
+def test_a_commit_that_lands_and_then_raises_is_still_recorded_as_committed(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """An exception out of the commit is not proof that nothing was committed.
+
+    The binding lands the SQL transaction and THEN saves rekordbox's playlist
+    file, so a failure in the second half arrives over durable rows. Driven by
+    letting the real commit land and raising where that save would.
+    """
+    from pyrekordbox.db6 import tables
+
+    real_commit = db.commit
+
+    def lands_then_fails(*args, **kwargs):
+        real_commit(*args, **kwargs)
+        raise OSError("the playlist file could not be saved")
+
+    monkeypatch.setattr(db, "commit", lands_then_fails)
+    with pytest.raises(OSError, match="playlist file"):
+        _write(
+            cfg,
+            db,
+            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
+            root_id=str(adopted_root.ID),
+        )
+
+    landed = [row for row in db.session.query(tables.DjmdPlaylist).all() if row.Name == SUB_DISPLAY]
+    assert landed, "the fixture did not land the commit it claims to"
+    record = _the_one_record(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == (TREE_ID,)
+    assert record.change.trees == (session.TreeChange(tree=TREE_ID, created=1, updated=0),)
+
+
+def test_the_commit_witness_leaves_the_handle_as_it_found_it(cfg, gates_pass, db, adopted_root):
+    """The listener is removed on the way out, on a handle that outlives the write."""
+    from sqlalchemy import event
+
+    with rb_writer.commit_witness(db) as witness:
+        assert event.contains(db.session, "after_commit", witness._mark)
+        assert witness.landed is False
+        rb_writer.ensure_folder(db, "a witnessed folder")
+        db.session.commit()
+        assert witness.landed is True
+    assert not event.contains(db.session, "after_commit", witness._mark)
+
+
+def test_the_commit_witness_does_not_read_a_commit_that_never_landed_as_landed(
+    cfg, gates_pass, db, adopted_root
+):
+    """The other half: a commit refused on its way IN recorded nothing durable.
+
+    The refusing listener is registered after the witness's own, so a witness
+    listening one event too early would already have marked itself by the time
+    this raises.
+    """
+    from sqlalchemy import event
+
+    def refuse(_session):
+        raise RuntimeError("the transaction was refused before it landed")
+
+    with rb_writer.commit_witness(db) as witness:
+        event.listen(db.session, "before_commit", refuse)
+        try:
+            rb_writer.ensure_folder(db, "a folder that never lands")
+            with pytest.raises(RuntimeError, match="before it landed"):
+                db.session.commit()
+        finally:
+            event.remove(db.session, "before_commit", refuse)
+            db.session.rollback()
+        assert witness.landed is False
+
+
+def test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """The witness decides, not the count. Found by the mutation table as a zero row.
+
+    The failure test above raises before anything is counted, so the rule that a
+    pass which added nothing claims no commit was covering for the witness: a
+    writer that recorded a commit on EVERY raise still passed. Here the first
+    playlist's membership is counted and the second playlist's insert fails, so
+    the count is one, nothing landed, and the record must say nothing landed.
+    """
+    real_insert = db.add_to_playlist
+    calls = {"n": 0}
+
+    def explode_on_the_second(playlist, content, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("the library went away mid-sweep")
+        return real_insert(playlist, content, *args, **kwargs)
+
+    monkeypatch.setattr(db, "add_to_playlist", explode_on_the_second)
+    with pytest.raises(RuntimeError, match="mid-sweep"):
+        _write(
+            cfg,
+            db,
+            plan={
+                (FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"],
+                (OTHER_FOLDER, SUB_DISPLAY): [f"{cfg.library.root}/Music/two.flac"],
+            },
+            root_id=str(adopted_root.ID),
+        )
+
+    assert calls["n"] == 2, "the fixture never reached the second playlist"
+    record = _the_one_record(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == ()
+    assert record.change.trees == ()

@@ -918,6 +918,34 @@ def _rollback_quietly(db: Any) -> None:
         logger.warning("could not roll back the pending session after a failed write")
 
 
+def _record_membership_commit(
+    record: session.SessionRecord, tree_id: str, added: int, cfg: config.Config
+) -> None:
+    """Record one tree's commit on its session record, when it added anything.
+
+    A PASS THAT ADDED NOTHING CLAIMS NO COMMIT. The inbox sweep calls the writer
+    for every native tree on every run, and most of those runs add nothing. A
+    restore reads a committed source as work it would discard, so recording the
+    no-ops would make restoring to last week refuse over a list of sessions that
+    each created nothing, and make a person name every one of them to proceed.
+    Zero is decidable here because a folder or playlist this write creates is
+    only ever created on the way to a membership: nothing new exists when
+    nothing was added. The record itself stays, closed and empty, because the
+    capture it names is real.
+
+    ``created`` is memberships added, the per-tree number ``restore list`` asks
+    for. Nothing here updates a row that was already there.
+    """
+    if added <= 0:
+        return
+    session.record_commit(
+        record,
+        tree_id,
+        session.ChangeSummary((session.TreeChange(tree=tree_id, created=added),)),
+        cfg,
+    )
+
+
 def write_tree_membership(
     cfg: config.Config,
     db: Any,
@@ -1029,10 +1057,23 @@ def write_tree_membership(
     skipped: list[RowMatch] = []
     touched: list[str] = []
 
+    # THE RECORD IS OPENED INSIDE THE GATES AND BEFORE THE CAPTURE (R-12). The
+    # capture is this write's undo, and a capture no record names is one the
+    # pruning scan is free to delete mid write and one ``restore list`` cannot
+    # show. It composes with a caller that already owns a record because it is a
+    # record of its own: a routing pass walking three trees leaves three, each
+    # naming the capture taken before that tree's commit, which is exactly the
+    # granularity a person restores at. R29's one source per run holds, and the
+    # source is the tree.
     with session.assert_gates(
-        cfg, workflow=workflow, analysis_roots=watched, intent=intent
-    ):
+        cfg, workflow=workflow, analysis_roots=watched, intent=intent, keep=session.Keep.RECORD
+    ) as gates, rb_writer.commit_witness(db) as witness:
+        record = gates.record
         capture = snapshot.capture(cfg, db=db)
+        # ATTACHED BEFORE IT IS JUDGED. A capture that fails its check is still
+        # a directory a person may go looking for, and the restore side lists an
+        # unusable entry rather than answering with silence.
+        session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
 
         # THE WRITE IS PARENTED TO THE ROOT THE CUTOVER ADOPTED. Asserting the
@@ -1090,7 +1131,19 @@ def write_tree_membership(
             # describes. Rolled back here, and re-raised unchanged: this is a
             # cleanup, never a place that decides an error is survivable.
             _rollback_quietly(db)
+            # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The binding commits the
+            # transaction and THEN saves rekordbox's playlist file, so a failure
+            # there arrives here over durable rows. The witness is the engine's
+            # own answer, and a commit it saw is recorded before this re-raises.
+            if witness.landed:
+                _record_membership_commit(record, tree_id, added, cfg)
             raise
+
+        # RECORDED THE INSTANT THE COMMIT RETURNS, ahead of the fingerprint. A
+        # restore reads committed sources to decide whether it would discard
+        # work, so a failure in the state write below must not close this
+        # record looking as though nothing landed.
+        _record_membership_commit(record, tree_id, added, cfg)
 
         # THE FINGERPRINT IS TAKEN AT THE CLOSE, AFTER THE COMMIT. It is what
         # lets the next run tell a database recovered out of band from one this

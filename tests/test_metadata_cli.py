@@ -295,3 +295,121 @@ def test_a_library_with_no_tag_category_refuses_through_the_verb(ready, monkeypa
     code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "mytag-category-template-missing"
+
+
+# ── R-375: a gated write leaves a session record, so its capture is an undo ──
+
+
+def test_an_apply_is_listed_by_restore_list_as_a_restorable_session(ready):
+    """The cost R-375 names, reproduced through both verbs a person would type.
+
+    Found on the live library: after an apply wrote four associations, the
+    sessions directory held an unrelated rehearsal alone, and the write's only
+    trace was a snapshot directory nothing could list or spend.
+    """
+    cfg, audio, db_path = ready
+    del audio, db_path
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code == int(ExitCode.OK), envelope
+
+    code, listing = drive(["restore", "list"])
+    assert code == int(ExitCode.OK), listing
+    rows = listing["data"]["items"]
+    assert len(rows) == 1, rows
+    only = rows[0]
+    assert only["workflow"] == metadata_cli.WORKFLOW
+    assert only["restorable"] is True, only
+    assert only["change"] == [{"tree": metadata_cli.CHANGE_KEY, "created": 2, "updated": 0}]
+
+    record = session.read_record(only["session_id"], cfg)
+    assert record.state is session.SessionState.CLOSED
+    assert record.committed_sources() == (metadata_cli.CHANGE_KEY,)
+    assert rb_writer.default_protected_snapshot_paths(cfg) == set()
+
+
+def test_the_change_key_is_not_the_display_name_a_person_can_rename():
+    assert metadata_cli.CHANGE_KEY != metadata_cli.CATEGORY
+
+
+def test_a_plan_only_run_leaves_no_record(ready):
+    cfg, audio, db_path = ready
+    del audio, db_path
+    code, envelope = drive(["metadata", "mytags-vocals"])
+    assert code == int(ExitCode.OK), envelope
+    assert session.records(cfg) == ()
+
+
+def test_an_apply_that_refuses_mid_write_is_abandoned_and_claims_no_commit(ready, monkeypatch):
+    cfg, audio, db_path = ready
+    del audio, db_path
+
+    def refuse_the_commit(*args, **kwargs):
+        raise RuntimeError("the commit never landed")
+
+    monkeypatch.setattr(metadata_cli.rb_writer, "commit_guarded", refuse_the_commit)
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code != int(ExitCode.OK), envelope
+
+    recorded = session.records(cfg)
+    assert len(recorded) == 1
+    assert recorded[0].state is session.SessionState.ABANDONED
+    assert recorded[0].snapshot_path
+    assert recorded[0].committed_sources() == ()
+
+
+def test_the_capture_is_protected_while_the_apply_is_in_flight(ready, monkeypatch):
+    cfg, audio, db_path = ready
+    del audio, db_path
+    seen: dict[str, object] = {}
+    real_commit = rb_writer.commit_guarded
+
+    def commit_and_look(handle, *args, **kwargs):
+        seen["protected"] = rb_writer.default_protected_snapshot_paths(cfg)
+        return real_commit(handle, *args, **kwargs)
+
+    monkeypatch.setattr(metadata_cli.rb_writer, "commit_guarded", commit_and_look)
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code == int(ExitCode.OK), envelope
+
+    (record,) = session.records(cfg)
+    assert seen["protected"] == {Path(record.snapshot_path).resolve()}
+
+
+def test_a_second_apply_writes_nothing_and_claims_no_commit(ready):
+    """A restore reads a committed source as work it would discard. A no-op is not work."""
+    cfg, audio, db_path = ready
+    del audio, db_path
+    drive(["metadata", "mytags-vocals", "--apply"])
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["written"] == 0
+
+    first, noop = sorted(session.records(cfg), key=lambda entry: entry.started)
+    assert first.committed_sources() == (metadata_cli.CHANGE_KEY,)
+    assert noop.committed_sources() == ()
+    assert noop.change.trees == ()
+    assert noop.state is session.SessionState.CLOSED
+
+
+def test_an_apply_whose_commit_lands_and_then_raises_is_recorded_as_committed(ready, monkeypatch):
+    """The binding commits and THEN saves a playlist file, so a raise can follow durable rows."""
+    from pyrekordbox.db6 import database as binding
+
+    cfg, audio, db_path = ready
+    del audio, db_path
+    real_commit = binding.Rekordbox6Database.commit
+
+    def lands_then_fails(self, *args, **kwargs):
+        real_commit(self, *args, **kwargs)
+        raise OSError("the playlist file could not be saved")
+
+    monkeypatch.setattr(binding.Rekordbox6Database, "commit", lands_then_fails)
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code != int(ExitCode.OK), envelope
+
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == (metadata_cli.CHANGE_KEY,)
+    assert record.change.trees == (
+        session.TreeChange(tree=metadata_cli.CHANGE_KEY, created=2, updated=0),
+    )

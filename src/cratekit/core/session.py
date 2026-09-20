@@ -1611,6 +1611,22 @@ class Intent(StrEnum):
     RECOVERY = "recovery"
 
 
+class Keep(StrEnum):
+    """What the gates keep in the session log for the body they admit.
+
+    A DECLARATION WITH TWO NAMED ANSWERS, NOT A BOOLEAN, and the difference is
+    enforced: a boolean parameter on the gate is what a blanket affirmative looks
+    like (R34), and the suite reads the signature for one. It also reads better
+    at the call site, where ``keep=Keep.RECORD`` says what is kept and ``True``
+    would say only that something was switched on.
+
+    ``RECORD`` is owed by every body that takes a capture. See ``assert_gates``.
+    """
+
+    NOTHING = "nothing"
+    RECORD = "record"
+
+
 @dataclass(frozen=True, slots=True)
 class Gates:
     """What passing the gates established, handed to the body of the session."""
@@ -1620,6 +1636,9 @@ class Gates:
     acknowledgment: Acknowledgment
     volume: preflight.MountStatus
     intent: Intent = Intent.WRITE
+    #: The open session record, when the caller asked the gates to keep one.
+    #: ``None`` otherwise. See ``assert_gates``'s ``keep``.
+    record: SessionRecord | None = None
 
 
 def assert_no_unresolved_session(cfg: config.Config) -> None:
@@ -1715,6 +1734,7 @@ def assert_gates(
     identity_provider: preflight.IdentityProvider | None = None,
     mount_enumerator: preflight.MountEnumerator | None = None,
     analysis_roots: Iterable[Path | str] = (),
+    keep: Keep = Keep.NOTHING,
 ) -> Iterator[Gates]:
     """The one entry point every destructive operation passes through (KTD24).
 
@@ -1725,9 +1745,24 @@ def assert_gates(
     * a volume whose recorded identity does not match refuses in the
       library-unavailable class.
 
-    ``workflow`` is the caller's name for the operation and is recorded in the
-    session log. It arrives as a parameter because this layer names no verb (D2);
-    the layer that owns verb names supplies one.
+    ``workflow`` is the caller's name for the operation. It arrives as a
+    parameter because this layer names no verb (D2); the layer that owns verb
+    names supplies one. IT REACHES THE SESSION LOG ONLY WHEN ``keep`` ASKS FOR A
+    RECORD, and this paragraph used to say it always did (R-375), which was true
+    of no caller at all.
+
+    ``keep=Keep.RECORD`` asks the gates to hold an open session record for the
+    body, and hands it over as ``Gates.record``. A body that takes a capture MUST ask: the
+    record is what makes a capture an undo rather than a directory, because
+    ``restore list`` and the pruning scan both read this log and nothing else
+    (R-12). A body that takes no capture has no undo to make reachable and may
+    leave no record. It is a declaration on the gates rather than a second context
+    manager a caller nests, for one reason that was found the expensive way: THE
+    RECORD HAS TO CLOSE AFTER THE ANALYSIS WATCH HAS JUDGED THE SESSION. Nested
+    inside the body it exits first, so a session the watch then refuses over a
+    moved grid was already recorded as cleanly finished with its capture
+    released. Opened here, between the lock and the watch, the watch's refusal
+    passes through the record on its way out and closes it abandoned.
 
     ``intent`` is a DECLARATION, not an override, and it changes exactly the two
     LATCHES: a ``RECOVERY`` session is held neither by the unresolved-session
@@ -1768,14 +1803,29 @@ def assert_gates(
     acknowledgment = assert_backup_acknowledged(resolved, now=now)
     watched = list(analysis_roots)
     with session_lock(resolved, path=lock, holder=holder) as held:
-        with analysis_files_unmoved(watched) if watched else nullcontext():
-            yield Gates(
+        keeping = (
+            _recorded(
+                resolved,
                 workflow=workflow,
-                lock=held,
                 acknowledgment=acknowledgment,
-                volume=volume,
                 intent=intent,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+                now=now,
             )
+            if keep is Keep.RECORD
+            else nullcontext()
+        )
+        with keeping as record:
+            with analysis_files_unmoved(watched) if watched else nullcontext():
+                yield Gates(
+                    workflow=workflow,
+                    lock=held,
+                    acknowledgment=acknowledgment,
+                    volume=volume,
+                    intent=intent,
+                    record=record,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -1886,9 +1936,7 @@ def commit_sources(
                     inner=exc.cause,
                 )
             ) from exc
-        record.sources[source] = str(SourceState.COMMITTED)
-        record.change = record.change.merged(change)
-        write_record(record, cfg)
+        record_commit(record, source, change, cfg)
     return record
 
 
@@ -1959,6 +2007,96 @@ def close_session(
     record.ended = output.timestamp(now)
     write_record(record, cfg)
     return record
+
+
+# ---------------------------------------------------------------------------
+# The record a gated session keeps (R-12, R-375)
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _recorded(
+    cfg: config.Config,
+    *,
+    workflow: str,
+    acknowledgment: Acknowledgment,
+    intent: Intent,
+    identity_provider: preflight.IdentityProvider | None,
+    mount_enumerator: preflight.MountEnumerator | None,
+    now: datetime | None,
+) -> Iterator[SessionRecord]:
+    """Hold an open session record for the body of one gated session.
+
+    PRIVATE, AND REACHED ONLY THROUGH ``assert_gates(keep=Keep.RECORD)``, so there
+    is no call shape that opens this record without the gates held, and the
+    workflow, the actor and the acknowledgment it records are the ones the gates
+    actually passed on rather than a second spelling a caller supplies.
+
+    IT ENDS TERMINAL ON EVERY PATH THAT CAN STILL WRITE THE LOG. A record left
+    open protects its capture from retention for ever and refuses every later
+    prune and cutover, and no verb abandons one. So a body that raised closes
+    ABANDONED, and so does a clean close that REFUSED: the gated close is the
+    claim that the session finished, and when it cannot be made the honest
+    fallback is the opposite claim, not no claim. A commit that landed first is
+    still on the record, because :func:`record_commit` wrote it when it landed,
+    so an abandoned record with a committed source reads to a restore as work it
+    would discard. Abandoning is an ATTEMPT: the error that ended the session is
+    the one the caller has to see, and a log that cannot be written on the way
+    out of a failure must not replace it.
+
+    The caller attaches its capture with :func:`attach_capture` the instant the
+    capture exists, and marks the commit with :func:`record_commit` the instant
+    it lands. Neither is done here, because this layer takes no capture and
+    performs no commit.
+    """
+    record = open_session(
+        cfg,
+        workflow=workflow,
+        actor=acknowledgment.actor,
+        acknowledged_at=acknowledgment.recorded_at.isoformat(),
+        now=now,
+    )
+    try:
+        yield record
+        close_session(
+            record,
+            cfg,
+            state=SessionState.CLOSED,
+            intent=intent,
+            identity_provider=identity_provider,
+            mount_enumerator=mount_enumerator,
+            now=now,
+        )
+    except BaseException:
+        try:
+            close_session(record, cfg, state=SessionState.ABANDONED, now=now)
+        except Exception:  # noqa: BLE001 - the session's own error is the one to surface
+            logger.warning(
+                "session %s could not be recorded as abandoned", record.session_id, exc_info=True
+            )
+        raise
+
+
+def record_commit(
+    record: SessionRecord, source: str, change: ChangeSummary, cfg: config.Config
+) -> None:
+    """Record that one source's commit landed, and persist it at once.
+
+    WRITTEN THE INSTANT THE COMMIT RETURNS rather than at the clean end of the
+    session. A restore decides whether it is discarding somebody's work by
+    reading committed sources, so a record that learns of its commit only on the
+    clean path lets a failure AFTER the commit close as though nothing landed,
+    and the next restore reaches back past real rows without asking.
+
+    :func:`commit_sources` records each source of a loop through this, so there
+    is one spelling of what a recorded commit is. A writer whose whole session is
+    one guarded commit calls it directly: it has no loop to hand over, and
+    wrapping its body in a callable to borrow that function would also rewrite
+    whatever it raised as a source refusal.
+    """
+    record.sources[source] = str(SourceState.COMMITTED)
+    record.change = record.change.merged(change)
+    write_record(record, cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -2390,6 +2528,7 @@ __all__ = [
     "Gates",
     "Holder",
     "Intent",
+    "Keep",
     "SessionComposition",
     "SessionRecord",
     "SessionState",
@@ -2433,6 +2572,7 @@ __all__ = [
     "read_lock_holder",
     "read_record",
     "record_acknowledgment",
+    "record_commit",
     "records",
     "release_stale_lock",
     "resolve_unverified_session",

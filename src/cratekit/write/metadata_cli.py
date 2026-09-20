@@ -44,6 +44,14 @@ _ORIGIN = ("write", "metadata_cli")
 
 WORKFLOW = "mytags-vocals"
 
+#: What this verb's write is filed under in a session record's change summary.
+#: The summary's key is a tree identifier everywhere else, and a My Tag category
+#: is no tree, so this names the surface instead. It is only ever rendered, in
+#: ``restore list`` and in the refusal a restore raises before discarding later
+#: work, and nothing looks it up in the tree registry. Stable on purpose and
+#: distinct from ``CATEGORY``, which is a display name a person can rename (R19).
+CHANGE_KEY = "my-tags.vocals"
+
 CATEGORY = "Vocals"
 VALUE_VOX = "vox"
 VALUE_MALE = "male vox"
@@ -270,6 +278,26 @@ def apply_mytags(cfg: config.Config, db: Any, plan: dict[str, Any]) -> dict[str,
     return {"written": written, "already": already}
 
 
+def _record_mytags_commit(record: session.SessionRecord, written: int, cfg: config.Config) -> None:
+    """Record this verb's commit on its session record, when it wrote anything.
+
+    A SECOND APPLY WRITES NOTHING AND CLAIMS NO COMMIT, for the reason
+    :func:`cratekit.write.trees._record_membership_commit` gives: a restore reads
+    a committed source as work it would discard. Zero is decidable because a
+    value row this verb creates is only ever created on the way to an
+    association. Keyed on ``CHANGE_KEY``, a stable identifier and never the
+    category's display name (R19).
+    """
+    if written <= 0:
+        return
+    session.record_commit(
+        record,
+        CHANGE_KEY,
+        session.ChangeSummary((session.TreeChange(tree=CHANGE_KEY, created=written),)),
+        cfg,
+    )
+
+
 def build_mytags_vocals(parser, entry) -> None:
     del entry
     parser.add_argument(
@@ -293,15 +321,31 @@ def mytags_vocals(ctx) -> Envelope:
             cfg,
             workflow=WORKFLOW,
             analysis_roots=analysis_store.watch_roots(cfg),
-        ):
+            keep=session.Keep.RECORD,
+        ) as gates, rb_writer.commit_witness(db) as witness:
+            record = gates.record
+            # THE RECORD IS WHAT MAKES THE CAPTURE AN UNDO (R-375). This verb
+            # took a capture and opened no record, so after a real apply the
+            # only trace of the write was a snapshot directory ``restore list``
+            # could not show and the pruning scan did not protect. Attached
+            # before it is judged, for the reason the membership writer gives.
             capture = snapshot.capture(cfg, db=db)
+            session.attach_capture(record, capture.root, cfg)
             snapshot.assert_verified(capture)
+            counts = {"written": 0, "already": 0}
             try:
                 counts = apply_mytags(cfg, db, plan)
                 rb_writer.commit_guarded(db)
             except BaseException:
                 _rollback_quietly(db)
+                # AN EXCEPTION IS NOT PROOF NOTHING LANDED: the binding commits
+                # and THEN saves rekordbox's playlist file. The witness is the
+                # engine's own answer, for the reason the membership writer gives.
+                if witness.landed:
+                    _record_mytags_commit(record, counts["written"], cfg)
                 raise
+            # RECORDED THE INSTANT THE COMMIT RETURNS.
+            _record_mytags_commit(record, counts["written"], cfg)
         plan["totals"]["written"] = counts["written"]
         plan["totals"]["already"] = counts["already"]
         return ctx.envelope(data=plan, outcome=Outcome.OK)

@@ -1247,6 +1247,31 @@ def test_the_recovery_session_closes_its_own_record_on_both_paths(cfg):
     assert session.read_record(bad, cfg).state is session.SessionState.ABANDONED
 
 
+def test_a_restore_the_analysis_watch_refuses_is_not_on_record_as_finished(cfg):
+    """R-375's shape, found one file over while fixing it (METHOD's fifth pattern).
+
+    The recovery session opened its record INSIDE the analysis watch, so its
+    clean close ran first and the watch refused afterwards: a restore refused
+    over a moved grid was already recorded as cleanly finished. The record is
+    the gates' own now and closes after the watch has judged.
+    """
+    acknowledge(cfg)
+    grids = Path(cfg.library.root) / "PIONEER" / "USBANLZ"
+    grids.mkdir(parents=True)
+    grid = grids / "ANLZ0000.DAT"
+    grid.write_bytes(b"a grid")
+
+    with pytest.raises(CratekitError) as excinfo:
+        with restore.recovery_session(
+            cfg, analysis_roots=[grids.parent], **gate_seams(cfg)
+        ) as open_session:
+            refused = open_session.record.session_id
+            grid.write_bytes(b"a different grid, longer")
+
+    assert excinfo.value.cause.reason == "anlz-modified"
+    assert session.read_record(refused, cfg).state is session.SessionState.ABANDONED
+
+
 def test_a_restore_refuses_without_each_of_the_three_gates(cfg):
     """KTD24 binds to destruction, and a restore is the sharpest case of it.
 

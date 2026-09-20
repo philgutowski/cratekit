@@ -1,0 +1,148 @@
+{
+  "name": "r375-c",
+  "pass_kind": "light",
+  "branch": "relay/173",
+  "head": "8610797",
+  "when": "2026-09-20 23:23 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9392,
+  "baseline_exit": 0,
+  "pytest_runs": 7,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/rb_writer.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/rb_writer.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "cd821bfa633ee07b",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9392,
+    "baseline_collected": 9392,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "W1_listener_left_on_the_handle",
+      "description": "commit_witness: never remove the listener, so a handle that outlives the write keeps marking a witness nobody reads",
+      "file": "src/cratekit/core/rb_writer.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "93d827dc25484740",
+      "subset": [
+        "tests/test_tree_writer.py",
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tree_writer.py::test_the_commit_witness_leaves_the_handle_as_it_found_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        event.remove(target, \"after_commit\", witness._mark)",
+      "new": "        pass"
+    },
+    {
+      "id": "W2_witness_listens_one_event_early",
+      "description": "commit_witness: listen for before_commit, so a transaction refused on its way in is witnessed as landed",
+      "file": "src/cratekit/core/rb_writer.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b74bd6a002631025",
+      "subset": [
+        "tests/test_tree_writer.py",
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tree_writer.py::test_the_commit_witness_does_not_read_a_commit_that_never_landed_as_landed",
+        "tests/test_tree_writer.py::test_the_commit_witness_leaves_the_handle_as_it_found_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    event.listen(target, \"after_commit\", witness._mark)\n    try:\n        yield witness\n    finally:\n        event.remove(target, \"after_commit\", witness._mark)",
+      "new": "    event.listen(target, \"before_commit\", witness._mark)\n    try:\n        yield witness\n    finally:\n        event.remove(target, \"before_commit\", witness._mark)"
+    },
+    {
+      "id": "T6_every_raise_read_as_a_commit_again",
+      "description": "write_tree_membership: record a commit on every raise. Batch B read this as ZERO; measured again after test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "efac8ef085b38c2e",
+      "subset": [
+        "tests/test_tree_writer.py",
+        "tests/test_rebuild.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 189,
+      "baseline_collected": 189,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tree_writer.py::test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if witness.landed:\n                _record_membership_commit(record, tree_id, added, cfg)",
+      "new": "            if True:\n                _record_membership_commit(record, tree_id, added, cfg)"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "R1_recovery_session_keeps_no_record",
+      "description": "restore.recovery_session: drop keep=Keep.RECORD",
+      "reason": "ranked below the cap: same guard family as S1, which kills 36 across a subset that includes tests/test_restore.py, and Held.record being None fails the first test that reads it"
+    },
+    {
+      "id": "M5_clean_path_commit_dropped",
+      "description": "mytags_vocals: drop the clean path _record_mytags_commit call",
+      "reason": "ranked below the cap: the restore list test reads the recorded change and the committed source on the clean path, which M1 and M4 already show dying"
+    },
+    {
+      "id": "T9_gate_not_asked_for_a_record",
+      "description": "write_tree_membership and mytags_vocals: drop keep=Keep.RECORD at the call site",
+      "reason": "ranked below the cap: gates.record is None and attach_capture raises on the first write, so every write test dies; S1 measures the same declaration at the gate"
+    }
+  ]
+}
