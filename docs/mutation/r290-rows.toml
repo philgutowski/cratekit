@@ -1,0 +1,219 @@
+name = "r290-author"
+pass_kind = "light"
+
+# Scoped to this round's own diff: the one mapping, the dispatcher's reading of
+# it, the retag rebuild the review found, and the call in every one of the
+# thirteen shells. No fixed sample of older guards, because the older guard in
+# every one of these shells WAS the predicate this unit replaced.
+#
+# Every row has a user facing surface: each one, reverted, puts exit 0 or the
+# wrong outcome word over a job that did not finish.
+#
+# The subset is named on the shell rows and derived on the rest. A shell's
+# derived subset is the files importing that shell, which does not include
+# tests/test_job_outcome.py, the population test written for exactly these
+# calls, so every shell row would read zero on its subset and cost a full run.
+
+# ── The mapping ──────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "J1_blocked_branch_removed"
+description = "Skip the blocked branch of raise_for_state, so a parked job falls through to the closed predicate that cannot see it, which is R-290 itself"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = """    if job.state is JobState.BLOCKED:
+        # ``transition`` refuses"""
+new = """    if False and job.state is JobState.BLOCKED:
+        # ``transition`` refuses"""
+
+[[rows]]
+id = "J2_blocked_raises_the_plain_type"
+description = "Raise a plain CratekitError for a parked job, so the verb exits non zero and the outcome word says failed"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = """        raise JobBlocked(job.cause)"""
+new = """        raise CratekitError(job.cause)"""
+
+[[rows]]
+id = "J3_closed_branch_removed"
+description = "Drop the closed and carrying a cause branch, so a half failed or cancelled job is reported, which is R-225 in every verb at once"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = """    if not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)"""
+new = """    if False and not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)"""
+
+[[rows]]
+id = "J4_predicate_narrowed_to_failed"
+description = "Narrow the closed predicate to FAILED alone, so a run stopped by a signal is reported through a normal envelope"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = """    if not job.is_open() and job.cause is not None:
+        raise CratekitError(job.cause)"""
+new = """    if job.state is JobState.FAILED and job.cause is not None:
+        raise CratekitError(job.cause)"""
+
+[[rows]]
+id = "J5_causeless_block_returns"
+description = "Return for a blocked job that records no reason, reading a missing reason as a missing problem"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = """        if job.cause is None:
+            raise refuse(
+                "internal-error",
+                f"job {job.job_id} is blocked and records no reason for it","""
+new = """        if job.cause is None:
+            return
+            raise refuse(
+                "internal-error",
+                f"job {job.job_id} is blocked and records no reason for it","""
+
+# ── The dispatcher ───────────────────────────────────────────────────────────
+
+[[rows]]
+id = "D1_dispatcher_ignores_the_type"
+description = "Make the dispatcher blind to JobBlocked, so a parked job exits non zero and says failed"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+old = """        parked = isinstance(exc, JobBlocked)"""
+new = """        parked = False"""
+
+[[rows]]
+id = "D2_parked_marked_resumable"
+description = "Mark a parked job's envelope resumable, which sends a wrapper to crate run for work only the verb can continue"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+old = """            resumable=resumable,
+            outcome=Outcome.BLOCKED if resumable or parked else Outcome.FAILED,"""
+new = """            resumable=resumable or parked,
+            outcome=Outcome.BLOCKED if resumable or parked else Outcome.FAILED,"""
+
+# ── The rebuild the review found ─────────────────────────────────────────────
+
+[[rows]]
+id = "R1_retag_rebuild_drops_the_type"
+description = "Rebuild the retag refusal as a plain CratekitError again, so a retag parked after correcting a file says failed"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = """    rebuilt = JobBlocked if isinstance(error, JobBlocked) else CratekitError"""
+new = """    rebuilt = CratekitError"""
+
+# ── The call, removed from each shell alone ──────────────────────────────────
+
+[[rows]]
+id = "S01_master_call_removed"
+description = "Remove the one jobs.raise_for_state call from master/cli.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_master_cli.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S02_acquire_download_call_removed"
+description = "Remove the one jobs.raise_for_state call from acquire/cli.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_acquire_workers.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S03_acquire_fallback_call_removed"
+description = "Remove the one jobs.raise_for_state call from acquire/fallback_cli.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_acquire_fallback_fetch.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S04_backup_call_removed"
+description = "Remove the one jobs.raise_for_state call from backup/cli.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_backup_cli.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S05_intake_call_removed"
+description = "Remove the one jobs.raise_for_state call from intake/cli.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S06_label_call_removed"
+description = "Remove the one jobs.raise_for_state call from label/cli.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_label_workers.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S07_rebuild_call_removed"
+description = "Remove the one jobs.raise_for_state call from cli/rebuild.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S08_route_resort_call_removed"
+description = "Remove the one jobs.raise_for_state call from write/routing_cli.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_routing_workers.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S09_analysis_call_removed"
+description = "Remove the one jobs.raise_for_state call from analysis/cli.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S10_vocals_call_removed"
+description = "Remove the one jobs.raise_for_state call from vocals/cli.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S11_tagging_shell_call_removed"
+description = "Remove the one jobs.raise_for_state call from tagging/shell.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/tagging/shell.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_tag_workers.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S12_adopt_shell_call_removed"
+description = "Remove the one jobs.raise_for_state call from adopt/shell.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/adopt/shell.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_adopt_workers.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
+
+[[rows]]
+id = "S13_outbound_shell_call_removed"
+description = "Remove the one jobs.raise_for_state call from modules/outbound/shell.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_outbound_workers.py"]
+old = """jobs.raise_for_state(job)"""
+new = """jobs.get  # the mapping call, removed"""
