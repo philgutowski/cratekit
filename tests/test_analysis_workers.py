@@ -751,6 +751,12 @@ def test_a_run_over_an_oversize_track_reports_it_and_writes_no_vox_tag(
     The shipped value is pinned by its own test above. Here the cap comes down
     to a byte so a real container, which the finalize step must be able to
     tag, stands in for a live set.
+
+    IT DOES NOT SHOW THE LIGHT PASS IS GUARDED, and nothing does, because the
+    light pass is faked here as it is in every test in this file. On a real
+    ``analyze run`` the light decode reads the whole file first and is capped
+    by nothing, R-583. What this proves is the vocal half: the reason reaches
+    the item report and the summary, and no vox tag is written over the file.
     """
     place(folder, silence, "a", voxlevel=42, voxgender="F")
     bind_scoring(monkeypatch)

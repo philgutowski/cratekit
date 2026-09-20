@@ -23,10 +23,16 @@ A DECODE THAT FAILS IS REPORTED, NOT SCORED. ``vocal_active`` is False and
 ``vocal_reason`` says why, so the report and the tag write both see an
 absence rather than a zero.
 
-A DECODE THAT WOULD NOT FINISH IS NEVER STARTED. A file over
-``VOCAL_MAX_BYTES`` is a live set or a mix, and loading one at the model's
-rate exhausts the worker, so it is refused by a stat before the model is
-asked for and before the decoder is called (R-408).
+THIS PASS'S DECODE, ON A FILE THAT WOULD NOT FINISH, IS NEVER STARTED. A
+file over ``VOCAL_MAX_BYTES`` is a live set or a mix, and loading one at the
+model's rate exhausts the worker, so it is refused by a stat before the
+model is asked for and before the decoder is called.
+
+THAT IS HALF OF R-408 AND THE HALF THIS MODULE OWNS. The light pass decodes
+the same file first, ``analysis/detect.py``, at its own rate and under no
+cap at all, so on ``analyze run`` the big decode has already happened by the
+time this guard is reached. See R-583. The guard here is still the one that
+matters for ``analyze vocals``, which has no light pass in front of it.
 """
 
 from __future__ import annotations
@@ -64,6 +70,13 @@ CHECKPOINT_MIN_BYTES = 300_000_000
 #: worker whose budget is VOCAL_WORKER_BYTES above. The source system carried
 #: the same number for the same reason, DJ_analysis/vocal_detect.py, after an
 #: 830 megabyte mix ran past ten minutes and exhausted a two worker pool.
+#:
+#: IT IS A SIZE STANDING IN FOR A DURATION, and the two part company on a
+#: high resolution container: 250 mebibytes is about 25 minutes of 16 bit 44.1
+#: kilohertz stereo and about 8 minutes of 24 bit 96 kilohertz stereo, so an
+#: ordinary extended mix in a hi res wav is refused as if it were a live set.
+#: Kept as a size anyway, because it is the number the source library was
+#: scored under and because a duration needs the container opened. See R-584.
 VOCAL_MAX_BYTES = 250 * 1024 * 1024
 
 #: Why a track came back vocal inactive, so an absence is never silent.
