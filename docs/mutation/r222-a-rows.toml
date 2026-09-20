@@ -1,0 +1,114 @@
+name = "r222-a"
+pass_kind = "light"
+
+# R-222, batch a: the archive rotation counts a run, not an attempt.
+# Author run. Every zero below reads as "the author could not kill it".
+
+[[rows]]
+id = "A1_nothing_held"
+description = "Hold nothing, which is the finding itself: the rotation counts attempts again and a retry that succeeds purges the failed attempt's archive"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''    held = [name for name in names if keep > 0 and (floor is None or name > floor)]'''
+new = '''    held = []'''
+
+[[rows]]
+id = "A2_boundary_not_strict"
+description = "Hold a folder named exactly at the floor, so the last completed run's own folder is never settled and survives every later run"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''(floor is None or name > floor)]'''
+new = '''(floor is None or name >= floor)]'''
+
+[[rows]]
+id = "A3_no_floor_holds_nothing"
+description = "Read no floor as nothing to hold, so a remote with no completed mirror on record is rotated as though every folder were settled"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''(floor is None or name > floor)]'''
+new = '''(floor is not None and name > floor)]'''
+
+[[rows]]
+id = "A4_keep_zero_holds"
+description = "Hold the run's folders at a keep of zero, overruling a request to keep no archive"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''    held = [name for name in names if keep > 0 and (floor is None or name > floor)]'''
+new = '''    held = [name for name in names if (floor is None or name > floor)]'''
+
+[[rows]]
+id = "A5_held_run_takes_no_slot"
+description = "Spend the whole keep on settled folders, so the held run is kept on top of the keep rather than as one slot of it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''    slots = keep - 1 if held else keep'''
+new = '''    slots = keep'''
+
+[[rows]]
+id = "A6_any_destination_is_a_floor"
+description = "Take the floor from a completed mirror to ANOTHER destination, which says nothing about which folders here are finished"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''    if fact is None or fact.destination != _destination_for(cfg, backup_facts.Portion.FILES):
+        return None'''
+new = '''    if fact is None:
+        return None'''
+
+[[rows]]
+id = "A7_no_record_is_a_late_floor"
+description = "Answer a missing record with a floor after every date, so nothing is held and the old rotation runs on a remote with no completed mirror"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''    if fact is None or fact.destination != _destination_for(cfg, backup_facts.Portion.FILES):
+        return None'''
+new = '''    if fact is None or fact.destination != _destination_for(cfg, backup_facts.Portion.FILES):
+        return "9999"'''
+
+[[rows]]
+id = "A8_floor_read_by_a_rehearsal"
+description = "Read the record above the rehearsal's return, so a preview fails over a file it never touches"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''    if keep < 0 or not purge:
+        return out, None
+    floor = _rotation_floor(cfg)'''
+new = '''    floor = _rotation_floor(cfg)
+    if keep < 0 or not purge:
+        return out, None'''
+
+[[rows]]
+id = "A9_rehearsal_purges"
+description = "EXISTING GUARD, sampled because this round re-armed its tests: a rehearsal runs the real purge"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''                    purge=not dry_run,'''
+new = '''                    purge=True,'''
+
+[[rows]]
+id = "A10_plan_text_at_keep_zero"
+description = "Describe the held run at a keep of zero, so the preview promises a retention the run does not apply"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py"]
+old = '''    if archive_keep == 0:
+        return "keeping no dated archive folder"'''
+new = '''    if False:
+        return "keeping no dated archive folder"'''
+
+[[rows]]
+id = "A11_floor_from_the_wrong_portion"
+description = "Take the floor from the DATABASE portion's record, whose destination is never the mirror, so no floor is ever found"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_backup_cli.py"]
+old = '''    fact = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)'''
+new = '''    fact = backup_facts.read_facts(cfg).get(backup_facts.Portion.DATABASE)'''
