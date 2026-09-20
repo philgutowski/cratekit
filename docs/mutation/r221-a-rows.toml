@@ -1,0 +1,133 @@
+name = "r221-a"
+pass_kind = "light"
+
+# Scoped to this round's own diff: the flag the engine now records, the word the
+# shell now carries on all four of the verb's endings, and the two exits the
+# code review added. The unit changes no write surface, it changes what a person
+# is TOLD about a run, so "user" here means a surface a person reads.
+
+# -- The engine, where the two runs first became indistinguishable ------------
+
+[[rows]]
+id = "E1_outcome_forgets_the_run"
+description = "The outcome records False whatever the run was, which is the state before this unit: a rehearsal and a real run render identically"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    return BackupOutcome(stamp=plan.stamp, portions=tuple(outcomes), dry_run=dry_run)'''
+new = '''    return BackupOutcome(stamp=plan.stamp, portions=tuple(outcomes), dry_run=False)'''
+
+[[rows]]
+id = "E2_outcome_payload_drops_the_key"
+description = "The renderer stops carrying the flag, so every reader of a rendered run is back to guessing"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''        "dry_run": outcome.dry_run,
+        "portions": ['''
+new = '''        "portions": ['''
+
+[[rows]]
+id = "E3_outcome_reads_publish_instead"
+description = "Record `not publish` rather than the flag the body branched on. PREDICTED EQUIVALENT today: no caller in src passes publish=False, so the two agree on every reachable path, and the row is here to measure that prediction rather than to be killed"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+old = '''portions=tuple(outcomes), dry_run=dry_run)'''
+new = '''portions=tuple(outcomes), dry_run=not publish)'''
+
+# -- The machine readable half, on the declared surface ----------------------
+
+[[rows]]
+id = "S1_reported_drops_the_key"
+description = "The job_state payload stops carrying the flag on every branch, which is the JSON half of R-221's cost"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    progress = dict(jobs.progress(store, job.job_id))
+    progress[DRY_RUN] = _is_rehearsal(job)
+    return {'''
+new = '''    progress = dict(jobs.progress(store, job.job_id))
+    return {'''
+
+[[rows]]
+id = "S2_reported_key_at_the_top_level"
+description = "Put the detail beside the four declared fields instead of under progress, which is the undeclared field the conformance guard refused"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    progress = dict(jobs.progress(store, job.job_id))
+    progress[DRY_RUN] = _is_rehearsal(job)
+    return {
+        "job_id": job.job_id,'''
+new = '''    progress = dict(jobs.progress(store, job.job_id))
+    return {
+        DRY_RUN: _is_rehearsal(job),
+        "job_id": job.job_id,'''
+
+[[rows]]
+id = "S3_flag_reads_a_key_nothing_freezes"
+description = "Read the rehearsal flag under a name the build does not freeze, so every job reads as a real backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    return bool((job.payload or {}).get(DRY_RUN))'''
+new = '''    return bool((job.payload or {}).get("rehearsal"))'''
+
+# -- The word a person reads, and the four endings that carry it -------------
+
+[[rows]]
+id = "W1_rehearsal_never_said"
+description = "The warning is never carried, which is the exact state the ledger entry describes"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    return (rehearsal_warning(),) if _is_rehearsal(job) else ()'''
+new = '''    return ()'''
+
+[[rows]]
+id = "W2_rehearsal_said_unconditionally"
+description = "Every run is told it copied nothing, including the real one that copied and published, which is the same defect pointing the other way"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    return (rehearsal_warning(),) if _is_rehearsal(job) else ()'''
+new = '''    return (rehearsal_warning(),)'''
+
+[[rows]]
+id = "W3_queue_branch_warning_dropped"
+description = "The identifier is handed back with no word about what it will do, and the detached child a resume spawns writes to a log nobody is watching"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''                *map(dict, backup.snapshot_identity_warning(cfg)),
+                *_rehearsal(job),
+            ),
+        )'''
+new = '''                *map(dict, backup.snapshot_identity_warning(cfg)),
+            ),
+        )'''
+
+[[rows]]
+id = "W4_twin_branch_warning_dropped"
+description = "A second ask reports the open rehearsal as the backup the person asked for, with nothing saying it is one"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''                    *_rehearsal(twin),
+                ),
+            )'''
+new = '''                ),
+            )'''
+
+[[rows]]
+id = "W5_resume_branch_warning_dropped"
+description = "The resume envelope loses the word, which IS R-221: two items done, a succeeded job, true ages and no sign the run copied nothing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''                *map(dict, backup.snapshot_identity_warning(jobs.frozen_config(job))),
+                *_rehearsal(job),
+            )
+            return ctx.envelope(data=reported, warnings=warnings)'''
+new = '''                *map(dict, backup.snapshot_identity_warning(jobs.frozen_config(job))),
+            )
+            return ctx.envelope(data=reported, warnings=warnings)'''
+
+[[rows]]
+id = "W6_twin_reads_this_ask_not_the_job"
+description = "Ask the warning of the ask rather than of the twin being reported, so the envelope describes something other than the job it hands back"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''                    *_rehearsal(twin),'''
+new = '''                    *({"code": REHEARSAL, "message": "x"},) if payload[DRY_RUN] else (),'''
+
