@@ -71,3 +71,42 @@ two and a half minutes, so budget six minutes of rows per call. Check
 The other way, used by the R-118 unit, is to split the spec into batches that
 each finish under the ceiling. It costs the same overhead per batch and leaves
 several tables instead of one.
+
+## Seen again on U92, 2026-09-20, in a shape the entry above would not have matched
+
+The tell described above is "hundreds of failing tests". U92's driver refused
+with TWENTY FIVE, every one of them in `tests/test_rebuild.py` and always the
+same twenty five. That does not read as starvation. It reads as selective
+damage, which is the exact false reading `run_pytest`'s own comment warns about
+for the ffmpeg case, and it sent the session looking for a cause in the driver.
+
+**It was the same thing, and about twenty minutes went into proving it was not
+the driver.** The driver's environment was rebuilt by hand, piece by piece, and
+the full suite was run green under every one: the same `-o addopts` with `-q`
+stripped, `-p no:cacheprovider`, `PYTHONDONTWRITEBYTECODE=1`, `PYTHONPATH`
+prepended with a temp directory, the four `PYTEST_*` variables scrubbed, output
+captured to a pipe rather than a terminal, and finally the reporting plugin
+itself extracted from `mutate.py` and loaded with `-p`. Five green full runs
+against two red driver runs. Then the third driver run, at a HIGHER load
+average than the second, came back valid with all nine rows killed.
+
+Two things generalise:
+
+- **The cluster size does not distinguish starvation from damage, and the file
+  does not either.** `tests/test_rebuild.py` builds a real disposable database
+  per test and one of its tests spawns four child processes that take a file
+  lock a hundred times between them, so it is the file on this suite most
+  sensitive to a machine with nothing left to give. A single file going red is
+  still environment first.
+- **Rebuilding the driver's environment by hand is a dead end.** It is a long
+  list, every item of it is green, and the list is not where the answer is. The
+  cheap checks in "What to do" above are `uptime`, `vm_stat`, and running the
+  failing file alone. When those say environment, the next move is to run the
+  driver again, not to model it.
+
+**The null control earned its place.** The second refusal was not the baseline,
+which was green that time, but the automatic control row killing the same
+twenty five. A batch that had skipped the control would have reported those
+twenty five as deaths on whichever row happened to run under the same
+conditions, and the table would have looked better than the truth rather than
+worse.

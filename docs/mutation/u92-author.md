@@ -1,8 +1,8 @@
 # Mutation table: u92-author
 
-Measured by `scripts/mutate.py` on 2026-09-20 19:51 UTC, branch `relay/137` at `d802062`. Pass kind: light.
+Measured by `scripts/mutate.py` on 2026-09-20 20:07 UTC, branch `relay/137` at `a6b107c`. Pass kind: light.
 
-Baseline: green, 9255 collected. pytest invocations for this batch: 13.
+Baseline: green, 9255 collected. pytest invocations for this batch: 12.
 
 Environment: inherited from the calling shell, then added to. Added: PYTHONDONTWRITEBYTECODE=1; PYTHONPATH (the plugin's temp directory, prepended); MUTATE_REPORT_PATH (the plugin's output file). Removed: PYTEST_ADDOPTS (an inherited value would edit the command after the driver built it); PYTEST_XDIST_WORKER (the reporting plugin reads it to tell a worker from the controller, so a driver started from inside a parallel worker would hand its child a controller that believes it is a worker and writes no report; xdist sets it afresh in each worker the child starts); PYTEST_XDIST_WORKER_COUNT (the same inherited worker identity, scrubbed with it); PYTEST_XDIST_TESTRUNUID (the same inherited worker identity, scrubbed with it). Nothing else was scrubbed, because a hand built environment is how a missing binary reddens a baseline and every row after it.
 
@@ -18,13 +18,9 @@ Null control `NULL_CONTROL`: killed 0, collected 9255 against 9255. The control 
 | `G4_cap_doubled` | `src/cratekit/analysis/vocals.py` | user | 3 file(s) | 137 | 1 | killed |
 | `G5_guard_after_the_load` | `src/cratekit/analysis/vocals.py` | user | 3 file(s) | 137 | 1 | killed |
 | `G6_stat_failure_is_oversize` | `src/cratekit/analysis/vocals.py` | user | 3 file(s) | 137 | 8 | killed |
-| `G7_reason_reworded` | `src/cratekit/analysis/vocals.py` | user | 3 file(s) | 9255 | 0 (promoted) | zero |
+| `G7_reason_reworded` | `src/cratekit/analysis/vocals.py` | user | 3 file(s) | 137 | 1 | killed |
 | `G8_refused_file_tagged_zero` | `src/cratekit/analysis/vocals.py` | user | 3 file(s) | 137 | 2 | killed |
 | `G9_warning_counts_the_wrong_reason` | `src/cratekit/analysis/vocals.py` | user | 3 file(s) | 137 | 5 | killed |
-
-## Zero rows and what they owe
-
-- `G7_reason_reworded` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 
 ## Considered and dropped
 
@@ -219,10 +215,10 @@ Reword the reason slug, never append, since the suite asserts with equality and 
 - Surface: user
 - Subset: test files importing cratekit.analysis.vocals
 - Ran: `tests/test_analysis.py`, `tests/test_analysis_workers.py`, `tests/test_vocals_cli.py`
-- Collected: 9255 against a baseline of 9255
-- Kills: 0 (zero)
-- Promoted: subset killed 0, full suite killed 0
-- Note: confirmed on the full suite
+- Collected: 137 against a baseline of 137
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_analysis_workers.py::test_a_file_over_the_cap_never_reaches_the_decoder`
 
 Old text:
 
