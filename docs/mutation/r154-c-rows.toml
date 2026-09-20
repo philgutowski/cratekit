@@ -1,0 +1,63 @@
+name = "r154-c"
+pass_kind = "light"
+
+# R-154 and R-153, batch c: the restore verb, and the backup verb's warning.
+# Author run. Every zero below reads as "the author could not kill it".
+
+[[rows]]
+id = "C1_digest_the_word"
+description = "Digest a constant where the resolved stamp goes, which is R-153 itself: a backup landing between the two acts leaves the digest where it was"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''                "snapshot": snapshot.stamp,'''
+new = '''                "snapshot": "newest",'''
+
+[[rows]]
+id = "C2_expected_volume_outside_the_digest"
+description = "Leave the stated volume out of the offer, so an answer given without the flag is honoured against a run carrying it"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''                "expected_volume": snapshot_volume,'''
+new = '''                "expected_volume": None,'''
+
+[[rows]]
+id = "C3_hand_down_the_flag"
+description = "Hand the engine the flag instead of the stamp that was offered, so it resolves the newest snapshot again after the approval"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        snapshot=pulling.stamp if pulling is not None else None,'''
+new = '''        snapshot=ctx.args.snapshot,'''
+
+[[rows]]
+id = "C4_pull_flags_dropped"
+description = "Never refuse a flag about the pull typed without the pull, so it is dropped in silence ahead of a capture rollback"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    _refuse_pull_flags_without_the_pull(ctx.args)
+    requested = ctx.args.session_id'''
+new = '''    requested = ctx.args.session_id'''
+
+[[rows]]
+id = "C5_stated_volume_stops_at_the_verb"
+description = "Show and digest the stated volume and never pass it to the engine, so the replaced drive restore is approved and then refused under the gates"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        snapshot_volume=ctx.args.snapshot_volume,
+        accept_unrecorded=pulling.named if pulling is not None else None,'''
+new = '''        snapshot_volume=None,
+        accept_unrecorded=pulling.named if pulling is not None else None,'''
+
+[[rows]]
+id = "C6_warning_lost_at_resume"
+description = "Say the unmarked snapshot warning at queue time only, so the run that actually wrote the snapshot says nothing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''                *map(dict, backup.uncovered_analysis_share(jobs.frozen_config(job))),
+                *map(dict, backup.snapshot_identity_warning(jobs.frozen_config(job))),'''
+new = '''                *map(dict, backup.uncovered_analysis_share(jobs.frozen_config(job))),'''
