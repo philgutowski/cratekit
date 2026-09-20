@@ -1795,6 +1795,12 @@ class JobBlocked(CratekitError):
     dispatcher's package for the envelope.
 
     IT LIVES HERE RATHER THAN IN ``core.jobs`` for that cycle and no other reason.
+
+    A HOP THAT REBUILDS THE REFUSAL MUST REBUILD IT AS THIS TYPE. The bit rides
+    the exception and not the cause, so ``CratekitError(replace(exc.cause, ...))``
+    in an ``except`` between the shell and the dispatcher silently turns blocked
+    into failed. ``tagging.retag_cli.with_reload_step`` did exactly that, found by
+    the review of the change that introduced this type.
     """
 
 

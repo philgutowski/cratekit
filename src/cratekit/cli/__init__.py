@@ -414,14 +414,14 @@ def run(argv: list[str], *, stdout, stderr) -> int:
         # state above. A parked job continues through its own verb with the job
         # id, never through the run, so setting it here would send a wrapper to a
         # command that cannot advance the work. The outcome carries the block.
-        blocked = resumable or isinstance(exc, JobBlocked)
+        parked = isinstance(exc, JobBlocked)
         envelope = output.from_cause(
             verb=entry.name,
             run_id=state.run_id if state is not None else output.new_run_id(),
             started=started,
             cause=cause,
             resumable=resumable,
-            outcome=Outcome.BLOCKED if blocked else Outcome.FAILED,
+            outcome=Outcome.BLOCKED if resumable or parked else Outcome.FAILED,
         )
     except config.ConfigError as exc:
         # U2 already models configuration failures as five types with five

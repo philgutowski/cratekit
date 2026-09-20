@@ -313,53 +313,177 @@ def _shells() -> list[tuple[Path, ast.FunctionDef]]:
     return found
 
 
+def _blocks(statement: ast.stmt) -> list[list[ast.stmt]]:
+    """Every statement list one compound statement owns."""
+    found = []
+    for name in ("body", "orelse", "finalbody"):
+        block = getattr(statement, name, None)
+        if isinstance(block, list) and block and isinstance(block[0], ast.stmt):
+            found.append(block)
+    for handler in getattr(statement, "handlers", []):
+        found.append(handler.body)
+    for case in getattr(statement, "cases", []):
+        found.append(case.body)
+    return found
+
+
+def _path_to(block: list[ast.stmt], target: ast.AST) -> list[tuple[list[ast.stmt], int]] | None:
+    """The chain of (statement list, index) from ``block`` down to ``target``."""
+    for index, statement in enumerate(block):
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        for inner in _blocks(statement):
+            below = _path_to(inner, target)
+            if below is not None:
+                return [(block, index), *below]
+        if any(node is target for node in ast.walk(statement)):
+            return [(block, index)]
+    return None
+
+
+def _is_the_mapping(statement: ast.stmt) -> bool:
+    return (
+        isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Call)
+        and isinstance(statement.value.func, ast.Attribute)
+        and statement.value.func.attr == "raise_for_state"
+    )
+
+
+def unmapped_reason(function: ast.FunctionDef) -> str | None:
+    """Why this function's drive can reach a report unmapped, or None.
+
+    BY CONTROL FLOW AND NOT BY LINE NUMBER, which is what the first version of
+    this guard compared and what the review drove a hole through: a mapping call
+    in a later ``else``, or after a ``return`` inside the driving branch, sits on
+    a greater line and is never reached. The rule here is the shape every shell
+    actually has. Walking OUT from the drive, no enclosing block may return
+    before the mapping is met, and the mapping must be a plain statement of one
+    of those enclosing blocks, after the drive.
+    """
+    for call in _calls(function, "run_job"):
+        path = _path_to(function.body, call)
+        assert path is not None
+        mapped = False
+        for depth, (block, index) in enumerate(reversed(path)):
+            for later in block[index + 1 :]:
+                if _is_the_mapping(later):
+                    mapped = True
+                    break
+                if any(isinstance(node, ast.Return) for node in ast.walk(later)):
+                    return f"returns at line {later.lineno} before the mapping is reached"
+            if mapped:
+                # INSIDE THE DRIVING BRANCH IS NOT ENOUGH. ``depth`` zero is the
+                # block the drive itself sits in, and when that block is the
+                # ``is_open`` branch a job already failed on entry skips it whole.
+                owner = path[-depth - 2] if depth + 2 <= len(path) else None
+                if depth == 0 and owner is not None:
+                    holder = owner[0][owner[1]]
+                    if isinstance(holder, ast.If) and "is_open" in ast.unparse(holder.test):
+                        return "maps the ending only inside its is_open branch"
+                break
+        if not mapped:
+            return "never calls jobs.raise_for_state on the path out of the drive"
+    return None
+
+
 def test_every_function_that_drives_a_job_maps_its_ending_afterwards():
     """The static half, for the verb the driven half cannot reach.
 
     A shell whose resume refuses on a precondition this file does not build, as
     ``adopt apply`` does, is invisible to the driven tests. It is not invisible
-    here. AFTER, by line, because a check placed before the drive reads the state
-    the job had on entry.
+    here.
     """
     shells = _shells()
     assert len(shells) >= 13, "the walk stopped finding the shells it exists to read"
     for path, function in shells:
-        drives = max(call.lineno for call in _calls(function, "run_job"))
-        mapped = [call.lineno for call in _calls(function, "raise_for_state")]
-        assert mapped and max(mapped) > drives, (
-            f"{path.relative_to(SRC)}:{function.lineno} {function.name} drives a job "
-            f"and never calls jobs.raise_for_state after it, so a parked or half "
-            f"failed job leaves through a normal envelope and exits 0"
+        reason = unmapped_reason(function)
+        assert reason is None, (
+            f"{path.relative_to(SRC)}:{function.lineno} {function.name} {reason}, so a "
+            f"parked or half failed job leaves through a normal envelope and exits 0"
         )
 
 
-def test_the_mapping_sits_outside_the_branch_that_drives():
-    """``if job.is_open(): drive; check`` answers a failed job once and exits 0 for
-    ever after. The call must not share the drive's enclosing ``if``."""
-    for path, function in _shells():
-        for branch in ast.walk(function):
-            if not isinstance(branch, ast.If) or not _calls(branch, "run_job"):
-                continue
-            if "is_open" not in ast.unparse(branch.test):
-                continue
-            inside = {call.lineno for call in _calls(branch, "raise_for_state")}
-            outside = {call.lineno for call in _calls(function, "raise_for_state")} - inside
-            assert outside, (
-                f"{path.relative_to(SRC)}:{function.lineno} {function.name} maps the "
-                f"ending only inside its is_open branch"
-            )
+def _shell(source: str) -> ast.FunctionDef:
+    return next(_functions(ast.parse(source)))
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        (
+            "def resume(ctx, store, job):\n"
+            "    if job.is_open():\n"
+            "        ctx.run_job(store, job)\n"
+            "    jobs.raise_for_state(job)\n"
+            "    return ctx.envelope(data={})\n",
+            None,
+        ),
+        (
+            "def resume(ctx, store, job):\n"
+            "    if job.is_open():\n"
+            "        ctx.run_job(store, job)\n"
+            "    return ctx.envelope(data={})\n",
+            "returns at line 4",
+        ),
+        (
+            "def resume(ctx, store, job):\n"
+            "    if job.is_open():\n"
+            "        ctx.run_job(store, job)\n"
+            "        jobs.raise_for_state(job)\n"
+            "    return ctx.envelope(data={})\n",
+            "only inside its is_open branch",
+        ),
+        (
+            "def resume(ctx, store, job):\n"
+            "    if job.is_open():\n"
+            "        ctx.run_job(store, job)\n"
+            "        return ctx.envelope(data={})\n"
+            "    jobs.raise_for_state(job)\n"
+            "    return ctx.envelope(data={})\n",
+            "returns at line 4",
+        ),
+        (
+            "def resume(ctx, store, job):\n"
+            "    if job.is_open():\n"
+            "        ctx.run_job(store, job)\n"
+            "    else:\n"
+            "        jobs.raise_for_state(job)\n"
+            "    return ctx.envelope(data={})\n",
+            "returns at line 6",
+        ),
+    ],
+)
+def test_the_static_guard_refuses_the_shapes_it_exists_for(source, expected):
+    """The guard's own teeth, because a guard that reads source is only as good as
+    the shapes it has been shown. The last two are the review's: a later line is
+    not a later point in the run."""
+    reason = unmapped_reason(_shell(source))
+    if expected is None:
+        assert reason is None
+    else:
+        assert reason is not None and expected in reason, reason
 
 
 def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
     """The copy is what R-290 was. It could not know about a state added after it
-    was written, and ten of them were wrong at once."""
+    was written, and ten of them were wrong at once.
+
+    THE PREDICATE IS MATCHED, NOT ONE SPELLING OF THE RAISE. Shells name their job
+    ``job``, ``queued`` and ``current``, so a guard matching the text of one raise
+    passes every other name. What all copies share is a condition reading both
+    ``is_open()`` and ``cause``.
+    """
     offenders = []
     for path in sorted(SRC.rglob("*.py")):
         if path == SRC / "core" / "jobs.py":
             continue
         for node in ast.walk(ast.parse(path.read_text())):
-            if not isinstance(node, ast.Raise) or node.exc is None:
+            if not isinstance(node, (ast.If, ast.IfExp, ast.While)):
                 continue
-            if ast.unparse(node.exc).replace(" ", "") == "CratekitError(job.cause)":
+            names = {
+                inner.attr for inner in ast.walk(node.test) if isinstance(inner, ast.Attribute)
+            }
+            if {"is_open", "cause"} <= names:
                 offenders.append(f"{path.relative_to(SRC)}:{node.lineno}")
     assert offenders == []

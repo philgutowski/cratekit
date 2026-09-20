@@ -1904,6 +1904,44 @@ def test_a_half_corrected_retag_carries_the_reload_on_its_refusal(
     assert len(steps) == len(stored.remediation.steps) + 1
 
 
+def test_a_parked_retag_keeps_both_the_block_and_the_reload(
+    repair_on, folder, silence, monkeypatch
+):
+    """R-290 through the one shell that REBUILDS its refusal, found by the review.
+
+    A parked job leaves as ``JobBlocked``, and the dispatcher reads that TYPE as
+    the blocked outcome. ``with_reload_step`` builds a new exception to append
+    its step, and built a plain ``CratekitError``, so a retag parked after
+    correcting a file said ``failed`` over a job whose state was blocked. The
+    population test in ``tests/test_job_outcome.py`` could not see it: its worker
+    corrects nothing, so the refusal is re-raised untouched.
+    """
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    inner = answering({name: hit("deep house", SPECIFIC) for name in "abc"})
+
+    def parking_on_b(artist: str, name: str):
+        if name == "b":
+            raise jobs.Parked(
+                refuse("provider-blocked", "the catalogue refused this client", origin=("test",)).cause
+            )
+        return inner(artist, name)
+
+    parking_on_b.asked = inner.asked  # type: ignore[attr-defined]
+    bound(monkeypatch, parking_on_b)
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    code, refused = drive(resume_argv(job_id))
+
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is jobs.JobState.BLOCKED, refused
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    assert code != int(ExitCode.OK), refused
+    assert refused["outcome"] == "blocked", refused
+    steps = refused["cause"]["remediation"]["steps"]
+    assert any(str(folder) in step and "reload" in step for step in steps), steps
+
+
 def test_a_retag_that_failed_before_correcting_anything_names_no_reload(
     repair_on, folder, silence, monkeypatch
 ):

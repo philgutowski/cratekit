@@ -73,7 +73,14 @@ from typing import Mapping, Sequence
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs, review, tags, taxonomy
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import (
+    Cause,
+    CratekitError,
+    JobBlocked,
+    Outcome,
+    Remediation,
+    refuse,
+)
 from cratekit.core.exit_codes import Remedy
 from cratekit.tagging import artifacts, retag, searchers, shell
 
@@ -162,10 +169,17 @@ def with_reload_step(error: CratekitError, folder: str) -> CratekitError:
     through by construction rather than by rebuilding them. The remedy token
     stays whatever the failure's own is: retrying is still the first thing to do,
     and the reload is what is owed regardless of whether the retry happens.
+
+    AND THE TYPE IS CARRIED THROUGH TOO, which the first version of this did not
+    do. A parked job leaves as ``JobBlocked`` and the dispatcher reads that type,
+    not anything on the cause, as the blocked outcome (R-290). Rebuilding it as a
+    plain ``CratekitError`` said ``failed`` over a job whose state was blocked,
+    for exactly the retag parked after correcting a file.
     """
     cause = error.cause
     reload_step = library_row_warning(folder)["message"]
-    return CratekitError(
+    rebuilt = JobBlocked if isinstance(error, JobBlocked) else CratekitError
+    return rebuilt(
         replace(
             cause,
             remediation=replace(
