@@ -358,8 +358,26 @@ class PortionOutcome:
 
 @dataclass(frozen=True, slots=True)
 class BackupOutcome:
+    """What one run of a plan did, INCLUDING which kind of run it was.
+
+    ``dry_run`` is on the outcome and not left to whoever called
+    :func:`run_backup` to remember, because a rehearsal and a real run are
+    otherwise indistinguishable here: both list the same portions with ``ran``
+    true, and only one of them copied anything or published an age. Every
+    renderer of an outcome would then need the flag handed to it separately, and
+    R-221 is what happens when one of them is not: the queued backup's envelope
+    reported a rehearsal's ages, which are the PREVIOUS real run's and therefore
+    true, with nothing saying this run copied nothing.
+
+    It records the run rather than the request. :func:`run_backup` sets it from
+    the value it actually executed under, which is the same value that decided
+    whether anything was published, so the outcome cannot say one thing while the
+    fact file says the other.
+    """
+
     stamp: str
     portions: tuple[PortionOutcome, ...]
+    dry_run: bool = False
 
     @property
     def ok(self) -> bool:
@@ -1021,7 +1039,11 @@ def run_backup(
             )
         )
 
-    return BackupOutcome(stamp=plan.stamp, portions=tuple(outcomes))
+    # ``dry_run`` RATHER THAN ``not publish``, and the two are not the same
+    # question. A caller can ask a real run to publish nothing, and that run
+    # still copied the library; a rehearsal is the one that did not. The flag
+    # recorded is the one this body branched its neutralisation on.
+    return BackupOutcome(stamp=plan.stamp, portions=tuple(outcomes), dry_run=dry_run)
 
 
 def _destination_for(cfg: config.Config, portion: backup_facts.Portion) -> str:
@@ -1839,6 +1861,11 @@ def outcome_payload(outcome: BackupOutcome) -> dict:
         "payload_version": PAYLOAD_VERSION,
         "stamp": outcome.stamp,
         "ok": outcome.ok,
+        # RENDERED FROM THE OUTCOME, so every reader of a rendered run learns
+        # which kind it was from the run itself. It used to be written onto the
+        # report by the one caller that thought of it, which is a field that is
+        # correct where somebody remembered and absent everywhere else.
+        "dry_run": outcome.dry_run,
         "portions": [
             {
                 "portion": entry.portion.value,

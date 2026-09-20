@@ -114,6 +114,11 @@ DRY_RUN = "dry_run"
 #: envelope they get back is that job's.
 ALREADY_QUEUED = "backup-already-queued"
 
+#: The warning every branch of a REHEARSAL carries, queued, reported or resumed
+#: (R-221). A warning and not a refusal for the same reason as the one above:
+#: nothing went wrong, and the person asked for exactly this.
+REHEARSAL = "backup-rehearsal"
+
 
 def _load() -> config.Config:
     try:
@@ -165,12 +170,124 @@ def _engine_refusal(refusal: backup.Refusal, message: str, **detail: Any) -> Cra
     )
 
 
+def _is_rehearsal(job) -> bool:
+    """Whether this JOB is a rehearsal, read off the payload it was frozen with.
+
+    THE PAYLOAD AND NEVER THE COMMAND LINE. ``--dry-run`` typed beside ``--job``
+    selects nothing at all: the resume rebuilds the flag from the payload in
+    :func:`backup_argv`, and the worker reads it from there too. A report taken
+    off ``ctx.args`` would call a run that really copied a rehearsal whenever a
+    person typed both flags, and the one word the envelope gives them about
+    which kind of run it was is the word that has to be right.
+
+    ``bool`` of one key, the way :func:`_open_twin` and :func:`perform_backup`
+    already read it, so all four readers answer the same question the same way.
+    """
+    return bool((job.payload or {}).get(DRY_RUN))
+
+
+def rehearsal_warning() -> dict[str, str]:
+    """The one sentence a rehearsal carries, spelled once for all four branches.
+
+    WRITTEN IN A TENSE TRUE WHEREVER IT IS CARRIED, because this verb hands the
+    same job back at queue time, when a second ask reports the open one, after
+    the resume has finished, and on the refusal a failed resume raises. A
+    sentence in the past tense is false on the first two and a sentence in the
+    future tense is false on the last two, and the alternative, two spellings of
+    one condition, is how the two come to disagree about what a rehearsal is.
+    What is stated instead is a property of the JOB, which is true at every one
+    of those moments.
+
+    IT NAMES THE AGE AND NOT THE REPORT. The ages an envelope carries are read
+    back from the fact file, so a rehearsal reports the PREVIOUS real run's and
+    they are true, which is exactly why R-221 is a report a person believes. The
+    two branches that hand back an identifier carry no ages at all, so a sentence
+    about "the ages above" would be false on half the surfaces this rides. The
+    fact file is what a destructive session reads and it is the same statement on
+    all of them.
+    """
+    return {
+        "code": REHEARSAL,
+        "message": (
+            "this backup is a rehearsal: it walks the whole plan with every "
+            "transfer neutralized, so it copies nothing and publishes no backup "
+            "age. The age a destructive session reads stays whatever the last "
+            "real run left. Take a real backup with: crate backup run"
+        ),
+    }
+
+
+def _rehearsal(job) -> tuple[dict[str, str], ...]:
+    """The warning when this job is a rehearsal, and nothing when it is not."""
+    return (rehearsal_warning(),) if _is_rehearsal(job) else ()
+
+
+def _with_rehearsal_step(error: CratekitError, job) -> CratekitError:
+    """The same refusal, carrying the rehearsal sentence among the things to know.
+
+    THE SECOND EXIT, AND THE ONE AN ENVELOPE NEVER REACHES. R-225 makes a job
+    that closed carrying a cause leave through that cause rather than through an
+    envelope, and a refusal envelope carries no warnings at all, so the warning
+    above reaches every resume EXCEPT the one that failed. The corpus entry
+    ``docs/solutions/workflow-issues/a-queued-verb-has-two-exits-and-an-advisory-
+    on-the-envelope-only-reaches-one.md`` records that shape one module over, on
+    ``tag retag``, and this is the same verb family meeting it again. A person
+    whose rehearsal failed is owed the same word as one whose rehearsal
+    succeeded, because neither run copied a byte, and without it a failed
+    rehearsal reads as a real backup attempt that fell over.
+
+    THE STEP IS APPENDED AND THE CAUSE IS OTHERWISE UNTOUCHED, which is the rule
+    ``retag_cli.with_reload_step`` states: ``origin`` is append-only and a cause
+    arriving at the CLI with a shortened trail means some hop re-created it,
+    losing everything below. Two fields are replaced and ``origin``, ``inner``,
+    ``detail``, ``scope`` and ``retryable`` travel through by construction. The
+    remedy token stays the failure's own, because retrying is still the first
+    thing to do and this is context rather than a competing instruction.
+
+    A REAL RUN IS RETURNED UNCHANGED, object for object, so this cannot add a
+    step to a refusal it has nothing to say about. Telling a person whose real
+    backup failed that nothing was copied is false in the direction that stops
+    them looking for the half that was.
+    """
+    if not _is_rehearsal(job):
+        return error
+    cause = error.cause
+    return CratekitError(
+        replace(
+            cause,
+            remediation=replace(
+                cause.remediation,
+                steps=(*cause.remediation.steps, rehearsal_warning()["message"]),
+            ),
+        )
+    )
+
+
 def _reported(store, job) -> dict:
+    """One job as the ``job_state`` payload, on every branch of the verb.
+
+    ``dry_run`` RIDES UNDER ``progress`` AND NEVER BESIDE IT. This verb declares
+    ``job_state/1``, ``cli.output`` closes that surface with the four fields
+    below and nothing else, so a per verb detail at the top level is an
+    undeclared field and a consumer generated from the committed schema rejects
+    the envelope. ``progress`` is declared ``object`` with no inner constraint,
+    which is where a detail belongs. U51 paid for that distinction on the two
+    outbound verbs and ``adopt.shell.reported`` states it in the same words; the
+    conformance guard drove this branch and refused the first cut of this key.
+
+    IT IS ON EVERY BRANCH because it is the machine-readable half of the warning
+    beside it, and the two must not be able to disagree about one job. The
+    default renderer prints a verb's outcome, its warnings and its run id and
+    nothing of its payload, so the warning is what a person meets and this key is
+    what a script reads.
+    """
+    progress = dict(jobs.progress(store, job.job_id))
+    progress[DRY_RUN] = _is_rehearsal(job)
     return {
         "job_id": job.job_id,
         "state": str(job.state),
         "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
+        "progress": progress,
     }
 
 
@@ -408,7 +525,15 @@ def backup_library(ctx) -> Envelope:
                 # reaching the report, which is correct: the engine has already
                 # recorded the job as failed and the refusal carries the item's
                 # own cause.
-                _, warnings = ctx.run_job(store, job)
+                try:
+                    _, warnings = ctx.run_job(store, job)
+                except CratekitError as exc:
+                    # THE THIRD EXIT, and it is not the one below. ``jobs.drive``
+                    # raises from inside the drive when EVERY item failed, so a
+                    # rehearsal in which nothing ran leaves here rather than
+                    # through the re-raise further down, and an advisory placed
+                    # only there would miss exactly the run that copied least.
+                    raise _with_rehearsal_step(exc, job) from exc
                 job = jobs.get(store, job.job_id)
             # A JOB THAT ENDED BADLY IS NOT AN OK EXIT, and this is the only
             # place that can say so. ``jobs.drive`` raises only when EVERY
@@ -442,7 +567,7 @@ def backup_library(ctx) -> Envelope:
             # condition is how the two come to disagree about which one a run
             # met.
             if not job.is_open() and job.cause is not None:
-                raise CratekitError(job.cause)
+                raise _with_rehearsal_step(CratekitError(job.cause), job)
             reported = _reported(store, job)
             # READ BACK HERE AND NOWHERE INSIDE THE ITEM. This is the same call
             # the work body deliberately does not make under the driver, and the
@@ -469,10 +594,17 @@ def backup_library(ctx) -> Envelope:
             # with a sharper cost: left on the plan alone, every backup of a
             # library with no recorded identity would write an unmarked snapshot
             # in silence, and the first word of it would be a restore refusing.
+            #
+            # THE REHEARSAL WORD RIDES WITH THEM AND IS ASKED OF THE JOB. It is
+            # not a fact about the configuration like the other two, it is a
+            # fact about what this job was frozen to do, and it is R-221's own
+            # cost: without it a rehearsal resumes to succeeded with two items
+            # done and true ages, and nothing says it copied nothing.
             warnings = (
                 *warnings,
                 *map(dict, backup.uncovered_analysis_share(jobs.frozen_config(job))),
                 *map(dict, backup.snapshot_identity_warning(jobs.frozen_config(job))),
+                *_rehearsal(job),
             )
             return ctx.envelope(data=reported, warnings=warnings)
         payload = frozen_payload(ctx.args.dry_run)
@@ -499,6 +631,11 @@ def backup_library(ctx) -> Envelope:
                     _already_queued(twin, frozen),
                     *map(dict, backup.uncovered_analysis_share(described)),
                     *map(dict, backup.snapshot_identity_warning(described)),
+                    # THE TWIN'S OWN, not this ask's. A rehearsal and a real run
+                    # are never twins, so the two always agree here, and reading
+                    # the job is what keeps that a property rather than a
+                    # coincidence this branch depends on.
+                    *_rehearsal(twin),
                 ),
             )
         job = jobs.enqueue(
@@ -514,11 +651,15 @@ def backup_library(ctx) -> Envelope:
         )
         # Said at queue time as well, because a person who never resumes the job
         # by hand would otherwise learn about the share only from a later run.
+        # The same argument carries the rehearsal word here: the detached child a
+        # resume spawns writes to a log nobody is watching, so the moment the
+        # identifier is handed over is the one moment this is certain to be read.
         return ctx.envelope(
             data=_reported(store, job),
             warnings=(
                 *map(dict, backup.uncovered_analysis_share(cfg)),
                 *map(dict, backup.snapshot_identity_warning(cfg)),
+                *_rehearsal(job),
             ),
         )
 
@@ -825,13 +966,16 @@ def perform_backup(
     refusal = refusal_for(outcome)
     if refusal is not None:
         raise refusal
+    # THE FLAG COMES OFF THE OUTCOME NOW and is not written on here. It was
+    # written on here, by the one caller that thought of it, which made it a
+    # field that is correct where somebody remembered and absent everywhere
+    # else: the queued path renders no report at all and its envelope carried no
+    # word of it, which is R-221. ``BackupOutcome`` records the run it was, so
+    # the renderer answers for every reader rather than for this one.
+    #
+    # ``ages`` beside it is what makes the claim checkable rather than asserted,
+    # since a rehearsal leaves every portion exactly as it found it.
     report = backup.outcome_payload(outcome)
-    # THE FLAG IS ON THE REPORT because a rehearsal and a real run are otherwise
-    # indistinguishable in it: both list the same portions with ``ran`` true, and
-    # only one of them copied anything or published an age. ``ages`` beside it is
-    # what makes that checkable rather than asserted, since a rehearsal leaves
-    # every portion exactly as it found it.
-    report["dry_run"] = dry_run
     if read_back:
         report["ages"] = published_ages(cfg, now=now)
     return report
@@ -901,6 +1045,7 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
 __all__ = [
     "ALREADY_QUEUED",
     "DRY_RUN",
+    "REHEARSAL",
     "backup_argv",
     "backup_items",
     "backup_library",
@@ -910,4 +1055,5 @@ __all__ = [
     "perform_backup",
     "published_ages",
     "refusal_for",
+    "rehearsal_warning",
 ]

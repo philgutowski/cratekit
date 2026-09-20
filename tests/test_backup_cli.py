@@ -47,7 +47,7 @@ import pytest
 
 from cratekit import cli
 from cratekit.backup import cli as backup_cli
-from cratekit.cli import registry
+from cratekit.cli import output, registry
 from cratekit.core import backup_facts, binaries, config, jobs, profiles, session
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
@@ -2123,3 +2123,244 @@ def test_the_warnings_beside_a_reported_job_describe_that_job(cfg, tmp_path):
     _, second = _drive(["backup", "run"])
     assert second["data"]["job_id"] == first["data"]["job_id"], second
     assert len(_share_warnings(second)) == 1, second
+
+
+# ---------------------------------------------------------------------------
+# R-221: the queued path says which kind of run it was
+# ---------------------------------------------------------------------------
+
+
+def _rehearsal_said(envelope: dict) -> list[dict]:
+    return [w for w in envelope.get("warnings") or () if w["code"] == backup_cli.REHEARSAL]
+
+
+def test_a_queued_rehearsal_resumes_to_succeeded_and_says_nothing_was_copied(cfg, rclone):
+    """R-221's named cost, driven through the dispatcher on both of its exits.
+
+    The envelope a rehearsal resumes to is byte for byte the shape of a real
+    one: two items done, a succeeded job, and ages read from a fact file the
+    rehearsal never touched. The ages are TRUE, being the previous real run's,
+    which is what makes this a report a person believes rather than one they
+    question. So the assertion is not that the report is wrong; it is that
+    nothing in it says the run that just finished copied nothing.
+
+    The warning is asserted beside ``data.dry_run`` on purpose: the default
+    renderer prints a verb's warnings and nothing of its payload, so the key
+    answers a script and the warning answers the person.
+    """
+    code, queued = _drive(["backup", "run", "--dry-run"])
+    assert code == int(ExitCode.OK), queued
+    job_id = queued["data"]["job_id"]
+
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == "succeeded", resumed["data"]
+    assert set(_item_states(job_id).values()) == {"done"}, _item_states(job_id)
+
+    assert resumed["data"]["progress"]["dry_run"] is True, resumed["data"]
+    said = _rehearsal_said(resumed)
+    assert len(said) == 1, resumed
+    assert "copies nothing" in said[0]["message"], said
+
+
+def test_the_new_key_rides_under_progress_and_the_surface_gains_nothing_else(
+    cfg, rclone
+):
+    """THE DECLARED SURFACE, ASKED OF BOTH ENVELOPES AND NOT ONLY THE FIRST.
+
+    This verb declares ``job_state/1``, which ``cli.output`` closes at four
+    fields, and the first cut of ``dry_run`` sat beside them. The conformance
+    guard caught it on the QUEUEING envelope, which is the one sample invocation
+    it drives per verb, and the resume envelope has never been put through
+    ``envelope_problems`` at all. That is how ``ages`` came to ship as an
+    undeclared field on it, measured here rather than argued and recorded as a
+    residual.
+
+    The count is PINNED rather than asserted clean, because asserting clean
+    would mean fixing a shipped key this unit does not own, and asserting
+    nothing would let the next detail join ``ages`` silently. One known problem
+    and no more.
+    """
+    _, queued = _drive(["backup", "run", "--dry-run"])
+    assert output.envelope_problems(queued) == [], queued
+    assert "dry_run" not in queued["data"], (
+        "the detail sat beside the declared fields, so a consumer generated from "
+        "the committed schema rejects this envelope"
+    )
+
+    _, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    assert output.envelope_problems(resumed) == ["undeclared field 'ages'"], (
+        "the resume envelope's undeclared fields moved. `ages` is the one this "
+        "verb already shipped; anything else joining it is this branch's"
+    )
+
+
+def test_a_queued_real_backup_carries_no_rehearsal_word(cfg, rclone):
+    """The companion, so a warning raised unconditionally cannot pass the drive
+    above. A real run copied something and published an age for it, and telling
+    a person it copied nothing is the same defect pointing the other way."""
+    code, queued = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), queued
+    assert _rehearsal_said(queued) == [], queued
+    assert queued["data"]["progress"]["dry_run"] is False, queued["data"]
+
+    code, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), resumed
+    assert _rehearsal_said(resumed) == [], resumed
+    assert resumed["data"]["progress"]["dry_run"] is False, resumed["data"]
+
+
+def test_the_rehearsal_is_said_at_queue_time_and_when_the_open_job_is_reported(cfg):
+    """Every branch that hands back an identifier says what that identifier will
+    do, because a person who queues a rehearsal and never resumes it by hand
+    would otherwise learn what it was only from the run that copied nothing."""
+    code, first = _drive(["backup", "run", "--dry-run"])
+    assert code == int(ExitCode.OK), first
+    assert len(_rehearsal_said(first)) == 1, first
+
+    code, second = _drive(["backup", "run", "--dry-run"])
+    assert code == int(ExitCode.OK), second
+    assert second["data"]["job_id"] == first["data"]["job_id"], second
+    assert backup_cli.ALREADY_QUEUED in _codes(second), second
+    assert len(_rehearsal_said(second)) == 1, second
+    assert second["data"]["progress"]["dry_run"] is True, second["data"]
+
+
+def test_the_ages_a_rehearsal_reports_are_the_previous_real_runs_and_it_says_so(
+    cfg, rclone
+):
+    """The exact state the entry describes, built rather than asserted: a real
+    backup first, so the fact file holds true ages, then a rehearsal over it.
+
+    The ages are read back through ``backup_facts.ages``, the function a
+    destructive session calls, so what is compared is what that session sees
+    rather than this file's opinion of the report.
+    """
+    _, real = _drive(["backup", "run"])
+    code, _ = _drive(["backup", "run", "--job", real["data"]["job_id"]])
+    assert code == int(ExitCode.OK)
+    published = {name: entry.completed_at for name, entry in _ages(cfg).items()}
+    assert all(stamp is not None for stamp in published.values()), published
+
+    _, rehearsal = _drive(["backup", "run", "--dry-run"])
+    code, resumed = _drive(["backup", "run", "--job", rehearsal["data"]["job_id"]])
+    assert code == int(ExitCode.OK), resumed
+
+    assert {name: entry.completed_at for name, entry in _ages(cfg).items()} == published, (
+        "the rehearsal published an age, which is a different defect from the one "
+        "this test is about"
+    )
+    reported = {row["portion"]: row["state"] for row in resumed["data"]["ages"]}
+    assert set(reported.values()) == {str(backup_facts.AgeState.KNOWN)}, reported
+    assert len(_rehearsal_said(resumed)) == 1, (
+        "the ages are the previous run's and true, and nothing said this run "
+        "copied nothing, which is a rehearsal reading as a backup"
+    )
+
+
+def test_the_flag_on_the_envelope_is_the_jobs_own_and_not_the_command_lines(cfg, rclone):
+    """THE SOURCE IS THE FROZEN PAYLOAD, which is what the worker reads.
+
+    ``--dry-run`` typed beside ``--job`` selects nothing: the job was frozen as
+    a real backup and the resume argv rebuilds the flag from the payload, so a
+    report taken off the command line would call a run that really copied a
+    rehearsal, and a person who mistyped would stop trusting the only word the
+    envelope gives them.
+    """
+    _, queued = _drive(["backup", "run"])
+    code, resumed = _drive(
+        ["backup", "run", "--dry-run", "--job", queued["data"]["job_id"]]
+    )
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["progress"]["dry_run"] is False, resumed["data"]
+    assert _rehearsal_said(resumed) == [], resumed
+
+
+def test_a_rehearsal_that_ended_badly_still_says_it_was_a_rehearsal(cfg, monkeypatch):
+    """THE SECOND EXIT, and the one an advisory on the envelope never reaches.
+
+    R-225 makes a job that closed carrying a cause leave through that cause
+    rather than through an envelope, and a refusal envelope carries no warnings
+    at all. That is the shape
+    ``docs/solutions/workflow-issues/a-queued-verb-has-two-exits-and-an-advisory
+    -on-the-envelope-only-reaches-one.md`` records one module over. A person
+    whose rehearsal failed is owed the same word as one whose rehearsal
+    succeeded, since neither run copied anything.
+
+    THE CAUSE IS EXTENDED AND NOT REBUILT, so the reason, the origin trail and
+    the retryable flag are asserted unchanged beside the added step.
+    """
+    monkeypatch.setattr(backup, "subprocess_runner", _answering(1, stderr="refused"))
+    _, queued = _drive(["backup", "run", "--dry-run"])
+    code, refused = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+
+    assert code != int(ExitCode.OK), refused
+    cause = refused["cause"]
+    steps = cause["remediation"]["steps"]
+    assert any("copies nothing" in step for step in steps), refused
+    assert cause["reason"] == "no-evidence", cause
+    assert cause["inner"] is not None, (
+        "the nested failing item's cause is gone, so the refusal was rebuilt "
+        "rather than extended and everything below it was lost"
+    )
+    assert cause["origin"], "the origin trail was shortened, so a hop re-created the cause"
+
+
+def test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal(cfg, monkeypatch):
+    """THE OTHER REFUSING EXIT, which is a different line from the one above.
+
+    ``jobs.drive`` raises from inside the drive only when EVERY item failed. A
+    run where one portion completed and the other did not returns normally with
+    the job recorded failed, and the shell's own check is what turns that into a
+    non zero exit. So a rehearsal has two refusing exits and they are two
+    ``raise`` statements, which is the same count ``tag retag`` had when an
+    advisory placed on one of them reached the wrong half of its runs.
+    """
+    monkeypatch.setattr(
+        backup, "subprocess_runner", _failing_on(backup.SNAPSHOT_DATABASE)
+    )
+    _, queued = _drive(["backup", "run", "--dry-run"])
+    job_id = queued["data"]["job_id"]
+
+    code, refused = _drive(["backup", "run", "--job", job_id])
+    assert code != int(ExitCode.OK), refused
+    assert _item_states(job_id) == {"files": "done", "database": "failed"}, (
+        "both items settled the same way, so this drove the exit the test above "
+        "already covers rather than the one it is for"
+    )
+    steps = refused["cause"]["remediation"]["steps"]
+    assert any("copies nothing" in step for step in steps), refused
+
+
+def test_a_real_backup_that_ended_badly_gains_no_rehearsal_step(cfg, monkeypatch):
+    """The companion for the second exit. A failed real run attempted transfers,
+    and telling that person nothing was copied is false in the direction that
+    stops them looking for the half that was."""
+    monkeypatch.setattr(backup, "subprocess_runner", _answering(1, stderr="refused"))
+    _, queued = _drive(["backup", "run"])
+    code, refused = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+
+    assert code != int(ExitCode.OK), refused
+    steps = refused["cause"]["remediation"]["steps"]
+    assert not any("copies nothing" in step for step in steps), refused
+
+
+def test_the_outcome_itself_records_which_kind_of_run_it_was(cfg, rclone):
+    """ONE FILE OVER, at the engine, which is where the two runs first became
+    indistinguishable. ``BackupOutcome`` carried a stamp and portions and no word
+    about the run, so every renderer of one had to be handed the flag separately
+    and the queued renderer was not. The value is read off the outcome the engine
+    returned rather than off the argument it was called with, because the engine
+    couples ``dry_run`` to publishing and the outcome is meant to record the run
+    that happened."""
+    plan = backup.plan_backup(cfg, now=MOMENT)
+    rehearsed = backup.run_backup(
+        cfg, plan, runner=_answering(0), now=MOMENT, dry_run=True
+    )
+    performed = backup.run_backup(
+        cfg, plan, runner=_answering(0), now=MOMENT, dry_run=False
+    )
+
+    assert rehearsed.dry_run is True and performed.dry_run is False
+    assert backup.outcome_payload(rehearsed)["dry_run"] is True
+    assert backup.outcome_payload(performed)["dry_run"] is False
