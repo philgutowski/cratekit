@@ -2193,6 +2193,9 @@ def marked(cfg, identity=None, *, snapshots=None):
         "",
         "2026-13-01T000000Z",
         "2026-08-01T000000Z ",
+        # A real date the calendar parse accepts and the pattern does not: the
+        # parser is lenient about padding, which is why neither check stands alone.
+        "2026-8-01T000000Z",
     ],
 )
 def test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked(

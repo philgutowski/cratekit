@@ -184,7 +184,9 @@ def _fake_rclone(cfg_value, monkeypatch, *, snapshots=(STAMP,), marker=OWN) -> P
         "#!/bin/sh\n"
         f'printf "%s\\n" "$*" >> "{log}"\n'
         'case " $* " in\n'
-        f'  *" lsf "*" --dirs-only "*) cat "{home / REMOTE_SNAPSHOTS}" ;;\n'
+        f'  *" lsf "*" --dirs-only "*) cat "{home / REMOTE_SNAPSHOTS}"\n'
+        f'    if [ -f "{home / REMOTE_SNAPSHOTS}.next" ]; then\n'
+        f'      mv "{home / REMOTE_SNAPSHOTS}.next" "{home / REMOTE_SNAPSHOTS}"; fi ;;\n'
         '  *" lsf "*"/db/ "*) ;;\n'
         f'  *" lsf "*) cat "{home / REMOTE_MARKERS}" ;;\n'
         "esac\n"
@@ -2185,3 +2187,29 @@ def test_the_report_names_the_snapshot_that_arrived(installed, monkeypatch):
     assert totals["recorded_volume"] == preflight.normalize_identity(
         installed.library.volume_id
     )
+
+
+def test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled(
+    installed, monkeypatch
+):
+    """The window INSIDE the second act, which the digest cannot see.
+
+    The answer is checked against an offer built from one listing, and the
+    engine plans a moment later. Were it handed the flag rather than the stamp
+    that was offered, it would resolve the newest snapshot again, after the
+    approval, and pull whatever had landed in between. The fake remote changes
+    its answer after the first listing of the second act to stand in for that.
+    """
+    acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
+    home = Path(config.installation_state_dir())
+
+    _code, refused = _drive(["restore", "run", "--from-backup"])
+    _answer(refused["run_id"], "restore")
+    (home / f"{REMOTE_SNAPSHOTS}.next").write_text(f"{STAMP}/\n{LATER}/\n")
+    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert not (home / f"{REMOTE_SNAPSHOTS}.next").exists(), "the remote never moved"
+    copied = _copied_from(log)
+    assert copied and all(f"/{STAMP}/db/" in source for source in copied), copied
