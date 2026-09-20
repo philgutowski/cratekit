@@ -1207,7 +1207,11 @@ database that sat under the old root carried to the same relative position.
 `plan` and `run` resolve every path from that, there is no `target=` parameter,
 and the authorisation check was not relaxed: it still reads `Held.authorises`,
 and a new `_assert_plan_is_authorised` asks it of every step target and of the
-companion staging directory, at plan time and again at run time. Recorded
+companion staging directory, at plan time and again at run time. The same guard
+re-derives the restorable set and the staging store, because the authorised
+directory itself passes an authorisation check, and the closing step prunes the
+staging directory's PARENT (found by the built in review, fixed in the same
+unit). Recorded
 absolute paths, the session record's capture path and all four path fields of a
 capture manifest, are re-based from the configured root onto the target, because
 a manifest written on the dead volume names the dead volume. A database outside
@@ -1221,7 +1225,8 @@ built under one session refuses under the other, both directions, both modes; a
 library session plan matches a golden produced by `main` before the change.
 
 **What this does NOT close** is R-8 item 3, which is reopened in place, and
-R-412. The write path exists at the seam and nothing a person can type reaches
+R-412. The review of this unit also filed R-585, R-586 and R-587, which are the
+three things the first caller of this path will meet. The write path exists at the seam and nothing a person can type reaches
 it. The owner line below named U27 for the verb, and that verb is still unbuilt.
 
 **Found:** by the independent verification of U32's first fix round, 2026-08-02.
@@ -23761,3 +23766,97 @@ format cap. Both are the person's call rather than an unattended session's.
 
 **Closes when:** the cap is expressed as a duration, or a per format size is
 derived from one, or the number is affirmed as correct for this library.
+
+---
+
+## R-585. A spendable bare metal session holds the installation lock and never the target library's own
+
+**Found:** at the built in review of U95, 2026-09-20. Read from the source, not
+driven with a second process.
+
+`restore.bare_metal_session` takes one lock, the installation scoped
+`recovery.lock`, and its docstring argues nothing is lost, because with the
+library gone there is no shared volume for two machines to contend over. That was
+true while the session could be spent on nothing. U95 makes it spendable, and the
+writes land on the TARGET, which with `replacing_existing=True` is a directory
+that already holds a Cratekit library, its own lock included. That is the
+expected shape once a mirror pull has landed. A second process, or a second
+machine with that volume mounted, can hold the target's library lock and be part
+way through a commit while `plan` and `run` replace the database and the coupled
+directory underneath it, because nothing here contends on that lock.
+
+**Measured cost:** unmeasured, and no shipped verb reaches it. `bare_metal_session`
+has no caller in `src` (R-412), so no person can produce this today. It becomes
+reachable the day the verb ships, which is why it is written down now.
+
+**Why not fixed here.** The repair changes which gates a bare metal session
+passes, and U95's brief scopes it to where `plan` and `run` get their paths. The
+ordering rule in that function, read only assertions before the one gate that
+creates a file, also has to be re-argued for a second lock on a drive that may
+hold nothing yet.
+
+**Closes when:** a bare metal session also takes the library lock derived from
+the rooted configuration before it yields, or the verb that composes it does, and
+a test holds that lock from a second process and sees the recovery refuse.
+
+**The unit that writes the bare metal verb owns this.** It is the first caller,
+and METHOD's rule is that the first caller owns the engine's unreviewed paths.
+
+---
+
+## R-586. `restore.list_sessions` reads the configured root, so a bare metal session cannot find the session it would plan
+
+**Found:** at the built in review of U95, 2026-09-20. Read, not driven.
+
+`restore.plan` takes a session identifier, and the way to get one is
+`restore.list_sessions(cfg)`, which takes no `Held`. It reads the session log
+under `cfg.library.root` and resolves each record's capture path as written.
+Inside a bare metal session that is wrong twice. It either lists sessions from
+the volume the identity gate just refused and reads manifests there, or, with
+the dead root gone, it finds no log at all. Pointed at a rooted configuration it
+would still mark every recovered session unusable, because each recorded capture
+path names the dead root and `list_sessions` does not re-base it. `_rooted` and
+`_rebased` are private to `core/restore.py`, so a verb cannot do this itself
+without duplicating them.
+
+**Measured cost:** unmeasured. No caller composes a bare metal session with a
+listing today (R-412).
+
+**Why not fixed here.** U95's brief names `plan` and `run`. Giving the listing a
+session parameter changes a public signature that `session/restore_cli.py` calls,
+which is the verb's surface and out of scope.
+
+**Closes when:** the listing can be asked through an open session and derives
+its paths the way `plan` does, with one shared re-basing rule rather than a copy.
+
+---
+
+## R-587. A capture names its library by absolute path, so every capture is unspendable once the library's root changes
+
+**Found:** at the built in review of U95, 2026-09-20. Read, and the ordinary
+restore half confirmed by reading `_file_steps`, not driven.
+
+A capture manifest and a session record store absolute paths. U95 re-bases them
+for ONE case, a bare metal session, keyed on which guard issued the session.
+After that recovery succeeds the natural next step is to point `library.root` and
+`library.volume_id` at the new drive. From then on `bare_metal_session` correctly
+refuses, since the library is reachable again, and an ordinary
+`recovery_session` plan re-bases nothing, so `_file_steps` refuses every capture
+taken before the disaster with "not a path any restore may replace", and the
+listing reports the whole history unusable. The same is true on `main` for any
+library whose root moved for an ordinary reason, a renamed volume or the
+environment relocation override, so this is older than U95 and U95 makes it the
+last step of a recovery rather than a corner.
+
+**Measured cost:** unmeasured. Every capture older than a root change stops
+being a recovery point, silently, until somebody tries to spend one.
+
+**Why not fixed here.** The durable repair is a format decision: library relative
+paths in the manifest and the record, or a manifest that records the root it was
+written under so re-basing reads the manifest's own answer rather than a guard.
+Either changes a persisted schema with captures already on disk, which is a
+person's call and needs a migration.
+
+**Closes when:** a capture taken under one library root restores under another
+through the ordinary session, by a rule that does not depend on which guard is
+open.

@@ -1980,6 +1980,11 @@ def test_u95_a_bare_metal_session_plans_and_runs_entirely_under_its_target(cfg, 
     config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
     write_state(cfg, "label_watermarks", {"source": "after"})
     replacement = _recovered_onto(cfg, tmp_path / "replacement")
+    # THE CONFIGURED ROOT IS STRIPPED OF ITS STATE AFTER THE COPY. Left as a
+    # byte-identical twin it would answer any read that still went to it, the
+    # session log, the registry, the markers, and the test would pass on a plan
+    # decided from the library the identity gate refused.
+    shutil.rmtree(config.library_state_dir(cfg))
     library_before = _tree_bytes(cfg.library.root)
 
     with _bare_metal(cfg, replacement) as bare_metal:
@@ -2062,9 +2067,9 @@ def test_u95_a_live_recovery_session_plan_is_unchanged_by_golden(cfg, held):
     record, captured = completed_session(cfg)
 
     assert restore._rooted(cfg, held) is cfg
-    assert restore._rebased(captured.root, cfg, held) == captured.root
     manifest = snapshot.read_manifest(captured.root)
-    assert restore._rebased_capture(manifest, cfg, held) is manifest
+    root = Path(cfg.library.root)
+    assert restore._rebased_capture(manifest, root, root) is manifest
 
     decided = restore.plan(cfg, record.session_id, held=held)
 
@@ -2161,12 +2166,16 @@ def test_u95_a_library_session_still_refuses_a_configuration_for_another_library
     assert cause.detail["authorises"] == str(cfg.library.root)
 
 
-def test_u95_a_database_outside_the_library_is_not_carried_onto_the_target(cfg, tmp_path):
+def test_u95_a_database_outside_the_library_refuses_a_bare_metal_plan_by_name(
+    cfg, tmp_path
+):
     """The acknowledged layout: the database was never under the library root.
 
     It is not relative to the library, so there is no position to carry it to,
-    and it sits outside the one directory this session authorises. The plan
-    refuses naming it rather than writing a database somewhere nobody validated.
+    and it sits outside the one directory this session authorises. A SUPPORTED
+    configuration, so the refusal is the recovery's own and is raised before
+    anything is read, rather than the report-a-defect one the authorisation check
+    would give a few lines later.
     """
     outside = tmp_path / "home" / "rekordbox" / "master.db"
     outside.parent.mkdir(parents=True)
@@ -2179,13 +2188,16 @@ def test_u95_a_database_outside_the_library_is_not_carried_onto_the_target(cfg, 
     replacement_before = _tree_bytes(replacement)
 
     with _bare_metal(apart, replacement) as bare_metal:
-        assert restore._rooted(apart, bare_metal).library.db_path == outside
         with pytest.raises(CratekitError) as refused:
+            restore.plan(apart, "no-such-session", held=bare_metal)
+        with pytest.raises(CratekitError) as refused_run:
             restore.plan(apart, record.session_id, held=bare_metal)
 
-    cause = refused.value.cause
-    assert "authorises" in cause.message
-    assert _under(cause.detail["writing"], outside.parent)
+    for caught in (refused, refused_run):
+        cause = caught.value.cause
+        assert cause.reason == "recovery-target-refused"
+        assert cause.detail["database"] == str(outside)
+        assert cause.remediation.steps
     assert outside.read_bytes() == b"a database outside the library"
     assert _tree_bytes(replacement) == replacement_before
 
@@ -2215,24 +2227,107 @@ def test_u95_the_staging_directory_is_a_write_location_and_is_authorised_too(
     assert not stray.exists()
 
 
-def test_u95_a_recorded_path_outside_the_configured_root_is_not_moved(cfg, tmp_path):
+@pytest.mark.parametrize(
+    "aimed_at",
+    [
+        lambda cfg, decided: Path(cfg.library.root),
+        lambda cfg, decided: Path(cfg.library.root) / "Music",
+        lambda cfg, decided: decided.pre_restore_root.parent,
+    ],
+    ids=["the-library-root", "a-directory-in-the-library", "the-staging-store-itself"],
+)
+def test_u95_staging_inside_the_library_but_not_under_its_store_is_refused(
+    cfg, held, tmp_path, aimed_at
+):
+    """AUTHORISED IS NOT ENOUGH, because the closing step prunes the PARENT.
+
+    The library root is a directory the session authorises, so authorisation
+    alone admits it as a staging directory, and the prune would then be handed
+    the directory ABOVE the library and would delete its siblings. A bystander
+    directory stands beside the library to be the thing that must survive.
+    """
+    bystander = Path(cfg.library.root).parent / "a-neighbouring-volume"
+    bystander.mkdir()
+    (bystander / "keep.txt").write_bytes(b"not this restore's to touch")
+    record, _captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    tampered = dataclasses.replace(decided, pre_restore_root=aimed_at(cfg, decided))
+    before = _tree_bytes(cfg.library.root)
+
+    for dry_run in (True, False):
+        with pytest.raises(CratekitError) as refused:
+            restore.run(tampered, cfg, held=held, dry_run=dry_run)
+        assert "stages live companion files" in refused.value.cause.message
+
+    assert (bystander / "keep.txt").read_bytes() == b"not this restore's to touch"
+    assert _tree_bytes(cfg.library.root) == before
+
+
+def test_u95_a_step_aimed_at_the_authorised_directory_itself_is_refused(cfg, held):
+    """The root passes authorisation and is not a path any restore may replace.
+
+    Replacing it would stage beside it, one level above the session.
+    """
+    record, captured = completed_session(cfg)
+    decided = restore.plan(cfg, record.session_id, held=held)
+    rogue = restore.Step(
+        act=restore.Act.REPLACE_TREE,
+        target=Path(cfg.library.root),
+        source=captured.root,
+        detail="replace the whole library with a capture directory",
+    )
+    tampered = dataclasses.replace(decided, steps=(*decided.steps, rogue))
+    before = _tree_bytes(cfg.library.root)
+
+    for dry_run in (True, False):
+        with pytest.raises(CratekitError) as refused:
+            restore.run(tampered, cfg, held=held, dry_run=dry_run)
+        assert "not a path any restore" in refused.value.cause.message
+
+    assert _tree_bytes(cfg.library.root) == before
+
+
+def test_u95_a_recorded_path_is_moved_by_the_rule_config_uses_and_only_once(tmp_path):
     """Re-basing answers "where under the library was this", and only that."""
+    mounts = tmp_path / "mounts"
+    old, new = mounts / "lib", mounts / "new"
+
+    assert restore._rebased(old, old, new) == new
+    assert restore._rebased(old / "db" / "master.db", old, new) == new / "db" / "master.db"
+    # under neither root: left where it says it is
+    stranger = tmp_path / "home" / "master.db"
+    assert restore._rebased(stranger, old, new) == stranger
+    # a sibling whose NAME starts the same way is not inside
+    sibling = mounts / "library2" / "x"
+    assert restore._rebased(sibling, old, new) == sibling
+    # spelled with dots: config calls these inside and outside, so this does too
+    dotted_in = f"{mounts}/a/../lib/db/m.db"
+    assert restore._rebased(dotted_in, old, new) == new / "db" / "m.db"
+    dotted_out = Path(f"{old}/db/../../other/m.db")
+    assert restore._rebased(dotted_out, old, new) == dotted_out
+    assert restore._rebased(old / "x", Path(f"{mounts}/a/../lib"), new) == new / "x"
+    # equal roots: every library session
+    assert restore._rebased(old / "x", old, old) == old / "x"
+
+    # IDEMPOTENT when the target is mounted INSIDE the configured root, where a
+    # path already naming the target is lexically under both.
+    inside = old / "new"
+    once = restore._rebased(old / ".cratekit" / "history" / "x", old, inside)
+    assert once == inside / ".cratekit" / "history" / "x"
+    assert restore._rebased(once, old, inside) == once
+
+
+def test_u95_a_bare_metal_session_roots_the_configuration_at_its_target(cfg, tmp_path):
     replacement = tmp_path / "replacement"
     replacement.mkdir()
-    stranger = tmp_path / "somewhere" / "else.db"
 
     with _bare_metal(cfg, replacement) as bare_metal:
-        assert restore._rebased(stranger, cfg, bare_metal) == stranger
-        assert restore._rebased(cfg.library.root, cfg, bare_metal) == replacement
-        assert restore._rebased(
-            cfg.library.root / "db" / "master.db", cfg, bare_metal
-        ) == replacement / "db" / "master.db"
         rooted = restore._rooted(cfg, bare_metal)
 
     assert rooted.library.root == replacement
     assert rooted.library.db_path == replacement / "db" / "master.db"
     assert rooted.library.volume_id == cfg.library.volume_id
-    assert cfg.library.root != replacement
+    assert rooted is not cfg and cfg.library.root != replacement
 
 
 def test_blocking_1_a_held_naming_an_unrelated_lock_this_process_holds_is_refused(
