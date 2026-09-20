@@ -4,7 +4,57 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-172, issue #155, `relay/155`, 2026-09-20.**
+**Last merged: R-289 with R-291, issue #167, `relay/167`, 2026-09-20.**
+The tagging walk no longer descends into this product's own staging trees, and
+the emptied staging of a job that can no longer run is reclaimed, which CLOSES
+R-289 and R-291. `tag.audio_files` skips `tag.SKIPPED_DIRNAMES`, the two staging
+directory names, matched against the components below the root, and
+`tag.APPLEDOUBLE_PREFIX`, which is `._` and not `.`.
+**R-289's closing condition was NOT met as written and that is deliberate.** It
+asked for "the dot skip its neighbour has", the first cut did exactly that, and
+the code review drove what it costs: `...And Justice For All` is an album
+directory and `...Ready For It.flac` is a track, so a broad dot skip returned
+nothing over a folder holding both and `crate tag folder` reported it held no
+audio it could tag. The neighbour, `analysis/cli._audio_in`, still has that rule
+and it is now R-563. The master staging tree is covered too, which it was not
+before and which matters more, since it lands INSIDE the music library.
+`acquire.cli.sweep_staging` reclaims the staging of jobs the queue reports
+terminal, and only directories that hold NOTHING. The emptiness question goes to
+`rmdir`, not to a listing, so a refused landing kept as evidence survives without
+the sweep having to know which files are deliberate, and a directory naming a job
+this queue does not hold is left alone. It runs at the HEAD of `acquire download`
+and on both paths of `acquire fallback fetch`, which is the second writer of the
+same tree; the fallback resume path reads the root off the job's frozen
+configuration so it still loads no live config. `jobs.states_of` is new, two
+columns for the names present in the tree, because `list_jobs` hydrates every row
+it returns: measured at a median 54 ms over 500 succeeded jobs and 224 ms over
+2000, each freezing a two hundred track list.
+**WHAT A PERSON MAY MEET, two things.** `crate tag folder` over a download
+staging root now reports `tag-folder-no-audio` where it used to queue the partial
+downloads of a killed attempt and the refused landings, and a track whose title
+opens with dots is tagged where the first cut of this fix would have dropped it.
+And the staging tree under the download root stops growing by one directory per
+item of every job ever run; the refused landing FILES still stay for good, which
+is R-564.
+**The code review raised four findings and all four were applied**, the first one
+a defect this branch introduced: the dot skip above. The other three were the
+fallback verb sharing the tree with no sweep of its own, the sweep asking
+`list_jobs` for the whole installation to answer a question about a handful of
+directories, and the module docstring still arguing the verb deletes nothing.
+Battery: ruff clean, **9064 passed** and 1 skipped in 79 seconds, scan clean, 14
+of them new. Mutation tables `docs/mutation/r289-a.md`, `r289-b.md` and
+`r289-c.md`, summary `r289-notes.md`: 23 rows under the cap of 25, the author's
+own, 19 killed, four zeros each with its line or composite, null controls at zero
+on every batch, three FOREGROUND batches. Two of batch B's zeros were real holes
+and each bought a test, re-measured in batch C and both kill.
+The learning is under `docs/solutions/workflow-issues/`, the one about a skip
+written against a shape. `CONCEPTS.md` is unchanged.
+Filed: R-563 to R-566. **R-563 meets the board bar and its issue is OWED**, along
+with R-549's, R-523's, R-517's, R-515's, R-512's, R-482's and R-477's from
+earlier sessions.
+**Main's highest residual number is R-566.**
+
+**The session before: R-172, issue #155, `relay/155`, 2026-09-20.**
 A rename the plan promised is never skipped in silence, which CLOSES R-172, and
 both halves of its closing condition were done. The PLAN pass owns a collision:
 several movers rendering to one target, or a target a file on disk holds that
