@@ -1,0 +1,101 @@
+name = "u95-c"
+pass_kind = "light"
+
+# U95, batch C of three: THE NEW GUARD, each layer removed alone, then the root
+# assertion at both call sites, then the fixed sample of two existing guards this
+# unit leans on.
+
+[[rows]]
+id = "C1_plan_side_guard_removed"
+description = "plan no longer checks its own answer, so only a run would find a plan naming an outside path"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    _assert_plan_is_authorised(steps, pre_restore_root, cfg, held)
+'''
+new = ""
+
+[[rows]]
+id = "C2_run_side_guard_removed"
+description = "The preflight no longer asks the session about a plan value, so a plan built for one directory runs under a session for another"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    _assert_plan_is_authorised(decided.steps, decided.pre_restore_root, cfg, held)
+'''
+new = ""
+
+[[rows]]
+id = "C3_step_authorisation_removed"
+description = "Inside the guard, drop the per step authorisation and leave only the membership test"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''        assert_gates_are_open(held, writing=step.target)
+        if step.target not in allowed:'''
+new = '''        if step.target not in allowed:'''
+
+[[rows]]
+id = "C4_restorable_membership_removed"
+description = "Inside the guard, drop the re-derived membership test, so a step aimed at the authorised directory itself is admitted"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''        if step.target not in allowed:
+            raise refuse('''
+new = '''        if False:
+            raise refuse('''
+
+[[rows]]
+id = "C5_staging_authorisation_removed"
+description = "Inside the guard, drop the authorisation of the staging directory and leave only the store rule"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    assert_gates_are_open(held, writing=pre_restore_root)
+    store = _pre_restore_root(cfg).parent'''
+new = '''    store = _pre_restore_root(cfg).parent'''
+
+[[rows]]
+id = "C6_staging_store_rule_removed"
+description = "Inside the guard, drop the store rule, so an authorised staging directory such as the library root hands the closing prune the directory ABOVE the library"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    if pre_restore_root.parent != store:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C7_staging_store_itself_admitted"
+description = "A nearby value: admit the store itself as the staging directory, which makes the prune run one level up, inside the database directory"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    if pre_restore_root.parent != store:'''
+new = '''    if pre_restore_root.parent != store and pre_restore_root != store:'''
+
+[[rows]]
+id = "C8_plan_root_assertion_removed"
+description = "plan drops its assertion on the rooted root, which is also where it asks whether the session is still open and is a recovery"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
+    record = session.read_record(session_id, cfg)'''
+new = '''    _assert_rekordbox_closed(process_lister)
+    record = session.read_record(session_id, cfg)'''
+
+[[rows]]
+id = "S1_authorises_everything"
+description = "EXISTING GUARD, fixed sample: Held.authorises_path answers yes to every path, which is the original bypass"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''        return where == root or root in where.parents'''
+new = '''        return True'''
+
+[[rows]]
+id = "S2_issued_terms_not_compared"
+description = "EXISTING GUARD, fixed sample: still_open stops comparing the claim to what the guard issued, so a live token can be rebuilt around another directory"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''        if terms != (self.issued_by, str(self.authorises), str(self.lock.absolute())):
+            return False'''
+new = ""
+
+[[dropped]]
+id = "C9_run_root_assertion_removed"
+description = "run drops its assertion on the rooted root, leaving the still-open question to the per step checks"
+reason = "ranked below the cap: the same assertion as C8 at the second call site, and C3 removes the per step layer that would otherwise cover it. Not run, so its count is unknown"

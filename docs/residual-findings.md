@@ -396,7 +396,8 @@ still skips is the sidecar CLEARING, which is unchanged and is a different
 question: clearing is itself destructive, so a rehearsal that cleared and then
 transferred nothing would do the damage and skip the repair.
 
-**All three were still open, and all three are CLOSED 2026-08-02, by U32.** Each
+**All three were still open, and all three were recorded CLOSED 2026-08-02, by
+U32. Item 3 is REOPENED 2026-09-20, see the item.** Each
 was registered in `tests/_pending.py` against `cratekit.core.restore` so it was a
 countdown rather than a note, and clearing that entry is what armed the guard.
 What closed each is recorded beneath it. One residue survives, and it is the
@@ -445,7 +446,21 @@ re-pointing it left legible.
    recovery path that does not read its gates from the library it is rebuilding,
    which is a decision U32 owns.
 
-   **Closed by** `restore.bare_metal_session`, which substitutes one gate at a
+   **REOPENED 2026-09-20, by U95 on `relay/140`. This item did not close, and
+   the paragraph below records a mechanism rather than a capability.** Read R-20
+   and R-412 before relying on it. `restore.bare_metal_session` substituted the
+   gates, and the first fix round then closed a verified bypass by removing the
+   only composition in which that session reached a plan, so from 2026-08-02 to
+   2026-09-20 the session could be spent on nothing (R-20). U95 put the write
+   path back at the seam: `restore.plan` and `restore.run` derive every path from
+   the directory the session authorises. What is STILL OPEN is the part a person
+   can use. `bare_metal_session` has no caller in `src`, no shipped verb restores
+   onto a volume that is not the recorded library, and nothing brings the dead
+   library's session log and captures onto the target for a plan to read
+   (R-412). This item closes when that verb ships.
+
+   **What was recorded as closing it, kept as written:**
+   `restore.bare_metal_session`, which substitutes one gate at a
    time and says what each substitute is worth. The volume assertion becomes two:
    that the configured library is genuinely UNREACHABLE, refusing on "mounted
    elsewhere" and on "this platform cannot say" because neither is the same
@@ -1183,6 +1198,36 @@ by a marker on a closing unit is owned by nobody the moment that unit closes, an
 ---
 
 ## R-20. Closing the bare-metal bypass removed the bare-metal write path
+
+**CLOSED 2026-09-20, by U95 on `relay/140`.** Closed the way "What closes it"
+below asks and by neither of the two ways it forbids. `restore._rooted(cfg,
+held)` hands a library session its configuration back unchanged, the same
+object, and hands a bare-metal session a copy rooted at `Held.authorises`, with a
+database that sat under the old root carried to the same relative position.
+`plan` and `run` resolve every path from that, there is no `target=` parameter,
+and the authorisation check was not relaxed: it still reads `Held.authorises`,
+and a new `_assert_plan_is_authorised` asks it of every step target and of the
+companion staging directory, at plan time and again at run time. The same guard
+re-derives the restorable set and the staging store, because the authorised
+directory itself passes an authorisation check, and the closing step prunes the
+staging directory's PARENT (found by the built in review, fixed in the same
+unit). Recorded
+absolute paths, the session record's capture path and all four path fields of a
+capture manifest, are re-based from the configured root onto the target, because
+a manifest written on the dead volume names the dead volume. A database outside
+the library root is not carried and the plan refuses naming it.
+
+**Driven, in `tests/test_restore.py`, the `test_u95_` tests:** a bare-metal
+session plans and runs entirely under its target while the configured library's
+whole tree is byte identical before and after; the original bypass composition
+still refuses; a capture present only at the refused library is not read; a plan
+built under one session refuses under the other, both directions, both modes; a
+library session plan matches a golden produced by `main` before the change.
+
+**What this does NOT close** is R-8 item 3, which is reopened in place, and
+R-412. The review of this unit also filed R-585, R-586 and R-587, which are the
+three things the first caller of this path will meet. The write path exists at the seam and nothing a person can type reaches
+it. The owner line below named U27 for the verb, and that verb is still unbuilt.
 
 **Found:** by the independent verification of U32's first fix round, 2026-08-02.
 Recorded here rather than fixed, because the fix is a feature and the bypass had
@@ -18709,6 +18754,16 @@ perform it.
 
 ## R-412. R-8 records the bare metal restore closed, and its session has no caller
 
+**NARROWED 2026-09-20, by U95 on `relay/140`.** The ledger half is done: R-8 item
+3 now reads reopened and points here, so a person reading the ledger is no longer
+told the capability exists. The seam half is done too: `restore.plan` and
+`restore.run` derive every path from the session's authorised directory, so a
+`bare_metal_session` can be spent (R-20, closed). **Still open, and it is the
+half with the cost:** `bare_metal_session` has no caller in `src`, and no shipped
+verb restores onto a volume that is not the recorded library. The second closing
+condition below is met and deliberately does not close this entry, because
+correcting the record is not the same as serving the case.
+
 **Found:** 2026-09-18, parity audit. **This entry corrects a closed one.**
 
 `docs/residual-findings.md:448` records R-8 item 3 as "Closed by
@@ -23711,3 +23766,108 @@ format cap. Both are the person's call rather than an unattended session's.
 
 **Closes when:** the cap is expressed as a duration, or a per format size is
 derived from one, or the number is affirmed as correct for this library.
+
+---
+
+## R-585. A spendable bare metal session holds the installation lock and never the target library's own
+
+**Found:** at the built in review of U95, 2026-09-20. Read from the source, not
+driven with a second process.
+
+`restore.bare_metal_session` takes one lock, the installation scoped
+`recovery.lock`, and its docstring argues nothing is lost, because with the
+library gone there is no shared volume for two machines to contend over. That was
+true while the session could be spent on nothing. U95 makes it spendable, and the
+writes land on the TARGET, which with `replacing_existing=True` is a directory
+that already holds a Cratekit library, its own lock included. That is the
+expected shape once a mirror pull has landed. A second process, or a second
+machine with that volume mounted, can hold the target's library lock and be part
+way through a commit while `plan` and `run` replace the database and the coupled
+directory underneath it, because nothing here contends on that lock.
+
+**Measured cost:** unmeasured, and no shipped verb reaches it. `bare_metal_session`
+has no caller in `src` (R-412), so no person can produce this today. It becomes
+reachable the day the verb ships, which is why it is written down now.
+
+**Why not fixed here.** The repair changes which gates a bare metal session
+passes, and U95's brief scopes it to where `plan` and `run` get their paths. The
+ordering rule in that function, read only assertions before the one gate that
+creates a file, also has to be re-argued for a second lock on a drive that may
+hold nothing yet.
+
+**Closes when:** a bare metal session also takes the library lock derived from
+the rooted configuration before it yields, or the verb that composes it does, and
+a test holds that lock from a second process and sees the recovery refuse.
+
+**The unit that writes the bare metal verb owns this.** It is the first caller,
+and METHOD's rule is that the first caller owns the engine's unreviewed paths.
+
+---
+
+## R-586. `restore.list_sessions` reads the configured root, so a bare metal session cannot find the session it would plan
+
+**Found:** at the built in review of U95, 2026-09-20. Read, not driven.
+
+`restore.plan` takes a session identifier, and the way to get one is
+`restore.list_sessions(cfg)`, which takes no `Held`. It reads the session log
+under `cfg.library.root` and resolves each record's capture path as written.
+Inside a bare metal session that is wrong twice. It either lists sessions from
+the volume the identity gate just refused and reads manifests there, or, with
+the dead root gone, it finds no log at all. Pointed at a rooted configuration it
+would still mark every recovered session unusable, because each recorded capture
+path names the dead root and `list_sessions` does not re-base it. `_rooted` and
+`_rebased` are private to `core/restore.py`, so a verb cannot do this itself
+without duplicating them.
+
+**Measured cost:** unmeasured. No caller composes a bare metal session with a
+listing today (R-412).
+
+**Why not fixed here.** U95's brief names `plan` and `run`. Giving the listing a
+session parameter changes a public signature that `session/restore_cli.py` calls,
+which is the verb's surface and out of scope.
+
+**Closes when:** the listing can be asked through an open session and derives
+its paths the way `plan` does, with one shared re-basing rule rather than a copy.
+
+---
+
+## R-587. A capture names its library by absolute path, so every capture is unspendable once the library's root changes
+
+**Found:** at the built in review of U95, 2026-09-20. The ordinary restore half
+was DRIVEN the same day against the synthetic fixture library, the bare metal
+half was read.
+
+A capture manifest and a session record store absolute paths. U95 re-bases them
+for ONE case, a bare metal session, keyed on which guard issued the session.
+After that recovery succeeds the natural next step is to point `library.root` and
+`library.volume_id` at the new drive. From then on `bare_metal_session` correctly
+refuses, since the library is reachable again, and an ordinary
+`recovery_session` plan re-bases nothing, so `_file_steps` refuses every capture
+taken before the disaster with "not a path any restore may replace", and the
+listing reports the whole history unusable. The same is true on `main` for any
+library whose root moved for an ordinary reason, a renamed volume or the
+environment relocation override, so this is older than U95 and U95 makes it the
+last step of a recovery rather than a corner.
+
+**Measured cost, driven 2026-09-20 on the fixture library, not on a real one.**
+One completed session with a verified capture, then the library directory renamed
+and the configuration pointed at the new name, which is what a renamed volume
+amounts to. `restore.list_sessions` lists the session with `restorable` False,
+and `restore.plan` under an ordinary `recovery_session` refuses with
+`internal-error`, unable to read the manifest at the path under the OLD root. It
+refuses one step earlier than the reading predicted: the session record's capture
+path is absolute too, so the manifest is never reached. Every capture older than
+a root change stops being a recovery point, silently, until somebody tries to
+spend one. **This meets the board bar's third arm**, a workflow a DJ needs cannot
+finish through shipped verbs, **and OWES an issue**, which no session has created
+yet because a number is not a finding's until the entry is on `main`.
+
+**Why not fixed here.** The durable repair is a format decision: library relative
+paths in the manifest and the record, or a manifest that records the root it was
+written under so re-basing reads the manifest's own answer rather than a guard.
+Either changes a persisted schema with captures already on disk, which is a
+person's call and needs a migration.
+
+**Closes when:** a capture taken under one library root restores under another
+through the ordinary session, by a rule that does not depend on which guard is
+open.

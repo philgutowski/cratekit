@@ -1,0 +1,92 @@
+name = "u95-a"
+pass_kind = "light"
+
+# U95, batch A of three: WHERE THE PATHS COME FROM. The unit makes a bare-metal
+# session spendable by rooting the configuration at Held.authorises and re-basing
+# every recorded absolute path. It sits in the area of a verified bypass and it
+# writes and deletes, so METHOD's full depth applies: 25 rows across the three
+# batches, every one a guard or a derivation this branch added, plus two existing
+# guards as the fixed sample in batch C. Split only because one foreground run
+# has to finish inside the ten minute tool ceiling.
+
+[[rows]]
+id = "A1_never_rerooted"
+description = "_rooted hands every session its configuration back unchanged, which is main's state: a bare-metal session resolves from the configured root again"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    if held.issued_by is not Guard.BARE_METAL:
+        return cfg
+    target = Path(held.authorises)'''
+new = '''    if held.issued_by is not None:
+        return cfg
+    target = Path(held.authorises)'''
+
+[[rows]]
+id = "A2_library_sessions_rerooted_too"
+description = "Drop the guard test in _rooted, so a library session handed a configuration for ANOTHER library is quietly re-aimed at what it authorises instead of refused"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    if held.issued_by is not Guard.BARE_METAL:
+        return cfg
+    target = Path(held.authorises)'''
+new = '''    target = Path(held.authorises)'''
+
+[[rows]]
+id = "A3_database_not_carried"
+description = "The relocated root no longer carries its database: db_path stays at the configured root while the root moves to the target"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    return replace(cfg, library=replace(cfg.library, root=target, db_path=database))'''
+new = '''    return replace(cfg, library=replace(cfg.library, root=target))'''
+
+[[rows]]
+id = "A4_outside_database_refusal_removed"
+description = "Delete the by-name refusal for a database kept outside the library, leaving the defect-flavoured authorisation refusal to catch it later"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    if not held.authorises_path(database):
+        raise _refuse_target('''
+new = '''    if False:
+        raise _refuse_target('''
+
+[[rows]]
+id = "A5_capture_path_not_rebased"
+description = "plan reads the session record's capture path as written, so the capture is taken from the configured root, the volume the identity gate refused"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    root = capture_root_of(_rebased(record.snapshot_path, recorded_root, rooted_at))'''
+new = '''    root = capture_root_of(record.snapshot_path)'''
+
+[[rows]]
+id = "A6_manifest_not_rebased_in_plan"
+description = "plan uses the manifest as read from disk, every path in it still naming the dead root"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    captured = _rebased_capture(snapshot.read_manifest(root), recorded_root, rooted_at)'''
+new = '''    captured = snapshot.read_manifest(root)'''
+
+[[rows]]
+id = "A7_manifest_not_rebased_in_preflight"
+description = "The run's preflight re-reads the manifest and checks it un-rebased, so it asks the DEAD volume whether the capture is still whole"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    captured = _rebased_capture(
+        snapshot.read_manifest(decided.capture_root),
+        recorded_root,
+        Path(cfg.library.root),
+    )'''
+new = '''    captured = snapshot.read_manifest(decided.capture_root)'''
+
+[[rows]]
+id = "A8_run_not_rooted"
+description = "run resolves from the caller's configuration while plan resolves from the session, the two sources for one answer R-20 forbids"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''    cfg = _rooted(configured, held)
+    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
+    _preflight('''
+new = '''    cfg = configured
+    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
+    _preflight('''

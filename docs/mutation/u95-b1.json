@@ -1,0 +1,71 @@
+{
+  "name": "u95-b1",
+  "pass_kind": "light",
+  "branch": "relay/140",
+  "head": "223b03f",
+  "when": "2026-09-20 20:51 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9271,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/restore.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/restore.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "97c297fec09d8788",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9271,
+    "baseline_collected": 9271,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_manifest_root_not_moved",
+      "description": "RE-MEASURED after test_u95_a_bare_metal_plan_is_the_library_plan_moved_and_nothing_else learned to compare decisions. _rebased_capture leaves Capture.root at the dead root, which is what _captured_by_key composes coupled entries from",
+      "file": "src/cratekit/core/restore.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7be515d5fcaefb77",
+      "subset": [
+        "tests/test_config.py",
+        "tests/test_restore.py",
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.restore",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 396,
+      "baseline_collected": 396,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore.py::test_u95_a_bare_metal_plan_is_the_library_plan_moved_and_nothing_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        root=_rebased(captured.root, recorded_root, root),",
+      "new": "        root=captured.root,"
+    }
+  ],
+  "dropped": []
+}

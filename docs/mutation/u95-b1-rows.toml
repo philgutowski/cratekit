@@ -1,0 +1,16 @@
+name = "u95-b1"
+pass_kind = "light"
+
+# U95, the one zero of the table, measured again. Row B1 killed nothing in batch
+# B. The test that answers it was then written, and this re-runs the SAME
+# mutation through the same driver against the suite that now holds that test,
+# so the record shows both numbers rather than a zero quietly overwritten. It is
+# not a 26th row: it is row B1 a second time.
+
+[[rows]]
+id = "B1_manifest_root_not_moved"
+description = "RE-MEASURED after test_u95_a_bare_metal_plan_is_the_library_plan_moved_and_nothing_else learned to compare decisions. _rebased_capture leaves Capture.root at the dead root, which is what _captured_by_key composes coupled entries from"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+old = '''        root=_rebased(captured.root, recorded_root, root),'''
+new = '''        root=captured.root,'''
