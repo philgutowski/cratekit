@@ -661,6 +661,14 @@ def test_a_file_over_the_cap_never_reaches_the_decoder(tmp_path, monkeypatch):
     )
     assert asked == [], "the decoder was handed the file the guard exists to refuse"
     assert scored["vocal_active"] is False
+    # THE SLUG'S TEXT, NOT ONLY THE SYMBOL. The mutation table's one zero row
+    # was this reason reworded to vocal-file-oversize with every test still
+    # green, because every assertion read the constant rather than the string.
+    # The slug is a surface: it is the ``vocal_reason`` on the item artifact and
+    # the key of ``by_vocal_reason`` on the envelope, so anything reading a run
+    # would break on a rename nothing here noticed. Its two siblings are pinned
+    # as literals for the same reason, a few tests below.
+    assert scored["vocal_reason"] == "vocal-audio-too-large"
     assert scored["vocal_reason"] == vocals.REASON_AUDIO_TOO_LARGE
     # NOT A ZERO. The source system tagged this file voxlevel 0 and this package
     # cannot, because a zero here means the model listened and heard no singing.
