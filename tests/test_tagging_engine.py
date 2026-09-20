@@ -35,6 +35,7 @@ from pathlib import Path
 
 import pytest
 
+from cratekit.acquire import cli as acquire_cli
 from cratekit.core import art, tags, taxonomy
 from cratekit.tagging import retag, tag
 from cratekit.tagging.tag import SearchHit
@@ -154,6 +155,67 @@ def test_the_walk_is_case_insensitive_about_the_extension(folder, silence):
     shutil.copy2(silence, path)
 
     assert [found.name for found in tag.audio_files(folder)] == ["SHOUTED.FLAC"]
+
+
+def test_the_walk_does_not_descend_into_the_acquisition_staging_tree(folder, silence):
+    """R-289's reproduction. The staging tree is a dotfile and this walk recursed.
+
+    ``acquire`` stages one item's download under
+    ``.cratekit-acquire-staging/<job>/<ordinal>`` and the comment above
+    ``ACQUIRE_STAGING_DIRNAME`` says that is safe because the folder walks that
+    queue skip dotfiles. Half of it was true: ``analysis/cli._audio_in`` skips
+    them and this one did not, so ``crate tag folder <download_staging>`` queued
+    the partial download of a killed attempt and the landing
+    ``checked_landing`` refused and left behind as evidence.
+
+    The constant is imported rather than typed, so a rename of the staging
+    directory moves this test with it instead of leaving it asserting about a
+    name nothing produces any more.
+    """
+    place(folder, silence, "keep")
+    staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
+    place(staged.parent, silence, staged.name)
+
+    assert [found.name for found in tag.audio_files(folder)] == ["keep.flac"]
+
+
+def test_the_walk_skips_a_dot_file_beside_a_real_track(folder, silence):
+    """The AppleDouble sidecar ``_audio_in`` names as its own reason to skip.
+
+    macOS writes ``._track.flac`` beside every file on an exFAT volume, which is
+    what a DJ stick is, and the sidecar carries the audio suffix. Queued as a
+    tagging item it is a file the tag write cannot read, and it is not a track.
+    """
+    place(folder, silence, "track")
+    place(folder, silence, "._track")
+
+    assert [found.name for found in tag.audio_files(folder)] == ["track.flac"]
+
+
+def test_the_dot_skip_does_not_stop_the_walk_recursing(folder, silence):
+    """The guard is about dot names, not about depth, and the two are separable.
+
+    A guard that skipped every nested file would pass the two tests above for
+    entirely the wrong reason, and the walk's recursion is what a folder of
+    per release sub directories depends on.
+    """
+    place(folder, silence, "nested/deeper/a")
+
+    assert [found.name for found in tag.audio_files(folder)] == ["a.flac"]
+
+
+def test_a_root_that_is_itself_a_dot_directory_is_still_walked(tmp_path, silence):
+    """Named deliberately, so it is walked. The check is RELATIVE to the root.
+
+    Anchoring the dot check on the absolute path would empty the walk for
+    anyone whose library sits under a dot directory anywhere in its path, and
+    ``~/.cratekit`` is a directory this product creates itself.
+    """
+    hidden = tmp_path / ".hidden" / "Music"
+    hidden.mkdir(parents=True)
+    place(hidden, silence, "track")
+
+    assert [found.name for found in tag.audio_files(hidden)] == ["track.flac"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

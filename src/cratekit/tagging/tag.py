@@ -162,13 +162,34 @@ def audio_files(root: Path) -> tuple[Path, ...]:
     A root that is not a directory is EMPTY rather than an error, because the
     caller that meets that case first is a shell deciding whether it has
     anything to queue, and "nothing to do" is the honest answer to give it.
+
+    NO DOTFILES, and no file under a dot directory either, which is the rule
+    ``analysis/cli._audio_in`` already holds for its own one level walk. This
+    walk RECURSES, so it needs both halves rather than one. Two producers put
+    audio under a dot name on this machine and neither is a track:
+    ``acquire``'s per item staging tree, whose whole comment says it is safe
+    because "the folder walks that queue tagging and analysis skip dotfiles",
+    and macOS's AppleDouble sidecar ``._track.flac`` beside every file on the
+    exFAT volume a DJ stick is. Driven before the guard: ``audio_files`` over a
+    download root holding ``.cratekit-acquire-staging/<job>/0/1.mp3`` returned
+    that file, so ``crate tag folder <download_staging>`` queued the partial
+    downloads of a killed attempt and the landings ``checked_landing`` refused
+    and left as evidence on purpose.
+
+    The dot check is taken RELATIVE TO ``root``. A person who points the verb
+    at a dot directory has named it deliberately and gets its files; what is
+    skipped is a dot name this walk descended into on its own. Anchoring on the
+    absolute path instead would empty the walk for anyone whose library lives
+    under a dot directory.
     """
     if not root.is_dir():
         return ()
     return tuple(
         path
         for path in sorted(root.rglob("*"))
-        if path.is_file() and path.suffix.lower() in AUDIO_EXTS
+        if path.is_file()
+        and path.suffix.lower() in AUDIO_EXTS
+        and not any(part.startswith(".") for part in path.relative_to(root).parts)
     )
 
 
