@@ -2348,7 +2348,20 @@ def test_every_transfer_is_pointed_under_the_target_and_nowhere_else(cfg, tmp_pa
 
 
 def _mounted(cfg_value, tmp_path):
-    return _replacement(tmp_path), {**gate_seams(cfg_value), "terminal": lambda: True}
+    """A library that is present and is the recorded volume, and NOTHING ELSE WRONG.
+
+    The mount probe answers yes on purpose. The replacement directory sits beside
+    the configured root, which is the second shape the stub check refuses, and
+    that refusal's sentence contains the word "unmounted". Without the probe, a
+    test asserting on "mounted" is held up by the stub check alone, and the
+    identity gate, the one that keeps the two restores apart, can be deleted
+    with the suite green. Measured: that is what the mutation table's row found.
+    """
+    return _replacement(tmp_path), {
+        **gate_seams(cfg_value),
+        "terminal": lambda: True,
+        "mount_probe": lambda _path: True,
+    }
 
 
 def _a_stub(cfg_value, tmp_path):
@@ -2363,7 +2376,7 @@ def _no_terminal(cfg_value, tmp_path):
 
 
 REFUSED_BEFORE_THE_LOCK = {
-    "the library is still mounted": (_mounted, True, "mounted"),
+    "the library is still mounted": (_mounted, True, "nothing to recover from bare metal"),
     "the target is the stub on the internal disk": (_a_stub, True, "internal disk"),
     "nobody is at a terminal": (_no_terminal, True, "no controlling terminal"),
     "the replacement was not accepted": (
@@ -2694,6 +2707,8 @@ def test_the_verb_refuses_without_the_acceptance_flag(lost, monkeypatch, tmp_pat
 
 def test_the_verb_refuses_while_the_library_is_mounted(installed, monkeypatch, tmp_path):
     monkeypatch.setattr(session, "has_controlling_terminal", lambda: True)
+    # So the stub check cannot be what refuses. See ``_mounted``.
+    monkeypatch.setattr(restore, "_is_mount_point", lambda _path: True)
     target = _replacement(tmp_path)
     log = _fake_rclone(installed, monkeypatch)
 
@@ -2703,7 +2718,7 @@ def test_the_verb_refuses_while_the_library_is_mounted(installed, monkeypatch, t
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "recovery-target-refused"
-    assert "mounted" in envelope["cause"]["message"]
+    assert "nothing to recover from bare metal" in envelope["cause"]["message"]
     assert not log.exists() or log.read_text() == ""
     assert list(target.iterdir()) == []
 
