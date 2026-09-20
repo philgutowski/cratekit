@@ -139,6 +139,23 @@ alone, which is hundreds of gigabytes, which is why it is off by default.
 crate restore run --from-backup --include-mirror
 ```
 
+A snapshot records the volume identity of the library it was taken from, and the
+restore refuses one that names another volume. A replaced disk is another volume,
+so after the very failure this section is about, every snapshot names the old
+one. The refusal prints that identity. When it is the disk the library used to
+live on, pass it back, and it is checked against the snapshot, used for that one
+restore and never written to the configuration:
+
+```bash
+crate restore run --from-backup --snapshot-volume IDENTITY
+```
+
+A snapshot taken before identities were recorded says nothing about whose it is.
+It is never pulled as the newest by default, only when its stamp is named with
+the snapshot flag, and the refusal names the stamp. The confirmation shows the
+stamp and the identity it resolved, and a backup landing before the answer makes
+the answer stale rather than changing which database arrives.
+
 Both halves are reported separately, and that matters when only one of them ran.
 A run that pulled a whole mirror and named no session is not a run that did
 nothing, and the report says which half happened rather than reporting zero steps

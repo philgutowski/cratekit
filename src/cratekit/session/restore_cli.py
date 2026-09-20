@@ -270,6 +270,17 @@ def build_run(parser, entry) -> None:
         help="which dated off-machine snapshot to pull; the newest by default",
     )
     parser.add_argument(
+        "--snapshot-volume",
+        default=None,
+        dest="snapshot_volume",
+        metavar="IDENTITY",
+        help=(
+            "the volume identity the snapshot is expected to record, for a "
+            "library whose drive was replaced since the snapshot was taken; "
+            "checked against the snapshot, used once and never recorded"
+        ),
+    )
+    parser.add_argument(
         "--include-mirror",
         action="store_true",
         dest="include_mirror",
@@ -582,8 +593,9 @@ def _offer(
     *,
     discarding: Sequence[str],
     from_backup: bool,
-    snapshot: str | None,
+    snapshot: backup.ResolvedSnapshot | None,
     include_mirror: bool,
+    snapshot_volume: str | None = None,
     target: Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
@@ -616,13 +628,25 @@ def _offer(
     authorises a real restore over the live database. It is digested rather than
     listed as an item because it is a property of the whole run, both halves at
     once, rather than of either half.
+
+    THE SNAPSHOT IS THE RESOLVED STAMP, never the word for "whichever is newest".
+    That word was what entered the digest when no stamp was named, so a backup
+    landing between the offer and the answer changed which database arrived and
+    the recorded decision still matched. With the stamp itself digested, the
+    second act resolves again, the digest moves, and the decision is refused as
+    stale. Whose the snapshot says it is rides beside it, along with the volume
+    a person told the restore to expect, because those are what is being
+    approved when the snapshot is not plainly this library's own.
     """
     items: list[dict[str, Any]] = []
     if from_backup:
         items.append(
             {
                 "half": "off-machine",
-                "snapshot": snapshot or "newest",
+                "snapshot": snapshot.stamp if snapshot is not None else None,
+                "snapshot_named": snapshot.named if snapshot is not None else False,
+                "recorded_volume": snapshot.recorded_volume if snapshot is not None else None,
+                "expected_volume": snapshot_volume,
                 "include_mirror": include_mirror,
                 "target": str(target) if target is not None else "library",
             }
@@ -707,6 +731,8 @@ def restore_under_one_session(
     dry_run: bool = False,
     from_backup: bool = False,
     snapshot: str | None = None,
+    snapshot_volume: str | None = None,
+    accept_unrecorded: bool | None = None,
     include_mirror: bool = False,
     target: Path | str | None = None,
     identity_provider: object | None = None,
@@ -794,6 +820,8 @@ def restore_under_one_session(
                     target=where,
                     confirmed=True,
                     snapshot=snapshot,
+                    snapshot_volume=snapshot_volume,
+                    accept_unrecorded=accept_unrecorded,
                     include_mirror=include_mirror,
                     gates=held.guard,
                     **_seam("runner", runner),
@@ -951,17 +979,29 @@ def perform_restore(ctx) -> Envelope:
     else:
         chosen = _named(cfg, requested)
 
+    pulling = _snapshot_offered(cfg, ctx.args) if ctx.args.from_backup else None
     offered = _offer(
         chosen,
         discarding=tuple(ctx.args.discard),
         from_backup=ctx.args.from_backup,
-        snapshot=ctx.args.snapshot,
+        snapshot=pulling,
         include_mirror=ctx.args.include_mirror,
+        snapshot_volume=ctx.args.snapshot_volume,
         target=target,
         dry_run=ctx.args.dry_run,
     )
     spec = _confirm_gate(ctx.entry)
-    option = ctx.gate.require(spec, digest=offered["digest"])
+    # SHOWN AS WELL AS DIGESTED. The digest makes a stale answer refusable; it
+    # does not put anything in front of the person answering, and "restore from
+    # the snapshot taken when, and whose" is the question. A display value and
+    # never an input, exactly as the gate's own docstring describes it: the
+    # digest above already carries every field of it.
+    shown = (
+        {"off_machine": next(i for i in offered["items"] if i["half"] == "off-machine")}
+        if pulling is not None
+        else None
+    )
+    option = ctx.gate.require(spec, digest=offered["digest"], context=shown)
     if option == "abort":
         return ctx.envelope(data=offered, outcome=Outcome.NO_OP)
     if chosen is None and not ctx.args.from_backup:
@@ -973,11 +1013,44 @@ def perform_restore(ctx) -> Envelope:
         discarding=tuple(ctx.args.discard),
         dry_run=ctx.args.dry_run,
         from_backup=ctx.args.from_backup,
-        snapshot=ctx.args.snapshot,
+        # THE STAMP THAT WAS OFFERED, not the flag. Handing the flag down would
+        # let the engine resolve the newest snapshot a second time, after the
+        # approval, which is the move the digest was just made to catch.
+        # ``accept_unrecorded`` goes with it for the reason
+        # ``backup.ResolvedSnapshot`` gives: a stamp that came off a listing
+        # must not arrive looking like one a person typed.
+        snapshot=pulling.stamp if pulling is not None else None,
+        snapshot_volume=ctx.args.snapshot_volume,
+        accept_unrecorded=pulling.named if pulling is not None else None,
         include_mirror=ctx.args.include_mirror,
         target=target,
     )
     return ctx.envelope(data=_performed(report, offered))
+
+
+def _snapshot_offered(cfg: config.Config, args) -> backup.ResolvedSnapshot:
+    """Which snapshot this restore would pull, asked of the remote BEFORE the gate.
+
+    THIS IS THE ONE PLACE THE VERB REACHES THE NETWORK BEFORE IT IS ANSWERED,
+    and it is reached only when the off-machine pull was asked for. A restore
+    that spends a local capture still touches nothing before its gate. The cost
+    of asking early is two listings; the cost of not asking was an approval that
+    did not say which database it approved.
+
+    AN UNREACHABLE REMOTE THEREFORE REFUSES THE OFFER rather than the run, which
+    loses nothing: the run would have refused on the same listing a moment
+    later, after a person had been asked to approve a restore that could not
+    happen.
+
+    The engine checks all of this again under the gates. What is decided here is
+    what the person is SHOWN; what is decided there is what is allowed.
+    """
+    try:
+        return backup.resolve_snapshot(
+            cfg, snapshot=args.snapshot, snapshot_volume=args.snapshot_volume
+        )
+    except backup.BackupRefused as exc:
+        raise _refused(exc) from exc
 
 
 __all__ = [
