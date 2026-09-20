@@ -2620,3 +2620,20 @@ def test_the_recovery_verb_declares_no_gate_and_no_check_it_needs_to_fail():
     assert entry.gates == ()
     assert entry.destructive is True
     assert not {"library.mounted", "library.identity"} & set(entry.doctor_checks)
+
+
+def test_a_recovery_with_no_rclone_installed_refuses_by_name_and_writes_nothing(
+    cfg, tmp_path, monkeypatch
+):
+    """The registry entry declares no check for the program, so the verb says it."""
+    monkeypatch.setenv("CRATEKIT_BIN_RCLONE", str(tmp_path / "no-such-program"))
+    monkeypatch.setenv("PATH", str(tmp_path))
+    target = _replacement(tmp_path)
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, **_gone(cfg)
+        )
+
+    assert excinfo.value.cause.reason == "rclone-missing"
+    assert list(target.iterdir()) == []

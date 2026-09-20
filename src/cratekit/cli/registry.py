@@ -736,7 +736,7 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="plan/1",
         writes=frozenset({"files"}),
         destructive=True,
-        doctor_checks=("binary.rclone", "rekordbox.closed"),
+        doctor_checks=("rekordbox.closed",),
         # U96. THE CASE ``restore.run`` CANNOT SERVE, which is why it is a verb
         # and not a flag on that one: the library volume is gone, and every gate
         # that verb passes is read from beside the library.
@@ -755,6 +755,13 @@ ENTRIES: tuple[Entry, ...] = (
         # it from an invocation with no controlling terminal, so the flag
         # cannot be answered by a detached job. What that substitute is worth
         # is written at ``core.restore.bare_metal_session``.
+        #
+        # ``binary.rclone`` IS ABSENT TOO, on ``restore.run``'s precedent, and
+        # the cost is known. This verb is core, and a core verb declaring that
+        # check turns a missing rclone from a note into a failure on a slim
+        # install that never asked for backups, which doctor's own suite
+        # refuses. A recovery without the program still refuses by name, with
+        # the install token, before anything is written.
         #
         # ``files`` AND NOT ``db_tree``. The database arrives as a file copied
         # from the remote; no row is written through the guarded writer.
