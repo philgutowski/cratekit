@@ -1676,3 +1676,42 @@ def test_the_commit_witness_does_not_read_a_commit_that_never_landed_as_landed(
             event.remove(db.session, "before_commit", refuse)
             db.session.rollback()
         assert witness.landed is False
+
+
+def test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """The witness decides, not the count. Found by the mutation table as a zero row.
+
+    The failure test above raises before anything is counted, so the rule that a
+    pass which added nothing claims no commit was covering for the witness: a
+    writer that recorded a commit on EVERY raise still passed. Here the first
+    playlist's membership is counted and the second playlist's insert fails, so
+    the count is one, nothing landed, and the record must say nothing landed.
+    """
+    real_insert = db.add_to_playlist
+    calls = {"n": 0}
+
+    def explode_on_the_second(playlist, content, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("the library went away mid-sweep")
+        return real_insert(playlist, content, *args, **kwargs)
+
+    monkeypatch.setattr(db, "add_to_playlist", explode_on_the_second)
+    with pytest.raises(RuntimeError, match="mid-sweep"):
+        _write(
+            cfg,
+            db,
+            plan={
+                (FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"],
+                (OTHER_FOLDER, SUB_DISPLAY): [f"{cfg.library.root}/Music/two.flac"],
+            },
+            root_id=str(adopted_root.ID),
+        )
+
+    assert calls["n"] == 2, "the fixture never reached the second playlist"
+    record = _the_one_record(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == ()
+    assert record.change.trees == ()

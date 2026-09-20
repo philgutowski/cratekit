@@ -1,0 +1,58 @@
+name = "r375-c"
+pass_kind = "light"
+
+# R-375 and R-12, batch C of three: the commit witness, and T6 measured again
+# after the test the first measurement asked for. A 11 rows, B 12, C 2 new ones
+# makes the cap of 25. T6 here is a second reading of a row already counted.
+
+[[rows]]
+id = "W1_listener_left_on_the_handle"
+description = "commit_witness: never remove the listener, so a handle that outlives the write keeps marking a witness nobody reads"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_tree_writer.py", "tests/test_metadata_cli.py"]
+old = '''        event.remove(target, "after_commit", witness._mark)'''
+new = '''        pass'''
+
+[[rows]]
+id = "W2_witness_listens_one_event_early"
+description = "commit_witness: listen for before_commit, so a transaction refused on its way in is witnessed as landed"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_metadata_cli.py"]
+old = '''    event.listen(target, "after_commit", witness._mark)
+    try:
+        yield witness
+    finally:
+        event.remove(target, "after_commit", witness._mark)'''
+new = '''    event.listen(target, "before_commit", witness._mark)
+    try:
+        yield witness
+    finally:
+        event.remove(target, "before_commit", witness._mark)'''
+
+[[rows]]
+id = "T6_every_raise_read_as_a_commit_again"
+description = "write_tree_membership: record a commit on every raise. Batch B read this as ZERO; measured again after test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''            if witness.landed:
+                _record_membership_commit(record, tree_id, added, cfg)'''
+new = '''            if True:
+                _record_membership_commit(record, tree_id, added, cfg)'''
+
+[[dropped]]
+id = "R1_recovery_session_keeps_no_record"
+description = "restore.recovery_session: drop keep=Keep.RECORD"
+reason = "ranked below the cap: same guard family as S1, which kills 36 across a subset that includes tests/test_restore.py, and Held.record being None fails the first test that reads it"
+
+[[dropped]]
+id = "M5_clean_path_commit_dropped"
+description = "mytags_vocals: drop the clean path _record_mytags_commit call"
+reason = "ranked below the cap: the restore list test reads the recorded change and the committed source on the clean path, which M1 and M4 already show dying"
+
+[[dropped]]
+id = "T9_gate_not_asked_for_a_record"
+description = "write_tree_membership and mytags_vocals: drop keep=Keep.RECORD at the call site"
+reason = "ranked below the cap: gates.record is None and attach_capture raises on the first write, so every write test dies; S1 measures the same declaration at the gate"
