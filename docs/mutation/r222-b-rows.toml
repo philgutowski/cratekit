@@ -1,0 +1,146 @@
+name = "r222-b"
+pass_kind = "light"
+
+# R-223, batch b: asking for a backup twice reports the open job.
+# Author run. Every zero below reads as "the author could not kill it".
+
+[[rows]]
+id = "B1_always_enqueue"
+description = "Never report a twin, which is the finding itself: every ask files another job"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        if found is not None:
+            twin, frozen = found'''
+new = '''        if False:
+            twin, frozen = found'''
+
+[[rows]]
+id = "B2_any_verb_is_a_twin"
+description = "Drop the handler key comparison, so another verb's open job is reported as the backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        if job.handler_key != handler_key or job.library_id != cfg.library.volume_id:'''
+new = '''        if job.library_id != cfg.library.volume_id:'''
+
+[[rows]]
+id = "B3_any_library_is_a_twin"
+description = "Drop the library comparison, so a job copying another library is reported as this one's backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        if job.handler_key != handler_key or job.library_id != cfg.library.volume_id:'''
+new = '''        if job.handler_key != handler_key:'''
+
+[[rows]]
+id = "B4_rehearsal_is_a_twin"
+description = "Drop the rehearsal flag comparison, so an open rehearsal answers a request for a real backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        if bool((job.payload or {}).get(DRY_RUN)) != dry_run:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "B5_whole_payload_compared"
+description = "Compare the whole payload, so a job frozen with one more key is a stranger and a second backup is filed beside it"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        if bool((job.payload or {}).get(DRY_RUN)) != dry_run:'''
+new = '''        if dict(job.payload or {}) != {DRY_RUN: dry_run}:'''
+
+[[rows]]
+id = "B6_itemless_job_is_a_twin"
+description = "Report a job with no items, which refuses when driven, as the backup asked for"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        if not jobs.items(store, job.job_id):
+            continue
+        try:'''
+new = '''        if False:
+            continue
+        try:'''
+
+[[rows]]
+id = "B7_unreadable_is_elsewhere"
+description = "Read a frozen configuration that cannot be rebuilt as somewhere else, and file a second job beside it"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        except (config.ConfigError, ValueError):
+            return job, None'''
+new = '''        except (config.ConfigError, ValueError):
+            continue'''
+
+[[rows]]
+id = "B8_every_exception_is_unreadable"
+description = "Catch every exception from the rebuild, so a defect in it is reported as an open backup with exit zero"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        except (config.ConfigError, ValueError):
+            return job, None'''
+new = '''        except Exception:
+            return job, None'''
+
+[[rows]]
+id = "B9_mirror_not_compared"
+description = "Compare only the archive root, so two jobs syncing into one mirror with different archives are strangers"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''            frozen.backup.dest == cfg.backup.dest
+            or frozen.backup.archive_root == cfg.backup.archive_root'''
+new = '''            frozen.backup.archive_root == cfg.backup.archive_root'''
+
+[[rows]]
+id = "B10_archive_not_compared"
+description = "Compare only the mirror, so two jobs rotating one archive root from different mirrors are strangers"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''            frozen.backup.dest == cfg.backup.dest
+            or frozen.backup.archive_root == cfg.backup.archive_root'''
+new = '''            frozen.backup.dest == cfg.backup.dest'''
+
+[[rows]]
+id = "B11_finished_jobs_are_twins"
+description = "Read every state from the queue, so a backup that is over stands in for a new one for ever"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''    for job in jobs.list_jobs(store, states=open_states):'''
+new = '''    for job in jobs.list_jobs(store):'''
+
+[[rows]]
+id = "B12_warnings_from_the_live_configuration"
+description = "Describe the reported job from the configuration on disk rather than the one it was frozen against"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''            described = cfg if frozen is None else frozen'''
+new = '''            described = cfg'''
+
+[[rows]]
+id = "B13_twin_reported_in_silence"
+description = "Report the open job with no warning, so a second ask looks exactly like a first and nothing says no job was filed"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''                    _already_queued(twin, frozen),
+'''
+new = ''''''
+
+[[rows]]
+id = "B14_destination_claimed_unread"
+description = "Reword the unreadable case to the ordinary sentence's opening, so the warning no longer says the configuration was not rebuilt"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        "its frozen configuration could not be rebuilt, so where it writes is "'''
+new = '''        "its frozen configuration was not consulted, so where it writes is "'''
