@@ -49,21 +49,33 @@ class LocalColors(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class HeartCandidate:
-    """One library favourite that may be hearted remotely."""
+    """One library favourite that may be hearted remotely.
+
+    ``release_title`` is the row's title with the library's naming head off, and
+    with ``artist`` it lets the account choose among several releases sharing
+    the row's ISRC (R-356). Neither is ever searched on.
+    """
 
     row_id: str
     remote_id: str = ""
     isrc: str = ""
+    release_title: str = ""
+    artist: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class HeartReport:
-    """What one heart-back pass wrote, and what it left alone."""
+    """What one heart-back pass wrote, and what it left alone.
+
+    ``reasons`` pairs an unmatched row with what the account said about it, and
+    carries only the rows it said something about.
+    """
 
     hearted: tuple[str, ...]
     already: tuple[str, ...]
     colored: tuple[str, ...]
     unmatched: tuple[str, ...]
+    reasons: tuple[tuple[str, str], ...] = ()
 
 
 def _remove_requested(flags: Mapping[str, Any] | None) -> bool:
@@ -97,13 +109,20 @@ def heart_back(
     already: list[str] = []
     colored: list[str] = []
     unmatched: list[str] = []
+    reasons: list[tuple[str, str]] = []
     known = set(ledger.recorded_hearts(cfg))
     for item in candidates:
         remote = item.remote_id or account.match_track(
-            identity=item.row_id, isrc=item.isrc
+            identity=item.row_id,
+            isrc=item.isrc,
+            title=item.release_title,
+            artist=item.artist,
         )
         if not remote:
             unmatched.append(item.row_id)
+            reason = account.unmatched_reason(item.row_id)
+            if reason:
+                reasons.append((item.row_id, reason))
             continue
         if colors is not None and not colors.is_pink(item.row_id):
             colors.color_pink(item.row_id)
@@ -120,6 +139,7 @@ def heart_back(
         already=tuple(already),
         colored=tuple(colored),
         unmatched=tuple(unmatched),
+        reasons=tuple(reasons),
     )
 
 

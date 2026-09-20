@@ -1,0 +1,103 @@
+name = "r356-b"
+pass_kind = "light"
+
+# Batch b of the r356 table: the source, the two engines and the two workers
+# that carry the row's names in and the reason out. See batch a for the split.
+
+[[rows]]
+id = "B1_naming_head_left_on_the_release_title"
+description = "The release title is the display title, key and tempo head and all, which agrees with no provider title"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''    return naming.strip_heads(entry.name, template=template)'''
+new = '''    return entry.name'''
+
+[[rows]]
+id = "B2_template_declares_no_lossy_marker"
+description = "The template never declares the marker, so a marked lossy copy keeps it in its release title"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''    if not marker:
+        return naming.NameTemplate()'''
+new = '''    if True:
+        return naming.NameTemplate()'''
+
+[[rows]]
+id = "B3_empty_marker_no_longer_guarded"
+description = "A configuration with no marker text builds a marker rule with an empty literal, which is refused at construction, so every item fails over a naming policy"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''    if not marker:
+        return naming.NameTemplate()'''
+new = '''    if False:
+        return naming.NameTemplate()'''
+
+[[rows]]
+id = "B4_heart_candidate_carries_no_artist"
+description = "A favourite reaches the account with a title and no artist, which chooses nothing"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''            release_title=release_title(entry, template=template),
+            artist=entry.artist,
+'''
+new = '''            release_title=release_title(entry, template=template),
+'''
+
+[[rows]]
+id = "B5_export_plan_hands_on_the_display_title"
+description = "The export engine hands the account the title with its naming head on"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+old = '''            title=track.release_title,'''
+new = '''            title=track.title,'''
+
+[[rows]]
+id = "B6_export_plan_drops_the_reason"
+description = "An unmatched export row never carries what the account said about it"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+old = '''                    reason=account.unmatched_reason(track.identity) or "unmatched",'''
+new = '''                    reason="unmatched",'''
+
+[[rows]]
+id = "B7_heart_back_hands_on_no_title"
+description = "The hearts engine hands the account no title"
+file = "src/cratekit/modules/outbound/hearts.py"
+surface = "user"
+old = '''            title=item.release_title,'''
+new = '''            title="",'''
+
+[[rows]]
+id = "B8_heart_back_drops_the_reason"
+description = "An unmatched favourite never carries what the account said about it"
+file = "src/cratekit/modules/outbound/hearts.py"
+surface = "user"
+old = '''            if reason:
+                reasons.append((item.row_id, reason))'''
+new = '''            if False:
+                reasons.append((item.row_id, reason))'''
+
+[[rows]]
+id = "B9_export_item_report_drops_the_reason"
+description = "The export item report writes no reason, so neither the artifact nor the envelope can say it"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''                "reason": row.reason,
+'''
+new = ''''''
+
+[[rows]]
+id = "B10_export_envelope_lists_plain_unmatched_rows"
+description = "A row the provider has simply never heard of is listed under reasons with nothing to say"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''item.get("reason") not in (None, "", "unmatched")'''
+new = '''item.get("reason") not in (None, "")'''
+
+[[rows]]
+id = "B11_favorites_envelope_drops_the_reasons"
+description = "The sweep's envelope never lists why a favourite was not hearted"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+old = '''            for one in report.get("reasons") or ()'''
+new = '''            for one in ()'''

@@ -108,11 +108,25 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
     hearted: list[str] = []
     already: list[str] = []
     unmatched: list[str] = []
+    reasons: list[str] = []
     for report in artifacts.committed(cfg, job_id):
         hearted.extend(str(item) for item in report.get("hearted") or ())
         already.extend(str(item) for item in report.get("already") or ())
         unmatched.extend(str(item) for item in report.get("unmatched") or ())
-    return {"hearted": hearted, "already": already, "unmatched": unmatched}
+        # One sentence per favourite the account would not choose a release for
+        # (R-356). A report written before that key existed carries none.
+        reasons.extend(
+            f"{one.get('artist') or ''} - {one.get('title') or ''} "
+            f"(row {one.get('row') or ''}): {one.get('reason') or ''}"
+            for one in report.get("reasons") or ()
+            if isinstance(one, dict)
+        )
+    return {
+        "hearted": hearted,
+        "already": already,
+        "unmatched": unmatched,
+        "reasons": reasons,
+    }
 
 
 def build_sync(parser, entry) -> None:
@@ -363,11 +377,25 @@ def run_heart_item(
             detail={"row": row_id},
         )
     report = hearts.heart_back(cfg, remote, candidates, colors=None)
+    named = {item.row_id: item for item in candidates}
     return {
         "row": row_id,
         "hearted": list(report.hearted),
         "already": list(report.already),
         "unmatched": list(report.unmatched),
+        # WITH THE ROW'S OWN NAMES, because the engine reports a row by its
+        # identifier and a person reading why a favourite was not hearted needs
+        # to know which favourite. The title is the release title, head off,
+        # which is the only one a heart candidate carries.
+        "reasons": [
+            {
+                "row": row,
+                "title": named[row].release_title if row in named else "",
+                "artist": named[row].artist if row in named else "",
+                "reason": reason,
+            }
+            for row, reason in report.reasons
+        ],
     }
 
 

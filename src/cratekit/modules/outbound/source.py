@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from cratekit.core import config, locations, tags
+from cratekit.core import config, locations, naming, tags
 from cratekit.core.cause import Scope, refuse
 from cratekit.modules.outbound.export import LocalTrack
 from cratekit.modules.outbound.hearts import HeartCandidate
@@ -281,6 +281,7 @@ def local_tracks(
     defect for any caller that forgot it, silently, as a job that hearts nothing.
     """
     rules = prefix_rules(cfg)
+    template = _template(cfg)
     _require_root(cfg)
     return tuple(
         LocalTrack(
@@ -288,6 +289,7 @@ def local_tracks(
             title=entry.name,
             artist=entry.artist,
             isrc=isrc_for(entry, root=cfg.library.root, prefix_map=rules),
+            release_title=release_title(entry, template=template),
         )
         for track_id, entry in _rows(library, track_ids)
     )
@@ -303,17 +305,53 @@ def heart_candidates(
 
     ``remote_id`` is left empty so the engine asks the account to match, and the
     ISRC is read from the file exactly as :func:`local_tracks` reads it, so the
-    two engines cannot come to disagree about one row's identity.
+    two engines cannot come to disagree about one row's identity. The release
+    title and the artist are carried for the same reason and from the same
+    function: they are what the account chooses by when one ISRC names several
+    releases, and a sweep that carried neither left every such favourite
+    unmatched (R-356).
     """
     rules = prefix_rules(cfg)
+    template = _template(cfg)
     _require_root(cfg)
     return tuple(
         HeartCandidate(
             row_id=track_id,
             isrc=isrc_for(entry, root=cfg.library.root, prefix_map=rules),
+            release_title=release_title(entry, template=template),
+            artist=entry.artist,
         )
         for track_id, entry in _rows(library, track_ids)
     )
+
+
+def _template(cfg: config.Config) -> naming.NameTemplate:
+    """The declared naming shape, on ``acquire.match_cli.library_template``'s rule.
+
+    A configuration with no marker text is one where no file carries a marker,
+    and a marker rule with an empty literal is refused at construction, so the
+    rule is left out rather than the whole item refused over a naming policy.
+    Built here rather than imported because that module is a verb's shell.
+    """
+    marker = (cfg.naming.lossy_marker or "").strip()
+    if not marker:
+        return naming.NameTemplate()
+    return naming.NameTemplate(
+        markers=(naming.MarkerRule(field="lossy", literal=marker),)
+    )
+
+
+def release_title(
+    entry: library_export.CollectionEntry, *, template: naming.NameTemplate
+) -> str:
+    """The row's title as a release spells it, the library's naming head off.
+
+    ``CollectionEntry.name`` is the rekordbox display field and carries the key
+    and tempo head this library writes, so compared as it stands it agrees with
+    no provider title at all. Stripped through the DECLARED template, never a
+    pattern of this module's own, for the reason that class's docstring gives.
+    """
+    return naming.strip_heads(entry.name, template=template)
 
 
 def _require_root(cfg: config.Config) -> None:
@@ -423,6 +461,7 @@ __all__ = [
     "isrc_for",
     "local_tracks",
     "prefix_rules",
+    "release_title",
     "read_library",
     "required_path",
     "resolve",

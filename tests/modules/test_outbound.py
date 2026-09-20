@@ -124,6 +124,76 @@ def test_playlist_export_reports_unmatched_tracks_rather_than_dropping_them(cfg)
     assert account.playlist_tracks(report.remote_id) == ("tid-1",)
 
 
+def test_the_export_plan_hands_the_account_the_release_title_and_not_the_display_one():
+    """R-356. The display title carries the naming head and agrees with no provider."""
+    account = FakeAccount()
+    export.plan(
+        [
+            export.LocalTrack(
+                identity="7",
+                title="08A - 124 - Sun Path",
+                artist="Nova Reef",
+                isrc="AA0000000001",
+                release_title="Sun Path",
+            )
+        ],
+        playlist_key="crate-one",
+        name="Crate One",
+        account=account,
+    )
+    assert account.matches == [
+        {
+            "identity": "7",
+            "isrc": "AA0000000001",
+            "title": "Sun Path",
+            "artist": "Nova Reef",
+        }
+    ]
+
+
+def test_an_unmatched_export_row_carries_what_the_account_said_about_it():
+    account = FakeAccount()
+    account.reasons["several"] = "the ISRC X names 3 provider tracks"
+    planned = export.plan(
+        [
+            export.LocalTrack(identity="several", title="08A - 124 - Sun Path"),
+            export.LocalTrack(identity="unknown", title="08A - 124 - Moon Road"),
+        ],
+        playlist_key="crate-one",
+        name="Crate One",
+        account=account,
+    )
+    assert [(row.identity, row.title, row.reason) for row in planned.unmatched] == [
+        ("several", "08A - 124 - Sun Path", "the ISRC X names 3 provider tracks"),
+        ("unknown", "08A - 124 - Moon Road", "unmatched"),
+    ]
+
+
+def test_a_heart_back_hands_the_account_the_names_and_reports_its_reasons(cfg):
+    account = FakeAccount(catalog={"held": "tid-1"})
+    account.reasons["several"] = "the ISRC X names 2 provider tracks"
+    report = hearts.heart_back(
+        cfg,
+        account,
+        [
+            hearts.HeartCandidate(
+                row_id="several", isrc="X", release_title="Sun Path", artist="Nova Reef"
+            ),
+            hearts.HeartCandidate(row_id="unknown"),
+            hearts.HeartCandidate(row_id="held"),
+        ],
+    )
+    assert account.matches[0] == {
+        "identity": "several",
+        "isrc": "X",
+        "title": "Sun Path",
+        "artist": "Nova Reef",
+    }
+    assert report.unmatched == ("several", "unknown")
+    assert report.reasons == (("several", "the ISRC X names 2 provider tracks"),)
+    assert report.hearted == ("tid-1",)
+
+
 def test_playlist_export_requires_its_own_confirmation(cfg, tmp_path):
     from tests.test_cli_contract import drive
 

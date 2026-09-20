@@ -30,6 +30,7 @@ from tests.modules.test_reports import _close, _collection, _document, _folder, 
 PROTOCOL_METHODS = frozenset(
     {
         "match_track",
+        "unmatched_reason",
         "add_heart",
         "has_heart",
         "create_playlist",
@@ -73,10 +74,22 @@ class FakeAccount:
         self.fail_after = fail_after
         self.fail_on = frozenset(fail_on or ())
         self._writes = 0
+        #: Every match asked, as the keyword arguments it was asked with, so a
+        #: test can say what an engine handed the account to choose by.
+        self.matches: list[dict[str, str]] = []
+        #: What this account says about a row it does not match, by identity.
+        self.reasons: dict[str, str] = {}
 
-    def match_track(self, *, identity: str, isrc: str = "") -> str | None:
-        del isrc
+    def match_track(
+        self, *, identity: str, isrc: str = "", title: str = "", artist: str = ""
+    ) -> str | None:
+        self.matches.append(
+            {"identity": identity, "isrc": isrc, "title": title, "artist": artist}
+        )
         return self.catalog.get(identity)
+
+    def unmatched_reason(self, identity: str) -> str:
+        return self.reasons.get(identity, "")
 
     def add_heart(self, remote_id: str) -> None:
         self._bump(remote_id)

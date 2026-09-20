@@ -65,9 +65,40 @@ class HTTPFailure(Exception):
         self.response = Response(status_code)
 
 
+class Artist:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
 class Track:
-    def __init__(self, track_id: str) -> None:
+    """A provider track in the client's own shape: a name, a version field of its
+    own, a first artist and the list of every artist billed."""
+
+    def __init__(
+        self,
+        track_id: str,
+        name: str = "",
+        version: str | None = None,
+        artists: tuple[str, ...] = (),
+    ) -> None:
         self.id = int(track_id)
+        self.name = name
+        self.version = version
+        self.artists = [Artist(one) for one in artists]
+        self.artist = self.artists[0] if self.artists else None
+        #: The client's own name for "the provider will play this".
+        self.available = True
+
+
+def withdrawn(track: Track) -> Track:
+    """The track as the client hands out one the provider will not play.
+
+    The client reads ``version`` only inside ``if self.available``, so a
+    withdrawn extended mix arrives with no version and reads as the plain record.
+    """
+    track.available = False
+    track.version = None
+    return track
 
 
 class Playlist:
@@ -164,7 +195,7 @@ class FakeClient:
     def __init__(
         self,
         *,
-        isrcs: dict[str, list[str]] | None = None,
+        isrcs: dict[str, list] | None = None,
         tracks: set[str] | None = None,
         hearts: list[str] = (),
         playlists: dict[str, Playlist] | None = None,
@@ -189,10 +220,14 @@ class FakeClient:
         return True
 
     def get_tracks_by_isrc(self, isrc: str) -> list[Track]:
+        """``isrcs`` maps a code to identifiers, or to whole tracks when a test
+        needs the provider's own spelling of each release."""
         self.isrc_asked.append(isrc)
         if isrc not in self.isrcs:
             raise ObjectNotFound(isrc)
-        return [Track(track_id) for track_id in self.isrcs[isrc]]
+        return [
+            one if isinstance(one, Track) else Track(one) for one in self.isrcs[isrc]
+        ]
 
     def track(self, track_id: str) -> Track:
         self.track_asked.append(track_id)
@@ -337,6 +372,244 @@ def test_an_isrc_naming_two_tracks_is_no_match_rather_than_the_first():
         identity="https://tidal.com/browse/track/101", isrc="AA0000000001"
     )
     assert found is None
+
+
+# ── R-356: several releases under one ISRC ─────────────────────────────────
+
+CODE = "AA0000000001"
+
+
+def releases(*tracks: Track) -> FakeClient:
+    return FakeClient(isrcs={CODE: list(tracks)})
+
+
+def match_row(found: tidal_account.TidalAccount, title: str, artist: str = "Nova Reef"):
+    return found.match_track(identity="7", isrc=CODE, title=title, artist=artist)
+
+
+def test_the_measured_cost_three_releases_of_one_isrc_resolve_to_the_rows_version():
+    """The fourth sitting's shape: a single, an EP cut and a compilation track.
+
+    Before R-356 every one of these rows came back unmatched, which was two of
+    four export rows and most of fifty favourites on a real library.
+    """
+    client = releases(
+        Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
+        Track("202", "Sun Path", "Extended Mix", ("Nova Reef",)),
+        Track("303", "Sun Path", "Ten Year Remaster", ("Nova Reef",)),
+    )
+    found = adapter(client)
+    assert match_row(found, "Sun Path (Extended Mix)") == "202"
+    assert found.unmatched_reason("7") == ""
+    assert client.user.favorites.pages == [], "one agreeing track asks the hearts nothing"
+
+
+def test_a_row_with_no_version_agrees_with_an_original_mix_and_not_with_an_edit():
+    client = releases(
+        Track("101", "Sun Path", "Original Mix", ("Nova Reef",)),
+        Track("202", "Sun Path", "Radio Edit", ("Nova Reef",)),
+    )
+    assert match_row(adapter(client), "Sun Path") == "101"
+
+
+def test_a_version_the_provider_spells_inside_the_title_is_read_the_same_way():
+    client = releases(
+        Track("101", "Sun Path - Radio Edit", None, ("Nova Reef",)),
+        Track("202", "Sun Path (Extended Mix)", None, ("Nova Reef",)),
+    )
+    assert match_row(adapter(client), "Sun Path (Radio Edit)") == "101"
+
+
+def test_releases_spelled_alike_stay_unmatched_and_the_reason_counts_them():
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef",)),
+        Track("202", "Sun Path", None, ("Nova Reef",)),
+        Track("303", "Sun Path", "Radio Edit", ("Nova Reef",)),
+    )
+    found = adapter(client)
+    assert match_row(found, "Sun Path") is None
+    reason = found.unmatched_reason("7")
+    assert f"the ISRC {CODE} names 3 provider tracks" in reason
+    assert "2 of them agree" in reason
+    assert "hearts 0 of those" in reason
+
+
+def test_among_releases_spelled_alike_the_one_already_hearted_is_the_match():
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef",)),
+        Track("202", "Sun Path", None, ("Nova Reef",)),
+    )
+    client.user.favorites.hearts = ["202"]
+    found = adapter(client)
+    assert match_row(found, "Sun Path") == "202"
+    assert found.unmatched_reason("7") == ""
+
+
+def test_two_hearted_releases_spelled_alike_are_still_no_match():
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef",)),
+        Track("202", "Sun Path", None, ("Nova Reef",)),
+    )
+    client.user.favorites.hearts = ["101", "202"]
+    found = adapter(client)
+    assert match_row(found, "Sun Path") is None
+    assert "hearts 2 of those" in found.unmatched_reason("7")
+
+
+def test_a_heart_on_a_release_the_row_does_not_name_decides_nothing():
+    """The hearted one is the radio edit, and the row is the plain record."""
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef",)),
+        Track("202", "Sun Path", None, ("Nova Reef",)),
+        Track("303", "Sun Path", "Radio Edit", ("Nova Reef",)),
+    )
+    client.user.favorites.hearts = ["303"]
+    assert match_row(adapter(client), "Sun Path") is None
+
+
+def test_no_release_agreeing_is_no_match_and_the_hearts_are_not_read():
+    """An ISRC the provider filed on another record chooses nothing, hearted or not."""
+    client = releases(
+        Track("101", "Moon Road", None, ("Nova Reef",)),
+        Track("202", "Moon Road", "Dub", ("Nova Reef",)),
+    )
+    client.user.favorites.hearts = ["101"]
+    found = adapter(client)
+    assert match_row(found, "Sun Path") is None
+    assert "none of them agrees" in found.unmatched_reason("7")
+    assert client.user.favorites.pages == []
+
+
+def test_another_artist_under_the_same_title_does_not_agree():
+    client = releases(
+        Track("101", "Sun Path", None, ("Aurora Bloom",)),
+        Track("202", "Sun Path", None, ("Nova Reef",)),
+    )
+    assert match_row(adapter(client), "Sun Path") == "202"
+
+
+def test_a_row_billing_two_artists_agrees_with_a_track_billing_the_same_two():
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef", "Mira Vale")),
+        Track("202", "Sun Path", "Radio Edit", ("Nova Reef", "Mira Vale")),
+    )
+    found = adapter(client)
+    assert match_row(found, "Sun Path", artist="Nova Reef, Mira Vale") == "101"
+    assert match_row(found, "Sun Path", artist="Nova Reef & Mira Vale") == "101"
+    assert match_row(found, "Sun Path", artist="Nova Reef") == "101"
+    assert match_row(found, "Sun Path", artist="Mira Vale") is None, "the guest alone"
+    assert match_row(found, "Sun Path", artist="Mira Vale, Nova Reef") == "101"
+    assert match_row(found, "Sun Path", artist="Nova Reef feat. Mira Vale") == "101"
+    assert match_row(found, "Sun Path", artist="Nova Reef, Mira Vale, Kai Tern") is None
+    assert match_row(found, "Sun Path", artist="Nova") is None, "half a name"
+
+
+def test_a_remixer_the_provider_bills_and_the_row_does_not_is_still_agreement():
+    client = releases(
+        Track("101", "Sun Path", "Kai Tern Remix", ("Nova Reef", "Kai Tern")),
+        Track("202", "Sun Path", None, ("Nova Reef",)),
+    )
+    assert match_row(adapter(client), "Sun Path (Kai Tern Remix)") == "101"
+
+
+def test_a_track_the_provider_will_not_play_is_never_the_choice():
+    """Its version was never read, so a withdrawn extended mix looks like the plain record."""
+    client = releases(
+        Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
+        withdrawn(Track("202", "Sun Path", "Extended Mix", ("Nova Reef",))),
+    )
+    found = adapter(client)
+    assert match_row(found, "Sun Path") is None
+    reason = found.unmatched_reason("7")
+    assert "1 cannot be streamed" in reason and "none of the rest agrees" in reason
+    client.user.favorites.hearts = ["202"]
+    assert match_row(adapter(client), "Sun Path") is None, "a heart does not revive it"
+
+
+def test_a_withdrawn_release_does_not_stop_the_one_that_plays_from_being_chosen():
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef",)),
+        withdrawn(Track("202", "Sun Path", None, ("Nova Reef",))),
+    )
+    assert match_row(adapter(client), "Sun Path") == "101"
+
+
+def test_a_provider_title_that_reads_two_ways_agrees_under_either_too():
+    """The same recording must resolve whichever side spelled the version with a dash."""
+    client = releases(
+        Track("101", "Sun Path - Live", None, ("Nova Reef",)),
+        Track("202", "Sun Path", "Radio Edit", ("Nova Reef",)),
+    )
+    assert match_row(adapter(client), "Sun Path (Live)") == "101"
+
+
+def test_a_row_carrying_no_names_chooses_nothing_and_asks_the_hearts_nothing():
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef",)),
+        Track("202", "Sun Path", "Radio Edit", ("Nova Reef",)),
+    )
+    client.user.favorites.hearts = ["101"]
+    found = adapter(client)
+    assert found.match_track(identity="7", isrc=CODE) is None
+    assert found.match_track(identity="7", isrc=CODE, title="Sun Path") is None
+    assert found.match_track(identity="7", isrc=CODE, artist="Nova Reef") is None
+    assert "no artist and title" in found.unmatched_reason("7")
+    assert client.user.favorites.pages == []
+
+
+def test_a_release_that_cannot_be_read_stops_a_lone_agreeing_one_from_being_chosen():
+    """One agreeing track beside one nobody could read is not known to be the only one."""
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef",)),
+        Track("202", "", None, ()),
+    )
+    found = adapter(client)
+    assert match_row(found, "Sun Path") is None
+    assert "1 could not be read" in found.unmatched_reason("7")
+    client.user.favorites.hearts = ["101"]
+    assert match_row(adapter(client), "Sun Path") == "101"
+
+
+def test_a_title_that_reads_two_ways_agrees_under_either_and_still_needs_one():
+    one = releases(
+        Track("101", "Sun Path", "Live", ("Nova Reef",)),
+        Track("202", "Sun Path", "Radio Edit", ("Nova Reef",)),
+    )
+    assert match_row(adapter(one), "Sun Path - Live") == "101"
+    both = releases(
+        Track("101", "Sun Path", "Live", ("Nova Reef",)),
+        Track("202", "Sun Path - Live", None, ("Nova Reef",)),
+    )
+    assert match_row(adapter(both), "Sun Path - Live") is None
+
+
+def test_a_reason_does_not_outlive_the_match_it_was_about():
+    client = releases(
+        Track("101", "Sun Path", None, ("Nova Reef",)),
+        Track("202", "Sun Path", None, ("Nova Reef",)),
+    )
+    found = adapter(client)
+    assert match_row(found, "Sun Path") is None
+    assert found.unmatched_reason("7")
+    assert found.unmatched_reason("8") == "", "a reason belongs to one row"
+    client.user.favorites.hearts.append("101")
+    found._hearts = None
+    assert match_row(found, "Sun Path") == "101"
+    assert found.unmatched_reason("7") == ""
+
+
+def test_a_row_the_provider_has_never_heard_of_carries_no_reason():
+    found = adapter(FakeClient())
+    assert found.match_track(identity="7", isrc=CODE, title="Sun Path", artist="x") is None
+    assert found.unmatched_reason("7") == ""
+
+
+def test_the_names_are_never_sent_to_the_provider():
+    """They choose among what the ISRC named. A search on them would heart a cover."""
+    client = releases(Track("101", "Sun Path", None, ("Nova Reef",)))
+    client.search = lambda *args, **kwargs: pytest.fail("the adapter searched")
+    assert match_row(adapter(client), "Sun Path") == "101"
+    assert client.isrc_asked == [CODE] and client.track_asked == []
 
 
 def test_an_isrc_the_provider_lacks_falls_back_to_an_exact_track_reference():
@@ -939,6 +1212,158 @@ def test_a_sweep_matches_through_the_isrc_the_file_carries(
     assert client.user.favorites.added == ["501"]
     reports = artifacts.committed(installed, job_id)
     assert [report["unmatched"] for report in reports] == [[], ["2"]]
+
+
+# ── R-356, driven with no substitution: the names come off the export ─────
+
+
+def _alike(first: str, second: str, title: str, artist: str) -> list[Track]:
+    """Two releases of one recording spelled alike, a single and its album cut."""
+    return [Track(first, title, None, (artist,)), Track(second, title, None, (artist,))]
+
+
+def _three_tagged(installed, tmp_path) -> dict[int, str]:
+    return {
+        row: _tagged_flac(installed, tmp_path / str(row), row, isrc_for(str(row)))
+        for row in (1, 2, 3)
+    }
+
+
+def _releases_for_three_rows() -> dict[str, list]:
+    """Row 1 has an edit beside the plain record, row 2 has two spelled alike,
+    and row 3 has one release. The export spells each row ``08A - 124 - Track N``."""
+    return {
+        isrc_for("1"): [
+            Track("501", "Track 1", "Radio Edit", ("Artist 1",)),
+            Track("511", "Track 1", None, ("Artist 1",)),
+        ],
+        isrc_for("2"): _alike("502", "512", "Track 2", "Artist 2"),
+        isrc_for("3"): ["503"],
+    }
+
+
+def test_the_release_title_is_the_display_title_with_the_naming_head_off(installed):
+    from cratekit.modules.reports.export import CollectionEntry
+
+    template = source._template(installed)
+    marker = installed.naming.lossy_marker
+    assert marker, "the fixture configuration declares a lossy marker"
+
+    def entry(name: str) -> CollectionEntry:
+        return CollectionEntry(track_id="1", name=name, artist="a", location="")
+
+    assert source.release_title(entry("08A - 124 - Sun Path"), template=template) == "Sun Path"
+    assert (
+        source.release_title(entry(f"08A - 124 - {marker} Sun Path (Dub)"), template=template)
+        == "Sun Path (Dub)"
+    )
+    assert source.release_title(entry("Sun Path"), template=template) == "Sun Path"
+
+
+def test_a_configuration_with_no_marker_text_still_strips_the_head(installed):
+    bare = replace(installed, naming=replace(installed.naming, lossy_marker=""))
+    from cratekit.modules.reports.export import CollectionEntry
+
+    row = CollectionEntry(track_id="1", name="08A - 124 - Sun Path", artist="a", location="")
+    assert source.release_title(row, template=source._template(bare)) == "Sun Path"
+
+
+def test_a_sweep_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_could_not(
+    installed, monkeypatch, tmp_path
+):
+    exported = outbound_fakes.write_export(
+        installed.library.root / "outbound",
+        favorites=(1, 2, 3),
+        locations=_three_tagged(installed, tmp_path),
+    )
+    client = use_client(monkeypatch, FakeClient(isrcs=_releases_for_three_rows()))
+    record_session()
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    assert client.user.favorites.added == ["511", "503"]
+    outbound = resumed["data"]["progress"]["outbound"]
+    assert outbound["unmatched"] == ["2"]
+    (reason,) = outbound["reasons"]
+    assert reason.startswith("Artist 2 - Track 2 (row 2): "), reason
+    assert "names 2 provider tracks" in reason and "2 of them agree" in reason
+    reports = artifacts.committed(installed, job_id)
+    assert [[one["row"] for one in report["reasons"]] for report in reports] == [
+        [],
+        ["2"],
+        [],
+    ]
+
+
+def test_an_export_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_could_not(
+    installed, monkeypatch, tmp_path
+):
+    exported = outbound_fakes.write_export(
+        installed.library.root / "outbound",
+        locations=_three_tagged(installed, tmp_path),
+    )
+    client = use_client(monkeypatch, FakeClient(isrcs=_releases_for_three_rows()))
+    record_session()
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    (playlist,) = client.playlists.values()
+    assert playlist.members == ["511", "503"]
+    outbound = resumed["data"]["progress"]["outbound"]
+    assert outbound["unmatched"] == ["2"]
+    (reason,) = outbound["reasons"]
+    assert reason.startswith("Artist 2 - 08A - 124 - Track 2 (row 2): "), reason
+    assert "names 2 provider tracks" in reason
+    (row,) = [
+        row for report in artifacts.committed(installed, job_id) for row in report["unmatched"]
+    ]
+    assert row["title"] == "08A - 124 - Track 2", "reported as the library shows it"
+    assert "names 2 provider tracks" in row["reason"]
+
+
+def test_a_release_the_account_already_hearts_is_the_one_an_export_adds(
+    installed, monkeypatch, tmp_path
+):
+    exported = outbound_fakes.write_export(
+        installed.library.root / "outbound",
+        crate=(2,),
+        locations=_three_tagged(installed, tmp_path),
+    )
+    client = use_client(
+        monkeypatch, FakeClient(isrcs=_releases_for_three_rows(), hearts=["512"])
+    )
+    record_session()
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    (playlist,) = client.playlists.values()
+    assert playlist.members == ["512"]
+    assert resumed["data"]["progress"]["outbound"]["reasons"] == []
+
+
+def test_an_unmatched_row_with_nothing_said_about_it_adds_no_reason_to_the_envelope(
+    installed, monkeypatch, tmp_path
+):
+    exported = outbound_fakes.write_export(
+        installed.library.root / "outbound",
+        crate=(1, 3),
+        locations=_three_tagged(installed, tmp_path),
+    )
+    use_client(monkeypatch, FakeClient(isrcs={isrc_for("3"): ["503"]}))
+    record_session()
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    outbound = resumed["data"]["progress"]["outbound"]
+    assert outbound["unmatched"] == ["1"] and outbound["reasons"] == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════

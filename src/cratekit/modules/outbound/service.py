@@ -25,8 +25,25 @@ from typing import Protocol
 class RemoteAccount(Protocol):
     """Add-only writes against one streaming account, plus a playlist retitle."""
 
-    def match_track(self, *, identity: str, isrc: str = "") -> str | None:
-        """The remote track id for this library identity, or None if unmatched."""
+    def match_track(
+        self, *, identity: str, isrc: str = "", title: str = "", artist: str = ""
+    ) -> str | None:
+        """The remote track id for this library identity, or None if unmatched.
+
+        ``title`` and ``artist`` are the row's own, the title with the library's
+        naming head already off. They CHOOSE among tracks an exact key already
+        named, several releases sharing one ISRC, and are never a search: an
+        implementation that matched on them alone would heart a cover version
+        (R-356).
+        """
+
+    def unmatched_reason(self, identity: str) -> str:
+        """Why the last ``match_track`` of this identity answered None, or ``""``.
+
+        Words for a person, carried on the unmatched row. Empty when the account
+        has nothing more to say than "unmatched", and empty after a match. It
+        reads and writes nothing on the account.
+        """
 
     def add_heart(self, remote_id: str) -> None:
         """Heart one remote track. Idempotent if already hearted."""

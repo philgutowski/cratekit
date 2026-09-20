@@ -16597,6 +16597,32 @@ were unmatched, of which 6 carry no ISRC at all and the rest are this shape or a
 ISRC the provider does not know. On a real library this is not an edge case, it is
 half of a small playlist.
 
+**THE RULE IS DECIDED AND PINNED, 2026-09-20 on `relay/158`, issue 158, AND WHAT
+IT CANNOT CHOOSE MOVED TO R-572.** `TidalAccount.match_track` takes the row's
+title and artist, and several tracks under one ISRC go to `_among`, which
+chooses by two rules and never by position. First, the one track agreeing with
+the row's artist, title and version, read by `acquire.match.read_row` on both
+sides so a version in brackets, after a dash or in the provider's own field all
+mean one thing. Second, when several agree, the one the account already hearts,
+which is the rule this entry's closing condition names. A track the provider
+will not play is never a candidate, since the client reads a version only off an
+available track, and a track nobody could read stops a lone agreeing one from
+being chosen. Otherwise the row stays unmatched and `unmatched_reason`, a new
+`RemoteAccount` member, says how many tracks the ISRC named and how many agreed.
+Both item reports carry that sentence and both envelopes list it under
+`progress.outbound.reasons`, named by artist and title. The library's display
+title carries the key and tempo head, so `source.release_title` strips it
+through the declared template first; compared as it stood it agreed with nothing.
+**Pinned by** the R-356 block in `tests/test_outbound_tidal_account.py`, three
+engine tests in `tests/modules/test_outbound.py`, and four end to end drives of
+both verbs with no substitution, the ISRC off a real file's tag and the names off
+the export. Mutation table `docs/mutation/r356-notes.md`, 25 rows, 25 killed.
+**NOT MEASURED LIVE, and that is owed to an attended sitting**: the same four
+track export and the same 109 row sweep, to learn how many of the rows measured
+above the two rules resolve. The author's expectation, unmeasured, is a
+minority, because a single and its album cut are usually spelled alike. That
+remainder is R-572.
+
 ---
 
 ## R-357. The held account answers from what it read at open, for the life of the process
@@ -23193,3 +23219,128 @@ directly; what they pay for is R-570, which this is the reason for.
 **Closes when:** a queued verb's resume envelope is checked against its declared
 surface by something derived from the registry rather than by one verb's own
 test file.
+
+---
+
+## R-572. Releases of one ISRC that are spelled alike, with none hearted, stay unmatched
+
+**Found:** during R-356, 2026-09-20, building the rule that entry asked for, and
+raised again by the code review.
+
+`TidalAccount._among` chooses among several tracks sharing an ISRC by the row's
+artist, title and version, then by which one the account already hearts. A single
+and its album cut carry the same three, so both agree, and a favourite the
+account does not yet heart has nothing to break the tie with. The row stays
+unmatched and its reason says "2 of them agree ... and the account hearts 0 of
+those". The second rule can only ever turn an unmatched favourite into an
+already hearted one, so on `sync favorites` it adds no heart; on `export
+playlist` it adds the hearted release.
+
+**Measured cost: NOT MEASURED LIVE.** R-356 measured two of four export rows and
+most of 50 of 109 favourites unmatched before its fix. How many of those the two
+rules now resolve needs the provider and is owed to an attended sitting. Driven
+against fakes only: `test_releases_spelled_alike_stay_unmatched_and_the_reason_counts_them`.
+
+**Board bar (c), and ITS ISSUE IS OWED**, to be filed after the merge that
+carries this number. Approach to plan against: the file's own album tag against
+each candidate's album name, read beside the ISRC in `source.isrc_for`'s one
+read, which is a fact about the row the way its title is. The first, the
+earliest released and the lowest numbered were considered and refused here: each
+is a policy about the provider's catalogue, not something the row says.
+
+**Closes when:** a rule that tells a single from its album cut without choosing
+by position is decided and pinned, or a live measurement shows the remainder is
+small enough to leave.
+
+---
+
+## R-573. A lone track under an ISRC is the match whatever it is called, and whether or not it plays
+
+**Found:** during R-356, 2026-09-20, reading the branch this unit left alone.
+
+When the provider answers an ISRC with ONE distinct identifier, `match_track`
+returns it at once. The row's names are compared only when there are several, so
+an ISRC the provider filed on the wrong record is hearted with nothing reported,
+and so is a lone track the provider has withdrawn. R-356 named the several tracks
+case and nothing else, so the lone branch is as U63 left it and
+`test_an_isrc_naming_one_track_is_the_match` pins it.
+
+**Measured cost: unmeasured, and the reachability is unmeasured.** No wrong ISRC
+was observed in the 2026-09-17 sitting, where all 18 new hearts were verified on
+the account. Zero candidates were driven.
+
+**Closes when:** a lone answer is held to the same agreement the several are, or
+a live sweep's hearts are checked against their rows and none disagrees.
+
+---
+
+## R-574. An exact provider track reference never chooses among an ISRC's tracks
+
+**Found:** by the code review of R-356, 2026-09-20.
+
+`match_track` tries the ISRC first and, when `_among` chooses nothing, answers
+None without looking at the identity, even when the identity is a provider track
+URL naming one of those very tracks. `test_an_isrc_naming_two_tracks_is_no_match_rather_than_the_first`
+has pinned that since U63.
+
+**Cost: none today, and the producer was looked for.** Both shipped workers hand
+this seam a rekordbox `TrackID`, which `track_reference` refuses on purpose, so
+no shipped verb can produce the input. `git grep -n match_track -- src` names
+`export.plan` and `hearts.heart_back` and no third caller.
+
+**Closes when:** a caller hands this seam a provider reference, at which point
+the reference should choose before the names do.
+
+---
+
+## R-575. `unmatched_reason` is a second call that reads what the first one left behind
+
+**Found:** by the code review of R-356, 2026-09-20.
+
+`RemoteAccount` now needs two calls in order, `match_track` and then
+`unmatched_reason` with the same identity, and `TidalAccount` backs the second
+with a dictionary on an adapter held for the life of the process (R-357), one
+entry per row it would not choose for. A result value carrying the identifier
+and the reason together would remove the hidden state. It was not done because
+`match_track` answering `str | None` is the contract both engines, the shared
+fake and U63's suite are written against, and the brief named the seam's
+narrowest widening. A stale entry is never read, since both engines ask only
+after a None, and `test_a_reason_does_not_outlive_the_match_it_was_about` with
+mutation row A12 pins the clearing.
+
+**Cost:** maintainer facing. **Closes when:** the match returns its reason.
+
+---
+
+## R-576. `outbound.source._template` is one more copy of the naming template builder
+
+**Found:** during R-356, 2026-09-20, and raised by its code review.
+
+`core.naming` imports no configuration by design, so every caller builds the
+declared `NameTemplate` itself. `acquire.match_cli.library_template` is the
+guarded one; `cli/reports.py` and `setbuilder/cli.py` each record that they are a
+further copy. `modules/outbound/source.py` now holds another, guarded for an
+empty marker and pinned by mutation rows B2 and B3, because the guarded original
+lives in a verb's shell that an engine module should not import.
+
+**Cost:** maintainer facing. A change to the marker rule is made in every copy
+or the copies disagree. **Closes when:** one builder takes a configuration and
+every site calls it.
+
+---
+
+## R-577. `test_a_job_driven_with_no_adapter_fails_rather_than_reporting_success` failed once under xdist
+
+**Found:** during R-356, 2026-09-20, on a run of three outbound test files with
+`-n 4`.
+
+`approve_and_queue`'s third invocation was refused `decision-unknown-gate`, "run
+2026-09-20T17:20:51Z-eec2 belongs to run.decide, not to export.playlist": the run
+the first invocation opened was read back as belonging to the `run decide`
+invocation that answered it. **Measured: 1 failure in 3 runs of an outbound subset, 0 in
+3 runs of the file alone, 0 in the full suite runs this unit made, and 0 in one
+run of the same file on main's tree.** The test does not touch anything this unit
+changed. No mechanism is offered, because none was measured.
+
+**Cost:** maintainer facing, a red run that a rerun clears. **Closes when:** the
+mechanism is found, or it is not seen again across a phase.
