@@ -2,9 +2,9 @@ name = "r290-author"
 pass_kind = "light"
 
 # Scoped to this round's own diff: the one mapping, the dispatcher's reading of
-# it, the retag rebuild the review found, and the call in every one of the
-# thirteen shells. No fixed sample of older guards, because the older guard in
-# every one of these shells WAS the predicate this unit replaced.
+# it, the one owner of a reworded refusal and the two hops that go through it,
+# and the call in the shells. No fixed sample of older guards, because the older
+# guard in every one of these shells WAS the predicate this unit replaced.
 #
 # Every row has a user facing surface: each one, reverted, puts exit 0 or the
 # wrong outcome word over a job that did not finish.
@@ -13,6 +13,8 @@ pass_kind = "light"
 # derived subset is the files importing that shell, which does not include
 # tests/test_job_outcome.py, the population test written for exactly these
 # calls, so every shell row would read zero on its subset and cost a full run.
+#
+# 27 rows were wanted and the light cap is 25. The two dropped are at the foot.
 
 # ── The mapping ──────────────────────────────────────────────────────────────
 
@@ -40,9 +42,9 @@ description = "Drop the closed and carrying a cause branch, so a half failed or 
 file = "src/cratekit/core/jobs.py"
 surface = "user"
 old = """    if not job.is_open() and job.cause is not None:
-        raise CratekitError(job.cause)"""
+        if job.state is JobState.CANCELLED:"""
 new = """    if False and not job.is_open() and job.cause is not None:
-        raise CratekitError(job.cause)"""
+        if job.state is JobState.CANCELLED:"""
 
 [[rows]]
 id = "J4_predicate_narrowed_to_failed"
@@ -50,9 +52,9 @@ description = "Narrow the closed predicate to FAILED alone, so a run stopped by 
 file = "src/cratekit/core/jobs.py"
 surface = "user"
 old = """    if not job.is_open() and job.cause is not None:
-        raise CratekitError(job.cause)"""
+        if job.state is JobState.CANCELLED:"""
 new = """    if job.state is JobState.FAILED and job.cause is not None:
-        raise CratekitError(job.cause)"""
+        if job.state is JobState.CANCELLED:"""
 
 [[rows]]
 id = "J5_causeless_block_returns"
@@ -60,14 +62,32 @@ description = "Return for a blocked job that records no reason, reading a missin
 file = "src/cratekit/core/jobs.py"
 surface = "user"
 old = """        if job.cause is None:
-            raise refuse(
-                "internal-error",
-                f"job {job.job_id} is blocked and records no reason for it","""
+            raise JobBlocked(
+                refuse("""
 new = """        if job.cause is None:
             return
-            raise refuse(
-                "internal-error",
-                f"job {job.job_id} is blocked and records no reason for it","""
+            raise JobBlocked(
+                refuse("""
+
+[[rows]]
+id = "J6_causeless_block_raises_the_plain_type"
+description = "Refuse a blocked job that records no reason as a plain error, so the envelope says failed over a row the job listing calls blocked"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = """        if job.cause is None:
+            raise JobBlocked(
+                refuse("""
+new = """        if job.cause is None:
+            raise CratekitError(
+                refuse("""
+
+[[rows]]
+id = "J7_cancelled_raises_the_plain_type"
+description = "Raise a plain CratekitError for a cancelled job, so a person who stopped a run is told it failed"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = """            raise JobCancelled(job.cause)"""
+new = """            raise CratekitError(job.cause)"""
 
 # ── The dispatcher ───────────────────────────────────────────────────────────
 
@@ -85,19 +105,60 @@ description = "Mark a parked job's envelope resumable, which sends a wrapper to 
 file = "src/cratekit/cli/__init__.py"
 surface = "user"
 old = """            resumable=resumable,
-            outcome=Outcome.BLOCKED if resumable or parked else Outcome.FAILED,"""
+            outcome=outcome,"""
 new = """            resumable=resumable or parked,
-            outcome=Outcome.BLOCKED if resumable or parked else Outcome.FAILED,"""
+            outcome=outcome,"""
 
-# ── The rebuild the review found ─────────────────────────────────────────────
+[[rows]]
+id = "D3_resumable_read_off_the_code_alone"
+description = "Derive resumable from the cause's code alone again, so a worker parking on a gate coded cause tells a wrapper the gate run can continue the job"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+old = """        resumable = cause.code in gates.GATE_CODES and not parked"""
+new = """        resumable = cause.code in gates.GATE_CODES"""
+
+[[rows]]
+id = "D4_cancelled_reads_failed"
+description = "Read the cancelled type as the failed outcome, which is what the dispatcher said before Outcome.CANCELLED had a producer"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+old = """            outcome = Outcome.CANCELLED"""
+new = """            outcome = Outcome.FAILED"""
+
+# ── The reworded refusal, its one owner and the two hops through it ──────────
 
 [[rows]]
 id = "R1_retag_rebuild_drops_the_type"
 description = "Rebuild the retag refusal as a plain CratekitError again, so a retag parked after correcting a file says failed"
 file = "src/cratekit/tagging/retag_cli.py"
 surface = "user"
-old = """    rebuilt = JobBlocked if isinstance(error, JobBlocked) else CratekitError"""
-new = """    rebuilt = CratekitError"""
+tests = ["tests/test_job_outcome.py", "tests/test_tag_workers.py"]
+old = """    return rebuilt(
+        error,
+        replace("""
+new = """    return CratekitError(
+        replace("""
+
+[[rows]]
+id = "R2_backup_rebuild_drops_the_type"
+description = "Rebuild the backup rehearsal refusal as a plain CratekitError again, so a rehearsal the worker parked says failed"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_backup_cli.py"]
+old = """    return rebuilt(
+        error,
+        replace("""
+new = """    return CratekitError(
+        replace("""
+
+[[rows]]
+id = "R3_the_owner_drops_the_type"
+description = "Make cause.rebuilt return the plain type for every input, so both hops drop the blocked bit at once with no hand written rebuild for the static guard to find"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_tag_workers.py", "tests/test_backup_cli.py"]
+old = """            return kind(cause)"""
+new = """            return CratekitError(cause)"""
 
 # ── The call, removed from each shell alone ──────────────────────────────────
 
@@ -174,24 +235,6 @@ old = """jobs.raise_for_state(job)"""
 new = """jobs.get  # the mapping call, removed"""
 
 [[rows]]
-id = "S09_analysis_call_removed"
-description = "Remove the one jobs.raise_for_state call from analysis/cli.py, so this shell reports a parked or half failed job and exits 0"
-file = "src/cratekit/analysis/cli.py"
-surface = "user"
-tests = ["tests/test_job_outcome.py"]
-old = """jobs.raise_for_state(job)"""
-new = """jobs.get  # the mapping call, removed"""
-
-[[rows]]
-id = "S10_vocals_call_removed"
-description = "Remove the one jobs.raise_for_state call from vocals/cli.py, so this shell reports a parked or half failed job and exits 0"
-file = "src/cratekit/vocals/cli.py"
-surface = "user"
-tests = ["tests/test_job_outcome.py"]
-old = """jobs.raise_for_state(job)"""
-new = """jobs.get  # the mapping call, removed"""
-
-[[rows]]
 id = "S11_tagging_shell_call_removed"
 description = "Remove the one jobs.raise_for_state call from tagging/shell.py, so this shell reports a parked or half failed job and exits 0"
 file = "src/cratekit/tagging/shell.py"
@@ -217,3 +260,15 @@ surface = "user"
 tests = ["tests/test_job_outcome.py", "tests/test_outbound_workers.py"]
 old = """jobs.raise_for_state(job)"""
 new = """jobs.get  # the mapping call, removed"""
+
+# ── Considered and not run ───────────────────────────────────────────────────
+
+[[dropped]]
+id = "S09_analysis_call_removed"
+description = "Remove the one jobs.raise_for_state call from analysis/cli.py"
+reason = "ranked below the cap: the same one line in the same shape as S05, S07 and S11, killed by the same parametrized population test, and the static guard reads this shell as well"
+
+[[dropped]]
+id = "S10_vocals_call_removed"
+description = "Remove the one jobs.raise_for_state call from vocals/cli.py"
+reason = "ranked below the cap: the same one line in the same shape as S05, S07 and S11, killed by the same parametrized population test, and the static guard reads this shell as well"
