@@ -70,6 +70,6 @@ plays the edit.
 
 ## How to check for it
 
-`git grep -n '\.parent' -- src/cratekit/core/restore.py` and, for each hit on a
+`git grep -n '\.parent' src/cratekit/core/restore.py` and, for each hit on a
 path that came out of a plan or a job, ask which check covered the parent. In
 this file the hits that mattered were the prune and the two staged replacements.
