@@ -89,7 +89,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime
-from typing import Any
+from typing import Any, NoReturn
 
 # ALIASED, because this package holds TWO modules called ``exit_codes`` and they
 # are different things, which is the note ``session.restore_cli`` writes for the
@@ -244,10 +244,11 @@ def _with_rehearsal_step(error: CratekitError, job) -> CratekitError:
     remedy token stays the failure's own, because retrying is still the first
     thing to do and this is context rather than a competing instruction.
 
-    A REAL RUN IS RETURNED UNCHANGED, object for object, so this cannot add a
+    A REAL RUN IS RETURNED UNCHANGED, OBJECT FOR OBJECT, so this cannot add a
     step to a refusal it has nothing to say about. Telling a person whose real
     backup failed that nothing was copied is false in the direction that stops
-    them looking for the half that was.
+    them looking for the half that was. :func:`_refuse` is what raises the
+    result, and the identity above is the thing it branches on.
     """
     if not _is_rehearsal(job):
         return error
@@ -261,6 +262,27 @@ def _with_rehearsal_step(error: CratekitError, job) -> CratekitError:
             ),
         )
     )
+
+
+def _refuse(error: CratekitError, job) -> NoReturn:
+    """Raise one refusal, carrying the rehearsal sentence when the job is one.
+
+    THE BRANCH IS WHAT THIS EXISTS FOR, and the first cut did not have it.
+    ``raise extended from error`` reads correctly and becomes ``raise error from
+    error`` on a real run, where :func:`_with_rehearsal_step` hands the same
+    object straight back. A cause that is its own ``__cause__`` truncates the
+    chain ``cause.classified`` walks, so a ``no-evidence`` refusal raised over a
+    permission error stopped classifying as ``path-permission-denied`` and told a
+    person to retry later instead of to grant access. ``retag_cli`` takes a bare
+    ``raise`` on exactly this branch and this follows it.
+
+    ``from error`` IS KEPT WHERE THE OBJECT REALLY CHANGED, because there the
+    extended refusal genuinely did come from the original and the chain says so.
+    """
+    extended = _with_rehearsal_step(error, job)
+    if extended is error:
+        raise error
+    raise extended from error
 
 
 def _reported(store, job) -> dict:
@@ -533,7 +555,7 @@ def backup_library(ctx) -> Envelope:
                     # rehearsal in which nothing ran leaves here rather than
                     # through the re-raise further down, and an advisory placed
                     # only there would miss exactly the run that copied least.
-                    raise _with_rehearsal_step(exc, job) from exc
+                    _refuse(exc, job)
                 job = jobs.get(store, job.job_id)
             # A JOB THAT ENDED BADLY IS NOT AN OK EXIT, and this is the only
             # place that can say so. ``jobs.drive`` raises only when EVERY
@@ -567,7 +589,7 @@ def backup_library(ctx) -> Envelope:
             # condition is how the two come to disagree about which one a run
             # met.
             if not job.is_open() and job.cause is not None:
-                raise _with_rehearsal_step(CratekitError(job.cause), job)
+                _refuse(CratekitError(job.cause), job)
             reported = _reported(store, job)
             # READ BACK HERE AND NOWHERE INSIDE THE ITEM. This is the same call
             # the work body deliberately does not make under the driver, and the
@@ -583,7 +605,20 @@ def backup_library(ctx) -> Envelope:
             # library reports a different file from the one this run wrote. The
             # envelope describes THIS job, so it answers from the configuration
             # this job ran against.
-            reported["ages"] = published_ages(jobs.frozen_config(job))
+            #
+            # AND ITS REFUSAL IS THE THIRD ONE THIS BRANCH CAN RAISE, which the
+            # first cut of this unit left outside the rehearsal word. Its message
+            # opens "the backup ran and the age it published cannot be read
+            # back", which frames the failure as an age a real transfer wrote,
+            # and over a rehearsal that frame is false in exactly the direction
+            # R-221 exists to close: nothing was published, so the file being
+            # unreadable is a corrupt file and not a lost record of this run. The
+            # step says which kind of run it was rather than a second wording of
+            # the condition.
+            try:
+                reported["ages"] = published_ages(jobs.frozen_config(job))
+            except CratekitError as exc:
+                _refuse(exc, job)
             # THE SHARE WARNING IS ASKED HERE AND NOT READ FROM THE ITEM. The work
             # body's report does not leave a claimed item (R-221), so the warning
             # the plan carries would reach nobody. It is a fact about the frozen

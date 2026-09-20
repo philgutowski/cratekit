@@ -49,7 +49,7 @@ from cratekit import cli
 from cratekit.backup import cli as backup_cli
 from cratekit.cli import output, registry
 from cratekit.core import backup_facts, binaries, config, jobs, profiles, session
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
 
@@ -2276,6 +2276,53 @@ def test_the_flag_on_the_envelope_is_the_jobs_own_and_not_the_command_lines(cfg,
     assert _rehearsal_said(resumed) == [], resumed
 
 
+def _assert_extended_not_rebuilt(rehearsed: dict, control: dict) -> None:
+    """The rehearsal's refusal is the real run's, field for field, plus one step.
+
+    THE ASSERTION THE FIRST CUT WAS MISSING, and its absence was measured: a
+    ``_with_rehearsal_step`` that hand-builds a plausible ``Cause`` instead of
+    replacing two fields of the one it was handed ran the whole suite green
+    while dropping ``retryable``, which follows the items (R-380) and decides
+    whether a person is told to retry a permanent failure, along with ``detail``
+    and ``scope``.
+
+    THE CONTROL IS THE SAME FAILURE WITHOUT THE REHEARSAL FLAG, rather than a
+    cause this file spells in its own words. That is the comparison a plausible
+    rebuild cannot satisfy, and it is the only one available on every exit: the
+    refusal a run leaves through is not always the cause the queue RECORDED,
+    because ``jobs.drive`` raises a fresh ``no-evidence`` over the failing item
+    whenever nothing was processed, while the half failed run leaves through the
+    recorded one. ``message`` is left out because both causes name their own job
+    identifier and the two identifiers differ.
+
+    The steps are compared as a PREFIX plus exactly one, so a rehearsal step
+    that replaced the failure's own steps fails as loudly as one that never
+    arrived.
+    """
+    for field in ("reason", "code", "retryable", "scope", "origin"):
+        assert rehearsed[field] == control[field], (
+            f"{field} moved between a rehearsal's refusal and the same failure's "
+            f"without the flag, so the cause was rebuilt rather than extended"
+        )
+    # ``job_id`` is dropped from BOTH sides and nothing else is: the two runs are
+    # two jobs, so that one key is the one thing that legitimately differs, and
+    # dropping the whole of ``detail`` would throw away the counts a rebuild is
+    # most likely to get wrong.
+    assert {k: v for k, v in rehearsed["detail"].items() if k != "job_id"} == {
+        k: v for k, v in control["detail"].items() if k != "job_id"
+    }, "detail moved, so the cause was rebuilt rather than extended"
+    assert rehearsed["remediation"]["remedy"] == control["remediation"]["remedy"], (
+        "the remedy token moved, and the rehearsal is context rather than a "
+        "competing instruction about what to do next"
+    )
+    steps = rehearsed["remediation"]["steps"]
+    kept = control["remediation"]["steps"]
+    assert steps[: len(kept)] == kept, (
+        "the rehearsal step replaced the failure's own steps instead of joining them"
+    )
+    assert len(steps) == len(kept) + 1
+
+
 def test_a_rehearsal_that_ended_badly_still_says_it_was_a_rehearsal(cfg, monkeypatch):
     """THE SECOND EXIT, and the one an advisory on the envelope never reaches.
 
@@ -2287,23 +2334,21 @@ def test_a_rehearsal_that_ended_badly_still_says_it_was_a_rehearsal(cfg, monkeyp
     whose rehearsal failed is owed the same word as one whose rehearsal
     succeeded, since neither run copied anything.
 
-    THE CAUSE IS EXTENDED AND NOT REBUILT, so the reason, the origin trail and
-    the retryable flag are asserted unchanged beside the added step.
+    THE CAUSE IS EXTENDED AND NOT REBUILT, measured against the SAME failure
+    driven without the flag rather than against a cause spelled here.
     """
     monkeypatch.setattr(backup, "subprocess_runner", _answering(1, stderr="refused"))
     _, queued = _drive(["backup", "run", "--dry-run"])
     code, refused = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    _, control_job = _drive(["backup", "run"])
+    _, control = _drive(["backup", "run", "--job", control_job["data"]["job_id"]])
 
     assert code != int(ExitCode.OK), refused
     cause = refused["cause"]
     steps = cause["remediation"]["steps"]
     assert any("copies nothing" in step for step in steps), refused
     assert cause["reason"] == "no-evidence", cause
-    assert cause["inner"] is not None, (
-        "the nested failing item's cause is gone, so the refusal was rebuilt "
-        "rather than extended and everything below it was lost"
-    )
-    assert cause["origin"], "the origin trail was shortened, so a hop re-created the cause"
+    _assert_extended_not_rebuilt(cause, control["cause"])
 
 
 def test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal(cfg, monkeypatch):
@@ -2323,6 +2368,9 @@ def test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal(cfg, monkeypat
     job_id = queued["data"]["job_id"]
 
     code, refused = _drive(["backup", "run", "--job", job_id])
+    _, control_job = _drive(["backup", "run"])
+    _, control = _drive(["backup", "run", "--job", control_job["data"]["job_id"]])
+
     assert code != int(ExitCode.OK), refused
     assert _item_states(job_id) == {"files": "done", "database": "failed"}, (
         "both items settled the same way, so this drove the exit the test above "
@@ -2330,6 +2378,117 @@ def test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal(cfg, monkeypat
     )
     steps = refused["cause"]["remediation"]["steps"]
     assert any("copies nothing" in step for step in steps), refused
+    assert refused["cause"]["reason"] == "backup-transfer-failed", refused
+    _assert_extended_not_rebuilt(refused["cause"], control["cause"])
+
+
+def test_an_unreadable_fact_file_under_a_rehearsal_says_which_kind_of_run_it_was(
+    cfg, rclone
+):
+    """THE THIRD REFUSING EXIT, which the first cut of this unit left uncovered.
+
+    The read back's own message opens "the backup ran and the age it published
+    cannot be read back", which frames the failure as a lost record of a real
+    transfer. Over a rehearsal nothing was published at all, so the frame is
+    false in the direction R-221 is about, and a person reads it as a backup
+    whose age went missing rather than as a corrupt file and a run that copied
+    nothing.
+
+    THE JOB SUCCEEDS AND THE COMMAND REFUSES, which is the position the read
+    back is in deliberately. Both halves of the pair corrupt the file AFTER the
+    job settled and ask again, rather than before the drive, so the two are the
+    same route with one difference. Corrupting first is not that route: for a
+    real run the engine's own publish reads the file before it writes, so every
+    item fails and this exit is never reached at all, which is the asymmetry
+    ``perform_backup`` states and the reason the read back sits out here.
+    """
+    _, queued = _drive(["backup", "run", "--dry-run"])
+    job_id = queued["data"]["job_id"]
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert set(_item_states(job_id).values()) == {"done"}, _item_states(job_id)
+
+    backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
+    backup_facts.path_for(cfg).write_bytes(b"{not json at all")
+    code, refused = _drive(["backup", "run", "--job", job_id])
+
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "backup-facts-unreadable", refused
+    steps = refused["cause"]["remediation"]["steps"]
+    assert any("copies nothing" in step for step in steps), refused
+
+
+def test_an_unreadable_fact_file_under_a_real_run_gains_no_rehearsal_step(cfg, rclone):
+    """The companion for the third exit, so the step cannot ride every refusal."""
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+
+    backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
+    backup_facts.path_for(cfg).write_bytes(b"{not json at all")
+    code, refused = _drive(["backup", "run", "--job", job_id])
+
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "backup-facts-unreadable", refused
+    steps = refused["cause"]["remediation"]["steps"]
+    assert not any("copies nothing" in step for step in steps), refused
+
+
+def test_a_refusal_this_verb_re_raises_is_never_its_own_cause(cfg):
+    """THE DEFECT THE FIRST CUT SHIPPED, guarded at the helper that raises.
+
+    ``raise _with_rehearsal_step(exc, job) from exc`` reads correctly and is
+    ``raise exc from exc`` whenever the job is a real run, because the helper
+    hands the same object straight back. A cause that is its own ``__cause__``
+    truncates the chain ``cause.classified`` walks, so a refusal raised over a
+    permission error stopped classifying as one and sent a person to retry later
+    instead of to grant access.
+
+    ASSERTED ON THE IDENTITY RATHER THAN ON A RENDERED REMEDY, because the
+    remedy that moves depends on which underlying error the chain happened to
+    carry, and the property is simply that nothing here ever points a refusal at
+    itself. Both jobs are driven through the helper: the real one takes the
+    pass-through branch and the rehearsal takes the extending one.
+    """
+    with jobs.open_store() as store:
+        real = jobs.enqueue(
+            store,
+            handler_key="backup.run",
+            payload=backup_cli.frozen_payload(False),
+            item_ids=backup_cli.backup_items(),
+            cfg=cfg,
+        )
+        rehearsal = jobs.enqueue(
+            store,
+            handler_key="backup.run",
+            payload=backup_cli.frozen_payload(True),
+            item_ids=backup_cli.backup_items(),
+            cfg=cfg,
+        )
+
+    for job, extended in ((real, False), (rehearsal, True)):
+        original = CratekitError(
+            Cause(
+                reason="backup-transfer-failed",
+                message="a transfer came back non zero",
+                remediation=Remediation(remedy=Remedy.RETRY_LATER),
+                origin=("backup", "cli"),
+            )
+        )
+        try:
+            backup_cli._refuse(original, job)
+        except CratekitError as raised:
+            assert raised.__cause__ is not raised, (
+                "the refusal is its own cause, so the declared chain ends here "
+                "and everything under it stops being classified"
+            )
+            assert (raised is not original) is extended, (
+                "the extending branch and the pass-through branch answered the "
+                "same way, so one of them is not doing its job"
+            )
+        else:  # pragma: no cover - the helper's whole contract is to raise
+            pytest.fail("_refuse returned instead of raising")
 
 
 def test_a_real_backup_that_ended_badly_gains_no_rehearsal_step(cfg, monkeypatch):
