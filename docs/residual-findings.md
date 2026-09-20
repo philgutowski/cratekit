@@ -7956,13 +7956,61 @@ not classified at all, so a read only volume was sent to Full Disk Access; and a
 kernel refusal with no path was claimed as a path, producing "grant access to the
 path named below" with nothing below it.
 
-**4. `secrets.exists` answers False for a presence index it could not read.**
-`_index_read` catches `OSError` and `ValueError` alike and returns an empty set,
-so an index this account cannot open reads as "nothing recorded". It errs toward
-a FAIL that tells the user to record a credential the keychain may already hold,
-which is the loop R-116 measured, reachable from a permission rather than from a
-race. **Closes when:** the reader tells a missing index from an unreadable one
-and doctor says which it saw.
+**4. `secrets.exists` answers False for a presence index it could not read.
+CLOSED 2026-09-20, on `relay/171`.** ~~`_index_read` catches `OSError` and
+`ValueError` alike and returns an empty set, so an index this account cannot open
+reads as "nothing recorded". It errs toward a FAIL that tells the user to record a
+credential the keychain may already hold, which is the loop R-116 measured,
+reachable from a permission rather than from a race.~~
+
+**The cost was driven before it was fixed.** With a credential in the keychain and
+its index unreadable, doctor answered `credential.provider` FAIL, "not recorded
+(provider-session), and this profile switches on a verb that spends it. Recording
+it before the run is the difference between a refusal now and a refusal after the
+first paid call", remedy `authenticate-provider`. Every word of that is false
+about the machine it was written on, and the act it names cannot move the file
+that refused, so the loop has no exit.
+
+**How it is closed.** `_index_read` answers three ways. `FileNotFoundError` alone
+still means nothing recorded, because a fresh installation has no index and
+refusing there would mean the product could not be set up at all. Any other
+`OSError` raises a structured refusal naming the file, raised `from` the original
+so `cause.classified` turns a permission into `path-permission-denied` with
+`grant-path-access`, which is item 3's machinery doing the work item 3 bought it
+for. Bytes that are not JSON, or a payload whose `recorded` key is not a list of
+names, raise the same slug with a different sentence and keep
+`repair-credential-store`, because nothing an operating system did explains it.
+`cause.REASONS` declares `credential-index-unreadable` on the reserved
+`PRECONDITION` code.
+
+**A structured refusal rather than `CredentialIndexUnusable`**, which is the
+sibling type the lock raises. That type is converted at both call sites that take
+the lock. The read has five call sites and a handler at none of them, so a bare
+exception would reach the dispatcher's unstructured blanket and come out as
+`internal-error` with "report this defect" for the damaged case, over a person's
+own state directory, which is the shape this entry's item 3 spent four rounds
+closing.
+
+**The write half mattered more than the read.** `_record_name` reads the existing
+names and writes them back with one added, so an empty answer from a read that
+failed rewrote the whole index down to a single name. One unreadable read became a
+permanent false report about the credentials nobody had asked about.
+
+**And the sentence about the two stores is the caller's, which the code review
+caught.** The reader is entered from a plain read, from the middle of a record and
+from the start of a remove, and those leave the keychain in three different
+states. One sentence for all three was wrong twice: `_record_name` runs only after
+`keyring.set_password` and its read back have both succeeded, so a refusal there
+was telling a person nothing had been stored over a value that had landed, and the
+act they would then take, recording it again, cannot move the file that refused.
+Three declared constants now, one per position in the cycle, the same shape
+`_index_locked` already uses for its `action`.
+
+**What is left open here is only the doctor half's granularity**, recorded as
+R-579: a wizard note for a DAMAGED index carries no `cause`, because only the
+permission case synthesizes one in `Finding.__post_init__`, so the envelope
+reports `doctor-check-failed` rather than the slug. The code is `PRECONDITION`
+either way and the message and remedy are the right ones.
 
 **5. Two answers from R-117 still claim more than they observed.**
 `library.db_containment` infers an atomic rename from pure path containment, and
@@ -23344,3 +23392,71 @@ changed. No mechanism is offered, because none was measured.
 
 **Cost:** maintainer facing, a red run that a rerun clears. **Closes when:** the
 mechanism is found, or it is not seen again across a phase.
+
+---
+
+## R-578. The recognition spend ledger reads a counter it could not open as zero
+
+**Found:** on `relay/171`, 2026-09-20, by the sweep the fifth pattern requires
+after closing item 4 of R-118. That item's shape, one file over.
+
+`acrcloud.Ledger._read` catches `OSError` and `ValueError` together and returns
+an empty mapping, so a monthly counter this account cannot open reads as "nothing
+spent this month". The module's own docstring argues the read half deliberately:
+"a ledger that cannot be READ counts as zero rather than refusing, because a
+corrupt counter must not lock recognition out". That argument holds today, and it
+holds only because `Budget.monthly` is `None` in every shipped path, so
+`assert_within` checks the per run cap alone and an unreadable ledger cannot lift
+a bound nobody can configure. The docstring says as much: "today nothing
+configures one, so it counts and does not refuse".
+
+**Two things are worth recording rather than fixing here.** The first is that the
+argument expires the day a monthly bound is configurable, and the expiry is
+silent: a counter nobody could open reads as a month with no spend, and the run
+proceeds to pay. The second is the WRITE half, which the docstring does not
+cover. `Ledger.record` calls the same `_read` under the lock and writes the result
+back, so an unreadable ledger there erases every month it holds and rebuilds the
+file from this one run's calls. That is exactly the truncation `_record_name` was
+doing in the credential index, and unlike the read it is not a safe direction: the
+counter the docstring calls advisory becomes advisory about one run.
+
+**Cost:** none measurable today, because no monthly bound is reachable. Latent and
+maintainer facing until one is.
+
+**Closes when:** a monthly bound becomes configurable, at which point the read
+half needs the three-state distinction the credential index now has, or the record
+half stops rebuilding the file from a read that failed, whichever comes first.
+
+**Not fixed here on purpose.** It is outside the entry this unit closes, the
+reachable cost is zero today, and the read half is a decision the owning module
+argued in writing rather than an oversight. A unit that changes it should change
+the docstring's argument in the same commit.
+
+---
+
+## R-579. A wizard note for a damaged credential index carries no cause
+
+**Found:** on `relay/171`, 2026-09-20, by the code review of the fix for item 4 of
+R-118. Raised by the reviewer as a thing worth knowing rather than as a defect,
+and it is recorded at that weight.
+
+`doctor.Finding.__post_init__` synthesizes a `cause` for a failing finding only
+when `access_refusal` recognises the exception it carries, which means only when
+an operating system refused. The setup wizard's two new legs pass the exception,
+so an index refused for a PERMISSION gets `path-permission-denied` in the
+envelope. A DAMAGED index carries no `OSError` at all, so nothing is synthesized,
+and `failure_cause` reports the run under `doctor-check-failed`.
+
+**Cost:** the exit code is `PRECONDITION` either way, and the message and the
+remedy a person reads are the right ones. What is lost is the slug a machine
+consumer would branch on, for one of the two states of one check.
+
+**Why it was not fixed here:** `wizard.note` has no `cause` parameter, so closing
+it means either widening that signature for every note in the wizard or teaching
+`Finding` to lift a cause off a `CratekitError` it is handed. The second is the
+better change and it is a decision about `doctor.Finding`'s contract rather than
+about this unit.
+
+**Closes when:** `Finding` lifts the declared cause off a `CratekitError` in
+`error`, the way `__post_init__` already lifts one off an access refusal, or a
+consumer needs to tell the two index states apart from the envelope.
