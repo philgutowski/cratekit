@@ -1545,8 +1545,10 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # U40. Same convention as tag.folder: a folder under the CONFIGURED
         # library. It is empty here, so the selection is empty and the confirm
         # gate is asked against the digest of a plan with nothing in it, which is
-        # still a plan a person can abort. Queueing needs no database, which is
-        # what lets a verb declaring db_metadata exit OK on this fixture.
+        # still a plan a person can abort. This verb opens no database on any
+        # path, which is why it declares no database write surface and no cloud
+        # sync decision: the entry claimed db_metadata until R-246 narrowed it to
+        # files, after the row relink that has no caller in src.
         "tag.retag": [str(library / "Music")],
         # U43. The anchor is a path under the CONFIGURED library, for the R1
         # reason every file verb above gives, and it is deliberately absent, so

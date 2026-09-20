@@ -987,12 +987,26 @@ ENTRIES: tuple[Entry, ...] = (
         long_running=True,
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        #: Both surfaces. The file's genre tag is rewritten through
-        #: ``core.tags.write_genre`` and the row's ``GenreID`` is relinked through
-        #: ``write.metadata.plan_genre_retag`` under the ``RETAG_GENRE`` policy,
-        #: which owns that column outright because this pass runs only over values
-        #: the taxonomy declares unusable as a final tag.
-        writes=frozenset({"files", "db_metadata"}),
+        #: ONE SURFACE, THE FILE, AND THE NARROWING IS THE FIX FOR R-246. This
+        #: entry declared ``db_metadata`` as well, after the row's ``GenreID``
+        #: relink that ``write.metadata.plan_genre_retag`` performs under the
+        #: ``RETAG_GENRE`` policy. Nothing in ``src`` calls it:
+        #: ``tagging.retag.plan_library`` and ``tagging.retag.apply_library``
+        #: are named by their own module and by nothing else, which
+        #: ``tests/test_tag_workers.py`` pins by walking the tree. So the verb
+        #: rewrites the genre through ``core.tags.write_genre`` and stops, and a
+        #: person who read the declaration was promised a write that never
+        #: happened. The deferral itself is R-185 and is still open; what closes
+        #: with this line is the claim about it. The verb now ends by naming the
+        #: reload that brings the row back into agreement, see
+        #: ``tagging.retag_cli.library_row_warning``.
+        #:
+        #: NO CLOUD SYNC DECISION EITHER, and that follows rather than being a
+        #: second judgement. That gate binds to WRITE INTENT on the guarded
+        #: writer, this verb opens no database at all, and the conformance suite
+        #: refuses a declared decision a verb cannot reach in both directions.
+        #: ``name.apply`` is the same shape already landed, for R-165.
+        writes=frozenset({"files"}),
         adjudicates=True,
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
@@ -1012,7 +1026,6 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True,
                 digest_source="plan",
             ),
-            CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     Entry(

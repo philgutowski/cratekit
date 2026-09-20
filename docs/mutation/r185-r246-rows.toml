@@ -1,0 +1,217 @@
+name = "r185-r246-author"
+pass_kind = "light"
+
+# Scoped to this round's own diff, the narrowed declaration and the reload the
+# verb now names, plus a fixed sample of the verb's existing guards. The unit
+# writes files, so every row below has a USER facing surface unless it says
+# otherwise, and every zero on one owes a composite.
+
+# ── The declaration, which is R-246's whole subject ──────────────────────────
+
+[[rows]]
+id = "D1_writes_reclaims_the_database"
+description = "Put db_metadata back among tag.retag's write surfaces, so the entry reclaims a write no caller performs"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+old = '''        writes=frozenset({"files"}),
+        adjudicates=True,'''
+new = '''        writes=frozenset({"files", "db_metadata"}),
+        adjudicates=True,'''
+
+[[rows]]
+id = "D2_cloud_gate_restored"
+description = "Declare the cloud sync decision on a verb that opens no database, the half the contract suite calls spurious"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+old = '''                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
+        name="name.apply",'''
+new = '''                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
+    Entry(
+        name="name.apply",'''
+
+# ── The act a person takes, on each of the three endings ─────────────────────
+
+[[rows]]
+id = "W1_queue_warning_dropped"
+description = "The queueing envelope stops naming the reload, so the person walks away told nothing"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            warnings=(library_row_warning(folder),),
+'''
+new = ""
+
+[[rows]]
+id = "W2_resume_warning_dropped"
+description = "A successful resume stops naming the reload"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''        if summary["corrected"]:
+            warnings = (*warnings, library_row_warning(folder))
+'''
+new = ""
+
+[[rows]]
+id = "W3_resume_warning_unconditional"
+description = "Name the reload on every resume, including one that corrected nothing and made no row stale"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''        if summary["corrected"]:
+            warnings = (*warnings, library_row_warning(folder))'''
+new = '''        warnings = (*warnings, library_row_warning(folder))'''
+
+[[rows]]
+id = "W4_refusal_step_dropped"
+description = "A half corrected sweep leaves through its cause with nothing said about the rows it made stale"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''        try:
+            job, warnings = shell.advance(
+                ctx,
+                store,
+                queued,
+                origin=("tagging", "retag_cli"),
+                nothing_to_run="report a correction over files it never looked at",
+            )
+        except CratekitError as failed:
+            # THE REFUSAL CARRIES THE RELOAD WHEN ANYTHING WAS CORRECTED. The
+            # artifacts are committed per item before the failure, so this
+            # counts what actually landed rather than what was confirmed, and a
+            # sweep that refused on its first item adds nothing to a refusal it
+            # has no reload to name. See ``with_reload_step``.
+            if not _summary(cfg, ctx.args.job)["corrected"]:
+                raise
+            raise with_reload_step(failed, folder) from failed'''
+new = '''        job, warnings = shell.advance(
+            ctx,
+            store,
+            queued,
+            origin=("tagging", "retag_cli"),
+            nothing_to_run="report a correction over files it never looked at",
+        )'''
+
+[[rows]]
+id = "W5_refusal_step_unconditional"
+description = "Append the reload to every refusal, including one that corrected nothing"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            if not _summary(cfg, ctx.args.job)["corrected"]:
+                raise
+            raise with_reload_step(failed, folder) from failed'''
+new = '''            raise with_reload_step(failed, folder) from failed'''
+
+[[rows]]
+id = "W6_refusal_counts_the_plan"
+description = "Count the confirmed items instead of the committed artifacts, so a sweep that wrote nothing still reports a correction"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            if not _summary(cfg, ctx.args.job)["corrected"]:
+                raise'''
+new = '''            if not payload.get(ITEMS_KEY):
+                raise'''
+
+# ── What the message has to carry to be actable ──────────────────────────────
+
+[[rows]]
+id = "M1_folder_dropped"
+description = "Drop the folder from the instruction, so a person reading one envelope beside others cannot tell which sweep it names"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            f"this correction writes the genre onto the files under {folder} and "
+            f"does not update the library rows, which go on carrying the old "'''
+new = '''            f"this correction writes the genre onto the files it selected and "
+            f"does not update the library rows, which go on carrying the old "'''
+
+[[rows]]
+id = "M2_act_dropped"
+description = "Reword the instruction to announce the disagreement and name no act, which is the printed instruction shape the product refuses"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            f"value, because this build writes the file half only; select that "
+            f"folder in rekordbox and reload its tags so the rows catch up"'''
+new = '''            f"value, because this build writes the file half only, so the files "
+            f"and the library disagree about the genre until something fixes it"'''
+
+[[rows]]
+id = "M3_cause_rebuilt_losing_the_trail"
+description = "Rebuild the cause in with_reload_step instead of replacing two fields, which shortens the origin trail"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''    return CratekitError(
+        replace(
+            cause,
+            remediation=replace(
+                cause.remediation, steps=(*cause.remediation.steps, reload_step)
+            ),
+        )
+    )'''
+new = '''    return CratekitError(
+        Cause(
+            reason=cause.reason,
+            message=cause.message,
+            remediation=replace(
+                cause.remediation, steps=(*cause.remediation.steps, reload_step)
+            ),
+            origin=("tagging", "retag_cli"),
+        )
+    )'''
+
+# ── A fixed sample of the verb's existing guards ─────────────────────────────
+
+[[rows]]
+id = "E1_plan_gate_by_position"
+description = "Index gates[0] instead of searching by digest source, the guard the repaired case in test_genre_retag.py measures"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''    for spec in ctx.entry.gates:
+        if spec.digest_source == PLAN:
+            return spec'''
+new = '''    for spec in ctx.entry.gates[:1]:
+        return spec'''
+
+[[rows]]
+id = "E2_resume_digests_a_fresh_walk"
+description = "Digest the folder as it now stands rather than the frozen rows, which is KTD8's permanent stall"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''            digest=digest_for(
+                str(payload.get(FOLDER_KEY) or ""),
+                [dict(row) for row in payload.get(ITEMS_KEY) or ()],
+            ),'''
+new = '''            digest=plan_for(
+                str(payload.get(FOLDER_KEY) or ""), taxonomy.default_taxonomy()
+            )["digest"],'''
+
+[[rows]]
+id = "E3_empty_plan_queues_anyway"
+description = "Queue a job over an empty selection, which core.jobs drives straight to SUCCEEDED over a folder nothing touched"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+old = '''    if not plan["items"]:
+        payload, warnings = ('''
+new = '''    if False:
+        payload, warnings = ('''
+
+[[dropped]]
+id = "X1_pending_kind_for_the_reload"
+description = "Make the warning a PendingHumanAction instead"
+reason = "not a mutation of a guard this round added, it is the design fork the round decided against and recorded as R-567. Reverting it would measure a verb this branch never built."
+
+[[dropped]]
+id = "X2_doctor_checks_narrowed"
+description = "Drop rekordbox.pins from the entry now that no database is opened"
+reason = "ranked below the cap and out of this unit's scope: R-246 names the writes set alone, name.apply is the landed precedent for keeping the check after the same narrowing, and doctor.requires_check is an any() across every entry so nothing observable moves. Recorded as R-568."
+
+[[dropped]]
+id = "X3_summary_reasons_zero_filled"
+description = "Drop the zero fill from REASONS so the summary lists only the reasons it saw"
+reason = "an existing guard of U40's rather than this round's, and it is already measured in that unit's table. Ranked below the three existing guards above it, which are the ones this round's new code sits directly on."

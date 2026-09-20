@@ -5453,7 +5453,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # key half does not move. The verb's own new spellings are single words,
     # collides and incomplete, and a word with no hyphen never enters this
     # population.
-    assert (len(literals), len(literals - set(causes))) == (465, 297), (
+    # Re-pinned on the residual finding "The file write and the database plan
+    # are two acts with nothing spanning them", 2026-09-20: 465 to 466 distinct,
+    # 297 to 298 non-keys. ONE literal joined and NOTHING left, differenced as
+    # SETS by repointing this module's PACKAGE_ROOT at main's own src tree
+    # extracted into a scratch directory, rather than inferred from the total
+    # moving by one. It is library-row-not-updated in `tagging/retag_cli.py`,
+    # and it is not a cause: it is the WARNING code a retag carries to name the
+    # reload that brings the library rows back into agreement with the files it
+    # corrected, the same kind of literal as db-metadata-not-written beside it.
+    # Nothing refuses with it, so the cause population does not move.
+    assert (len(literals), len(literals - set(causes))) == (466, 298), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

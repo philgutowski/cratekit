@@ -10532,6 +10532,28 @@ register; it needs a caller that reads those. Recorded here rather than by
 rewriting the condition, because the condition is still what closes this and the
 artifact is only how.
 
+**NARROWED 2026-09-20, and the closing condition does not move.** Two acts with
+nothing spanning them is still the shape, and a caller for the database half is
+still what closes it. What changed is that the person is no longer the part of
+the system that is uninformed. The verb names the act that reconciles the two,
+reload the folder's tags in rekordbox, on all three of its endings: the queueing
+envelope they read in the terminal before walking away, a successful resume when
+the committed artifacts say a file was corrected, and the refusal a half
+corrected sweep leaves through.
+
+**That third ending is the one worth recording, because it was missed on the
+first pass and is the ending this entry is actually about.** R-225 sends a job
+that closed carrying a cause out through that cause rather than through a normal
+envelope, so a warning attached to the resume's envelope reaches every run except
+the interrupted one, whose files have stale rows exactly as a finished sweep's
+do. The refusal now carries the reload among its remediation steps, gated on the
+same artifact count, and the cause is extended rather than rebuilt so the origin
+trail is not shortened on its way out. The general form of that trap is filed in
+`docs/solutions/`.
+
+The registry no longer claims the surface either. That half is R-246 and is
+closed. Nothing about the deferral changed with it.
+
 ## R-186. The genre lookup defaults the soft-delete marker, and U40 is what gave it a caller
 
 **Found by** U40's first-caller sweep of `write/metadata`, 2026-08-26, and filed
@@ -12976,6 +12998,22 @@ deferred half rather than a change to this unit's writes.
 **Closes when:** the database half has a caller, or the registry entry stops
 claiming `db_metadata`.
 
+**CLOSED 2026-09-20 on the second branch, and the first is still open.** The
+`tag.retag` entry declares `writes=frozenset({"files"})`. The database half still
+has no caller, which is R-185 and is untouched; what is repaired is the claim
+about it, so the registry and the shipped path now say the same thing. The cloud
+sync decision came off the entry in the same edit, and that was forced rather
+than chosen: `tests/test_cli_contract.py` refuses a verb declaring a decision its
+work cannot reach, and that gate binds to write intent on the guarded writer,
+which this verb never acquires because it opens no database on any path.
+`name.apply` is the same shape already landed, for R-165, and it is the precedent
+this followed down to keeping `rekordbox.pins` (R-568).
+
+The verb also ends by naming the act that settles the disagreement, reload the
+folder's tags in rekordbox, on all three of its endings. That is not what closed
+this entry, and it is recorded here so a later reader does not mistake an
+instruction for a write.
+
 ---
 
 ## R-247. An unmapped source genre has nowhere to become an alias
@@ -13945,6 +13983,20 @@ bound for.
 
 **Closes when:** a re-rate lands beside the restamp and the warning goes, or
 the declaration narrows to `files` and drops the database preconditions.
+
+**Still open, and its sibling took the second branch on 2026-09-20.** R-246 is
+this finding on `tag.retag`, and it closed by narrowing `writes` to `files` and
+dropping the cloud sync gate that went with it. The fifth-pattern sweep that
+found this reads `write/metadata.py` for functions no other module names, and it
+returns exactly three: `plan_title_padding`, whose verb `name.apply` narrowed
+long ago for R-165, `plan_genre_retag`, reachable only through the two
+`tagging/retag.py` entry points that R-185 says have no caller, and
+`plan_rating_backfill`, which is this entry and is the one member of the class
+still declared. So the class is three, two are now narrowed and one is not, and
+that is a decision about the re-rate rather than an oversight. The narrowing here
+also has to drop `CLOUD_SYNC_UNREADABLE_GATE`, which `analyze.restamp` declares
+as its only gate, since the conformance suite refuses a decision a verb cannot
+reach in both directions.
 
 ---
 
@@ -22943,3 +22995,95 @@ reproduces and is fixed, or enough clean runs accumulate to write the observatio
 off. The pool sizing one should be measured against machine load explicitly,
 since a real memory probe racing the allocator is a timing assertion wearing a
 size assertion's clothes.
+
+---
+
+## R-567. The reload the retag now names is an instruction nothing can verify
+
+**Found:** while closing R-246, 2026-09-20. Driven.
+
+`tag.retag` ends by telling a person to reload the folder's tags in rekordbox,
+because the database half of the verb has no caller and the library rows keep the
+genre the files no longer carry. It is a WARNING on the envelope and a step on
+the refusal, deliberately, rather than the `pending_human_action` field the
+product already has for exactly this shape. That field takes a mandatory
+`verify_verb` naming a registered verb that proves the act was done, and its
+`blocks` list is what turns it from advice into a state.
+
+**Measured cost.** A person who reads the instruction and does nothing is never
+asked again, and no verb reports the folder as outstanding. It is the eleven
+printed instructions the source system lives with, on one more surface.
+
+**Why it is not fixed here, and the reason is not effort.** There is no honest
+`verify_verb` to name. Nothing in this build reads a library row's `GenreID`
+back, and a second retag over the folder cannot stand in for one: the corrected
+file carries a specific genre, so the selection skips it and the run reports the
+same clean zero whether the reload happened or not. Naming a verb that answers
+the same way in both worlds would make the field say something false about
+having been verified, which is worse than the warning it replaced. Driven on the
+two flavours of that check, a rerun over a corrected folder and the refusal's own
+retry, and neither distinguishes the states.
+
+**Closes when:** a verb can read the row's genre back, which is the same reader
+the database half of R-185 needs, or the pending action gains a kind whose proof
+is a person's own acknowledgement rather than a verb.
+
+---
+
+## R-568. The retag declares two database preconditions while opening no database
+
+**Found:** while closing R-246, 2026-09-20. Driven.
+
+The `tag.retag` entry keeps `doctor_checks=("library.mounted", "rekordbox.pins")`
+after its write surface narrowed to `files`. The pin check is about a binding
+that drifts on every database open, read or write, and this verb performs none:
+the plan walks a folder, the worker reads and writes file tags and the review
+store, and nothing in either path opens rekordbox.
+
+**Measured cost. NONE observable, and it was measured rather than argued.**
+`doctor.requires_check` is an `any()` across every registry entry rather than a
+per verb lookup, and `repair.paths`, the other verb in the same `repair` module,
+declares `rekordbox.pins` too, so a profile that switches this verb on requires
+the check either way and the health report does not move. Nothing else in `src`
+reads `doctor_checks`.
+
+**Why it is not fixed here.** R-246 names the `writes` set and nothing else, and
+`name.apply` is the landed precedent for exactly this: it narrowed to `files` for
+R-165 and kept both checks. Changing one of the pair and not the other would put
+two verbs of one shape into two states with no recorded reason. R-275's closing
+condition asks for "drops the database preconditions" as part of its own
+narrowing, so the question is already owned there.
+
+**Closes when:** the precondition set is decided for the whole class of file only
+verbs at once, or this verb gains the database half and needs both checks again.
+
+---
+
+## R-569. The queueing envelope names the reload before anything is corrected
+
+**Found:** at the review of the R-246 fix, 2026-09-20. Driven.
+
+The reload instruction rides three endings. Two are measurements of what ran, a
+successful resume and a refusal, and both are gated on the count of committed
+artifacts that recorded a write. The third is the queueing envelope, and it is
+unconditional, because it is emitted before the detached child has looked at a
+single file.
+
+**Measured cost.** A confirmed sweep whose every answer is declined or refused
+corrects nothing and makes no row stale, and the person was already told to go
+and reload the folder. Driven: a folder whose searcher answers nothing queues,
+carries the instruction, and the resume then correctly carries none. The wording
+was changed at the review so it states what the verb does and does not write
+rather than reporting a correction as having happened, so nothing false is said;
+what is left is advice that may not apply.
+
+**Why it is not fixed here.** The alternative is silence at the moment the person
+is reading, since the queueing envelope is what comes back in the terminal and
+the resume's goes to a log the run they walked away from writes. Sending somebody
+to a folder that turned out not to need it is a smaller cost than leaving a
+finished sweep unreconciled, and the choice between them is a product question
+about which envelope a person is assumed to read.
+
+**Closes when:** the resume's envelope reaches the person who typed the command,
+or the queueing envelope can predict that a sweep will write nothing, which is
+the lookup itself and is the work the gate exists to defer.
