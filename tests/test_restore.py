@@ -2010,15 +2010,35 @@ def test_u95_a_bare_metal_session_plans_and_runs_entirely_under_its_target(cfg, 
     assert _tree_bytes(cfg.library.root) == library_before
 
 
+def _effects(decided) -> set:
+    return {
+        (marker.identity, marker.effect)
+        for marker in decided.markers
+        if marker.kind is reconcile.Kind.EFFECT
+    }
+
+
 def test_u95_a_bare_metal_plan_is_the_library_plan_moved_and_nothing_else(cfg, tmp_path):
-    """Same steps, same order, same relative positions: only the root differs."""
-    write_state(cfg, "label_watermarks", {"source": "before"})
+    """Same steps, same order, same relative positions, AND THE SAME DECISIONS.
+
+    The steps are half of a plan. The other half is what it decided the restore
+    cannot undo, which is read out of the capture by composing paths from the
+    manifest's own ``root``. The window here holds one watermark that did NOT
+    move and one tombstone store that was written, so the right answer is exactly
+    one effect. A manifest root left naming the dead volume finds no captured
+    watermark there, reads that as "did not exist", and invents a second. The
+    configured root is stripped of its state before the bare-metal plan, so that
+    composition cannot be rescued by a twin.
+    """
+    write_state(cfg, "label_watermarks", {"source": "2026-07-01"})
     record, captured = completed_session(cfg)
+    write_state(cfg, "tombstones", {"version": 1, "store": "tombstones", "decisions": []})
     replacement = _recovered_onto(cfg, tmp_path / "replacement")
 
     acknowledge(cfg)
     with restore.recovery_session(cfg, **gate_seams(cfg)) as library_session:
         at_home = restore.plan(cfg, record.session_id, held=library_session)
+    shutil.rmtree(config.library_state_dir(cfg))
     with _bare_metal(cfg, replacement) as bare_metal:
         moved = restore.plan(cfg, record.session_id, held=bare_metal)
 
@@ -2026,6 +2046,10 @@ def test_u95_a_bare_metal_plan_is_the_library_plan_moved_and_nothing_else(cfg, t
     assert _rendered(moved, library=replacement, capture=moved_capture) == _rendered(
         at_home, library=cfg.library.root, capture=captured.root
     )
+    assert _effects(at_home) == {("tombstones", config.RollbackEffect.TRASHED_FILE)}
+    assert _effects(moved) == _effects(at_home)
+    assert moved.unconverged == at_home.unconverged
+    assert moved.discarded_sessions == at_home.discarded_sessions
 
 
 def test_u95_a_bare_metal_plan_never_reads_the_capture_the_refused_library_holds(
