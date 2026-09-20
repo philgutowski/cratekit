@@ -92,12 +92,16 @@ at an even stride over the sorted walk, so the same library gives the same sampl
 every time and a big library costs no more than a small one. The vocal half reads
 a tag per file, which is cheap, so it reads every track under the walk.
 
-Any folder that is not the library root walked recursively fails the
-`calibrate.sample` check and nothing is measured or written. `--accept-partial`
-fits over it anyway, for a library you keep somewhere the configuration does not
-name or a deliberate fit over one folder, and the answer then carries a warning
-saying whose scale the numbers are on. A folder that is a symbolic link is not
-walked, and the answer says which ones were left alone.
+Only the library root, or the music folder under it, walked recursively counts
+as the library. Anything else fails the `calibrate.sample` check and nothing is
+measured or written. So does a walk that had to leave a folder out, a genre
+folder that is a symbolic link or one the account cannot read, because that is a
+fit over a library missing a genre. `--accept-partial` fits over what was walked
+anyway, and the answer then carries a warning saying whose scale the numbers are
+on, and the file records it. Both files are ALWAYS written under the configured
+library root, whatever folder was fitted over, so do not use the flag to
+calibrate some other library: it would overwrite this one's calibration with
+that one's numbers.
 
 The report comes back as a list of checks, each with its own status and its own
 detail, and a check that has not got what it needs says so in its own row

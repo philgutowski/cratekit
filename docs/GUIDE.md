@@ -480,10 +480,11 @@ that resume is keyed to the filename.
 
 `analyze calibrate` takes `--recursive` too, and for it the flag is not a
 convenience. A calibration describes the whole library, so the verb fits only
-over the library root walked recursively, `crate analyze calibrate ROOT
---recursive`, and any other folder fails its `calibrate.sample` check with
-nothing measured and nothing written. `--accept-partial` fits over that folder
-anyway and warns that the numbers are on its scale. The energy half measures an
+over the library root, or the music folder under it, walked recursively,
+`crate analyze calibrate ROOT --recursive`. Any other folder fails its
+`calibrate.sample` check with nothing measured and nothing written, and so does
+a walk that had to leave out a linked or unreadable folder. `--accept-partial`
+fits over what was walked anyway and warns that the numbers are on its scale. The energy half measures an
 even stride sample of the walk, 500 tracks unless `--sample N` says otherwise,
 so the same library gives the same fit twice. The vocal cut reads every tagged
 track.

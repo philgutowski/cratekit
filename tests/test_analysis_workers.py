@@ -1451,9 +1451,19 @@ def test_calibrate_with_no_folder_measures_nothing(cfg):
 
 
 def test_calibrate_over_an_empty_folder_is_a_failed_check_not_a_traceback(cfg, folder):
-    code, envelope = drive(["analyze", "calibrate", str(folder)])
+    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
     assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["checks"][0]["status"] == "failed"
+    (check,) = envelope["data"]["checks"]
+    assert check["key"] == "calibrate.folder" and check["status"] == "failed"
+    assert "holds no audio files" in check["detail"]
+
+
+def test_calibrate_over_a_folder_that_is_not_there_says_that_and_not_empty(cfg, tmp_path):
+    code, envelope = drive(["analyze", "calibrate", str(tmp_path / "nowhere")])
+    assert code == int(ExitCode.OK), envelope
+    (check,) = envelope["data"]["checks"]
+    assert check["key"] == "calibrate.folder" and check["status"] == "failed"
+    assert "is not a folder on this machine" in check["detail"]
 
 
 def test_calibrate_without_the_extra_refuses_rather_than_fitting_over_nothing(
@@ -1461,7 +1471,7 @@ def test_calibrate_without_the_extra_refuses_rather_than_fitting_over_nothing(
 ):
     place(folder, silence, "a")
     monkeypatch.setattr(detect, "heavy_available", lambda: False)
-    code, envelope = drive(["analyze", "calibrate", str(folder)])
+    code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
     assert code == int(ExitCode.MODULE_UNAVAILABLE), envelope
     assert energy.load_calibration(cfg) is None
 
@@ -2178,11 +2188,65 @@ def test_the_root_read_one_level_deep_is_partial_and_names_the_flag(cfg, silence
 
 def test_a_recursive_walk_of_one_genre_is_still_one_genre(cfg, silence, monkeypatch):
     root, seen = genre_tree(cfg, silence, monkeypatch, per_folder=12)
-    code, envelope = drive(["analyze", "calibrate", str(root / "Music"), "--recursive"])
+    house = root / "Music" / "House"
+    code, envelope = drive(["analyze", "calibrate", str(house), "--recursive"])
     assert code == int(ExitCode.OK), envelope
     (check,) = envelope["data"]["checks"]
     assert check["status"] == "failed" and "is not the library root" in check["detail"]
     assert seen == [] and energy.load_calibration(cfg) is None
+
+
+def test_the_music_folder_walked_recursively_is_the_library_too(cfg, silence, monkeypatch):
+    """Every module that places a track places it under the music folder."""
+    root, _ = genre_tree(cfg, silence, monkeypatch)
+    music = root / cfg.library.music_dir
+    code, envelope = drive(["analyze", "calibrate", str(music), "--recursive"])
+    assert code == int(ExitCode.OK), envelope
+    assert checks_of(envelope)["calibrate.sample"]["status"] == "ok"
+    assert analysis_cli.PARTIAL_SAMPLE not in codes_of(envelope)
+    loaded = energy.load_calibration(cfg)
+    assert loaded is not None and loaded.note == f"fitted over 16 of 16 under {music}"
+
+
+def test_the_root_with_no_loose_tracks_and_no_flag_is_told_about_the_flag(
+    cfg, silence, monkeypatch
+):
+    """The normal layout. The first version walked one level, found nothing,
+    and answered "holds no audio files" over a library of genre folders."""
+    root, seen = genre_tree(cfg, silence, monkeypatch)
+    code, envelope = drive(["analyze", "calibrate", str(root)])
+    assert code == int(ExitCode.OK), envelope
+    (check,) = envelope["data"]["checks"]
+    assert check["key"] == "calibrate.sample" and check["status"] == "failed"
+    assert "add --recursive" in check["detail"]
+    assert seen == []
+
+
+def test_a_refusal_known_before_the_walk_does_not_make_the_walk(cfg, silence, monkeypatch):
+    root, _ = genre_tree(cfg, silence, monkeypatch)
+    walked: list[Path] = []
+    real = analysis_cli.discovery.scan_audio
+
+    def recording(folder, **kwargs):
+        walked.append(folder)
+        return real(folder, **kwargs)
+
+    monkeypatch.setattr(analysis_cli.discovery, "scan_audio", recording)
+    drive(["analyze", "calibrate", str(root / "Music" / "House"), "--recursive"])
+    drive(["analyze", "calibrate", str(root), "--recursive", "--sample", "3"])
+    assert walked == []
+    drive(["analyze", "calibrate", str(root), "--recursive"])
+    assert walked == [root]
+
+
+def test_the_wrong_folder_is_said_before_the_missing_extra(cfg, silence, monkeypatch):
+    """Nobody should install the analysis stack to be told the folder was wrong."""
+    root, _ = genre_tree(cfg, silence, monkeypatch)
+    monkeypatch.setattr(energy, "_EXTRACTOR", None)
+    monkeypatch.setattr(detect, "heavy_available", lambda: False)
+    code, envelope = drive(["analyze", "calibrate", str(root / "Music" / "House")])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["checks"][0]["key"] == "calibrate.sample"
 
 
 def test_the_root_reached_through_a_link_is_still_the_root(cfg, silence, monkeypatch, tmp_path):
@@ -2255,19 +2319,52 @@ def test_the_default_sample_is_what_the_parser_hands_the_verb():
     assert args.recursive is False and args.accept_partial is False
 
 
-def test_a_folder_the_walk_declined_is_said_on_the_fit_and_on_the_refusal(
-    cfg, silence, monkeypatch, tmp_path
-):
-    root, _ = genre_tree(cfg, silence, monkeypatch)
+def test_a_walk_that_left_a_folder_out_is_not_the_library(cfg, silence, monkeypatch, tmp_path):
+    """A genre kept as a link is declined by the walker, so the root walked
+    recursively is a library missing a genre. The first version called it ok."""
+    root, seen = genre_tree(cfg, silence, monkeypatch)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     (root / "Music" / "Linked").symlink_to(elsewhere, target_is_directory=True)
-    code, fitted = drive(["analyze", "calibrate", str(root), "--recursive"])
+
+    code, refused = drive(["analyze", "calibrate", str(root), "--recursive"])
+    assert code == int(ExitCode.OK), refused
+    (check,) = refused["data"]["checks"]
+    assert check["key"] == "calibrate.sample" and check["status"] == "failed"
+    assert "left out 1 folder " in check["detail"]
+    (warning,) = [w for w in refused["warnings"] if w["code"] == "linked-folder-skipped"]
+    assert "Music/Linked" in warning["message"]
+    assert "was read" in warning["message"] and "queued" not in warning["message"], (
+        "calibrate has no queue, so the borrowed sentence named a job that did not exist"
+    )
+    assert seen == [] and energy.load_calibration(cfg) is None
+
+    code, fitted = drive(["analyze", "calibrate", str(root), "--recursive", "--accept-partial"])
     assert code == int(ExitCode.OK), fitted
-    assert "linked-folder-skipped" in codes_of(fitted)
-    code, refused = drive(["analyze", "calibrate", str(root / "Music"), "--recursive"])
-    assert checks_of(refused)["calibrate.sample"]["status"] == "failed"
-    assert "linked-folder-skipped" in codes_of(refused)
+    assert checks_of(fitted)["calibrate.sample"]["status"] == "skipped"
+    assert {"linked-folder-skipped", analysis_cli.PARTIAL_SAMPLE} <= set(codes_of(fitted))
+    loaded = energy.load_calibration(cfg)
+    assert loaded is not None
+    assert loaded.note == f"fitted over 16 of 16 under {root}, with 1 folder not walked", (
+        "the warning scrolls away and the file is what a later restamp trusts"
+    )
+
+
+def test_a_run_where_only_the_vocal_half_wrote_does_not_answer_no_op(
+    cfg, silence, monkeypatch
+):
+    root, _ = genre_tree(cfg, silence, monkeypatch)
+    for index, path in enumerate(sorted((root / "Music").rglob("*.flac"))):
+        assert tags.write_tags(path, {"voxlevel": 2 if index < 10 else 40})
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: None)
+    code, envelope = drive(["analyze", "calibrate", str(root), "--recursive"])
+    assert code == int(ExitCode.OK), envelope
+    checks = checks_of(envelope)
+    assert checks["calibrate.energy"]["status"] == "failed"
+    assert checks["calibrate.vocals"]["status"] == "ok"
+    assert envelope["outcome"] == "ok", "a file was replaced, so something changed"
+    assert envelope["data"]["summary"]["calibrated"] is False
+    assert analysis_cli.vocal_calibration_path(cfg).exists()
 
 
 def test_a_partial_fit_that_wrote_nothing_does_not_warn_about_a_calibration(

@@ -45,7 +45,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, TypeVar
 
 from cratekit.analysis import artifacts, detect, energy, light, vocals
 from cratekit.cli.output import Envelope
@@ -55,6 +55,7 @@ from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import MarkerRule, NameBudget, NameSpec, NameTemplate
 
 _ORIGIN = ("analysis", "cli")
+_T = TypeVar("_T")
 
 #: The vocal cut is stored beside the energy calibration, in the state file
 #: ``core.config`` declares for it. Read by whoever routes with vox; the
@@ -878,7 +879,7 @@ def vocal_calibration_path(cfg: config.Config) -> Path:
     return config.state_path(STATE_KEY_VOCAL_CALIBRATION, cfg)
 
 
-def stride_sample(items: Sequence[str], count: int) -> list[str]:
+def stride_sample(items: Sequence[_T], count: int) -> list[_T]:
     """At most ``count`` of ``items``, taken at an even stride, in their order.
 
     DETERMINISTIC ON PURPOSE (U94). A random sample would make two calibrations
@@ -903,18 +904,26 @@ def stride_sample(items: Sequence[str], count: int) -> list[str]:
     return [items[index * total // count] for index in range(count)]
 
 
-def fitted_note(fitted: int, walked: int, folder: Path) -> str:
+def fitted_note(fitted: int, walked: int, folder: Path, left_out: int = 0) -> str:
     """The provenance a calibration file records about itself (U94).
 
     Both halves write it, each with its own count, and ``_previous_vocal_cut``
     reads it back into the next run's report, so the sentence a person sees for
     "this replaces" names how much of what the old number was fitted over.
+
+    ``left_out`` is how many folders the walk declined or could not list. An
+    envelope warning is gone when the terminal scrolls, and the file is what a
+    later restamp trusts, so a fit over a tree missing folders says so in the
+    one place that outlives the run.
     """
-    return f"fitted over {fitted} of {walked} under {folder}"
+    note = f"fitted over {fitted} of {walked} under {folder}"
+    if left_out:
+        note += f", with {left_out} folder{'' if left_out == 1 else 's'} not walked"
+    return note
 
 
 def _calibrate_energy(
-    cfg: config.Config, folder: Path, sampled: list[Path], walked: int
+    cfg: config.Config, folder: Path, sampled: list[Path], walked: int, left_out: int = 0
 ) -> dict[str, str | None]:
     measured: list[dict[str, float]] = []
     unreadable = 0
@@ -934,7 +943,9 @@ def _calibrate_energy(
             f"{MIN_CALIBRATION_TRACKS}; nothing was written",
             Remedy.FIX_COMMAND_LINE,
         )
-    calibration = energy.calibrate(measured, note=fitted_note(len(measured), walked, folder))
+    calibration = energy.calibrate(
+        measured, note=fitted_note(len(measured), walked, folder, left_out)
+    )
     written = energy.save_calibration(cfg, calibration)
     levels = [energy.level_for(features, calibration) for features in measured]
     counts = energy.distribution(levels)
@@ -949,7 +960,9 @@ def _calibrate_energy(
     )
 
 
-def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> dict[str, str | None]:
+def _calibrate_vocals(
+    cfg: config.Config, folder: Path, paths: list[Path], left_out: int = 0
+) -> dict[str, str | None]:
     scores = [
         float(level)
         for level in (tags.read_vox_from_file(path) for path in paths)
@@ -996,7 +1009,7 @@ def _calibrate_vocals(cfg: config.Config, folder: Path, paths: list[Path]) -> di
         cfg,
         threshold,
         method="otsu",
-        note=fitted_note(len(scores), len(paths), folder),
+        note=fitted_note(len(scores), len(paths), folder, left_out),
         n_tracks=len(scores),
     )
     above = sum(1 for score in scores if score >= threshold)
@@ -1138,110 +1151,109 @@ def _require_library_root(cfg: config.Config) -> None:
     )
 
 
-def _is_library_root(cfg: config.Config, folder: Path) -> bool:
-    """Whether ``folder`` IS the library root, asked of the filesystem.
+def _is_library_wide(cfg: config.Config, folder: Path) -> bool:
+    """Whether ``folder`` is a folder that holds the WHOLE library, asked of the filesystem.
+
+    TWO FOLDERS QUALIFY: the library root, and the music folder under it. Every
+    module that places a track places it under ``root / music_dir``, so that
+    folder walked recursively is the library as much as the root is, and
+    refusing it as "not the library" was false (U94 review). The root stays
+    accepted because it is the one folder that holds the whole library under
+    every layout, including one whose tracks were put somewhere the
+    configuration has no name for.
 
     ``samefile`` and not a comparison of two spellings. The volume a DJ library
     sits on is case insensitive, the root is often reached through a link, and
     ``_folder_of`` does not resolve, so the root spelled in lower case, spelled
     in upper case, and reached through a link are one folder that three strings
-    would call three. The root
-    is the EFFECTIVE one, read off the loaded configuration after every
-    override, because a check and its consumer that can disagree about an input
-    eventually will (seam decision P2). A root that cannot be statted is not
-    this folder, which is the conservative answer: the check then refuses.
+    would call three. Both candidates are EFFECTIVE values, read off the loaded
+    configuration after every override, because a check and its consumer that
+    can disagree about an input eventually will (seam decision P2). A candidate
+    that cannot be statted is not this folder, which is the conservative
+    answer: the check then refuses.
     """
-    try:
-        return os.path.samefile(folder, Path(cfg.library.root))
-    except OSError:
-        return False
+    root = Path(cfg.library.root)
+    for candidate in (root, root / cfg.library.music_dir):
+        try:
+            if os.path.samefile(folder, candidate):
+                return True
+        except OSError:
+            continue
+    return False
 
 
-def _sample_check(
-    cfg: config.Config, folder: Path, *, recursive: bool, sample: int, accept_partial: bool
-) -> tuple[dict[str, str | None], bool]:
-    """``calibrate.sample``: is this walk the library's own distribution (U94).
+def _sample_row(status: str, detail: str, remedy: Remedy | None) -> dict[str, str | None]:
+    return _check("calibrate.sample", "calibration sample", status, detail, remedy)
 
-    Returns the check and whether the fit may go ahead. IT RUNS BEFORE ANYTHING
-    IS MEASURED, so a refused sample costs nothing and writes nothing.
 
-    A calibration fitted over one genre folder is not wrong in a way anyone can
-    see. The deciles spread that folder's tracks evenly over ten levels, the
-    file loads, every later restamp succeeds, and a whole library is rated on
-    the scale of its ambient shelf. So the verb asks whether what it is about to
-    fit over is the library, and the only walk it can treat as that is the
-    library root walked recursively. One level of a root that holds genre
-    folders is only the root's loose files, and a recursive walk of one genre
-    is still one genre, so both are partial. ``--accept-partial`` is the person
-    saying they know, and then the answer says it back on the check and on the
-    envelope rather than reading as a clean fit.
+def _partial_before_walk(
+    cfg: config.Config, folder: Path, *, recursive: bool
+) -> tuple[str, str] | None:
+    """Why this walk cannot be the library, known BEFORE it is made, or None.
 
-    THE SAMPLE FLOOR IS NOT WAIVED BY THE FLAG. ``--accept-partial`` answers
-    "this is not the whole library", and a sample below
-    ``MIN_CALIBRATION_TRACKS`` is a different question with one answer: the
-    energy half could never fit, so it is said here, before an hour of
-    measuring rather than after it.
+    Returned as what is wrong and what fixes it. Needs one ``samefile`` and no
+    walk, so a refusal from here costs nothing: a recursive walk of a library
+    on an external volume is a stat per file, and nobody should wait for it to
+    be told the folder was the wrong one.
+
+    One level of a folder that holds genre folders is only its loose files,
+    and a recursive walk of one genre is still one genre, so both are partial.
     """
-    if sample < MIN_CALIBRATION_TRACKS:
+    wide = _is_library_wide(cfg, folder)
+    if wide and recursive:
+        return None
+    if wide:
         return (
-            _check(
-                "calibrate.sample",
-                "calibration sample",
-                "failed",
-                f"a sample of {sample} is below the {MIN_CALIBRATION_TRACKS} "
-                f"tracks a calibration needs, so nothing was measured and nothing "
-                f"was written; give --sample {MIN_CALIBRATION_TRACKS} or more",
-                Remedy.FIX_COMMAND_LINE,
-            ),
-            False,
+            f"{folder} holds the whole library but was read one level deep, so "
+            f"only the tracks loose in it would be fitted",
+            "add --recursive to walk the whole library",
         )
     root = Path(cfg.library.root)
-    at_root = _is_library_root(cfg, folder)
-    if at_root and recursive:
-        return (
-            _check(
-                "calibrate.sample",
-                "calibration sample",
-                "ok",
-                f"{folder} is the library root and was walked recursively, so "
-                f"the fit is over the library's own distribution",
-                None,
-            ),
-            True,
-        )
-    if at_root:
-        what = (
-            f"{folder} is the library root but was read one level deep, so only "
-            f"the tracks loose in it would be fitted"
-        )
-        fix = "add --recursive to walk the whole library"
-    else:
-        what = (
-            f"{folder} is not the library root {root}, so a fit over it describes "
-            f"that folder and not the library"
-        )
-        fix = f"run `crate analyze calibrate {root} --recursive` for the whole library"
-    if not accept_partial:
-        return (
-            _check(
-                "calibrate.sample",
-                "calibration sample",
-                "failed",
-                f"{what}; nothing was measured and nothing was written. {fix}, or "
-                f"give --accept-partial to fit over this folder anyway",
-                Remedy.FIX_COMMAND_LINE,
-            ),
-            False,
-        )
     return (
-        _check(
-            "calibrate.sample",
-            "calibration sample",
-            "skipped",
-            f"{what}; fitted anyway because --accept-partial was given. {fix}",
-            Remedy.FIX_COMMAND_LINE,
-        ),
-        True,
+        f"{folder} is not the library root {root} or the music folder under it, "
+        f"so a fit over it describes that folder and not the library",
+        f"run `crate analyze calibrate {root} --recursive` for the whole library",
+    )
+
+
+def _partial_after_walk(scan: discovery.Scan) -> tuple[str, str] | None:
+    """Why this walk was not the library, known only AFTER it, or None.
+
+    A genre folder kept as a link to another volume is declined by the walker,
+    and a folder the account cannot list contributes nothing, so a recursive
+    walk of the root over either is a fit over a library missing a genre. That
+    is this unit's whole defect arriving by another road, and the first version
+    reported it as ``ok`` with a passing warning beside it (U94 review).
+    """
+    left_out = len(scan.skipped_links) + len(scan.unreadable)
+    if not left_out:
+        return None
+    return (
+        f"the walk left out {left_out} folder{'' if left_out == 1 else 's'} it "
+        f"could not or would not enter, named in the warnings, so the fit would "
+        f"be over a library missing whatever they hold",
+        "replace a linked folder with the folder itself and fix the permissions "
+        "on an unreadable one, then run it again",
+    )
+
+
+def _refused(partial: tuple[str, str]) -> dict[str, str | None]:
+    what, fix = partial
+    return _sample_row(
+        "failed",
+        f"{what}; nothing was measured and nothing was written. {fix}, or give "
+        f"--accept-partial to fit over what was walked anyway",
+        Remedy.FIX_COMMAND_LINE,
+    )
+
+
+def _accepted(partial: tuple[str, str]) -> dict[str, str | None]:
+    """NOT ``ok``. An accepted partial must not read as the library wide fit."""
+    what, fix = partial
+    return _sample_row(
+        "skipped",
+        f"{what}; fitted anyway because --accept-partial was given. {fix}",
+        Remedy.FIX_COMMAND_LINE,
     )
 
 
@@ -1249,11 +1261,19 @@ def _partial_warning(folder: Path) -> dict[str, str]:
     return {
         "code": PARTIAL_SAMPLE,
         "message": (
-            f"this calibration was fitted over {folder} and not over the whole "
-            f"library, so every level and every with vox tag scored against it is "
-            f"on that folder's scale"
+            f"what was written was fitted over part of the library, the walk of "
+            f"{folder}, so every level and every with vox tag scored against it "
+            f"is on that part's scale"
         ),
     }
+
+
+def _calibrate_refusal(ctx, check: dict[str, str | None], summary: Mapping[str, Any], warnings=()):
+    return ctx.envelope(
+        data={"checks": [check], "summary": dict(summary)},
+        outcome=Outcome.NO_OP,
+        warnings=tuple(warnings),
+    )
 
 
 def analyze_calibrate(ctx) -> Envelope:
@@ -1265,6 +1285,26 @@ def analyze_calibrate(ctx) -> Envelope:
     rows as covered. Both halves report what they wrote, and a folder that
     cannot support either says so in the check rather than in a warning.
 
+    THE ``calibrate.sample`` CHECK (U94). A calibration fitted over one genre
+    folder is not wrong in a way anyone can see. The deciles spread that
+    folder's tracks evenly over ten levels, the file loads, every later restamp
+    succeeds, and a whole library is rated on the scale of its ambient shelf.
+    So the verb asks whether what it is about to fit over is the library, and
+    fails the check, measuring nothing and writing nothing, when it is not.
+    ``--accept-partial`` is the person saying they know, and then the answer
+    says it back on the check, on the envelope and in the file's own note,
+    rather than reading as a clean fit.
+
+    THE SAMPLE FLOOR IS NOT WAIVED BY THE FLAG. ``--accept-partial`` answers
+    "this is not the whole library", and a sample below
+    ``MIN_CALIBRATION_TRACKS`` is a different question with one answer: the
+    energy half could never fit, so it is said before anything is measured.
+
+    CHEAPEST REFUSAL FIRST. The floor needs an integer and the folder's
+    standing needs one ``samefile``, so both are answered before the walk,
+    which on a library is a stat per file. Only what the walk left out has to
+    wait for it.
+
     SYNCHRONOUS AND BOUNDED, NOT A JOB (U94). The energy half measures a
     deterministic stride sample, ``--sample``, so a library of any size costs
     the same run, and the vocal half reads a tag per file, which is cheap, so it
@@ -1275,89 +1315,109 @@ def analyze_calibrate(ctx) -> Envelope:
     if ctx.args.vocal_cut is not None:
         return _set_vocal_cut(ctx, cfg, ctx.args.vocal_cut)
     if not ctx.args.folder:
-        return ctx.envelope(
-            data={
-                "checks": [
-                    _check(
-                        "calibrate.folder",
-                        "calibration folder",
-                        "skipped",
-                        "no folder given, so nothing was measured and nothing was written",
-                        Remedy.FIX_COMMAND_LINE,
-                    )
-                ],
-                "summary": {"folder": None, "calibrated": False},
-            },
-            outcome=Outcome.NO_OP,
+        return _calibrate_refusal(
+            ctx,
+            _check(
+                "calibrate.folder",
+                "calibration folder",
+                "skipped",
+                "no folder given, so nothing was measured and nothing was written",
+                Remedy.FIX_COMMAND_LINE,
+            ),
+            {"folder": None, "calibrated": False},
         )
     folder = _folder_of(ctx.args.folder)
-    recursive = bool(getattr(ctx.args, "recursive", False))
-    scan = discovery.scan_audio(folder, recursive=recursive)
-    # SAID ON EVERY ANSWER BELOW, the empty one included. A fit over a tree
-    # with an unreadable genre folder is a fit over a library missing a genre,
-    # which is this unit's whole defect arriving by another road.
-    omitted = discovery.walk_warnings(scan.skipped_links, scan.unreadable)
-    paths = [discovery.item_path(folder, item) for item in scan.items]
-    if not paths:
-        detail = (
-            f"{folder} holds no audio files, so nothing was measured"
-            if folder.is_dir()
-            else f"{folder} is not a folder on this machine, so nothing was measured"
+    recursive = bool(ctx.args.recursive)
+    sample = int(ctx.args.sample)
+    accepted = bool(ctx.args.accept_partial)
+    summary: dict[str, Any] = {"folder": str(folder), "calibrated": False}
+    if not folder.is_dir():
+        return _calibrate_refusal(
+            ctx,
+            _check(
+                "calibrate.folder",
+                "calibration folder",
+                "failed",
+                f"{folder} is not a folder on this machine, so nothing was measured",
+                Remedy.FIX_COMMAND_LINE,
+            ),
+            summary,
         )
-        return ctx.envelope(
-            data={
-                "checks": [
-                    _check(
-                        "calibrate.folder",
-                        "calibration folder",
-                        "failed",
-                        detail,
-                        Remedy.FIX_COMMAND_LINE,
-                    )
-                ],
-                "summary": {"folder": str(folder), "calibrated": False},
-            },
-            outcome=Outcome.NO_OP,
-            warnings=omitted,
+    if sample < MIN_CALIBRATION_TRACKS:
+        return _calibrate_refusal(
+            ctx,
+            _sample_row(
+                "failed",
+                f"a sample of {sample} is below the {MIN_CALIBRATION_TRACKS} "
+                f"tracks a calibration needs, so nothing was measured and nothing "
+                f"was written; give --sample {MIN_CALIBRATION_TRACKS} or more",
+                Remedy.FIX_COMMAND_LINE,
+            ),
+            summary,
         )
-    _require_heavy(energy.extractor_bound(), "measuring a folder's energy")
+    # BEFORE THE STANDING OF THE FOLDER IS ASKED, because with the volume away
+    # no folder is the root and the answer would blame the folder for it.
     _require_library_root(cfg)
-    sample = int(getattr(ctx.args, "sample", DEFAULT_CALIBRATION_SAMPLE))
-    accepted = bool(getattr(ctx.args, "accept_partial", False))
-    sample_check, proceed = _sample_check(
-        cfg, folder, recursive=recursive, sample=sample, accept_partial=accepted
-    )
-    summary: dict[str, Any] = {
-        "folder": str(folder),
-        "calibrated": False,
-        "tracks": len(paths),
-        "recursive": recursive,
-    }
-    if not proceed:
-        return ctx.envelope(
-            data={"checks": [sample_check], "summary": summary},
-            outcome=Outcome.NO_OP,
-            warnings=omitted,
+    partial = _partial_before_walk(cfg, folder, recursive=recursive)
+    if partial is not None and not accepted:
+        return _calibrate_refusal(ctx, _refused(partial), summary)
+
+    scan = discovery.scan_audio(folder, recursive=recursive)
+    # SAID ON EVERY ANSWER BELOW, the empty one included.
+    omitted = discovery.walk_warnings(scan.skipped_links, scan.unreadable, verb="read")
+    paths = [discovery.item_path(folder, item) for item in scan.items]
+    summary.update({"tracks": len(paths), "recursive": recursive})
+    if not paths:
+        return _calibrate_refusal(
+            ctx,
+            _check(
+                "calibrate.folder",
+                "calibration folder",
+                "failed",
+                f"{folder} holds no audio files, so nothing was measured",
+                Remedy.FIX_COMMAND_LINE,
+            ),
+            {"folder": str(folder), "calibrated": False},
+            omitted,
         )
-    sampled = [discovery.item_path(folder, item) for item in stride_sample(scan.items, sample)]
+    left_out = len(scan.skipped_links) + len(scan.unreadable)
+    if partial is None:
+        partial = _partial_after_walk(scan)
+        if partial is not None and not accepted:
+            return _calibrate_refusal(ctx, _refused(partial), summary, omitted)
+    _require_heavy(energy.extractor_bound(), "measuring a folder's energy")
+
+    sampled = stride_sample(paths, sample)
     checks = [
-        sample_check,
-        _calibrate_energy(cfg, folder, sampled, len(paths)),
-        _calibrate_vocals(cfg, folder, paths),
+        _sample_row(
+            "ok",
+            f"{folder} holds the whole library and was walked recursively with "
+            f"nothing left out, so the fit is over the library's own distribution",
+            None,
+        )
+        if partial is None
+        else _accepted(partial),
+        _calibrate_energy(cfg, folder, sampled, len(paths), left_out),
+        _calibrate_vocals(cfg, folder, paths, left_out),
     ]
     calibrated = checks[1]["status"] == "ok"
-    partial = sample_check["status"] != "ok"
     wrote = any(check["status"] == "ok" for check in checks[1:])
     return ctx.envelope(
         data={
             "checks": checks,
             "summary": {**summary, "calibrated": calibrated, "sampled": len(sampled)},
         },
-        outcome=Outcome.OK if calibrated else Outcome.NO_OP,
-        # ONLY WHEN SOMETHING WAS WRITTEN. The warning says "this calibration
-        # was fitted over", and over a run where neither half wrote there is no
-        # such calibration for it to be true of.
-        warnings=((_partial_warning(folder),) if partial and wrote else ()) + tuple(omitted),
+        # OK WHEN EITHER HALF WROTE. The first version read the energy half
+        # alone, so a run whose tracks would not decode and whose vocal scores
+        # split cleanly replaced the library's with vox cut and answered no_op,
+        # which tells a machine reader nothing changed (U94 review).
+        # ``summary.calibrated`` stays the energy half's, which is what it names.
+        outcome=Outcome.OK if wrote else Outcome.NO_OP,
+        # ONLY WHEN SOMETHING WAS WRITTEN. The warning speaks of what was
+        # written, and over a run where neither half wrote there is no such
+        # thing for it to be true of.
+        warnings=((_partial_warning(folder),) if partial is not None and wrote else ())
+        + tuple(omitted),
     )
 
 
