@@ -4,7 +4,55 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-222 with R-223, issue #154, `relay/154`, 2026-09-19.**
+**Last merged: R-172, issue #155, `relay/155`, 2026-09-20.**
+A rename the plan promised is never skipped in silence, which CLOSES R-172, and
+both halves of its closing condition were done. The PLAN pass owns a collision:
+several movers rendering to one target, or a target a file on disk holds that
+nothing here is moving, are marked `collides` in `items`, carry their reason, are
+counted under the new `totals.collides` and are left OUT of `totals.count`, so
+that count is the number of renames that can actually happen. The detection runs
+to a FIXPOINT, because holding a file back makes it an occupant, and the first cut
+missed exactly that. A target another mover still holds is deliberately LEFT
+promised, since sort order resolves that chain whenever it reaches the occupant
+first. Targets are keyed through `_key`, NFC and casefolded, because the volume
+this product ships for treats two names differing only in case as one.
+The APPLY pass collects every rename it owes and did not perform, by name and
+with its reason, and answers the new cause `rename-incomplete` at exit 30 through
+`output.from_cause` on the PLAN surface, so the renames that did land are still
+reported. Five bare `continue` branches became five named reasons.
+**WHAT A PERSON MAY MEET, two things.** `crate name apply` now exits 30 over a
+library holding two files that render to one name, where it exited 0 and renamed
+one of them, and the cause names both files with the reason and the remediation.
+And a file whose title tag could not be written after a successful rename is
+outstanding too, named at its NEW path, where the answer `write_tags` returns was
+never read.
+**The code review raised six findings and all six were applied**, two of them
+real defects this branch introduced: the collision pass asked once rather than to
+a fixpoint, so three files in one folder produced a plan promising one rename that
+no rename could satisfy, and the single collision worded remediation told a person
+to hand rename a file over the four reasons that are not a collision. The other
+four were the tag failure named at its pre rename path, the hand rolled
+`output.build` that restated `from_cause`, the referenced check asked twice per
+candidate, and the shipped naming skill plus the registry entry left undocumented.
+**Measured against the naming engine, and it is why there is NO case only rename
+branch here**: `parse_head` does not read a lowercase Camelot letter as a head at
+all, so `05a - 120 - Song.flac` renders unchanged and is not even a candidate. A
+target differing from its source only in case is unreachable. Filed as R-562.
+Two pinned counts in `tests/test_reserved_causes.py` moved and were re-pinned with
+their reasons, the cause population 168 to 169 and its non reserved half 141 to
+142, and the kebab literals 464 to 465 with non keys UNCHANGED at 297.
+Battery: ruff clean, **9044 passed** and 1 skipped in 81 seconds, scan clean, 11
+of them new. Mutation tables `docs/mutation/r172-a.md` and `r172-b.md`, summary
+`r172-notes.md`: 25 rows at the cap, the author's own, 25 killed, no zero, null
+controls at zero of 9045 collected, two FOREGROUND batches.
+The learning is under `docs/solutions/integration-issues/`, the one about a run
+that did part of its work. `CONCEPTS.md` gains Held back and Carried out in part.
+Filed: R-559 to R-562, none meeting the board bar today. **R-549's, R-523's,
+R-517's, R-515's, R-512's, R-482's and R-477's issues are still owed** from
+earlier sessions.
+**Main's highest residual number is R-562.**
+
+**The session before: R-222 with R-223, issue #154, `relay/154`, 2026-09-19.**
 The archive rotation counts a RUN and not an attempt, and asking for a backup
 twice is one job, which CLOSES R-222 and R-223. `_prune_archive` reads
 `_rotation_floor`, the stamp of the last COMPLETED mirror to this destination,
@@ -48,7 +96,7 @@ test that times a freshly spawned child died in one of four hand made full suite
 runs on this branch and passed three of three alone. A red gate naming only
 `tests/test_pool_sizing.py::test_the_real_probe_measures_a_freshly_spawned_child`
 is that flake and not this unit.
-**Main's highest residual number is R-558.**
+Main's highest residual number was R-558 at that merge.
 
 **The session before: R-154 with R-153, issue #153, `relay/153`, 2026-09-19.**
 A snapshot pulled off the remote is now a dated folder name and this library's,

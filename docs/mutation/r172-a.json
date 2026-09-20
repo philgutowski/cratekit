@@ -1,0 +1,346 @@
+{
+  "name": "r172-a",
+  "pass_kind": "light",
+  "branch": "relay/155",
+  "head": "30aa77c",
+  "when": "2026-09-20 02:46 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9045,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/naming_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/naming_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a7d1852399fb5adb",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9045,
+    "baseline_collected": 9045,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_nothing_collides",
+      "description": "Hold nothing, which is the finding itself: two files rendering to one name are promised two renames and the apply performs one",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f62b8ade08a5bb2f",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_collision_answers_with_the_files_that_stayed_put",
+        "tests/test_naming_apply_cli.py::test_a_rename_onto_a_name_another_file_holds_overwrites_nothing",
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too",
+        "tests/test_naming_apply_cli.py::test_two_files_rendering_to_one_name_are_not_promised_two_renames",
+        "tests/test_naming_apply_cli.py::test_two_targets_differing_only_in_case_are_one_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not found:\n            return held\n        held.update(found)",
+      "new": "        return held"
+    },
+    {
+      "id": "A2_one_round_only",
+      "description": "Ask once rather than to a fixpoint, so a file whose target a collider still holds reads as a chain sort order would resolve. This is the review's first finding, reintroduced",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6589865fd701b1f2",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not found:\n            return held\n        held.update(found)",
+      "new": "        held.update(found)\n        return held"
+    },
+    {
+      "id": "A3_shared_target_ignored",
+      "description": "Stop holding several movers that render to one target, keeping only the occupied target half, so an arbitrary winner in sort order takes the name again",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7f4f7aaf02621b13",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_collision_answers_with_the_files_that_stayed_put",
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too",
+        "tests/test_naming_apply_cli.py::test_two_files_rendering_to_one_name_are_not_promised_two_renames",
+        "tests/test_naming_apply_cli.py::test_two_targets_differing_only_in_case_are_one_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            sharing = sorted(\n                other.name for other in holders[_key(str(target))] if other != path\n            )",
+      "new": "            sharing = []"
+    },
+    {
+      "id": "A4_occupied_target_ignored",
+      "description": "Stop holding a mover whose rendered name a file on disk already carries, which is the collision the U67 table drove",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7b58f41733048b5a",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_rename_onto_a_name_another_file_holds_overwrites_nothing",
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            elif _key(str(target)) not in sources and target.exists():",
+      "new": "            elif False:"
+    },
+    {
+      "id": "A5_chain_held_too",
+      "description": "Hold a target another mover still holds, which loses a rename that succeeds whenever sort order reaches the occupant first",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "58a7631fe188e52e",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_target_another_mover_still_holds_is_promised_and_then_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            elif _key(str(target)) not in sources and target.exists():",
+      "new": "            elif target.exists():"
+    },
+    {
+      "id": "A7_targets_compared_exactly",
+      "description": "Compare targets as written instead of through _key, so two names differing only in case are two names on a volume that treats them as one",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "be792248b0ae0ad9",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_two_targets_differing_only_in_case_are_one_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        for path, target in moving:\n            holders.setdefault(_key(str(target)), []).append(path)\n        sources = {_key(str(path)) for path, _ in moving}\n        found: dict[str, str] = {}\n        for path, target in moving:\n            sharing = sorted(\n                other.name for other in holders[_key(str(target))] if other != path\n            )\n            if len(sharing) == 1:\n                found[str(path)] = (\n                    f\"{sharing[0]} renders to the same name, and neither is renamed\"\n                )\n            elif sharing:\n                found[str(path)] = (\n                    f\"{', '.join(sharing)} render to the same name, and none of them \"\n                    f\"is renamed\"\n                )\n            elif _key(str(target)) not in sources and target.exists():",
+      "new": "        for path, target in moving:\n            holders.setdefault(str(target), []).append(path)\n        sources = {str(path) for path, _ in moving}\n        found: dict[str, str] = {}\n        for path, target in moving:\n            sharing = sorted(\n                other.name for other in holders[str(target)] if other != path\n            )\n            if len(sharing) == 1:\n                found[str(path)] = (\n                    f\"{sharing[0]} renders to the same name, and neither is renamed\"\n                )\n            elif sharing:\n                found[str(path)] = (\n                    f\"{', '.join(sharing)} render to the same name, and none of them \"\n                    f\"is renamed\"\n                )\n            elif str(target) not in sources and target.exists():"
+    },
+    {
+      "id": "A8_collides_counted_as_a_rename",
+      "description": "Leave a held collision inside totals.count, so the plan says it will rename a file it is holding back",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0140b4de8db5fd86",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_collision_answers_with_the_files_that_stayed_put",
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too",
+        "tests/test_naming_apply_cli.py::test_two_files_rendering_to_one_name_are_not_promised_two_renames"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"count\": len(items) - held - len(collides),",
+      "new": "            \"count\": len(items) - held,"
+    },
+    {
+      "id": "A9_collides_reported_as_a_rename",
+      "description": "Mark a collision as an ordinary rename in the plan, so nothing in the report says which file is held and the apply attempts it",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7f02a25bb5bce214",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_collision_answers_with_the_files_that_stayed_put",
+        "tests/test_naming_apply_cli.py::test_a_rename_onto_a_name_another_file_holds_overwrites_nothing",
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too",
+        "tests/test_naming_apply_cli.py::test_two_files_rendering_to_one_name_are_not_promised_two_renames",
+        "tests/test_naming_apply_cli.py::test_two_targets_differing_only_in_case_are_one_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif str(path) in collides:",
+      "new": "        elif False:"
+    },
+    {
+      "id": "A11_referenced_files_collide",
+      "description": "Pass every candidate to the collision pass including the referenced ones, so a file held back for rekordbox also holds its rendered name against a file that could take it",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "391e7a501231f2b0",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_referenced_file_does_not_hold_a_name_it_will_never_take"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    collides = _collisions([(path, filename) for path, filename, ref in decided if not ref])",
+      "new": "    collides = _collisions([(path, filename) for path, filename, ref in decided])"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "A13_digest_over_totals",
+      "description": "Fold totals into the plan digest",
+      "reason": "ranked below the cap: the digest's contents are unchanged by this unit and are pinned by test_the_digest_changes_when_a_row_starts_referencing_a_file"
+    },
+    {
+      "id": "A14_items_order",
+      "description": "Build items from the two partitions instead of in candidate order",
+      "reason": "ranked below the cap: order feeds the digest, which A13's note covers, and no user facing claim in this unit depends on it"
+    },
+    {
+      "id": "A15_sources_from_targets",
+      "description": "Build the sources set from targets rather than from the moving paths",
+      "reason": "ranked below the cap: A4 and A5 already measure both sides of the sources test, and A7 rewrites how it is keyed"
+    },
+    {
+      "id": "A6_target_existence_assumed",
+      "description": "Hold every mover whose target belongs to no mover, whether or not a file is there, so an ordinary rename into a free name is refused",
+      "reason": "ranked below the cap: A4 and A5 measure both halves of the same condition, and this one only moves which half is wrong"
+    },
+    {
+      "id": "A10_reason_dropped_from_the_item",
+      "description": "Hold the collision without saying why, so the plan names the file and not what is wrong with it",
+      "reason": "ranked below the cap: the plan's own why is asserted by the collision test's whole item comparison, so the row would measure a string the suite already pins character for character"
+    },
+    {
+      "id": "A12_candidate_filter_dropped",
+      "description": "A sample of an EXISTING guard: propose a rename for every audio file, whether or not its rendered name differs from the one it carries",
+      "reason": "ranked below the cap: existing and untouched by this unit, and b's two existing guard rows are the sample this pass spends on guards that were already here"
+    }
+  ]
+}
