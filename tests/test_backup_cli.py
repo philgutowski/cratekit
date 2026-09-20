@@ -2226,6 +2226,24 @@ def test_the_rehearsal_is_said_at_queue_time_and_when_the_open_job_is_reported(c
     assert second["data"]["progress"]["dry_run"] is True, second["data"]
 
 
+def test_a_second_ask_for_a_real_backup_is_not_told_the_open_job_copies_nothing(cfg):
+    """The companion for the twin branch, WRITTEN BECAUSE THE MUTATION TABLE
+    found nothing holding it. Making that branch carry the word unconditionally
+    killed zero tests: the existing twin cases assert the already-queued code is
+    present, and the rehearsal twin case asserts this one is, and neither asks
+    what a real twin is NOT told. A person asking twice for a real backup would
+    have been told the job they are being handed copies nothing."""
+    code, first = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), first
+
+    code, second = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), second
+    assert second["data"]["job_id"] == first["data"]["job_id"], second
+    assert backup_cli.ALREADY_QUEUED in _codes(second), second
+    assert _rehearsal_said(second) == [], second
+    assert second["data"]["progress"]["dry_run"] is False, second["data"]
+
+
 def test_the_ages_a_rehearsal_reports_are_the_previous_real_runs_and_it_says_so(
     cfg, rclone
 ):

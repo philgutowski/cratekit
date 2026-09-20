@@ -124,10 +124,10 @@ new = '''                *map(dict, backup.snapshot_identity_warning(jobs.frozen
             return ctx.envelope(data=reported, warnings=warnings)'''
 
 [[rows]]
-id = "W6_twin_reads_this_ask_not_the_job"
-description = "Ask the warning of the ask rather than of the twin being reported, so the envelope describes something other than the job it hands back"
+id = "W6_twin_branch_says_it_unconditionally"
+description = "The reported twin always carries the word, so a person asking twice for a REAL backup is told the open job copies nothing. Removing the helper's own guard is W2; this is the branch's own reading of the job it hands back"
 file = "src/cratekit/backup/cli.py"
 surface = "user"
 old = '''                    *_rehearsal(twin),'''
-new = '''                    *({"code": REHEARSAL, "message": "x"},) if payload[DRY_RUN] else (),'''
+new = '''                    rehearsal_warning(),'''
 
