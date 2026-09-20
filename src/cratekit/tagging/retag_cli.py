@@ -27,11 +27,22 @@ outbound verbs: the child the job engine spawns rebuilds its command line from
 that payload, so both sides of the comparison have to be built from the same
 frozen values or nothing can ever finish.
 
-THE GATE IS FOUND BY ITS DIGEST SOURCE AND NOT BY POSITION. This handler answers
-the gate that was raised against the plan; the cloud-sync decision beside it
-belongs to the guarded writer and is answered wherever that refusal is raised.
-Indexing ``gates[0]`` would silently answer the wrong question the day somebody
-reorders the tuple.
+THE GATE IS FOUND BY ITS DIGEST SOURCE AND NOT BY POSITION. Indexing ``gates[0]``
+would silently answer the wrong question the day somebody reorders the tuple. The
+neighbour that made this concrete was the cloud-sync decision, which this entry
+declared until the write narrowing below took it off: that decision belongs to
+the guarded writer and is answered wherever that refusal is raised, and this verb
+opens no database, so it could never raise it. The rule outlives the neighbour,
+because the next verb to gain a second gate finds the handler already correct.
+
+THE RUN ENDS BY NAMING THE RELOAD. The file carries the corrected genre and the
+library row does not, because the database half of this verb has no caller
+(R-185). The registry no longer claims that surface (R-246), so the declaration
+and the code agree, and the envelope carries
+:func:`library_row_warning`, which names the one act that makes the row agree
+with the file. The queueing envelope carries it unconditionally and a successful
+resume carries it only when a file was actually corrected; each of those two
+functions says why at the line that attaches it.
 
 AN EMPTY SELECTION STILL ASKS, AND STILL QUEUES NOTHING (R12). The first draft
 of this unit skipped the gate when the plan was empty, on the argument that a
@@ -78,6 +89,48 @@ ITEMS_KEY = "items"
 #: the rows, so the resume has to read it back from the same place
 #: :func:`retag_argv` does.
 FOLDER_KEY = "folder"
+
+#: The warning code that names the half this build does not write. One slug, one
+#: text, built in one place, because the queueing envelope and the resume
+#: envelope both carry it and two spellings of one instruction is how a person
+#: reads two different stories about one run.
+LIBRARY_ROW_STALE = "library-row-not-updated"
+
+
+def library_row_warning(folder: str) -> dict[str, str]:
+    """What the person still has to do, because the row is not this verb's.
+
+    THE ACT IS NAMED, NOT THE DEFECT. The file now carries the specific genre
+    and the library row still carries the value the taxonomy called too coarse,
+    because the database half of this verb has no caller (R-185). A person who
+    is told only that the two disagree cannot act on it; reloading the folder's
+    tags in rekordbox is the act that makes the row agree with the file, and it
+    is the one thing this build can put in front of them.
+
+    IT NAMES THE FOLDER. A resume is a detached child whose envelope a person
+    reads later, next to other runs, so a warning that said "the folder" would
+    leave them guessing which sweep it belonged to.
+
+    AND IT IS NOT A PENDING HUMAN ACTION, which is the conservative call here
+    rather than an oversight. That field is mandatory-verified by construction,
+    ``verify_verb`` names a registered verb that proves the act was done, and
+    nothing in this build can read the row back to prove a reload landed: a
+    corrected file is never selected again, so a second retag over the folder
+    reports the same clean zero whether the person reloaded or not. A pending
+    action nobody can verify is the printed instruction that field exists to
+    replace. Recorded as a residual rather than faked with a verb that would
+    answer the question wrong.
+    """
+    return {
+        "code": LIBRARY_ROW_STALE,
+        "message": (
+            f"the genre was corrected on the files under {folder} and the "
+            f"library rows still carry the old value, because this build writes "
+            f"the file half only; select that folder in rekordbox and reload its "
+            f"tags so the rows catch up"
+        ),
+    }
+
 
 #: Every reason a selected file can go unwritten, zero filled in the report. A
 #: summary listing only the reasons it happened to see makes "none of those here"
@@ -338,7 +391,19 @@ def retag_genres(ctx) -> Envelope:
             item_ids=tuple(str(row["path"]) for row in plan["items"]),
             cfg=cfg,
         )
-        return ctx.envelope(data=shell.reported(store, job))
+        # UNCONDITIONAL HERE, AND CONDITIONAL ON THE RESUME, for a reason that
+        # is about who is reading. This envelope is the one the person gets back
+        # in the terminal from the command they typed, before the detached child
+        # runs anything, so it cannot yet know how many files will be corrected
+        # and it is the last thing they read before walking away. Every file in
+        # this plan was selected for carrying a genre the taxonomy calls too
+        # coarse, so a sweep that corrects none of them is the unusual case and
+        # "you may have nothing to reload" is a cheaper wrong answer than
+        # silence. The resume knows what actually happened and says so there.
+        return ctx.envelope(
+            data=shell.reported(store, job),
+            warnings=(library_row_warning(folder),),
+        )
 
 
 def _resume(ctx, cfg: config.Config) -> Envelope:
@@ -382,8 +447,21 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
             origin=("tagging", "retag_cli"),
             nothing_to_run="report a correction over files it never looked at",
         )
+        summary = _summary(cfg, job.job_id)
+        # ON WHAT RAN, NEVER ON WHAT WAS CONFIRMED, which is the rule
+        # ``_summary`` already states, applied to the warning as well as to the
+        # report. A sweep whose every file was skipped or went to the review
+        # queue corrected nothing, so no row went stale, so sending a person to
+        # rekordbox would be work the run did not create for them. ``corrected``
+        # is read back from the committed artifacts, so it stays true across a
+        # resume: a job continued tomorrow counts what all of its runs wrote.
+        if summary["corrected"]:
+            warnings = (
+                *warnings,
+                library_row_warning(str(payload.get(FOLDER_KEY) or "")),
+            )
         return ctx.envelope(
-            data=shell.reported(store, job, {"retag": _summary(cfg, job.job_id)}),
+            data=shell.reported(store, job, {"retag": summary}),
             warnings=warnings,
         )
 
@@ -437,7 +515,9 @@ def handle(job, item, cfg) -> jobs.Produced:
     the library row keeps the catch-all after the file stops carrying it, and a
     corrected file is never selected again. These artifacts are therefore the only
     record of which rows went stale, which is what the deferred half will read
-    when it lands (R-185).
+    when it lands (R-185). ``written`` is also what the resume counts to decide
+    whether the folder needs a reload at all, so a field dropped from this report
+    silently stops a person being told.
     """
     path = Path(item.item_id)
     if not path.is_file():
@@ -492,10 +572,12 @@ def handle(job, item, cfg) -> jobs.Produced:
 __all__ = [
     "FOLDER_KEY",
     "ITEMS_KEY",
+    "LIBRARY_ROW_STALE",
     "REASONS",
     "build",
     "digest_for",
     "handle",
+    "library_row_warning",
     "plan_for",
     "retag_argv",
     "retag_genres",

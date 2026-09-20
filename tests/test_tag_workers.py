@@ -40,7 +40,7 @@ from cratekit.cli import handlers, output, registry
 from cratekit.core import art, config, jobs, review, tags
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.tagging import artifacts, retag, searchers, shell, tag
+from cratekit.tagging import artifacts, retag, retag_cli, searchers, shell, tag
 from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import SearchHit
 from tests._containers import synth_container
@@ -1764,6 +1764,166 @@ def test_an_interrupted_retag_leaves_a_library_row_stale_and_the_artifact_recove
     assert report["path"] == str(folder / "a.flac")
     assert report["current"] == CATCH_ALL
     assert report["written"] == SPECIFIC
+
+
+def warning_codes(envelope: dict) -> list[str]:
+    """Every warning code on one envelope, in the order the verb attached them."""
+    return [warning["code"] for warning in envelope["warnings"]]
+
+
+def test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs(
+    repair_on, folder, silence, monkeypatch
+):
+    """R-185's COST, reproduced as the thing a person is left holding.
+
+    The two halves of this verb are measured one case above: the file is
+    corrected, the library row is not, and the corrected file is never selected
+    again so no later run finds its way back to that row. Everything in that case
+    is about the repository. This one is about the person, and before this unit
+    the answer was that nothing told them anything at all. They confirmed a
+    correction, the envelope reported a clean sweep, and rekordbox went on showing
+    the genre the taxonomy calls too coarse for ever.
+
+    THE WARNING NAMES THE ACT AND NOT THE DEFECT. Reloading the folder's tags in
+    rekordbox is what makes the row agree with the file, and it is the only thing
+    this build can put in front of them, so the assertion is on the instruction
+    rather than on the code alone: a warning that announced a disagreement and
+    stopped there would satisfy a code-only check while leaving a person with
+    nothing to do.
+
+    THE FOLDER IS IN THE TEXT. A resume is a detached child whose envelope is read
+    later beside other runs, so an instruction that said "the folder" would not
+    say which sweep it belonged to.
+    """
+    for name in ("a", "b"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "ab"}))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["progress"]["retag"]["corrected"] == 2, resumed
+    assert retag_cli.LIBRARY_ROW_STALE in warning_codes(resumed), resumed
+    told = next(
+        warning
+        for warning in resumed["warnings"]
+        if warning["code"] == retag_cli.LIBRARY_ROW_STALE
+    )
+    assert str(folder) in told["message"], told
+    assert "reload" in told["message"], (
+        f"the run named a disagreement and no act to settle it: {told['message']!r}"
+    )
+
+
+def test_a_retag_that_corrected_nothing_does_not_send_a_person_to_rekordbox(
+    repair_on, folder, silence, monkeypatch
+):
+    """The zero half, and it is what keeps the warning worth reading.
+
+    A sweep whose every file went to the review queue unanswered wrote no genre,
+    so no library row went stale, so there is nothing in rekordbox to reload. A
+    verb that said so anyway would be sending a person to do real work over a run
+    that changed nothing, and an instruction that appears whether or not it
+    applies is one people stop reading, which costs the case above its whole
+    value.
+
+    DRIVEN THROUGH THE DECLINE rather than over an empty folder, deliberately: an
+    empty selection never queues at all, so it could not tell a correct condition
+    from a warning the resume path simply never reaches.
+    """
+    for name in ("a", "b"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, answering({}))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["progress"]["retag"]["corrected"] == 0, resumed
+    assert resumed["data"]["progress"]["retag"]["asked"] == 2, resumed
+    assert retag_cli.LIBRARY_ROW_STALE not in warning_codes(resumed), resumed
+
+
+def test_the_queueing_envelope_names_the_reload_before_the_person_walks_away(
+    repair_on, folder, silence, monkeypatch
+):
+    """The other reader, and the reason this one is unconditional.
+
+    The envelope above is written by a detached child into a log. THIS one is what
+    comes back in the terminal from the command the person typed, and it is the
+    last thing they read before leaving the sweep to run. It cannot know yet how
+    many files will be corrected, and every file in the plan was selected for
+    carrying a genre the taxonomy calls too coarse, so a sweep that corrects none
+    of them is the unusual case and saying nothing is the worse answer.
+
+    THE THREE DRIVES ARE SPELLED OUT HERE rather than taken from
+    ``tests.cli_drive.approve_and_queue``, which is the only case in this section
+    that does so. The helper CONSUMES the queueing envelope and returns the job
+    identifier out of it, and the queueing envelope is precisely what is under
+    test. R34's contract is unweakened: the refusal is met with nothing recorded,
+    the decision is a separate act by a named actor, and only the third
+    invocation, naming that run, queues.
+    """
+    coarse(folder, silence, "a")
+    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+
+    verb = ["tag", "retag", str(folder)]
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, decision = drive(
+        ["run", "decide", run_id, RETAG_GATE, "apply", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), decision
+
+    code, queued = drive(["--run", run_id, *verb])
+
+    assert code == int(ExitCode.OK), queued
+    assert retag_cli.LIBRARY_ROW_STALE in warning_codes(queued), queued
+    told = next(
+        warning
+        for warning in queued["warnings"]
+        if warning["code"] == retag_cli.LIBRARY_ROW_STALE
+    )
+    assert str(folder) in told["message"], told
+
+
+def test_the_retag_entry_declares_the_file_surface_alone_and_no_database_decision():
+    """R-246 CLOSED, and it is asserted against the absence that caused it.
+
+    The entry declared ``db_metadata`` after the row relink
+    ``write.metadata.plan_genre_retag`` performs, and nothing in ``src`` calls the
+    functions that would reach it, which the case at the head of this section
+    pins by walking the tree. A declaration is a promise to whoever reads the
+    registry, so a surface named by a verb that cannot touch it is the product
+    saying something false about itself.
+
+    THE CLOUD SYNC DECISION GOES WITH IT, and that is a consequence rather than a
+    second opinion. The gate binds to write intent on the guarded writer and this
+    verb opens no database at all, so it could never raise it;
+    ``tests/test_cli_contract.py`` holds the pairing in both directions, and this
+    assertion is the per verb half that says WHICH answer this entry settled on.
+
+    THE TWO ARE ASSERTED TOGETHER ON PURPOSE. Restoring either one alone leaves a
+    registry the contract suite refuses, and reading them in one place is what
+    tells the next author that they move as a pair.
+    """
+    entry = registry.entry("tag.retag")
+
+    assert entry.writes == frozenset({"files"}), (
+        f"{entry.name} declares {sorted(entry.writes)}; the database half has no "
+        f"caller in src, so a surface beyond files is a write it never performs"
+    )
+    assert not entry.writes & registry.DB_WRITE_SURFACES
+    assert [spec.name for spec in entry.gates] == ["tag.retag.confirm"], (
+        "this verb asks one question, over its plan. A cloud sync decision here "
+        "would be a question its work can never raise"
+    )
+    assert entry.destructive, (
+        "narrowing the write surface must not have taken the destructive flag "
+        "with it: this verb still rewrites the genre on files a person owns"
+    )
 
 
 # ---------------------------------------------------------------------------

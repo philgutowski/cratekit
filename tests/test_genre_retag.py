@@ -1025,14 +1025,37 @@ def test_an_empty_folder_argument_refuses_rather_than_sweeping_the_working_direc
 
 def test_the_handler_finds_its_gate_by_digest_source_and_not_by_position():
     """Indexing ``gates[0]`` would silently answer the wrong question the day the
-    tuple is reordered, and the cloud-sync gate sitting beside the confirm is
-    exactly such a neighbour.
+    tuple is reordered.
+
+    THE NEIGHBOUR IS SUPPLIED HERE, and it used to be the entry's own. This verb
+    declared the cloud-sync decision beside its confirm until that declaration was
+    narrowed away with its ``db_metadata`` write surface (R-246), which left one
+    gate, and reversing a one-tuple is a no-op: the case went on passing while
+    proving nothing at all. The property is about the handler rather than about
+    how many gates this entry happens to carry today, so the neighbour is put back
+    by hand.
+
+    IT IS THE REGISTRY'S OWN SHARED SPEC and not one built in this file. A spec
+    constructed here would prove the test can construct a spec; the real one
+    carries no ``digest_source``, which is the exact thing the search is keyed on,
+    and it is the spec every database writing verb declares, so it is the
+    neighbour this handler will genuinely meet if the entry ever gains one back.
     """
     from cratekit.cli import registry
     from cratekit.tagging import retag_cli
 
     entry = registry.entry("tag.retag")
-    reordered = type(entry.gates)(reversed(entry.gates))
+    assert registry.CLOUD_SYNC_UNREADABLE_GATE.digest_source is None, (
+        "the neighbour has gained a plan digest source, so it is no longer the "
+        "wrong answer this search has to step over"
+    )
+    reordered = type(entry.gates)(
+        reversed((*entry.gates, registry.CLOUD_SYNC_UNREADABLE_GATE))
+    )
+    assert reordered[0] is not entry.gates[0], (
+        "the plan gate is still first, so this case cannot see a search that "
+        "indexes position instead of digest source"
+    )
 
     class _Ctx:
         pass

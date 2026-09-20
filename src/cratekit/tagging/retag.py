@@ -44,6 +44,16 @@ not optional and not a convenience: an unregistered operation decides
 ``SKIP_UNOWNED`` for every change, which writes nothing and reports success, and
 a sweep that silently wrote nothing looks exactly like a sweep with nothing to do.
 
+AND NOTHING CALLS EITHER OF THEM, WHICH THE REGISTRY NOW SAYS. Both functions are
+named by this module and by no other file under ``src``, so the shipped verb
+corrects the file and leaves the row. That deferral is R-185 and is still open.
+What is no longer true is the claim about it: the ``tag.retag`` entry declared
+``db_metadata`` among its write surfaces and now declares ``files`` alone
+(R-246), and ``cratekit.tagging.retag_cli`` ends the run by naming the reload a
+person performs in rekordbox to bring the rows back into agreement. Binding a
+caller here is the fix these two entries are waiting for; narrowing the
+declaration was not it, and was never meant to read as it.
+
 LAYER: modules.
 """
 
