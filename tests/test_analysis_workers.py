@@ -2010,3 +2010,33 @@ def test_a_one_level_restamp_resume_says_nothing_about_a_walk_it_never_did(
     code, resumed = drive(resume_argv(analysis_job("analyze.restamp").job_id))
     assert code == int(ExitCode.OK), resumed
     assert [w["code"] for w in resumed["warnings"]] == ["db-metadata-not-written"]
+
+
+def test_the_restamp_resume_names_an_unreadable_folder_and_not_only_a_link(
+    cfg, folder, silence, monkeypatch
+):
+    """Both halves of the walk's omission are frozen, so both are read back.
+
+    Added after the U93 mutation table: D19 killed zero because every resume
+    case in the suite froze declined links and never an unreadable folder.
+    """
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    shut = folder / "locked"
+    shut.mkdir()
+    shutil.copy2(silence, shut / "hidden.flac")
+    shut.chmod(0o000)
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+    try:
+        drive(["analyze", "restamp", str(folder), "--recursive"])
+    finally:
+        shut.chmod(0o755)
+
+    job = analysis_job("analyze.restamp")
+    assert job.payload["unreadable_folders"] == ["locked"]
+    assert job.payload["skipped_links"] == []
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    unreadable = [w for w in resumed["warnings"] if w["code"] == "folder-unreadable"]
+    assert unreadable, resumed
+    assert "locked" in unreadable[0]["message"]

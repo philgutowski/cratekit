@@ -277,6 +277,21 @@ def test_a_resume_says_what_the_queue_said_from_the_payload_alone(tmp_path):
     assert said == discovery.walk_warnings(("linked",))
 
 
+def test_a_resume_repeats_the_unreadable_half_and_not_only_the_links():
+    """The two halves are frozen separately, so they are read back separately.
+
+    Added after the U93 mutation table: D19, dropping the unreadable half from
+    ``warnings_of``, killed zero because every resume case in the suite froze
+    links only.
+    """
+    said = discovery.warnings_of({"unreadable_folders": ["locked"]})
+    assert [one["code"] for one in said] == ["folder-unreadable"]
+    both = discovery.warnings_of(
+        {"skipped_links": ["linked"], "unreadable_folders": ["locked"]}
+    )
+    assert [one["code"] for one in both] == ["linked-folder-skipped", "folder-unreadable"]
+
+
 def test_a_payload_from_a_build_that_never_walked_a_tree_says_nothing():
     """An older job carries neither key, and silence is the right answer for it."""
     assert discovery.warnings_of({"folder": "/somewhere"}) == ()
