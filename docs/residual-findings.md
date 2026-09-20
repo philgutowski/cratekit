@@ -23833,8 +23833,9 @@ its paths the way `plan` does, with one shared re-basing rule rather than a copy
 
 ## R-587. A capture names its library by absolute path, so every capture is unspendable once the library's root changes
 
-**Found:** at the built in review of U95, 2026-09-20. Read, and the ordinary
-restore half confirmed by reading `_file_steps`, not driven.
+**Found:** at the built in review of U95, 2026-09-20. The ordinary restore half
+was DRIVEN the same day against the synthetic fixture library, the bare metal
+half was read.
 
 A capture manifest and a session record store absolute paths. U95 re-bases them
 for ONE case, a bare metal session, keyed on which guard issued the session.
@@ -23848,8 +23849,18 @@ library whose root moved for an ordinary reason, a renamed volume or the
 environment relocation override, so this is older than U95 and U95 makes it the
 last step of a recovery rather than a corner.
 
-**Measured cost:** unmeasured. Every capture older than a root change stops
-being a recovery point, silently, until somebody tries to spend one.
+**Measured cost, driven 2026-09-20 on the fixture library, not on a real one.**
+One completed session with a verified capture, then the library directory renamed
+and the configuration pointed at the new name, which is what a renamed volume
+amounts to. `restore.list_sessions` lists the session with `restorable` False,
+and `restore.plan` under an ordinary `recovery_session` refuses with
+`internal-error`, unable to read the manifest at the path under the OLD root. It
+refuses one step earlier than the reading predicted: the session record's capture
+path is absolute too, so the manifest is never reached. Every capture older than
+a root change stops being a recovery point, silently, until somebody tries to
+spend one. **This meets the board bar's third arm**, a workflow a DJ needs cannot
+finish through shipped verbs, **and OWES an issue**, which no session has created
+yet because a number is not a finding's until the entry is on `main`.
 
 **Why not fixed here.** The durable repair is a format decision: library relative
 paths in the manifest and the record, or a manifest that records the root it was
