@@ -5500,7 +5500,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the two re-pins above it IS a cause, which is why the non-key half does not
     # move with it: a slug that is registered leaves the literal population and
     # the key population in step.
-    assert (len(literals), len(literals - set(causes))) == (468, 299), (
+    # Re-pinned on U92, the size refusal that keeps a live set out of vocal
+    # scoring, 2026-09-20: 468 to 469 distinct, 299 to 300 non-keys. ONE literal
+    # joined and NOTHING left, differenced as SETS by running this collector over
+    # main's own src tree extracted into a scratch directory, rather than inferred
+    # from the total moving by one. It is vocal-audio-too-large in
+    # `analysis/vocals.py`, and it is not a cause: it is the fifth VOCAL REASON,
+    # the field an item report carries to say why a track came back unscored, the
+    # same kind of literal as vocal-audio-undecodable and vocal-model-unavailable
+    # beside it, none of which is registered either. Nothing refuses with it, so
+    # the cause population does not move and both halves rise together.
+    assert (len(literals), len(literals - set(causes))) == (469, 300), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

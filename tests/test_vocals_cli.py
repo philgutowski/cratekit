@@ -273,6 +273,40 @@ def test_an_unchanged_score_is_not_rewritten(cfg, folder, silence, monkeypatch):
     assert track.stat().st_mtime_ns == before
 
 
+def test_an_oversize_track_is_refused_by_the_restamp_verb_and_keeps_its_tags(
+    cfg, folder, silence, monkeypatch
+):
+    """U92, closing R-408, on the second of the two verbs sharing ``analyse``.
+
+    The cap comes down to a byte so a real container stands in for a live set.
+    The shipped value of ``VOCAL_MAX_BYTES`` is pinned in
+    ``tests/test_analysis_workers.py``, because a suite that only ever lowers
+    the cap proves the comparison and never the number.
+    """
+    track = place(folder, silence, "a live set", voxlevel=7, voxgender="F")
+    bind_scoring(monkeypatch)
+    monkeypatch.setattr(vocals, "VOCAL_MAX_BYTES", 1)
+
+    code, queued = drive(["analyze", "vocals", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    job = vocals_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+
+    report = artifacts.committed(cfg, job.job_id)[0]
+    assert report["status"] == "inactive"
+    assert report["vocal_reason"] == vocals.REASON_AUDIO_TOO_LARGE
+    assert report["written"] is False
+    assert report["voxlevel"] is None, "a track the model never heard is not a zero"
+    assert resumed["data"]["progress"]["analysis"]["by_vocal_reason"] == {
+        vocals.REASON_AUDIO_TOO_LARGE: 1
+    }
+    assert resumed["warnings"] == [], "no install makes this file decodable"
+    assert tags.read_vox_from_file(track) == 7, "the tag already on the file was kept"
+    assert tags.read_voxgender_from_file(track) == "F"
+
+
 def test_a_folder_with_no_audio_queues_nothing(cfg, folder):
     code, envelope = drive(["analyze", "vocals", str(folder)])
     assert code == int(ExitCode.OK), envelope
