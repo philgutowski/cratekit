@@ -44,6 +44,14 @@ _ORIGIN = ("write", "metadata_cli")
 
 WORKFLOW = "mytags-vocals"
 
+#: What this verb's write is filed under in a session record's change summary.
+#: The summary's key is a tree identifier everywhere else, and a My Tag category
+#: is no tree, so this names the surface instead. It is only ever rendered, in
+#: ``restore list`` and in the refusal a restore raises before discarding later
+#: work, and nothing looks it up in the tree registry. Stable on purpose and
+#: distinct from ``CATEGORY``, which is a display name a person can rename (R19).
+CHANGE_KEY = "my-tags.vocals"
+
 CATEGORY = "Vocals"
 VALUE_VOX = "vox"
 VALUE_MALE = "male vox"
@@ -293,8 +301,14 @@ def mytags_vocals(ctx) -> Envelope:
             cfg,
             workflow=WORKFLOW,
             analysis_roots=analysis_store.watch_roots(cfg),
-        ):
+        ) as gates, session.recorded_write(cfg, gates) as record:
+            # THE RECORD IS WHAT MAKES THE CAPTURE AN UNDO (R-375). This verb
+            # took a capture and opened no record, so after a real apply the
+            # only trace of the write was a snapshot directory ``restore list``
+            # could not show and the pruning scan did not protect. Attached
+            # before it is judged, for the reason the membership writer gives.
             capture = snapshot.capture(cfg, db=db)
+            session.attach_capture(record, capture.root, cfg)
             snapshot.assert_verified(capture)
             try:
                 counts = apply_mytags(cfg, db, plan)
@@ -302,6 +316,16 @@ def mytags_vocals(ctx) -> Envelope:
             except BaseException:
                 _rollback_quietly(db)
                 raise
+            # RECORDED THE INSTANT THE COMMIT RETURNS. Keyed on ``CHANGE_KEY``,
+            # a stable identifier and never the category's display name (R19).
+            session.record_commit(
+                record,
+                CHANGE_KEY,
+                session.ChangeSummary(
+                    (session.TreeChange(tree=CHANGE_KEY, created=counts["written"]),)
+                ),
+                cfg,
+            )
         plan["totals"]["written"] = counts["written"]
         plan["totals"]["already"] = counts["already"]
         return ctx.envelope(data=plan, outcome=Outcome.OK)

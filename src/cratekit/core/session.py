@@ -1725,9 +1725,14 @@ def assert_gates(
     * a volume whose recorded identity does not match refuses in the
       library-unavailable class.
 
-    ``workflow`` is the caller's name for the operation and is recorded in the
-    session log. It arrives as a parameter because this layer names no verb (D2);
-    the layer that owns verb names supplies one.
+    ``workflow`` is the caller's name for the operation. It arrives as a
+    parameter because this layer names no verb (D2); the layer that owns verb
+    names supplies one. THE GATES THEMSELVES RECORD NOTHING, and this paragraph
+    used to say otherwise (R-375): the name rides out on :class:`Gates`, and it
+    reaches the session log only when the body opens a record. A body that takes
+    a capture does that through :func:`recorded_write`, which reads the name from
+    the ``Gates`` it is handed. A body that takes no capture has no undo to make
+    reachable and may leave no record at all.
 
     ``intent`` is a DECLARATION, not an override, and it changes exactly the two
     LATCHES: a ``RECOVERY`` session is held neither by the unresolved-session
@@ -1959,6 +1964,96 @@ def close_session(
     record.ended = output.timestamp(now)
     write_record(record, cfg)
     return record
+
+
+# ---------------------------------------------------------------------------
+# The record a gated database write keeps (R-12, R-375)
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def recorded_write(
+    cfg: config.Config,
+    gates: Gates,
+    *,
+    identity_provider: preflight.IdentityProvider | None = None,
+    mount_enumerator: preflight.MountEnumerator | None = None,
+    now: datetime | None = None,
+) -> Iterator[SessionRecord]:
+    """Hold an open session record for the body of one gated database write.
+
+    THE GATES RECORD NOTHING, and for a long time nothing else did either. A
+    writer that took a capture inside :func:`assert_gates` and opened no record
+    had paid for an undo nobody could reach: ``restore list`` reads this log and
+    nothing else, so the capture was absent from it, and the pruning scan reads
+    the same log, so the capture was unprotected while the write it was the undo
+    for was still running. The record is what makes a capture an undo rather
+    than a directory.
+
+    IT TAKES THE ``Gates`` OBJECT RATHER THAN A WORKFLOW NAME, so there is no
+    call shape that opens this record without the gates held, and the workflow,
+    the actor and the acknowledgment it records are the ones the gates actually
+    passed on rather than a second spelling a caller supplies.
+
+    CLOSED ON BOTH PATHS, the split :func:`cratekit.core.restore.recovery_session`
+    makes for the same reason. A record left open protects its capture from
+    retention for ever and refuses every later prune and cutover, so a write that
+    raised closes ABANDONED. Abandoning is an ATTEMPT: the error that ended the
+    write is the one the caller has to see, and a log that cannot be written on
+    the way out of a failure must not replace it.
+
+    The caller attaches its capture with :func:`attach_capture` the instant the
+    capture exists, and marks the commit with :func:`record_commit` the instant
+    it lands. Neither is done here, because this layer takes no capture and
+    performs no commit.
+    """
+    record = open_session(
+        cfg,
+        workflow=gates.workflow,
+        actor=gates.acknowledgment.actor,
+        acknowledged_at=gates.acknowledgment.recorded_at.isoformat(),
+        now=now,
+    )
+    try:
+        yield record
+    except BaseException:
+        try:
+            close_session(record, cfg, state=SessionState.ABANDONED, now=now)
+        except Exception:  # noqa: BLE001 - the write's own error is the one to surface
+            logger.warning(
+                "session %s could not be recorded as abandoned", record.session_id, exc_info=True
+            )
+        raise
+    close_session(
+        record,
+        cfg,
+        state=SessionState.CLOSED,
+        intent=gates.intent,
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
+        now=now,
+    )
+
+
+def record_commit(
+    record: SessionRecord, source: str, change: ChangeSummary, cfg: config.Config
+) -> None:
+    """Record that one source's commit landed, and persist it at once.
+
+    WRITTEN THE INSTANT THE COMMIT RETURNS rather than at the clean end of the
+    session. A restore decides whether it is discarding somebody's work by
+    reading committed sources, so a record that learns of its commit only on the
+    clean path lets a failure AFTER the commit close as though nothing landed,
+    and the next restore reaches back past real rows without asking.
+
+    This is the single-source spelling of what :func:`commit_sources` does for a
+    loop of them. A writer whose whole session is one guarded commit has no loop
+    to hand over, and wrapping its body in a callable to borrow that function
+    would also rewrite whatever it raised as a source refusal.
+    """
+    record.sources[source] = str(SourceState.COMMITTED)
+    record.change = record.change.merged(change)
+    write_record(record, cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -2433,6 +2528,8 @@ __all__ = [
     "read_lock_holder",
     "read_record",
     "record_acknowledgment",
+    "record_commit",
+    "recorded_write",
     "records",
     "release_stale_lock",
     "resolve_unverified_session",

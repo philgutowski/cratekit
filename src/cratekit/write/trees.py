@@ -1029,10 +1029,22 @@ def write_tree_membership(
     skipped: list[RowMatch] = []
     touched: list[str] = []
 
+    # THE RECORD IS OPENED INSIDE THE GATES AND BEFORE THE CAPTURE (R-12). The
+    # capture is this write's undo, and a capture no record names is one the
+    # pruning scan is free to delete mid write and one ``restore list`` cannot
+    # show. It composes with a caller that already owns a record because it is a
+    # record of its own: a routing pass walking three trees leaves three, each
+    # naming the capture taken before that tree's commit, which is exactly the
+    # granularity a person restores at. R29's one source per run holds, and the
+    # source is the tree.
     with session.assert_gates(
         cfg, workflow=workflow, analysis_roots=watched, intent=intent
-    ):
+    ) as gates, session.recorded_write(cfg, gates) as record:
         capture = snapshot.capture(cfg, db=db)
+        # ATTACHED BEFORE IT IS JUDGED. A capture that fails its check is still
+        # a directory a person may go looking for, and the restore side lists an
+        # unusable entry rather than answering with silence.
+        session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
 
         # THE WRITE IS PARENTED TO THE ROOT THE CUTOVER ADOPTED. Asserting the
@@ -1091,6 +1103,19 @@ def write_tree_membership(
             # cleanup, never a place that decides an error is survivable.
             _rollback_quietly(db)
             raise
+
+        # RECORDED THE INSTANT THE COMMIT RETURNS, ahead of the fingerprint. A
+        # restore reads committed sources to decide whether it would discard
+        # work, so a failure in the state write below must not close this
+        # record looking as though nothing landed. ``created`` is memberships
+        # added, the per-tree number ``restore list`` asks for; nothing here
+        # updates a row that was already there.
+        session.record_commit(
+            record,
+            tree_id,
+            session.ChangeSummary((session.TreeChange(tree=tree_id, created=added),)),
+            cfg,
+        )
 
         # THE FINGERPRINT IS TAKEN AT THE CLOSE, AFTER THE COMMIT. It is what
         # lets the next run tell a database recovered out of band from one this

@@ -2100,3 +2100,142 @@ def test_a_gate_refused_restore_deletes_nothing_and_transfers_nothing(
     for sidecar in sidecars:
         assert sidecar.exists(), f"a refused restore unlinked {sidecar.name}"
         assert sidecar.read_bytes() == b"the live write-ahead log"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The record a gated write keeps (R-12, R-375)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_record_is_the_gates_own_workflow_actor_and_acknowledgment(cfg):
+    """Read FROM the gates, so a caller cannot record a second spelling of them."""
+    minted = acknowledge(cfg)
+    with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
+        with session.recorded_write(cfg, gates, **open_gates(cfg)) as record:
+            assert session.read_record(record.session_id, cfg).state is session.SessionState.OPEN
+
+    (only,) = session.records(cfg)
+    assert only.workflow == "a-recorded-write"
+    assert only.actor == minted.actor
+    assert only.acknowledged_at == minted.recorded_at.isoformat()
+    assert only.state is session.SessionState.CLOSED
+    assert only.ended is not None
+
+
+def test_a_body_that_raises_closes_abandoned_and_its_own_error_surfaces(cfg):
+    acknowledge(cfg)
+    with pytest.raises(RuntimeError, match="the body failed"):
+        with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
+            with session.recorded_write(cfg, gates, **open_gates(cfg)):
+                raise RuntimeError("the body failed")
+
+    (only,) = session.records(cfg)
+    assert only.state is session.SessionState.ABANDONED
+
+
+def test_a_log_that_cannot_record_the_abandonment_does_not_replace_the_error(cfg, monkeypatch):
+    """Abandoning is an attempt. The error that ended the write is the one to see."""
+    acknowledge(cfg)
+    real_close = session.close_session
+
+    def the_log_is_gone(record, *args, **kwargs):
+        if kwargs.get("state") is session.SessionState.ABANDONED:
+            raise OSError("the volume holding the log went away")
+        return real_close(record, *args, **kwargs)
+
+    monkeypatch.setattr(session, "close_session", the_log_is_gone)
+    with pytest.raises(RuntimeError, match="the body failed"):
+        with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
+            with session.recorded_write(cfg, gates, **open_gates(cfg)):
+                raise RuntimeError("the body failed")
+
+
+def test_the_clean_close_is_the_gated_close_and_asserts_the_volume(cfg):
+    """CLOSED is the claim the write finished, so it goes through the gate that backs it.
+
+    The seams are forwarded to the close, which is what this drives: the gates
+    pass on a matching volume and the close is handed one that does not match.
+    """
+    acknowledge(cfg)
+    with pytest.raises(CratekitError) as excinfo:
+        with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
+            with session.recorded_write(
+                cfg, gates, identity_provider=foreign_identity, mount_enumerator=lambda: ()
+            ):
+                pass
+    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    # Left OPEN rather than closed over a volume nobody vouched for, which keeps
+    # whatever capture it named protected.
+    (only,) = session.records(cfg)
+    assert only.state is session.SessionState.OPEN
+
+
+def test_a_recovery_closes_as_a_recovery(cfg):
+    """The intent rides in on the gates, so a recovery's close is not gated twice."""
+    acknowledge(cfg)
+    with session.assert_gates(
+        cfg, workflow="a-rebuild", intent=session.Intent.RECOVERY, **open_gates(cfg)
+    ) as gates:
+        with session.recorded_write(
+            cfg, gates, identity_provider=foreign_identity, mount_enumerator=lambda: ()
+        ):
+            pass
+    (only,) = session.records(cfg)
+    assert only.state is session.SessionState.CLOSED
+
+
+def test_a_recorded_commit_is_on_disk_before_the_session_ends(cfg):
+    acknowledge(cfg)
+    change = session.ChangeSummary((session.TreeChange(tree="a-tree", created=3),))
+    with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
+        with session.recorded_write(cfg, gates, **open_gates(cfg)) as record:
+            session.record_commit(record, "a-tree", change, cfg)
+            on_disk = session.read_record(record.session_id, cfg)
+            assert on_disk.state is session.SessionState.OPEN
+            assert on_disk.committed_sources() == ("a-tree",)
+            assert on_disk.change == change
+            session.record_commit(record, "a-tree", change, cfg)
+
+    (only,) = session.records(cfg)
+    assert only.change.trees == (session.TreeChange(tree="a-tree", created=6),)
+
+
+def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recorded():
+    """METHOD's fifth pattern, as a guard on the NEXT writer rather than a sweep of this one.
+
+    R-12 and R-375 were one shape found twice, a year apart in the ledger: a
+    module takes a capture inside the gates and opens no record, so the undo it
+    paid for cannot be listed, spent or protected. Read off the syntax tree per
+    module, and it asks for all three calls, because a record with no capture
+    attached lists as unusable and one with no commit recorded is invisible to
+    the restore that would discard it.
+    """
+    import ast
+
+    src = Path(session.__file__).resolve().parents[1]
+    owed = {"recorded_write", "attach_capture", "record_commit"}
+    takers: dict[str, set[str]] = {}
+    for path in sorted(src.rglob("*.py")):
+        if path.name == "snapshot.py" and path.parent.name == "core":
+            continue
+        called: set[str] = set()
+        takes = False
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            receiver = node.func.value
+            if (
+                node.func.attr == "capture"
+                and isinstance(receiver, ast.Name)
+                and receiver.id == "snapshot"
+            ):
+                takes = True
+            called.add(node.func.attr)
+        if takes:
+            takers[str(path.relative_to(src))] = owed - called
+
+    assert set(takers) == {"write/metadata_cli.py", "write/trees.py"}, (
+        f"the set of modules that take a capture changed: {sorted(takers)}. A new one "
+        f"owes a session record for it; name it here once it keeps one."
+    )
+    assert all(not missing for missing in takers.values()), takers
