@@ -407,12 +407,18 @@ def recovery_session(
     and the library lock. A recovery is exempt from the latches and from nothing
     else.
 
-    THE RECORD IS OPENED INSIDE THE GATES AND CLOSED ON BOTH PATHS. A restore
-    that raised part way through would otherwise leave a record open forever,
-    protecting a capture from retention and refusing every later close. It closes
-    ABANDONED on a failure and CLOSED on success, which is the same split
-    ``close_run`` makes for the same reason: closing is the claim that the work
-    finished and abandoning is the opposite claim.
+    THE RECORD IS THE GATES' OWN, asked for with ``keep`` rather than opened
+    here. This function used to carry its own copy of the open, abandon on a
+    raise, close on success split, and its copy had the ordering fault the gates'
+    docstring describes: opened inside the analysis watch, it closed CLOSED
+    before the watch had judged the restore, so a restore refused over a moved
+    grid was already on record as cleanly finished. One spelling, owned by the
+    gates, closes after the watch and ends terminal on every path that can still
+    write the log. It closes ABANDONED on a failure and CLOSED on success, the
+    same split ``close_run`` makes for the same reason: closing is the claim that
+    the work finished and abandoning is the opposite claim. The close is a
+    RECOVERY's, because the intent rides on the gates, so it is exempt from the
+    convergence gate for the reason it is exempt from every other latch here.
     """
     with session.assert_gates(
         cfg,
@@ -423,37 +429,17 @@ def recovery_session(
         identity_provider=identity_provider,
         mount_enumerator=mount_enumerator,
         analysis_roots=analysis_roots,
+        keep=session.Keep.RECORD,
     ) as gates:
-        record = session.open_session(cfg, workflow=workflow, now=now)
         with _issued(
             workflow=workflow,
             lock=gates.lock,
             issued_by=Guard.LIBRARY_SESSION,
             authorises=Path(cfg.library.root),
             gates=gates,
-            record=record,
+            record=gates.record,
         ) as held:
-            try:
-                yield held
-            except BaseException:
-                session.close_session(
-                    record, cfg, state=session.SessionState.ABANDONED, now=now
-                )
-                raise
-            session.close_session(
-                record,
-                cfg,
-                state=session.SessionState.CLOSED,
-                # NO PLATFORM SEAMS ARE PASSED, and their absence is the point
-                # rather than an omission. ``close_session`` asserts the volume
-                # only on the path it gates, and a RECOVERY is exempt from that
-                # gate for the reason it is exempt from every other latch here.
-                # Forwarding them anyway said "this close is volume-asserted" to a
-                # reader, which was not true on this path, and a seam that is
-                # threaded but never reached is a seam somebody later trusts.
-                intent=session.Intent.RECOVERY,
-                now=now,
-            )
+            yield held
 
 
 @contextmanager

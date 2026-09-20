@@ -1072,6 +1072,13 @@ def test_a_grid_rewritten_during_a_membership_write_refuses_the_session(
     assert cause.reason == "anlz-modified"
     assert cause.code is ExitCode.REFUSED_BY_POLICY
     assert any(str(grid) in line for line in cause.detail["changed"])
+    # THE RECORD CLOSES AFTER THE WATCH HAS JUDGED, so a session refused over a
+    # moved grid is not on record as cleanly finished. The commit landed before
+    # the watch looked, and the record says that too, which is what lets a
+    # restore see rows this refused session left behind.
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == (TREE_ID,)
 
 
 def test_membership_lands_in_the_named_folder_and_sub(cfg, gates_pass, db, adopted_root):
@@ -1568,3 +1575,78 @@ def test_a_capture_that_did_not_verify_is_recorded_before_the_refusal(
     record = _the_one_record(cfg)
     assert record.state is session.SessionState.ABANDONED
     assert record.snapshot_path and Path(record.snapshot_path).is_dir()
+
+
+def test_a_pass_that_added_nothing_claims_no_commit(cfg, gates_pass, db, adopted_root):
+    """The inbox sweep re-runs this writer on every tree, and most runs add nothing.
+
+    A restore reads a committed source as work it would discard, so a no-op that
+    claimed one would make restoring to last week refuse over a list of sessions
+    that each created nothing. The record itself stays, because its capture is
+    real.
+    """
+    from cratekit.core import restore
+
+    plan = {(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]}
+    _write(cfg, db, plan=plan, root_id=str(adopted_root.ID))
+    again = _write(cfg, db, plan=plan, root_id=str(adopted_root.ID))
+    assert again.added == 0
+
+    # By recorded start, which carries microseconds. The identifier's tail is
+    # random, so two sessions inside one second do not sort by it.
+    first, noop = sorted(session.records(cfg), key=lambda entry: entry.started)
+    assert first.committed_sources() == (TREE_ID,)
+    assert noop.committed_sources() == ()
+    assert noop.state is session.SessionState.CLOSED
+    assert noop.change.trees == ()
+    assert noop.snapshot_path
+    # The question a restore to the first session asks, answered by the function
+    # that asks it: the no-op after it is not work that restore would discard.
+    assert restore._later_committed(cfg, first) == ()
+
+
+def test_a_commit_that_lands_and_then_raises_is_still_recorded_as_committed(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """An exception out of the commit is not proof that nothing was committed.
+
+    The binding lands the SQL transaction and THEN saves rekordbox's playlist
+    file, so a failure in the second half arrives over durable rows. Driven by
+    letting the real commit land and raising where that save would.
+    """
+    from pyrekordbox.db6 import tables
+
+    real_commit = db.commit
+
+    def lands_then_fails(*args, **kwargs):
+        real_commit(*args, **kwargs)
+        raise OSError("the playlist file could not be saved")
+
+    monkeypatch.setattr(db, "commit", lands_then_fails)
+    with pytest.raises(OSError, match="playlist file"):
+        _write(
+            cfg,
+            db,
+            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
+            root_id=str(adopted_root.ID),
+        )
+
+    landed = [row for row in db.session.query(tables.DjmdPlaylist).all() if row.Name == SUB_DISPLAY]
+    assert landed, "the fixture did not land the commit it claims to"
+    record = _the_one_record(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == (TREE_ID,)
+    assert record.change.trees == (session.TreeChange(tree=TREE_ID, created=1, updated=0),)
+
+
+def test_the_commit_witness_leaves_the_handle_as_it_found_it(cfg, gates_pass, db, adopted_root):
+    """The listener is removed on the way out, on a handle that outlives the write."""
+    from sqlalchemy import event
+
+    with rb_writer.commit_witness(db) as witness:
+        assert event.contains(db.session, "after_commit", witness._mark)
+        assert witness.landed is False
+        rb_writer.ensure_folder(db, "a witnessed folder")
+        db.session.commit()
+        assert witness.landed is True
+    assert not event.contains(db.session, "after_commit", witness._mark)

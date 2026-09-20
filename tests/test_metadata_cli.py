@@ -373,3 +373,43 @@ def test_the_capture_is_protected_while_the_apply_is_in_flight(ready, monkeypatc
 
     (record,) = session.records(cfg)
     assert seen["protected"] == {Path(record.snapshot_path).resolve()}
+
+
+def test_a_second_apply_writes_nothing_and_claims_no_commit(ready):
+    """A restore reads a committed source as work it would discard. A no-op is not work."""
+    cfg, audio, db_path = ready
+    del audio, db_path
+    drive(["metadata", "mytags-vocals", "--apply"])
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["written"] == 0
+
+    first, noop = sorted(session.records(cfg), key=lambda entry: entry.started)
+    assert first.committed_sources() == (metadata_cli.CHANGE_KEY,)
+    assert noop.committed_sources() == ()
+    assert noop.change.trees == ()
+    assert noop.state is session.SessionState.CLOSED
+
+
+def test_an_apply_whose_commit_lands_and_then_raises_is_recorded_as_committed(ready, monkeypatch):
+    """The binding commits and THEN saves a playlist file, so a raise can follow durable rows."""
+    from pyrekordbox.db6 import database as binding
+
+    cfg, audio, db_path = ready
+    del audio, db_path
+    real_commit = binding.Rekordbox6Database.commit
+
+    def lands_then_fails(self, *args, **kwargs):
+        real_commit(self, *args, **kwargs)
+        raise OSError("the playlist file could not be saved")
+
+    monkeypatch.setattr(binding.Rekordbox6Database, "commit", lands_then_fails)
+    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
+    assert code != int(ExitCode.OK), envelope
+
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.ABANDONED
+    assert record.committed_sources() == (metadata_cli.CHANGE_KEY,)
+    assert record.change.trees == (
+        session.TreeChange(tree=metadata_cli.CHANGE_KEY, created=2, updated=0),
+    )

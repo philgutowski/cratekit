@@ -67,7 +67,7 @@ from enum import StrEnum
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.core import config, processes
 from cratekit.core.cause import Cause, CratekitError, Scope, name_the_database, refuse
@@ -2401,6 +2401,49 @@ def write_session_lock(path: Path | str | None = None, *, cfg: config.Config | N
 # ---------------------------------------------------------------------------
 
 
+class CommitWitness:
+    """Whether the SQL commit on one handle has landed. See :func:`commit_witness`."""
+
+    __slots__ = ("landed",)
+
+    def __init__(self) -> None:
+        self.landed = False
+
+    def _mark(self, _session: Any) -> None:
+        self.landed = True
+
+
+@contextmanager
+def commit_witness(db: Any) -> Iterator[CommitWitness]:
+    """Tell a commit that LANDED and then raised from one that never landed.
+
+    AN EXCEPTION OUT OF A COMMIT DOES NOT MEAN NOTHING WAS COMMITTED. The
+    binding's ``commit`` lands the SQL transaction FIRST and only then reconciles
+    and saves rekordbox's legacy playlist file, so a failure in that second half
+    arrives as an exception over rows that are already durable. A caller that
+    reads the exception as "nothing landed" rolls back, which by then does
+    nothing, and records a session that committed no work, and the next restore
+    reaches back past those rows without asking.
+
+    Asked of the engine rather than inferred from where the exception came from:
+    the listener is SQLAlchemy's own ``after_commit``, which fires when the
+    transaction has landed and at no other time. Removed on the way out, so a
+    handle that outlives this block is left as it was found.
+    """
+    from sqlalchemy import event
+
+    witness = CommitWitness()
+    target = getattr(db, "session", None)
+    if target is None:
+        yield witness
+        return
+    event.listen(target, "after_commit", witness._mark)
+    try:
+        yield witness
+    finally:
+        event.remove(target, "after_commit", witness._mark)
+
+
 def commit_guarded(db: Any, *, force_cloud_canary: bool = False) -> None:
     """Commit only when it is still safe to, and roll back rather than leak.
 
@@ -2460,6 +2503,7 @@ def commit_guarded(db: Any, *, force_cloud_canary: bool = False) -> None:
 __all__ = [
     "BOOKKEEPING_COLUMNS",
     "CONTENT_TABLE",
+    "CommitWitness",
     "ENV_APP_PATH",
     "FIELD_EMPTIES",
     "GRIDLESS_ON_CREATE_COLUMNS",
@@ -2497,6 +2541,7 @@ __all__ = [
     "close_db",
     "clear_registry_buffer",
     "commit_guarded",
+    "commit_witness",
     "content_writable_columns",
     "db_schema_version",
     "db_sidecar_suffixes",

@@ -2103,16 +2103,30 @@ def test_a_gate_refused_restore_deletes_nothing_and_transfers_nothing(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# The record a gated write keeps (R-12, R-375)
+# The record a gated session keeps (R-12, R-375)
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+def recording_gates(cfg, **overrides):
+    return session.assert_gates(
+        cfg, workflow="a-recorded-write", keep=session.Keep.RECORD, **open_gates(cfg, **overrides)
+    )
+
+
+def test_the_gates_keep_nothing_unless_asked(cfg):
+    """The default is what every capture-free caller already had: no record."""
+    acknowledge(cfg)
+    with session.assert_gates(cfg, workflow="a-destructive-workflow", **open_gates(cfg)) as gates:
+        assert gates.record is None
+    assert session.records(cfg) == ()
 
 
 def test_the_record_is_the_gates_own_workflow_actor_and_acknowledgment(cfg):
     """Read FROM the gates, so a caller cannot record a second spelling of them."""
     minted = acknowledge(cfg)
-    with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
-        with session.recorded_write(cfg, gates, **open_gates(cfg)) as record:
-            assert session.read_record(record.session_id, cfg).state is session.SessionState.OPEN
+    with recording_gates(cfg) as gates:
+        on_disk = session.read_record(gates.record.session_id, cfg)
+        assert on_disk.state is session.SessionState.OPEN
 
     (only,) = session.records(cfg)
     assert only.workflow == "a-recorded-write"
@@ -2122,19 +2136,26 @@ def test_the_record_is_the_gates_own_workflow_actor_and_acknowledgment(cfg):
     assert only.ended is not None
 
 
+def test_a_refused_gate_keeps_no_record(cfg):
+    """No acknowledgment is minted, so the gates refuse, and a refusal writes nothing."""
+    with pytest.raises(CratekitError):
+        with recording_gates(cfg):
+            raise AssertionError("the gates admitted a session they should have refused")
+    assert session.records(cfg) == ()
+
+
 def test_a_body_that_raises_closes_abandoned_and_its_own_error_surfaces(cfg):
     acknowledge(cfg)
     with pytest.raises(RuntimeError, match="the body failed"):
-        with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
-            with session.recorded_write(cfg, gates, **open_gates(cfg)):
-                raise RuntimeError("the body failed")
+        with recording_gates(cfg):
+            raise RuntimeError("the body failed")
 
     (only,) = session.records(cfg)
     assert only.state is session.SessionState.ABANDONED
 
 
 def test_a_log_that_cannot_record_the_abandonment_does_not_replace_the_error(cfg, monkeypatch):
-    """Abandoning is an attempt. The error that ended the write is the one to see."""
+    """Abandoning is an attempt. The error that ended the session is the one to see."""
     acknowledge(cfg)
     real_close = session.close_session
 
@@ -2145,97 +2166,235 @@ def test_a_log_that_cannot_record_the_abandonment_does_not_replace_the_error(cfg
 
     monkeypatch.setattr(session, "close_session", the_log_is_gone)
     with pytest.raises(RuntimeError, match="the body failed"):
-        with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
-            with session.recorded_write(cfg, gates, **open_gates(cfg)):
-                raise RuntimeError("the body failed")
+        with recording_gates(cfg):
+            raise RuntimeError("the body failed")
 
 
-def test_the_clean_close_is_the_gated_close_and_asserts_the_volume(cfg):
-    """CLOSED is the claim the write finished, so it goes through the gate that backs it.
+def test_a_clean_close_that_refuses_ends_abandoned_rather_than_open(cfg, monkeypatch):
+    """CLOSED is a gated claim, and when it cannot be made the record still ENDS.
 
-    The seams are forwarded to the close, which is what this drives: the gates
-    pass on a matching volume and the close is handed one that does not match.
+    Driven by taking the volume away between the gates and the close, which is
+    the refusal ``close_session`` exists to raise. A record left OPEN here would
+    refuse every later prune and cutover with no verb that abandons it, so the
+    fallback is the opposite claim and not the absence of one. The refusal still
+    surfaces, because a write whose close was refused did not end cleanly.
     """
     acknowledge(cfg)
+    answers = iter([cfg.library.volume_id])
+
+    def identity_then_gone(_path):
+        return next(answers, _ELSEWHERE)
+
     with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
-            with session.recorded_write(
-                cfg, gates, identity_provider=foreign_identity, mount_enumerator=lambda: ()
-            ):
-                pass
+        with recording_gates(cfg, identity_provider=identity_then_gone) as gates:
+            session.record_commit(
+                gates.record,
+                "a-tree",
+                session.ChangeSummary((session.TreeChange(tree="a-tree", created=1),)),
+                cfg,
+            )
     assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
-    # Left OPEN rather than closed over a volume nobody vouched for, which keeps
-    # whatever capture it named protected.
+
     (only,) = session.records(cfg)
-    assert only.state is session.SessionState.OPEN
+    assert only.state is session.SessionState.ABANDONED
+    # The commit it recorded first is still what a restore reads.
+    assert only.committed_sources() == ("a-tree",)
 
 
 def test_a_recovery_closes_as_a_recovery(cfg):
     """The intent rides in on the gates, so a recovery's close is not gated twice."""
     acknowledge(cfg)
-    with session.assert_gates(
-        cfg, workflow="a-rebuild", intent=session.Intent.RECOVERY, **open_gates(cfg)
-    ) as gates:
-        with session.recorded_write(
-            cfg, gates, identity_provider=foreign_identity, mount_enumerator=lambda: ()
-        ):
-            pass
+    answers = iter([cfg.library.volume_id])
+    with recording_gates(
+        cfg,
+        intent=session.Intent.RECOVERY,
+        identity_provider=lambda _path: next(answers, _ELSEWHERE),
+    ):
+        pass
     (only,) = session.records(cfg)
     assert only.state is session.SessionState.CLOSED
+
+
+def test_the_record_closes_after_the_analysis_watch_has_judged_the_session(cfg):
+    """A session the watch refuses must not already be on record as finished.
+
+    The ordering fault this pins was real in two places: a record opened INSIDE
+    the body exits before the gates do, so it closed CLOSED and released its
+    capture, and then the watch refused the session over a moved grid. Driven
+    with a real analysis file rewritten under an open session.
+    """
+    acknowledge(cfg)
+    grids = Path(cfg.library.root) / "PIONEER" / "USBANLZ"
+    grids.mkdir(parents=True)
+    grid = grids / "ANLZ0000.DAT"
+    grid.write_bytes(b"a grid")
+
+    with pytest.raises(CratekitError):
+        with recording_gates(cfg, analysis_roots=[grids.parent]):
+            grid.write_bytes(b"a different grid, longer")
+
+    (only,) = session.records(cfg)
+    assert only.state is session.SessionState.ABANDONED
 
 
 def test_a_recorded_commit_is_on_disk_before_the_session_ends(cfg):
     acknowledge(cfg)
     change = session.ChangeSummary((session.TreeChange(tree="a-tree", created=3),))
-    with session.assert_gates(cfg, workflow="a-recorded-write", **open_gates(cfg)) as gates:
-        with session.recorded_write(cfg, gates, **open_gates(cfg)) as record:
-            session.record_commit(record, "a-tree", change, cfg)
-            on_disk = session.read_record(record.session_id, cfg)
-            assert on_disk.state is session.SessionState.OPEN
-            assert on_disk.committed_sources() == ("a-tree",)
-            assert on_disk.change == change
-            session.record_commit(record, "a-tree", change, cfg)
+    with recording_gates(cfg) as gates:
+        record = gates.record
+        session.record_commit(record, "a-tree", change, cfg)
+        on_disk = session.read_record(record.session_id, cfg)
+        assert on_disk.state is session.SessionState.OPEN
+        assert on_disk.committed_sources() == ("a-tree",)
+        assert on_disk.change == change
+        session.record_commit(record, "a-tree", change, cfg)
 
     (only,) = session.records(cfg)
     assert only.change.trees == (session.TreeChange(tree="a-tree", created=6),)
 
 
-def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recorded():
-    """METHOD's fifth pattern, as a guard on the NEXT writer rather than a sweep of this one.
+def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
+    """Every FUNCTION in ``src`` that takes a capture, with what it still owes.
 
-    R-12 and R-375 were one shape found twice, a year apart in the ledger: a
-    module takes a capture inside the gates and opens no record, so the undo it
-    paid for cannot be listed, spent or protected. Read off the syntax tree per
-    module, and it asks for all three calls, because a record with no capture
-    attached lists as unusable and one with no commit recorded is invisible to
-    the restore that would discard it.
+    Per function and not per module, because ``write/trees.py`` holds a dozen
+    writers and a per-module reading is satisfied for all of them by the one that
+    complies. Returns the unreadable spellings too: a capture imported by name
+    or under an alias is a call this walk cannot attribute, and a guard that
+    cannot read something says so rather than passing it.
     """
     import ast
 
-    src = Path(session.__file__).resolve().parents[1]
-    owed = {"recorded_write", "attach_capture", "record_commit"}
     takers: dict[str, set[str]] = {}
+    unreadable: list[str] = []
     for path in sorted(src.rglob("*.py")):
-        if path.name == "snapshot.py" and path.parent.name == "core":
+        if path.relative_to(src).as_posix() == "core/snapshot.py":
             continue
-        called: set[str] = set()
-        takes = False
-        for node in ast.walk(ast.parse(path.read_text())):
-            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("snapshot"):
+                if any(alias.name == "capture" for alias in node.names):
+                    unreadable.append(f"{path.name}: from {node.module} import capture")
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    if alias.name.split(".")[-1] == "snapshot" and alias.asname not in (
+                        None,
+                        "snapshot",
+                    ):
+                        unreadable.append(f"{path.name}: snapshot imported as {alias.asname}")
+        for function in ast.walk(tree):
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            receiver = node.func.value
-            if (
-                node.func.attr == "capture"
-                and isinstance(receiver, ast.Name)
-                and receiver.id == "snapshot"
-            ):
-                takes = True
-            called.add(node.func.attr)
-        if takes:
-            takers[str(path.relative_to(src))] = owed - called
+            takes = False
+            seen: set[str] = set()
+            for node in ast.walk(function):
+                if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                    continue
+                receiver = node.func.value
+                if (
+                    node.func.attr == "capture"
+                    and isinstance(receiver, ast.Name)
+                    and receiver.id == "snapshot"
+                ):
+                    takes = True
+                if node.func.attr == "assert_gates" and any(
+                    keyword.arg == "keep" and ast.unparse(keyword.value).endswith("Keep.RECORD")
+                    for keyword in node.keywords
+                ):
+                    seen.add("keep=Keep.RECORD")
+                if node.func.attr == "attach_capture":
+                    seen.add("attach_capture")
+                if node.func.attr == "record_commit":
+                    seen.add("a recorded commit")
+            # The commit is recorded through a helper beside each writer, so
+            # that spelling counts too, and each helper is checked for the real
+            # call by ``test_each_commit_helper_records_the_commit``.
+            for node in ast.walk(function):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id.startswith("_record_")
+                    and node.func.id.endswith("_commit")
+                ):
+                    seen.add("a recorded commit")
+            if takes:
+                owed = {"keep=Keep.RECORD", "attach_capture", "a recorded commit"}
+                takers[f"{path.relative_to(src).as_posix()}::{function.name}"] = owed - seen
+    return takers, unreadable
 
-    assert set(takers) == {"write/metadata_cli.py", "write/trees.py"}, (
-        f"the set of modules that take a capture changed: {sorted(takers)}. A new one "
-        f"owes a session record for it; name it here once it keeps one."
+
+def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recorded():
+    """METHOD's fifth pattern, as a guard on the NEXT writer rather than a sweep of this one.
+
+    R-12 and R-375 were one shape found twice: a function takes a capture inside
+    the gates and keeps no record, so the undo it paid for cannot be listed,
+    spent or protected. It asks for all three acts, because a record with no
+    capture attached lists as unusable and one with no commit recorded is
+    invisible to the restore that would discard it.
+    """
+    src = Path(session.__file__).resolve().parents[1]
+    takers, unreadable = _capture_takers(src)
+
+    assert not unreadable, (
+        f"a capture is imported in a spelling this guard cannot follow: {unreadable}"
+    )
+    assert set(takers) == {
+        "write/metadata_cli.py::mytags_vocals",
+        "write/trees.py::write_tree_membership",
+    }, (
+        f"the set of functions that take a capture changed: {sorted(takers)}. A new "
+        f"one owes a session record for it; name it here once it keeps one."
     )
     assert all(not missing for missing in takers.values()), takers
+
+
+def test_the_capture_guard_reads_a_function_that_keeps_no_record(tmp_path):
+    """The guard above, pointed at the shape it exists to catch.
+
+    A compliant writer and a bare one in ONE module, which is the case a
+    per-module reading waves through.
+    """
+    module = tmp_path / "write" / "sample.py"
+    module.parent.mkdir()
+    module.write_text(
+        "def good(cfg, db):\n"
+        "    with session.assert_gates(cfg, workflow='w', keep=session.Keep.RECORD) as gates:\n"
+        "        taken = snapshot.capture(cfg, db=db)\n"
+        "        session.attach_capture(gates.record, taken.root, cfg)\n"
+        "        session.record_commit(gates.record, 's', change, cfg)\n"
+        "\n"
+        "def bare(cfg, db):\n"
+        "    with session.assert_gates(cfg, workflow='w'):\n"
+        "        snapshot.capture(cfg, db=db)\n"
+    )
+    (tmp_path / "aliased.py").write_text("from cratekit.core.snapshot import capture\n")
+
+    takers, unreadable = _capture_takers(tmp_path)
+
+    assert takers == {
+        "write/sample.py::good": set(),
+        "write/sample.py::bare": {"keep=Keep.RECORD", "attach_capture", "a recorded commit"},
+    }
+    assert unreadable == ["aliased.py: from cratekit.core.snapshot import capture"]
+
+
+def test_each_commit_helper_records_the_commit():
+    """The helpers the guard accepts by name really do make the call."""
+    import ast
+
+    src = Path(session.__file__).resolve().parents[1]
+    for relative, helper in (
+        ("write/trees.py", "_record_membership_commit"),
+        ("write/metadata_cli.py", "_record_mytags_commit"),
+    ):
+        tree = ast.parse((src / relative).read_text())
+        (function,) = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == helper
+        ]
+        calls = {
+            node.func.attr
+            for node in ast.walk(function)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        assert "record_commit" in calls, f"{helper} never records the commit"
