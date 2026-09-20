@@ -1561,6 +1561,20 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # answers an unmapped row with, because the library read cleanly and
         # the thing to correct is configuration.
         "collection-row-unmapped": ExitCode.PRECONDITION,
+        # ── R-172's answer, appended for the reason U19's block gives ────────
+        #
+        # ``name apply`` could not carry out every rename its plan promised: two
+        # files render to one name, a target was taken, a file left while the
+        # gate waited, the filesystem refused the rename, or a title tag could
+        # not be written. NOT a refusal, because the renames that could happen
+        # DID, and the envelope carries the plan so a person can read which ones.
+        # It is the same argument ``analysis-write-failed`` above makes, and it
+        # answers with the same code: reporting ok over a rename that never
+        # happened is the clean-report-over-unwritten-state shape the merge bar
+        # names, and every later sweep meets the same collision, so ok would be
+        # the answer for ever. PRECONDITION because the library read cleanly and
+        # the thing to correct is a file on disk.
+        "rename-incomplete": ExitCode.PRECONDITION,
     }
 )
 

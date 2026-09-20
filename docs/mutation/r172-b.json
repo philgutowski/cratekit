@@ -1,0 +1,567 @@
+{
+  "name": "r172-b",
+  "pass_kind": "light",
+  "branch": "relay/155",
+  "head": "30aa77c",
+  "when": "2026-09-20 02:50 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9045,
+  "baseline_exit": 0,
+  "pytest_runs": 20,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/naming_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/naming_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a7d1852399fb5adb",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9045,
+    "baseline_collected": 9045,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_ok_whatever_happened",
+      "description": "Answer ok however the sweep went, which is the finding itself: a plan carried out in part is reported as one carried out in full",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e3111ea648db9d4e",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_collision_answers_with_the_files_that_stayed_put",
+        "tests/test_naming_apply_cli.py::test_a_file_gone_after_the_plan_is_named_rather_than_skipped",
+        "tests/test_naming_apply_cli.py::test_a_rename_onto_a_name_another_file_holds_overwrites_nothing",
+        "tests/test_naming_apply_cli.py::test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim",
+        "tests/test_naming_apply_cli.py::test_a_row_that_appears_after_the_gate_still_protects_its_file",
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too",
+        "tests/test_naming_apply_cli.py::test_a_target_another_mover_still_holds_is_promised_and_then_reported",
+        "tests/test_naming_apply_cli.py::test_a_title_tag_that_could_not_be_written_is_named",
+        "tests/test_naming_apply_cli.py::test_the_remediation_only_names_a_hand_rename_over_a_real_collision",
+        "tests/test_naming_apply_cli.py::test_two_targets_differing_only_in_case_are_one_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not incomplete:\n        return ctx.envelope(data=plan, outcome=Outcome.OK)",
+      "new": "    return ctx.envelope(data=plan, outcome=Outcome.OK)"
+    },
+    {
+      "id": "B2_missing_file_unreported",
+      "description": "Skip a file that left while the gate waited in silence, as the shipped verb did",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "793fe63419ac48be",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_file_gone_after_the_plan_is_named_rather_than_skipped"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not path.is_file():\n            _owed(item, \"the file is no longer there\")\n            continue",
+      "new": "        if not path.is_file():\n            continue"
+    },
+    {
+      "id": "B3_new_row_unreported",
+      "description": "Hold back a file the collection began referencing after the gate without saying the approved rename did not happen",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ef2553407eb8aede",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_row_that_appears_after_the_gate_still_protects_its_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            _owed(\n                item,\n                \"the rekordbox collection began referencing it after the plan was \"\n                \"approved, and renaming it would strand that row\",\n            )\n            continue",
+      "new": "            continue"
+    },
+    {
+      "id": "B4_taken_name_unreported",
+      "description": "Skip a rename whose target name was taken after the plan, which is the ledger's own driven case at the apply pass",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f754eb6f2ab13e0b",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_target_another_mover_still_holds_is_promised_and_then_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                collided += 1\n                _owed(item, f\"{rendered.filename} is already taken in the folder\")\n                continue",
+      "new": "                continue"
+    },
+    {
+      "id": "B5_os_error_unreported",
+      "description": "Swallow a rename the filesystem refused, leaving a person a clean report over a file that did not move",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "92240791cde79ac1",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                _owed(item, f\"the filesystem refused the rename: {exc.strerror or exc}\")\n                continue",
+      "new": "                continue"
+    },
+    {
+      "id": "B6_tag_write_answer_ignored",
+      "description": "Stop reading the answer write_tags returns, so a renamed file whose title never took the head is reported as a rename that happened in full",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ee077ca388a91170",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_title_tag_that_could_not_be_written_is_named",
+        "tests/test_naming_apply_cli.py::test_the_remediation_only_names_a_hand_rename_over_a_real_collision"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not tags.write_tags(path, {\"title\": rendered.title_tag}):\n            _owed(item, \"it was renamed and its title tag could not be written\", at=path)",
+      "new": "        tags.write_tags(path, {\"title\": rendered.title_tag})"
+    },
+    {
+      "id": "B7_collides_not_carried_into_the_apply",
+      "description": "Answer ok over a plan whose collisions were all held back, so a library that can never converge reports success on every sweep",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "60dd0577ecf87107",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_collision_answers_with_the_files_that_stayed_put",
+        "tests/test_naming_apply_cli.py::test_a_rename_onto_a_name_another_file_holds_overwrites_nothing",
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too",
+        "tests/test_naming_apply_cli.py::test_the_remediation_only_names_a_hand_rename_over_a_real_collision",
+        "tests/test_naming_apply_cli.py::test_two_targets_differing_only_in_case_are_one_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    incomplete: list[dict[str, str]] = [\n        {\"from\": item[\"from\"], \"path\": item[\"path\"], \"why\": item[\"why\"]}\n        for item in plan[\"items\"]\n        if item[\"action\"] == COLLIDES\n    ]",
+      "new": "    incomplete: list[dict[str, str]] = []"
+    },
+    {
+      "id": "B8_tag_failure_named_where_it_was",
+      "description": "Name the tag write failure at the plan's own path, which is the file's name before the rename and a file nobody can go and look at",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9ef5ee1e03019db9",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_title_tag_that_could_not_be_written_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            _owed(item, \"it was renamed and its title tag could not be written\", at=path)",
+      "new": "            _owed(item, \"it was renamed and its title tag could not be written\")"
+    },
+    {
+      "id": "B9_renamed_count_is_the_promise",
+      "description": "Count every promised rename as performed rather than counting the ones that were, so totals.renamed is the plan's wish",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5b517bceac48410d",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_target_another_mover_still_holds_is_promised_and_then_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"renamed\": renamed,\n        \"incomplete\": len(incomplete),",
+      "new": "        \"renamed\": len(renames),\n        \"incomplete\": len(incomplete),"
+    },
+    {
+      "id": "B11_collision_step_always",
+      "description": "Tell a person to name a file by hand whatever the reason was, which is the review's second finding reintroduced",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a0284d9c54b82aab",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_the_remediation_only_names_a_hand_rename_over_a_real_collision"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if collides:\n        steps.append(",
+      "new": "    if True:\n        steps.append("
+    },
+    {
+      "id": "B12_the_first_file_is_not_named",
+      "description": "Report the counts without naming the first outstanding file, which is the half of the recorded cost about nothing naming which file stayed put",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fba2171813646a3a",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_rename_onto_a_name_another_file_holds_overwrites_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"not, the first of them {incomplete[0]['from']}, {incomplete[0]['why']}\",",
+      "new": "        f\"not\","
+    },
+    {
+      "id": "B13_detail_carries_nothing",
+      "description": "Drop the outstanding items from the cause detail, so a machine consumer reads a count and no names",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0bcee9da8eb1e4bc",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_collision_answers_with_the_files_that_stayed_put",
+        "tests/test_naming_apply_cli.py::test_a_file_gone_after_the_plan_is_named_rather_than_skipped",
+        "tests/test_naming_apply_cli.py::test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim",
+        "tests/test_naming_apply_cli.py::test_a_row_that_appears_after_the_gate_still_protects_its_file",
+        "tests/test_naming_apply_cli.py::test_a_target_another_mover_still_holds_is_promised_and_then_reported",
+        "tests/test_naming_apply_cli.py::test_a_title_tag_that_could_not_be_written_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"incomplete\": incomplete[:INCOMPLETE_SHOWN],",
+      "new": "            \"incomplete\": [],"
+    },
+    {
+      "id": "B14_diagnostic_surface",
+      "description": "Answer on the default surface, which drops the plan and with it every rename that DID land",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ea87a222a0d83bf9",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_collision_answers_with_the_files_that_stayed_put",
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too",
+        "tests/test_naming_apply_cli.py::test_a_target_another_mover_still_holds_is_promised_and_then_reported",
+        "tests/test_naming_apply_cli.py::test_a_title_tag_that_could_not_be_written_is_named",
+        "tests/test_naming_apply_cli.py::test_two_targets_differing_only_in_case_are_one_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        schema=ctx.entry.output_schema or output.current_schema(\"plan\"),\n        data=plan,\n    )",
+      "new": "    )"
+    },
+    {
+      "id": "B15_reason_maps_to_ok",
+      "description": "Map the new reason to a zero exit, so the outcome says failed and the status a script reads says fine",
+      "file": "src/cratekit/core/cause.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0292dde39ede6527",
+      "subset": [
+        "tests/test_naming_apply_cli.py",
+        "tests/test_reserved_causes.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 290,
+      "baseline_collected": 290,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_collision_answers_with_the_files_that_stayed_put",
+        "tests/test_naming_apply_cli.py::test_a_file_gone_after_the_plan_is_named_rather_than_skipped",
+        "tests/test_naming_apply_cli.py::test_a_rename_onto_a_name_another_file_holds_overwrites_nothing",
+        "tests/test_naming_apply_cli.py::test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim",
+        "tests/test_naming_apply_cli.py::test_a_row_that_appears_after_the_gate_still_protects_its_file",
+        "tests/test_naming_apply_cli.py::test_a_target_a_collider_holds_is_held_back_too",
+        "tests/test_naming_apply_cli.py::test_a_target_another_mover_still_holds_is_promised_and_then_reported",
+        "tests/test_naming_apply_cli.py::test_a_title_tag_that_could_not_be_written_is_named",
+        "tests/test_naming_apply_cli.py::test_two_targets_differing_only_in_case_are_one_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"rename-incomplete\": ExitCode.PRECONDITION,",
+      "new": "        \"rename-incomplete\": ExitCode.OK,"
+    },
+    {
+      "id": "B16_referenced_recheck_dropped",
+      "description": "A sample of an EXISTING guard: trust the plan's own referenced set instead of reading the collection again after the gate, so a file rekordbox imported while a person decided is renamed out from under its row",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b9e3e1704cd15294",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_row_that_appears_after_the_gate_still_protects_its_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if _is_referenced(path, referenced):\n            _owed(",
+      "new": "        if False:\n            _owed("
+    },
+    {
+      "id": "B17_claim_dropped",
+      "description": "A sample of an EXISTING guard: rename without claiming the target first, which on this platform replaces the file that holds the name",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "002b6d37a9d060df",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_target_another_mover_still_holds_is_promised_and_then_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if not naming.claim_target(target):\n                collided += 1",
+      "new": "            if False:\n                collided += 1"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B19_show_cap",
+      "description": "Raise or drop the INCOMPLETE_SHOWN cap on the detail list",
+      "reason": "ranked below the cap: it is the same bound the unmapped refusal already carries and that one is measured by its own test, and nothing here reaches twenty outstanding items"
+    },
+    {
+      "id": "B20_origin_hop",
+      "description": "Stop appending the CLI boundary to the cause origin",
+      "reason": "ranked below the cap: from_cause owns that hop now, so the row would mutate shared code every verb uses rather than this unit's diff"
+    },
+    {
+      "id": "B21_retryable_flag",
+      "description": "Mark the cause not retryable",
+      "reason": "ranked below the cap: maintainer facing, nothing in the product branches on it for this reason"
+    },
+    {
+      "id": "B22_abort_branch",
+      "description": "Answer the abort option with ok rather than no_op",
+      "reason": "ranked below the cap: existing, unchanged by this unit, and pinned by every plan reading test in the file, which drives abort"
+    },
+    {
+      "id": "B10_incomplete_count_dropped",
+      "description": "Report no count of what is outstanding in the totals, leaving the plan surface silent about it",
+      "reason": "ranked below the cap: B9 measures the same totals object and the count is derived from the list B13 measures"
+    },
+    {
+      "id": "B18_claim_not_released",
+      "description": "A sample of an EXISTING guard: leave the zero byte claim behind when the rename fails, which is a phantom track in the library",
+      "reason": "ranked below the cap: existing, and B17 is this pass's sample of the claim family"
+    }
+  ]
+}

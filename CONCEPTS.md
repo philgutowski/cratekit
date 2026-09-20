@@ -790,6 +790,31 @@ and the target verb declares the target gate offering that option.
 *Avoid:* reading it as a way to answer a gate. It copies an answer a person gave
 and never supplies one.
 
+### Held back
+A file a plan lists and deliberately does not act on, marked with its own action
+and counted out of `totals.count`, so the plan states what it is leaving alone
+rather than omitting it. `name apply` holds back two classes and they are not the
+same kind of thing: a `referenced` file is held for ever, because rekordbox
+records a path once and only a person can decide to reimport it, and a `collides`
+file is held until somebody gives one of two files a name of its own. The first
+is a success and the second is outstanding work.
+
+*Avoid:* reading a held back file as one the plan missed. A candidate the plan
+never mentions is a bug; a candidate it names and declines is the design.
+
+### Carried out in part
+A run that performed some of what its plan promised and could not perform the
+rest. It is neither a refusal, which touches nothing, nor ok. This product has no
+`partial` outcome and adding one would break the envelope's own contract, since a
+non success outcome must carry a cause and a non zero status. The shape is
+instead a cause naming every outstanding item, handed to `output.from_cause` with
+the verb's OWN payload surface, so what did land travels with the failure.
+`rename-incomplete` is the first of these.
+
+*Avoid:* answering ok with warnings. A sweep a person cannot see the end of is
+the clean report over unwritten state the merge bar names, and a later run meets
+the same obstacle and answers the same way.
+
 ## Review
 
 ### Review item

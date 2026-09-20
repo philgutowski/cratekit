@@ -4974,7 +4974,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # is the verb's own, registered and not reserved, exactly as
     # restore-target-invalid beside it is. Population 167 to 168, non-reserved
     # 140 to 141, reserved half UNCHANGED at 27.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (168, 141, 27)
+    #
+    # Re-pinned on the residual finding "A rename the plan promised can be
+    # skipped while the run reports ok", 2026-09-19. ONE slug, named rather than
+    # counted: rename-incomplete, which name apply answers with when it could
+    # not carry out every rename its plan promised, so a sweep that performed
+    # one of two renames is never reported as ok. It is the verb's own,
+    # registered and not in the reserved table, exactly as
+    # collection-row-unmapped beside it is. Population 168 to 169, non-reserved
+    # 141 to 142, reserved half UNCHANGED at 27.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (169, 142, 27)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5436,7 +5445,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # WARNING code a second `backup run` carries when it reports the open job
     # in place of filing another. Nothing refuses with it, so the cause
     # population does not move.
-    assert (len(literals), len(literals - set(causes))) == (464, 297), (
+    # Re-pinned on the residual finding "A rename the plan promised can be
+    # skipped while the run reports ok", 2026-09-19: 464 to 465 distinct,
+    # non-keys UNCHANGED at 297. ONE literal joined and nothing left,
+    # rename-incomplete in `core/cause.py`, a holder already. It IS a cause, the
+    # one name apply answers with over a plan it carried out in part, so the non
+    # key half does not move. The verb's own new spellings are single words,
+    # collides and incomplete, and a word with no hyphen never enters this
+    # population.
+    assert (len(literals), len(literals - set(causes))) == (465, 297), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

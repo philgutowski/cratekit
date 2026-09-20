@@ -10178,6 +10178,27 @@ target before the gate rather than discovering it during the rename.
 **Closes when:** a collision is detected while the plan is built, or the apply
 pass reports a skipped rename as something other than ok.
 
+**CLOSED 2026-09-20 on `relay/155`, issue #155, and BOTH halves were done.** The
+plan pass detects a collision, which is where this entry said the fix belonged:
+several movers rendering to one target, or a target a file on disk holds that
+nothing here is moving, are marked `collides`, carry the reason, are counted
+under `totals.collides` and are left out of `totals.count`. The detection runs to
+a fixpoint, because holding a file back makes it an occupant, and the first cut
+missed that and promised a rename onto a collider's name. A target another mover
+still holds is deliberately LEFT promised, since sort order resolves that chain
+whenever it reaches the occupant first, and R-560 carries what remains of it. The
+apply pass collects every rename it owes and did not perform and answers
+`rename-incomplete` at exit 30 on the plan surface, so the renames that did land
+are still reported. Five silent `continue` branches became five named reasons,
+and the fifth was found by looking one file over: `tags.write_tags` reports a
+failure by returning False and nothing read the answer, so a renamed file whose
+title never took the head was reported as a rename that happened in full. A
+collision the plan held back is outstanding too, because every later sweep meets
+the same collision and ok would be the answer for ever. 25 mutation rows, 25
+killed, `docs/mutation/r172-a.md` and `r172-b.md`. Filed rather than fixed:
+R-559, R-560, R-561 and R-562, the last of which says why there is no case only
+rename branch here.
+
 ## R-173. Closed on discovery: the central guard passed on an empty plan
 
 **Found by** the U41 independent adversarial pass, 2026-08-25. **Fixed the same
@@ -22656,3 +22677,96 @@ write verbs among them run under the library write lock.
 
 **Closes when:** the resume branch refuses while another open backup of the same
 destination holds its driver lock.
+
+---
+
+## R-559. A rename can land on a name the approved plan did not promise
+
+**Found:** 2026-09-20, on `relay/155`, reading the apply loop for R-172. NOT
+driven, and the reachability is UNMEASURED.
+
+`write/naming_cli.name_apply` renders each file's target AGAIN after the gate and
+renames to whatever that second render says, never comparing it with the `to` the
+plan promised and a person approved. A spec that moved between the two passes
+therefore lands a name nobody was shown.
+
+**Why it is not fixed here.** Inside one invocation the two passes are
+microseconds apart and nothing between them can edit a tag, and a run resumed
+with a recorded decision rebuilds the plan and re-compares the digest, which
+answers a moved world with `DecisionStale` before the loop is reached. So the
+window needs another process editing a tag in that gap. That is a shape nothing
+in this product produces and no candidate was driven, which is why it is a
+residual and not a guard: METHOD's bar wants the producer driven, and "I could
+not think of one" is not a measurement.
+
+**Closes when:** the apply pass refuses, or reports as outstanding, a file whose
+re-render disagrees with the name the plan promised, or a driven producer shows
+the window is unreachable and this entry is closed as such.
+
+---
+
+## R-560. A rename chain is reported rather than ordered
+
+**Found:** 2026-09-20, on `relay/155`, driven end to end by
+`test_a_target_another_mover_still_holds_is_promised_and_then_reported`.
+
+Two files where one renders onto the name the other currently holds are resolved
+by sort order alone. When the occupant sorts first it moves and the chain
+completes; when it does not, the first file's claim fails and R-172's new answer
+reports it as outstanding. The plan cannot rule it out, which is why it is left
+promised, and nothing orders the loop so that an occupant moves before the file
+that wants its name.
+
+**The cost is one extra run**, and after R-172 a person is told which file and
+why. A second `name apply` completes the chain, because the occupant has moved by
+then. A cycle of two files that render onto each other's names never completes
+and is reported on every run, which was NOT driven.
+
+**Closes when:** the apply pass performs the renames in an order that resolves a
+chain, or the plan detects a true cycle and holds it as a collision.
+
+---
+
+## R-561. Two rendered names differing only in case are held where both could land
+
+**Found:** 2026-09-20, on `relay/155`, the deliberate cost of R-172's collision
+key, driven at the plan by
+`test_two_targets_differing_only_in_case_are_one_name`.
+
+`_collisions` keys targets through `_key`, NFC and casefolded, because the volume
+a library normally sits on treats two such names as one. On a case sensitive
+volume both renames are possible and both files are held instead, with no flag
+to say so.
+
+**The cost is two files left unrenamed on a volume nobody in this project has
+used**, and it is the direction `_is_referenced` already chose for the same
+reason. A person meets it as a `collides` item naming a file that looks
+different from the one it collides with.
+
+**Closes when:** the collision key asks the filesystem whether it distinguishes
+case, the way a mount probe would, rather than assuming it does not.
+
+---
+
+## R-562. A lowercase padded key is not a head, so the file is never renamed
+
+**Found:** 2026-09-20, on `relay/155`, measured against the naming engine while
+deciding whether R-172 needed a case only rename branch.
+
+`naming.parse_head` does not recognise `05a - 120 - Song.flac` as carrying a
+head, so `strip_head` returns the whole name as the body, the rendered name
+equals the name on disk, and the file is not a candidate at all. Measured at the
+engine: `05a - 120 - Song - Artist` renders unchanged, while `5A - 120 - ...`
+pads to `05A`. The file is silently outside the convention for ever, and no plan
+mentions it.
+
+**Why it is not fixed here.** It is the naming engine's head grammar and not
+R-172's loop, and widening the grammar changes what every consumer of
+`parse_head` reads as a head, including the byte level export rewrite. It is
+recorded here because it is the reason this unit has NO case only rename branch:
+a target differing from its source only in case is unreachable, so a guard for it
+would have been a guard on nothing.
+
+**Closes when:** the head grammar accepts a lowercase Camelot letter and the
+rename pads its case, or a doctor check reports files whose names look like a
+head the engine will not read.

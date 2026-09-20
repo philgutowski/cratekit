@@ -1,0 +1,206 @@
+name = "r172-b"
+pass_kind = "light"
+
+# R-172, batch b: the apply pass names what it did not do.
+# Author run. Every zero below reads as "the author could not kill it".
+
+[[rows]]
+id = "B1_ok_whatever_happened"
+description = "Answer ok however the sweep went, which is the finding itself: a plan carried out in part is reported as one carried out in full"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    if not incomplete:
+        return ctx.envelope(data=plan, outcome=Outcome.OK)'''
+new = '''    return ctx.envelope(data=plan, outcome=Outcome.OK)'''
+
+[[rows]]
+id = "B2_missing_file_unreported"
+description = "Skip a file that left while the gate waited in silence, as the shipped verb did"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        if not path.is_file():
+            _owed(item, "the file is no longer there")
+            continue'''
+new = '''        if not path.is_file():
+            continue'''
+
+[[rows]]
+id = "B3_new_row_unreported"
+description = "Hold back a file the collection began referencing after the gate without saying the approved rename did not happen"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            _owed(
+                item,
+                "the rekordbox collection began referencing it after the plan was "
+                "approved, and renaming it would strand that row",
+            )
+            continue'''
+new = '''            continue'''
+
+[[rows]]
+id = "B4_taken_name_unreported"
+description = "Skip a rename whose target name was taken after the plan, which is the ledger's own driven case at the apply pass"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''                collided += 1
+                _owed(item, f"{rendered.filename} is already taken in the folder")
+                continue'''
+new = '''                continue'''
+
+[[rows]]
+id = "B5_os_error_unreported"
+description = "Swallow a rename the filesystem refused, leaving a person a clean report over a file that did not move"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''                _owed(item, f"the filesystem refused the rename: {exc.strerror or exc}")
+                continue'''
+new = '''                continue'''
+
+[[rows]]
+id = "B6_tag_write_answer_ignored"
+description = "Stop reading the answer write_tags returns, so a renamed file whose title never took the head is reported as a rename that happened in full"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        if not tags.write_tags(path, {"title": rendered.title_tag}):
+            _owed(item, "it was renamed and its title tag could not be written", at=path)'''
+new = '''        tags.write_tags(path, {"title": rendered.title_tag})'''
+
+[[rows]]
+id = "B7_collides_not_carried_into_the_apply"
+description = "Answer ok over a plan whose collisions were all held back, so a library that can never converge reports success on every sweep"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    incomplete: list[dict[str, str]] = [
+        {"from": item["from"], "path": item["path"], "why": item["why"]}
+        for item in plan["items"]
+        if item["action"] == COLLIDES
+    ]'''
+new = '''    incomplete: list[dict[str, str]] = []'''
+
+[[rows]]
+id = "B8_tag_failure_named_where_it_was"
+description = "Name the tag write failure at the plan's own path, which is the file's name before the rename and a file nobody can go and look at"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            _owed(item, "it was renamed and its title tag could not be written", at=path)'''
+new = '''            _owed(item, "it was renamed and its title tag could not be written")'''
+
+[[rows]]
+id = "B9_renamed_count_is_the_promise"
+description = "Count every promised rename as performed rather than counting the ones that were, so totals.renamed is the plan's wish"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        "renamed": renamed,
+        "incomplete": len(incomplete),'''
+new = '''        "renamed": len(renames),
+        "incomplete": len(incomplete),'''
+
+[[rows]]
+id = "B11_collision_step_always"
+description = "Tell a person to name a file by hand whatever the reason was, which is the review's second finding reintroduced"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''    if collides:
+        steps.append('''
+new = '''    if True:
+        steps.append('''
+
+[[rows]]
+id = "B12_the_first_file_is_not_named"
+description = "Report the counts without naming the first outstanding file, which is the half of the recorded cost about nothing naming which file stayed put"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        f"not, the first of them {incomplete[0]['from']}, {incomplete[0]['why']}",'''
+new = '''        f"not",'''
+
+[[rows]]
+id = "B13_detail_carries_nothing"
+description = "Drop the outstanding items from the cause detail, so a machine consumer reads a count and no names"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            "incomplete": incomplete[:INCOMPLETE_SHOWN],'''
+new = '''            "incomplete": [],'''
+
+[[rows]]
+id = "B14_diagnostic_surface"
+description = "Answer on the default surface, which drops the plan and with it every rename that DID land"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        schema=ctx.entry.output_schema or output.current_schema("plan"),
+        data=plan,
+    )'''
+new = '''    )'''
+
+[[rows]]
+id = "B15_reason_maps_to_ok"
+description = "Map the new reason to a zero exit, so the outcome says failed and the status a script reads says fine"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/test_reserved_causes.py"]
+old = '''        "rename-incomplete": ExitCode.PRECONDITION,'''
+new = '''        "rename-incomplete": ExitCode.OK,'''
+
+[[rows]]
+id = "B16_referenced_recheck_dropped"
+description = "A sample of an EXISTING guard: trust the plan's own referenced set instead of reading the collection again after the gate, so a file rekordbox imported while a person decided is renamed out from under its row"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        if _is_referenced(path, referenced):
+            _owed('''
+new = '''        if False:
+            _owed('''
+
+[[rows]]
+id = "B17_claim_dropped"
+description = "A sample of an EXISTING guard: rename without claiming the target first, which on this platform replaces the file that holds the name"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''            if not naming.claim_target(target):
+                collided += 1'''
+new = '''            if False:
+                collided += 1'''
+
+[[dropped]]
+id = "B19_show_cap"
+description = "Raise or drop the INCOMPLETE_SHOWN cap on the detail list"
+reason = "ranked below the cap: it is the same bound the unmapped refusal already carries and that one is measured by its own test, and nothing here reaches twenty outstanding items"
+
+[[dropped]]
+id = "B20_origin_hop"
+description = "Stop appending the CLI boundary to the cause origin"
+reason = "ranked below the cap: from_cause owns that hop now, so the row would mutate shared code every verb uses rather than this unit's diff"
+
+[[dropped]]
+id = "B21_retryable_flag"
+description = "Mark the cause not retryable"
+reason = "ranked below the cap: maintainer facing, nothing in the product branches on it for this reason"
+
+[[dropped]]
+id = "B22_abort_branch"
+description = "Answer the abort option with ok rather than no_op"
+reason = "ranked below the cap: existing, unchanged by this unit, and pinned by every plan reading test in the file, which drives abort"
+
+[[dropped]]
+id = "B10_incomplete_count_dropped"
+description = "Report no count of what is outstanding in the totals, leaving the plan surface silent about it"
+reason = "ranked below the cap: B9 measures the same totals object and the count is derived from the list B13 measures"
+
+[[dropped]]
+id = "B18_claim_not_released"
+description = "A sample of an EXISTING guard: leave the zero byte claim behind when the rename fails, which is a phantom track in the library"
+reason = "ranked below the cap: existing, and B17 is this pass's sample of the claim family"

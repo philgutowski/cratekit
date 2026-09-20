@@ -1038,7 +1038,12 @@ ENTRIES: tuple[Entry, ...] = (
         #: collection that READ, consulted because something would be renamed,
         #: and holding a row under a volume no prefix rule names whose recorded
         #: file is absent too, refuses as ``collection-row-unmapped`` (R-500),
-        #: since that row could name any file. The
+        #: since that row could name any file. A run that carried out part of its
+        #: plan answers ``rename-incomplete`` on THIS surface rather than the
+        #: diagnostic one (R-172), so the plan travels with the failure: two files
+        #: rendering to one name are held back in the plan as ``collides``, and
+        #: anything the apply pass could not do is named with its reason. It is
+        #: the only non-success answer here that is not a refusal. The
         #: rekordbox Name half of the padding convention is
         #: ``write/metadata.plan_title_padding``, which no verb calls (R-165).
         writes=frozenset({"files"}),
