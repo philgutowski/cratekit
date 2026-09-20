@@ -549,10 +549,29 @@ separately. It refuses while the recorded library can still be read, refuses a
 target that is the empty folder the lost volume left behind on the internal
 disk, refuses a target that already holds a database, and refuses when nobody is
 at a terminal. `--accept-replacement` is the acknowledgment, since the recorded
-one was on the drive that died. It rolls no session back, because the session
-log was on that drive too. If the mirror half fails, run it again and what
-already arrived is not copied twice. If the database half fails, remove the
-database file it names from the target first.
+one was on the drive that died. It asks whether rekordbox is running twice,
+before it starts and again before the database lands, so leave the application
+closed until the recovery reports.
+
+It rolls no session back. The session log, the captures and the review queue
+arrive inside the mirror as the last backup saw them, and the database comes
+from a dated snapshot, which is the same moment only if that backup ran with
+rekordbox closed. Run `crate converge` on the recovered library to see whether
+the two agree. When the database is configured outside the library root, which
+is rekordbox's default, it was never on the lost drive, so only the mirror half
+runs and the report says where the database is.
+
+A recovery that stops part way is refused when you run it again, because the
+target now holds database files and a target holding one is always refused. The
+failure says so and gives the step: remove every file ending `.db` under the
+target, then run it again. Nothing is lost, since each of those files came from
+the mirror or the snapshot and is transferred again, and music that already
+arrived is not copied twice.
+
+Afterwards the config still names the drive that died. Run `crate doctor`, which
+prints the identity it reads from the new drive, then `crate setup` with
+`--library-root` and `--volume-id` to record the recovered library, since setup
+keeps a recorded identity until it is told a new one.
 
 ## Answering a gate
 

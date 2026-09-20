@@ -176,7 +176,22 @@ It pulls the mirror and then the database onto the target and reports each half
 separately. It refuses while the recorded library is reachable, refuses the empty
 folder a lost volume leaves behind on the internal disk, refuses a target that
 already holds a database, and refuses when nobody is at a terminal, so it is a
-person's to run and never an agent's to run detached. It rolls no session back.
+person's to run and never an agent's to run detached.
+
+It rolls no session back. The session log and the captures arrive inside the
+mirror as the last backup saw them, while the database comes from a dated
+snapshot, so ask the convergence question below of the recovered library. A
+database configured outside the library root was never on the lost drive, so
+only the mirror half runs and the report names where the database is.
+
+A recovery that stops part way is refused on the next run, because the target
+then holds database files. The failure gives the step: remove every file ending
+in the database suffix under the target and run it again. Each one came from the
+mirror or the snapshot and is transferred again.
+
+Afterwards the configuration still names the drive that died, so every gated
+verb refuses on the recovered library until setup records the new root and the
+new volume identity, which doctor prints.
 
 ## Convergence is the question a recovery leaves behind
 

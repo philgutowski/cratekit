@@ -2448,6 +2448,7 @@ def test_a_failed_mirror_stops_the_recovery_before_the_database(cfg, tmp_path):
     assert "exited 3" in cause.detail["engine"]
     assert "database half was not attempted" in cause.message
     assert "cleared" not in cause.message
+    assert cause.remediation.steps[-1] == restore_cli.RERUN_STEP
     assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
     assert not list(target.rglob("*.db"))
 
@@ -2471,7 +2472,9 @@ def test_a_failed_database_half_says_the_mirror_arrived_and_what_to_remove(cfg, 
     assert cause.detail["half"] == restore_cli.DATABASE_HALF
     assert cause.detail["completed_halves"] == [restore_cli.MIRROR_HALF]
     assert "mirror half completed" in cause.message
-    assert str(target / "db" / "master.db") in cause.remediation.steps[0]
+    assert "master.db" in cause.message
+    assert cause.remediation.steps[0] == "do not open the library"
+    assert cause.remediation.steps[-1] == restore_cli.RERUN_STEP
     assert (target / MIRRORED).exists()
 
 
@@ -2507,37 +2510,109 @@ def test_a_failed_rehearsal_says_nothing_was_written(cfg, tmp_path):
 
     assert "nothing was written" in excinfo.value.cause.message
     assert excinfo.value.cause.detail["dry_run"] is True
+    assert restore_cli.RERUN_STEP not in excinfo.value.cause.remediation.steps
 
 
-def test_a_rerun_is_refused_when_the_mirror_itself_carried_a_database_file(cfg, tmp_path):
+def test_a_rerun_is_refused_until_the_step_the_refusal_gave_is_followed(cfg, tmp_path):
     """DRIVEN, AND A KNOWN LIMIT RATHER THAN A PROPERTY ANYBODY WANTS.
 
-    The mirror excludes this library's own database and nothing else ending in
-    the same suffix, and a drive prepared for a player holds one. The first run
-    is unaffected, because the target is judged once, before anything lands. A
-    run cut off part way is what pays: what arrived makes the target an occupied
-    one, and the verb has no flag that names it for replacement. The ledger
-    entry titled "An interrupted bare metal recovery cannot be resumed once the
-    mirror has landed a database file of its own" records it. When that closes,
-    this test is the one that changes.
+    The mirror excludes this library's own database and nothing else with that
+    suffix, and it carries the state directory beside the library, which holds
+    the review queue and every capture. So any run cut off after the mirror has
+    started leaves an occupied target, the engine refuses an occupied target,
+    and the verb has no flag that names one for replacement. What this holds is
+    that the step the failure gives is TRUE: followed exactly, the rerun
+    completes, and what was removed comes back. The ledger entry titled "An
+    interrupted bare metal recovery is refused on rerun until every database
+    file it landed is removed" records the limit. When that closes, the first
+    half of this test is what changes.
     """
     target = _replacement(tmp_path)
     seams = _gone(cfg)
-    carried = (MIRRORED, "PIONEER/rekordbox/exportLibrary.db")
+    carried = (MIRRORED, ".cratekit/queue.db", ".cratekit/snapshots/one/master.db")
     first = _Remote(cfg, failing={backup.RESTORE_DATABASE}, mirrored=carried)
-    with pytest.raises(CratekitError):
+    with pytest.raises(CratekitError) as failed:
         restore_cli.recover_under_bare_metal_session(
             cfg, target=target, accepted=True, runner=first, **seams
         )
-    for left in (target / "db").glob("master.db*"):
-        left.unlink()
+    assert failed.value.cause.remediation.steps[-1] == restore_cli.RERUN_STEP
 
     with pytest.raises(CratekitError) as excinfo:
         restore_cli.recover_under_bare_metal_session(
             cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=carried), **seams
         )
+    assert "already holds" in excinfo.value.cause.message
 
-    assert "already holds exportLibrary.db" in excinfo.value.cause.message
+    for landed in list(target.rglob("*.db")):
+        landed.unlink()
+    report = restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=carried), **seams
+    )
+
+    assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
+    assert (target / ".cratekit" / "queue.db").exists()
+    assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
+
+
+def test_rekordbox_opened_while_the_mirror_arrives_stops_the_database_half(cfg, tmp_path):
+    """Asked twice, because the first answer is hours old by the second half."""
+    target = _replacement(tmp_path)
+    remote = _Remote(cfg)
+    answers = iter([(), ("rekordbox",)])
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg,
+            target=target,
+            accepted=True,
+            runner=remote,
+            **_gone(cfg, process_lister=lambda: next(answers)),
+        )
+
+    cause = excinfo.value.cause
+    assert cause.reason == "rekordbox-running"
+    assert cause.detail["half"] == restore_cli.DATABASE_HALF
+    assert cause.detail["completed_halves"] == [restore_cli.MIRROR_HALF]
+    assert "mirror half completed" in cause.message
+    assert cause.remediation.steps[-1] == restore_cli.RERUN_STEP
+    assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
+    assert not list(target.rglob("master.db*"))
+
+
+def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_new_one(
+    cfg, tmp_path
+):
+    """rekordbox's own default layout: the database is on the internal disk."""
+    home = tmp_path / "home" / "rekordbox"
+    home.mkdir(parents=True)
+    (home / "master.db").write_bytes(b"alive, and never on the lost volume")
+    outside = replace(
+        cfg,
+        library=replace(
+            cfg.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-18",
+        ),
+    )
+    assert backup.database_target_for(outside, tmp_path) == tmp_path / "master.db", (
+        "the fixture does not reproduce the layout, so this pins nothing"
+    )
+    target = _replacement(tmp_path)
+    remote = _Remote(outside)
+
+    report = restore_cli.recover_under_bare_metal_session(
+        outside, target=target, accepted=True, runner=remote, **_gone(outside)
+    )
+
+    assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
+    assert not (target / "master.db").exists()
+    assert (home / "master.db").read_bytes() == b"alive, and never on the lost volume"
+    assert report.database == ()
+    assert report.absent == ()
+    assert report.database_elsewhere == home / "master.db"
+    totals = restore_cli._recovered(report)["totals"]
+    assert totals["database_half"] == "not-on-the-lost-volume"
+    assert totals["database_target"] == str(home / "master.db")
 
 
 @pytest.fixture
@@ -2574,6 +2649,8 @@ def test_the_verb_recovers_both_halves_and_reports_them_apart(lost, monkeypatch,
     assert totals["database_transfers"] == 1
     assert totals["absent_sidecars"] == ["-wal"]
     assert totals["target"] == str(target)
+    assert totals["database_half"] == "ran"
+    assert totals["database_target"] == str(target / "db" / "master.db")
     assert totals["snapshot"] == STAMP
     assert [item["half"] for item in envelope["data"]["items"]] == [
         restore_cli.MIRROR_HALF,

@@ -2752,8 +2752,8 @@ def bare_metal_session(
     THE CALLER IS THE RECOVERY VERB IN ``cratekit.session.restore_cli``, which
     spends this session on the off-machine restore: the mirror and the database,
     copied onto the target. It spends it on no :func:`plan`. The dead library's
-    session log and captures are not brought across, so there is no recorded
-    session on the target for a plan to read.
+    session log and captures do arrive, inside the mirror, as the last backup saw
+    them, and nothing rolls the recovered library back to one of them.
 
     AND THE LOCK ARGUMENT ABOVE PREDATES THE WRITE PATH. "Nothing is lost" was
     written when this session could write nothing. A target that already holds a

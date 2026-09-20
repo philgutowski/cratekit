@@ -1186,10 +1186,15 @@ def build_bare_metal(parser, entry) -> None:
 class BareMetalReport:
     """What one recovery did, a half at a time.
 
-    ``mirror`` and ``database`` are the transfers that RAN, by label, read off
-    the results rather than off the plan, for the reason
-    :func:`restore_under_one_session` gives. ``target`` is the directory the
-    session authorised, which is the only place either half was pointed.
+    ``mirror`` and ``database`` are the transfers of each half that COMPLETED,
+    by label. A half is recorded only after ``backup.run_restore`` returned, and
+    it raises unless every transfer it ran exited zero, so a label here is a
+    transfer that succeeded and not one that was planned. ``target`` is the
+    directory the session authorised, the only place either half was pointed.
+
+    ``database_elsewhere`` is where the configured database lives when that is
+    NOT on the lost volume, and ``None`` otherwise. The database half does not
+    run in that layout, and the report says so instead of reporting zero.
     """
 
     target: Path
@@ -1200,6 +1205,40 @@ class BareMetalReport:
     absent: tuple[str, ...] = ()
     snapshot: str | None = None
     recorded_volume: str | None = None
+    database_elsewhere: Path | None = None
+
+
+#: What a rerun needs, said once because three different failures end in it. The
+#: engine refuses a target holding ANY database file, and the mirror carries
+#: several of this product's own: the review queue and every capture live in the
+#: state directory beside the library, which the mirror copies. So once a half
+#: has landed, the rerun is refused until they are gone, and removing them loses
+#: nothing, because the rerun transfers every one of them again.
+RERUN_STEP = (
+    "before running the recovery again, remove every file ending .db under the "
+    "target, because a target holding one is refused; each came from the mirror "
+    "or the snapshot, and the rerun transfers it again along with whatever else "
+    "has not arrived"
+)
+
+
+def _database_elsewhere(cfg: config.Config) -> Path | None:
+    """The configured database's path when it is NOT under the library root.
+
+    THE SAME QUESTION ``backup.database_target_for`` ASKS, asked the same way,
+    because its answer for this layout is the hazard: a database with no
+    position under the root is rebased to its bare name at the top of the
+    target. For a rehearsal that is the honest answer. For a recovery it is a
+    file rekordbox never reads, reported as a recovered database, on a volume
+    the engine will then refuse as occupied. The layout is rekordbox's own
+    default, and in it the database was never on the volume that died.
+    """
+    database = config.state_path("rekordbox_db", cfg)
+    try:
+        database.relative_to(cfg.library.root)
+    except ValueError:
+        return database
+    return None
 
 
 def _halves(decided: backup.RestorePlan) -> tuple[tuple[str, backup.RestorePlan], ...]:
@@ -1239,9 +1278,12 @@ def _half_failed(
     THE RESERVED SENTENCE FOR A FAILED TRANSFER IS FALSE HERE, which is why it
     is not reused. It says the live companion files were cleared and tells the
     person to run the restore again. Nothing was cleared, because the target
-    held no database, and whether a rerun is possible depends on which half
-    failed. The slug and its exit code are kept; the engine's own sentence,
-    which carries the return code, rides in the detail.
+    held no database, and a rerun is refused until what this run landed is
+    removed (:data:`RERUN_STEP`). The slug and its exit code are kept; the
+    engine's own sentence, which carries the return code, rides in the detail.
+
+    A REHEARSAL LANDED NOTHING, so its rerun needs nothing removed and the step
+    is left off rather than sending a person to delete files that are not there.
     """
     slug = str(exc.refusal)
     detail: dict[str, Any] = {
@@ -1252,17 +1294,16 @@ def _half_failed(
         "dry_run": dry_run,
         "engine": exc.detail,
     }
-    if exc.refusal is not backup.Refusal.RESTORE_TRANSFER_FAILED:
-        return CratekitError(
-            Cause(
-                reason=slug,
-                message=exc.detail,
-                remediation=reservations.remediation_for(slug),
-                origin=("modules.tools.backup", "session.restore_cli"),
-                detail=detail,
-            )
+    if exc.refusal is backup.Refusal.REKORDBOX_RUNNING:
+        message = (
+            f"{exc.detail} The mirror half completed onto {decided.target} and "
+            f"the database half was not attempted."
         )
-    if dry_run:
+        steps: tuple[str, ...] = ("quit rekordbox and its background agent",)
+    elif exc.refusal is not backup.Refusal.RESTORE_TRANSFER_FAILED:
+        message = exc.detail
+        steps = reservations.remediation_for(slug).steps
+    elif dry_run:
         message = (
             f"the rehearsal's {half} half failed against the remote and nothing "
             f"was written to {decided.target}"
@@ -1272,31 +1313,26 @@ def _half_failed(
         message = (
             f"the mirror half of the recovery onto {decided.target} failed part "
             f"way, and the database half was not attempted, so the target holds "
-            f"no database from this run"
+            f"no database from the snapshot"
         )
-        steps = (
-            "check the remote is reachable, then run the recovery again; files "
-            "that already arrived are not transferred twice",
-            "if the rerun is refused because the target holds a database file "
-            "the mirror carried, move that file aside and run it again",
-        )
+        steps = ("check the remote is reachable",)
     else:
         message = (
             f"the mirror half completed and the database half of the recovery "
             f"onto {decided.target} failed, so {decided.database_target.name} or "
             f"one of its companions may have arrived without the rest"
         )
-        steps = (
-            f"do not open the library; remove {decided.database_target} and its "
-            f"companion files, because a target holding a database is refused",
-            "check the remote is reachable, then run the recovery again; the "
-            "mirror that already arrived is not transferred twice",
-        )
+        steps = ("do not open the library", "check the remote is reachable")
+    if not dry_run:
+        steps = (*steps, RERUN_STEP)
     return CratekitError(
         Cause(
             reason=slug,
             message=message,
-            remediation=Remediation(steps=steps),
+            remediation=Remediation(
+                remedy=None if steps else reservations.remediation_for(slug).remedy,
+                steps=steps,
+            ),
             origin=("modules.tools.backup", "session.restore_cli"),
             detail=detail,
         )
@@ -1344,9 +1380,26 @@ def recover_under_bare_metal_session(
     terminal, and ``plan_restore``'s parameter is how a caller states that a
     named decision exists (R33).
 
-    NO SESSION IS ROLLED BACK. The session log and every capture were on the
-    lost volume, so there is nothing for a plan to read. What arrives is the
-    library as the last backup saw it.
+    NO SESSION IS ROLLED BACK, AND THE SESSION LOG STILL ARRIVES. The state
+    directory sits beside the library, so the mirror carries it: the session
+    log, the captures and the review queue land on the target as the last backup
+    saw them. The database comes from a dated snapshot, which is the same moment
+    only when that backup's database portion ran, and it is refused while
+    rekordbox is open. So the two can describe different moments, nothing here
+    reconciles them, and convergence is the question to ask of the recovered
+    library. The ledger records it.
+
+    REKORDBOX IS ASKED ABOUT TWICE. ``plan_restore`` refuses underneath a running
+    one, and that answer is hours old by the time a mirror of this size has
+    arrived. A person who opens the application onto the new volume in the
+    meantime gets a fresh database where this one is about to land, so the
+    question is asked again at the last moment it is cheap, before the database
+    half clears a companion file.
+
+    A DATABASE THAT WAS NEVER ON THE LOST VOLUME IS NOT RECOVERED ONTO THE NEW
+    ONE. See :func:`_database_elsewhere`. The mirror half runs alone and the
+    report names where the database is. The plan is still built whole, so a
+    remote with no snapshot refuses this layout too, which is recorded.
 
     A REHEARSAL PASSES THE SAME GATES, acknowledgment included, for the reasons
     ``backup.run_restore`` gives for the live restore.
@@ -1374,9 +1427,22 @@ def recover_under_bare_metal_session(
             )
         except backup.BackupRefused as exc:
             raise _refused(exc) from exc
-        ran_labels: dict[str, tuple[str, ...]] = {}
+        elsewhere = _database_elsewhere(cfg)
+        ran_labels: dict[str, tuple[str, ...]] = {MIRROR_HALF: (), DATABASE_HALF: ()}
+        completed: list[str] = []
         for half, portion in _halves(decided):
+            if half == DATABASE_HALF and elsewhere is not None:
+                continue
             try:
+                if half == DATABASE_HALF:
+                    running = backup.rekordbox_processes_running(lister=process_lister)
+                    if running:
+                        raise backup.BackupRefused(
+                            backup.Refusal.REKORDBOX_RUNNING,
+                            f"{', '.join(running)} started while the mirror was "
+                            f"arriving, and restoring a database underneath a "
+                            f"live rekordbox replaces the file it holds open.",
+                        )
                 ran = backup.run_restore(
                     portion,
                     cfg,
@@ -1388,23 +1454,28 @@ def recover_under_bare_metal_session(
                 raise _half_failed(
                     exc,
                     half,
-                    completed=tuple(ran_labels),
+                    completed=tuple(completed),
                     decided=decided,
                     dry_run=dry_run,
                 ) from exc
+            # ONE RESULT PER COMMAND OR A HARD FAILURE, for the reason the zip in
+            # :func:`restore_under_one_session` gives. ``run_restore`` has already
+            # read every return code by the time it returns.
             ran_labels[half] = tuple(
                 command.label
                 for command, _result in zip(portion.commands, ran, strict=True)
             )
+            completed.append(half)
         return BareMetalReport(
             target=decided.target,
             database_target=decided.database_target,
             mirror=ran_labels[MIRROR_HALF],
             database=ran_labels[DATABASE_HALF],
             dry_run=dry_run,
-            absent=decided.absent_sidecars,
+            absent=decided.absent_sidecars if elsewhere is None else (),
             snapshot=decided.snapshot,
             recorded_volume=decided.recorded_volume,
+            database_elsewhere=elsewhere,
         )
 
 
@@ -1442,7 +1513,11 @@ def _recovered(report: BareMetalReport) -> dict[str, Any]:
             "snapshot": report.snapshot,
             "recorded_volume": report.recorded_volume,
             "target": str(report.target),
-            "database_target": str(report.database_target),
+            # WHERE THE DATABASE IS, whichever half put it there. A database that
+            # was never on the lost volume is named where it lives, so the zero
+            # beside it reads as "not this recovery's" rather than as a failure.
+            "database_target": str(report.database_elsewhere or report.database_target),
+            "database_half": "ran" if report.database_elsewhere is None else "not-on-the-lost-volume",
         },
         "chunk": None,
     }
