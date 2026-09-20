@@ -22910,26 +22910,36 @@ again anyway.
 
 ---
 
-## R-566. One test fails about one run in three under the parallel suite
+## R-566. Two different tests each failed once under the parallel suite and passed alone
 
-**Found:** 2026-09-20, on `relay/167`, when `scripts/mutate.py` refused a batch
-on a red baseline.
+**Found:** 2026-09-20, on `relay/167`. The first when `scripts/mutate.py` refused
+a batch on a red baseline, the second on this unit's own final battery run.
 
-`tests/test_write_session.py::test_an_unresolved_session_keeps_its_capture_out_of_the_pruner`
-failed once inside a full `-n auto` run. It passes alone, the full suite was
-green immediately before and immediately after, and the next full run of the same
-batch had a green baseline.
+Two failures, in unrelated modules, neither of them anything this branch touches:
 
-**Measured cost.** Maintainer facing. A flaky test is a merge gate that answers
-differently to the same tree, and the specific cost here is that it refuses a
-mutation batch, which is thirty minutes of measurement thrown away and a session
-sent looking for damage on a branch that has none. This branch touches nothing in
-that module.
+- `tests/test_write_session.py::test_an_unresolved_session_keeps_its_capture_out_of_the_pruner`
+- `tests/test_pool_sizing.py::test_the_real_probe_measures_a_freshly_spawned_child`,
+  which asserts a spawned child that allocated 256 MiB measures at least three
+  quarters of that, and measured 219021312 against an empty child's 33144832,
+  which is 185.9 MiB against a floor of 192.
 
-**Why not fixed here.** Not this unit's module and not reproduced on purpose. One
-observation is not a rate, and the honest statement is that it was seen once in
-three full runs on this branch.
+Each passed on its own file immediately afterwards, and the full suite was green
+on the run before and the run after each one. Six full `-n auto` runs on this
+branch, two of them red, never the same test twice.
 
-**Closes when:** the test is run under `pytest -p xdist -n auto` repeatedly until
-it either reproduces and is fixed, or a hundred runs pass and the observation is
-written off.
+**Measured cost.** Maintainer facing. A flaky merge gate answers differently to
+the same tree, so a session either merges on a re-run it did not justify or goes
+looking for damage on a branch that has none. The pool sizing one names its own
+likely mechanism in the assertion message, a child that has already freed what it
+was asked to measure, and both appeared while eleven cores were saturated, which
+this session did for over an hour.
+
+**Why not fixed here.** Neither module is this unit's, and one observation each
+is not a rate. The honest statement is two reds in six full runs, different
+tests, on a loaded machine.
+
+**Closes when:** each is run under `-n auto` on a loaded machine until it either
+reproduces and is fixed, or enough clean runs accumulate to write the observation
+off. The pool sizing one should be measured against machine load explicitly,
+since a real memory probe racing the allocator is a timing assertion wearing a
+size assertion's clothes.

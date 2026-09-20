@@ -41,8 +41,10 @@ a defect this branch introduced: the dot skip above. The other three were the
 fallback verb sharing the tree with no sweep of its own, the sweep asking
 `list_jobs` for the whole installation to answer a question about a handful of
 directories, and the module docstring still arguing the verb deletes nothing.
-Battery: ruff clean, **9064 passed** and 1 skipped in 79 seconds, scan clean, 14
-of them new. Mutation tables `docs/mutation/r289-a.md`, `r289-b.md` and
+Battery: ruff clean, **9064 passed** and 1 skipped in 78 seconds, scan clean, 14
+of them new. **Two different tests went red once each across six full parallel
+runs on this branch and passed alone**, neither in a module this branch touches,
+and that is R-566 rather than a fact about the branch. Mutation tables `docs/mutation/r289-a.md`, `r289-b.md` and
 `r289-c.md`, summary `r289-notes.md`: 23 rows under the cap of 25, the author's
 own, 19 killed, four zeros each with its line or composite, null controls at zero
 on every batch, three FOREGROUND batches. Two of batch B's zeros were real holes
