@@ -2437,9 +2437,11 @@ def test_the_capture_marks_the_snapshot_after_the_database_and_never_before_it(
         i for i, label in enumerate(labels) if label == backup.SNAPSHOT_DATABASE
     )
     marker = next(c for c in database.commands if c.label == backup.SNAPSHOT_IDENTITY)
-    assert marker.argv[-1] == (
-        f"{cfg.backup.db_dest_root}/{STAMP}/{marker_for(cfg.library.volume_id)}"
-    )
+    # SPELLED OUT, not built with the helper the other tests use for their INPUT.
+    # An expected value that came from ``identity_marker`` would hold this to
+    # whatever that function returns, which is X equals X.
+    assert marker.argv[1] == "touch"
+    assert marker.argv[-1] == f"{cfg.backup.db_dest_root}/{STAMP}/library-volume.f1e2-d3c4"
     assert backup.SNAPSHOT_IDENTITY in backup.TRANSFERRING_LABELS
     assert backup.dry_run_argv(marker)[-1] == "--dry-run"
 
