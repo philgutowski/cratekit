@@ -380,6 +380,52 @@ RESERVATIONS: tuple[Reservation, ...] = (
             "that are not there. A sentence beats a plausible wrong command"
         ),
     ),
+    # ── Snapshot provenance: a pulled snapshot is a stamp, and this library's ─
+    Reservation(
+        cause="snapshot-name-invalid",
+        code=ExitCode.PRECONDITION,
+        steps=(
+            "give --snapshot the dated folder name a backup wrote, and nothing "
+            "else; leave the flag off to take the newest snapshot",
+        ),
+        note=(
+            "NOT 2. The parser accepted the value, because any string is a valid "
+            "argument to a flag that takes one. Steps rather than a token, since "
+            "no token says retype a stamp"
+        ),
+    ),
+    Reservation(
+        cause="snapshot-library-mismatch",
+        code=ExitCode.PRECONDITION,
+        steps=(
+            "name a snapshot that was taken from this library with --snapshot",
+            "when the snapshot IS this library's, taken before its drive was "
+            "replaced, say so by passing the volume the refusal names as "
+            "--snapshot-volume; it is checked, used once and never recorded",
+        ),
+        note=(
+            "the second step hands a value over, and it is safe to for a reason "
+            "worth keeping: the value is read from the snapshot's own marker "
+            "rather than from whatever disk is mounted, following the step "
+            "changes no configuration, and the flag enters the confirmation "
+            "digest, so the person approves the volume they named"
+        ),
+    ),
+    Reservation(
+        cause="snapshot-identity-unrecorded",
+        code=ExitCode.PRECONDITION,
+        steps=(
+            "when the snapshot the refusal names is this library's, pull it by "
+            "naming it with --snapshot",
+            "take a backup, and the newest snapshot will say which library it "
+            "was taken from",
+        ),
+        note=(
+            "every snapshot taken before the identity marker existed lands here "
+            "when it is the newest, so the first step has to work with no new "
+            "backup: a person whose drive just died cannot take one"
+        ),
+    ),
     # ── The mastering module's refusals ─────────────────────────────────────
     #
     # Six of the seven are 30. That is not laziness: a set recording named on

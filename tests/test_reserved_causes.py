@@ -4955,7 +4955,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # disk nobody identified. They sit beside the two library volume slugs and
     # are not in the reserved table, exactly as those are not. Population 162
     # to 164, non-reserved 138 to 140, reserved half UNCHANGED at 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (164, 140, 24)
+    #
+    # Re-pinned on the residual finding "Nothing asserts a pulled snapshot
+    # belongs to this library", 2026-09-19. THREE slugs, named rather than
+    # counted: snapshot-name-invalid, snapshot-library-mismatch and
+    # snapshot-identity-unrecorded, which the backup engine raises when a
+    # restore is handed a value that is not a stamp, a snapshot whose marker
+    # names another volume, or a newest snapshot with no marker at all. They
+    # are members of the engine's own refusal enum, so unlike every re-pin
+    # above they ARE in the reserved table, and it is the reserved half that
+    # moves. Population 164 to 167, non-reserved UNCHANGED at 140, reserved
+    # half 24 to 27.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (167, 140, 27)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5398,7 +5409,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # UNCHANGED at 293. TWO literals joined and both are keys, the two mapped
     # volume slugs named at the cause pin above, so the at-risk half does not
     # move.
-    assert (len(literals), len(literals - set(causes))) == (456, 293), (
+    # Re-pinned on the residual finding "Nothing asserts a pulled snapshot
+    # belongs to this library", 2026-09-19: 456 to 462 distinct, 293 to 296
+    # non-keys. SIX literals joined and NOTHING left, all in
+    # `modules/tools/backup.py`. Three are keys, the snapshot slugs named at
+    # the cause pin above. Three are not causes: snapshot-identity is the LABEL
+    # of the capture command that writes a snapshot's identity marker,
+    # list-snapshot-identity is the label of the listing a restore reads it
+    # back with, and snapshot-identity-not-written is the WARNING code the
+    # database portion carries when the library records no identity to write.
+    # Nothing refuses with any of the three.
+    assert (len(literals), len(literals - set(causes))) == (462, 296), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

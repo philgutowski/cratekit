@@ -60,6 +60,7 @@ WHAT THIS PORT CHANGES, beyond translating the shell.
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
@@ -68,7 +69,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
-from cratekit.core import analysis_store, backup_facts, binaries, config, session
+from cratekit.core import analysis_store, backup_facts, binaries, config, preflight, session
 from cratekit.core.processes import (
     REKORDBOX_PROCESSES,
     ProcessLister,
@@ -110,10 +111,12 @@ PRUNE_ARCHIVE = "prune-archive"
 PRUNE_ARCHIVE_FOLDER = "prune-archive-folder"
 SNAPSHOT_DATABASE = "snapshot-database"
 SNAPSHOT_SETTINGS = "snapshot-settings"
+SNAPSHOT_IDENTITY = "snapshot-identity"
 RESTORE_MIRROR = "restore-mirror"
 RESTORE_DATABASE = "restore-database"
 LIST_SNAPSHOTS = "list-snapshots"
 LIST_SNAPSHOT_CONTENTS = "list-snapshot-contents"
+LIST_SNAPSHOT_IDENTITY = "list-snapshot-identity"
 
 #: What a portion says about a rotation that did not happen, as codes rather
 #: than as sentences, for the same reason the labels above are constants: a
@@ -144,8 +147,27 @@ ANALYSIS_SHARE_NOT_CARRIED = "analysis-share-not-carried"
 #: Derived membership, checked by a test, so a transferring command added later
 #: cannot quietly become one the preview would really execute.
 TRANSFERRING_LABELS: frozenset[str] = frozenset(
-    {MIRROR, SNAPSHOT_DATABASE, SNAPSHOT_SETTINGS, RESTORE_MIRROR, RESTORE_DATABASE}
+    {
+        MIRROR,
+        SNAPSHOT_DATABASE,
+        SNAPSHOT_SETTINGS,
+        SNAPSHOT_IDENTITY,
+        RESTORE_MIRROR,
+        RESTORE_DATABASE,
+    }
 )
+
+#: The capture could not say which library a snapshot belongs to, so it wrote no
+#: marker. A warning rather than a refusal: the database copy is still worth
+#: having, and what is lost is that the newest-by-default restore will ask for
+#: this snapshot to be named.
+SNAPSHOT_IDENTITY_NOT_WRITTEN = "snapshot-identity-not-written"
+
+#: What a snapshot's identity marker is called, up to the identity itself. The
+#: marker is an EMPTY file whose name carries the value, beside ``db/`` in the
+#: dated folder and never inside it, so the database set a restore copies from
+#: holds the database set and nothing else.
+IDENTITY_MARKER_PREFIX = "library-volume."
 
 #: How many dated archive folders survive a prune. One is a single run's
 #: rollback, which is what the source keeps and what a consumer cloud quota
@@ -176,6 +198,12 @@ class Refusal(StrEnum):
     # BEFORE anything is attempted and this one is the attempt failing: the
     # remote was reachable enough to plan against and then was not.
     RESTORE_TRANSFER_FAILED = "restore-transfer-failed"
+    # R-154. Three diagnoses with three different acts behind them: retype the
+    # stamp, pick a snapshot that is this library's or say which volume it was
+    # taken from, and name a snapshot that predates the identity marker.
+    SNAPSHOT_NAME_INVALID = "snapshot-name-invalid"
+    SNAPSHOT_LIBRARY_MISMATCH = "snapshot-library-mismatch"
+    SNAPSHOT_IDENTITY_UNRECORDED = "snapshot-identity-unrecorded"
 
 
 #: Every refusal this module can raise, derived from the enum so U5's reservation
@@ -429,7 +457,58 @@ def stamp_for(now: datetime) -> str:
     string order. A local-time stamp reverses order for an hour every year when
     the clock goes back, and the prune would then delete the newest archive.
     """
-    return now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
+    return now.astimezone(timezone.utc).strftime(_STAMP_FORMAT)
+
+
+_STAMP_FORMAT = "%Y-%m-%dT%H%M%SZ"
+_STAMP_SHAPE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z")
+#: What a refusal shows a person who typed something else. A literal rather than
+#: a computed value, and a test holds it to :func:`is_stamp`, so it cannot drift
+#: from the format while staying out of the way of the format's own callers.
+STAMP_EXAMPLE = "2026-01-31T235959Z"
+
+
+def is_stamp(value: str) -> bool:
+    """Whether ``value`` is a folder name :func:`stamp_for` could have written.
+
+    THE SHAPE AND THE CALENDAR, both. The pattern alone admits a thirteenth
+    month, and the parse alone admits whatever padding the platform's parser is
+    lenient about, so neither is trusted by itself. What this buys is that a
+    value reaching a remote path is a name and never a path: no separator, no
+    dot segment and no whitespace survives it (R-154).
+    """
+    if not _STAMP_SHAPE.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(value, _STAMP_FORMAT)
+    except ValueError:
+        return False
+    return True
+
+
+_MARKER_IDENTITY = re.compile(r"[0-9a-z][0-9a-z_-]*(?:\.[0-9a-z_-]+)*")
+
+
+def identity_marker(identity: str | None) -> str | None:
+    """The marker filename for one volume identity, or None when it has none.
+
+    NORMALIZED BEFORE IT IS WRITTEN, which is the opposite of what setup does
+    with the configured value and for a different reason. The configured
+    identity is matched exactly elsewhere, so it is recorded as typed (R-344).
+    A marker is only ever compared through ``preflight.normalize_identity``, so
+    one spelling on the remote is strictly simpler than two.
+
+    None FOR ANYTHING THAT IS NOT PLAINLY A NAME. Both shipped adapters report
+    hex and hyphens. A value carrying a separator, a space or a leading dot did
+    not come from one of them, and interpolating it would write the marker
+    somewhere other than the dated folder.
+    """
+    if identity is None:
+        return None
+    folded = preflight.normalize_identity(identity)
+    if not _MARKER_IDENTITY.fullmatch(folded):
+        return None
+    return IDENTITY_MARKER_PREFIX + folded
 
 
 def _exclude_args(patterns: Sequence[str]) -> tuple[str, ...]:
@@ -630,6 +709,32 @@ def _plan_database(
                     argv=(rclone, "copy", str(sidecar), f"{destination}/db/"),
                 )
             )
+    # THE MARKER FOLLOWS THE WHOLE DATABASE SET AND PRECEDES THE SETTINGS. It
+    # says "the database in this folder is this library's", so it must not exist
+    # beside a copy that failed, and the executor stops at the first failing
+    # command. It does not wait for the settings, because a snapshot whose
+    # settings copy failed still holds a database a restore can use (R-154).
+    warnings = list(uncovered)
+    marker = identity_marker(cfg.library.volume_id)
+    if marker is None:
+        warnings.append(
+            {
+                "code": SNAPSHOT_IDENTITY_NOT_WRITTEN,
+                "message": (
+                    f"this snapshot will not say which library it was taken from, "
+                    f"because {config.VOLUME_IDENTITY_KEY} is "
+                    f"{'not recorded' if cfg.library.volume_id is None else 'not a plain name'}. "
+                    f"A restore will pull it only when its stamp is named"
+                ),
+            }
+        )
+    else:
+        commands.append(
+            Command(
+                label=SNAPSHOT_IDENTITY,
+                argv=(rclone, "touch", f"{destination}/{marker}"),
+            )
+        )
     resolved_settings = (
         settings_directories() if settings_dirs is None else tuple(settings_dirs)
     )
@@ -644,7 +749,9 @@ def _plan_database(
             )
         )
     return PortionPlan(
-        portion=backup_facts.Portion.DATABASE, commands=tuple(commands), warnings=uncovered
+        portion=backup_facts.Portion.DATABASE,
+        commands=tuple(commands),
+        warnings=tuple(warnings),
     )
 
 
@@ -934,6 +1041,9 @@ class RestorePlan:
     clears: tuple[Path, ...]
     commands: tuple[Command, ...] = field(default_factory=tuple)
     absent_sidecars: tuple[str, ...] = field(default_factory=tuple)
+    #: The identity the snapshot's own marker records, normalized, or None for a
+    #: snapshot that carries no marker and was pulled because it was named.
+    recorded_volume: str | None = None
 
 
 def database_target_for(cfg: config.Config, target: Path) -> Path:
@@ -971,8 +1081,154 @@ def latest_snapshot(cfg: config.Config, *, runner: Runner) -> str | None:
     )
     if result.returncode != 0:
         return None
-    names = sorted(line.strip().rstrip("/") for line in result.stdout.splitlines() if line.strip())
+    # ONLY NAMES THIS PRODUCT COULD HAVE WRITTEN. A folder somebody made by hand
+    # under the snapshot root sorts after every stamp when it starts with a
+    # letter, and would be offered as the newest snapshot of a database it does
+    # not hold (R-154, the shape check's other caller).
+    names = sorted(
+        name
+        for name in (line.strip().rstrip("/") for line in result.stdout.splitlines())
+        if is_stamp(name)
+    )
     return names[-1] if names else None
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedSnapshot:
+    """Which snapshot a restore will pull, and whose its marker says it is.
+
+    ``named`` is whether a PERSON chose the stamp. It is carried rather than
+    re-derived from "a stamp was passed", because the verb resolves the newest
+    stamp for its offer and hands that same stamp down, and a stamp that came
+    off a listing must not arrive looking typed.
+    """
+
+    stamp: str
+    recorded_volume: str | None
+    named: bool
+
+
+def snapshot_identities(
+    cfg: config.Config, snapshot: str, *, runner: Runner
+) -> tuple[str, ...]:
+    """Every identity a dated snapshot's markers record, normalized and sorted.
+
+    Empty means the folder was LISTED and holds no marker. A listing that fails
+    raises, for the reason :func:`snapshot_filenames` gives one function down: a
+    named snapshot with no marker is accepted, so a remote that did not answer
+    must never arrive looking like one.
+
+    A marker with nothing after its prefix is reported as the empty identity
+    rather than dropped, so it fails the comparison instead of passing as absent.
+    """
+    result = runner(
+        Command(
+            label=LIST_SNAPSHOT_IDENTITY,
+            argv=(_rclone(), "lsf", f"{cfg.backup.db_dest_root}/{snapshot}/", "--files-only"),
+        )
+    )
+    if result.returncode != 0:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed, so which library it was taken from is unknown; a restore "
+            f"is not planned against a snapshot this account cannot see",
+        )
+    found = {
+        preflight.normalize_identity(name[len(IDENTITY_MARKER_PREFIX):])
+        for name in (line.strip() for line in result.stdout.splitlines())
+        if name.startswith(IDENTITY_MARKER_PREFIX)
+    }
+    return tuple(sorted(found))
+
+
+def resolve_snapshot(
+    cfg: config.Config,
+    *,
+    snapshot: str | None = None,
+    snapshot_volume: str | None = None,
+    accept_unrecorded: bool | None = None,
+    runner: Runner = subprocess_runner,
+) -> ResolvedSnapshot:
+    """Decide which snapshot is pulled, and refuse one that is not this library's.
+
+    ONE FUNCTION, CALLED TWICE, and both calls matter. The verb calls it before
+    its confirmation gate so the offer can show, and digest, the stamp it is
+    really offering (R-153). :func:`plan_restore` calls it again under the
+    gates, because that is the path every restore takes whoever the caller is,
+    and a check that lived only in the verb would be a fix on the performing
+    path with the checking path open.
+
+    THE SHAPE IS CHECKED BEFORE THE REMOTE IS ASKED ANYTHING. The value is about
+    to become part of a remote path, so a value that is not a stamp never
+    reaches an argument list at all, including a listing's.
+
+    THE IDENTITY COMPARED IS A VOLUME'S, because that is the identity a library
+    has here, and it has one consequence worth stating. The ordinary reason to
+    pull a mirror is a dead drive, and its replacement is a different volume, so
+    every snapshot of the old drive names an identity the configuration no
+    longer holds. ``snapshot_volume`` is how a person says so: it REPLACES the
+    expected identity for this one call, it is never recorded, and it excuses
+    nothing else, so a snapshot marked for any third volume is still refused.
+
+    AN UNMARKED SNAPSHOT IS PULLED ONLY WHEN IT WAS NAMED. Every snapshot taken
+    before the marker existed is unmarked, and refusing them all would strand
+    exactly the person a restore is for. ``accept_unrecorded`` defaults to
+    whether a stamp was passed, and a caller handing down a stamp it resolved
+    itself says ``False``.
+    """
+    _require_destinations(cfg)
+    named = snapshot is not None
+    if snapshot is not None and not is_stamp(snapshot):
+        raise BackupRefused(
+            Refusal.SNAPSHOT_NAME_INVALID,
+            f"{snapshot!r} is not a snapshot stamp. A stamp is the dated folder "
+            f"name a backup writes, like {STAMP_EXAMPLE}, "
+            f"and nothing else is put into a path on the remote.",
+        )
+    chosen = snapshot if snapshot is not None else latest_snapshot(cfg, runner=runner)
+    if not chosen:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"no dated database snapshot was found under {cfg.backup.db_dest_root}",
+        )
+
+    recorded = snapshot_identities(cfg, chosen, runner=runner)
+    wanted = snapshot_volume if snapshot_volume is not None else cfg.library.volume_id
+    expected = preflight.normalize_identity(wanted) if wanted is not None else None
+    whose = (
+        f"the volume this restore was told to expect is {expected}"
+        if snapshot_volume is not None
+        else f"this library is recorded as volume {expected}"
+        if expected is not None
+        else f"this library records no {config.VOLUME_IDENTITY_KEY} to compare it with"
+    )
+    if not recorded:
+        if snapshot_volume is not None:
+            raise BackupRefused(
+                Refusal.SNAPSHOT_LIBRARY_MISMATCH,
+                f"the snapshot {chosen} under {cfg.backup.db_dest_root} does not say "
+                f"which library it was taken from, and {whose}. An expected "
+                f"identity cannot be confirmed against a snapshot that records none.",
+            )
+        accepted = named if accept_unrecorded is None else accept_unrecorded
+        if not accepted:
+            raise BackupRefused(
+                Refusal.SNAPSHOT_IDENTITY_UNRECORDED,
+                f"the newest snapshot under {cfg.backup.db_dest_root} is {chosen}, and "
+                f"it does not say which library it was taken from, which is true of "
+                f"every snapshot taken before that was recorded. It is pulled only "
+                f"when it is named: --snapshot {chosen}",
+            )
+        return ResolvedSnapshot(stamp=chosen, recorded_volume=None, named=named)
+    if len(recorded) != 1 or recorded[0] != expected:
+        raise BackupRefused(
+            Refusal.SNAPSHOT_LIBRARY_MISMATCH,
+            f"the snapshot {chosen} under {cfg.backup.db_dest_root} says it was taken "
+            f"from the library on volume {' and '.join(r or '(unnamed)' for r in recorded)}, "
+            f"and {whose}. Restoring it would put another library's database here.",
+        )
+    return ResolvedSnapshot(stamp=chosen, recorded_volume=recorded[0], named=named)
 
 
 def snapshot_filenames(
@@ -1015,6 +1271,8 @@ def plan_restore(
     target: Path | str,
     confirmed: bool,
     snapshot: str | None = None,
+    snapshot_volume: str | None = None,
+    accept_unrecorded: bool | None = None,
     include_mirror: bool = False,
     runner: Runner = subprocess_runner,
     process_lister: ProcessLister | None = None,
@@ -1057,6 +1315,8 @@ def plan_restore(
             target=Path(target),
             confirmed=confirmed,
             snapshot=snapshot,
+            snapshot_volume=snapshot_volume,
+            accept_unrecorded=accept_unrecorded,
             include_mirror=include_mirror,
             runner=runner,
             process_lister=process_lister,
@@ -1069,6 +1329,8 @@ def _plan_restore_inside_the_gates(
     target: Path,
     confirmed: bool,
     snapshot: str | None,
+    snapshot_volume: str | None,
+    accept_unrecorded: bool | None,
     include_mirror: bool,
     runner: Runner,
     process_lister: ProcessLister | None,
@@ -1099,12 +1361,15 @@ def _plan_restore_inside_the_gates(
             f"application and the disk describing two different libraries.",
         )
 
-    chosen = snapshot or latest_snapshot(cfg, runner=runner)
-    if not chosen:
-        raise BackupRefused(
-            Refusal.NO_SNAPSHOT_AVAILABLE,
-            f"no dated database snapshot was found under {cfg.backup.db_dest_root}",
-        )
+    # A STAMP, AND THIS LIBRARY'S, before it is put into a single path (R-154).
+    resolved = resolve_snapshot(
+        cfg,
+        snapshot=snapshot,
+        snapshot_volume=snapshot_volume,
+        accept_unrecorded=accept_unrecorded,
+        runner=runner,
+    )
+    chosen = resolved.stamp
 
     database_target = database_target_for(cfg, target)
     # THE SIDECARS ARE CLEARED BEFORE ANYTHING IS COPIED. A stale write-ahead log
@@ -1171,6 +1436,7 @@ def _plan_restore_inside_the_gates(
         clears=clears,
         commands=tuple(commands),
         absent_sidecars=tuple(absent),
+        recorded_volume=resolved.recorded_volume,
     )
 
 
