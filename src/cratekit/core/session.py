@@ -75,7 +75,7 @@ from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli import output
-from cratekit.core import backup_facts, config, preflight, rb_writer, reconcile
+from cratekit.core import backup_facts, config, locations, preflight, rb_writer, reconcile
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -1265,6 +1265,199 @@ def assert_volume_identity(
 
 
 # ---------------------------------------------------------------------------
+# The volume gate, for every volume a prefix rule points at
+# ---------------------------------------------------------------------------
+
+#: Which refusal slug each mount verdict raises when the path asked about is a
+#: PREFIX RULE TARGET. The same table shape as ``_MOUNT_REASONS`` and a second
+#: table rather than a reuse of the first, because every slug there carries the
+#: library volume's remedy, and for a mapped target that sentence is false.
+_MAPPED_REASONS: Mapping[preflight.MountState, str] = MappingProxyType(
+    {
+        preflight.MountState.NOT_MOUNTED: "mapped-volume-unmounted",
+        preflight.MountState.MOUNTED_ELSEWHERE: "mapped-volume-mismatch",
+        preflight.MountState.FOREIGN_VOLUME: "mapped-volume-mismatch",
+        preflight.MountState.IDENTITY_UNAVAILABLE: "mapped-volume-mismatch",
+        preflight.MountState.IDENTITY_NOT_RECORDED: "mapped-volume-mismatch",
+    }
+)
+
+#: The verdicts under which a rule's target HAS proved its identity. Declared so
+#: that the two tables together are total over the enum and a test can say so:
+#: a state in neither is a state nobody decided about.
+#:
+#: ``LIBRARY_PATH_MISSING`` IS HERE ON PURPOSE. It means the recorded identity
+#: MATCHED and only the directory is absent, so the question this gate asks,
+#: which disk is that, has been answered yes. What is left is whether the
+#: directory is there, and that is asked per row by the pass that follows the
+#: rule, which refuses on it only when a row actually resolves through it.
+#: Refusing here as well would refuse a run over a rule nothing uses.
+_MAPPED_PROVED: frozenset[preflight.MountState] = frozenset(
+    {preflight.MountState.OK, preflight.MountState.LIBRARY_PATH_MISSING}
+)
+
+
+def expected_rule_identity(cfg: config.Config, rule: locations.PrefixRule) -> str | None:
+    """The identity a rule's target must show, or None when nothing says.
+
+    THREE ANSWERS AND THE THIRD IS NOT A FALLBACK. A rule that records its own
+    identity is held to it. A rule that records none and points INSIDE the
+    library root is held to the library's, because the root's own assertion
+    already speaks for that directory and a volume nested under the root then
+    fails as foreign rather than passing as the library. A rule that records
+    none and points anywhere else has no identity to be held to, and None is
+    returned so the caller refuses.
+
+    It is not defaulted to the library's identity for that third case, and the
+    case it would get wrong is the ordinary one: a library on the boot disk and
+    a rule onto an external drive. Eject the drive uncleanly and an empty
+    directory is left standing at the mount path, ON THE BOOT DISK, so the
+    library's identity matches it and every removed row under it reads as gone.
+    """
+    if rule.volume_id:
+        return rule.volume_id
+    inside = locations.resolve_recorded_path(rule.target or "/", root=cfg.library.root)
+    if inside.resolution is locations.Resolution.UNDER_ROOT:
+        return cfg.library.volume_id
+    return None
+
+
+def _mapped_steps(
+    index: int, target: str, status: preflight.MountStatus, observed: str | None
+) -> tuple[str, ...]:
+    """What a person does about rule ``index``. One act, naming the rule and the disk."""
+    rule = f"library.location_prefix_map[{index}]"
+    state = status.state
+    if state is preflight.MountState.IDENTITY_NOT_RECORDED:
+        seen = (
+            f"the volume at {target} identifies as {observed} now; confirm that is "
+            f"the disk those tracks live on, then record it as volume_id on {rule}"
+            if observed
+            else f"record the identity of the volume at {target} as volume_id on {rule}"
+        )
+        return (seen,)
+    if state is preflight.MountState.NOT_MOUNTED:
+        return (f"mount the volume {rule} points at, or correct that rule's 'to' ({target})",)
+    if state is preflight.MountState.MOUNTED_ELSEWHERE:
+        return (
+            f"the volume recorded on {rule} is mounted at {status.found_at}; mount "
+            f"it at {target}, or correct that rule's 'to'",
+        )
+    if state is preflight.MountState.FOREIGN_VOLUME:
+        return (
+            f"mount the volume recorded on {rule} at {target}, or, if the volume "
+            f"there now ({status.observed_identity}) is the right one, record it "
+            f"as that rule's volume_id",
+        )
+    return (
+        f"no identity can be read for the filesystem {target} sits on, so nothing "
+        f"can prove which disk {rule} reaches; move those tracks under the library "
+        f"root or remove the rule",
+    )
+
+
+def assert_mapped_volume_identities(
+    cfg: config.Config,
+    rules: Sequence[locations.PrefixRule],
+    *,
+    only: Iterable[int] | None = None,
+    identity_provider: preflight.IdentityProvider | None = None,
+    mount_enumerator: preflight.MountEnumerator | None = None,
+) -> tuple[preflight.MountStatus, ...]:
+    """Refuse unless every prefix rule's target sits on the volume it was recorded on.
+
+    ``assert_volume_identity`` answers for ONE path, the library root, and a
+    destructive pass that follows a prefix rule writes somewhere else. Verified
+    against a real second volume before this existed: the file moved and landed
+    in that volume's own Trash with no identity asked of it at all. The disk a
+    rule most often reaches is the archive or the backup, which is the disk the
+    recovery story depends on.
+
+    THE SAME QUESTION, ASKED BY THE SAME FUNCTION, at the same destructive
+    strength. ``preflight.assert_library_volume`` takes a path and an identity
+    and knows nothing about libraries beyond its name, so a second implementation
+    here would be a second opinion on what a matching volume is.
+
+    EVERY RULE, NOT EVERY RULE A ROW USES. Knowing which rules are used means
+    resolving paths, and this runs before a path is resolved for the reason the
+    library's assertion does. ``only`` narrows it for the RE-ASSERTION before a
+    write, where the rule is already known, and for nothing else.
+
+    A PRESENT DIRECTORY IS NOT AN IDENTITY. An empty directory standing where a
+    volume mounts passes every existence check there is, which is how a removed
+    row under it was read as a deleted file. It sits on whichever disk holds the
+    mount path, so the identity read there is that disk's, and it does not match.
+    """
+    identity_of = identity_provider or preflight.default_identity_provider()
+    wanted = None if only is None else frozenset(only)
+    proved: list[preflight.MountStatus] = []
+    for index, rule in enumerate(rules):
+        if wanted is not None and index not in wanted:
+            continue
+        target = rule.target or "/"
+        try:
+            proved.append(
+                preflight.assert_library_volume(
+                    target,
+                    expected_rule_identity(cfg, rule),
+                    destructive=True,
+                    identity_provider=identity_provider,
+                    mount_enumerator=mount_enumerator,
+                )
+            )
+            continue
+        except preflight.LibraryVolumeError as exc:
+            status = exc.status
+            if status.state in _MAPPED_PROVED:
+                proved.append(status)
+                continue
+            observed = status.observed_identity
+            if status.state is preflight.MountState.IDENTITY_NOT_RECORDED:
+                # The probe returns before it reads anything when nothing was
+                # recorded, so the one fact that turns this refusal into a
+                # single edit is read here. A failure to read it costs the
+                # sentence its identity and nothing else.
+                observed = identity_of(preflight.containing_mount(Path(target)))
+            raise refuse(
+                _MAPPED_REASONS.get(status.state, "mapped-volume-mismatch"),
+                f"prefix rule {index} maps {rule.source} onto {target}, and "
+                f"{_mapped_problem(status)}, so this destructive session refuses "
+                f"before it resolves a single path",
+                steps=_mapped_steps(index, target, status, observed),
+                scope=Scope.RUN,
+                detail={
+                    "state": str(status.state),
+                    "rule": index,
+                    "source": rule.source,
+                    "target": target,
+                    "recorded_identity": status.recorded_identity,
+                    "observed_identity": observed,
+                },
+            ) from exc
+    return tuple(proved)
+
+
+def _mapped_problem(status: preflight.MountStatus) -> str:
+    """One clause on what was observed at a rule's target. No verb for the person."""
+    state = status.state
+    if state is preflight.MountState.IDENTITY_NOT_RECORDED:
+        return (
+            "that target is outside the library root with no volume identity "
+            "recorded on the rule, so nothing proves which disk it reaches"
+        )
+    if state is preflight.MountState.NOT_MOUNTED:
+        return "the volume recorded on that rule is not mounted"
+    if state is preflight.MountState.MOUNTED_ELSEWHERE:
+        return f"the volume recorded on that rule is mounted at {status.found_at} instead"
+    if state is preflight.MountState.FOREIGN_VOLUME:
+        return (
+            f"a different volume is there: recorded identity "
+            f"{status.recorded_identity}, mounted identity {status.observed_identity}"
+        )
+    return f"no volume identity is readable for the filesystem at {status.mount_point}"
+
+
+# ---------------------------------------------------------------------------
 # The three gates
 # ---------------------------------------------------------------------------
 
@@ -2081,6 +2274,7 @@ __all__ = [
     "assert_backup_acknowledged",
     "assert_database_surface_allowed",
     "assert_gates",
+    "assert_mapped_volume_identities",
     "assert_no_unresolved_session",
     "assert_volume_identity",
     "attach_capture",
@@ -2089,6 +2283,7 @@ __all__ = [
     "commit_sources",
     "current_holder",
     "derive_actor",
+    "expected_rule_identity",
     "fingerprint_analysis_files",
     "has_controlling_terminal",
     "holder_alive",

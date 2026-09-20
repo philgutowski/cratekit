@@ -732,6 +732,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # too, which is why it carries its own token.
         "library-root-unreachable": ExitCode.LIBRARY_UNAVAILABLE,
         "library-volume-mismatch": ExitCode.LIBRARY_UNAVAILABLE,
+        # A volume a PREFIX RULE points at, which is not the library volume. Two
+        # slugs of their own rather than the two library ones above, because
+        # those carry "mount the configured library volume" as their remedy and
+        # that sentence is false here: the library volume is mounted and right,
+        # and the act that helps is on a different disk or in one rule.
+        "mapped-volume-unmounted": ExitCode.LIBRARY_UNAVAILABLE,
+        "mapped-volume-mismatch": ExitCode.LIBRARY_UNAVAILABLE,
         "library-directory-missing": ExitCode.LIBRARY_UNAVAILABLE,
         "library-database-missing": ExitCode.LIBRARY_UNAVAILABLE,
         "pyrekordbox-pin-drift": ExitCode.VERSION_PIN,
