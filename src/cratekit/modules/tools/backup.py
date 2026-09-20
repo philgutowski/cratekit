@@ -486,6 +486,41 @@ def is_stamp(value: str) -> bool:
     return True
 
 
+#: The source system's dated folder, local time with an underscore. It writes
+#: the same ``<root>/<name>/db/`` layout this product reads, commonly into the
+#: same remote directory, so on the day of a cutover every snapshot a person
+#: owns is spelled this way and a restore that refused the spelling would have
+#: nothing to pull (found by the built in review of the shape check).
+_LEGACY_FORMAT = "%Y-%m-%d_%H%M%S"
+_LEGACY_SHAPE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}")
+
+
+def is_snapshot_name(value: str) -> bool:
+    """Whether ``value`` names a dated snapshot folder, this product's or the source's.
+
+    WIDER THAN :func:`is_stamp` AND EXACTLY AS SAFE. What the check is for is
+    that a value reaching a remote path is a NAME, and both spellings are digits
+    and one separator character with a real date behind them. ``is_stamp`` stays
+    the narrow statement of what a backup WRITES, which is what the test holding
+    the two ends together compares against.
+
+    The two spellings sort together as text, and across them the order is only
+    roughly by time: one is UTC and one is local, and on a shared date the
+    underscore sorts after the letter. That is tolerable because a source system
+    snapshot never carries a marker, so the newest-by-default walk steps over
+    it and it is pulled only by name.
+    """
+    if is_stamp(value):
+        return True
+    if not _LEGACY_SHAPE.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(value, _LEGACY_FORMAT)
+    except ValueError:
+        return False
+    return True
+
+
 _MARKER_IDENTITY = re.compile(r"[0-9a-z][0-9a-z_-]*(?:\.[0-9a-z_-]+)*")
 
 
@@ -714,21 +749,9 @@ def _plan_database(
     # beside a copy that failed, and the executor stops at the first failing
     # command. It does not wait for the settings, because a snapshot whose
     # settings copy failed still holds a database a restore can use (R-154).
-    warnings = list(uncovered)
+    warnings = [*uncovered, *snapshot_identity_warning(cfg)]
     marker = identity_marker(cfg.library.volume_id)
-    if marker is None:
-        warnings.append(
-            {
-                "code": SNAPSHOT_IDENTITY_NOT_WRITTEN,
-                "message": (
-                    f"this snapshot will not say which library it was taken from, "
-                    f"because {config.VOLUME_IDENTITY_KEY} is "
-                    f"{'not recorded' if cfg.library.volume_id is None else 'not a plain name'}. "
-                    f"A restore will pull it only when its stamp is named"
-                ),
-            }
-        )
-    else:
+    if marker is not None:
         commands.append(
             Command(
                 label=SNAPSHOT_IDENTITY,
@@ -752,6 +775,31 @@ def _plan_database(
         portion=backup_facts.Portion.DATABASE,
         commands=tuple(commands),
         warnings=tuple(warnings),
+    )
+
+
+def snapshot_identity_warning(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
+    """A warning when this configuration's snapshots cannot say whose they are.
+
+    PUBLIC, AND ASKED OF THE CONFIGURATION, for the reason
+    :func:`uncovered_analysis_share` is: the backup verb runs through the job
+    queue, a claimed item's report does not reach the person, and a warning that
+    rides only on the plan therefore reaches nobody. Every backup would write an
+    unmarked snapshot in silence, and the first word of it would be a restore
+    refusing on the day it was needed.
+    """
+    if identity_marker(cfg.library.volume_id) is not None:
+        return ()
+    why = "not recorded" if cfg.library.volume_id is None else "not a plain name"
+    return (
+        {
+            "code": SNAPSHOT_IDENTITY_NOT_WRITTEN,
+            "message": (
+                f"this snapshot will not say which library it was taken from, "
+                f"because {config.VOLUME_IDENTITY_KEY} is {why}. A restore will "
+                f"pull it only when its stamp is named"
+            ),
+        },
     )
 
 
@@ -898,6 +946,26 @@ def run_backup(
                 command = Command(label=command.label, argv=dry_run_argv(command))
             result = runner(command)
             results.append(result)
+            if result.returncode != 0 and command.label == SNAPSHOT_IDENTITY:
+                # THE SECOND CLASS THIS LOOP DOES NOT FAIL ON. By the time the
+                # marker is attempted the whole database set has copied, and
+                # that copy is what the portion is for. Failing here would skip
+                # the settings, publish no age, and report a failed backup over
+                # a remote holding a good one, on every run, for a remote that
+                # cannot hold an empty file. What is lost is said instead: the
+                # snapshot is unmarked, and a restore pulls it only by name.
+                warnings.append(
+                    {
+                        "code": SNAPSHOT_IDENTITY_NOT_WRITTEN,
+                        "message": (
+                            f"the database was copied and the marker saying which "
+                            f"library it was taken from could not be written "
+                            f"(exit {result.returncode}). A restore will pull this "
+                            f"snapshot only when its stamp is named"
+                        ),
+                    }
+                )
+                continue
             if result.returncode != 0:
                 failed = result
                 break
@@ -1073,6 +1141,21 @@ def latest_snapshot(cfg: config.Config, *, runner: Runner) -> str | None:
     quietly: a local-time stamp would sort wrongly for one hour a year and this
     would restore the second-newest snapshot without saying so.
     """
+    names = _snapshot_names(cfg, runner=runner)
+    return names[-1] if names else None
+
+
+def _snapshot_names(cfg: config.Config, *, runner: Runner) -> tuple[str, ...] | None:
+    """Every dated snapshot folder on the remote, oldest first, or None if unlisted.
+
+    ONLY NAMES A BACKUP COULD HAVE WRITTEN. A folder somebody made by hand under
+    the snapshot root sorts after every stamp when it starts with a letter, and
+    would be offered as the newest snapshot of a database it does not hold
+    (R-154, the shape check's other caller).
+
+    None AND EMPTY ARE DIFFERENT ANSWERS and the caller that refuses says which:
+    a remote that did not answer is not a remote with nothing on it.
+    """
     result = runner(
         Command(
             label=LIST_SNAPSHOTS,
@@ -1081,16 +1164,20 @@ def latest_snapshot(cfg: config.Config, *, runner: Runner) -> str | None:
     )
     if result.returncode != 0:
         return None
-    # ONLY NAMES THIS PRODUCT COULD HAVE WRITTEN. A folder somebody made by hand
-    # under the snapshot root sorts after every stamp when it starts with a
-    # letter, and would be offered as the newest snapshot of a database it does
-    # not hold (R-154, the shape check's other caller).
-    names = sorted(
-        name
-        for name in (line.strip().rstrip("/") for line in result.stdout.splitlines())
-        if is_stamp(name)
+    return tuple(
+        sorted(
+            name
+            for name in (line.strip().rstrip("/") for line in result.stdout.splitlines())
+            if is_snapshot_name(name)
+        )
     )
-    return names[-1] if names else None
+
+
+#: How many of the newest snapshots the newest-by-default walk reads a marker
+#: from before it gives up. A judgement and NOT MEASURED: enough to step over a
+#: week of another library's nightly backups under a shared root, and few enough
+#: that a remote holding only unmarked snapshots refuses in seconds.
+NEWEST_WALK = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -1176,59 +1263,144 @@ def resolve_snapshot(
     exactly the person a restore is for. ``accept_unrecorded`` defaults to
     whether a stamp was passed, and a caller handing down a stamp it resolved
     itself says ``False``.
+
+    WITH NO STAMP NAMED, OWNERSHIP SELECTS RATHER THAN VETOES. The newest
+    ``NEWEST_WALK`` folders are read newest first and the first one marked for
+    the expected identity is the answer. The first cut took the newest folder
+    and then refused it, which the built in review drove to two failures: under
+    a shared root the default refused whenever the other library had backed up
+    last, and a backup cut off before its marker left an unmarked folder in
+    front of a good one, which the refusal then told the person to name.
     """
     _require_destinations(cfg)
-    named = snapshot is not None
-    if snapshot is not None and not is_stamp(snapshot):
-        raise BackupRefused(
-            Refusal.SNAPSHOT_NAME_INVALID,
-            f"{snapshot!r} is not a snapshot stamp. A stamp is the dated folder "
-            f"name a backup writes, like {STAMP_EXAMPLE}, "
-            f"and nothing else is put into a path on the remote.",
-        )
-    chosen = snapshot if snapshot is not None else latest_snapshot(cfg, runner=runner)
-    if not chosen:
-        raise BackupRefused(
-            Refusal.NO_SNAPSHOT_AVAILABLE,
-            f"no dated database snapshot was found under {cfg.backup.db_dest_root}",
-        )
-
-    recorded = snapshot_identities(cfg, chosen, runner=runner)
+    root = cfg.backup.db_dest_root
     wanted = snapshot_volume if snapshot_volume is not None else cfg.library.volume_id
-    expected = preflight.normalize_identity(wanted) if wanted is not None else None
+    # AN EMPTY IDENTITY IS NO IDENTITY. A marker with nothing after its prefix
+    # reads back as the empty string, and an expected value of whitespace folds
+    # to the same, so without this the two would match each other and a
+    # snapshot that names nobody would be pulled as verified.
+    expected = (preflight.normalize_identity(wanted) or None) if wanted is not None else None
     whose = (
-        f"the volume this restore was told to expect is {expected}"
+        f"the volume this restore was told to expect is {expected or 'empty'}"
         if snapshot_volume is not None
         else f"this library is recorded as volume {expected}"
         if expected is not None
         else f"this library records no {config.VOLUME_IDENTITY_KEY} to compare it with"
     )
-    if not recorded:
-        if snapshot_volume is not None:
+
+    if snapshot is not None:
+        if not is_snapshot_name(snapshot):
             raise BackupRefused(
-                Refusal.SNAPSHOT_LIBRARY_MISMATCH,
-                f"the snapshot {chosen} under {cfg.backup.db_dest_root} does not say "
-                f"which library it was taken from, and {whose}. An expected "
-                f"identity cannot be confirmed against a snapshot that records none.",
+                Refusal.SNAPSHOT_NAME_INVALID,
+                f"{snapshot!r} is not a snapshot stamp. A stamp is the dated folder "
+                f"name a backup wrote, like {STAMP_EXAMPLE}, "
+                f"and nothing else is put into a path on the remote.",
             )
-        accepted = named if accept_unrecorded is None else accept_unrecorded
-        if not accepted:
-            raise BackupRefused(
-                Refusal.SNAPSHOT_IDENTITY_UNRECORDED,
-                f"the newest snapshot under {cfg.backup.db_dest_root} is {chosen}, and "
-                f"it does not say which library it was taken from, which is true of "
-                f"every snapshot taken before that was recorded. It is pulled only "
-                f"when it is named: --snapshot {chosen}",
-            )
-        return ResolvedSnapshot(stamp=chosen, recorded_volume=None, named=named)
-    if len(recorded) != 1 or recorded[0] != expected:
-        raise BackupRefused(
-            Refusal.SNAPSHOT_LIBRARY_MISMATCH,
-            f"the snapshot {chosen} under {cfg.backup.db_dest_root} says it was taken "
-            f"from the library on volume {' and '.join(r or '(unnamed)' for r in recorded)}, "
-            f"and {whose}. Restoring it would put another library's database here.",
+        recorded = snapshot_identities(cfg, snapshot, runner=runner)
+        if recorded == (expected,):
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=expected, named=True)
+        accepted = True if accept_unrecorded is None else accept_unrecorded
+        if not recorded and snapshot_volume is None and accepted:
+            return ResolvedSnapshot(stamp=snapshot, recorded_volume=None, named=True)
+        raise _not_this_librarys(
+            cfg, snapshot, recorded, whose=whose, stated=snapshot_volume is not None
         )
-    return ResolvedSnapshot(stamp=chosen, recorded_volume=recorded[0], named=named)
+
+    names = _snapshot_names(cfg, runner=runner)
+    if names is None:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the dated database snapshots under {root} could not be listed, so "
+            f"whether one exists is unknown; a restore is not planned against a "
+            f"remote that did not answer",
+        )
+    if not names:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"no dated database snapshot was found under {root}",
+        )
+    # THE NEWEST THAT IS THIS LIBRARY'S, not the newest and then a veto. Under a
+    # shared root the newest folder is whichever library backed up last, and a
+    # backup cut off between two files leaves a folder with no marker in front
+    # of a good one. Refusing on either would make the default unusable exactly
+    # where the marker was supposed to help, so ownership selects.
+    newest = names[::-1][:NEWEST_WALK]
+    seen: dict[str, tuple[str, ...]] = {}
+    for name in newest:
+        seen[name] = snapshot_identities(cfg, name, runner=runner)
+        if seen[name] == (expected,):
+            return ResolvedSnapshot(stamp=name, recorded_volume=expected, named=False)
+    raise _not_this_librarys(
+        cfg,
+        newest[0],
+        seen[newest[0]],
+        whose=whose,
+        stated=snapshot_volume is not None,
+        walked=len(newest),
+    )
+
+
+def _not_this_librarys(
+    cfg: config.Config,
+    stamp: str,
+    recorded: tuple[str, ...],
+    *,
+    whose: str,
+    stated: bool,
+    walked: int = 0,
+) -> BackupRefused:
+    """The refusal for a snapshot that cannot be shown to be this library's.
+
+    THREE SENTENCES FOR THREE STATES OF ONE FOLDER, because each sends a person
+    somewhere different and two of them used to share words that were false for
+    one of the two.
+
+    * No marker. Either the snapshot predates the marker or its backup was cut
+      off before the marker was written, and the message says BOTH, because
+      telling a person to name a snapshot that is really half a database set
+      sends them to pull it over the live one.
+    * Two markers. Two libraries wrote one dated folder in one second, the
+      database beside them is whichever landed last, and NO stated identity can
+      vouch for it, so the message does not offer one.
+    * One marker, another volume. The ordinary mismatch.
+    """
+    root = cfg.backup.db_dest_root
+    looked = (
+        f"none of the {walked} newest snapshots under {root} says it was taken "
+        f"from this library. The newest, {stamp},"
+        if walked
+        else f"the snapshot {stamp} under {root}"
+    )
+    if not recorded:
+        if stated:
+            return BackupRefused(
+                Refusal.SNAPSHOT_LIBRARY_MISMATCH,
+                f"{looked} does not say which library it was taken from, and "
+                f"{whose}. An expected identity cannot be confirmed against a "
+                f"snapshot that records none.",
+            )
+        return BackupRefused(
+            Refusal.SNAPSHOT_IDENTITY_UNRECORDED,
+            f"{looked} does not say which library it was taken from. That is true "
+            f"of every snapshot taken before identities were recorded, and also of "
+            f"one whose backup did not finish, so check it holds a whole database "
+            f"before pulling it. It is pulled only when it is named: "
+            f"--snapshot {stamp}",
+        )
+    if len(recorded) > 1:
+        return BackupRefused(
+            Refusal.SNAPSHOT_LIBRARY_MISMATCH,
+            f"{looked} carries {len(recorded)} identities, "
+            f"{' and '.join(r or '(empty)' for r in recorded)}, so two libraries "
+            f"wrote into it and the database it holds is whichever copy landed "
+            f"last. No expected volume can vouch for it; name another snapshot.",
+        )
+    return BackupRefused(
+        Refusal.SNAPSHOT_LIBRARY_MISMATCH,
+        f"{looked} says it was taken from the library on volume "
+        f"{recorded[0] or '(empty)'}, and {whose}. Restoring it would put another "
+        f"library's database here.",
+    )
 
 
 def snapshot_filenames(

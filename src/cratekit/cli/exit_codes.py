@@ -417,8 +417,9 @@ RESERVATIONS: tuple[Reservation, ...] = (
         steps=(
             "when the snapshot the refusal names is this library's, pull it by "
             "naming it with --snapshot",
-            "take a backup, and the newest snapshot will say which library it "
-            "was taken from",
+            "otherwise take a backup, after checking library.volume_id is the "
+            "volume's own identity, a plain UUID or serial; a snapshot says which "
+            "library it was taken from only when that identity can be a filename",
         ),
         note=(
             "every snapshot taken before the identity marker existed lands here "

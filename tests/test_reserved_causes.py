@@ -4966,7 +4966,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # above they ARE in the reserved table, and it is the reserved half that
     # moves. Population 164 to 167, non-reserved UNCHANGED at 140, reserved
     # half 24 to 27.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (167, 140, 27)
+    #
+    # The same unit's review round added ONE more, named rather than counted:
+    # restore-flag-needs-pull, which the restore verb raises when a flag that
+    # describes the off-machine pull is typed without asking for the pull, so
+    # the flag is never dropped in silence ahead of a rollback nobody meant. It
+    # is the verb's own, registered and not reserved, exactly as
+    # restore-target-invalid beside it is. Population 167 to 168, non-reserved
+    # 140 to 141, reserved half UNCHANGED at 27.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (168, 141, 27)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5418,8 +5426,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # list-snapshot-identity is the label of the listing a restore reads it
     # back with, and snapshot-identity-not-written is the WARNING code the
     # database portion carries when the library records no identity to write.
-    # Nothing refuses with any of the three.
-    assert (len(literals), len(literals - set(causes))) == (462, 296), (
+    # Nothing refuses with any of the three. The review round's one slug,
+    # restore-flag-needs-pull, is a key and joined in `session/restore_cli.py`,
+    # a holder already: 462 to 463 distinct, non-keys UNCHANGED at 296.
+    assert (len(literals), len(literals - set(causes))) == (463, 296), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

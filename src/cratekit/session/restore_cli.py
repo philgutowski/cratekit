@@ -643,9 +643,13 @@ def _offer(
         items.append(
             {
                 "half": "off-machine",
-                "snapshot": snapshot.stamp if snapshot is not None else None,
-                "snapshot_named": snapshot.named if snapshot is not None else False,
-                "recorded_volume": snapshot.recorded_volume if snapshot is not None else None,
+                # READ DIRECTLY, with no fallback for an absent resolution. The
+                # off-machine half is offered only over a resolved snapshot, and
+                # a fallback here would digest "no snapshot" in silence the day
+                # that stopped being true, where this fails loudly instead.
+                "snapshot": snapshot.stamp,
+                "snapshot_named": snapshot.named,
+                "recorded_volume": snapshot.recorded_volume,
                 "expected_volume": snapshot_volume,
                 "include_mirror": include_mirror,
                 "target": str(target) if target is not None else "library",
@@ -673,6 +677,59 @@ def _offer(
         "totals": {"halves": len(items), "dry_run": dry_run},
         "chunk": None,
     }
+
+
+#: The flags that describe the off-machine pull and mean nothing without it,
+#: as the attribute argparse stores and the spelling a person typed.
+_PULL_FLAGS = (
+    ("snapshot", "--snapshot"),
+    ("snapshot_volume", "--snapshot-volume"),
+    ("include_mirror", "--include-mirror"),
+)
+
+
+def _refuse_pull_flags_without_the_pull(args) -> None:
+    """A flag about the off-machine pull, with no pull asked for, is refused.
+
+    THEY WERE SILENTLY DROPPED, all of them, and the expected volume flag made
+    that worth closing: a person who types it believes they authorised pulling a
+    replaced drive's snapshot, and with the pull flag forgotten the verb went on
+    to offer a capture rollback of the live library instead, saying nothing
+    about the flag it had thrown away. ``--target`` was already refused in this
+    position under its own slug, which is why it is not in the table.
+
+    The verb's own slug with its sentence beside it, for the reason
+    ``_target_invalid`` gives: the reservation table holds a module's refusal
+    enum, and this is a fact about the invocation.
+    """
+    if args.from_backup:
+        return
+    typed = [
+        spelling
+        for attribute, spelling in _PULL_FLAGS
+        if getattr(args, attribute, None) not in (None, False)
+    ]
+    if not typed:
+        return
+    raise CratekitError(
+        Cause(
+            reason="restore-flag-needs-pull",
+            message=(
+                f"{' and '.join(typed)} describe the off-machine pull, and this "
+                f"restore did not ask for one, so it would have rolled the live "
+                f"library back to a recorded session and ignored "
+                f"{'them' if len(typed) > 1 else 'it'}"
+            ),
+            remediation=Remediation(
+                steps=(
+                    "add --from-backup to pull the database from the off-machine "
+                    "snapshot, or drop the flag to roll back a recorded session",
+                )
+            ),
+            origin=("session.restore_cli",),
+            detail={"flags": typed},
+        )
+    )
 
 
 def _confirm_gate(entry):
@@ -721,6 +778,11 @@ class RestoreReport:
     outcome: restore.RestoreOutcome | None
     dry_run: bool
     absent: tuple[str, ...] = ()
+    #: Which dated snapshot the off-machine half pulled, and the identity its
+    #: marker recorded, read off the PLAN the engine built under the gates
+    #: rather than off the offer, so the report names what arrived.
+    snapshot: str | None = None
+    recorded_volume: str | None = None
 
 
 def restore_under_one_session(
@@ -812,6 +874,7 @@ def restore_under_one_session(
     ) as held:
         transferred: tuple[str, ...] = ()
         missing: tuple[str, ...] = ()
+        arrived: dict[str, Any] = {}
         if from_backup:
             where = Path(target) if target is not None else Path(cfg.library.root)
             try:
@@ -853,9 +916,13 @@ def restore_under_one_session(
                 for command, _result in zip(pulled.commands, ran, strict=True)
             )
             missing = pulled.absent_sidecars
+            arrived = {
+                "snapshot": pulled.snapshot,
+                "recorded_volume": pulled.recorded_volume,
+            }
         if session_id is None:
             return RestoreReport(
-                pulled=transferred, outcome=None, dry_run=dry_run, absent=missing
+                pulled=transferred, outcome=None, dry_run=dry_run, absent=missing, **arrived
             )
         decided = restore.plan(
             cfg,
@@ -875,6 +942,7 @@ def restore_under_one_session(
             ),
             dry_run=dry_run,
             absent=missing,
+            **arrived,
         )
 
 
@@ -932,6 +1000,9 @@ def _performed(report: RestoreReport, offered: dict[str, Any]) -> dict[str, Any]
         "dry_run": report.dry_run,
         "absent_sidecars": list(report.absent),
     }
+    if report.pulled:
+        totals["snapshot"] = report.snapshot
+        totals["recorded_volume"] = report.recorded_volume
     if outcome is not None:
         totals["converged"] = outcome.converged
         totals["outstanding"] = len(outcome.outstanding)
@@ -970,6 +1041,7 @@ def perform_restore(ctx) -> Envelope:
     """
     cfg = _load()
     target = _restore_target(cfg, ctx.args)
+    _refuse_pull_flags_without_the_pull(ctx.args)
     requested = ctx.args.session_id
     chosen: restore.Restorable | None = None
     if target is not None:

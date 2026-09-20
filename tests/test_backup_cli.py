@@ -1326,6 +1326,45 @@ def test_a_contained_analysis_share_draws_no_warning_from_the_verb(cfg, rclone):
     assert _share_warnings(resumed) == [], resumed
 
 
+def _identity_warnings(envelope: dict) -> list[dict]:
+    return [
+        w
+        for w in envelope.get("warnings", [])
+        if w["code"] == backup.SNAPSHOT_IDENTITY_NOT_WRITTEN
+    ]
+
+
+def test_a_library_whose_identity_cannot_be_a_marker_is_told_so(cfg, rclone):
+    """At queue and at resume, for the reason the share warning above is.
+
+    Left on the plan alone this reached nobody, so every backup of such a library
+    wrote an unmarked snapshot in silence, and the first word of it would have
+    been a restore refusing on the day it was needed.
+    """
+    # NOT A MISSING IDENTITY, which a saved configuration refuses as a missing
+    # required key, so it cannot come off disk. What validation does accept is
+    # any value that is not shaped like a mount path, and a value with a space
+    # in it cannot be a marker's filename.
+    config.save(replace(cfg, library=replace(cfg.library, volume_id="not a plain name")))
+    config.reset_cache()
+
+    code, queued = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), queued
+    assert len(_identity_warnings(queued)) == 1, queued
+
+    code, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), resumed
+    assert len(_identity_warnings(resumed)) == 1, resumed
+
+
+def test_a_library_with_an_identity_draws_no_such_warning(cfg, rclone):
+    code, queued = _drive(["backup", "run"])
+    assert _identity_warnings(queued) == [], queued
+    code, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), resumed
+    assert _identity_warnings(resumed) == [], resumed
+
+
 def test_a_queued_backup_runs_every_portion_through_the_real_resume(cfg, rclone):
     """R-198's whole claim, closed for this verb and driven end to end.
 

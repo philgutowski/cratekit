@@ -2143,3 +2143,45 @@ def test_the_digest_moves_when_the_expected_volume_is_stated(installed, monkeypa
 
     assert _shown(plain)["recorded_volume"] == _shown(stated)["recorded_volume"]
     assert _offered_digest(plain) != _offered_digest(stated)
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--snapshot-volume", "0000-aaaa"],
+        ["--snapshot", STAMP],
+        ["--include-mirror"],
+        ["--snapshot", STAMP, "--include-mirror"],
+    ],
+)
+def test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for(installed, flags):
+    """They were dropped in silence, ahead of a rollback nobody meant.
+
+    A person typing the expected volume believes they authorised a replaced
+    drive's snapshot, and with the pull flag forgotten the verb went on to offer
+    a capture rollback of the live library without a word about the flag.
+    """
+    record, _captured = completed_session(installed)
+
+    code, envelope = _drive(["restore", "run", record.session_id, *flags])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "restore-flag-needs-pull"
+    assert envelope["cause"]["detail"]["flags"] == [f for f in flags if f.startswith("--")]
+    assert envelope["cause"]["remediation"]["steps"]
+
+
+def test_the_report_names_the_snapshot_that_arrived(installed, monkeypatch):
+    acknowledge(installed)
+    _fake_rclone(installed, monkeypatch, snapshots=(STAMP, LATER))
+
+    _code, refused = _drive(["restore", "run", "--from-backup"])
+    _answer(refused["run_id"], "restore")
+    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
+
+    assert code == int(ExitCode.OK), envelope
+    totals = envelope["data"]["totals"]
+    assert totals["snapshot"] == LATER
+    assert totals["recorded_volume"] == preflight.normalize_identity(
+        installed.library.volume_id
+    )

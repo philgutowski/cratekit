@@ -139,8 +139,9 @@ alone, which is hundreds of gigabytes, which is why it is off by default.
 crate restore run --from-backup --include-mirror
 ```
 
-A snapshot records the volume identity of the library it was taken from, and the
-restore refuses one that names another volume. A replaced disk is another volume,
+A snapshot records the volume identity of the library it was taken from. The
+default is the newest snapshot that is this library's, and a named snapshot that
+records another volume is refused. A replaced disk is another volume,
 so after the very failure this section is about, every snapshot names the old
 one. The refusal prints that identity. When it is the disk the library used to
 live on, pass it back, and it is checked against the snapshot, used for that one

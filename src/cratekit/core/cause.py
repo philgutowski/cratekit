@@ -1278,6 +1278,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # person told their directory is the live library will go looking at the
         # directory, which in these two is not where the mistake is.
         "restore-target-invalid": ExitCode.PRECONDITION,
+        # The same shape as the entry above, one flag family over: a flag that
+        # describes the off-machine pull, typed without asking for the pull. The
+        # parser accepted it, so not USAGE, and it is the verb's own, so it is
+        # registered here and not reserved.
+        "restore-flag-needs-pull": ExitCode.PRECONDITION,
         # Appended in U27's second fix round rather than with the eight above,
         # because it did not exist when they landed: the review found that
         # ``run_restore`` never read a return code, so this is the slug the
