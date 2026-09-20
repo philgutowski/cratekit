@@ -23,6 +23,12 @@ A fourth joined them later, for the same reason and not as an exception to it:
 ``CredentialIndexUnusable`` means this installation's own presence sidecar could
 not be locked, so the keychain is fine and what needs repairing is here.
 
+A FIFTH IS NOT ONE OF THIS MODULE'S TYPES AT ALL, and the asymmetry is the point.
+Reading that same sidecar and failing is a structured refusal carrying
+``credential-index-unreadable``, because the locking failure is raised at two
+call sites that both convert it and the READ has five call sites that convert
+nothing. See :func:`_index_read`, which states what that cost before it refused.
+
 Collapse those into one error and every caller has to parse a message string to
 find out which advice to give, which is precisely the failure KTD25 names: a
 typed failure that flattens at any hop cannot be recovered downstream. The
@@ -56,6 +62,13 @@ import keyring
 import keyring.errors
 
 from cratekit.core import config
+from cratekit.core.cause import CratekitError, refuse
+
+#: The product-wide remediation vocabulary, aliased because this module declares
+#: a ``Remedy`` of its own below and the two must not be confused. The local one
+#: is the token carried on this module's four exception types; this one is the
+#: token a structured refusal carries into the envelope, and U5 owns it.
+from cratekit.core.exit_codes import Remedy as ProductRemedy
 
 #: One keychain service for the whole installation. NOT namespaced per library:
 #: a credential is an account fact, not a library fact, which is why KTD21 puts
@@ -319,6 +332,14 @@ def set(name: str, value: str) -> None:
     disk). The value is stored and reads as unrecorded, so the user records it
     again, which is idempotent. The opposite order would leave the index naming a
     credential the keychain never accepted, which is the loop above.
+
+    THE SAME WINDOW, WHEN WHAT FAILS IS THE READ INSIDE IT, IS LOUD INSTEAD. The
+    cycle at the end reads the existing names before writing them back, so an
+    index it cannot read refuses and this call raises after the keychain already
+    holds the value. That is the right end of the trade. Answering empty there
+    and writing the one new name would drop every other recorded name from the
+    index, turning one unreadable read into a permanent false report about the
+    credentials it was not even asked about.
     """
     if not value:
         raise CredentialMissing(
@@ -419,6 +440,12 @@ def exists(name: str) -> bool:
     installation wrote. A credential deleted out from under it through the OS
     keychain UI still reads as present here, and the code that actually uses the
     credential is what discovers otherwise, as ``CredentialMissing``.
+
+    FALSE IS AN ANSWER AND IT IS ONLY GIVEN WHEN ONE WAS OBSERVED. An index this
+    account cannot open, or one whose bytes do not say what is recorded, raises
+    rather than answering, because the caller cannot tell those from a real
+    absence and the whole product downstream reads False as a statement of fact.
+    See :func:`_index_read`.
     """
     if _env_override(str(name)):
         return True
@@ -426,7 +453,13 @@ def exists(name: str) -> bool:
 
 
 def recorded() -> frozenset[str]:
-    """Every credential name this installation has recorded. Names only."""
+    """Every credential name this installation has recorded. Names only.
+
+    Raises rather than answering empty for an index that could not be read, for
+    the reason :func:`exists` states: an empty answer here is rendered to a
+    person as a list of what they have, and a list that is short because nobody
+    could look is the worst of the three states to report as the first.
+    """
     return _index_read()
 
 
@@ -435,7 +468,7 @@ def _index_path() -> Path:
 
 
 def _index_read() -> frozenset[str]:
-    """Read the recorded names.
+    """Read the recorded names, or refuse. THREE STATES, NOT ONE.
 
     Returns a FROZEN set, and the helpers below build new ones with ``|`` and
     ``-`` rather than mutating. That is not a style preference: this module
@@ -443,18 +476,89 @@ def _index_read() -> frozenset[str]:
     below it, so a bare ``set()`` in a helper silently calls the credential
     writer instead of constructing a container. Working in immutable sets removes
     the landmine rather than stepping around it.
+
+    WHAT THIS USED TO DO AND WHY IT WAS WRONG, R-118 item 4. It caught ``OSError``
+    and ``ValueError`` alike and answered with an empty set, on the argument that
+    the index is derived data and the keychain remains the truth. The argument is
+    correct about the DATA and wrong about the ANSWER. Nothing downstream re-reads
+    the keychain: ``exists`` is the only presence question the product asks, so an
+    index this account cannot open made doctor report a stored credential as not
+    recorded with ``set-credential`` beside it, and made three verbs refuse
+    ``credential-missing`` over a keychain that was holding the value. Recording
+    it again does not move the index, so the person follows that remedy for ever,
+    which is the loop R-116 measured, reached here from a permission rather than
+    from a race. It is the first of this project's four recurring patterns,
+    absence read as evidence of absence.
+
+    THE ONE STATE THAT MEANS NOTHING RECORDED IS ENOENT. A fresh installation has
+    no index and must answer empty rather than refuse, or the product cannot be
+    set up at all. Everything else is a read that established nothing:
+
+    * another ``OSError``, so the file is there and this account could not get
+      its bytes. Raised ``from`` the original, which is what lets
+      ``cause.classified`` turn EACCES or EPERM into ``path-permission-denied``
+      with ``grant-path-access``, and EROFS into its own act, without a word
+      about permissions being written here. That reclassification is why this
+      site names the FILE and never the reason a kernel refused it.
+    * bytes that are not JSON, or a payload whose ``recorded`` key is not a list
+      of names. The file was read and does not say what is recorded, which is a
+      different act to repair and keeps ``repair-credential-store``.
+
+    A STRUCTURED REFUSAL RATHER THAN ``CredentialIndexUnusable``, which is the
+    sibling type the lock raises. The lock's refusal is caught by both call sites
+    that take it, the login verb and the setup wizard, and converted there.
+    ``exists`` has five call sites and no handler at any of them, so a bare
+    exception would reach the dispatcher's unstructured blanket and come out as
+    ``internal-error`` with "report this defect" for the damaged case, over a
+    person's own state directory. A ``CratekitError`` lands with its reserved
+    code through the ``except CratekitError`` leg that doctor's check runner and
+    the dispatcher both already have.
     """
     path = _index_path()
     try:
-        payload = json.loads(path.read_text())
-    except (OSError, ValueError):
-        # A missing or mangled index is not a failure: it is "nothing recorded".
-        # The index is derived data, and the keychain remains the truth.
+        raw = path.read_text()
+    except FileNotFoundError:
         return frozenset()
+    except OSError as exc:
+        raise refuse(
+            "credential-index-unreadable",
+            f"the credential presence index at {path} is present and could not "
+            f"be read ({type(exc).__name__}), so this installation cannot say "
+            f"which credentials it has recorded. Nothing was stored or removed "
+            f"by the attempt, and the keychain still holds whatever it held; "
+            f"what is unknown is the list of names, not the values",
+            remedy=ProductRemedy.REPAIR_CREDENTIAL_STORE,
+            origin=("core", "secrets"),
+            detail={"path": str(path), "index": "unreadable"},
+        ) from exc
+    try:
+        payload = json.loads(raw)
+    except ValueError as exc:
+        raise _damaged(path, f"is not readable as JSON ({type(exc).__name__})") from exc
     names = payload.get("recorded") if isinstance(payload, dict) else None
     if not isinstance(names, Iterable) or isinstance(names, str):
-        return frozenset()
+        raise _damaged(path, "does not carry a list of recorded credential names")
     return frozenset(str(n) for n in names)
+
+
+def _damaged(path: Path, what: str) -> CratekitError:
+    """The refusal for an index that was READ and does not say what is recorded.
+
+    One slug with the unreadable case above, because the act that repairs both is
+    the same one and ``cause.REASONS`` gives a slug per ACT rather than per
+    trigger. What differs is the sentence, which is the half a call site is still
+    allowed to own, and ``detail`` carries the two apart for a machine consumer.
+    """
+    return refuse(
+        "credential-index-unreadable",
+        f"the credential presence index at {path} {what}, so this installation "
+        f"cannot say which credentials it has recorded. The keychain is "
+        f"unaffected and still holds whatever it held. Removing that file and "
+        f"recording each credential again rebuilds it",
+        remedy=ProductRemedy.REPAIR_CREDENTIAL_STORE,
+        origin=("core", "secrets"),
+        detail={"path": str(path), "index": "damaged"},
+    )
 
 
 def _index_write(names: Iterable[str]) -> None:

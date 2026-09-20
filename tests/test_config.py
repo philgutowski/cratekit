@@ -41,6 +41,8 @@ import pytest
 import tomli_w
 
 from cratekit.core import config, profiles, secrets
+from cratekit.core.cause import CratekitError
+from cratekit.core.exit_codes import ExitCode, Remedy
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -1828,6 +1830,186 @@ def test_the_presence_index_records_names_and_never_values():
     payload = json.loads(config.state_path("credential_index").read_text())
     assert payload["recorded"] == [secrets.Credential.IDENTIFY_SIGNING_KEY.value]
     assert "value-from-the-user" not in json.dumps(payload)
+
+
+# ── R-118 item 4. Three states, not one ──────────────────────────────────────
+#
+# ``_index_read`` caught ``OSError`` and ``ValueError`` alike and answered with an
+# empty set, so an index this account could not open read as "nothing recorded".
+# The ledger's closing condition is two halves: the reader tells a missing index
+# from an unreadable one, and doctor says which it saw. The doctor half is in
+# ``tests/test_doctor.py``; this is the reader half.
+
+
+def _unreadable_index(monkeypatch, path: Path):
+    """Make exactly one file answer EACCES to a read, and nothing else.
+
+    Through ``Path.read_text`` rather than ``chmod`` 000 on purpose. A chmod test
+    is vacuous for a runner with an override on the filesystem, root being the
+    obvious one, and the failure shape it would hide is the whole finding: the
+    test would pass by answering "nothing recorded" without ever refusing.
+
+    RETURNS A DISARM CALLABLE, and a test that needs to read the index afterwards
+    calls that rather than ``monkeypatch.undo``. ``undo`` rolls back EVERY patch
+    on the shared fixture, which here includes the autouse conftest fixtures that
+    point installation state at a temp tree and stand a fake keyring up, so the
+    assertions after it ran against this machine's real state directory and real
+    keychain and compared a fixture value against a live one.
+    """
+    real = Path.read_text
+    armed = True
+
+    def refuse(self, *args, **kwargs):
+        if armed and self == path:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", refuse)
+
+    def disarm() -> None:
+        nonlocal armed
+        armed = False
+
+    return disarm
+
+
+def test_a_presence_index_that_could_not_be_read_is_not_answered_as_not_recorded(
+    monkeypatch,
+):
+    """R-118 item 4, the cost, reproduced.
+
+    ``exists`` answering False here is what made doctor report a stored credential
+    as not recorded with "record it" beside it, and made three verbs refuse
+    ``credential-missing`` over a keychain that was holding the value. Recording it
+    again does not move the index, so that remedy never completes: the loop R-116
+    measured, reached from a permission rather than from a race.
+    """
+    secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+    index = config.state_path("credential_index")
+    _unreadable_index(monkeypatch, index)
+
+    with pytest.raises(CratekitError) as excinfo:
+        secrets.exists(secrets.Credential.IDENTIFY_KEY)
+
+    cause = excinfo.value.cause
+    assert str(index) in cause.message, "the refusal must name the file it could not read"
+    # The remedy follows the KIND of refusal the operating system made rather than
+    # the one this site declared, which is the classification R-118 item 3 bought.
+    # A permission is granted, not repaired.
+    assert cause.remediation.remedy is not Remedy.SET_CREDENTIAL
+    assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
+    assert cause.reason == "path-permission-denied"
+    assert cause.code is not ExitCode.OK
+
+
+def test_an_absent_presence_index_still_answers_nothing_recorded():
+    """The one state that DOES mean nothing recorded, and the reason the fix is a
+    distinction rather than a blanket refusal.
+
+    A fresh installation has no index. Refusing here would mean the product could
+    not be set up at all, which is a worse failure than the one being fixed.
+    """
+    index = config.state_path("credential_index")
+    assert not index.exists()
+    assert secrets.exists(secrets.Credential.IDENTIFY_KEY) is False
+    assert secrets.recorded() == frozenset()
+
+
+def test_a_damaged_presence_index_refuses_and_says_it_was_read(monkeypatch):
+    """The second half of the old blanket. ``ValueError`` was caught with
+    ``OSError`` and answered the same way, and it is a different act to repair:
+    the bytes were read and do not say what is recorded.
+    """
+    index = config.state_path("credential_index")
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text("{not json at all")
+
+    with pytest.raises(CratekitError) as excinfo:
+        secrets.exists(secrets.Credential.PROVIDER_SESSION)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "credential-index-unreadable"
+    assert cause.remediation.remedy is Remedy.REPAIR_CREDENTIAL_STORE
+    assert cause.detail["index"] == "damaged"
+    assert str(index) in cause.message
+
+
+def test_a_presence_index_without_a_list_of_names_refuses_rather_than_answering():
+    """Valid JSON whose ``recorded`` key is not a list of names is the same fact as
+    unparseable bytes, and it used to take the same silent empty answer.
+    """
+    index = config.state_path("credential_index")
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(json.dumps({"recorded": "identify-key"}))
+
+    with pytest.raises(CratekitError) as excinfo:
+        secrets.recorded()
+    assert excinfo.value.cause.reason == "credential-index-unreadable"
+
+
+def test_recording_a_credential_does_not_truncate_an_index_it_could_not_read(
+    monkeypatch,
+):
+    """The write half, which is where the old answer cost the MOST.
+
+    ``_record_name`` reads the existing names and writes them back with one added.
+    An empty answer from a read that failed made that a rewrite of the whole index
+    down to a single name, so one unreadable read turned into a permanent false
+    report about the credentials nobody had asked about.
+    """
+    secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+    index = config.state_path("credential_index")
+    before = index.read_text()
+    disarm = _unreadable_index(monkeypatch, index)
+
+    with pytest.raises(CratekitError):
+        secrets.set(secrets.Credential.IDENTIFY_SIGNING_KEY, "another-value")
+
+    disarm()
+    assert index.read_text() == before, "the index was rewritten from a read that failed"
+    assert secrets.recorded() == frozenset({secrets.Credential.IDENTIFY_KEY.value})
+
+
+def test_removing_a_credential_does_not_truncate_an_index_it_could_not_read(
+    monkeypatch,
+):
+    """The other half of the cycle, and the order matters here.
+
+    ``delete`` clears the index entry BEFORE the keychain entry, so a read that
+    answered empty would have written an empty index and then removed one value,
+    leaving every other recorded name unrecorded. The refusal happens before
+    either store is touched.
+    """
+    secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
+    secrets.set(secrets.Credential.IDENTIFY_SIGNING_KEY, "another-value")
+    index = config.state_path("credential_index")
+    before = index.read_text()
+    disarm = _unreadable_index(monkeypatch, index)
+
+    with pytest.raises(CratekitError):
+        secrets.delete(secrets.Credential.IDENTIFY_KEY)
+
+    disarm()
+    assert index.read_text() == before
+    assert secrets.get(secrets.Credential.IDENTIFY_KEY) == "value-from-the-user"
+
+
+def test_the_environment_fallback_answers_presence_without_reading_the_index(
+    monkeypatch,
+):
+    """The opted-in fallback is checked FIRST, so a machine supplying credentials
+    through the environment is not blocked by a sidecar it never writes.
+
+    Asserted because the refusal above is new and a refusal that fires ahead of
+    the fallback would break the one configuration that has no index by design.
+    """
+    monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
+    monkeypatch.setenv("CRATEKIT_CREDENTIAL_IDENTIFY_KEY", "value-from-the-env")
+    index = config.state_path("credential_index")
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text("{not json at all")
+
+    assert secrets.exists(secrets.Credential.IDENTIFY_KEY) is True
 
 
 def test_the_environment_fallback_is_opt_in_and_never_silent(monkeypatch):
