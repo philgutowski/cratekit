@@ -129,7 +129,7 @@ def library_row_warning(folder: str) -> dict[str, str]:
     corrected file is never selected again, so a second retag over the folder
     reports the same clean zero whether the person reloaded or not. A pending
     action nobody can verify is the printed instruction that field exists to
-    replace. Recorded as R-568 rather than faked with a verb that would answer
+    replace. Recorded as R-567 rather than faked with a verb that would answer
     the question wrong.
     """
     return {

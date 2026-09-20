@@ -1771,6 +1771,18 @@ def warning_codes(envelope: dict) -> list[str]:
     return [warning["code"] for warning in envelope["warnings"]]
 
 
+def job_cause(job_id: str):
+    """The cause the QUEUE recorded, which is the one a refusal has to carry on.
+
+    Read back from the store rather than rebuilt here, because a case that
+    described the expected cause in its own words would pass against a verb that
+    threw the job's cause away and put a plausible one of its own in its place.
+    That is the whole shape ``origin`` is append-only to prevent.
+    """
+    with jobs.open_store() as store:
+        return jobs.get(store, job_id).cause
+
+
 def test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs(
     repair_on, folder, silence, monkeypatch
 ):
@@ -1879,10 +1891,17 @@ def test_a_half_corrected_retag_carries_the_reload_on_its_refusal(
         f"two files were corrected and their rows are stale, and the refusal "
         f"named nothing about it: {steps}"
     )
-    assert refused["cause"]["origin"][0] != refused["cause"]["origin"][-1], (
-        "the trail was shortened, so some hop re-created the cause rather than "
-        "extending what it was already carrying"
+    stored = job_cause(job_id)
+    assert refused["cause"]["reason"] == stored.reason
+    assert refused["cause"]["detail"] == dict(stored.detail)
+    assert tuple(refused["cause"]["origin"])[: len(stored.origin)] == stored.origin, (
+        "the trail was shortened or rewritten, so some hop re-created the cause "
+        "rather than extending what the job was already carrying"
     )
+    assert steps[: len(stored.remediation.steps)] == list(stored.remediation.steps), (
+        "the reload replaced the failure's own steps instead of joining them"
+    )
+    assert len(steps) == len(stored.remediation.steps) + 1
 
 
 def test_a_retag_that_failed_before_correcting_anything_names_no_reload(

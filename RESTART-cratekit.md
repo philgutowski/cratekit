@@ -4,7 +4,55 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-289 with R-291, issue #167, `relay/167`, 2026-09-20.**
+**Last merged: R-185 with R-246, issue #157, `relay/157`, 2026-09-20.**
+`crate tag retag` declares the one surface it writes and ends by naming the act
+that reconciles the other, which CLOSES R-246 and NARROWS R-185. The registry
+entry declared `writes` of `files` and `db_metadata` after the `GenreID` relink
+`write/metadata.plan_genre_retag` performs; nothing in `src` calls it, because
+`tagging/retag.plan_library` and `tagging/retag.apply_library` are named by their
+own module and by nothing else. It now declares `files` alone.
+**Dropping the cloud sync gate was forced, not chosen.** `tests/test_cli_contract.py`
+refuses a verb declaring a decision its work cannot reach, in both directions, and
+that gate binds to write intent on the guarded writer, which this verb never
+acquires because it opens no database on any path. `name.apply` is the same shape
+already landed, for R-165, down to keeping `rekordbox.pins`, which is R-568.
+**R-185 ITSELF IS STILL OPEN AND ITS CLOSING CONDITION DID NOT MOVE.** The two
+acts are still two acts and a caller for the database half is still what closes
+it. What changed is that the person is told: `retag_cli.library_row_warning`
+names one act, reload the folder's tags in rekordbox, carried on all three of the
+verb's endings.
+**The third ending is the one worth knowing about.** R-225 sends a job that
+closed carrying a cause out through that cause rather than through an envelope,
+so a warning attached to the resume reaches every run EXCEPT the interrupted one,
+whose corrected files have stale rows exactly as a finished sweep's do. That is
+the run R-185 is about. The refusal now carries the reload among its remediation
+steps, gated on the same artifact count, and the cause is EXTENDED rather than
+rebuilt so the origin trail is not shortened. The code review found this and the
+tense of the message, which claimed a correction had happened on an envelope
+emitted before the detached child looks at a file; both were applied.
+**WHAT A PERSON MAY MEET.** `crate tag retag` now says, at queueing, at a
+successful resume that corrected something, and on a half corrected refusal, to
+select that folder in rekordbox and reload its tags. A resume that corrected
+nothing says nothing, and neither does a refusal that wrote nothing.
+**The code review raised three findings and all three were applied**, two of them
+defects this branch introduced. The third was the record, written here.
+Battery: ruff clean, **9070 passed** and 1 skipped in 77 seconds, scan clean, six
+of them new. No new slow test. Mutation table `docs/mutation/r185-r246-author.md`:
+**14 rows under the cap of 25, the author's own, 14 killed and no zeros**, null
+control at zero, every row's restore verified against `git show HEAD:`, three
+rows logged as dropped with their reasons. Two rows were re-run after the first
+pass: one had deleted an `except` clause and left a bare `try`, which reported as
+a collect error rather than a result, and the other measured a real zero on the
+cause trail assertion, which bought a stronger one read back from the queue.
+The learning is under `docs/solutions/workflow-issues/`, the one about a queued
+verb having two exits. `CONCEPTS.md` is unchanged.
+Filed: R-567, R-568 and R-569. **None of the three meets the board bar**, judged
+per finding in the ledger, so no issue is owed for them. R-563's is still OWED,
+along with R-549's, R-523's, R-517's, R-515's, R-512's, R-482's and R-477's from
+earlier sessions.
+**Main's highest residual number is R-569.**
+
+**The session before: R-289 with R-291, issue #167, `relay/167`, 2026-09-20.**
 The tagging walk no longer descends into this product's own staging trees, and
 the emptied staging of a job that can no longer run is reclaimed, which CLOSES
 R-289 and R-291. `tag.audio_files` skips `tag.SKIPPED_DIRNAMES`, the two staging
@@ -54,9 +102,9 @@ written against a shape. `CONCEPTS.md` is unchanged.
 Filed: R-563 to R-566. **R-563 meets the board bar and its issue is OWED**, along
 with R-549's, R-523's, R-517's, R-515's, R-512's, R-482's and R-477's from
 earlier sessions.
-**Main's highest residual number is R-566.**
+**Main's highest residual number was R-566.**
 
-**The session before: R-172, issue #155, `relay/155`, 2026-09-20.**
+**And before that: R-172, issue #155, `relay/155`, 2026-09-20.**
 A rename the plan promised is never skipped in silence, which CLOSES R-172, and
 both halves of its closing condition were done. The PLAN pass owns a collision:
 several movers rendering to one target, or a target a file on disk holds that
