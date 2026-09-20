@@ -1,0 +1,125 @@
+name = "r356-a"
+pass_kind = "light"
+
+# Batch a of the r356 table: the adapter's choosing rules. Split from batch b
+# only so each foreground invocation stays under the harness tool ceiling, which
+# is how a Relay session runs this driver. One pass, one unit, two batches.
+
+[[rows]]
+id = "A1_first_agreeing_rather_than_the_only_one"
+description = "Rule one takes the first agreeing track instead of requiring exactly one, which is the first result the unit's brief forbids"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if len(agreeing) == 1 and not unreadable:'''
+new = '''        if agreeing and not unreadable:'''
+
+[[rows]]
+id = "A2_unreadable_track_no_longer_stops_rule_one"
+description = "A lone agreeing track is chosen beside one nobody could read"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if len(agreeing) == 1 and not unreadable:'''
+new = '''        if len(agreeing) == 1:'''
+
+[[rows]]
+id = "A3_any_hearted_rather_than_the_only_hearted"
+description = "Rule two takes the first hearted release when the account hearts two"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if len(hearted) == 1:'''
+new = '''        if hearted:'''
+
+[[rows]]
+id = "A4_hearts_asked_of_every_track"
+description = "Rule two reads the hearts of every track the ISRC named instead of the agreeing ones, so a heart on the radio edit chooses for the plain record"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        hearted = [remote for remote in agreeing if remote in hearts]'''
+new = '''        hearted = [remote for remote in verdicts if remote in hearts]'''
+
+[[rows]]
+id = "A5_withdrawn_track_is_a_candidate"
+description = "A track the provider will not play is compared like any other, with the version the client never read"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''    return getattr(track, "available", True) is not False'''
+new = '''    return True'''
+
+[[rows]]
+id = "A6_version_not_compared"
+description = "Agreement is on the title alone, so the radio edit and the extended mix both agree"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''    ours = {(match.fold(one.title), one.version_key) for one in row.readings}
+    theirs = {(match.fold(one.title), one.version_key) for one in listed.readings}'''
+new = '''    ours = {(match.fold(one.title), "") for one in row.readings}
+    theirs = {(match.fold(one.title), "") for one in listed.readings}'''
+
+[[rows]]
+id = "A7_artist_not_compared"
+description = "Agreement ignores the artist, so another act's record under the same title agrees"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''    if not _artist_agrees(row.artist, listed.artist, track):
+        return False
+'''
+new = ''''''
+
+[[rows]]
+id = "A8_first_billed_artist_not_required"
+description = "A row naming only the guest agrees"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''    return bool(first) and first <= ours and ours - billed <= _JOINERS'''
+new = '''    return bool(first) and ours - billed <= _JOINERS'''
+
+[[rows]]
+id = "A9_row_may_name_an_artist_nobody_bills"
+description = "A row billing a third act the track does not agrees"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''    return bool(first) and first <= ours and ours - billed <= _JOINERS'''
+new = '''    return bool(first) and first <= ours'''
+
+[[rows]]
+id = "A10_provider_title_read_one_way_only"
+description = "Only the first reading of the provider's title is compared, so a version the provider spelled after a dash never agrees"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''for one in listed.readings}'''
+new = '''for one in (listed,)}'''
+
+[[rows]]
+id = "A11_row_title_read_one_way_only"
+description = "Only the first reading of the row's title is compared"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''for one in row.readings}'''
+new = '''for one in (row,)}'''
+
+[[rows]]
+id = "A12_reason_outlives_its_match"
+description = "A reason is not cleared when the row is matched again, so a row that resolved still says it could not be"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        self._reasons.pop(key, None)
+'''
+new = ''''''
+
+[[rows]]
+id = "A13_reason_never_stored"
+description = "The adapter chooses nothing and says nothing about why"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                    if chosen is None:
+                        self._reasons[key] = reason
+'''
+new = ''''''
+
+[[rows]]
+id = "A14_no_joiner_words"
+description = "A row spelling two artists with feat no longer agrees with the track billing both"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''_JOINERS = frozenset({"feat", "ft", "featuring", "with", "and", "vs", "x"})'''
+new = '''_JOINERS = frozenset()'''

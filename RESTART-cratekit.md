@@ -4,7 +4,66 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-221, issue #159, `relay/159`, 2026-09-20.**
+**Last merged: R-356, issue #158, `relay/158`, 2026-09-20.**
+An ISRC several provider tracks share is resolved by the row's own names, which
+DISCHARGES R-356's closing condition and moves what it cannot choose to R-572.
+`TidalAccount.match_track` takes the row's title and artist, and several tracks
+under one ISRC go to `_among`: first the ONE track agreeing with the row's
+artist, title and version, read by `acquire.match.read_row` on both sides, then,
+when several agree, the ONE the account already hearts. Never by position. A
+track the provider will not play is never a candidate, and a track nobody could
+read stops a lone agreeing one from being chosen. Anything else stays unmatched
+and `unmatched_reason`, an EIGHTH `RemoteAccount` member, says how many tracks
+the ISRC named and how many agreed. The names are never sent to the provider.
+**THE SEAM WIDENED, AND A NEW ACCOUNT IMPLEMENTATION MUST FOLLOW IT.**
+`match_track(identity, isrc, title, artist)`, and `unmatched_reason(identity)`
+asked straight after a None. `title` is the RELEASE title: `CollectionEntry.name`
+carries the key and tempo head, which agrees with no provider title, so
+`source.release_title` strips it through the declared template. `LocalTrack`
+keeps the display title beside it, because an unmatched row is reported as the
+library shows it. `tests/outbound_fakes.PROTOCOL_METHODS` carries the new member.
+**WHAT A PERSON MAY MEET.** `crate export playlist` and `crate sync favorites`
+match rows they used to report unmatched, and an unmatched row the provider has
+several releases of now says so: each item report carries the sentence and both
+envelopes list it under `progress.outbound.reasons`, as "Artist - Title (row N):
+the ISRC X names 3 provider tracks, 2 of them agree ... so none was chosen". A
+row the provider has never heard of carries no sentence.
+**NOT MEASURED LIVE, AND THE AUTHOR EXPECTS THE LARGER HALF TO REMAIN.** A single
+and its album cut are usually spelled alike, so both agree, and with neither
+hearted nothing chooses. That is R-572, board bar (c). **Owed to an attended
+sitting:** the same four track export and the same 109 row sweep R-356 was
+measured on, to learn how many rows the two rules resolve.
+**The code review raised ten findings, five applied and five recorded.** The
+largest was read out of the client's own source: tidalapi reads a track's
+version only inside `if self.available`, so a withdrawn extended mix arrived
+with no version, read as the plain record, and the first rule would have chosen
+it. The suite's fake always kept its version, so no test could see it; the fake
+gained `withdrawn()` and the adapter was then driven against the client's real
+`Track` class, parsed offline. Also applied: either reading of EITHER side's
+title counts, the artist is compared as words so another order, a remixer only
+the provider bills and a feat spelling agree while the guest alone does not, and
+the reason names the row by artist and title rather than by number. Recorded:
+the outage read as not found is R-477 already, and R-573 to R-576.
+**The fifth pattern, looked for one file over.** `label.tidal_catalogue.tracks_for_isrc`
+returns every track and chooses nothing, and its one caller,
+`intake.missing_cli`, already keeps every identifier, so the shape is not there.
+The shape IS in this file's own lone track branch, which returns one distinct
+identifier whatever it is called: R-573.
+Battery: ruff clean, **9113 passed** and 1 skipped in about a minute, scan clean,
+29 of them new. Mutation tables `docs/mutation/r356-a.md` and `r356-b.md`,
+summary `r356-notes.md`: **25 rows at the cap of 25, the author's own, 25 killed
+and no zeros**, null control at zero of 9114 in each batch, every restore
+verified against `git show HEAD:`, two FOREGROUND batches of 2 minutes 51 and 5
+minutes 42, four considered rows logged as dropped with reasons.
+The learning is under `docs/solutions/integration-issues/`, the one about the
+client reading a version only off an available track. `CONCEPTS.md` is unchanged.
+Filed: R-572 to R-577. **R-572 meets the board bar and its issue is OWED**, along
+with R-570's, R-563's, R-549's, R-523's, R-517's, R-515's, R-512's, R-482's and
+R-477's from earlier sessions. R-577 is one failure of an untouched test under
+xdist, seen once and not explained.
+**Main's highest residual number is R-577.**
+
+**The session before: R-221, issue #159, `relay/159`, 2026-09-20.**
 A queued backup says which kind of run it was, which NARROWS R-221 and does not
 close it. `BackupOutcome` records `dry_run` and `outcome_payload` renders it, so
 a rendered run says which kind it was from the run itself; `perform_backup` had
@@ -68,7 +127,7 @@ that can return its argument. `CONCEPTS.md` is unchanged.
 Filed: R-570 and R-571. **R-570 meets the board bar and its issue is OWED**,
 along with R-563's, R-549's, R-523's, R-517's, R-515's, R-512's, R-482's and
 R-477's from earlier sessions.
-**Main's highest residual number is R-571.**
+**Main's highest residual number was R-571 at that merge.**
 
 **The session before: R-185 with R-246, issue #157, `relay/157`, 2026-09-20.**
 `crate tag retag` declares the one surface it writes and ends by naming the act
