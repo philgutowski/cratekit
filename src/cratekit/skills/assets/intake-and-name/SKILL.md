@@ -150,6 +150,22 @@ that row references. The refusal names how many rows and the first recorded
 location, and the remedy is a prefix rule spelled exactly as that location is,
 capitals included. There is no flag that overrides any of these.
 
+Two files in one folder that render to the same name are a third held back
+class. Neither is renamed, because nothing decides which of them earns the name,
+and a file whose rendered name is already taken by a file the verb is not moving
+is held the same way. They appear in the plan marked `collides`, carrying the
+reason, and are counted under `totals.collides`. Give one of them a name of its
+own, or move it out of the folder, and the next pass renames both.
+
+The verb answers `rename-incomplete` when it could not carry out every rename
+the plan promised, whether that is a collision, a file that left while the gate
+waited, a name taken after the plan was approved, a rename the filesystem
+refused, or a title tag that could not be written. The renames that could happen
+still happened, `totals.renamed` says how many, and the cause names every
+outstanding file with the reason it was not renamed. It is not a refusal and it
+is not ok: a sweep reported as ok over a rename that never happened is a library
+nobody knows is out of convention.
+
 `name apply` builds the full plan, then stops at its confirm gate and exits
 asking for a decision. Answer it on the invocation, or later from anywhere:
 

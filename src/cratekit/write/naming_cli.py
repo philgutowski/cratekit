@@ -322,32 +322,46 @@ def _collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
     library normally sits on ignores case, so two targets differing only in case
     are one name there. On a volume that respects case the cost is a file left
     unrenamed, which is the direction to be wrong in.
+
+    TO A FIXPOINT, because holding a file back makes it an occupant. The first
+    cut asked whether a target belonged to a mover ONCE, over every mover,
+    including the ones it was in the middle of holding back. A file whose target
+    was occupied by a collider therefore read as a chain that sort order would
+    resolve, so the plan promised its rename and no rename was possible: three
+    files in one folder produced ``totals.count`` of one and zero renames, which
+    is the finding this unit exists to close, one file over. Each round removes
+    what it held and asks again, and it ends when a round holds nothing.
     """
     targets = [(path, path.with_name(filename)) for path, filename in movers]
-    holders: dict[str, list[Path]] = {}
-    for path, target in targets:
-        holders.setdefault(_key(str(target)), []).append(path)
-    sources = {_key(str(path)) for path, _ in targets}
     held: dict[str, str] = {}
-    for path, target in targets:
-        sharing = sorted(
-            other.name for other in holders[_key(str(target))] if other != path
-        )
-        if len(sharing) == 1:
-            held[str(path)] = (
-                f"{sharing[0]} renders to the same name, and neither is renamed"
+    while True:
+        moving = [(path, target) for path, target in targets if str(path) not in held]
+        holders: dict[str, list[Path]] = {}
+        for path, target in moving:
+            holders.setdefault(_key(str(target)), []).append(path)
+        sources = {_key(str(path)) for path, _ in moving}
+        found: dict[str, str] = {}
+        for path, target in moving:
+            sharing = sorted(
+                other.name for other in holders[_key(str(target))] if other != path
             )
-        elif sharing:
-            held[str(path)] = (
-                f"{', '.join(sharing)} render to the same name, and none of them "
-                f"is renamed"
-            )
-        elif _key(str(target)) not in sources and target.exists():
-            held[str(path)] = (
-                f"{target.name} is already taken in the folder by a file nothing "
-                f"here is renaming"
-            )
-    return held
+            if len(sharing) == 1:
+                found[str(path)] = (
+                    f"{sharing[0]} renders to the same name, and neither is renamed"
+                )
+            elif sharing:
+                found[str(path)] = (
+                    f"{', '.join(sharing)} render to the same name, and none of them "
+                    f"is renamed"
+                )
+            elif _key(str(target)) not in sources and target.exists():
+                found[str(path)] = (
+                    f"{target.name} is already taken in the folder by a file nothing "
+                    f"here is renaming"
+                )
+        if not found:
+            return held
+        held.update(found)
 
 
 def _plan_for(root: Path, *, cfg: config.Config) -> dict:
@@ -385,16 +399,16 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
             if rendered.filename != path.name:
                 candidates.append((path, rendered.filename))
     referenced = _referenced(_recorded(cfg), cfg=cfg) if candidates else frozenset()
-    movers = [
-        (path, filename)
-        for path, filename in candidates
-        if not _is_referenced(path, referenced)
+    # ASKED ONCE PER CANDIDATE. ``_is_referenced`` resolves the path, which is a
+    # syscall per candidate, and a sweep of a real library has thousands.
+    decided = [
+        (path, filename, _is_referenced(path, referenced)) for path, filename in candidates
     ]
-    collides = _collisions(movers)
+    collides = _collisions([(path, filename) for path, filename, ref in decided if not ref])
     items: list[dict[str, str]] = []
     held = 0
-    for path, filename in candidates:
-        if _is_referenced(path, referenced):
+    for path, filename, ref in decided:
+        if ref:
             held += 1
             items.append({"action": REFERENCED, "from": path.name, "path": str(path)})
         elif str(path) in collides:
@@ -433,7 +447,9 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=name_apply)
 
 
-def _incomplete_cause(incomplete: list[dict[str, str]], renamed: int) -> Cause:
+def _incomplete_cause(
+    incomplete: list[dict[str, str]], *, renamed: int, collides: int
+) -> Cause:
     """What the run answers when part of the plan did not happen (R-172).
 
     THE COUNT LEADS AND THE FIRST FILE FOLLOWS, worded as the unmapped refusal
@@ -445,16 +461,29 @@ def _incomplete_cause(incomplete: list[dict[str, str]], renamed: int) -> Cause:
     WHAT LANDED IS SAID IN THE SAME SENTENCE. This is not a refusal: the renames
     that could happen did, and a message naming only the failures reads like a
     run that touched nothing and would send a person to repeat it.
+
+    THE STEP SENDS A PERSON TO THE REPORT, and only a real collision adds the
+    sentence about naming a file by hand. Five reasons reach here and one of them
+    is a target that was free by the time the run ended, so a single collision
+    worded step told a person to rename a file that needed nothing, over a run
+    that a second attempt completes. The per item reason is the specific
+    instruction and the step is what points at it.
     """
     count = len(incomplete)
+    steps = [
+        "read the file(s) this report names, each carries the reason its rename "
+        "did not happen, and run this again",
+    ]
+    if collides:
+        steps.append(
+            "a file that renders to a name another file is using needs a name of "
+            "its own, or one of the two moved out of the folder"
+        )
     return refuse(
         "rename-incomplete",
         f"{renamed} file(s) were renamed, and {count} file(s) this plan named were "
         f"not, the first of them {incomplete[0]['from']}, {incomplete[0]['why']}",
-        steps=(
-            "give each file named below a name of its own, or move one out of the "
-            "folder, then run this again",
-        ),
+        steps=tuple(steps),
         scope=Scope.RUN,
         retryable=True,
         origin=("write.naming_cli",),
@@ -489,9 +518,20 @@ def name_apply(ctx) -> Envelope:
         if item["action"] == COLLIDES
     ]
     renamed = 0
+    # HOW MANY OF THE OUTSTANDING ITEMS ARE A NAME ALREADY IN USE, which decides
+    # whether the remediation says to name a file by hand. The plan's own
+    # collisions start the count and a claim that failed after the gate joins it.
+    collided = plan["totals"]["collides"]
 
-    def _owed(item: dict[str, str], why: str) -> None:
-        incomplete.append({"from": item["from"], "path": item["path"], "why": why})
+    def _owed(item: dict[str, str], why: str, *, at: Path | None = None) -> None:
+        """One outstanding item, named where the file IS rather than where it was.
+
+        ``at`` is the file's path now, and only the tag write needs it: that
+        branch runs after a successful rename, so the plan's ``from`` and ``path``
+        name a file nobody can go and look at.
+        """
+        where = item["path"] if at is None else str(at)
+        incomplete.append({"from": Path(where).name, "path": where, "why": why})
 
     # READ AGAIN AFTER THE GATE, because the gate can wait on a person for as
     # long as they like and rekordbox can import a file in that time. The plan's
@@ -518,6 +558,7 @@ def name_apply(ctx) -> Envelope:
         target = path.with_name(rendered.filename)
         if target != path:
             if not naming.claim_target(target):
+                collided += 1
                 _owed(item, f"{rendered.filename} is already taken in the folder")
                 continue
             try:
@@ -532,7 +573,7 @@ def name_apply(ctx) -> Envelope:
         # a renamed file whose title never took the head is a promised write
         # that did not happen. The rename itself stands and is counted.
         if not tags.write_tags(path, {"title": rendered.title_tag}):
-            _owed(item, "it was renamed and its title tag could not be written")
+            _owed(item, "it was renamed and its title tag could not be written", at=path)
     plan["totals"] = {
         **plan["totals"],
         "renamed": renamed,
@@ -540,25 +581,19 @@ def name_apply(ctx) -> Envelope:
     }
     if not incomplete:
         return ctx.envelope(data=plan, outcome=Outcome.OK)
-    # THE PLAN SURFACE AND NOT THE DIAGNOSTIC ONE, and through ``output.build``
-    # rather than a raise, the way ``cli.doctor`` reports a failing report with
-    # its own payload. A raise from here would answer on the diagnostic surface
-    # with no plan on it, and what this run DID rename is exactly what a person
-    # needs next. ``items`` is untouched after the gate, so the digest keeps
-    # describing what was approved.
-    cause = _incomplete_cause(incomplete, renamed)
-    return output.build(
+    # THROUGH ``from_cause``, the one boundary where a cause becomes a status, so
+    # this verb does not restate the code lookup or the origin hop for itself.
+    # THE PLAN SURFACE AND NOT THE DIAGNOSTIC ONE, which is the ``schema``
+    # argument's whole purpose: that function's default assumes a verb that
+    # refused before producing a plan, and this one produced a plan and carried
+    # out part of it, so what it DID rename is exactly what a person needs next.
+    # ``items`` is untouched after the gate, so the digest keeps describing what
+    # was approved.
+    return output.from_cause(
         verb=ctx.entry.name,
         run_id=ctx.run.run_id,
-        schema=ctx.entry.output_schema or output.current_schema("plan"),
         started=ctx.started,
-        outcome=Outcome.FAILED,
-        # READ OFF THE CAUSE rather than written here, the rule ``cli.doctor``
-        # states: a status that contradicts its reason is worse than either.
-        code=cause.code,
+        cause=_incomplete_cause(incomplete, renamed=renamed, collides=collided),
+        schema=ctx.entry.output_schema or output.current_schema("plan"),
         data=plan,
-        # THE CLI BOUNDARY IS APPENDED, because this is where the cause becomes a
-        # status, and a trail that stops at the verb would say some hop caught it
-        # and rebuilt it.
-        cause=cause.at("cli"),
     )

@@ -1039,6 +1039,74 @@ def test_a_collision_answers_with_the_files_that_stayed_put(configured):
     assert first.is_file() and second.is_file()
 
 
+def test_a_target_a_collider_holds_is_held_back_too(configured):
+    """The collision detection runs to a fixpoint, which the review found.
+
+    ``third`` renders onto the name ``first`` carries, and ``first`` is one of a
+    colliding pair, both marked lossy and both rendering to one marked name, so
+    it is not going anywhere. Asking once whether a target belongs to a mover
+    counted the pair as movers while holding them back, so
+    ``third`` read as a chain sort order would resolve: the plan promised one
+    rename and no rename was possible. Driven before the fix at
+    ``totals.count`` of 1 with zero renames performed.
+    """
+    folder = _folder(configured)
+    marker = configured.naming.lossy_marker
+    first = _track(
+        folder,
+        "05A - 120 - Song - Artist.flac",
+        title=f"05A - 120 - Song {marker}",
+        key="05A",
+    )
+    second = _track(
+        folder,
+        "5A - 120 - Song - Artist.flac",
+        title=f"5A - 120 - Song {marker}",
+        key="5A",
+    )
+    third = _track(
+        folder, "05A - 120 - Song - Artist - Song.flac", title="05A - 120 - Song", key="05A"
+    )
+    plan = _plan(folder)
+    assert _actions(plan) == {
+        first.name: "collides",
+        second.name: "collides",
+        third.name: "collides",
+    }
+    assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 3}
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["data"]["totals"]["renamed"] == 0
+    assert first.is_file() and second.is_file() and third.is_file()
+
+
+def test_the_remediation_only_names_a_hand_rename_over_a_real_collision(
+    configured, monkeypatch
+):
+    """A collision is the one reason a person has to name a file themselves.
+
+    The review drove the sort-order chain and was told to hand-rename a file
+    whose target was free by the time the run ended, over a run a second attempt
+    completes. The step now sends a person to the report, and the collision
+    sentence is added only when a name really is in use.
+    """
+    folder = _folder(configured)
+    _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
+    monkeypatch.setattr(naming_cli.tags, "write_tags", lambda path, fields: False)
+    _, envelope = _answer(folder)
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert len(steps) == 1
+    assert "reason its rename did not happen" in steps[0]
+
+    collisions = _folder(configured) / "second"
+    collisions.mkdir()
+    _colliding_pair(collisions)
+    _, envelope = _answer(collisions)
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert len(steps) == 2
+    assert "needs a name of its own" in steps[1]
+
+
 def test_a_sweep_that_carried_out_every_rename_still_answers_ok(configured):
     """The other half of the outcome, so the new answer cannot swallow the old
     one. Two files with nothing in each other's way both land and the envelope
@@ -1147,14 +1215,24 @@ def test_a_title_tag_that_could_not_be_written_is_named(configured, monkeypatch)
     ``write_tags`` returns False on any failure rather than raising, and nothing
     read the answer, so a file whose title never got the head was reported as a
     rename that happened in full. The rename itself stands and is counted.
+
+    IT IS NAMED WHERE IT IS, not where the plan found it. This branch runs after
+    a successful rename, so reporting the plan's own ``from`` would send a person
+    to a filename that no longer exists.
     """
     folder = _folder(configured)
-    track = _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
+    _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
+    renamed = folder / "01A - 124 - Alpha.flac"
     monkeypatch.setattr(naming_cli.tags, "write_tags", lambda path, fields: False)
     code, envelope = _answer(folder)
     assert code == int(ExitCode.PRECONDITION), envelope
     incomplete = envelope["cause"]["detail"]["incomplete"]
-    assert [item["from"] for item in incomplete] == [track.name]
-    assert "title tag" in incomplete[0]["why"]
+    assert incomplete == [
+        {
+            "from": renamed.name,
+            "path": str(renamed),
+            "why": "it was renamed and its title tag could not be written",
+        }
+    ]
     assert envelope["data"]["totals"]["renamed"] == 1
-    assert (folder / "01A - 124 - Alpha.flac").is_file()
+    assert renamed.is_file()
