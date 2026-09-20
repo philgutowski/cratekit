@@ -4946,7 +4946,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # references nothing. It is the verb's own and not in the reserved table.
     # Population 161 to 162, non-reserved 137 to 138, reserved half UNCHANGED
     # at 24.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (162, 138, 24)
+    #
+    # Re-pinned on the residual finding "Five findings the U24 review accepted,
+    # and the reason each stands", 2026-09-19. TWO slugs, named rather than
+    # counted: mapped-volume-unmounted and mapped-volume-mismatch, which the
+    # session raises when the volume a prefix rule points at is not the one
+    # recorded for that rule, so a destructive pass never follows a rule onto a
+    # disk nobody identified. They sit beside the two library volume slugs and
+    # are not in the reserved table, exactly as those are not. Population 162
+    # to 164, non-reserved 138 to 140, reserved half UNCHANGED at 24.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (164, 140, 24)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5384,7 +5393,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # unavailable-transient and intake-list-unusable, all keys already, and
     # `intake/cli.py` was a holder before this unit, so neither the cause
     # population nor the holder count moves.
-    assert (len(literals), len(literals - set(causes))) == (454, 293), (
+    # Re-pinned on the residual finding "Five findings the U24 review accepted,
+    # and the reason each stands", 2026-09-19: 454 to 456 distinct, non-keys
+    # UNCHANGED at 293. TWO literals joined and both are keys, the two mapped
+    # volume slugs named at the cause pin above, so the at-risk half does not
+    # move.
+    assert (len(literals), len(literals - set(causes))) == (456, 293), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
