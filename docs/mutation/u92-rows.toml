@@ -1,0 +1,120 @@
+name = "u92-author"
+pass_kind = "light"
+
+# U92, the size refusal that keeps a live set out of vocal scoring. The unit is
+# a REFUSAL path: it writes nothing new and it prevents a write, so METHOD's
+# lighter depth applies, a table scoped to the round's own new guards with a
+# line per zero. Every row below is a guard this branch added.
+
+[[rows]]
+id = "G1_guard_deleted"
+description = "Delete the oversize guard from analyse entirely, which is main's state"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''
+    if is_oversize(result.get("path")):
+        return _inactive(result, REASON_AUDIO_TOO_LARGE)
+'''
+new = ""
+
+[[rows]]
+id = "G2_cap_is_inclusive"
+description = "Refuse a file exactly AT the cap, strictly greater becomes greater or equal"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''        return Path(path).stat().st_size > VOCAL_MAX_BYTES'''
+new = '''        return Path(path).stat().st_size >= VOCAL_MAX_BYTES'''
+
+[[rows]]
+id = "G3_cap_coefficient"
+description = "Megabytes instead of mebibytes, a realistic nearby value off by 4.9 percent"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''VOCAL_MAX_BYTES = 250 * 1024 * 1024'''
+new = '''VOCAL_MAX_BYTES = 250 * 1000 * 1000'''
+
+[[rows]]
+id = "G4_cap_doubled"
+description = "Double the cap to 500 mebibytes, which still refuses something and refuses it late"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''VOCAL_MAX_BYTES = 250 * 1024 * 1024'''
+new = '''VOCAL_MAX_BYTES = 500 * 1024 * 1024'''
+
+[[rows]]
+id = "G5_guard_after_the_load"
+description = "Move the guard behind the model load, the brief's literal reading, which this unit did not take"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''
+    if is_oversize(result.get("path")):
+        return _inactive(result, REASON_AUDIO_TOO_LARGE)
+    model = _load()
+    if model is None:
+        return _inactive(result, REASON_MODEL_UNAVAILABLE)
+'''
+new = '''
+    model = _load()
+    if model is None:
+        return _inactive(result, REASON_MODEL_UNAVAILABLE)
+    if is_oversize(result.get("path")):
+        return _inactive(result, REASON_AUDIO_TOO_LARGE)
+'''
+
+[[rows]]
+id = "G6_stat_failure_is_oversize"
+description = "A size that cannot be read answers oversize, so a missing file names the wrong remedy"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''
+    except (OSError, TypeError, ValueError):
+        return False
+'''
+new = '''
+    except (OSError, TypeError, ValueError):
+        return True
+'''
+
+[[rows]]
+id = "G7_reason_reworded"
+description = "Reword the reason slug, never append, since the suite asserts with equality and with in"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''REASON_AUDIO_TOO_LARGE = "vocal-audio-too-large"'''
+new = '''REASON_AUDIO_TOO_LARGE = "vocal-file-oversize"'''
+
+[[rows]]
+id = "G8_refused_file_tagged_zero"
+description = "Tag the refused file voxlevel 0 the way the source system did, instead of leaving an absence"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''
+    if is_oversize(result.get("path")):
+        return _inactive(result, REASON_AUDIO_TOO_LARGE)
+'''
+new = '''
+    if is_oversize(result.get("path")):
+        result = _inactive(result, REASON_AUDIO_TOO_LARGE)
+        result["voxlevel"] = 0
+        result["voxgender"] = "U"
+        result["voxgenderconf"] = 0
+        return result
+'''
+
+[[rows]]
+id = "G9_warning_counts_the_wrong_reason"
+description = "unscored_warning counts size refusals, so an oversize file is reported as a missing model"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''    count = int(summary.get("by_vocal_reason", {}).get(REASON_MODEL_UNAVAILABLE, 0))'''
+new = '''    count = int(summary.get("by_vocal_reason", {}).get(REASON_AUDIO_TOO_LARGE, 0))'''
+
+[[dropped]]
+id = "G10_is_oversize_takes_str_only"
+description = "Drop TypeError and ValueError from the caught set, leaving OSError alone"
+reason = "ranked below the cap only in the sense that G6 measures the same clause's RESULT; the narrower catch is a crash rather than a wrong answer, and the row would report a death on an error rather than on a behaviour"
+
+[[dropped]]
+id = "G11_light_pass_cap"
+description = "Add and then revert a size cap on analysis/detect.analyse_file"
+reason = "not this branch's guard. The light pass is uncapped on main and stays uncapped here, recorded as R-583, so there is nothing of this unit's to revert"

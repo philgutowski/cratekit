@@ -18605,6 +18605,22 @@ scoring run over a large file.
 **Closes when:** a file too large to decode is refused or short circuited rather
 than handed to the decoder.
 
+**NARROWED AND HALF CLOSED, U92, issue #137, `relay/137`, 2026-09-20.** The
+VOCAL half is closed. `analysis/vocals.VOCAL_MAX_BYTES` is the source system's
+250 mebibytes, `is_oversize` is a stat and a comparison, and the guard sits in
+`vocals.analyse` ahead of both the model load and the decoder, so `analyze
+vocals` and the vocal stage of `analyze run` refuse the file with a fifth named
+reason, `vocal-audio-too-large`. It is NOT tagged `voxlevel` zero the way the
+source system tagged it, because a zero in this package means the model heard
+the track, so the refusal is an absence with a name instead.
+
+**What is still open is the LIGHT half, and it is now R-583.** This entry said
+"no size check on either path" and only one path is guarded. `analysis/detect.py`
+decodes the whole file before the vocal pass is reached on `analyze run`, so the
+sentence above about a file being refused before any decoder sees it is true of
+`analyze vocals` and false of `analyze run`. Read this entry as closed for the
+vocal decoder and read R-583 for the rest.
+
 ---
 
 ## R-409. `analyze restamp` and `analyze calibrate` read one folder, so no library-wide pass exists
@@ -23616,3 +23632,82 @@ the run, over every gated key, and every one answers `blocked` on both asks.
 
 **Closes when:** a queued verb gains a gate that accepts an inline decision, at
 which point this is reachable and the save belongs on the blocked exit too.
+
+---
+
+## R-583. The light pass decodes a whole live set under no cap, so U92's guard is reached too late on `analyze run`
+
+**Found:** at the built in review of U92, 2026-09-20. The absent cap is READ at
+the file and line below and confirmed against the shipped source. The hang it
+would cause is NOT driven, for the reason R-408 gives: reproducing it costs a
+real analysis run over a file this large, and no such file is in the fixtures.
+
+U92 put a size guard in `vocals.analyse`, which is the one checking path both
+vocal verbs share. On `analyze vocals` that guard is the first thing a file
+meets. On `analyze run` it is not. `analysis/cli.py:587` runs the light pass
+first, and `analysis/detect.py:95` is `librosa.load(str(path), sr=MEASURE_RATE,
+mono=True)` over the whole file, with no duration argument and no size check, in
+a pool whose worker budget is 64 mebibytes, `analysis/light.py:15`. The light
+pass then runs `librosa.feature.tempo`, `librosa.effects.harmonic` and
+`chroma_cqt` over the full signal. So by the time U92's stat is reached, the
+decode R-408 is about to be prevented has already happened, at a different rate,
+in a smaller worker.
+
+**Measured cost:** unmeasured, and deliberately so. The budget arithmetic says
+the light worker has one sixteenth of the vocal worker's allowance for a decode
+that is about two thirds the size, 22050 against 32000 samples a second, which
+is a worse ratio than the one R-408 named, not a better one. That is arithmetic
+over two constants and not a measurement of a run, and this entry does not claim
+it is.
+
+**Why not fixed here.** U92's brief scoped the unit to the vocal pass, named
+only `analysis/vocals.py` and its two test files, and put chunked decode out of
+scope. Guarding the light pass is a different decision with a user facing
+consequence the brief did not settle: an oversize file would have to come back
+as a terminal from `light.analyse`, which is the value that makes `analyze run`
+report a track as skipped, and that changes what the verb does with the file
+rather than only what it says about it. That belongs in its own unit.
+
+**Closes when:** `analyze run` refuses an oversize file before the light decode,
+or the light decode is bounded so the whole file is never resident.
+
+**Owes an issue.** It meets the board bar under (c): a folder holding a full
+length set is a workflow `analyze run` may not finish. The issue is not created
+here, because this session does not own the merge and a number is not this
+finding's until the entry is on `main`.
+
+---
+
+## R-584. The vocal size cap is a byte count standing in for a duration, so a hi res extended mix is refused as a live set
+
+**Found:** at the built in review of U92, 2026-09-20. Arithmetic over the
+shipped constant, not a driven refusal of a real hi res file.
+
+`analysis/vocals.VOCAL_MAX_BYTES` is 250 mebibytes, the source system's number,
+and the reason it exists is duration: a file that long takes many minutes to
+decode and has no business in a per genre "with vox" playlist. Bytes and minutes
+part company with the container. At 16 bit 44.1 kilohertz stereo the cap is
+about 25 minutes, which is the shape the source library was scored in and the
+shape the number was chosen for. At 24 bit 96 kilohertz stereo it is about 8
+minutes, so an ordinary extended mix in a hi res wav is refused with
+`vocal-audio-too-large`, carries no `voxlevel`, and is therefore excluded from
+every "with vox" playlist for as long as it stays that size. `core/naming.py`
+names wav and aiff among the formats this library actually holds.
+
+A second half of the same shape: `vocals.unscored_warning` counts only
+`vocal-model-unavailable`, so a run that refused a dozen files for size says so
+in each item artifact and in `by_vocal_reason`, and puts nothing on the envelope.
+That is deliberate, since no install fixes a size, and it does mean the count is
+somewhere a person has to look for rather than somewhere they are told.
+
+**Measured cost:** unmeasured. No hi res file over the cap was driven, and the
+proportion of this library that is 24 bit 96 kilohertz is not known here.
+
+**Why not fixed here.** The conservative option was taken: keep the source
+system's number, because it is the number the existing library was scored under
+and changing it silently rescores a back catalogue. The alternatives are a
+duration read from the container, which costs a header parse per file, or a per
+format cap. Both are the person's call rather than an unattended session's.
+
+**Closes when:** the cap is expressed as a duration, or a per format size is
+derived from one, or the number is affirmed as correct for this library.

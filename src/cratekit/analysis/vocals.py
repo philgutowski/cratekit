@@ -22,6 +22,17 @@ the model's rate through a seam a test can bind a fake to.
 A DECODE THAT FAILS IS REPORTED, NOT SCORED. ``vocal_active`` is False and
 ``vocal_reason`` says why, so the report and the tag write both see an
 absence rather than a zero.
+
+THIS PASS'S DECODE, ON A FILE THAT WOULD NOT FINISH, IS NEVER STARTED. A
+file over ``VOCAL_MAX_BYTES`` is a live set or a mix, and loading one at the
+model's rate exhausts the worker, so it is refused by a stat before the
+model is asked for and before the decoder is called.
+
+THAT IS HALF OF R-408 AND THE HALF THIS MODULE OWNS. The light pass decodes
+the same file first, ``analysis/detect.py``, at its own rate and under no
+cap at all, so on ``analyze run`` the big decode has already happened by the
+time this guard is reached. See R-583. The guard here is still the one that
+matters for ``analyze vocals``, which has no light pass in front of it.
 """
 
 from __future__ import annotations
@@ -53,9 +64,25 @@ LABELS = Path.home() / "panns_data" / "class_labels_indices.csv"
 #: download and fetched again, which is the shell out above.
 CHECKPOINT_MIN_BYTES = 300_000_000
 
+#: The size above which a file is never handed to the decoder. A file this big
+#: is a live set, a DJ mix or an album length piece rather than per track
+#: material, and the decoder loads the whole of it at the model's rate into a
+#: worker whose budget is VOCAL_WORKER_BYTES above. The source system carried
+#: the same number for the same reason, DJ_analysis/vocal_detect.py, after an
+#: 830 megabyte mix ran past ten minutes and exhausted a two worker pool.
+#:
+#: IT IS A SIZE STANDING IN FOR A DURATION, and the two part company on a
+#: high resolution container: 250 mebibytes is about 25 minutes of 16 bit 44.1
+#: kilohertz stereo and about 8 minutes of 24 bit 96 kilohertz stereo, so an
+#: ordinary extended mix in a hi res wav is refused as if it were a live set.
+#: Kept as a size anyway, because it is the number the source library was
+#: scored under and because a duration needs the container opened. See R-584.
+VOCAL_MAX_BYTES = 250 * 1024 * 1024
+
 #: Why a track came back vocal inactive, so an absence is never silent.
 REASON_MODEL_UNAVAILABLE = "vocal-model-unavailable"
 REASON_AUDIO_UNDECODABLE = "vocal-audio-undecodable"
+REASON_AUDIO_TOO_LARGE = "vocal-audio-too-large"
 REASON_HEAD_TERMINAL = "vocal-head-terminal"
 REASON_INFERENCE_FAILED = "vocal-inference-failed"
 
@@ -150,6 +177,12 @@ def unscored_warning(summary: Mapping[str, Any], *, verb: str) -> dict[str, str]
     the loader recorded, so the person is never told to install what is
     installed (R-370). Shared, because two copies of one message had already
     drifted apart.
+
+    IT COUNTS ONE REASON AND NOT THE OTHER FOUR. This message tells the person
+    to install the extra, which is the remedy for exactly one of the five
+    absences. A track refused for its size, an undecodable file, a terminal
+    head and a model that rejected the clip are all reported per item and in
+    ``by_vocal_reason``, and none of them is fixed by an install.
     """
     count = int(summary.get("by_vocal_reason", {}).get(REASON_MODEL_UNAVAILABLE, 0))
     if not count:
@@ -206,6 +239,27 @@ def _load() -> Any:
     return _VOCAL_MODEL
 
 
+def is_oversize(path: Any) -> bool:
+    """Whether the file at ``path`` is too large to hand to the decoder.
+
+    A stat and a comparison, never a read, so the answer costs nothing on a
+    file that is fine. The comparison is strictly greater, so a file exactly
+    at ``VOCAL_MAX_BYTES`` is still scored: the cap is the largest size that
+    is allowed through, not the first that is refused.
+
+    A SIZE THAT CANNOT BE READ IS NOT OVERSIZE. A missing file, a permission
+    denial, or a path this function cannot even make a ``Path`` of, all answer
+    False, because this predicate's job is to catch the one case it knows and
+    not to become a second reporter of every other failure. The decode path
+    then meets the file itself and reports ``REASON_AUDIO_UNDECODABLE``, which
+    is the reason that already exists for it.
+    """
+    try:
+        return Path(path).stat().st_size > VOCAL_MAX_BYTES
+    except (OSError, TypeError, ValueError):
+        return False
+
+
 def _decode(path: Any) -> Any:
     decoder = _DECODER
     if decoder is None:
@@ -236,6 +290,20 @@ def analyse(partial: dict[str, Any]) -> dict[str, Any]:
     result = dict(partial)
     if result.get("terminal") is not None:
         return _inactive(result, REASON_HEAD_TERMINAL)
+    # A FULL LENGTH SET IS REFUSED BEFORE ANYTHING IS LOADED, AND IS NOT A ZERO
+    # (R-408). The source system short circuited the same file and tagged it
+    # voxlevel 0, and this package cannot: a zero here means the model heard the
+    # track and found it instrumental, ``analysis/vocal.py``, and a track the
+    # model never heard is not that. So it becomes a fifth named absence.
+    #
+    # THE ORDER IS DELIBERATE: this sits AHEAD of the model load, not merely
+    # ahead of the decode. Oversize is a property of the file and holds on every
+    # machine, while ``REASON_MODEL_UNAVAILABLE`` is a property of this box and
+    # carries a warning telling the person to install the extra so these tracks
+    # will score. That sentence is false about a file nothing would ever decode,
+    # so the file's own answer is given first.
+    if is_oversize(result.get("path")):
+        return _inactive(result, REASON_AUDIO_TOO_LARGE)
     model = _load()
     if model is None:
         return _inactive(result, REASON_MODEL_UNAVAILABLE)

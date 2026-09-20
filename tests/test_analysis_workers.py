@@ -617,6 +617,181 @@ def test_a_decode_that_fails_is_reported_as_inactive_and_never_as_zero(monkeypat
     assert scored["voxgender"] is None
 
 
+# ---------------------------------------------------------------------------
+# U92: a file too large to decode is refused before the model is asked for
+# ---------------------------------------------------------------------------
+
+
+def sparse(path: Path, size: int) -> Path:
+    """A file that IS ``size`` bytes long and occupies almost none of them.
+
+    ``truncate`` sets the length without writing, so the real shipped cap can
+    be driven at its real value and the suite never writes a quarter of a
+    gigabyte to anybody's disk.
+    """
+    with path.open("wb") as handle:
+        handle.truncate(size)
+    assert path.stat().st_size == size, "the filesystem did not take the sparse length"
+    return path
+
+
+def test_the_shipped_oversize_cap_is_two_hundred_and_fifty_mebibytes():
+    """The number itself, not only the comparison over a monkeypatched one.
+
+    A suite that lowers the cap in every test proves the guard fires and says
+    nothing about where it fires, so a cap edited to a megabyte or to a
+    terabyte would pass all of them. This is the source system's number,
+    ``DJ_analysis/vocal_detect.py``.
+    """
+    assert vocals.VOCAL_MAX_BYTES == 250 * 1024 * 1024
+
+
+def test_a_file_over_the_cap_never_reaches_the_decoder(tmp_path, monkeypatch):
+    """R-408. The decode is what hung the source system, so it is never begun."""
+    asked: list[object] = []
+
+    def spy(path):
+        asked.append(path)
+        return np.full(16000, 0.2, dtype=np.float32)
+
+    track = sparse(tmp_path / "live-set.flac", vocals.VOCAL_MAX_BYTES + 1)
+    bind_scoring(monkeypatch, decoder=spy)
+    scored = vocals.analyse(
+        {"path": str(track), "terminal": None, "camelot": "8A", "rate": 124}
+    )
+    assert asked == [], "the decoder was handed the file the guard exists to refuse"
+    assert scored["vocal_active"] is False
+    # THE SLUG'S TEXT, NOT ONLY THE SYMBOL. The mutation table's one zero row
+    # was this reason reworded to vocal-file-oversize with every test still
+    # green, because every assertion read the constant rather than the string.
+    # The slug is a surface: it is the ``vocal_reason`` on the item artifact and
+    # the key of ``by_vocal_reason`` on the envelope, so anything reading a run
+    # would break on a rename nothing here noticed. Its two siblings are pinned
+    # as literals for the same reason, a few tests below.
+    assert scored["vocal_reason"] == "vocal-audio-too-large"
+    assert scored["vocal_reason"] == vocals.REASON_AUDIO_TOO_LARGE
+    # NOT A ZERO. The source system tagged this file voxlevel 0 and this package
+    # cannot, because a zero here means the model listened and heard no singing.
+    assert scored["voxlevel"] is None
+    assert scored["voxgender"] is None
+    assert scored["voxgenderconf"] is None
+    assert (scored["camelot"], scored["rate"]) == ("8A", 124), "the head survived"
+
+
+def test_an_oversize_file_is_refused_without_loading_the_model(tmp_path, monkeypatch):
+    """The guard sits ahead of the load, not merely ahead of the decode.
+
+    Oversize is a property of the file and true on every machine.
+    ``vocal-model-unavailable`` is a property of this box and carries a warning
+    telling the person that installing the extra will score these tracks, which
+    is false about a file nothing would ever decode.
+    """
+    loaded: list[int] = []
+
+    def loader():
+        loaded.append(1)
+        return _FakeModel()
+
+    track = sparse(tmp_path / "mix.flac", vocals.VOCAL_MAX_BYTES + 1)
+    bind_scoring(monkeypatch, decoder=voiced(), loader=loader)
+    scored = vocals.analyse({"path": str(track), "terminal": None})
+    assert loaded == [], "the model was loaded for a file that was never going to be scored"
+    assert scored["vocal_reason"] == vocals.REASON_AUDIO_TOO_LARGE
+
+
+def test_a_file_exactly_at_the_cap_is_still_decoded(tmp_path, monkeypatch):
+    """Strictly greater. The cap is the largest size allowed through, not the
+    first one refused, which is the source system's comparison too."""
+    asked: list[object] = []
+
+    def spy(path):
+        asked.append(path)
+        return np.full(16000, 0.2, dtype=np.float32)
+
+    track = sparse(tmp_path / "long-track.flac", vocals.VOCAL_MAX_BYTES)
+    bind_scoring(monkeypatch, decoder=spy)
+    scored = vocals.analyse({"path": str(track), "terminal": None})
+    assert asked == [str(track)]
+    assert scored["vocal_active"] is True
+    assert scored["vocal_reason"] is None
+    assert scored["voxlevel"] > 0
+
+
+def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
+    tmp_path, monkeypatch
+):
+    """A stat failure is the decode path's to report, not this guard's.
+
+    Two reporters of one failure is how a missing file comes back as a size
+    refusal, which names the wrong remedy.
+    """
+    gone = tmp_path / "gone.flac"
+    assert vocals.is_oversize(gone) is False
+    assert vocals.is_oversize(None) is False, "an absent path is not a size"
+    bind_scoring(monkeypatch, decoder=lambda path: None)
+    scored = vocals.analyse({"path": str(gone), "terminal": None})
+    assert scored["vocal_reason"] == vocals.REASON_AUDIO_UNDECODABLE
+
+
+def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch):
+    """``unscored_warning`` counts one reason of the five, and this is not it.
+
+    It tells the person to install the vocals extra. No install makes a live
+    set decodable, so a summary holding only size refusals warns about nothing,
+    and a mixed summary warns about the one track the install would help.
+
+    ``missing_requirement`` is stubbed for the mixed half only because the real
+    one imports ``panns_inference``, which is twelve seconds on this machine and
+    is not what this test is about. The count is the assertion.
+    """
+    summary = {"by_vocal_reason": {vocals.REASON_AUDIO_TOO_LARGE: 4}}
+    assert vocals.unscored_warning(summary, verb="analysed") is None
+    monkeypatch.setattr(vocals, "missing_requirement", lambda: "the extra is not here")
+    mixed = {
+        "by_vocal_reason": {
+            vocals.REASON_AUDIO_TOO_LARGE: 4,
+            vocals.REASON_MODEL_UNAVAILABLE: 1,
+        }
+    }
+    warning = vocals.unscored_warning(mixed, verb="analysed")
+    assert warning is not None and warning["message"].startswith("1 track(s)")
+
+
+def test_a_run_over_an_oversize_track_reports_it_and_writes_no_vox_tag(
+    cfg, folder, silence, monkeypatch
+):
+    """End to end through the verb, with the cap lowered to meet the fixture.
+
+    The shipped value is pinned by its own test above. Here the cap comes down
+    to a byte so a real container, which the finalize step must be able to
+    tag, stands in for a live set.
+
+    IT DOES NOT SHOW THE LIGHT PASS IS GUARDED, and nothing does, because the
+    light pass is faked here as it is in every test in this file. On a real
+    ``analyze run`` the light decode reads the whole file first and is capped
+    by nothing, R-583. What this proves is the vocal half: the reason reaches
+    the item report and the summary, and no vox tag is written over the file.
+    """
+    place(folder, silence, "a", voxlevel=42, voxgender="F")
+    bind_scoring(monkeypatch)
+    monkeypatch.setattr(vocals, "VOCAL_MAX_BYTES", 1)
+    drive(["analyze", "run", str(folder)])
+    job = analysis_job("analyze.run")
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["progress"]["analysis"]["by_vocal_reason"] == {
+        vocals.REASON_AUDIO_TOO_LARGE: 1
+    }
+    assert resumed["warnings"] == [], "no install makes this file decodable"
+    report = {item["item"]: item for item in artifacts.committed(cfg, job.job_id)}["a.flac"]
+    assert report["vocal_active"] is False
+    assert report["vocal_reason"] == vocals.REASON_AUDIO_TOO_LARGE
+    assert report["voxlevel"] is None and report["voxgender"] is None
+    final = Path(report["path"])
+    assert tags.read_vox_from_file(final) == 42, "the vox tag already on the file was kept"
+    assert tags.read_voxgender_from_file(final) == "F"
+
+
 def test_a_model_that_did_not_load_is_a_named_absence(monkeypatch):
     def explode():
         raise RuntimeError("checkpoint missing")
