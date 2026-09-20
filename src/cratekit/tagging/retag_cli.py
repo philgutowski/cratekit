@@ -67,6 +67,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -111,6 +112,16 @@ def library_row_warning(folder: str) -> dict[str, str]:
     reads later, next to other runs, so a warning that said "the folder" would
     leave them guessing which sweep it belonged to.
 
+    THE TENSE IS THE PROPERTY OF THE VERB, NOT A REPORT OF THIS RUN, and that is
+    what lets one text serve three moments. It is attached at queueing, before a
+    single file has been looked at, on a resume that corrected files, and on a
+    failure that corrected some of them. A sentence saying the genre WAS
+    corrected would be false at the first of those: the confirmed sweep has not
+    started, and one that refuses on its first item never corrects anything,
+    so the person would have been sent to rekordbox over a folder nothing
+    touched. What is true at all three is what this verb does and does not
+    write, so the message states that and then names the act.
+
     AND IT IS NOT A PENDING HUMAN ACTION, which is the conservative call here
     rather than an oversight. That field is mandatory-verified by construction,
     ``verify_verb`` names a registered verb that proves the act was done, and
@@ -118,18 +129,50 @@ def library_row_warning(folder: str) -> dict[str, str]:
     corrected file is never selected again, so a second retag over the folder
     reports the same clean zero whether the person reloaded or not. A pending
     action nobody can verify is the printed instruction that field exists to
-    replace. Recorded as a residual rather than faked with a verb that would
-    answer the question wrong.
+    replace. Recorded as R-568 rather than faked with a verb that would answer
+    the question wrong.
     """
     return {
         "code": LIBRARY_ROW_STALE,
         "message": (
-            f"the genre was corrected on the files under {folder} and the "
-            f"library rows still carry the old value, because this build writes "
-            f"the file half only; select that folder in rekordbox and reload its "
-            f"tags so the rows catch up"
+            f"this correction writes the genre onto the files under {folder} and "
+            f"does not update the library rows, which go on carrying the old "
+            f"value, because this build writes the file half only; select that "
+            f"folder in rekordbox and reload its tags so the rows catch up"
         ),
     }
+
+
+def with_reload_step(error: CratekitError, folder: str) -> CratekitError:
+    """The same refusal, carrying the reload among the things left to do.
+
+    THE HALF CORRECTED SWEEP IS THE RUN THAT MOST NEEDS THIS AND IS THE ONE THAT
+    WAS MISSING IT. R-225 makes a job that closed carrying a cause leave through
+    that cause rather than through a normal envelope, which is right: a person
+    whose folder was half corrected must not be told the sweep succeeded. The
+    consequence was that the resume's warning, which rides a successful envelope,
+    never reached exactly the interrupted run R-185 describes. The files that were
+    corrected before the failure have stale rows whether or not the rest of the
+    sweep ran.
+
+    THE STEP IS APPENDED AND THE CAUSE IS OTHERWISE UNTOUCHED. ``origin`` is
+    append-only and a cause arriving at the CLI with a shortened trail means some
+    hop re-created it, losing everything below, so this replaces two fields and
+    carries ``origin``, ``inner``, ``detail``, ``scope`` and ``retryable``
+    through by construction rather than by rebuilding them. The remedy token
+    stays whatever the failure's own is: retrying is still the first thing to do,
+    and the reload is what is owed regardless of whether the retry happens.
+    """
+    cause = error.cause
+    reload_step = library_row_warning(folder)["message"]
+    return CratekitError(
+        replace(
+            cause,
+            remediation=replace(
+                cause.remediation, steps=(*cause.remediation.steps, reload_step)
+            ),
+        )
+    )
 
 
 #: Every reason a selected file can go unwritten, zero filled in the report. A
@@ -427,6 +470,13 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     items, drives, and raises rather than reporting when the job closed carrying a
     cause. That last one is R-225: a person whose folder was half corrected must
     not be handed a normal envelope the dispatcher exits 0 over.
+
+    AND THAT RAISE IS WHY THE RELOAD IS NAMED ON BOTH ENDINGS. A half corrected
+    folder has stale rows exactly as a fully corrected one does, and it leaves
+    through the cause rather than through this function's envelope, so a warning
+    attached only below would miss the run R-185 is actually about. The refusal
+    gains the reload as one more step when the committed artifacts say a file was
+    corrected, and gains nothing when none was.
     """
     with jobs.open_store() as store:
         queued = jobs.get(store, ctx.args.job)
@@ -440,13 +490,24 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         )
         if option == "abort":
             return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
-        job, warnings = shell.advance(
-            ctx,
-            store,
-            queued,
-            origin=("tagging", "retag_cli"),
-            nothing_to_run="report a correction over files it never looked at",
-        )
+        folder = str(payload.get(FOLDER_KEY) or "")
+        try:
+            job, warnings = shell.advance(
+                ctx,
+                store,
+                queued,
+                origin=("tagging", "retag_cli"),
+                nothing_to_run="report a correction over files it never looked at",
+            )
+        except CratekitError as failed:
+            # THE REFUSAL CARRIES THE RELOAD WHEN ANYTHING WAS CORRECTED. The
+            # artifacts are committed per item before the failure, so this
+            # counts what actually landed rather than what was confirmed, and a
+            # sweep that refused on its first item adds nothing to a refusal it
+            # has no reload to name. See ``with_reload_step``.
+            if not _summary(cfg, ctx.args.job)["corrected"]:
+                raise
+            raise with_reload_step(failed, folder) from failed
         summary = _summary(cfg, job.job_id)
         # ON WHAT RAN, NEVER ON WHAT WAS CONFIRMED, which is the rule
         # ``_summary`` already states, applied to the warning as well as to the
@@ -456,10 +517,7 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         # is read back from the committed artifacts, so it stays true across a
         # resume: a job continued tomorrow counts what all of its runs wrote.
         if summary["corrected"]:
-            warnings = (
-                *warnings,
-                library_row_warning(str(payload.get(FOLDER_KEY) or "")),
-            )
+            warnings = (*warnings, library_row_warning(folder))
         return ctx.envelope(
             data=shell.reported(store, job, {"retag": summary}),
             warnings=warnings,
@@ -581,4 +639,5 @@ __all__ = [
     "plan_for",
     "retag_argv",
     "retag_genres",
+    "with_reload_step",
 ]

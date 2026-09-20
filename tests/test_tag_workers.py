@@ -1845,6 +1845,69 @@ def test_a_retag_that_corrected_nothing_does_not_send_a_person_to_rekordbox(
     assert retag_cli.LIBRARY_ROW_STALE not in warning_codes(resumed), resumed
 
 
+def test_a_half_corrected_retag_carries_the_reload_on_its_refusal(
+    repair_on, folder, silence, monkeypatch
+):
+    """The run R-185 is actually about, and the one the warning first missed.
+
+    R-225 makes a job that closed carrying a cause leave through that cause
+    rather than through a normal envelope, which is right and is not in question
+    here: a person whose folder was half corrected must not be told the sweep
+    succeeded. The consequence was that a warning riding the successful envelope
+    reached every run EXCEPT the interrupted one, while the files corrected
+    before the failure have stale rows exactly as a finished sweep's do.
+
+    THE STEP RIDES THE REMEDIATION rather than a warning, because a refusal has
+    no warnings to carry: the envelope's non-success shape is a structured cause,
+    and what a person does next is what ``steps`` is for. The retry remedy is
+    untouched, since retrying is still the first thing to do and the reload is
+    owed either way.
+    """
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    table = {name: hit("deep house", SPECIFIC) for name in "abc"}
+    bound(monkeypatch, raising_on(answering(table), "b"))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    code, refused = drive(resume_argv(job_id))
+
+    assert code != int(ExitCode.OK), refused
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "c.flac") == SPECIFIC
+    steps = refused["cause"]["remediation"]["steps"]
+    assert any(str(folder) in step and "reload" in step for step in steps), (
+        f"two files were corrected and their rows are stale, and the refusal "
+        f"named nothing about it: {steps}"
+    )
+    assert refused["cause"]["origin"][0] != refused["cause"]["origin"][-1], (
+        "the trail was shortened, so some hop re-created the cause rather than "
+        "extending what it was already carrying"
+    )
+
+
+def test_a_retag_that_failed_before_correcting_anything_names_no_reload(
+    repair_on, folder, silence, monkeypatch
+):
+    """The zero half of the refusal, and it is the half that keeps it honest.
+
+    A sweep whose first and only item could not be answered wrote no genre, so
+    no row went stale, so the refusal has nothing to add. A verb that appended
+    the reload to every failure would be telling a person to go and reconcile a
+    library against a run that changed nothing in it, which is the same wrong
+    answer as the successful zero one case below, arriving on a different path.
+    """
+    coarse(folder, silence, "a")
+    bound(monkeypatch, raising_on(answering({}), "a"))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+
+    code, refused = drive(resume_argv(job_id))
+
+    assert code != int(ExitCode.OK), refused
+    assert tags.read_genre_from_file(folder / "a.flac") == CATCH_ALL
+    steps = refused["cause"]["remediation"]["steps"]
+    assert not any("reload" in step for step in steps), steps
+
+
 def test_the_queueing_envelope_names_the_reload_before_the_person_walks_away(
     repair_on, folder, silence, monkeypatch
 ):
