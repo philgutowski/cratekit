@@ -453,28 +453,177 @@ def test_a_matched_volume_with_the_directory_absent_is_left_to_the_pass_that_fol
     assert [status.state for status in proved] == [preflight.MountState.LIBRARY_PATH_MISSING]
 
 
-def test_the_reassertion_asks_only_about_the_rule_it_was_given(cfg, tmp_path, monkeypatch):
-    """``only`` narrows to one rule, and a wrong disk under ANOTHER rule is not its business.
+def test_an_empty_mount_slot_refuses_even_when_the_recorded_identity_matches_it(
+    cfg, tmp_path, monkeypatch
+):
+    """The review's first finding, and the way a correct looking config reopens R-51.
 
-    Both directions, because a narrowing that asserts nothing passes the first
-    half on its own.
+    An ejected drive leaves its mount point on the disk that holds the mount
+    directory. A rule that recorded THAT disk's identity, because a refusal once
+    offered it or because the library shares the disk, matches the leftover
+    directory perfectly. So the slot is asked about before any identity is
+    compared, and what is recorded cannot talk it round.
     """
-    good = tmp_path / "Volumes" / "GOOD"
-    bad = tmp_path / "Volumes" / "BAD"
-    good.mkdir(parents=True)
-    bad.mkdir(parents=True)
+    volumes = tmp_path / "Volumes"
+    leftover = volumes / "ARCHIVE"
+    leftover.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id, slots_under=volumes)
+    rule = locations.PrefixRule(_RECORDED_ELSEWHERE, str(leftover), cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [rule])
+
+    assert excinfo.value.cause.reason == "mapped-volume-unmounted"
+    assert excinfo.value.cause.detail["state"] == "mount_slot_empty"
+
+
+def test_an_ejected_drive_is_never_offered_the_boot_disks_identity_to_record(
+    cfg, tmp_path, monkeypatch
+):
+    """The refusal that hands over an identity must not hand over the wrong disk's.
+
+    Nothing recorded, drive ejected, mount point left behind. A walk upward from
+    there reads the disk holding the mount directory, and a step saying "it
+    identifies as that, record it" is an instruction to disarm this gate for
+    good. The identity named here belongs to no volume in the test, so its
+    absence from the whole refusal is the assertion.
+    """
+    volumes = tmp_path / "Volumes"
+    (volumes / "ARCHIVE").mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {}, otherwise="CCCC-the-boot-disk", slots_under=volumes)
+    rule = locations.PrefixRule(_RECORDED_ELSEWHERE, str(volumes / "ARCHIVE"))
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [rule])
+
+    cause = excinfo.value.cause
+    assert cause.reason == "mapped-volume-unmounted"
+    said = cause.message + " ".join(cause.remediation.steps) + json.dumps(cause.detail)
+    assert "CCCC-the-boot-disk" not in said
+
+
+def test_a_foreign_volume_under_a_rule_that_recorded_nothing_offers_nothing_to_record(
+    cfg, monkeypatch
+):
+    """The wording half. The identity compared was the LIBRARY'S, and the refusal says so.
+
+    "The volume recorded on that rule" names a record that does not exist for a
+    rule inside the library root, and "record it as that rule's volume_id" would
+    invite a person to pin a nested disk as the answer.
+    """
+    nested = Path(cfg.library.root) / "Archive"
+    nested.mkdir()
+    _mounts.stand_in(monkeypatch, {nested: "BBBB-nested"}, otherwise=cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(nested))])
+
+    cause = excinfo.value.cause
+    assert "the library's volume" in cause.message
+    assert "recorded on that rule" not in cause.message
+    assert "volume_id" not in cause.remediation.steps[0]
+
+
+def test_a_way_to_the_target_this_account_cannot_walk_is_a_refusal_and_not_a_traceback(
+    cfg, tmp_path, monkeypatch
+):
+    """The review's third finding. "I could not look" reaches a person as a refusal.
+
+    The walk to a mount raises on a directory this account cannot traverse, and
+    an ``OSError`` escaping a gate arrives at the command line as an internal
+    defect with no slug, no exit code and no step.
+    """
+    archive = tmp_path / "archive"
+    archive.mkdir()
+
+    def cannot_walk(_path):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(preflight, "identity_source", cannot_walk)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)])
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert excinfo.value.cause.detail["state"] == "unreachable"
+    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+
+
+def test_a_provider_that_cannot_read_the_identity_to_hand_over_is_a_refusal_too(cfg, tmp_path):
+    """The same finding at its second site, the read made while building the refusal."""
+    archive = tmp_path / "archive"
+    archive.mkdir()
+
+    def provider(_path):
+        raise PermissionError(13, "Permission denied")
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(
+            cfg,
+            [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive))],
+            identity_provider=provider,
+            mount_enumerator=lambda: (),
+        )
+    assert excinfo.value.cause.detail["state"] == "unreachable"
+
+
+def test_the_file_is_proved_where_the_file_is_and_not_where_the_rule_points(
+    cfg, tmp_path, monkeypatch
+):
+    """The review's fourth finding. A second volume inside the first is a third disk.
+
+    The rule's target is on the archive and proves itself. One directory under
+    it has another volume mounted in it, and a file in THAT directory would be
+    trashed on a disk nothing identified. Both halves are asserted, because a
+    probe that refuses everything passes the second half alone.
+    """
+    archive = tmp_path / "Volumes" / "ARCHIVE"
+    inner = archive / "Music" / "On Another Disk"
+    inner.mkdir(parents=True)
+    (archive / "Music" / "Here").mkdir()
     _mounts.stand_in(
-        monkeypatch, {good: _ARCHIVE, bad: "BBBB-a-decoy"}, otherwise=cfg.library.volume_id
+        monkeypatch, {archive: _ARCHIVE, inner: "BBBB-inner"}, otherwise=cfg.library.volume_id
     )
     rules = [
-        locations.PrefixRule("/first", str(good), _ARCHIVE),
-        locations.PrefixRule("/second", str(bad), _ARCHIVE),
+        locations.PrefixRule("/an/older/root", str(Path(cfg.library.root) / "Music")),
+        locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE),
     ]
+    assert len(_mapped(cfg, rules)) == 2
 
-    assert len(_mapped(cfg, rules, only=(0,))) == 1
+    held = session.assert_mapped_file_volume(
+        cfg, rules, 1, archive / "Music" / "Here" / "a.flac"
+    )
+    assert held.ok and held.observed_identity == _ARCHIVE
+
     with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, rules, only=(1,))
-    assert excinfo.value.cause.detail["rule"] == 1
+        session.assert_mapped_file_volume(cfg, rules, 1, inner / "a.flac")
+
+    cause = excinfo.value.cause
+    assert cause.reason == "mapped-volume-mismatch"
+    assert cause.detail["rule"] == 1 and cause.detail["probed"] == str(inner)
+    assert cause.detail["observed_identity"] == "BBBB-inner"
+
+
+def test_a_verdict_in_neither_table_fails_rather_than_wearing_the_mismatch_slug(
+    cfg, tmp_path, monkeypatch
+):
+    """The review's eighth finding. The table is indexed, so an undecided state is loud."""
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    undecided = {
+        state: slug
+        for state, slug in session._MAPPED_REASONS.items()
+        if state is not preflight.MountState.FOREIGN_VOLUME
+    }
+    monkeypatch.setattr(session, "_MAPPED_REASONS", undecided)
+
+    with pytest.raises(KeyError):
+        _mapped(
+            cfg,
+            [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)],
+            identity_provider=lambda _path: "BBBB-a-decoy",
+            mount_enumerator=lambda: (),
+        )
 
 
 def test_the_seams_handed_in_are_the_seams_used(cfg, tmp_path):

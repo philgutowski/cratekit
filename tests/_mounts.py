@@ -24,6 +24,7 @@ def stand_in(
     *,
     otherwise: str | None,
     enumerated: tuple[Path, ...] | None = None,
+    slots_under: Path | None = None,
 ) -> None:
     """Treat each key of ``mounted`` as a mount point holding the volume it names.
 
@@ -32,6 +33,13 @@ def stand_in(
     asked on every read, which is how a test swaps the disk under a mount path
     between one assertion and the next. ``enumerated`` is what the mount table
     lists, and defaults to the stand-ins themselves.
+
+    ``slots_under`` declares a directory as the place this pretend platform
+    mounts volumes, one level down, which is what ``/Volumes`` is on macOS. With
+    it set, a directory standing there that is NOT one of the stand-ins is an
+    empty mount slot, the thing an unclean eject leaves behind, and
+    ``preflight.identity_source`` refuses to read an identity through it exactly
+    as it does on a real machine. Without it no path crosses a slot.
     """
     # The REAL climb, even on a second call. A test that ejects a volume calls
     # this again without it, and reading the module attribute then would capture
@@ -41,7 +49,9 @@ def stand_in(
 
     def containing_mount(path: Path) -> Path:
         deepest = preflight.deepest_existing(Path(path))
-        for mount in held:
+        # Deepest first, because a volume mounted inside another is the one a
+        # path under it is on, and the real climb stops at the first mount too.
+        for mount in sorted(held, key=lambda mount: len(mount.parts), reverse=True):
             if deepest == mount or mount in deepest.parents:
                 return mount
         return real_climb(Path(path))
@@ -53,7 +63,16 @@ def stand_in(
         identity = held[key]
         return identity() if callable(identity) else identity
 
+    real_is_mount = getattr(preflight.is_mount_point, "real_is_mount", preflight.is_mount_point)
+
+    def is_mount_point(path: Path) -> bool:
+        return Path(path).resolve() in held or real_is_mount(Path(path))
+
+    is_mount_point.real_is_mount = real_is_mount  # type: ignore[attr-defined]
+    declared = () if slots_under is None else ((Path(slots_under).resolve(), 1),)
     containing_mount.real_climb = real_climb  # type: ignore[attr-defined]
+    monkeypatch.setattr(preflight, "is_mount_point", is_mount_point)
+    monkeypatch.setattr(preflight, "volume_mount_locations", lambda: declared)
     listed = tuple(held) if enumerated is None else tuple(enumerated)
     monkeypatch.setattr(preflight, "containing_mount", containing_mount)
     monkeypatch.setattr(preflight, "default_identity_provider", lambda: identity_of)

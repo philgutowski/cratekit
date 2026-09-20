@@ -6301,10 +6301,41 @@ def test_a_volume_holding_only_removed_rows_does_not_settle_off_an_empty_mount_p
     assert watermark.WatermarkStore(cfg).read().sequence == 40
 
 
-def test_a_disk_swapped_after_the_plan_is_caught_before_the_move(
+def _identity_that_changes(monkeypatch, cfg, volume, *, on_change=lambda: None):
+    """An archive whose identity is right until ``arm`` says otherwise.
+
+    Returns ``(reads, arm)``. ``arm(n)`` lets ``n`` more reads answer correctly
+    and makes every later one a different disk, calling ``on_change`` once as the
+    last correct read returns, which is how a test puts an eject BETWEEN two
+    particular looks rather than somewhere before both.
+    """
+    reads = {"count": 0, "limit": None, "changed": False}
+
+    def identity():
+        reads["count"] += 1
+        limit = reads["limit"]
+        if limit is None or reads["count"] < limit:
+            return ARCHIVE_ID
+        if reads["count"] == limit:
+            if not reads["changed"]:
+                reads["changed"] = True
+                on_change()
+            return ARCHIVE_ID
+        return "BBBB-swapped"
+
+    def arm(more: int) -> None:
+        reads["limit"] = reads["count"] + more
+
+    _mounts.stand_in(
+        monkeypatch, {volume: identity}, otherwise=cfg.library.volume_id, enumerated=()
+    )
+    return reads, arm
+
+
+def test_a_disk_swapped_after_the_plan_stops_a_confirmed_move(
     cfg, gates_pass, tmp_path, monkeypatch
 ):
-    """The second look, immediately before the write, for the rule that file went through.
+    """The second look, for a file that is there, confirmed, and about to move.
 
     The plan's assertion is about the moment the plan was built. The identity
     here answers correctly until the plan inside the apply has asserted it, and
@@ -6312,19 +6343,7 @@ def test_a_disk_swapped_after_the_plan_is_caught_before_the_move(
     the pass is working through its queue. The file must still be there.
     """
     volume = tmp_path / "Volumes" / "PORTABLE"
-    reads = {"count": 0}
-    swap_after = {"reads": None}
-
-    def identity():
-        reads["count"] += 1
-        limit = swap_after["reads"]
-        return ARCHIVE_ID if limit is None or reads["count"] <= limit else "BBBB-swapped"
-
-    # Nothing enumerated, so a mismatch is not followed by a search of the mount
-    # table that would read the identity again and blur the count below.
-    _mounts.stand_in(
-        monkeypatch, {volume: identity}, otherwise=cfg.library.volume_id, enumerated=()
-    )
+    reads, arm = _identity_that_changes(monkeypatch, cfg, volume)
     volume, rule, db, gone = _mapped_volume(cfg, tmp_path, removed=1, volume_id=ARCHIVE_ID)
     home = tmp_path / "home"
     (home / ".Trash").mkdir(parents=True)
@@ -6332,19 +6351,118 @@ def test_a_disk_swapped_after_the_plan_is_caught_before_the_move(
     for item in run.present(cfg, found):
         _confirm(cfg, item.item_id)
 
-    # One more read is the plan that ``apply`` rebuilds. Everything after it is
-    # the look before the move.
-    swap_after["reads"] = reads["count"] + 1
+    arm(1)  # the rebuilt plan, and nothing after it
 
     with pytest.raises(CratekitError) as excinfo:
         run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
 
     assert excinfo.value.cause.reason == "mapped-volume-mismatch"
-    assert reads["count"] == swap_after["reads"] + 1, (
-        "the refusal came from somewhere other than the read before the move"
-    )
     assert (volume / "Music" / "Removed 0.flac").exists()
     assert stores.list_tombstones(cfg, include_revoked=True) == ()
+
+
+def test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The review's second finding, and the branch a missing disk actually takes.
+
+    The look before the move guards the one branch an ejected drive never
+    reaches. With the drive gone and its mount point left behind, the re-check
+    cannot stat the file, the anchor directory is there, the answer is ``GONE``,
+    and ``GONE`` is SETTLED: a tombstone, handled, the watermark past it. The
+    plan's reference set indexed fifty files, so the suspect anchor signal is
+    silent. Twenty files on a disk on the desk, recorded as deleted.
+
+    The eject is placed after the look at the top of the loop and before the
+    re-check's stat, so the only thing standing between this queue and twenty
+    tombstones is the look taken AFTER the re-check.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    reads, arm = _identity_that_changes(
+        monkeypatch, cfg, volume, on_change=lambda: _empty_the_mount_point(volume)
+    )
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path, volume_id=ARCHIVE_ID)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    for item in run.present(cfg, found):
+        _confirm(cfg, item.item_id)
+
+    # The rebuilt plan, then the look at the top of the loop for the first item.
+    arm(2)
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    # UNMOUNTED rather than mismatch: the eject took the file's own directory
+    # with it, so the recorded volume is nowhere and the probed path is absent.
+    assert excinfo.value.cause.reason == "mapped-volume-unmounted"
+    assert reads["changed"], "the drive was never ejected, so this proved nothing"
+    assert stores.list_tombstones(cfg, include_revoked=True) == (), (
+        "files on an ejected drive were recorded as deleted"
+    )
+    assert watermark.WatermarkStore(cfg).read().sequence == 40
+
+
+def test_a_disk_swapped_after_the_plan_retires_nothing_nobody_answered_for(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The other permanent act, which has no re-check in front of it at all.
+
+    A removal nobody answered for whose file is gone is RETIRED: the watermark
+    passes it and it is never offered again. That rests on the plan's stat, and
+    the plan is as old as the queue is long. Here the files really were deleted
+    by hand on a healthy volume, so the plan's ``GONE`` is honest, and the disk
+    is swapped before the loop reaches them. Refusing is the conservative answer
+    and costs nothing: the next run on the right disk retires them.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    reads, arm = _identity_that_changes(monkeypatch, cfg, volume)
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path, volume_id=ARCHIVE_ID)
+    for path in (volume / "Music").glob("Removed *.flac"):
+        path.unlink()
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+
+    arm(1)  # the rebuilt plan, and nothing after it
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert watermark.WatermarkStore(cfg).read().sequence == 40
+
+
+def test_a_file_in_a_volume_nested_under_the_rules_target_is_not_moved(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The fourth finding through the whole pass: the rule proves itself, the file does not.
+
+    The removed files sit in a directory under the archive that has ANOTHER disk
+    mounted in it. Every rule target passes, the plan is built, the removals are
+    offered and confirmed, and the move would land in the inner disk's Trash.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    inner = volume / "Music"
+    _mounts.stand_in(
+        monkeypatch,
+        {volume: ARCHIVE_ID, inner: "BBBB-inner"},
+        otherwise=cfg.library.volume_id,
+        enumerated=(),
+    )
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path, removed=3, volume_id=ARCHIVE_ID)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    for item in run.present(cfg, found):
+        _confirm(cfg, item.item_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert excinfo.value.cause.detail["probed"] == str(inner)
+    assert len(list(inner.glob("Removed *.flac"))) == 3
+    assert not any((home / ".Trash").iterdir())
 
 
 def test_a_file_under_the_library_root_asks_nothing_of_any_rule_before_it_moves(

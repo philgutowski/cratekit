@@ -725,28 +725,42 @@ def _reopen_for_the_path_it_now_resolves_to(
 
 def _assert_the_volume_this_file_is_on(
     cfg: config.Config,
-    item: Candidate,
+    answered: Candidate,
     rules: Sequence[locations.PrefixRule],
     *,
     identity_provider: preflight.IdentityProvider | None = None,
     mount_enumerator: preflight.MountEnumerator | None = None,
 ) -> None:
-    """Re-assert the identity of the one mapped volume a file is about to leave.
+    """Re-assert the volume under one answer before anything permanent is built on it.
 
-    Resolved through the same resolver and the same rules that produced the path
-    being moved, so the rule asserted is the rule that was followed. A row under
+    EVERY PERMANENT ACT IN THE LOOP RESTS ON A STAT, and a stat through a rule
+    is only evidence while the right disk is mounted there. The move is the
+    obvious one. The other two are quieter and just as permanent: a confirmed
+    removal whose file will not stat is SETTLED with a tombstone, and an
+    unanswered one is RETIRED past the watermark. Eject the drive part way
+    through a queue, leaving its mount point behind, and every remaining file
+    stops answering, reads as gone, and is recorded as deleted while it sits on
+    a disk on the desk. So this is asked AFTER the evidence was gathered and
+    BEFORE it is acted on, which is the order that catches a disk that went
+    away underneath the stat.
+
+    The rule is found through the same resolver and the same rules that produced
+    the path, so the rule asserted is the rule that was followed. A row under
     the library root goes through no rule and is not this function's: the
     session asserts the root when it opens and again when it closes.
     """
+    if answered.resolved is None:
+        return
     resolved = locations.resolve_recorded_path(
-        item.row.recorded, root=cfg.library.root, prefix_map=rules
+        answered.row.recorded, root=cfg.library.root, prefix_map=rules
     )
     if resolved.rule_index is None:
         return
-    session.assert_mapped_volume_identities(
+    session.assert_mapped_file_volume(
         cfg,
         rules,
-        only=(resolved.rule_index,),
+        resolved.rule_index,
+        answered.resolved,
         identity_provider=identity_provider,
         mount_enumerator=mount_enumerator,
     )
@@ -872,6 +886,16 @@ def apply(
         handled: list[tuple[int, bool]] = []
 
         for item in found.candidates:
+            # THE PLAN'S ANSWER ABOUT THIS ROW IS ABOUT TO BE ACTED ON, by a
+            # retirement, a settlement or a move, and the plan is as old as the
+            # queue is long. See the function for why this comes first.
+            _assert_the_volume_this_file_is_on(
+                cfg,
+                item,
+                rules,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+            )
             verdict = decided.get(_item_id(item))
             if verdict is None:
                 # THE SAME QUESTION THE CONFIRMED PATH ASKS, ASKED HERE TOO. A
@@ -952,6 +976,19 @@ def apply(
                 declined=declined_now,
                 stat=stat,
             )
+            # AND AGAIN FOR THE RE-CHECK'S OWN ANSWER, which is a fresh stat and
+            # therefore fresh evidence. It sits before BOTH branches below on
+            # purpose: a re-check that now says the file is gone is settled with
+            # a tombstone a few lines down, and that is the branch an ejected
+            # drive takes, so asserting only on the way to the move would guard
+            # the one branch a missing disk never reaches.
+            _assert_the_volume_this_file_is_on(
+                cfg,
+                fresh,
+                rules,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+            )
             if not fresh.deletable or fresh.resolved is None:
                 logger.warning(
                     "confirmed file %s is %s now and was not moved: %s",
@@ -1010,19 +1047,6 @@ def apply(
                 handled.append((item.row.sequence, False))
                 continue
 
-            # THE VOLUME IS ASKED AGAIN IMMEDIATELY BEFORE THE WRITE, for the rule
-            # this one file goes through. The plan's assertion is about the
-            # moment the plan was built, and a pass over a long queue is long
-            # enough for a drive to be swapped under a mount path. The library
-            # root gets the same second look from the session's close. It costs
-            # one system call and no subprocess, which is why it is per file.
-            _assert_the_volume_this_file_is_on(
-                cfg,
-                item,
-                rules,
-                identity_provider=identity_provider,
-                mount_enumerator=mount_enumerator,
-            )
             layout = trash.assert_usable(fresh.resolved, home=home)
             try:
                 target = trash.move_to_trash(fresh.resolved, layout=layout)
