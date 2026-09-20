@@ -1079,6 +1079,67 @@ def test_a_malformed_prefix_entry_is_named_by_index(library):
     assert any("location_prefix_map[0].to" in p for p in config.validate(data))
 
 
+def test_a_prefix_rule_carries_the_identity_of_the_volume_it_points_at(library):
+    """The config shape the deletion pass needs before it may follow a rule.
+
+    A rule onto another disk has to say WHICH disk, in the shape the library's
+    own ``volume_id`` has. It survives a round trip through the serialized form,
+    in order, beside a rule that records none.
+    """
+    data = valid_data(library)
+    data["library"]["location_prefix_map"] = [
+        {"from": "/mnt/music", "to": "/Volumes/MUSIC", "volume_id": "AAAA-1111"},
+        {"from": "/mnt/volume", "to": "{library.root}"},
+    ]
+    cfg = config.from_dict(data)
+
+    assert cfg.resolved_prefix_rules() == (
+        ("/mnt/music", "/Volumes/MUSIC", "AAAA-1111"),
+        ("/mnt/volume", str(library), None),
+    )
+    again = config.from_dict(cfg.to_toml_dict())
+    assert again.resolved_prefix_rules() == cfg.resolved_prefix_rules()
+    assert again.fingerprint() == cfg.fingerprint()
+
+
+def test_a_rule_with_no_identity_serializes_to_the_bytes_it_always_did(library):
+    """KTD9. An optional key written as an empty value would move every fingerprint.
+
+    The expected mapping is spelled out here rather than read back from the
+    serializer, so a writer that starts emitting the key for every rule fails
+    against what a configuration looked like before the key existed.
+    """
+    data = valid_data(library)
+    data["library"]["location_prefix_map"] = [{"from": "/mnt/volume", "to": "{library.root}"}]
+    written = config.from_dict(data).to_toml_dict()["library"]["location_prefix_map"]
+
+    assert written == [{"from": "/mnt/volume", "to": "{library.root}"}]
+
+
+@pytest.mark.parametrize(
+    "identity",
+    ["/Volumes/MUSIC", "\\\\server\\share", "E:\\", "", "   ", 7, None],
+    ids=["posix-path", "unc-path", "drive-path", "empty", "blank", "number", "null"],
+)
+def test_a_rule_identity_that_is_a_path_or_is_unusable_is_named_by_index(library, identity):
+    """R38, per rule: a mount path is what an identity exists to replace.
+
+    And a key that is PRESENT and unusable is a problem rather than an absence.
+    Reading a blank as "none recorded" would send a rule inside the library root
+    down the library's own identity, which is a check passing on a value the
+    person typed wrong.
+    """
+    data = valid_data(library)
+    data["library"]["location_prefix_map"] = [
+        {"from": "/mnt/volume", "to": "{library.root}"},
+        {"from": "/mnt/music", "to": "/Volumes/MUSIC", "volume_id": identity},
+    ]
+    problems = config.validate(data)
+
+    assert [p for p in problems if "location_prefix_map[1].volume_id" in p], problems
+    assert not [p for p in problems if "location_prefix_map[0]" in p], problems
+
+
 def test_an_unset_rekordbox_pin_refuses_to_write(cfg):
     """S2. Unset REFUSES, and is never auto-recorded from the running install.
 

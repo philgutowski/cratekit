@@ -50,6 +50,7 @@ from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.deletion import candidates, library, run, stores, trash, watermark
 from cratekit.write import trees
+from tests import _mounts
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database
 
@@ -721,6 +722,19 @@ def _elsewhere(count: int = 50):
     ]
 
 
+
+def _identified(cfg, target: str) -> locations.PrefixRule:
+    """A rule onto a directory outside the library root, WITH its volume recorded.
+
+    Every test that drives the whole pass through such a rule needs this, because
+    a target outside the root with nothing recorded refuses before a path is
+    resolved. ``gates_pass`` answers the library's identity for every path, so
+    recording that identity is the fixture's way of saying the right disk is
+    mounted there, which is the state those tests are about.
+    """
+    return locations.PrefixRule(RECORDED_ELSEWHERE, target, cfg.library.volume_id)
+
+
 def _populate(volume: Path, rows) -> None:
     for row in rows:
         target = Path(str(volume) + row.recorded[len(RECORDED_ELSEWHERE) :])
@@ -873,7 +887,7 @@ def test_a_dead_prefix_rule_stops_the_whole_pass_before_anything_is_offered(
             cfg,
             db,
             actor="cli",
-            prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(tmp_path / "gone"))],
+            prefix_map=[_identified(cfg, str(tmp_path / "gone"))],
         )
     assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
@@ -1704,8 +1718,8 @@ def test_a_verdict_does_not_travel_to_whatever_the_row_resolves_to_later(
     for volume in (first, second):
         (volume / "Music").mkdir(parents=True)
         (volume / "Music" / ONE).write_bytes(b"audio bytes")
-    to_first = [locations.PrefixRule(RECORDED_ELSEWHERE, str(first))]
-    to_second = [locations.PrefixRule(RECORDED_ELSEWHERE, str(second))]
+    to_first = [_identified(cfg, str(first))]
+    to_second = [_identified(cfg, str(second))]
 
     run.plan(cfg, FakeDb([], usn=40), actor="cli", prefix_map=to_first)
     removed = FakeRow(
@@ -1882,7 +1896,7 @@ def test_an_anchor_that_answered_nothing_is_named_in_a_warning(cfg, gates_pass, 
             cfg,
             db,
             actor="cli",
-            prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(wrong))],
+            prefix_map=[_identified(cfg, str(wrong))],
         )
 
     assert found.references.by_identity, (
@@ -3439,8 +3453,8 @@ def test_a_corrected_prefix_rule_lets_the_confirmed_deletion_through_on_the_retr
     for volume in (first, second):
         (volume / "Music").mkdir(parents=True)
         (volume / "Music" / ONE).write_bytes(b"audio bytes")
-    to_first = [locations.PrefixRule(RECORDED_ELSEWHERE, str(first))]
-    to_second = [locations.PrefixRule(RECORDED_ELSEWHERE, str(second))]
+    to_first = [_identified(cfg, str(first))]
+    to_second = [_identified(cfg, str(second))]
     home = tmp_path / "home"
     (home / ".Trash").mkdir(parents=True)
 
@@ -4462,7 +4476,7 @@ def _removed_elsewhere(count, *, usn=50):
     return rows
 
 
-def _mapped_volume(cfg, tmp_path, *, active=50, removed=20):
+def _mapped_volume(cfg, tmp_path, *, active=50, removed=20, volume_id=None):
     """A mounted volume holding ``active`` referenced files and ``removed`` candidates.
 
     Returns the volume path, the prefix rule, the binding, and the removed rows,
@@ -4477,7 +4491,9 @@ def _mapped_volume(cfg, tmp_path, *, active=50, removed=20):
         target = Path(str(volume) + row.FolderPath[len(RECORDED_ELSEWHERE) :])
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(b"audio bytes")
-    rule = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
+    rule = [
+        locations.PrefixRule(RECORDED_ELSEWHERE, str(volume), volume_id or cfg.library.volume_id)
+    ]
     run.plan(cfg, FakeDb([], usn=40), actor="cli", prefix_map=rule)
     active_rows = [
         FakeRow(
@@ -6132,3 +6148,398 @@ def test_delete_review_names_a_missing_library_directory(review_cli):
     code, out, err = _drive(["--output", "json", "delete", "review"])
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE), err or out
     assert json.loads(out)["cause"]["reason"] == "library-directory-missing"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Every volume the pass can reach proves its identity, not only the library's
+# ═══════════════════════════════════════════════════════════════════════════
+
+ARCHIVE_ID = "AAAA-1111-the-archive"
+
+
+def _the_same_file_through_a_rule(cfg):
+    """One real file, a REMOVED row on it, and an ACTIVE row on it through a rule.
+
+    The shape the second U24 review reproduced end to end. With the rule right
+    the removal collides with the active row and the file stays. The active row
+    is the only thing standing between that file and the Trash.
+    """
+    _music(cfg, ONE)
+    run.plan(cfg, FakeDb([], usn=40), actor="cli")
+    still_referenced = FakeRow(
+        ID="active-through-the-rule",
+        FolderPath=f"{RECORDED_ELSEWHERE}/{ONE}",
+        FileSize=11,
+        rb_local_deleted=0,
+        rb_local_usn=45,
+        Title=Path(ONE).stem,
+        ArtistName=ARTIST,
+        ISRC=None,
+    )
+    return FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50), still_referenced], usn=51)
+
+
+def test_a_rule_onto_the_wrong_volume_refuses_rather_than_trashing_the_only_copy(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """R-44 Open 4 through the door a volume identity can close, driven end to end.
+
+    THE COST, FIRST, AS IT STOOD. A rule whose target EXISTS and is the wrong
+    directory makes the active row answer "the file is missing", the reference
+    set comes back empty and ``complete``, the removal is ``DELETABLE``, and the
+    only copy of a file an active row still plays is offered for the Trash. The
+    anchor check asks whether the directory is there, and it is.
+
+    When that wrong directory is on ANOTHER DISK, which is what a mistyped
+    ``/Volumes`` name or a decoy at the mount path is, the identity says so and
+    the pass refuses before it resolves a path. The first half of this test is
+    the control: the same library with the rule right is a collision.
+    """
+    db = _the_same_file_through_a_rule(cfg)
+    right = [locations.PrefixRule(RECORDED_ELSEWHERE, str(Path(cfg.library.root) / "Music"))]
+    found = run.plan(cfg, db, actor="cli", prefix_map=right)
+    assert [item.category for item in found.candidates] == [
+        candidates.Category.COLLIDES_WITH_ACTIVE_ROW
+    ]
+
+    wrong = tmp_path / "Volumes" / "NOT THE ONE"
+    wrong.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {wrong: "BBBB-some-other-disk"}, otherwise=cfg.library.volume_id)
+
+    for rule in (
+        locations.PrefixRule(RECORDED_ELSEWHERE, str(wrong)),
+        locations.PrefixRule(RECORDED_ELSEWHERE, str(wrong), ARCHIVE_ID),
+    ):
+        with pytest.raises(CratekitError) as excinfo:
+            run.plan(cfg, db, actor="cli", prefix_map=[rule])
+        assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert (Path(cfg.library.root) / "Music" / ONE).exists()
+
+
+def test_the_wrong_directory_on_the_right_volume_is_still_offered_and_is_recorded_as_open(
+    cfg, gates_pass, tmp_path
+):
+    """WHAT THE IDENTITY CANNOT SEE, pinned end to end so it cannot be read as closed.
+
+    Two directories on one disk share an identity, so a rule aimed at the wrong
+    one of them passes this gate and the original defect is intact: the file an
+    active row still references is ``DELETABLE``. The residual finding "Five
+    findings the U24 review accepted, and the reason each stands" carries it as
+    open, narrowed to exactly this shape, with the warning per suspect anchor as
+    the only signal. This test is the measurement that sentence rests on.
+    """
+    db = _the_same_file_through_a_rule(cfg)
+    wrong = tmp_path / "real-but-not-the-one"
+    wrong.mkdir()
+
+    found = run.plan(cfg, db, actor="cli", prefix_map=[_identified(cfg, str(wrong))])
+
+    assert found.references.suspect_anchors == (str(wrong),)
+    assert [item.category for item in found.candidates] == [candidates.Category.DELETABLE]
+
+
+def test_a_different_disk_at_a_mapped_target_stops_the_apply_before_any_file_moves(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """R-44 Open 1. The pass wrote to a second volume with no identity asked of it.
+
+    Twenty confirmed removals on a mapped volume, and between the review and the
+    apply a different disk is at that mount path holding files of the same names,
+    which is what a clone of the drive is. Every one of them would have moved.
+    """
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    for item in run.present(cfg, found):
+        _confirm(cfg, item.item_id)
+
+    _mounts.stand_in(monkeypatch, {volume: "BBBB-a-clone"}, otherwise=cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert len(list((volume / "Music").glob("Removed *.flac"))) == len(gone)
+    assert stores.list_tombstones(cfg, include_revoked=True) == ()
+    assert not any((home / ".Trash").iterdir())
+
+
+def test_a_volume_holding_only_removed_rows_does_not_settle_off_an_empty_mount_point(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """R-51. No active row goes through the anchor, so ``suspect_anchors`` is silent.
+
+    The signal that protects a stale mount point is built from ACTIVE rows going
+    missing, and this volume has none, so twenty removed rows under an empty
+    directory all read ``GONE``, were settled with a tombstone each, and the
+    watermark walked past them. There was no local evidence to be had. The
+    identity is evidence from outside the walk: the empty directory is on the
+    disk that holds the mount path, not on the archive.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    _mounts.stand_in(monkeypatch, {volume: ARCHIVE_ID}, otherwise=cfg.library.volume_id)
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path, active=0, volume_id=ARCHIVE_ID)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    offered = run.present(cfg, found)
+    assert len(offered) == len(gone)
+    for item in offered:
+        _confirm(cfg, item.item_id)
+
+    _empty_the_mount_point(volume)
+    _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert stores.list_tombstones(cfg, include_revoked=True) == (), (
+        "twenty deletions were recorded off an empty directory"
+    )
+    assert watermark.WatermarkStore(cfg).read().sequence == 40
+
+
+def _identity_that_changes(monkeypatch, cfg, volume, *, on_change=lambda: None):
+    """An archive whose identity is right until ``arm`` says otherwise.
+
+    Returns ``(reads, arm)``. ``arm(n)`` lets ``n`` more reads answer correctly
+    and makes every later one a different disk, calling ``on_change`` once as the
+    last correct read returns, which is how a test puts an eject BETWEEN two
+    particular looks rather than somewhere before both.
+    """
+    reads = {"count": 0, "limit": None, "changed": False}
+
+    def identity():
+        reads["count"] += 1
+        limit = reads["limit"]
+        if limit is None or reads["count"] < limit:
+            return ARCHIVE_ID
+        if reads["count"] == limit:
+            if not reads["changed"]:
+                reads["changed"] = True
+                on_change()
+            return ARCHIVE_ID
+        return "BBBB-swapped"
+
+    def arm(more: int) -> None:
+        reads["limit"] = reads["count"] + more
+
+    _mounts.stand_in(
+        monkeypatch, {volume: identity}, otherwise=cfg.library.volume_id, enumerated=()
+    )
+    return reads, arm
+
+
+def test_a_disk_swapped_after_the_plan_stops_a_confirmed_move(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The second look, for a file that is there, confirmed, and about to move.
+
+    The plan's assertion is about the moment the plan was built. The identity
+    here answers correctly until the plan inside the apply has asserted it, and
+    wrongly from then on, which is a drive swapped under the mount path while
+    the pass is working through its queue. The file must still be there.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    reads, arm = _identity_that_changes(monkeypatch, cfg, volume)
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path, removed=1, volume_id=ARCHIVE_ID)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    for item in run.present(cfg, found):
+        _confirm(cfg, item.item_id)
+
+    arm(1)  # the rebuilt plan, and nothing after it
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert (volume / "Music" / "Removed 0.flac").exists()
+    assert stores.list_tombstones(cfg, include_revoked=True) == ()
+
+
+def test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The review's second finding, and the branch a missing disk actually takes.
+
+    The look before the move guards the one branch an ejected drive never
+    reaches. With the drive gone and its mount point left behind, the re-check
+    cannot stat the file, the anchor directory is there, the answer is ``GONE``,
+    and ``GONE`` is SETTLED: a tombstone, handled, the watermark past it. The
+    plan's reference set indexed fifty files, so the suspect anchor signal is
+    silent. Twenty files on a disk on the desk, recorded as deleted.
+
+    The eject is placed after the look at the top of the loop and before the
+    re-check's stat, so the only thing standing between this queue and twenty
+    tombstones is the look taken AFTER the re-check.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    reads, arm = _identity_that_changes(
+        monkeypatch, cfg, volume, on_change=lambda: _empty_the_mount_point(volume)
+    )
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path, volume_id=ARCHIVE_ID)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    for item in run.present(cfg, found):
+        _confirm(cfg, item.item_id)
+
+    # The rebuilt plan, then the look at the top of the loop for the first item.
+    arm(2)
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    # UNMOUNTED rather than mismatch: the eject took the file's own directory
+    # with it, so the recorded volume is nowhere and the probed path is absent.
+    assert excinfo.value.cause.reason == "mapped-volume-unmounted"
+    assert reads["changed"], "the drive was never ejected, so this proved nothing"
+    assert stores.list_tombstones(cfg, include_revoked=True) == (), (
+        "files on an ejected drive were recorded as deleted"
+    )
+    assert watermark.WatermarkStore(cfg).read().sequence == 40
+
+
+def test_a_disk_swapped_after_the_plan_retires_nothing_nobody_answered_for(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The other permanent act, which has no re-check in front of it at all.
+
+    A removal nobody answered for whose file is gone is RETIRED: the watermark
+    passes it and it is never offered again. That rests on the plan's stat, and
+    the plan is as old as the queue is long. Here the files really were deleted
+    by hand on a healthy volume, so the plan's ``GONE`` is honest, and the disk
+    is swapped before the loop reaches them. Refusing is the conservative answer
+    and costs nothing: the next run on the right disk retires them.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    reads, arm = _identity_that_changes(monkeypatch, cfg, volume)
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path, volume_id=ARCHIVE_ID)
+    for path in (volume / "Music").glob("Removed *.flac"):
+        path.unlink()
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+
+    arm(1)  # the rebuilt plan, and nothing after it
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert watermark.WatermarkStore(cfg).read().sequence == 40
+
+
+def test_a_file_in_a_volume_nested_under_the_rules_target_is_not_moved(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The fourth finding through the whole pass: the rule proves itself, the file does not.
+
+    The removed files sit in a directory under the archive that has ANOTHER disk
+    mounted in it. Every rule target passes, the plan is built, the removals are
+    offered and confirmed, and the move would land in the inner disk's Trash.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    inner = volume / "Music"
+    _mounts.stand_in(
+        monkeypatch,
+        {volume: ARCHIVE_ID, inner: "BBBB-inner"},
+        otherwise=cfg.library.volume_id,
+        enumerated=(),
+    )
+    volume, rule, db, gone = _mapped_volume(cfg, tmp_path, removed=3, volume_id=ARCHIVE_ID)
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    for item in run.present(cfg, found):
+        _confirm(cfg, item.item_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert excinfo.value.cause.detail["probed"] == str(inner)
+    assert len(list(inner.glob("Removed *.flac"))) == 3
+    assert not any((home / ".Trash").iterdir())
+
+
+def test_a_file_under_the_library_root_asks_nothing_of_any_rule_before_it_moves(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The look before the move is for the rule the file went through, and only that.
+
+    A root resident file goes through no rule. Asking every rule again per file
+    would make one flaky mapped volume refuse moves that never touch it, after
+    the plan had already accepted it, part way through a queue.
+    """
+    volume = tmp_path / "Volumes" / "PORTABLE"
+    volume.mkdir(parents=True)
+    reads = {"count": 0}
+
+    def identity():
+        reads["count"] += 1
+        return ARCHIVE_ID
+
+    _mounts.stand_in(monkeypatch, {volume: identity}, otherwise=cfg.library.volume_id)
+    rule = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume), ARCHIVE_ID)]
+    home = tmp_path / "home"
+    (home / ".Trash").mkdir(parents=True)
+    _music(cfg, ONE)
+    run.plan(cfg, FakeDb([], usn=40), actor="cli", prefix_map=rule)
+    db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=51)
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+    for item in run.present(cfg, found):
+        _confirm(cfg, item.item_id)
+    before = reads["count"]
+
+    report = run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
+
+    assert len(report.trashed) == 1
+    assert reads["count"] == before + 1, "only the rebuilt plan read the mapped volume"
+
+
+def test_a_rule_nothing_uses_whose_directory_is_absent_does_not_stop_the_pass(
+    cfg, gates_pass, tmp_path
+):
+    """The availability the gate deliberately keeps: identity proved, directory absent.
+
+    A rule onto a directory that was never made, on the right disk, with no row
+    through it, changes nothing about any proof. Rows THROUGH such a rule still
+    refuse, one function later, which
+    ``test_a_dead_prefix_rule_stops_the_whole_pass_before_anything_is_offered``
+    holds.
+    """
+    _music(cfg, ONE)
+    rule = [_identified(cfg, str(tmp_path / "never-made"))]
+    run.plan(cfg, FakeDb([], usn=40), actor="cli", prefix_map=rule)
+    db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=51)
+
+    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
+
+    assert [item.category for item in found.candidates] == [candidates.Category.DELETABLE]
+
+
+def test_the_rules_the_pass_builds_from_configuration_carry_each_recorded_identity(library_root):
+    """The join between the config key and the assertion, which no other test crosses.
+
+    Every test above hands the pass its rules. A person's rules come from
+    configuration, and a builder that dropped the third field would leave every
+    configured rule outside the root refusing as unrecorded, or, worse, leave a
+    caller believing an identity was being asserted that never arrived.
+    """
+    data = valid_data(
+        library_root,
+        rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "pin_validated_on": "2026-08-02"},
+    )
+    data["library"]["location_prefix_map"] = [
+        {"from": "/mnt/music", "to": "/Volumes/MUSIC", "volume_id": ARCHIVE_ID},
+        {"from": "/mnt/volume", "to": "{library.root}/Music"},
+    ]
+    rules = run._rules(config.from_dict(data), None)
+
+    assert rules == [
+        locations.PrefixRule("/mnt/music", "/Volumes/MUSIC", ARCHIVE_ID),
+        locations.PrefixRule("/mnt/volume", str(library_root / "Music"), None),
+    ]

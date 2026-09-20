@@ -254,10 +254,18 @@ class PrefixRule:
     Both sides are NFC-normalized on construction. A user may type a configured
     prefix in either composition form, and a rule that only matches the form it
     was typed in is a rule that silently stops matching.
+
+    ``volume_id`` is the recorded identity of the volume ``target`` sits on, and
+    resolution never reads it. It rides here because a destructive pass needs the
+    rule and the proof of where the rule points to be ONE value: carried beside
+    the rules in a second list, the two are joined by position, and a list that
+    is filtered or reordered on one side asserts the wrong disk for every rule
+    after the change.
     """
 
     source: str
     target: str
+    volume_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source", norm_for_compare(self.source).rstrip("/"))

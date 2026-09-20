@@ -186,29 +186,50 @@ def _rules(
     of the three resolve its own would be two resolvers answering one question,
     and the cost of them disagreeing is a file that looks unreferenced to the
     proof and referenced to nothing.
+
+    EACH RULE CARRIES THE IDENTITY RECORDED FOR ITS TARGET, which is what makes
+    this pass's rules differ from every reader's. A reader follows a rule to
+    look; this follows one to move a file, so where the rule points has to be
+    provable and not only present.
     """
     if prefix_map is not None:
         return list(prefix_map)
-    return [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
+    return [
+        locations.PrefixRule(source, target, volume_id)
+        for source, target, volume_id in cfg.resolved_prefix_rules()
+    ]
 
 
 def _assert_library_is_still(
     cfg: config.Config,
     db: Any,
     *,
+    rules: Sequence[locations.PrefixRule],
     identity_provider: preflight.IdentityProvider | None = None,
     mount_enumerator: preflight.MountEnumerator | None = None,
 ) -> None:
-    """The three assertions that make every later answer mean anything.
+    """The four assertions that make every later answer mean anything.
 
     Volume identity first, because it is the one that decides whether the other
     two are being asked about the right disk at all. Then the refusal while
     rekordbox or its background agent is running, then the cloud canary, because
     both of those are asking the same question from two directions: is anything
     else changing this library while this run reads it.
+
+    THE IDENTITY IS ASKED OF EVERY VOLUME THIS PASS CAN REACH, not only the one
+    the library root sits on. A prefix rule sends a row onto whatever is mounted
+    at its target, and both halves of the pass follow it: the reference set reads
+    there to prove a file unreferenced, and the move writes there. Asserting the
+    root alone left the first half proving things about the wrong directory and
+    the second trashing files on a disk nobody had identified. ``rules`` is
+    required rather than defaulted to none, because an empty default is a caller
+    who forgot being read as a library with no rules.
     """
     session.assert_volume_identity(
         cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+    )
+    session.assert_mapped_volume_identities(
+        cfg, rules, identity_provider=identity_provider, mount_enumerator=mount_enumerator
     )
     rb_writer.assert_rekordbox_closed("reviewing tracks removed from the collection")
     rb_writer.canary(db)
@@ -233,8 +254,13 @@ def plan(
     than presenting them, and accepting them is a decision that has to be
     recorded or the next run makes it again.
     """
+    rules = _rules(cfg, prefix_map)
     _assert_library_is_still(
-        cfg, db, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+        cfg,
+        db,
+        rules=rules,
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
     )
     identity = library.database_identity(db)
     counter = library.current_sequence(db)
@@ -269,7 +295,6 @@ def plan(
     # behind a parameter the only caller permanently disabled, which is one rule
     # written twice with one copy unreachable, so neither copy could be measured.
     removed = tuple(row for row in seen.removed if row.sequence > mark.sequence)
-    rules = _rules(cfg, prefix_map)
     references = candidate_rules.reference_set(
         seen.active, root=cfg.library.root, prefix_map=rules, stat=stat
     )
@@ -518,14 +543,18 @@ def _the_anchor_proved_nothing(
     without a threshold: the question is whether ANY active row found a file
     there, not how many.
 
-    WHICH WAY THIS FAILS. An anchor with no active rows through it at all is not
-    suspect, because ``missing_under`` never records it, so a mapped volume
-    holding only removed rows still settles off an empty mount point. Nothing
-    local can do better: with no active row through that anchor there is no
-    evidence either way, and the alternative is a threshold over how many removed
-    rows look gone, which is the same all-or-nothing rule ``suspect_anchors``
-    replaced. It is recorded as its own residual finding rather than papered
-    over.
+    WHICH WAY THIS FAILS, AND WHAT NOW STANDS BEHIND IT. An anchor with no active
+    rows through it at all is not suspect, because ``missing_under`` never
+    records it, so on this signal alone a mapped volume holding only removed
+    rows settles off an empty mount point. Nothing local can do better: with no
+    active row through that anchor there is no evidence either way, and the
+    alternative is a threshold over how many removed rows look gone, which is
+    the same all-or-nothing rule ``suspect_anchors`` replaced. The evidence that
+    closes it comes from outside the walk. An empty mount point is on the disk
+    that holds the mount directory, not on the volume the rule recorded, so
+    ``_assert_the_volume_this_file_is_on`` refuses before this is ever asked.
+    This signal stays for the case identity cannot see, which is the right disk
+    with the wrong directory named.
     """
     return answered.anchor is not None and answered.anchor in references.suspect_anchors
 
@@ -698,6 +727,49 @@ def _reopen_for_the_path_it_now_resolves_to(
         review.clear(store, item_id, actor=actor)
 
 
+def _assert_the_volume_this_file_is_on(
+    cfg: config.Config,
+    answered: Candidate,
+    rules: Sequence[locations.PrefixRule],
+    *,
+    identity_provider: preflight.IdentityProvider | None = None,
+    mount_enumerator: preflight.MountEnumerator | None = None,
+) -> None:
+    """Re-assert the volume under one answer before anything permanent is built on it.
+
+    EVERY PERMANENT ACT IN THE LOOP RESTS ON A STAT, and a stat through a rule
+    is only evidence while the right disk is mounted there. The move is the
+    obvious one. The other two are quieter and just as permanent: a confirmed
+    removal whose file will not stat is SETTLED with a tombstone, and an
+    unanswered one is RETIRED past the watermark. Eject the drive part way
+    through a queue, leaving its mount point behind, and every remaining file
+    stops answering, reads as gone, and is recorded as deleted while it sits on
+    a disk on the desk. So this is asked AFTER the evidence was gathered and
+    BEFORE it is acted on, which is the order that catches a disk that went
+    away underneath the stat.
+
+    The rule is found through the same resolver and the same rules that produced
+    the path, so the rule asserted is the rule that was followed. A row under
+    the library root goes through no rule and is not this function's: the
+    session asserts the root when it opens and again when it closes.
+    """
+    if answered.resolved is None:
+        return
+    resolved = locations.resolve_recorded_path(
+        answered.row.recorded, root=cfg.library.root, prefix_map=rules
+    )
+    if resolved.rule_index is None:
+        return
+    session.assert_mapped_file_volume(
+        cfg,
+        rules,
+        resolved.rule_index,
+        answered.resolved,
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
+    )
+
+
 def apply(
     cfg: config.Config,
     db: Any,
@@ -818,6 +890,16 @@ def apply(
         handled: list[tuple[int, bool]] = []
 
         for item in found.candidates:
+            # THE PLAN'S ANSWER ABOUT THIS ROW IS ABOUT TO BE ACTED ON, by a
+            # retirement, a settlement or a move, and the plan is as old as the
+            # queue is long. See the function for why this comes first.
+            _assert_the_volume_this_file_is_on(
+                cfg,
+                item,
+                rules,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+            )
             verdict = decided.get(_item_id(item))
             if verdict is None:
                 # THE SAME QUESTION THE CONFIRMED PATH ASKS, ASKED HERE TOO. A
@@ -897,6 +979,19 @@ def apply(
                 referenced=referenced,
                 declined=declined_now,
                 stat=stat,
+            )
+            # AND AGAIN FOR THE RE-CHECK'S OWN ANSWER, which is a fresh stat and
+            # therefore fresh evidence. It sits before BOTH branches below on
+            # purpose: a re-check that now says the file is gone is settled with
+            # a tombstone a few lines down, and that is the branch an ejected
+            # drive takes, so asserting only on the way to the move would guard
+            # the one branch a missing disk never reaches.
+            _assert_the_volume_this_file_is_on(
+                cfg,
+                fresh,
+                rules,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
             )
             if not fresh.deletable or fresh.resolved is None:
                 logger.warning(

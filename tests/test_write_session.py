@@ -45,10 +45,11 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, preflight, rb_writer, session, snapshot
+from cratekit.core import config, locations, preflight, rb_writer, session, snapshot
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
+from tests import _mounts
 from tests.test_config import valid_data
 
 UTC = timezone.utc
@@ -236,6 +237,414 @@ def test_every_mount_verdict_has_a_declared_refusal_slug(state):
         return
     slug = session._MOUNT_REASONS[state]
     assert REASONS[slug] is ExitCode.LIBRARY_UNAVAILABLE
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The volume gate, for every volume a prefix rule points at
+# ═══════════════════════════════════════════════════════════════════════════
+
+_RECORDED_ELSEWHERE = "/recorded/on/another/machine"
+_ARCHIVE = "AAAA-1111-the-archive"
+
+
+@pytest.mark.parametrize("state", sorted(preflight.MountState, key=str))
+def test_every_mount_verdict_about_a_rule_target_was_decided_exactly_once(state):
+    """A verdict is a pass or a declared refusal, and never both or neither.
+
+    Two tables rather than one, so the property needs saying: a state in neither
+    falls through to a default slug nobody chose, and a state in both passes
+    while a reader of the refusal table believes it refuses.
+    """
+    from cratekit.core.cause import REASONS
+
+    proved = state in session._MAPPED_PROVED
+    refused = state in session._MAPPED_REASONS
+    assert proved != refused
+    if refused:
+        assert REASONS[session._MAPPED_REASONS[state]] is ExitCode.LIBRARY_UNAVAILABLE
+
+
+def test_the_verdicts_that_prove_a_rule_target_are_spelled_out():
+    """The pass set, as a literal, because widening it is how the gate opens.
+
+    ``LIBRARY_PATH_MISSING`` passes on purpose: the identity matched and only
+    the directory is absent, which the pass following the rule asks about per
+    row. Nothing else may join it without this line changing.
+    """
+    assert session._MAPPED_PROVED == {
+        preflight.MountState.OK,
+        preflight.MountState.LIBRARY_PATH_MISSING,
+    }
+
+
+def test_a_rule_is_held_to_its_own_identity_then_the_librarys_then_to_nothing(cfg, tmp_path):
+    """Three answers, and the third is None rather than the library's identity.
+
+    Defaulting the third to the library's identity is the hole: a library on the
+    boot disk and an empty directory left standing where an external drive
+    mounts are ON THE SAME DISK, so that default matches.
+    """
+    root = Path(cfg.library.root)
+    own = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root / "Old"), _ARCHIVE)
+    inside = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root / "Old"))
+    the_root_itself = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root))
+    beside = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root) + "-archive")
+    outside = locations.PrefixRule(_RECORDED_ELSEWHERE, str(tmp_path / "archive"))
+
+    assert session.expected_rule_identity(cfg, own) == _ARCHIVE
+    assert session.expected_rule_identity(cfg, inside) == cfg.library.volume_id
+    assert session.expected_rule_identity(cfg, the_root_itself) == cfg.library.volume_id
+    assert session.expected_rule_identity(cfg, beside) is None, (
+        "a directory whose NAME starts with the library root is not inside it"
+    )
+    assert session.expected_rule_identity(cfg, outside) is None
+
+
+def _mapped(cfg, rules, **seams):
+    return session.assert_mapped_volume_identities(cfg, rules, **seams)
+
+
+def test_a_rule_onto_the_volume_it_recorded_passes(cfg, tmp_path, monkeypatch):
+    archive = tmp_path / "Volumes" / "ARCHIVE"
+    archive.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
+
+    proved = _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)])
+
+    assert [status.state for status in proved] == [preflight.MountState.OK]
+    assert proved[0].observed_identity == _ARCHIVE
+
+
+def test_a_different_disk_at_a_rules_target_refuses_and_names_the_rule(
+    cfg, tmp_path, monkeypatch
+):
+    """R-44 Open 1. The decoy at the mount path is exactly the disk a rule reaches.
+
+    The second rule is the wrong one, so the index in the refusal is evidence
+    that every rule was asked rather than the first.
+    """
+    archive = tmp_path / "Volumes" / "ARCHIVE"
+    archive.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {archive: "BBBB-a-decoy"}, otherwise=cfg.library.volume_id)
+    rules = [
+        locations.PrefixRule("/an/older/root", str(Path(cfg.library.root) / "Music")),
+        locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE),
+    ]
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, rules)
+
+    cause = excinfo.value.cause
+    assert cause.reason == "mapped-volume-mismatch"
+    assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    assert cause.detail["rule"] == 1 and cause.detail["target"] == str(archive)
+    assert cause.detail["recorded_identity"] == _ARCHIVE
+    assert cause.detail["observed_identity"] == "BBBB-a-decoy"
+    assert cause.remediation.remedy is None, (
+        "the library volume's remedy is a false sentence about a mapped one"
+    )
+    assert "library.location_prefix_map[1]" in cause.remediation.steps[0]
+
+
+def test_an_empty_directory_where_a_volume_mounts_is_not_that_volume(cfg, tmp_path, monkeypatch):
+    """R-51. What an unclean eject leaves behind passes every existence check.
+
+    The directory is there, so ``stat`` is satisfied, and it sits on whichever
+    disk holds the mount path, so the identity read for it is that disk's. With
+    nothing enumerated as mounted, the recorded volume is simply somewhere else.
+    """
+    stale = tmp_path / "Volumes" / "ARCHIVE"
+    stale.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(stale), _ARCHIVE)])
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert excinfo.value.cause.detail["state"] == str(preflight.MountState.FOREIGN_VOLUME)
+
+
+def test_a_recorded_volume_that_is_not_mounted_anywhere_has_its_own_slug(
+    cfg, tmp_path, monkeypatch
+):
+    _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id)
+    absent = tmp_path / "Volumes" / "ARCHIVE"
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(absent), _ARCHIVE)])
+
+    assert excinfo.value.cause.reason == "mapped-volume-unmounted"
+    assert str(absent) in excinfo.value.cause.remediation.steps[0]
+
+
+def test_a_recorded_volume_mounted_somewhere_else_says_where(cfg, tmp_path, monkeypatch):
+    actually = tmp_path / "Volumes" / "ARCHIVE 1"
+    actually.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {actually: _ARCHIVE}, otherwise=cfg.library.volume_id)
+    configured = tmp_path / "Volumes" / "ARCHIVE"
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(configured), _ARCHIVE)])
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert str(actually.resolve()) in excinfo.value.cause.remediation.steps[0]
+
+
+def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_the_identity(
+    cfg, tmp_path, monkeypatch
+):
+    """The refusal a person meets the day this gate arrives, one edit from a run.
+
+    It names the rule by its config key and the identity the disk shows NOW, so
+    the act is "check that is the right disk, then record it", not a search for
+    how to read a volume identity.
+    """
+    archive = tmp_path / "Volumes" / "ARCHIVE"
+    archive.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive))])
+
+    cause = excinfo.value.cause
+    assert cause.reason == "mapped-volume-mismatch"
+    assert cause.detail["state"] == str(preflight.MountState.IDENTITY_NOT_RECORDED)
+    assert cause.detail["observed_identity"] == _ARCHIVE
+    step = cause.remediation.steps[0]
+    assert _ARCHIVE in step and "library.location_prefix_map[0]" in step and "volume_id" in step
+
+
+def test_a_volume_nested_under_the_library_root_is_not_the_library(cfg, monkeypatch):
+    """The inside-the-root answer is an ASSERTION of the library's identity, not a pass."""
+    nested = Path(cfg.library.root) / "Archive"
+    nested.mkdir()
+    _mounts.stand_in(monkeypatch, {nested: "BBBB-nested"}, otherwise=cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(nested))])
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert excinfo.value.cause.detail["recorded_identity"] == cfg.library.volume_id
+
+
+def test_a_rule_target_whose_identity_cannot_be_read_refuses(cfg, tmp_path, monkeypatch):
+    """Destructive strength. "I could not look" is not "it is the right disk"."""
+    archive = tmp_path / "Volumes" / "ARCHIVE"
+    archive.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {archive: None}, otherwise=cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)])
+
+    assert excinfo.value.cause.detail["state"] == str(preflight.MountState.IDENTITY_UNAVAILABLE)
+
+
+def test_a_matched_volume_with_the_directory_absent_is_left_to_the_pass_that_follows_the_rule(
+    cfg, tmp_path, monkeypatch
+):
+    """The one non-OK pass, and the reason is that the identity question was answered."""
+    archive = tmp_path / "Volumes" / "ARCHIVE"
+    archive.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
+    rule = locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive / "never-made"), _ARCHIVE)
+
+    proved = _mapped(cfg, [rule])
+
+    assert [status.state for status in proved] == [preflight.MountState.LIBRARY_PATH_MISSING]
+
+
+def test_an_empty_mount_slot_refuses_even_when_the_recorded_identity_matches_it(
+    cfg, tmp_path, monkeypatch
+):
+    """The review's first finding, and the way a correct looking config reopens R-51.
+
+    An ejected drive leaves its mount point on the disk that holds the mount
+    directory. A rule that recorded THAT disk's identity, because a refusal once
+    offered it or because the library shares the disk, matches the leftover
+    directory perfectly. So the slot is asked about before any identity is
+    compared, and what is recorded cannot talk it round.
+    """
+    volumes = tmp_path / "Volumes"
+    leftover = volumes / "ARCHIVE"
+    leftover.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id, slots_under=volumes)
+    rule = locations.PrefixRule(_RECORDED_ELSEWHERE, str(leftover), cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [rule])
+
+    assert excinfo.value.cause.reason == "mapped-volume-unmounted"
+    assert excinfo.value.cause.detail["state"] == "mount_slot_empty"
+
+
+def test_an_ejected_drive_is_never_offered_the_boot_disks_identity_to_record(
+    cfg, tmp_path, monkeypatch
+):
+    """The refusal that hands over an identity must not hand over the wrong disk's.
+
+    Nothing recorded, drive ejected, mount point left behind. A walk upward from
+    there reads the disk holding the mount directory, and a step saying "it
+    identifies as that, record it" is an instruction to disarm this gate for
+    good. The identity named here belongs to no volume in the test, so its
+    absence from the whole refusal is the assertion.
+    """
+    volumes = tmp_path / "Volumes"
+    (volumes / "ARCHIVE").mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {}, otherwise="CCCC-the-boot-disk", slots_under=volumes)
+    rule = locations.PrefixRule(_RECORDED_ELSEWHERE, str(volumes / "ARCHIVE"))
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [rule])
+
+    cause = excinfo.value.cause
+    assert cause.reason == "mapped-volume-unmounted"
+    said = cause.message + " ".join(cause.remediation.steps) + json.dumps(cause.detail)
+    assert "CCCC-the-boot-disk" not in said
+
+
+def test_a_foreign_volume_under_a_rule_that_recorded_nothing_offers_nothing_to_record(
+    cfg, monkeypatch
+):
+    """The wording half. The identity compared was the LIBRARY'S, and the refusal says so.
+
+    "The volume recorded on that rule" names a record that does not exist for a
+    rule inside the library root, and "record it as that rule's volume_id" would
+    invite a person to pin a nested disk as the answer.
+    """
+    nested = Path(cfg.library.root) / "Archive"
+    nested.mkdir()
+    _mounts.stand_in(monkeypatch, {nested: "BBBB-nested"}, otherwise=cfg.library.volume_id)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(nested))])
+
+    cause = excinfo.value.cause
+    assert "the library's volume" in cause.message
+    assert "recorded on that rule" not in cause.message
+    assert "volume_id" not in cause.remediation.steps[0]
+
+
+def test_a_way_to_the_target_this_account_cannot_walk_is_a_refusal_and_not_a_traceback(
+    cfg, tmp_path, monkeypatch
+):
+    """The review's third finding. "I could not look" reaches a person as a refusal.
+
+    The walk to a mount raises on a directory this account cannot traverse, and
+    an ``OSError`` escaping a gate arrives at the command line as an internal
+    defect with no slug, no exit code and no step.
+    """
+    archive = tmp_path / "archive"
+    archive.mkdir()
+
+    def cannot_walk(_path):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(preflight, "identity_source", cannot_walk)
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)])
+
+    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    assert excinfo.value.cause.detail["state"] == "unreachable"
+    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+
+
+def test_a_provider_that_cannot_read_the_identity_to_hand_over_is_a_refusal_too(cfg, tmp_path):
+    """The same finding at its second site, the read made while building the refusal."""
+    archive = tmp_path / "archive"
+    archive.mkdir()
+
+    def provider(_path):
+        raise PermissionError(13, "Permission denied")
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(
+            cfg,
+            [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive))],
+            identity_provider=provider,
+            mount_enumerator=lambda: (),
+        )
+    assert excinfo.value.cause.detail["state"] == "unreachable"
+
+
+def test_the_file_is_proved_where_the_file_is_and_not_where_the_rule_points(
+    cfg, tmp_path, monkeypatch
+):
+    """The review's fourth finding. A second volume inside the first is a third disk.
+
+    The rule's target is on the archive and proves itself. One directory under
+    it has another volume mounted in it, and a file in THAT directory would be
+    trashed on a disk nothing identified. Both halves are asserted, because a
+    probe that refuses everything passes the second half alone.
+    """
+    archive = tmp_path / "Volumes" / "ARCHIVE"
+    inner = archive / "Music" / "On Another Disk"
+    inner.mkdir(parents=True)
+    (archive / "Music" / "Here").mkdir()
+    _mounts.stand_in(
+        monkeypatch, {archive: _ARCHIVE, inner: "BBBB-inner"}, otherwise=cfg.library.volume_id
+    )
+    rules = [
+        locations.PrefixRule("/an/older/root", str(Path(cfg.library.root) / "Music")),
+        locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE),
+    ]
+    assert len(_mapped(cfg, rules)) == 2
+
+    held = session.assert_mapped_file_volume(
+        cfg, rules, 1, archive / "Music" / "Here" / "a.flac"
+    )
+    assert held.ok and held.observed_identity == _ARCHIVE
+
+    with pytest.raises(CratekitError) as excinfo:
+        session.assert_mapped_file_volume(cfg, rules, 1, inner / "a.flac")
+
+    cause = excinfo.value.cause
+    assert cause.reason == "mapped-volume-mismatch"
+    assert cause.detail["rule"] == 1 and cause.detail["probed"] == str(inner)
+    assert cause.detail["observed_identity"] == "BBBB-inner"
+
+
+def test_a_verdict_in_neither_table_fails_rather_than_wearing_the_mismatch_slug(
+    cfg, tmp_path, monkeypatch
+):
+    """The review's eighth finding. The table is indexed, so an undecided state is loud."""
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    undecided = {
+        state: slug
+        for state, slug in session._MAPPED_REASONS.items()
+        if state is not preflight.MountState.FOREIGN_VOLUME
+    }
+    monkeypatch.setattr(session, "_MAPPED_REASONS", undecided)
+
+    with pytest.raises(KeyError):
+        _mapped(
+            cfg,
+            [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)],
+            identity_provider=lambda _path: "BBBB-a-decoy",
+            mount_enumerator=lambda: (),
+        )
+
+
+def test_the_seams_handed_in_are_the_seams_used(cfg, tmp_path):
+    """An injected provider reaches the assertion, including the not-recorded read."""
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    seen: list[Path] = []
+
+    def provider(path):
+        seen.append(Path(path))
+        return _ARCHIVE
+
+    with pytest.raises(CratekitError) as excinfo:
+        _mapped(
+            cfg,
+            [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive))],
+            identity_provider=provider,
+            mount_enumerator=lambda: (),
+        )
+    assert excinfo.value.cause.detail["observed_identity"] == _ARCHIVE
+    assert seen, "the refusal read the identity through some other provider"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
