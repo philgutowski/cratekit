@@ -422,6 +422,60 @@ def test_a_staging_root_that_was_never_created_sweeps_to_nothing(cfg):
         assert acquire_cli.sweep_staging(Path(cfg.paths.download_staging), store) == ()
 
 
+def test_a_job_directory_that_cannot_be_LISTED_does_not_fail_the_verb(cfg, script, library):
+    """``_children`` swallows ``OSError`` and nothing drove the swallow.
+
+    Found by mutation: deleting the ``try``/``except`` and letting the error
+    escape killed NOTHING across the whole suite, while the sweep runs at the
+    head of a verb that has not started its real work yet. An unreadable
+    directory under the staging tree must not turn ``acquire download`` into an
+    unhandled ``PermissionError`` over housekeeping nobody asked for.
+
+    Mode ``0o111`` is the shape that reaches it: the account may traverse the
+    directory and may not list it, so ``is_dir`` still answers and ``iterdir``
+    raises. The directory is left where it is, which is the honest outcome,
+    because a sweep that could not see inside has not established that it is
+    empty.
+    """
+    script.landings = landings("1")
+    done = queued(listed(library, [("1", "A", "T")]))
+    drive(resume_argv(done))
+    blind = staging_tree(cfg) / done
+    blind.chmod(0o111)
+    try:
+        with pytest.raises(OSError):
+            list(blind.iterdir())
+
+        code, envelope = drive(["acquire", "download", str(listed(library, [("2", "B", "U")], name="second.json"))])
+    finally:
+        blind.chmod(0o700)
+
+    assert code == int(ExitCode.OK), envelope
+    assert blind.is_dir(), "an unlistable directory was removed on a guess"
+
+
+def test_the_sweep_does_not_report_a_directory_it_could_not_remove(cfg, script, library):
+    """The return value is a record of removals, so a failure must not enter it.
+
+    Found by mutation: turning ``_reclaim``'s ``return`` into ``pass``, so every
+    directory it touched was appended whether or not it went, killed nothing.
+    The refused landing case is the reachable one: that directory holds evidence
+    on purpose and will never be removed, and a caller reading this tuple as
+    what is gone would be reading the opposite of the truth.
+    """
+    script.landings = landings("1", kind="lossy", offer_lossless=True)
+    failed = queued(listed(library, [("1", "A", "T")]))
+    drive(resume_argv(failed))
+    kept = staging_tree(cfg) / failed / "0"
+    assert (kept / "1.mp3").is_file(), "the fixture did not leave a refused landing"
+
+    with jobs.open_store() as store:
+        removed = acquire_cli.sweep_staging(Path(cfg.paths.download_staging), store)
+
+    assert removed == ()
+    assert kept.is_dir()
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Failure paths of the engine this unit is the first to call
 # ═══════════════════════════════════════════════════════════════════════════
