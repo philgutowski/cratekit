@@ -5429,7 +5429,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Nothing refuses with any of the three. The review round's one slug,
     # restore-flag-needs-pull, is a key and joined in `session/restore_cli.py`,
     # a holder already: 462 to 463 distinct, non-keys UNCHANGED at 296.
-    assert (len(literals), len(literals - set(causes))) == (463, 296), (
+    # Re-pinned on the residual finding "Two backup jobs against one
+    # destination, and nothing says no", 2026-09-19: 463 to 464 distinct, 296 to
+    # 297 non-keys. ONE literal joined and nothing left,
+    # backup-already-queued in `backup/cli.py`, a holder already. It is the
+    # WARNING code a second `backup run` carries when it reports the open job
+    # in place of filing another. Nothing refuses with it, so the cause
+    # population does not move.
+    assert (len(literals), len(literals - set(causes))) == (464, 297), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

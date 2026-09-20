@@ -1,0 +1,457 @@
+{
+  "name": "r222-b",
+  "pass_kind": "light",
+  "branch": "relay/154",
+  "head": "efd6674",
+  "when": "2026-09-20 01:53 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9034,
+  "baseline_exit": 0,
+  "pytest_runs": 17,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/backup/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/backup/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d0e3df3c44e5ca83",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9034,
+    "baseline_collected": 9034,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_always_enqueue",
+      "description": "Never report a twin, which is the finding itself: every ask files another job",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "836cc7ad98746a29",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_payload_key_this_build_does_not_read_does_not_make_a_stranger",
+        "tests/test_backup_cli.py::test_an_open_backup_whose_destinations_cannot_be_read_is_not_read_as_elsewhere",
+        "tests/test_backup_cli.py::test_asking_for_a_backup_twice_reports_the_open_job_rather_than_a_second",
+        "tests/test_backup_cli.py::test_either_shared_destination_is_the_same_backup[archive_root]",
+        "tests/test_backup_cli.py::test_either_shared_destination_is_the_same_backup[dest]",
+        "tests/test_backup_cli.py::test_the_warnings_beside_a_reported_job_describe_that_job"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if found is not None:\n            twin, frozen = found",
+      "new": "        if False:\n            twin, frozen = found"
+    },
+    {
+      "id": "B2_any_verb_is_a_twin",
+      "description": "Drop the handler key comparison, so another verb's open job is reported as the backup",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cade20c5b1f08e23",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_another_verb_s_open_job_is_not_a_backup"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if job.handler_key != handler_key or job.library_id != cfg.library.volume_id:",
+      "new": "        if job.library_id != cfg.library.volume_id:"
+    },
+    {
+      "id": "B3_any_library_is_a_twin",
+      "description": "Drop the library comparison, so a job copying another library is reported as this one's backup",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1b35e12d4510ad00",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_another_library_s_open_backup_is_not_this_library_s"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if job.handler_key != handler_key or job.library_id != cfg.library.volume_id:",
+      "new": "        if job.handler_key != handler_key:"
+    },
+    {
+      "id": "B4_rehearsal_is_a_twin",
+      "description": "Drop the rehearsal flag comparison, so an open rehearsal answers a request for a real backup",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f4d7ad3a9512f9df",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_rehearsal_and_a_real_run_are_two_jobs",
+        "tests/test_backup_cli.py::test_the_frozen_payload_and_the_parser_agree_about_the_flag"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if bool((job.payload or {}).get(DRY_RUN)) != dry_run:\n            continue",
+      "new": "        if False:\n            continue"
+    },
+    {
+      "id": "B5_whole_payload_compared",
+      "description": "Compare the whole payload, so a job frozen with one more key is a stranger and a second backup is filed beside it",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ca1f2c75ce383982",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_payload_key_this_build_does_not_read_does_not_make_a_stranger"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if bool((job.payload or {}).get(DRY_RUN)) != dry_run:",
+      "new": "        if dict(job.payload or {}) != {DRY_RUN: dry_run}:"
+    },
+    {
+      "id": "B6_itemless_job_is_a_twin",
+      "description": "Report a job with no items, which refuses when driven, as the backup asked for",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "38794371c78b6b88",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_job_that_can_never_run_does_not_stand_in_for_a_backup"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not jobs.items(store, job.job_id):\n            continue\n        try:",
+      "new": "        if False:\n            continue\n        try:"
+    },
+    {
+      "id": "B7_unreadable_is_elsewhere",
+      "description": "Read a frozen configuration that cannot be rebuilt as somewhere else, and file a second job beside it",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "76284965d3980153",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_an_open_backup_whose_destinations_cannot_be_read_is_not_read_as_elsewhere"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except (config.ConfigError, ValueError):\n            return job, None",
+      "new": "        except (config.ConfigError, ValueError):\n            continue"
+    },
+    {
+      "id": "B8_every_exception_is_unreadable",
+      "description": "Catch every exception from the rebuild, so a defect in it is reported as an open backup with exit zero",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bf6ee1aaa4edc6bd",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_defect_in_rebuilding_a_configuration_is_not_reported_as_a_queued_backup"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except (config.ConfigError, ValueError):\n            return job, None",
+      "new": "        except Exception:\n            return job, None"
+    },
+    {
+      "id": "B9_mirror_not_compared",
+      "description": "Compare only the archive root, so two jobs syncing into one mirror with different archives are strangers",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "272c2e886125f389",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_either_shared_destination_is_the_same_backup[dest]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            frozen.backup.dest == cfg.backup.dest\n            or frozen.backup.archive_root == cfg.backup.archive_root",
+      "new": "            frozen.backup.archive_root == cfg.backup.archive_root"
+    },
+    {
+      "id": "B10_archive_not_compared",
+      "description": "Compare only the mirror, so two jobs rotating one archive root from different mirrors are strangers",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a00b976b79120d39",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_either_shared_destination_is_the_same_backup[archive_root]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            frozen.backup.dest == cfg.backup.dest\n            or frozen.backup.archive_root == cfg.backup.archive_root",
+      "new": "            frozen.backup.dest == cfg.backup.dest"
+    },
+    {
+      "id": "B11_finished_jobs_are_twins",
+      "description": "Read every state from the queue, so a backup that is over stands in for a new one for ever",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2c9822b1e22dcb25",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_backup_that_is_over_does_not_stand_in_for_a_new_one[cancelled]",
+        "tests/test_backup_cli.py::test_a_backup_that_is_over_does_not_stand_in_for_a_new_one[failed]",
+        "tests/test_backup_cli.py::test_a_backup_that_is_over_does_not_stand_in_for_a_new_one[succeeded]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for job in jobs.list_jobs(store, states=open_states):",
+      "new": "    for job in jobs.list_jobs(store):"
+    },
+    {
+      "id": "B12_warnings_from_the_live_configuration",
+      "description": "Describe the reported job from the configuration on disk rather than the one it was frozen against",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1ff21da020005dec",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_the_warnings_beside_a_reported_job_describe_that_job"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            described = cfg if frozen is None else frozen",
+      "new": "            described = cfg"
+    },
+    {
+      "id": "B13_twin_reported_in_silence",
+      "description": "Report the open job with no warning, so a second ask looks exactly like a first and nothing says no job was filed",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "681b2749600f9a9e",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_an_open_backup_whose_destinations_cannot_be_read_is_not_read_as_elsewhere",
+        "tests/test_backup_cli.py::test_asking_for_a_backup_twice_reports_the_open_job_rather_than_a_second",
+        "tests/test_backup_cli.py::test_either_shared_destination_is_the_same_backup[archive_root]",
+        "tests/test_backup_cli.py::test_either_shared_destination_is_the_same_backup[dest]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    _already_queued(twin, frozen),\n",
+      "new": ""
+    },
+    {
+      "id": "B14_destination_claimed_unread",
+      "description": "Reword the unreadable case to the ordinary sentence's opening, so the warning no longer says the configuration was not rebuilt",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "491a7443a2701198",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 70,
+      "baseline_collected": 70,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_an_open_backup_whose_destinations_cannot_be_read_is_not_read_as_elsewhere"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"its frozen configuration could not be rebuilt, so where it writes is \"",
+      "new": "        \"its frozen configuration was not consulted, so where it writes is \""
+    }
+  ],
+  "dropped": []
+}

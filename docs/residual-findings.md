@@ -12139,6 +12139,34 @@ succeeds. Only files the failed attempt had already overwritten are affected.
 the rotation counts attempts of one job as one slot, with a test that fails a
 mirror, retries it, and asserts the first attempt's archive is still there.
 
+**CLOSED 2026-09-19 on `relay/154`, by the second form, and wider than the entry
+asked.** The cost was reproduced first as five failing tests against a runner
+that HOLDS the dated folders the way a remote does, since a canned listing
+cannot show one attempt's purge taking a folder an earlier attempt wrote.
+
+Reusing a stamp had nowhere durable to live: the job engine gives a claimed item
+no scratch channel, `jobs.retry` clears the cause, and the handler gets no store.
+So the rotation changed instead. `_prune_archive` reads `_rotation_floor`, the
+stamp of the last COMPLETED mirror to this destination, which is the files
+portion's published age: written only on success and only after the prune, so at
+prune time it names the run before this one. Every folder named after the floor
+is HELD as one slot and the rest of the keep is spent on the settled folders. No
+record for this destination holds everything. A record that cannot be read
+purges nothing and raises what the publish would raise a moment later. A
+rehearsal never reads it. A keep of zero still keeps nothing. The held names are
+the top of the sort order, so the kept set is never smaller than it was.
+
+**The same shape one file over is covered by the same rule:** a NEW job filed
+after a failed one purged the failed attempt's folder exactly as a retry did, and
+a stamp reused per job would have missed it. The local snapshot rotation in
+`core/rb_writer.py` was read and already spares what an open run references.
+
+Five existing prune tests assumed a purge with no completed mirror on record and
+were restated, two rehearsal tests among them re-armed so they can still see a
+purge. Mutation table `docs/mutation/r222-a.md`, 11 rows, 11 killed. What is
+still open is filed as R-556, and R-549 gained a note on how this rule changes
+its shape.
+
 ## R-223. Two backup jobs against one destination, and nothing says no
 
 **Found:** during U50, 2026-09-02, while binding the backup worker.
@@ -12161,6 +12189,25 @@ other's archive.
 
 **Closes when:** `backup_library` reports the open backup job rather than filing a
 second, with a test that runs the verb twice and asserts one job.
+
+**CLOSED 2026-09-19 on `relay/154`.** Before enqueueing, `backup_library` looks
+for an open job of the same verb, for the same library, with the same rehearsal
+flag, at least one item, and a frozen configuration sharing this one's mirror OR
+its archive root. It reports that job in the envelope a first ask gets, with the
+warning `backup-already-queued` naming the job's FROZEN destinations and how to
+continue or cancel it. A rehearsal and a real run stay two jobs. A frozen
+configuration that cannot be rebuilt is a twin, never somewhere else, and only
+the configuration's own failures count as that.
+
+**The built in review raised eight findings and six were applied**, all on this
+half: whole payload equality, a bare `except Exception`, a message naming the
+LIVE mirror when the twin matched on the archive root alone, the share and
+identity warnings computed from the live configuration, no library comparison,
+and a full table read of the queue. The cost this entry names, each run pruning
+the other's archive, is also gone by the other door: both runs' folders sit
+after the floor, so neither rotation takes the other's. Mutation table
+`docs/mutation/r222-b.md`, 14 rows, 14 killed. What is still open is filed as
+R-557 and R-558.
 
 ## R-224. A portion that refuses can only be recorded as failed
 
@@ -22368,6 +22415,15 @@ facing.
 **Closes when:** the probe's measurement is made independent of how loaded the
 machine is, or the test says what load it tolerates.
 
+**Second sighting, 2026-09-19 on `relay/154`, and this time OUTSIDE the driver.**
+Four full suite runs were made by hand on this branch and the test died in one
+of them, the third, with the other three at 9033 passed. Alone it then passed
+three of three, 10.9 seconds on the first and under half a second after. The
+eight full runs inside `scripts/mutate.py` on this branch, two baselines, two
+null controls and none promoted, had no death. The branch touches nothing the
+test reads. So the first entry's guess that the driver's load is what kills it
+does not hold: an ordinary parallel suite run does too, one in four here.
+
 ---
 
 ## R-549. The archive rotation purges the newest dated archive when a stray folder sorts after it
@@ -22396,6 +22452,16 @@ was driven against a real remote.
 which is already in the module, and never purges a name it did not write. Board
 bar (a) and (d). **Its issue is owed**, since a Relay session cannot open one
 before the merge puts the number on `main`.
+
+**Changed shape 2026-09-19 on `relay/154`, still open.** The rotation now holds
+every name sorting after the last completed mirror's stamp as one slot. A stray
+folder named with a letter sorts after every date, so it is HELD for ever and
+occupies that slot: the dated folders written since the floor are held with it
+and are no longer purged, and on a run that overwrote nothing the settled dated
+folders are all purged where the newest should have stayed. Re-driven over the
+entry's own listing in reasoning only, NOT at the engine. The kept set is never
+smaller than it was before that branch, so the branch made this no worse, and
+the closing condition is unchanged.
 
 ---
 
@@ -22531,3 +22597,62 @@ considered, none driven.
 database file, before anything is cleared. Could meet board bar (a); it says a
 producer has to be driven first.
 
+---
+
+## R-556. A settled run's attempts are counted one by one again at a keep above one
+
+**Found:** 2026-09-19, on `relay/154`, by the built in review. NOT driven.
+
+The rotation groups only the newest slot. At a keep of two, a run that failed
+(folder a) and was retried to success (folder b) is held whole, and the NEXT
+completed run sees a and b as two settled folders, keeps b and purges a while the
+run a belongs to is still inside the keep. Grouping settled runs needs a record
+of which folders made a run, which the floor alone does not carry.
+
+**Reachability:** `archive_keep` is a parameter of `plan_backup` that no shipped
+verb passes, so every real run keeps one, and at one the defect cannot occur. One
+candidate producer was read, `backup/cli.py`, and it does not pass the value.
+
+Maintainer facing until a verb or a configuration key exposes the keep.
+**Closes when:** the keep is exposed and the rotation groups settled runs, or the
+parameter is removed.
+
+---
+
+## R-557. Two asks in the same instant can still file two backup jobs
+
+**Found:** 2026-09-19, on `relay/154`, by the built in review. NOT driven.
+
+`_open_twin` and `jobs.enqueue` are two steps. `enqueue` opens its own immediate
+transaction around the insert alone, so two `backup run` processes starting
+together can both find no twin and both file. A person typing the verb twice is
+sequential and is covered. Nothing in the product schedules the verb.
+
+Sharing one transaction means `enqueue` accepting a connection it did not open,
+which is a change to the job engine every queued verb calls, and it was left
+alone for that reason. **The cost is smaller than it was:** two runs no longer
+prune each other's archive, since both sit after the floor, so what is left is
+two syncs interleaving into one mirror.
+
+**Closes when:** the scan and the insert share one immediate transaction, or a
+check after the insert cancels the later of two twins.
+
+---
+
+## R-558. Two backup jobs that are already open can both be driven at once
+
+**Found:** 2026-09-19, on `relay/154`, looking for the closed shape on the
+performing path. NOT driven.
+
+The guard is at enqueue. Two open backup jobs can still exist: filed before this
+branch, filed through R-557, or made by `crate job resume` re-arming a FAILED
+backup while a newer one is open. Each takes its own driver lock, and nothing at
+drive time asks whether another backup of this destination is running.
+
+**The cost is two syncs interleaving into one mirror, and no longer a lost
+archive**, for the reason in R-557. Eighteen other verbs also enqueue
+unconditionally; which of them name a shared target was NOT measured. The
+write verbs among them run under the library write lock.
+
+**Closes when:** the resume branch refuses while another open backup of the same
+destination holds its driver lock.

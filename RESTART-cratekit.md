@@ -4,7 +4,53 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-154 with R-153, issue #153, `relay/153`, 2026-09-19.**
+**Last merged: R-222 with R-223, issue #154, `relay/154`, 2026-09-19.**
+The archive rotation counts a RUN and not an attempt, and asking for a backup
+twice is one job, which CLOSES R-222 and R-223. `_prune_archive` reads
+`_rotation_floor`, the stamp of the last COMPLETED mirror to this destination,
+taken from the files portion's published age. Every dated folder named after it
+is HELD as one slot of the keep and the settled folders rotate newest first. It
+works because the age is published only on success and only after the prune.
+Reusing a stamp across attempts, the brief's sketch, had nowhere durable to
+live: a claimed item has no scratch channel and `jobs.retry` clears the cause.
+The floor also covers a NEW job filed after a failed one, which a per job stamp
+would not.
+**WHAT A PERSON MAY MEET, two things.** With no completed mirror on record for
+the configured destination, which is every library on the day this lands and
+any library after its destination is changed, the rotation purges NOTHING on
+that run and rotates normally from the next one. And a second `backup run`
+while one is open returns the open job's identifier with the warning
+`backup-already-queued`, exit 0, naming the job's FROZEN mirror and archive
+root. A rehearsal and a real run are still two jobs.
+**The code review raised eight findings, six applied, all on the twin guard**:
+whole payload equality, a bare `except Exception`, a message naming the live
+mirror when the twin matched on the archive root alone, warnings computed from
+the live configuration, no library comparison, and a full table read of the
+queue. Not applied and filed: R-556 and R-557.
+**A trap this unit nearly walked into, filed as the learning**: making the
+rotation purge nothing with no record made the two tests that prove a rehearsal
+never purges VACUOUS, green with their guard removed. Seven existing prune tests
+now start from the `a_completed_mirror` fixture and dated names, because a word
+like "one" sorts after every date and is held.
+The kebab literal pin in `tests/test_reserved_causes.py` moved 463 to 464,
+non keys 296 to 297, for `backup-already-queued`, a warning and not a cause.
+Battery: ruff clean, **9033 passed** and 1 skipped in 87 seconds, scan clean, 29
+of them new. Mutation tables `docs/mutation/r222-a.md` and `r222-b.md`, summary
+`r222-notes.md`: 25 rows at the cap, the author's own, 25 killed, null controls
+at zero of 9034 collected, two FOREGROUND batches of about four minutes each.
+The learning is under `docs/solutions/workflow-issues/`, the one about a safer
+default. `CONCEPTS.md` gains Rotation floor and Twin.
+Filed: R-556 to R-558, none meeting the board bar today, and R-549 gained a
+note: a stray folder under the archive root is now HELD for ever instead of
+being kept as the newest, same closing condition, **its issue still owed**.
+**R-548 was seen a second time, outside the mutation driver**: the pool sizing
+test that times a freshly spawned child died in one of four hand made full suite
+runs on this branch and passed three of three alone. A red gate naming only
+`tests/test_pool_sizing.py::test_the_real_probe_measures_a_freshly_spawned_child`
+is that flake and not this unit.
+**Main's highest residual number is R-558.**
+
+**The session before: R-154 with R-153, issue #153, `relay/153`, 2026-09-19.**
 A snapshot pulled off the remote is now a dated folder name and this library's,
 and the confirmation digests the stamp it will really pull, which CLOSES R-154
 and R-153. `backup.resolve_snapshot` is the one place a snapshot is chosen. The
@@ -68,7 +114,7 @@ R-512's, R-482's and R-477's issues are still owed** from earlier sessions.
 **Owed to an attended sitting:** one real backup showing the marker on the
 remote, and one `restore run --from-backup --target` into a scratch directory
 resolving it, R-551.
-**Main's highest residual number is R-555.**
+Main's highest residual number was R-555 at that merge.
 
 **The session before: R-44, issue #152, `relay/152`, 2026-09-19.**
 The deletion pass now proves the identity of EVERY volume a prefix rule points

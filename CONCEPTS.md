@@ -296,6 +296,24 @@ source system wrote, it is never the default and is pulled only when a person
 names it. A **named** snapshot is one whose stamp a person typed: a stamp the
 verb resolved off a listing and handed down is not named, however it arrives.
 
+### Rotation floor
+The stamp of the last COMPLETED mirror to the configured destination, taken from
+the files portion's published backup age. The archive rotation compares dated
+folder names with it. A folder named after the floor was written by an attempt
+at the run now finishing and is **held**, all of them together as one slot of
+the keep. A folder at or before it is **settled** and rotates out newest first.
+No floor, which is no completed mirror on record for this destination, holds
+everything. It works because the age is published only on success and only
+after the prune, so at prune time it still names the run before this one.
+
+### Twin
+An open backup job that already IS the backup being asked for: the same verb,
+the same library, the same rehearsal flag, at least one item, and a FROZEN
+configuration sharing the asker's mirror or its archive root. `backup run`
+reports a twin with the warning `backup-already-queued` and files nothing. A
+rehearsal is never the twin of a real run. A job whose frozen configuration
+cannot be rebuilt is a twin, because could not read is not somewhere else.
+
 ## Verification
 
 ### Guard
