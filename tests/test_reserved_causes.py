@@ -5021,7 +5021,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # registered and not in the reserved table, exactly as the three
     # setbuild-anchor slugs beside it are. Population 172 to 173, non-reserved
     # 145 to 146, reserved half UNCHANGED at 27.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (173, 146, 27)
+    #
+    # Re-pinned on U105, 2026-09-20. ONE slug, named rather than counted:
+    # target-lufs-out-of-range, which the mastering verb raises when --lufs is
+    # outside the range loudnorm accepts or is not a finite number, so no job is
+    # queued whose only outcome is ffmpeg rejecting its filter. It is the verb's
+    # own, registered and not in the reserved table, exactly as
+    # vocal-cut-out-of-range is. Population 173 to 174, non-reserved 146 to 147,
+    # reserved half UNCHANGED at 27.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (174, 147, 27)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
