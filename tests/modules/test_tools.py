@@ -2865,6 +2865,13 @@ def test_a_folder_rclone_says_is_absent_is_not_a_listing_failure(
             runner=recorder, process_lister=no_processes, gates=open_gates)
     assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
     assert phrase in excinfo.value.detail
+    if named is not None:
+        # "No snapshot exists yet" is false for a stamp that was typed, so the
+        # reservation has to reach that person with a step of its own.
+        from cratekit.cli import exit_codes
+
+        steps = exit_codes.remediation_for(str(excinfo.value.refusal)).steps
+        assert any("--snapshot" in step and "check the stamp" in step for step in steps)
 
 
 def test_an_unmarked_snapshot_is_pulled_only_when_a_person_named_it(

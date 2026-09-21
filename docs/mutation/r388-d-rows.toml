@@ -1,0 +1,13 @@
+name = "r388-d"
+pass_kind = "light"
+
+[[rows]]
+id = "M16_named_stamp_step_dropped_remeasured"
+description = "Re-measure of M16 after the pin: drop the named stamp step added to no-snapshot-available"
+file = "src/cratekit/cli/exit_codes.py"
+surface = "user"
+old = '''            "when --snapshot named a stamp, that snapshot or its database "
+            "folder is not on the remote; check the stamp, or leave the flag "
+            "off to take the newest",
+'''
+new = ""
