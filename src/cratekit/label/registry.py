@@ -12,7 +12,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from cratekit.core import config
@@ -23,10 +23,43 @@ DEFAULT_TRACK_LIMIT = 400
 
 _SLUG = re.compile(r"[^a-z0-9]+")
 
+#: German letters whose source system spelling is two letters, not the base
+#: letter NFKD would leave. ``Schön`` is ``schoen`` there, never ``schon``.
+_TRANSLITERATE = str.maketrans(
+    {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ẞ": "Ss"}
+)
+
+
+def _fold(text: str) -> str:
+    """The fold alone, every run outside ``[a-z0-9]`` to one hyphen."""
+    return _SLUG.sub("-", text.lower()).strip("-")
+
+
+def _legacy_slug(name: str) -> str:
+    """The identifier a name got before R-381, the fold with no transliteration.
+
+    Kept for the loader and for :meth:`RegistryStore.add` only, to recognise an
+    entry written under it. Nothing new is ever keyed on it.
+    """
+    return _fold(name)
+
 
 def slug(name: str) -> str:
-    """Stable identifier derived from a name at creation time, never later."""
-    folded = _SLUG.sub("-", name.lower()).strip("-")
+    """Stable identifier derived from a name at creation time, never later.
+
+    TRANSLITERATED BEFORE IT FOLDS (R-381). The umlauts and ``ß`` first, then
+    NFKD with the combining marks dropped, so ``Sueño`` is ``sueno`` and
+    ``Voll Schön`` is ``voll-schoen``, the identifiers the source system used.
+    The umlauts go first because NFC gives ``ö`` as one code point, so the table
+    catches it before NFKD can split it into ``o`` and a mark.
+    """
+    composed = unicodedata.normalize("NFC", name).translate(_TRANSLITERATE)
+    stripped = "".join(
+        char
+        for char in unicodedata.normalize("NFKD", composed)
+        if not unicodedata.combining(char)
+    )
+    folded = _fold(stripped)
     if not folded:
         raise refuse(
             "label-name-invalid",
@@ -147,12 +180,33 @@ class LabelEntry:
 
 @dataclass(frozen=True, slots=True)
 class Registry:
-    """The intent document, keyed by ``label_id``."""
+    """The intent document, keyed by ``label_id``.
+
+    ``renamed`` is every identifier the loader moved, old to new, kept so a
+    library scoped watermark keyed on the old one can follow it later
+    (:mod:`cratekit.label.marks`). The registry cannot move those itself, it is
+    installation scoped and has no configuration naming a library.
+    """
 
     labels: dict[str, LabelEntry]
+    renamed: Mapping[str, str] = field(default_factory=dict)
 
     def by_id(self, label_id: str) -> LabelEntry | None:
-        return self.labels.get(label_id)
+        """The entry, following an R-381 move when the old identifier is free.
+
+        A sweep job queued before the move froze the old identifier as its
+        item, and refusing it ``label-unknown`` would send a person to add a
+        label literally named that. A held identifier always wins, so an old one
+        reused by a new label is that label's.
+        """
+        found = self.labels.get(label_id)
+        if found is None and label_id in self.renamed:
+            found = self.labels.get(self.renamed[label_id])
+        return found
+
+    def live_renames(self) -> dict[str, str]:
+        """The moves still in force, those whose old identifier nobody holds."""
+        return {old: new for old, new in self.renamed.items() if old not in self.labels}
 
     def by_name(self, name: str) -> LabelEntry | None:
         wanted = _name_key(name)
@@ -198,7 +252,60 @@ def recognize(raw: Any) -> Registry:
             continue
         entry = _entry_from(str(key), value)
         found[entry.label_id] = entry
-    return Registry(labels=found)
+    moved = raw.get("renamed")
+    renamed = (
+        {str(old): str(new) for old, new in moved.items() if isinstance(new, str)}
+        if isinstance(moved, Mapping)
+        else {}
+    )
+    return Registry(labels=found, renamed=renamed)
+
+
+def _migrated_id(entry: LabelEntry) -> str | None:
+    """The identifier R-381 moves this entry to, or None if it stays.
+
+    Only an entry whose identifier is EXACTLY the old fold of its own name
+    moves. A label renamed since it was created, or one added under an
+    identifier the source system chose, was not produced by the old fold and is
+    left alone, because a slug is stable once created.
+    """
+    try:
+        new = slug(entry.name)
+    except CratekitError:
+        return None
+    if new == entry.label_id or entry.label_id != _legacy_slug(entry.name):
+        return None
+    return new
+
+
+def migrate(held: Registry) -> tuple[Registry, dict[str, str]]:
+    """Re-key every entry the old fold produced, and say which moved.
+
+    A NEW IDENTIFIER ALREADY TAKEN IS NOT A MOVE. The entry keeps its old
+    identifier, so neither label loses its record or its watermarks, and the
+    collision stays visible as an old style identifier rather than a merge.
+    Taken means held by another entry now, or by one this pass already moved.
+    """
+    taken = set(held.labels)
+    labels: dict[str, LabelEntry] = {}
+    moved: dict[str, str] = {}
+    for old, entry in held.labels.items():
+        new = _migrated_id(entry)
+        if new is None or new in taken:
+            labels[old] = entry
+            continue
+        taken.add(new)
+        labels[new] = LabelEntry(
+            label_id=new,
+            name=entry.name,
+            match=entry.match,
+            seed_artists=entry.seed_artists,
+            track_limit=entry.track_limit,
+        )
+        moved[old] = new
+    if not moved:
+        return held, moved
+    return Registry(labels=labels, renamed={**held.renamed, **moved}), moved
 
 
 def empty() -> Registry:
@@ -244,6 +351,24 @@ class RegistryStore:
         )
 
     def load(self) -> Registry:
+        """The registry, with every R-381 move made and written.
+
+        A move is written through :meth:`update`, under the lock, so a load
+        racing an edit re-reads and re-plans rather than writing a stale copy.
+        IF THE MOVE CANNOT BE WRITTEN, THE DOCUMENT IS RETURNED AS STORED.
+        Returning the moved view unwritten would hand a caller identifiers the
+        file does not hold, and a queued item frozen on one would name a label
+        the next process cannot find.
+        """
+        held = self._read()
+        if not migrate(held)[1]:
+            return held
+        try:
+            return self.update(lambda current: False)
+        except (CratekitError, OSError):
+            return held
+
+    def _read(self) -> Registry:
         if not self.path.exists():
             return empty()
         try:
@@ -260,10 +385,17 @@ class RegistryStore:
         return recognize(raw)
 
     def _write(self, held: Registry) -> None:
-        payload = {
+        payload: dict[str, Any] = {
             "version": REGISTRY_VERSION,
             "labels": {key: entry.to_json() for key, entry in held.labels.items()},
         }
+        renamed = held.live_renames()
+        if renamed:
+            # Only when something moved, so a registry R-381 never touched
+            # keeps the shape it has always had. A move whose old identifier a
+            # new label now holds is dropped, so it can never hand that label's
+            # watermark to the label that moved.
+            payload["renamed"] = renamed
         config.atomic_write_bytes(
             (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
             self.path,
@@ -291,10 +423,13 @@ class RegistryStore:
                 detail={"lock": str(self.lock_path)},
             ) from exc
         try:
-            current = dict(self.load().labels)
+            # The R-381 move is made here, inside the lock, before the mutator
+            # sees the entries, and it is written even when the mutator opts out.
+            stored, moved = migrate(self._read())
+            current = dict(stored.labels)
             changed = mutator(current)
-            held = Registry(labels=current)
-            if changed is not False:
+            held = Registry(labels=current, renamed=stored.renamed)
+            if changed is not False or moved:
                 self._write(held)
             return held
         finally:
@@ -313,12 +448,24 @@ class RegistryStore:
         Every seed and the limit are checked before the lock is taken, so a
         refused field writes nothing, not even the fields beside it.
         """
-        label_id = slug(name)
+        new_id = slug(name)
         seeds = _checked_seeds(seed_artists)
         if track_limit is not None:
             check_track_limit(track_limit)
+        written: list[str] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
+            # AN ENTRY THE MIGRATION LEFT UNDER ITS OLD IDENTIFIER IS THIS
+            # LABEL, not the one holding the new slug. That is the collision
+            # case, and keying on the new slug would overwrite the other label's
+            # display name with this one's.
+            legacy = current.get(_legacy_slug(name))
+            label_id = (
+                legacy.label_id
+                if legacy is not None and _name_key(legacy.name) == _name_key(name)
+                else new_id
+            )
+            written.append(label_id)
             existing = current.get(label_id)
             current[label_id] = LabelEntry(
                 label_id=label_id,
@@ -333,7 +480,7 @@ class RegistryStore:
             )
 
         self.update(mutate)
-        return label_id
+        return written[-1]
 
     def adopt(self, names: Sequence[str]) -> tuple[Adopted, ...]:
         """Add each name the registry does not already hold, under one lock.
@@ -341,10 +488,10 @@ class RegistryStore:
         NOT :meth:`add`, which re-adds by identifier and overwrites the display
         name a person chose. A name is PRESENT when it resolves the way every
         other verb resolves one: by identifier, by folded display name, then by
-        its slug. The fold is what R-381 makes load bearing. A label carried over
-        as ``Sueño`` under the source system's identifier ``sueno`` slugs to
-        ``sue-o`` today, so a check on the slug alone would file a second entry
-        for it, with watermarks nobody can see from the first.
+        its slug. The fold is what R-381 made load bearing. A label carried over
+        under an identifier the source system chose, which need not be what
+        :func:`slug` derives from its name, would be filed a second time by a
+        check on the slug alone, with watermarks nobody can see from the first.
 
         Resolution is against the registry AS IT STANDS INSIDE THE LOCK, entries
         this call has already added included, so two spellings of one label in

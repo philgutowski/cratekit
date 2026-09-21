@@ -1,0 +1,147 @@
+name = "r381"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_fold_only_slug"
+description = "Restore the fold only slug, the brief's named row: slug folds the raw name and transliterates nothing"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''    folded = _fold(stripped)'''
+new = '''    folded = _fold(name)'''
+
+[[rows]]
+id = "M2_no_umlaut_table"
+description = "Drop the umlaut and sharp s table, so NFKD alone turns Schön into schon"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''    composed = unicodedata.normalize("NFC", name).translate(_TRANSLITERATE)'''
+new = '''    composed = unicodedata.normalize("NFC", name)'''
+
+[[rows]]
+id = "M3_keep_combining_marks"
+description = "Keep the combining marks after NFKD, so they fold to hyphens as before"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''        if not unicodedata.combining(char)'''
+new = '''        if unicodedata.combining(char) or True'''
+
+[[rows]]
+id = "M4_migrate_ignores_taken"
+description = "migrate moves an entry onto a slug another entry already holds"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''        if new is None or new in taken:'''
+new = '''        if new is None:'''
+
+[[rows]]
+id = "M5_migrate_any_identifier"
+description = "migrate moves any entry whose slug differs, not only one the old fold produced"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''    if new == entry.label_id or entry.label_id != _legacy_slug(entry.name):'''
+new = '''    if new == entry.label_id:'''
+
+[[rows]]
+id = "M6_update_skips_move_write"
+description = "update writes nothing for a move when the mutator opts out, so load never persists a migration"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''            if changed is not False or moved:'''
+new = '''            if changed is not False:'''
+
+[[rows]]
+id = "M7_load_never_migrates"
+description = "load returns the stored document without planning a move"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''        if not migrate(held)[1]:
+            return held'''
+new = '''        if True:
+            return held'''
+
+[[rows]]
+id = "M8_no_renamed_map"
+description = "The writer leaves the renamed map out, so no watermark can follow"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''        if renamed:
+            # Only when something moved'''
+new = '''        if False:
+            # Only when something moved'''
+
+[[rows]]
+id = "M9_live_renames_unfiltered"
+description = "live_renames keeps a move whose old identifier a new label holds again"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''        return {old: new for old, new in self.renamed.items() if old not in self.labels}'''
+new = '''        return dict(self.renamed)'''
+
+[[rows]]
+id = "M10_by_id_no_follow"
+description = "by_id stops following the renamed map, so a frozen old identifier refuses label-unknown"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''        if found is None and label_id in self.renamed:'''
+new = '''        if found is None and label_id in ():'''
+
+[[rows]]
+id = "M11_add_ignores_legacy"
+description = "add keys on the new slug alone, so a collided label overwrites its neighbour"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''                if legacy is not None and _name_key(legacy.name) == _name_key(name)'''
+new = '''                if False'''
+
+[[rows]]
+id = "M12_add_legacy_any_name"
+description = "add takes the entry under the old fold whatever its display name"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''                if legacy is not None and _name_key(legacy.name) == _name_key(name)'''
+new = '''                if legacy is not None'''
+
+[[rows]]
+id = "M13_follow_overwrites"
+description = "marks follow overwrites a year already held under the new identifier"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+old = '''        if old in records and new not in records:'''
+new = '''        if old in records:'''
+
+[[rows]]
+id = "M14_follow_all_renames"
+description = "marks follows every recorded move, including one whose old identifier is held again"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+old = '''        renamed = registry.RegistryStore().load().live_renames()'''
+new = '''        renamed = registry.RegistryStore().load().renamed'''
+
+[[rows]]
+id = "M15_read_does_not_persist"
+description = "read answers the followed year and never writes the move"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+old = '''                if _follow(held):
+                    _write(cfg, held)'''
+new = '''                if _follow(held):
+                    pass'''
+
+[[rows]]
+id = "M16_advance_does_not_follow"
+description = "advance writes without following, so another label's advance leaves the old key"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+old = '''        _follow(records)
+        records[label_id] = recorded'''
+new = '''        records[label_id] = recorded'''
+
+[[rows]]
+id = "M17_read_no_follow"
+description = "read never follows, so a migrated label reads no year"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+old = '''    records = _load(cfg)
+    if _follow(records):'''
+new = '''    records = _load(cfg)
+    if False:'''

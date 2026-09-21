@@ -7,11 +7,14 @@ what a status view reports, and nothing in the sweep reads it to filter.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Mapping
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.label import registry
 
 MARKS_VERSION = 1
 
@@ -71,14 +74,32 @@ def _write(cfg: config.Config, records: Mapping[str, str]) -> None:
     )
 
 
-def read(cfg: config.Config, label_id: str) -> str | None:
-    """The last-pulled year for ``label_id``, or None if never recorded."""
-    return _load(cfg).get(label_id)
+def _follow(records: dict[str, str]) -> bool:
+    """Move each year the registry's R-381 re-key left behind. True if any moved.
+
+    The registry is installation scoped and cannot reach this library's file,
+    so it records its moves and this side follows them the next time it is
+    read. A new identifier that already has a year keeps it, and the old year
+    stays where it is rather than overwriting it.
+
+    AN UNREADABLE REGISTRY FOLLOWS NOTHING rather than refusing the watermark.
+    Nothing is claimed by not following, the year simply stays under the
+    identifier it was written with, and the registry's own verbs refuse it.
+    """
+    try:
+        renamed = registry.RegistryStore().load().live_renames()
+    except CratekitError:
+        return False
+    moved = False
+    for old, new in renamed.items():
+        if old in records and new not in records:
+            records[new] = records.pop(old)
+            moved = True
+    return moved
 
 
-def advance(cfg: config.Config, label_id: str, *, year: str | None = None) -> str:
-    """Record that this label was swept. Does not change the next scope."""
-    recorded = year or str(datetime.now().year)
+@contextmanager
+def _locked(cfg: config.Config, doing: str) -> Iterator[None]:
     lock = config._exclusive_lock(config.state_path("label_watermarks_lock", cfg))
     try:
         lock.__enter__()
@@ -86,15 +107,44 @@ def advance(cfg: config.Config, label_id: str, *, year: str | None = None) -> st
         raise refuse(
             "label-watermark-unusable",
             f"the per-label watermark could not be locked ({exc}), and "
-            f"advancing it unlocked discards a neighbour sweep's year",
+            f"{doing} unlocked discards a neighbour sweep's year",
             steps=("make the library state directory writable by this account",),
             scope=Scope.RUN,
             origin=("label.marks",),
         ) from exc
     try:
+        yield
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def read(cfg: config.Config, label_id: str) -> str | None:
+    """The last-pulled year for ``label_id``, or None if never recorded.
+
+    A year the R-381 re-key left under an old identifier is followed and
+    written. If the file cannot be locked the followed year is still the
+    answer, since a read that refused would be a new way for a status view to
+    fail, and the move is made by the next read or advance that can lock.
+    """
+    records = _load(cfg)
+    if _follow(records):
+        try:
+            with _locked(cfg, "moving a renamed label's year"):
+                held = _load(cfg)
+                if _follow(held):
+                    _write(cfg, held)
+                records = held
+        except CratekitError:
+            pass
+    return records.get(label_id)
+
+
+def advance(cfg: config.Config, label_id: str, *, year: str | None = None) -> str:
+    """Record that this label was swept. Does not change the next scope."""
+    recorded = year or str(datetime.now().year)
+    with _locked(cfg, "advancing it"):
         records = _load(cfg)
+        _follow(records)
         records[label_id] = recorded
         _write(cfg, records)
         return recorded
-    finally:
-        lock.__exit__(None, None, None)

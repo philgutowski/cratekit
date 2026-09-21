@@ -1,0 +1,103 @@
+{
+  "name": "r381-b",
+  "pass_kind": "light",
+  "branch": "relay/97",
+  "head": "ec19de7",
+  "when": "2026-09-21 08:10 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9794,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/registry.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/registry.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "f38755c7b90d2474",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9794,
+    "baseline_collected": 9794,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M12_add_legacy_any_name",
+      "description": "add takes the entry under the old fold whatever its display name",
+      "file": "src/cratekit/label/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0ee67f69302bd688",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_registry_adopt.py",
+        "tests/test_label_registry_verbs.py",
+        "tests/test_label_slug.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.registry",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 255,
+      "baseline_collected": 255,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_slug.py::test_a_renamed_entry_under_the_old_fold_is_not_taken_by_its_old_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if legacy is not None and _name_key(legacy.name) == _name_key(name)",
+      "new": "                if legacy is not None"
+    },
+    {
+      "id": "M14_follow_all_renames",
+      "description": "marks follows every recorded move, including one whose old identifier is held again",
+      "file": "src/cratekit/label/marks.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fe5e95f9198cd0a8",
+      "subset": [
+        "tests/modules/test_labels.py",
+        "tests/test_label_slug.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.marks",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_slug.py::test_a_stored_move_whose_old_identifier_is_held_is_not_followed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        renamed = registry.RegistryStore().load().live_renames()",
+      "new": "        renamed = registry.RegistryStore().load().renamed"
+    }
+  ],
+  "dropped": []
+}

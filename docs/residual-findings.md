@@ -17832,6 +17832,18 @@ rather than a correctness one.
 **Closes when:** the slug transliterates before folding, and a carried over
 registry produces the identifiers the source system used.
 
+**Closed 2026-09-21 on `relay/97`.** `registry.slug` maps the umlauts and `ß`
+to two letters, drops combining marks after NFKD, then folds, so `Sueño` is
+`sueno` and `Voll Schön` is `voll-schoen`. The loader re-keys an entry whose
+identifier is exactly the old fold of its name when the new slug is free, writes
+it under the lock, and records the move in a `renamed` map in the same document.
+`REGISTRY_VERSION` stays 1. The watermarks are library scoped and the registry
+has no configuration, so `label.marks` follows the map on its next read or
+advance and never overwrites a year already held under the new identifier. A
+taken slug leaves the old identifier. `by_id` follows a move, so a sweep item
+frozen on the old identifier still finds its label. What this leaves is R-642.
+Table in `docs/mutation/r381.md`.
+
 ---
 
 ## R-382. A playlist intake run on its own is not recorded, so the next sync queues it again
@@ -25684,3 +25696,31 @@ verb could not place. No issue until it is driven.
 its totals and a warning per reason, using `routing_pass.Placement` and the
 wording `routing_cli.SKIP_NEXT_ACT` already holds, or the finding is driven and
 shown not to reach a person.
+
+---
+
+## R-642. The R-381 migration is silent about a collision, and forgets a move once the old identifier is reused
+
+**Found:** building R-381 on `relay/97`, 2026-09-21, three leftovers in one place.
+
+1. **A collision is not reported.** When the new slug is already held, the
+   loader leaves the entry under its old fold, which is the brief's conservative
+   call, but no verb says so. The label keeps working, and its identifier stays
+   the mangled one with nothing on the screen saying why. Sitting 4 measured no
+   collision among the 47 live labels, so the producer is a future add, and it
+   was not driven on the tree.
+2. **A reused old identifier ends the move for every library.** Once a new
+   label takes an identifier a move vacated, the writer drops that move, so a
+   library whose watermark file had not been read or advanced since the
+   migration hands the old year to the new label. It needs a second library and
+   a name whose slug is the old fold, and it was driven only on a fixture.
+3. **The crawl cache is keyed on the label identifier**, so a migrated label
+   loses its cache and crawls again once. It costs time and network, not data.
+
+**Measured cost:** none of the three is reachable on the live registry today.
+None meets the board bar.
+
+**Closes when:** a collision is reported by `label registry list` or the loader,
+and a move stays in force until each library has followed it, or both are
+recorded as accepted.
+
