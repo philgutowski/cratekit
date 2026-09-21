@@ -1762,8 +1762,11 @@ ENTRIES: tuple[Entry, ...] = (
         # engine U35 landed, so the marker is gone and the conformance properties
         # drive this entry rather than skipping it. It declares no write surface
         # and that is load bearing: ``writes={"files"}`` would make it
-        # destructive by the invariant above, which is why the verb passes no
-        # cache path to ``build_index``.
+        # destructive by the invariant above. It DOES keep its index cache, the
+        # library scoped state file ``setbuilder_index_cache``, and that is not
+        # in ``writes`` on the ruling ``analyze.calibrate`` records above:
+        # the vocabulary is the library's own material, files, database and
+        # XML, and a cache is none of those (R-188).
     ),
     Entry(
         name="master",

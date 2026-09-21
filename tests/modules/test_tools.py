@@ -743,6 +743,71 @@ def test_a_cache_written_by_another_build_is_discarded_rather_than_deserialized(
     assert [t.title for t in index] == ["Title"]
 
 
+def test_a_cache_parsed_under_another_template_is_discarded(tmp_path):
+    """A cached entry is the OUTPUT of a parse, and the template is its other input.
+
+    Changing the lossy marker changes every marked file's clean title and match
+    key while touching no file's modification time, so a cache keyed on path and
+    time alone would serve the old title for ever. Driven with the marker moving
+    from one literal to another over a file that never changes.
+    """
+    root = tmp_path / "lib"
+    root.mkdir()
+    (root / "a.flac").touch()
+    cache = tmp_path / "cache.json"
+
+    def reader(path):
+        return {"title": "08A - 124 - [LOSSY] Title", "artist": "Alder"}
+
+    other = NameTemplate(markers=(MarkerRule(field="lossy", literal="[LOSSY]"),))
+    first = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=reader)
+    second = setbuilder.build_index(root, template=other, cache_path=cache, reader=reader)
+    assert [t.title for t in first] == ["[LOSSY] Title"]
+    assert [t.title for t in second] == ["Title"], "the old template's parse was served"
+
+
+def test_the_template_stamp_is_the_same_string_in_every_process():
+    """A stamp that moved on its own would discard the cache on every run.
+
+    The template holds a frozenset, whose repr follows string hashing and so
+    differs between two runs of one build. Asserted against a literal rather
+    than against a second call in this process, which would agree with itself
+    under any hash seed and prove nothing.
+
+    A stand-in carries the set, because the real template refuses most optional
+    sets at construction and one member cannot show an ordering.
+    """
+    import dataclasses
+
+    @dataclasses.dataclass(frozen=True)
+    class Shape:
+        head_optional: frozenset[str]
+        head_sep: str = " - "
+
+    stamp = setbuilder._template_stamp(Shape(frozenset({"key", "bpm", "energy", "vox"})))
+    assert stamp == "head_optional=['bpm', 'energy', 'key', 'vox'];head_sep=' - '"
+    assert setbuilder._template_stamp(TEMPLATE) != setbuilder._template_stamp(NameTemplate())
+
+
+def test_a_cache_with_no_template_stamp_is_discarded(tmp_path):
+    root = tmp_path / "lib"
+    root.mkdir()
+    audio = root / "a.flac"
+    audio.touch()
+    cache = tmp_path / "cache.json"
+    stale = {"mtime": audio.stat().st_mtime, "track": None}
+    cache.write_text(
+        json.dumps({"cache_version": setbuilder.CACHE_VERSION, "entries": {str(audio): stale}})
+    )
+    index = setbuilder.build_index(
+        root,
+        template=TEMPLATE,
+        cache_path=cache,
+        reader=lambda p: {"title": "08A - 124 - Title", "artist": "Alder"},
+    )
+    assert [t.title for t in index] == ["Title"], "an unstamped cache was trusted"
+
+
 def test_the_index_cache_has_a_declared_home_in_the_state_inventory(cfg):
     """A module composing its own path under a state root invents a file the
     inventory cannot find, snapshot, or clear."""

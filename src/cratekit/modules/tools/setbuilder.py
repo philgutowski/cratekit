@@ -56,7 +56,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from rapidfuzz import fuzz, process
@@ -358,7 +358,12 @@ def build_index(
     None is what a test wants and what a one-off run can afford.
 
     The cache is keyed on path AND modification time, so an edited file
-    invalidates only itself. A file whose parse yielded nothing is cached as
+    invalidates only itself. THE WHOLE CACHE IS ALSO STAMPED WITH THE TEMPLATE it
+    was parsed under, because a cached entry is the OUTPUT of a parse and the
+    template is that parse's other input: a changed lossy marker alters every
+    marked file's clean title and match key while touching no file's
+    modification time, so without the stamp the old titles would be served for
+    ever. A stamp that differs discards the cache, at the cost of one scan. A file whose parse yielded nothing is cached as
     nothing: without that, every keyless file in the library is re-read on every
     run, which is the majority of the cost on a library with unanalyzed corners.
 
@@ -368,7 +373,8 @@ def build_index(
     """
     root = Path(root)
     files = list(lister(root))
-    cached = _load_cache(cache_path)
+    stamp = _template_stamp(template)
+    cached = _load_cache(cache_path, stamp)
 
     fresh: dict[str, dict] = {}
     tracks: list[Track] = []
@@ -390,11 +396,28 @@ def build_index(
         seen.add(track.match)
         tracks.append(track)
 
-    _save_cache(cache_path, fresh)
+    _save_cache(cache_path, fresh, stamp)
     return tuple(tracks)
 
 
-def _load_cache(cache_path: Path | None) -> dict[str, dict]:
+def _template_stamp(template: NameTemplate) -> str:
+    """The template as a string that is equal exactly when the template is.
+
+    Built field by field rather than taken from ``repr``, because the template
+    holds a frozenset and a set's repr follows string hashing, which differs
+    between two runs of the same build. A stamp that moved on its own would
+    discard the cache on every run and look exactly like a cache that works.
+    """
+    parts = []
+    for field in fields(template):
+        value = getattr(template, field.name)
+        if isinstance(value, (set, frozenset)):
+            value = sorted(value)
+        parts.append(f"{field.name}={value!r}")
+    return ";".join(parts)
+
+
+def _load_cache(cache_path: Path | None, stamp: str) -> dict[str, dict]:
     if cache_path is None or not cache_path.is_file():
         return {}
     try:
@@ -406,17 +429,21 @@ def _load_cache(cache_path: Path | None) -> dict[str, dict]:
         # not have. Discarding it costs one scan; deserializing it costs a
         # TypeError in the middle of a run.
         return {}
+    if data.get("template") != stamp:
+        return {}
     entries = data.get("entries")
     return entries if isinstance(entries, dict) else {}
 
 
-def _save_cache(cache_path: Path | None, entries: Mapping[str, dict]) -> None:
+def _save_cache(cache_path: Path | None, entries: Mapping[str, dict], stamp: str) -> None:
     if cache_path is None:
         return
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(
-            json.dumps({"cache_version": CACHE_VERSION, "entries": dict(entries)}),
+            json.dumps(
+                {"cache_version": CACHE_VERSION, "template": stamp, "entries": dict(entries)}
+            ),
             encoding="utf-8",
         )
     except OSError as exc:
@@ -701,25 +728,90 @@ WebKeyLookup = Callable[[str, str], Mapping[str, object] | None]
 #: internally consistent and therefore looks right.
 MATCH_THRESHOLD = 90
 
+#: How many candidates a refusal names. A vague query can reach a whole label's
+#: worth of titles, and a listing nobody can read is not a remedy.
+CANDIDATE_LIMIT = 10
+
+
+@dataclass(frozen=True, slots=True)
+class AnchorMatch:
+    """What a typed anchor names in the index: one track, several, or nothing.
+
+    Three answers and not two. ``track`` set is a resolution. ``track`` None with
+    ``candidates`` is a REFUSAL THAT KNOWS WHY: the name reached owned tracks and
+    could not choose between them, and the caller shows them rather than picking.
+    Both empty is an ordinary absence. Folding the middle answer into either
+    neighbour is the defect this type exists to end (R-187): folded into the
+    first it builds a set around whichever track the walk met first, and folded
+    into the last it tells a person their track is not in their library.
+    """
+
+    track: Track | None = None
+    #: The owned tracks the name reached, best score first, when none was chosen.
+    candidates: tuple[Track, ...] = ()
+
+
+def match_in_index(
+    query: str, index: Sequence[Track], *, threshold: int = MATCH_THRESHOLD
+) -> AnchorMatch:
+    """Resolve ``query`` against the index, refusing rather than guessing.
+
+    AN EXACT HIT ON THE COMPARISON KEY WINS OUTRIGHT, before any fuzzy score is
+    taken. ``token_set_ratio`` scores a subset at 100, so "Alder - Anchor Work"
+    scores identically against that track and against "Alder - Anchor Work
+    (Extended Mix)", and no threshold separates two candidates that are both at
+    the ceiling. The exact comparison is the only thing that can.
+
+    Fuzzy after that, because a user types what they remember, and the library's
+    titles carry remix credits, feature credits, and label suffixes that nobody
+    types. EVERY hit at the threshold is collected, never the first: one hit is
+    a resolution and two are a question only the person can answer.
+
+    ONE HIT IS STILL REFUSED WHEN THE QUERY NAMES MORE THAN THE HIT HOLDS. A
+    person who types "Anchor Work (Extended Mix)" against a library holding only
+    "Anchor Work" named a version the library does not have, and the subset score
+    is 100 in that direction too. Typing LESS than the title is remembering;
+    typing MORE is naming something else.
+
+    Candidates are ordered by score and then by match key and path, so the
+    listing does not depend on the order a filesystem walk produced.
+    """
+    wanted = match_key("", query)
+    if not wanted or not index:
+        return AnchorMatch()
+    exact = [t for t in index if t.match == wanted]
+    if len(exact) == 1:
+        return AnchorMatch(track=exact[0])
+    if exact:
+        return AnchorMatch(candidates=tuple(sorted(exact, key=lambda t: t.path)))
+    hits = process.extract(
+        wanted,
+        [t.match for t in index],
+        scorer=fuzz.token_set_ratio,
+        score_cutoff=threshold,
+        limit=None,
+    )
+    ordered = tuple(
+        index[position]
+        for _, score, position in sorted(
+            hits, key=lambda hit: (-hit[1], index[hit[2]].match, index[hit[2]].path)
+        )
+    )
+    if len(ordered) == 1 and not set(ordered[0].match.split()) < set(wanted.split()):
+        return AnchorMatch(track=ordered[0])
+    return AnchorMatch(candidates=ordered)
+
 
 def find_in_index(
     query: str, index: Sequence[Track], *, threshold: int = MATCH_THRESHOLD
 ) -> Track | None:
-    """The best fuzzy match for ``query`` in the index, or None.
+    """The one track ``query`` names, or None. See :func:`match_in_index`.
 
-    Fuzzy rather than exact because a user types what they remember, and the
-    library's titles carry remix credits, feature credits, and label suffixes
-    that nobody types.
+    None covers both "nothing matched" and "more than one did", which is right
+    for a caller that only wants an owned anchor when there is exactly one. A
+    caller that has to TELL a person which it was reads the verdict instead.
     """
-    wanted = match_key("", query)
-    if not wanted or not index:
-        return None
-    best = process.extractOne(
-        wanted, [t.match for t in index], scorer=fuzz.token_set_ratio
-    )
-    if best is None or best[1] < threshold:
-        return None
-    return index[best[2]]
+    return match_in_index(query, index, threshold=threshold).track
 
 
 def resolve_anchor(
@@ -741,7 +833,25 @@ def resolve_anchor(
     ships no network call, and a fabricated key would produce a full, confident,
     wrong set.
     """
-    owned = find_in_index(query, index)
+    matched = match_in_index(query, index)
+    if matched.track is None and matched.candidates:
+        # REACHED AND NOT CHOSEN, which is neither of the answers below. Falling
+        # through would call an owned track unowned: with a key it would rank
+        # the library's own copies as companions to themselves, and without one
+        # it would say "not in your library" about a name that hit several.
+        named = "; ".join(t.display for t in matched.candidates[:CANDIDATE_LIMIT])
+        return Anchor(
+            key=None,
+            bpm=None,
+            owned=False,
+            display=query,
+            unresolved=(
+                f"that anchor names more than one owned track, or a longer "
+                f"version of one, and picking for you would build a set around "
+                f"the wrong one: {named}"
+            ),
+        )
+    owned = matched.track
     if owned is not None:
         resolved_key = canonical_key(key) or owned.key
         return Anchor(
@@ -939,6 +1049,7 @@ def _scored_payload(scored: Scored) -> dict:
 
 __all__ = [
     "CACHE_VERSION",
+    "CANDIDATE_LIMIT",
     "MATCH_THRESHOLD",
     "DEFAULT_BPM_WIDTH",
     "DEFAULT_POOL",
@@ -948,6 +1059,7 @@ __all__ = [
     "PAYLOAD_VERSION",
     "TIER_SCORE",
     "Anchor",
+    "AnchorMatch",
     "Scored",
     "SetPlan",
     "Track",
@@ -963,6 +1075,7 @@ __all__ = [
     "compatible_keys",
     "energy_score",
     "find_in_index",
+    "match_in_index",
     "harmonic_score",
     "in_band",
     "iter_audio",

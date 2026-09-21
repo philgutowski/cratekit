@@ -5010,7 +5010,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the reserved table, exactly as the three setbuild-anchor slugs beside them
     # are. Population 170 to 172, non-reserved 143 to 145, reserved half
     # UNCHANGED at 27.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (172, 145, 27)
+    #
+    # Re-pinned on the residual finding "The engine's fuzzy anchor lookup cannot
+    # tell a title from that title plus a version suffix", 2026-09-20. ONE slug,
+    # named rather than counted: setbuild-anchor-ambiguous, which the set builder
+    # raises when a name given with its named form reaches several owned tracks,
+    # or names a longer version than the one the library holds, so it lists them
+    # and picks none. Measured from this branch's diff of `core/cause.py` against
+    # main, which adds that one key and removes none. It is the verb's own,
+    # registered and not in the reserved table, exactly as the three
+    # setbuild-anchor slugs beside it are. Population 172 to 173, non-reserved
+    # 145 to 146, reserved half UNCHANGED at 27.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (173, 146, 27)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5564,7 +5575,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # setbuild-unowned-key-missing and setbuild-supplied-needs-unowned, both in
     # `setbuilder/cli.py`, a holder already, and both KEYS, which is why the
     # non-key half does not move.
-    assert (len(literals), len(literals - set(causes))) == (478, 307), (
+    # Re-pinned on the residual finding "The engine's fuzzy anchor lookup cannot
+    # tell a title from that title plus a version suffix", 2026-09-20: 478 to 479
+    # distinct, non-keys UNCHANGED at 307. ONE literal joined and NOTHING left,
+    # differenced as SETS over main's own `src/cratekit` read out of
+    # `git archive`. Named: setbuild-anchor-ambiguous, in `setbuilder/cli.py`, a
+    # holder already, and a KEY, which is why the non-key half does not move.
+    assert (len(literals), len(literals - set(causes))) == (479, 307), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
