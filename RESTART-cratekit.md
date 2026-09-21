@@ -4,7 +4,64 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-187 with R-188, issue #175, `relay/175`, 2026-09-20.**
+**Last merged: U102, issue #147, `relay/147`, 2026-09-20.**
+`crate repair paths --apply` renames the files whose proposal a person accepted
+in the path repair queue, which CLOSES R-421. A filename rekordbox rejected on
+import no longer needs the source system's script. Without the flag the verb is
+unchanged, it scans and offers and touches nothing.
+**ACCEPTED IS TWO FACTS, THE VERDICT AND THE `accept` OPTION,** read by the new
+`repair.decided`. `keep` is an accepted verdict too, and an open item, a
+rejected one, a kept one and one accepted with no option are counted in
+`totals` and left alone. The name applied is the one in the payload, the one a
+person was shown, never rendered again.
+**THE COLLECTION GUARD IS U67'S, ASKED AND NOT COPIED,** through
+`referenced_keys`, `is_referenced` and `held_collisions` on
+`write/naming_cli.py`. A referenced file is held, an unreadable collection or a
+dark row refuses the whole verb in `name apply`'s words, and the set is read
+again after the gate. The gate is `repair.paths.confirm`, apply or abort,
+against the plan digest. `--root` narrows the apply and counts what it left out
+as `outside_root`, compared casefolded the way the guard compares.
+**R-172 IS NOT REPRODUCED.** The plan classes are `rename`, `referenced`,
+`collides`, `unusable`, `missing` and `unchanged`. The first three held classes
+are renames a person accepted that did not happen, so each is named with its
+reason and the run answers `rename-incomplete` at exit 30 on the plan surface.
+It is `retryable` only when something outstanding could clear without a person,
+since a referenced file is held on every run. `missing` and `unchanged` owe
+nothing and answer ok, and `missing` is what an applied item reads as on the
+next run, worded by which names exist and never called applied.
+**The registry entry changed:** `writes` is `files`, the confirm gate is
+declared, and the database surface and the cloud sync decision it carried from
+the original design came off, since no handler ever opened the database with
+write intent. The conformance sample for the verb is `--apply`. The summary,
+the guide and the shipped skill described a row re-pointing repair that was
+never built, and now describe the filename proposal the verb makes.
+**The built in code review raised ten findings. Eight were applied in one fix
+round and two were recorded.** The sharpest: the queue addresses an item by
+`path.resolve()` while the proposal was made for the name the scan saw, so a
+symlinked file was renamed through its link, outside the library. It is now
+held as `unusable`.
+Battery: ruff clean, **9541 passed** and 1 skipped in 78 seconds, 9542
+collected, scan clean. 28 tests joined, in the new
+`tests/intake/test_repair_apply.py`, every one through the real dispatcher and
+the guard tests against a disposable database. No slug joined, so neither
+population pin moved.
+Mutation tables, `docs/mutation/u102-a.md` and `u102-b.md`, rows files beside
+them, notes in `u102-notes.md`: **25 rows, the author's own, all killed.** The
+cap was reached and six rows were dropped, logged at the foot of each rows
+file. Four guards had no test when the rows were drafted and got one first.
+Filed: **R-624**, no export location rewriting, by the brief's decision,
+**R-625**, nothing retires an applied item and its identity is the old path
+alone, two chain candidates driven and neither produces it, and **R-626**, the
+post gate rename loop exists twice and `name apply`'s copy leaves the claim
+behind on an interrupt, read there and not driven. None meets the board bar and
+no issue was opened.
+Learning filed:
+`docs/solutions/workflow-issues/a-review-item-is-addressed-by-a-resolved-path-and-is-never-retired.md`.
+**OWED TO AN ATTENDED SITTING:** nothing. The unit renames files under a
+temporary directory and reads a disposable database.
+**Main's highest residual number is R-626.**
+
+**The session before: R-187 with R-188, issue #175, `relay/175`, 2026-09-20.**
 `crate setbuild --named "Artist - Title"` names the anchor by track, which
 CLOSES R-187, and the verb now fills its declared index cache, which CLOSES
 R-188. "What plays after X" no longer needs a file path.
@@ -57,7 +114,7 @@ Learning filed:
 **OWED TO AN ATTENDED SITTING:** the seconds the cache saves on a real library,
 which R-188 never measured and this unit could not, since the live library is
 off limits. Measured here as reads, none on a second run.
-**Main's highest residual number is R-623.**
+**Main's highest residual number was R-623 at that merge.**
 
 **The session before: U98, issue #143, `relay/143`, 2026-09-21.**
 `crate setbuild --unowned LABEL --key 8A [--bpm N]` ranks the library against a

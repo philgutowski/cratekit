@@ -470,6 +470,11 @@ REPORTS_CLI_UNIT = "U27"
 ADOPT_APPLY_CLI_UNIT = "U27"
 #: Where ``repair.paths`` lives, and the unit that lands it.
 #:
+#: U102 OVERTOOK THE REASON BELOW AND NOT THE DECISION. The verb no longer
+#: declares the cloud-sync gate or a database write, since it never performed
+#: one, so the wall described here is gone. The module and the unit stay where
+#: they are, because the path repair obligation still lives with U37.
+#:
 #: IT WAS ``cratekit.cli.doctor`` AND U27, AND IT IS NOW NEITHER. The reasoning is
 #: written down rather than implied, in the same shape and for the same reason as
 #: ``ROUTING_CLI_UNIT`` above, because it is a judgement somebody may want to move
@@ -584,7 +589,7 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="repair.paths",
-        summary="repair recorded file paths the library can no longer resolve",
+        summary="propose a name for each file rekordbox would reject, and apply the accepted ones",
         module=REPAIR_CLI_MODULE,
         builder="build_repair_paths",
         handler_key="repair.paths",
@@ -593,11 +598,29 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="repair",
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        writes=frozenset({"db_metadata"}),
+        #: Files only, corrected in U102, the same correction U39 made to
+        #: ``name.apply``. The entry claimed ``db_metadata`` and the cloud sync
+        #: decision from the design in which this verb re-pointed database rows,
+        #: and no handler ever did: it offered proposals and wrote nothing. Since
+        #: U102 ``--apply`` renames the files whose proposal a person accepted,
+        #: which is a write to files. It READS the database, through the guard
+        #: ``name.apply`` built, with ``require_closed`` False, so it never
+        #: reaches the guarded writer or the decision that binds to write
+        #: intent, and the conformance suite refuses a declared decision a verb
+        #: cannot reach, in both directions. Rewriting the locations inside an
+        #: export is not built, and whoever builds it declares what it writes.
+        writes=frozenset({"files"}),
         adjudicates=True,
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
-        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
+        gates=(
+            GateSpec(
+                name="repair.paths.confirm",
+                options=("apply", "abort"),
+                prompt="Apply these accepted renames?",
+                digest_source="plan",
+            ),
+        ),
     ),
     Entry(
         name="status",

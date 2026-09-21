@@ -1,0 +1,148 @@
+name = "u102-a"
+pass_kind = "light"
+
+# Batch A of two for issue 147, U102. Thirteen rows: the queue reader, the
+# checks on a proposed name, the root filter and the plan's classes. Batch B is
+# the collection guard, the gate, the incomplete report and the claim, twelve
+# rows, which makes the cap of 25 exactly.
+#
+# Every row names its subset, because no test file imports the verb's module:
+# the tests drive it through the real dispatcher, so the derived subset would be
+# empty and every row would promote to a full suite run.
+
+[[rows]]
+id = "D1_keep_is_not_accept"
+description = "decided(): read the accepted verdict alone, so an item answered keep is treated as a rename to apply"
+file = "src/cratekit/intake/repair.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/intake/test_repair.py"]
+old = '''        elif item.option != ACCEPT:
+            kept += 1'''
+new = '''        elif item.option is None:
+            kept += 1'''
+
+[[rows]]
+id = "D2_open_is_not_accepted"
+description = "decided(): drop the branch that counts an item with no accepted verdict as open"
+file = "src/cratekit/intake/repair.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/intake/test_repair.py"]
+old = '''        elif item.verdict is not Verdict.ACCEPTED:
+            still_open += 1'''
+new = '''        elif False:
+            still_open += 1'''
+
+[[rows]]
+id = "U1_no_stored_path"
+description = "_unusable_why: drop the refusal over an item the queue holds no path for"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    if accepted.path is None:
+        return ('''
+new = '''    if False:
+        return ('''
+
+[[rows]]
+id = "U2_bare_filename"
+description = "_unusable_why: stop requiring the proposed name to be a bare filename, so a path with a separator is applied"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    if not proposed or proposed in {".", ".."} or Path(proposed).name != proposed:'''
+new = '''    if not proposed or proposed in {".", ".."}:'''
+
+[[rows]]
+id = "U3_empty_name"
+description = "_unusable_why: stop refusing an empty proposed name"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    if not proposed or proposed in {".", ".."} or Path(proposed).name != proposed:'''
+new = '''    if proposed in {".", ".."} or Path(proposed).name != proposed:'''
+
+[[rows]]
+id = "U4_same_suffix"
+description = "_unusable_why: drop the check that the proposed name keeps the file's extension"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    if Path(proposed).suffix.lower() != Path(accepted.path).suffix.lower():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "U5_linked_file"
+description = "_unusable_why: drop the check that the stored path names the file the proposal was shown for, so a link's target is renamed"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    if accepted.recorded and Path(accepted.path).name != accepted.recorded:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "P1_root_boundary"
+description = "_under: match the root as a bare prefix, without the separator, so a sibling folder sharing the prefix is inside it"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    return held == wanted or held.startswith(wanted + "/")'''
+new = '''    return held == wanted or held.startswith(wanted)'''
+
+[[rows]]
+id = "P2_root_casefold"
+description = "_key: compare the root exactly instead of casefolded"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    return locations.norm_for_compare(path).casefold()'''
+new = '''    return locations.norm_for_compare(path)'''
+
+[[rows]]
+id = "P3_root_filter"
+description = "_plan_for: ignore the root, so an accepted item outside it is applied"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''        if accepted.path is not None and not _under(accepted.path, root):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P4_unchanged"
+description = "_plan_for: stop setting aside a proposal that names the file's own name, so it is planned as a rename"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''        if path.name == accepted.proposed:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P5_missing"
+description = "_plan_for: stop setting aside an accepted item whose file is gone, so the run after an apply plans it again"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''        if not path.is_file():
+            # ONE CLASS'''
+new = '''        if False:
+            # ONE CLASS'''
+
+[[rows]]
+id = "P6_missing_says_what_exists"
+description = "_plan_for: always word a missing file as a rename already carried out, whether or not any file carries the proposed name"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''            if target.is_file():
+                why = ('''
+new = '''            if True:
+                why = ('''
+
+[[dropped]]
+id = "D3_identity_type"
+description = "decided(): accept a stored path that is not text"
+reason = "ranked below the cap: one writer produces the identity column and it writes text, so the input has no driven producer"
+
+[[dropped]]
+id = "D4_paging"
+description = "decided(): read one page instead of walking every page"
+reason = "ranked below the cap: maintainer facing, and the paging test beside it asserts a count over one page plus three"

@@ -187,18 +187,20 @@ sync client that is mid flight is how two copies of a library disagree.
 crate run decide RUN-ID write.cloudsync.unreadable abort --actor operator
 ```
 
-## Path repair proposes, and never applies
+## Path repair proposes, and applies only what you accepted
 
 ```bash
 crate repair paths
 crate repair paths --root /path/to/folder
 ```
 
-This verb writes nothing to the library. It walks for recorded locations that no
-longer resolve, proposes what it believes each row now points at, and offers
-every proposal into the path repair queue. A wrong answer re-points a library row
-at somebody else's file, which is a quiet and expensive kind of wrong, so the
-decision belongs to a person and is recorded rather than inferred.
+Without `--apply` this verb writes nothing to the library. It walks the folder
+for audio files whose name is over the path budget or repeats its own title at
+the end, which are the names rekordbox rejects on import, proposes a name that
+fits, and offers every proposal into the path repair queue. It does not re-point
+a library row and it does not rewrite an export. A rename is still a quiet and
+expensive kind of wrong when it is the wrong one, so the decision belongs to a
+person and is recorded rather than inferred.
 
 ```bash
 crate review list --queue path-repair --limit 50
@@ -215,6 +217,23 @@ turns out to have been wrong:
 ```bash
 crate review clear ITEM-ID --actor operator
 ```
+
+Accepting a proposal renames nothing on its own. A second run with `--apply`
+reads the queue back and renames the files whose proposal was accepted with the
+`accept` option, behind a confirm gate, and leaves every open, rejected and kept
+item alone. `--root` narrows it to the accepted files under one folder.
+
+```bash
+crate repair paths --apply
+crate --decision repair.paths.confirm=apply repair paths --apply
+```
+
+A file the rekordbox collection references is never renamed, exactly as in
+`name apply`, because rekordbox records a path once and a rename strands the row.
+That file, a file whose new name is already taken, and any other accepted rename
+that did not happen are each named in the report with the reason, and the run
+does not answer ok over them. Clear and reject a proposal that should never be
+applied, and it leaves the plan. Locations inside an export are not rewritten.
 
 ## When something stops
 
