@@ -35,3 +35,9 @@ The premise was read and never driven. Driving `searchers._resolved` against `ta
 - Before building on a brief marked read and not driven, run the string through the real resolver. A one minute script settled what an hour of reading assumed.
 - The consistent fix is R-247's first closing arm, `tag folder` offering each decline into `review.Queue.GENRE`, answered per file. That is a product decision reserved for Phillip. Options A, B and C are in the comment on card 170.
 - Owed regardless: correct R-247's text to name the fourteen strings, and rebuild the R24 test on a string the shipped resolver really declines.
+
+## What happened next
+
+Both owed items are discharged. R-247's text was corrected on `groom/board-2026-09-21` and superseded by R-650, and the R24 test in `tests/test_tag_workers.py` now spends `Techno` and `Electronic`, two strings the shipped resolver really declines, rather than `gqom` and `footwork`, which it writes.
+
+R-650 itself was built on 2026-09-21, issue #189: the last tier now sets `off_taxonomy`, the sweep counts the distinct strings and warns. Its build found that "no bucket" identifies nothing, because the shipped template declares `Melodic Techno` as a rule with a literal tag and no bucket, and that the suppression must ask routing's question rather than the vocabulary's. That is filed beside this one as `a-suppression-rule-must-ask-the-question-that-decides-the-outcome.md`.

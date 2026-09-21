@@ -91,6 +91,12 @@ class SearchHit:
     downloaded eagerly would spend a paced fetch on every file that already has
     one.
 
+    ``off_taxonomy`` says the genre above is the catalogue's OWN word, passed
+    through by the last tier of :func:`cratekit.core.routing.suggest_tag` because
+    nothing in the declared table matched it. It rides the hit rather than being
+    worked out here, because the only place that can tell it apart from a
+    declared tag with no bucket is the tier that answered (R-650).
+
     All of them default to empty so a caller that predates them, and a fake
     searcher in a suite, keep working unchanged.
     """
@@ -99,6 +105,7 @@ class SearchHit:
     source: str = ""
     source_genre: str = ""
     art_url: str = ""
+    off_taxonomy: bool = False
 
 
 #: Why a file was passed over. ``HAS_GENRE`` is the fill-if-empty policy this
@@ -159,6 +166,15 @@ class TagResult:
     picture it was missing, so neither is called ``art``, which is also this
     module's name for :mod:`cratekit.core.art`. The default is ``unchecked``
     for the same reason as the repair's.
+
+    ``off_taxonomy`` IS A THIRD DISPOSITION AND NOT A FOURTH SKIP REASON. The
+    file was written, so ``skipped`` is None and ``genre_written`` holds the
+    word; what it adds is that the word came from the catalogue rather than from
+    the declared table. It is a separate field precisely because the closed set
+    above is about files this engine passed over, and folding a write into it
+    would make a count of what was tagged disagree with what is on disk (R-650).
+    It can only be true on a write: the three skips leave it False, because a
+    file this engine did not tag has no tag of this engine's to qualify.
     """
 
     path: Path
@@ -166,6 +182,7 @@ class TagResult:
     skipped: str | None = None
     source: str = ""
     source_genre: str = ""
+    off_taxonomy: bool = False
     art_repair: str = art.REPAIR_UNCHECKED
     art_repair_detail: str = ""
     art_fetch: str = ART_UNCHECKED
@@ -299,6 +316,13 @@ def tag_one(
     field under two different policies and this is where the first one lives.
     Its ``skipped`` is ``has-genre`` whether or not it was searched for art.
 
+    A WRITE HAS TWO KINDS AND THE REPORT TELLS THEM APART. A tag the declared
+    table produced and a word a catalogue used that nothing in the table knows
+    are both written here, deliberately, since refusing the second is how a new
+    genre stops entering the library at all. Only the first is a clean tag, so
+    the second carries ``off_taxonomy`` up to the verb's report rather than
+    counting as one of them (R-650).
+
     THE SEARCH IS SKIPPED ONLY WHEN A FILE HAS BOTH a genre and a picture. Art
     and genre are independent needs, so a tagged file with no picture is asked
     about, and only its art is written. ``fetch_image`` is optional so a caller
@@ -346,6 +370,7 @@ def tag_one(
         }
         return TagResult(path=path, genre_written=None, skipped=HAS_GENRE, **repaired, **unread)
     written: str | None = None
+    off_taxonomy = False
     if existing:
         skipped: str | None = HAS_GENRE
     elif hit is None:
@@ -359,13 +384,24 @@ def tag_one(
         skipped = None
         tags.write_genre(path, hit.genre)
         written = hit.genre
+        # THE FLAG IS TAKEN HERE AND NOWHERE ELSE, on the one branch that put a
+        # word on the file. A file that already had a genre carries a hit too,
+        # because it was searched for its art, and reading that hit's flag would
+        # report a word this run never wrote.
+        off_taxonomy = hit.off_taxonomy
     # THE PICTURE IS EMBEDDED AFTER THE GENRE IS SAVED, so the last save a file
     # sees is the one carrying its art, whatever the genre write does to the
     # rest of the tag block.
     pictured = settled if settled is not None else _art_embedded(path, hit, fetch_image)
     found = {"source": hit.source, "source_genre": hit.source_genre} if hit else {}
     return TagResult(
-        path=path, genre_written=written, skipped=skipped, **found, **repaired, **pictured
+        path=path,
+        genre_written=written,
+        skipped=skipped,
+        off_taxonomy=off_taxonomy,
+        **found,
+        **repaired,
+        **pictured,
     )
 
 

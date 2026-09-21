@@ -41,7 +41,7 @@ import pytest
 from cratekit.core import routing
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.taxonomy import default_taxonomy
+from cratekit.core.taxonomy import default_taxonomy, load_taxonomy
 from cratekit.tagging import searchers
 
 TAXONOMY = default_taxonomy()
@@ -492,6 +492,88 @@ def test_a_source_genre_that_aliases_to_the_fallback_bucket_declines():
     assert hit is not None
     assert hit.genre is None
     assert hit.source_genre == FALLBACK_GENRE
+
+
+def test_a_source_genre_nothing_in_the_table_knows_is_written_and_flagged():
+    """R-650. The last tier's word reaches the file AND says it was that word.
+
+    The tier exists so a genuinely new genre survives long enough for somebody to
+    notice it, and for a year nothing carried the fact that made noticing
+    possible. This is the carry: the hit is a normal write, and ``off_taxonomy``
+    is what separates it from a tag the declared table produced.
+    """
+    unknown = "gqom"
+    assert routing.suggest_tag(TAXONOMY, unknown).off_taxonomy is True, (
+        "the template now declares this string, so this test is asserting about "
+        "a tier it no longer reaches"
+    )
+    fetch = _all_three(
+        beatport=_beatport_page([_beatport_track(ARTIST, TITLE, unknown)]),
+        traxsource="",
+        bandcamp="",
+    )
+    hit = _searcher(fetch)(ARTIST, TITLE)
+    assert hit is not None
+    assert hit.genre == unknown
+    assert hit.off_taxonomy is True
+
+
+def test_a_declared_tag_with_no_bucket_reaches_the_file_without_the_flag():
+    """The pair the flag exists for, driven through the real pages.
+
+    ``bucket_id is None`` is true of this answer and of the one above, and only
+    one of them is worth telling anybody about. The template declares this tag
+    and says in a comment why it has no folder, so reporting it would put the
+    template author's own deliberate gap in front of them on every sweep.
+    """
+    declared = routing.suggest_tag(TAXONOMY, "melodic techno")
+    assert declared.bucket_id is None and declared.tag and not declared.declined
+    fetch = _all_three(
+        beatport=_beatport_page([_beatport_track(ARTIST, TITLE, "melodic techno")]),
+        traxsource="",
+        bandcamp="",
+    )
+    hit = _searcher(fetch)(ARTIST, TITLE)
+    assert hit is not None
+    assert hit.genre == declared.tag
+    assert hit.off_taxonomy is False
+
+
+def test_an_unknown_source_genre_a_taxonomy_calls_too_coarse_is_a_plain_decline():
+    """One file gets ONE disposition, and a decline outranks the flag.
+
+    No string in the shipped template reaches the last tier and is also declared
+    too coarse, so the producer here is a DIFFERENT taxonomy, which is a thing
+    this product supports rather than a hypothetical: the template is a file a
+    person edits. Declaring a coarse string without a matching refusal is the
+    ordinary way to reach this, and the hit must be the decline it already was,
+    carrying no flag about a word it is not going to write.
+    """
+    template = (
+        Path(__file__).parent / "taxonomies" / "second.toml"
+    ).read_text(encoding="utf-8")
+    edited = template.replace(
+        'too_coarse_as_source = ["", "Misc"]',
+        'too_coarse_as_source = ["", "Misc", "Bootleg"]',
+    )
+    assert edited != template
+    other = load_taxonomy(edited)
+    answer = routing.suggest_tag(other, "Bootleg")
+    assert (answer.off_taxonomy, answer.tag) == (True, "Bootleg")
+    assert other.is_too_coarse_as_source("Bootleg")
+
+    fetch = _all_three(
+        beatport=_beatport_page([_beatport_track(ARTIST, TITLE, "Bootleg")]),
+        traxsource="",
+        bandcamp="",
+    )
+    hit = searchers.catalogue_searcher(
+        other, fetch=fetch, sleep=lambda _seconds: None
+    )(ARTIST, TITLE)
+    assert hit is not None
+    assert hit.genre is None
+    assert hit.off_taxonomy is False
+    assert hit.source_genre == "Bootleg"
 
 
 def test_a_matched_track_whose_genre_is_declined_still_names_the_raw_string():

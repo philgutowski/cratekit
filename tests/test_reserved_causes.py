@@ -5655,7 +5655,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # `cli/exit_codes.py`. It is a KEY, the refusal the backup engine raises
     # when a listing on the remote fails, which is why the non-key half does
     # not move.
-    assert (len(literals), len(literals - set(causes))) == (493, 318), (
+    # Re-pinned on the residual finding "A source genre the taxonomy never heard
+    # of is written raw and counted as a success", 2026-09-21: 493 to 494
+    # distinct, non-keys 318 to 319. ONE literal joined and NOTHING left,
+    # differenced as SETS against `main`'s own `src` tree extracted into a
+    # scratch directory. It is not a cause: tag-folder-off-taxonomy, in
+    # `tagging/cli.py`, the WARNING code a tagging sweep carries when some of
+    # what it tagged is a word the declared taxonomy does not know, the same kind
+    # of literal as tag-folder-no-audio beside it. A warning and not a refusal
+    # because the files WERE tagged, which is the whole finding: the write is
+    # correct and the silence about it was not. The field carrying the same fact
+    # up the chain is off_taxonomy, which is not kebab shaped and does not enter
+    # this population.
+    assert (len(literals), len(literals - set(causes))) == (494, 319), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

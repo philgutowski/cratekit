@@ -87,6 +87,24 @@ class Suggestion:
     ``needs_review`` is not a decline. It means the answer stands but a human
     should confirm it, which is how the one tempo-dependent rule reports that it
     had no tempo to split on.
+
+    ``off_taxonomy`` means the tag above is the source's own word and this
+    template has no place of its own for it. It can only be true on the LAST
+    tier, and it is not true of everything that tier answers: a bucket's own
+    display reaches it as well, and routing recognises that one exactly.
+
+    IT IS NOT A STATEMENT ABOUT WHERE THE TRACK LANDS, and reading it as one
+    goes wrong in both directions. ``Psy-Trance`` is off taxonomy on the shipped
+    template and a fuzzy routing rule still puts it in the trance bucket, while
+    a SUB's display is a declared word that routing leaves in the fallback. This
+    flag is about the WORD written onto the file, which is what decides whether
+    the library's own vocabulary still describes what is on disk.
+
+    It is stated here rather than inferred by a caller because ``bucket_id is
+    None`` does not mean it, twice over. A declared rule carrying a literal tag
+    and no bucket produces exactly that shape on purpose, and so does a bucket
+    display with no alias of its own. A caller that wants to know whether this
+    taxonomy RECOGNIZED the string asks ``not declined and not off_taxonomy``.
     """
 
     bucket_id: str | None = None
@@ -94,6 +112,7 @@ class Suggestion:
     tag: str | None = None
     decline: Decline | None = None
     needs_review: bool = False
+    off_taxonomy: bool = False
 
     @property
     def declined(self) -> bool:
@@ -164,7 +183,9 @@ def suggest_tag(
     4. the ordered substring corrections, which fix a source taxonomy's combined
        buckets;
     5. otherwise the source's own string passes through unchanged, which is how a
-       genuinely new genre survives long enough for someone to notice it.
+       genuinely new genre survives long enough for someone to notice it. That
+       tier, and only that tier, sets ``off_taxonomy``, so the noticing has a
+       mechanism behind it rather than a hope (R-650).
 
     There is no tier that invents a bucket. That is the difference from routing,
     and it is enforced: a template declaring otherwise is refused at load.
@@ -192,7 +213,24 @@ def suggest_tag(
         if _rule_matches(rule, lowered):
             return _apply_suggest_rule(taxonomy, rule, lowered, bpm)
 
-    return Suggestion(tag=value)
+    # THE LAST TIER, AND THE ONE STRING IT DOES NOT FLAG. Nothing here claimed
+    # the value, so there is no bucket to return either way, and the tag is the
+    # source's own word. The flag says that word is outside this template, and
+    # there is exactly one kind that is not: a BUCKET's own display, which
+    # ``resolve_bucket``'s second tier recognises byte for byte and places where
+    # the template says. That happens constantly, because this tagger writes
+    # bucket names back onto files and two shipped buckets carry no alias naming
+    # themselves, and reporting it would put the library's own folder names in
+    # front of a person as a gap.
+    #
+    # THE TEST IS THAT TIER, NOT THE VOCABULARY, and the difference was measured
+    # rather than reasoned. A SUB's display is equally a declared word and
+    # routing does NOT recognise it, so a file wearing one lands in the fallback
+    # bucket exactly like a word nobody declared: suppressing it would hide the
+    # very case R-650 is about. The same holds for a display in another case,
+    # which the Bandcamp picker produces because it selects lowercased tags.
+    # So the question this asks is the one that decides where the file ends up.
+    return Suggestion(tag=value, off_taxonomy=taxonomy.bucket_for_display(value) is None)
 
 
 def _rule_matches(rule, lowered: str) -> bool:
@@ -241,6 +279,11 @@ def _apply_suggest_rule(taxonomy, rule, lowered: str, bpm: float | None) -> Sugg
     # A rule with a literal tag and no bucket: the source taxonomy names
     # something this taxonomy has no folder for. Declared on purpose so the gap
     # is visible instead of being silently collapsed into a neighbour.
+    #
+    # NOT off taxonomy, and the difference is the whole point of that field. The
+    # template author wrote this tag down and said in a comment why there is no
+    # bucket for it, so nobody needs telling about it. The last tier's string is
+    # one nobody has declared anywhere, which is the one worth reporting.
     return Suggestion(tag=rule.tag)
 
 

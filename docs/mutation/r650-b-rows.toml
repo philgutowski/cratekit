@@ -1,0 +1,32 @@
+name = "r650-b"
+pass_kind = "light"
+
+# The composite r650-a's one zero owes. C2 is a PLACEMENT: the count sits under
+# the branch that wrote a word, so a file this engine skipped cannot enter the
+# report's map. Moving it out killed nothing, and the question a composite
+# answers is what holds the property if this placement does not.
+
+[[rows]]
+id = "C2_summary_counts_skips_too"
+description = "The count moves out from under the write branch, so a skipped file can enter the map"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''        elif report.get("genre_written"):
+            tagged += 1
+            if report.get("off_taxonomy") and source_genre:
+                off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1'''
+new = '''        elif report.get("genre_written"):
+            tagged += 1
+        if report.get("off_taxonomy") and source_genre:
+            off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1'''
+
+[[rows]]
+id = "C2_composite_the_engine_holds_it"
+description = "What C2 does hold: the engine is what stops a skipped file carrying the flag at all"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+pairs_with = "C2_summary_counts_skips_too"
+old = '''    written: str | None = None
+    off_taxonomy = False'''
+new = '''    written: str | None = None
+    off_taxonomy = bool(hit and hit.off_taxonomy)'''

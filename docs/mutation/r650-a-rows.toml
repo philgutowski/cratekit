@@ -1,0 +1,227 @@
+name = "r650-a"
+pass_kind = "light"
+
+# ---------------------------------------------------------------------------
+# A. The resolver: the tier that knows, and the index it consults.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "A1_tier_five_sets_nothing"
+description = "The last tier stops flagging its pass through, which is the state before this unit"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''    return Suggestion(tag=value, off_taxonomy=taxonomy.bucket_for_display(value) is None)'''
+new = '''    return Suggestion(tag=value)'''
+
+[[rows]]
+id = "A2_tier_five_flags_everything"
+description = "The last tier flags a bucket's own display, which routing places where the template says"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''    return Suggestion(tag=value, off_taxonomy=taxonomy.bucket_for_display(value) is None)'''
+new = '''    return Suggestion(tag=value, off_taxonomy=True)'''
+
+[[rows]]
+id = "A3_suppression_widens_to_the_vocabulary"
+description = "The review's first shape: suppress on any declared display, so a sub display and a changed case go unreported"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''    return Suggestion(tag=value, off_taxonomy=taxonomy.bucket_for_display(value) is None)'''
+new = '''    declared = {b.display for b in taxonomy.buckets} | {
+        sub.display for b in taxonomy.buckets for sub in b.subs
+    }
+    return Suggestion(tag=value, off_taxonomy=value not in declared)'''
+
+[[rows]]
+id = "A4_suppression_ignores_case"
+description = "Suppress case insensitively, so a lowercased Bandcamp tag routing leaves in the catch-all reads as declared"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''    return Suggestion(tag=value, off_taxonomy=taxonomy.bucket_for_display(value) is None)'''
+new = '''    lowered_displays = {b.display.lower() for b in taxonomy.buckets}
+    return Suggestion(tag=value, off_taxonomy=lowered not in lowered_displays)'''
+
+[[rows]]
+id = "A6_declared_literal_rule_flagged"
+description = "A declared rule carrying a literal tag and no bucket is reported as off taxonomy too"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''    return Suggestion(tag=rule.tag)'''
+new = '''    return Suggestion(tag=rule.tag, off_taxonomy=True)'''
+
+# ---------------------------------------------------------------------------
+# B. The carry: searcher to engine to artifact.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "B1_searcher_drops_the_flag"
+description = "The hit never carries the flag, so nothing above the resolver can see it"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''        off_taxonomy=tag is not None and suggestion.off_taxonomy,'''
+new = '''        off_taxonomy=False,'''
+
+[[rows]]
+id = "B2_searcher_flags_a_decline"
+description = "A pass through the taxonomy calls too coarse carries the flag as well as declining"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''        off_taxonomy=tag is not None and suggestion.off_taxonomy,'''
+new = '''        off_taxonomy=suggestion.off_taxonomy,'''
+
+[[rows]]
+id = "B3_engine_drops_the_flag_on_the_write"
+description = "The one branch that wrote a word stops recording where the word came from"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        off_taxonomy = hit.off_taxonomy'''
+new = '''        off_taxonomy = False'''
+
+[[rows]]
+id = "B4_engine_leaks_the_flag_onto_a_skip"
+description = "The flag is read off the hit for every file, so a has-genre skip claims a word this run did not write"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''    written: str | None = None
+    off_taxonomy = False'''
+new = '''    written: str | None = None
+    off_taxonomy = bool(hit and hit.off_taxonomy)'''
+
+[[rows]]
+id = "B5_artifact_drops_the_key"
+description = "The committed item report stops carrying the flag, so the summary reads it back as absent"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''            "off_taxonomy": result.off_taxonomy,'''
+new = ""
+
+# ---------------------------------------------------------------------------
+# C. The report and the warning.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "C1_summary_counts_nothing"
+description = "The report stops counting the strings, leaving the map empty on a folder that has them"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''            if report.get("off_taxonomy") and source_genre:
+                off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1'''
+new = ""
+
+[[rows]]
+id = "C2_summary_counts_skips_too"
+description = "The count moves out from under the write branch, so a skipped file can enter the map"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''        elif report.get("genre_written"):
+            tagged += 1
+            if report.get("off_taxonomy") and source_genre:
+                off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1'''
+new = '''        elif report.get("genre_written"):
+            tagged += 1
+        if report.get("off_taxonomy") and source_genre:
+            off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1'''
+
+[[rows]]
+id = "C3_summary_drops_the_key"
+description = "The payload stops carrying the map at all"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''        "off_taxonomy": off_taxonomy,'''
+new = ""
+
+[[rows]]
+id = "C4_warning_fires_on_a_clean_sweep"
+description = "The empty check goes, so an ordinary folder is warned about a gap it does not have"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''    if not counted:
+        return ()'''
+new = ""
+
+[[rows]]
+id = "C5_warning_never_reaches_the_envelope"
+description = "The sweep computes the warning and does not attach it, which is the payload-only build"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''            warnings=tuple(warnings) + _off_taxonomy_warning(summary),'''
+new = '''            warnings=tuple(warnings),'''
+
+[[rows]]
+id = "C6_warning_names_no_strings"
+description = "The warning says a gap exists and not which word, which is the R24 mistake one verb over"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''                f"these catalogue answers: {words}. Each word was written onto "'''
+new = '''                f"these catalogue answers. Each word was written onto "'''
+
+[[rows]]
+id = "C9_warning_counts_the_wrong_total"
+description = "The warning names the file count as the sweep's whole tagged total"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''    files = sum(counted.values())'''
+new = '''    files = summary.get("tagged", 0)'''
+
+[[rows]]
+id = "C7_warning_order_is_the_walk_order"
+description = "The strings are listed in commit order, so two runs over one folder disagree"
+file = "src/cratekit/tagging/cli.py"
+surface = "maintainer"
+old = '''    words = ", ".join(sorted(counted))'''
+new = '''    words = ", ".join(counted)'''
+
+[[rows]]
+id = "C8_warning_code_reworded"
+description = "The code a log filter reads is reworded, never appended to"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''OFF_TAXONOMY = "tag-folder-off-taxonomy"'''
+new = '''OFF_TAXONOMY = "tag-folder-unknown-word"'''
+
+# ---------------------------------------------------------------------------
+# D. A fixed sample of this unit's existing guards, unchanged by this round.
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "D1_skip_reason_split"
+description = "Existing: the source genre is what separates unmapped-genre from no-hit"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+old = '''        skipped = UNMAPPED_GENRE if hit.source_genre else NO_HIT'''
+new = '''        skipped = UNMAPPED_GENRE'''
+
+[[rows]]
+id = "D2_too_coarse_as_source"
+description = "Existing: an answer too coarse to be a final tag is a decline, not a hit"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+old = '''    if suggestion.declined or not tag or declared.is_too_coarse_as_source(tag):'''
+new = '''    if suggestion.declined or not tag:'''
+
+[[rows]]
+id = "D3_unresolved_is_fed_by_declines"
+description = "Existing: the unresolved map is filled from unmapped-genre and from nothing else"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+old = '''        if reason == tag_engine.UNMAPPED_GENRE and source_genre:'''
+new = '''        if source_genre:'''
+
+# ---------------------------------------------------------------------------
+# Considered and not run.
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "E1_summary_zero_fill"
+description = "Zero fill the off_taxonomy map the way the skip reasons are zero filled"
+reason = "there is no closed set of catalogue words to fill, so the mutation has no defensible new value; the rule it would test is asserted directly in the summary docstring and in the unresolved map beside it"
+
+[[dropped]]
+id = "E2_bandcamp_picker_condition"
+description = "Change _bandcamp_tag's recognised test to use the new flag"
+reason = "measured and filed as a residual rather than changed: it alters which genre is WRITTEN for a Bandcamp track, which is a different risk class from this unit's report and belongs in a unit with its own rows"
+
+[[dropped]]
+id = "E3_bucket_for_display_widened"
+description = "Widen bucket_for_display itself to answer for sub displays"
+reason = "that changes resolve_bucket's second tier, which would place a track one level up in the tree, so it is a routing change this unit's brief puts out of scope rather than a mutation of this round's guard; A3 measures the same suppression widening at the tier that owns it"

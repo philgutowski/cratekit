@@ -400,6 +400,13 @@ class Taxonomy:
         distinction is the whole of R19: nothing persisted keys on a display
         name, but a tagger that writes bucket names back onto files means routing
         constantly has to recognise one.
+
+        BUCKETS ONLY, AND EXACT, WHICH IS NOW LOAD BEARING TWICE. It places a
+        name in the tree, so a sub's display must not answer it and put a track
+        one level up. ``suggest_tag``'s last tier reads it for the other half of
+        the same fact: a word this answers for is one routing will place where
+        the template says, and a word it does not is one the file wears while
+        landing somewhere the template did not choose (R-650).
         """
         return self._by_display.get(display)
 

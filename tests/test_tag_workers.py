@@ -37,7 +37,7 @@ import pytest
 
 from cratekit.acquire import cli as acquire_cli
 from cratekit.cli import handlers, output, registry
-from cratekit.core import art, config, jobs, review, tags
+from cratekit.core import art, config, jobs, review, routing, tags
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.tagging import artifacts, retag, retag_cli, searchers, shell, tag
@@ -566,13 +566,24 @@ def raising_on(searcher, title: str):
     return wrapped
 
 
-def hit(source_genre: str, genre: str | None = None) -> SearchHit:
+def hit(
+    source_genre: str, genre: str | None = None, *, off_taxonomy: bool = False
+) -> SearchHit:
     """One catalogue answer, carrying what it answered even when it declines.
 
     A decline that cannot say what it declined is one nobody can act on, which
     is the property R24's report stands on.
+
+    ``off_taxonomy`` goes with a GENRE and never with a decline, the way the
+    shipped searcher builds one: it qualifies a word about to be written, and a
+    decline writes nothing.
     """
-    return SearchHit(genre=genre, source=searchers.BEATPORT, source_genre=source_genre)
+    return SearchHit(
+        genre=genre,
+        source=searchers.BEATPORT,
+        source_genre=source_genre,
+        off_taxonomy=off_taxonomy,
+    )
 
 
 def tag_job():
@@ -748,12 +759,23 @@ def test_the_report_names_each_unresolved_source_genre_with_its_count(
     An unmapped count tells a person a gap exists. The STRING tells them which
     alias their own taxonomy is missing, which is the only half of it they can
     act on.
+
+    THE STRINGS ARE ONES THE SHIPPED RESOLVER REALLY DECLINES, corrected here
+    from the #170 build. This test used to spend ``gqom`` and ``footwork``, and
+    a fake hit is free to carry any pair, so it passed while teaching something
+    false: neither word declines, both are WRITTEN by the resolver's last tier,
+    and believing otherwise is what left R-650 unnoticed for a year. A fixture
+    that cannot occur is the fourth defect pattern in ``docs/METHOD.md``.
     """
     for name in ("a", "b", "c"):
         place(folder, silence, name)
+    declines = [
+        value for value in ("Techno", "Electronic") if routing.suggest_tag(TAXONOMY, value).declined
+    ]
+    assert declines == ["Techno", "Electronic"], "these no longer decline"
     bound(
         monkeypatch,
-        answering({"a": hit("gqom"), "b": hit("gqom"), "c": hit("footwork")}),
+        answering({"a": hit("Techno"), "b": hit("Techno"), "c": hit("Electronic")}),
     )
 
     drive(["tag", "folder", str(folder)])
@@ -761,13 +783,95 @@ def test_the_report_names_each_unresolved_source_genre_with_its_count(
     _code, resumed = drive(resume_argv(job.job_id))
 
     tagging = resumed["data"]["progress"]["tagging"]
-    assert tagging["unresolved"] == {"gqom": 2, "footwork": 1}
+    assert tagging["unresolved"] == {"Techno": 2, "Electronic": 1}
     assert tagging["skipped"][tag.UNMAPPED_GENRE] == 3
     assert [report["source_genre"] for report in artifacts.committed(cfg, job.job_id)] == [
-        "gqom",
-        "gqom",
-        "footwork",
+        "Techno",
+        "Techno",
+        "Electronic",
     ]
+
+
+def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
+    cfg, folder, silence, monkeypatch
+):
+    """R-650. The written word a person was never told about.
+
+    Three files are tagged, and two of them carry a word the declared taxonomy
+    has never heard of. Before this, the report said three tagged and nothing
+    else, so a person was told the folder tagged cleanly while two files went to
+    the fallback bucket wearing a genre the template does not use.
+
+    THE TWO MAPS ARE NOT ONE MAP. A decline left its file askable and an off
+    taxonomy write is already on disk, so they are different jobs for whoever
+    reads them, and a report that merged them would send somebody looking for
+    files that are not there.
+    """
+    for name in ("a", "b", "c", "d", "e"):
+        place(folder, silence, name)
+    bound(
+        monkeypatch,
+        answering(
+            {
+                "a": hit("gqom", "gqom", off_taxonomy=True),
+                "b": hit("gqom", "gqom", off_taxonomy=True),
+                "c": hit("Deep House", "Deep House"),
+                "d": hit("Techno"),
+                "e": hit("bubblegum bass", "bubblegum bass", off_taxonomy=True),
+            }
+        ),
+    )
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["off_taxonomy"] == {"gqom": 2, "bubblegum bass": 1}
+    assert tagging["unresolved"] == {"Techno": 1}
+    assert tagging["tagged"] == 4, "they were written, so they are tagged"
+    assert [report["off_taxonomy"] for report in artifacts.committed(cfg, job.job_id)] == [
+        True,
+        True,
+        False,
+        False,
+        True,
+    ]
+
+    warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    assert tag_cli.OFF_TAXONOMY == "tag-folder-off-taxonomy", (
+        "the code is the surface a log filter matches on, so it is pinned here "
+        "rather than only referred to by name"
+    )
+    assert tag_cli.OFF_TAXONOMY in warnings
+    message = warnings[tag_cli.OFF_TAXONOMY]
+    assert "3 of the 4 files" in message
+    # SORTED AND NOT IN WALK ORDER, so two runs over one unchanged folder agree.
+    # The files were committed with gqom first, and the message must not say so.
+    assert "bubblegum bass, gqom" in message
+    assert "Deep House" not in message
+    assert "Techno" not in message, "a decline is the other map's, and nothing was written"
+
+
+def test_a_sweep_with_nothing_off_taxonomy_carries_no_such_warning(
+    cfg, folder, silence, monkeypatch
+):
+    """The quiet case, which is every ordinary sweep.
+
+    A warning that fires on a clean run is one nobody reads by the second week,
+    so the zero is asserted as its own property rather than inferred from the
+    case above.
+    """
+    for name in ("a", "b"):
+        place(folder, silence, name)
+    bound(monkeypatch, answering({"a": hit("Deep House", "Deep House"), "b": hit("Techno")}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    assert resumed["data"]["progress"]["tagging"]["off_taxonomy"] == {}
+    assert tag_cli.OFF_TAXONOMY not in [warning["code"] for warning in resumed["warnings"]]
 
 
 def test_the_art_repair_reaches_the_artifact_and_the_summary_counts_every_status(
