@@ -1325,3 +1325,21 @@ def test_a_joined_flac_carries_no_wav_muxer_option(tmp_path):
     )
     join = next(c for c in seen if "concat" in c.argv)
     assert "-rf64" not in join.argv
+
+
+def test_the_engine_refuses_an_existing_joined_master_before_archiving(tmp_path):
+    """The engine's own check, not the handler's pre-check. ``master`` would
+    also refuse the same destination, but only after every part was archived
+    and the whole set joined, which is minutes of writes for a refusal that was
+    decidable by reading."""
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.wav")
+    (tmp_path / "REC001_set_mastered.flac").write_bytes(b"kept")
+    run, seen = _recorder()
+
+    with pytest.raises(mastering.MasteringRefused) as excinfo:
+        mastering.master_parts([first, second], runner=run)
+
+    assert excinfo.value.refusal is mastering.Refusal.OUTPUT_EXISTS
+    assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
+    assert seen == []
