@@ -35,9 +35,11 @@ Layer: modules.
 from __future__ import annotations
 
 import importlib
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
 from cratekit.acquire.provider_session import ProviderUnavailable
@@ -59,6 +61,65 @@ ADAPTER_MODULE = "cratekit.label.tidal_catalogue"
 #: a candidate past the cut could be a second exact one nobody can see, and
 #: ``intake.candidates`` never lists a row on the strength of a full page.
 TRACK_SEARCH_PAGE = 50
+
+
+# THE REFERENCE PARSER IS PURE AND LIVES ON THE SEAM, NOT IN THE ADAPTER,
+# because a core reader needs it too: the playlists cursor records the
+# identifier a typed reference names, and core cannot import the adapter,
+# which imports the provider's client library. The adapter re-exports it.
+
+#: A provider playlist identifier. The provider mints playlists as UUIDs, so a
+#: reference that is not one cannot name a playlist and is refused before a
+#: request is spent on it.
+_UUID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
+)
+
+#: Hosts a playlist URL or a share link is read from. A share link is the same
+#: URL with a query string on it, so it needs no host of its own.
+PLAYLIST_HOSTS = frozenset({"tidal.com", "www.tidal.com", "listen.tidal.com"})
+
+#: The short link host. Its path is an opaque code that only the provider can
+#: expand, so it is refused BY NAME rather than followed: following it is a
+#: network redirect this parser would have to trust.
+SHORT_LINK_HOST = "link.tidal.com"
+
+
+class PlaylistReferenceInvalid(ValueError):
+    """A reference that is not a playlist URL, a share link, or an identifier."""
+
+
+def playlist_id(reference: str) -> str:
+    """The playlist identifier inside what a person typed, or a named refusal.
+
+    THREE SHAPES AND NO FOURTH: a bare identifier, a full URL on a provider host
+    whose path ends ``playlist/<id>``, and a share link, which is that URL with a
+    query string. Anything else is refused rather than searched for, because a
+    guess that lands on a different playlist would list someone else's tracks
+    under the one the person named.
+    """
+    text = str(reference or "").strip()
+    if _UUID.fullmatch(text):
+        return text.lower()
+    parts = urlsplit(text)
+    host = (parts.hostname or "").lower()
+    if parts.scheme in {"http", "https"} and host == SHORT_LINK_HOST:
+        raise PlaylistReferenceInvalid(
+            f"{reference!r} is a short share link, which only the provider can "
+            f"expand; open it and pass the playlist URL it lands on"
+        )
+    if parts.scheme in {"http", "https"} and host in PLAYLIST_HOSTS:
+        segments = [segment for segment in parts.path.split("/") if segment]
+        if (
+            len(segments) >= 2
+            and segments[-2] == "playlist"
+            and _UUID.fullmatch(segments[-1])
+        ):
+            return segments[-1].lower()
+    raise PlaylistReferenceInvalid(
+        f"{reference!r} is not a playlist URL, a share link, or a playlist "
+        f"identifier"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,13 +479,17 @@ def resolve(cfg: config.Config) -> Catalogue:
 
 __all__ = [
     "ADAPTER_MODULE",
+    "PLAYLIST_HOSTS",
+    "SHORT_LINK_HOST",
     "AccountPlaylist",
     "Catalogue",
     "HeartsShortfall",
+    "PlaylistReferenceInvalid",
     "ReleaseUnresolvable",
     "TRACK_SEARCH_PAGE",
     "Unread",
     "bound",
     "missing_listing",
+    "playlist_id",
     "resolve",
 ]

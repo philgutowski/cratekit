@@ -4,7 +4,28 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-318, issue #169, `relay/169`, 2026-09-21.**
+**Last merged: R-382, issue #96, `relay/96`, 2026-09-21.**
+A playlist run to done by `crate intake playlist` is now recorded in the
+playlists cursor on the next `crate sync all`, which CLOSES R-382. The cursor
+is reconciled over `playlists.playlist_jobs`, every `intake.playlist` job for
+the library, instead of only the jobs a pass stamped `source_id`. An open hand
+queued job holds its playlist back as in flight. `playlists.recorded_as` keeps a
+pass's own job at the listing's identifier verbatim, reads a hand typed
+reference through `label.catalogue.playlist_id` so a URL records the bare
+identifier, and records nothing for the hearts reference. The pure reference
+parser moved from `label/tidal_catalogue.py` to `label/catalogue.py`, which the
+adapter re-exports, because core cannot import the adapter's client library.
+`source_jobs` is unchanged and is still what `crate sync mark` groups a pass by.
+The built in review found no defect.
+Battery: ruff clean, **9765 passed** and 1 skipped in 65 seconds, 9766
+collected. Scan clean. No test of this unit's is among the ten slowest.
+Mutation table `docs/mutation/r382.md`, read in `r382-notes.md`: **16 rows, the
+author's own, 15 killed.** The zero, M10, is an equivalent mutant.
+Nothing filed. R-116 and R-247 merged after R-318 without rewriting this file,
+and their entries are not backfilled here.
+**Main's highest residual number is R-641.**
+
+**The session before: R-318, issue #169, `relay/169`, 2026-09-21.**
 A confirmed `crate route inbox` now names every intake file it could not file
 and why, which CLOSES R-318. The totals carry `skipped_files`, one record per
 file with its path, the trees it was declared into, the rows named and a reason

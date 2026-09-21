@@ -572,18 +572,196 @@ def test_a_failed_job_is_not_recorded_and_its_playlist_is_offered_again(slim, mo
     assert len(_playlist_jobs()) == 2
 
 
-def test_a_playlist_queued_by_hand_is_not_this_sources_to_record(slim, monkeypatch):
-    """``crate intake playlist`` shares the handler key. Its job is not in flight
-    for this source and its success is not a sweep this source made."""
+def _by_hand(store, cfg, reference: str, *, handler_key: str = INTAKE_PLAYLIST) -> jobs.Job:
+    """A job queued the way ``crate intake playlist`` queues one: no run, no source."""
+    return intake_cli.queue_playlist(
+        store,
+        cfg,
+        handler_key=handler_key,
+        reference=reference,
+        tracks={"101": {"title": "Title 101"}},
+    )
+
+
+def test_a_playlist_ingested_by_hand_is_recorded_on_the_next_pass(slim, monkeypatch):
+    """R-382's producer, driven through the verb: ``crate intake playlist`` to
+    done, then ``crate sync all``. The playlist is recorded, not queued again."""
     cfg = slim
     bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     code, by_hand = drive(["intake", "playlist", "pl-a"])
     assert code == int(ExitCode.OK), by_hand
-    code, resumed = drive(cli_jobs.argv_for(_playlist_jobs()[0]))
+    (job,) = _playlist_jobs()
+    assert "source_id" not in job.payload, "the producer is a job with no source id"
+    code, resumed = drive(cli_jobs.argv_for(job))
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     code, passed = drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
+    block = passed["data"]["summary"]["playlists"]
+    assert block["queued"] == []
+    assert block["recorded_now"] == ["pl-a"]
+    assert block["excluded"]["pl-a"]["reason"] == "recorded"
+    assert _swept(cfg) == ("pl-a",)
+    assert len(_playlist_jobs()) == 1
+
+
+def test_a_playlist_intake_still_open_by_hand_is_in_flight_not_queued(slim, monkeypatch):
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    code, by_hand = drive(["intake", "playlist", "pl-a"])
+    assert code == int(ExitCode.OK), by_hand
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    block = passed["data"]["summary"]["playlists"]
+    assert block["queued"] == []
+    assert block["excluded"]["pl-a"]["reason"] == "in-flight"
+    assert len(_playlist_jobs()) == 1, "an open hand queued job's playlist was queued again"
+    assert _swept(cfg) is None
+
+
+@pytest.mark.parametrize("ended", [jobs.JobState.FAILED, jobs.JobState.CANCELLED])
+def test_a_playlist_intake_by_hand_that_did_not_succeed_is_not_recorded(
+    slim, monkeypatch, ended
+):
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    with jobs.open_store() as store:
+        job = _by_hand(store, cfg, "pl-a")
+        jobs.transition(store, job.job_id, ended)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
     assert [row["playlist_id"] for row in passed["data"]["summary"]["playlists"]["queued"]] == ["pl-a"]
+    assert _swept(cfg) is None
+
+
+def test_a_set_intake_naming_the_playlist_is_not_a_playlist_intake(slim, monkeypatch):
+    """``intake.set`` carries a source too. It is not what the cursor records."""
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    set_key = registry.entry("intake.set").handler_key
+    assert set_key != INTAKE_PLAYLIST
+    with jobs.open_store() as store:
+        finished = _by_hand(store, cfg, "pl-a", handler_key=set_key)
+        jobs.transition(store, finished.job_id, jobs.JobState.SUCCEEDED)
+        _by_hand(store, cfg, "pl-a", handler_key=set_key)  # and one still open
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert [row["playlist_id"] for row in passed["data"]["summary"]["playlists"]["queued"]] == ["pl-a"]
+    assert _swept(cfg) is None
+
+
+def test_two_succeeded_jobs_for_one_playlist_record_it_once(slim, monkeypatch):
+    """One by hand, one a pass queued, both done. One identifier in the cursor."""
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    with jobs.open_store() as store:
+        hand = _by_hand(store, cfg, "pl-a")
+        swept = intake_cli.queue_playlist(
+            store,
+            cfg,
+            handler_key=INTAKE_PLAYLIST,
+            reference="pl-a",
+            tracks={"101": {"title": "Title 101"}},
+            run_id="an-earlier-run",
+            source_id=playlists.SOURCE_ID,
+        )
+        for job in (hand, swept):
+            jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["data"]["summary"]["playlists"]["recorded_now"] == ["pl-a"]
+    assert _swept(cfg) == ("pl-a",)
+
+
+PLAYLIST_UUID = "0f1e2d3c-4b5a-6978-8a9b-acbdcedfe0f1"
+
+
+@pytest.mark.parametrize(
+    "typed",
+    [
+        f"https://tidal.com/browse/playlist/{PLAYLIST_UUID}",
+        f"https://listen.tidal.com/playlist/{PLAYLIST_UUID}?u",
+        PLAYLIST_UUID.upper(),
+    ],
+)
+def test_a_playlist_typed_as_a_url_by_hand_records_its_identifier(slim, monkeypatch, typed):
+    """The standalone verb stores what was TYPED. The cursor is compared with the
+    listing's identifier, so a URL recorded verbatim would be offered again."""
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist(PLAYLIST_UUID, "Warmup"), _tracks("101")))
+    with jobs.open_store() as store:
+        job = _by_hand(store, cfg, typed)
+        jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    block = passed["data"]["summary"]["playlists"]
+    assert block["queued"] == []
+    assert block["excluded"][PLAYLIST_UUID]["reason"] == "recorded"
+    assert _swept(cfg) == (PLAYLIST_UUID,)
+
+
+def test_a_playlist_typed_as_a_url_and_still_open_is_in_flight(slim, monkeypatch):
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist(PLAYLIST_UUID, "Warmup"), _tracks("101")))
+    with jobs.open_store() as store:
+        _by_hand(store, cfg, f"https://tidal.com/playlist/{PLAYLIST_UUID}")
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    block = passed["data"]["summary"]["playlists"]
+    assert block["queued"] == []
+    assert block["excluded"][PLAYLIST_UUID]["reason"] == "in-flight"
+
+
+def test_a_pass_queued_job_records_the_listing_identifier_verbatim(slim, monkeypatch):
+    """The parser lowercases what a person typed. A pass's own job carries the
+    listing's identifier, and that is what the next listing is compared with, so
+    it is recorded exactly as listed."""
+    cfg = slim
+    listed = PLAYLIST_UUID.upper()
+    bind_playlists(monkeypatch, (_playlist(listed, "Warmup"), _tracks("101")))
+    drive(["sync", "all"])
+    (job,) = _playlist_jobs()
+    with jobs.open_store() as store:
+        jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["data"]["summary"]["playlists"]["excluded"][listed]["reason"] == "recorded"
+    assert _swept(cfg) == (listed,)
+
+
+def test_a_mark_reads_a_playlist_ingested_by_hand_as_recorded(slim, monkeypatch):
+    """``marking_sweep`` reads the policy :func:`playlists.reconcile` uses, so a
+    playlist the next pass would record is recorded to a mark taken before it."""
+    cfg = slim
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    with jobs.open_store() as store:
+        job = _by_hand(store, cfg, "pl-a")
+        jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+        sweep = playlists.marking_sweep(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
+    assert sweep.recorded == frozenset({"pl-a"})
+    assert _swept(cfg) is None, "a mark moved the cursor"
+
+
+def test_a_hearts_intake_is_not_recorded_as_a_playlist(slim, monkeypatch):
+    """Both producers of a hearts job: the verb's reserved reference, and the
+    favourites source's, which also carries its source id."""
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    with jobs.open_store() as store:
+        by_verb = _by_hand(store, cfg, "FAVORITES")
+        by_source = intake_cli.queue_playlist(
+            store,
+            cfg,
+            handler_key=INTAKE_PLAYLIST,
+            reference=intake_cli.FAVORITES,
+            tracks={"101": {"title": "Title 101"}},
+            run_id="an-earlier-run",
+            source_id=intake_cli.FAVORITES_SOURCE_ID,
+        )
+        for job in (by_verb, by_source):
+            jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["data"]["summary"]["playlists"]["recorded_now"] == []
     assert _swept(cfg) is None
 
 
