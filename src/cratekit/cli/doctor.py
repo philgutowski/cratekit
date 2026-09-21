@@ -1964,6 +1964,10 @@ def _open_state(record: session.SessionRecord) -> str:
     """
     if session.owes_only_deferred_routing(record):
         return f"{record.state}, import proven, placement waits for a cutover"
+    # A RUN WHOSE HOLDER IS GONE WILL NEVER END ITSELF (R-598), and listed bare it
+    # reads as a run in progress. This layer names verbs, so it names the one.
+    if session.orphaned(record):
+        return f"{record.state}, its process is gone, crate session release abandons it"
     return str(record.state)
 
 

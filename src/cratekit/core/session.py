@@ -131,6 +131,10 @@ STATE_KEY = "state"
 #: The record field naming the capture that session is the undo for.
 SNAPSHOT_KEY = "snapshot_path"
 
+#: The ``detail`` key naming the process that owns an open record. See
+#: :func:`orphaned`.
+HOLDER_KEY = "holder"
+
 #: What the guarded writer's snapshot-protection scan should read, DERIVED from
 #: the declarations above rather than restated as three more strings. The two
 #: modules agreeing is asserted by driving a real record through the real scan,
@@ -879,6 +883,56 @@ def release_stale_lock(
     finally:
         handle.close()
     return recorded
+
+
+def orphaned(record: SessionRecord, *, here: Holder | None = None) -> bool:
+    """Whether an open record's owner is provably gone, so nothing will ever end it.
+
+    THREE CONDITIONS, AND EACH ONE KEEPS A RECORD SOMEBODY STILL NEEDS (R-598):
+
+    * the state is exactly ``open``. ``awaiting-import`` is ended by an import
+      and ``committed-unverified`` by a restore, and abandoning either would hide
+      the act it is waiting for;
+    * the record names a holder. Only the gates record one, and a record without
+      one is not proof of anything: an intake landing stays open across
+      processes on purpose and never names a holder;
+    * :func:`holder_alive` says that holder is gone. It fails towards alive on
+      another host, another boot and a missing start time, so this does too.
+
+    A holder this build cannot read is judged alive, for the same reason.
+    """
+    if record.state is not SessionState.OPEN:
+        return False
+    recorded = record.detail.get(HOLDER_KEY)
+    if not isinstance(recorded, Mapping):
+        return False
+    try:
+        holder = Holder.from_json(recorded)
+    except (TypeError, ValueError):
+        return False
+    return not holder_alive(holder, here=here)
+
+
+def abandon_orphaned_sessions(
+    cfg: config.Config, *, now: datetime | None = None
+) -> tuple[SessionRecord, ...]:
+    """End every open record whose owner is provably gone, and return them.
+
+    A HARD KILL RUNS NO EXIT CODE, so a gated write that was SIGKILLed, lost
+    power or lost its volume leaves its record ``open``. That record keeps its
+    capture from retention for ever and refuses every cutover, and before this
+    the only way out was editing a file in the log by hand.
+
+    ABANDONING IS THE UNGATED CLOSE, which is what keeps it reachable whatever
+    state the library is in. A record that recorded a commit still says so after
+    this, so a restore still reads it as work it would discard.
+    """
+    here = current_holder()
+    return tuple(
+        close_session(record, cfg, state=SessionState.ABANDONED, now=now)
+        for record in records(cfg)
+        if orphaned(record, here=here)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1802,12 +1856,17 @@ def assert_gates(
         reconcile.assert_converged(resolved)
     acknowledgment = assert_backup_acknowledged(resolved, now=now)
     watched = list(analysis_roots)
-    with session_lock(resolved, path=lock, holder=holder) as held:
+    # ONE CLAIMANT FOR THE LOCK AND THE RECORD, so the record names the process
+    # the lock names. Two lookups could disagree, and the record's copy is the
+    # one that survives a kill: the lock's is overwritten by the next session.
+    claimant = holder or current_holder()
+    with session_lock(resolved, path=lock, holder=claimant) as held:
         keeping = (
             _recorded(
                 resolved,
                 workflow=workflow,
                 acknowledgment=acknowledgment,
+                holder=claimant,
                 intent=intent,
                 identity_provider=identity_provider,
                 mount_enumerator=mount_enumerator,
@@ -1841,6 +1900,7 @@ def open_session(
     session_id: str | None = None,
     actor: str | None = None,
     acknowledged_at: str | None = None,
+    holder: Holder | None = None,
     now: datetime | None = None,
 ) -> SessionRecord:
     """Start a session record and persist it before any work happens.
@@ -1849,6 +1909,12 @@ def open_session(
     recovery reads and a run that crashed is exactly the run with no clean end.
     An open record also protects its capture from pruning the moment it exists,
     which is the property R30 turns on.
+
+    ``holder`` is the process that owns the record for as long as it is open,
+    and it is what lets :func:`orphaned` prove later that the owner is gone
+    (R-598). Only the gates pass one, because only a record opened under the lock
+    is owned by one process for its whole open life. A record left without one
+    is never judged orphaned.
     """
     record = SessionRecord(
         session_id=session_id or new_session_id(now),
@@ -1858,6 +1924,7 @@ def open_session(
         actor=actor,
         acknowledged_at=acknowledged_at,
         sources={source: str(SourceState.PENDING) for source in sources},
+        detail={HOLDER_KEY: holder.to_json()} if holder is not None else {},
     )
     write_record(record, cfg)
     return record
@@ -2020,6 +2087,7 @@ def _recorded(
     *,
     workflow: str,
     acknowledgment: Acknowledgment,
+    holder: Holder,
     intent: Intent,
     identity_provider: preflight.IdentityProvider | None,
     mount_enumerator: preflight.MountEnumerator | None,
@@ -2034,7 +2102,9 @@ def _recorded(
 
     IT ENDS TERMINAL ON EVERY PATH THAT CAN STILL WRITE THE LOG. A record left
     open protects its capture from retention for ever and refuses every later
-    prune and cutover, and no verb abandons one. So a body that raised closes
+    prune and cutover. A kill runs no path at all, so the record carries the
+    lock's holder and :func:`abandon_orphaned_sessions` ends it once that holder
+    is provably gone (R-598). Every other ending is this function's. So a body that raised closes
     ABANDONED, and so does a clean close that REFUSED: the gated close is the
     claim that the session finished, and when it cannot be made the honest
     fallback is the opposite claim, not no claim. A commit that landed first is
@@ -2054,6 +2124,7 @@ def _recorded(
         workflow=workflow,
         actor=acknowledgment.actor,
         acknowledged_at=acknowledgment.recorded_at.isoformat(),
+        holder=holder,
         now=now,
     )
     try:
@@ -2516,6 +2587,7 @@ __all__ = [
     "ACK_SCHEMA_VERSION",
     "ANLZ_NAME_PATTERN",
     "DEFAULT_ACK_VALIDITY",
+    "HOLDER_KEY",
     "IMPORT_VERIFIED_KEY",
     "LOG_SCHEMA_VERSION",
     "RUN_STATE_VOCABULARY",
@@ -2535,6 +2607,7 @@ __all__ = [
     "ShownAge",
     "SourceState",
     "TreeChange",
+    "abandon_orphaned_sessions",
     "ack_path",
     "analysis_drift",
     "analysis_files_under",
@@ -2564,6 +2637,7 @@ __all__ = [
     "mark_import_verified",
     "new_session_id",
     "open_session",
+    "orphaned",
     "owes_only_deferred_routing",
     "pending_import",
     "process_exists",

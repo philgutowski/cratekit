@@ -39,6 +39,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -2134,6 +2135,90 @@ def test_the_record_is_the_gates_own_workflow_actor_and_acknowledgment(cfg):
     assert only.acknowledged_at == minted.recorded_at.isoformat()
     assert only.state is session.SessionState.CLOSED
     assert only.ended is not None
+
+
+def test_the_record_names_the_holder_the_lock_names(cfg):
+    """R-598: the record's copy of the holder survives a kill, the lock's does not.
+
+    Read while the gates are held, so both copies are on disk at once, and with
+    no holder supplied, so the one the gates look up is the one compared.
+    """
+    acknowledge(cfg)
+    with recording_gates(cfg) as gates:
+        on_disk = session.read_record(gates.record.session_id, cfg)
+        in_lock = session.read_lock_holder(gates.lock)
+        assert in_lock == session.current_holder()
+        assert session.Holder.from_json(on_disk.detail[session.HOLDER_KEY]) == in_lock
+        assert session.orphaned(on_disk) is False
+
+
+def test_a_supplied_holder_reaches_the_record_as_well_as_the_lock(cfg):
+    """One claimant, so a caller naming a holder cannot split the two copies."""
+    acknowledge(cfg)
+    named = session.Holder(host="elsewhere", boot="b", pid=4242, started="7.000")
+    with recording_gates(cfg, holder=named) as gates:
+        on_disk = session.read_record(gates.record.session_id, cfg)
+        assert session.read_lock_holder(gates.lock) == named
+        assert session.Holder.from_json(on_disk.detail[session.HOLDER_KEY]) == named
+
+
+def _gone_holder() -> session.Holder:
+    """A process this boot started and that has exited, so ``holder_alive`` says gone."""
+    finished = subprocess.Popen([sys.executable, "-c", "pass"])
+    finished.wait()
+    here = session.current_holder()
+    gone = session.Holder(host=here.host, boot=here.boot, pid=finished.pid, started="1.000")
+    assert session.holder_alive(gone) is False
+    return gone
+
+
+@pytest.mark.parametrize(
+    ("state", "holder", "expected"),
+    [
+        (session.SessionState.OPEN, "gone", True),
+        (session.SessionState.OPEN, "here", False),
+        (session.SessionState.OPEN, None, False),
+        (session.SessionState.OPEN, "other-host", False),
+        (session.SessionState.OPEN, "unreadable", False),
+        (session.SessionState.AWAITING_IMPORT, "gone", False),
+        (session.SessionState.COMMITTED_UNVERIFIED, "gone", False),
+        (session.SessionState.CLOSED, "gone", False),
+        (session.SessionState.ABANDONED, "gone", False),
+    ],
+)
+def test_orphaned_needs_open_a_recorded_holder_and_proof_it_is_gone(cfg, state, holder, expected):
+    """Every condition that keeps a record, one row each, and the one row that ends it."""
+    here = session.current_holder()
+    record = session.open_session(cfg, workflow="w")
+    record.state = state
+    if holder == "gone":
+        record.detail[session.HOLDER_KEY] = _gone_holder().to_json()
+    elif holder == "here":
+        record.detail[session.HOLDER_KEY] = here.to_json()
+    elif holder == "other-host":
+        record.detail[session.HOLDER_KEY] = {**_gone_holder().to_json(), "host": "elsewhere"}
+    elif holder == "unreadable":
+        record.detail[session.HOLDER_KEY] = {"pid": "not-a-number"}
+    assert session.orphaned(record) is expected
+
+
+def test_abandon_orphaned_sessions_ends_only_the_orphans(cfg):
+    """The sweep closes through the ungated close and leaves everything else as it was."""
+    gone = _gone_holder()
+    orphan = session.open_session(cfg, workflow="w", holder=gone)
+    live = session.open_session(cfg, workflow="w", holder=session.current_holder())
+    unowned = session.open_session(cfg, workflow="intake")
+    kept_bytes = {
+        r.session_id: session.log_path(r.session_id, cfg).read_bytes() for r in (live, unowned)
+    }
+
+    (ended,) = session.abandon_orphaned_sessions(cfg)
+
+    assert ended.session_id == orphan.session_id
+    assert session.read_record(orphan.session_id, cfg).state is session.SessionState.ABANDONED
+    for session_id, before in kept_bytes.items():
+        assert session.log_path(session_id, cfg).read_bytes() == before
+    assert session.abandon_orphaned_sessions(cfg) == ()
 
 
 def test_a_refused_gate_keeps_no_record(cfg):
