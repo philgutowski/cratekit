@@ -1781,6 +1781,7 @@ QUALIFIED_MUTATIONS = frozenset(
         "config.update",
         "naming.claim_target",
         "backup_facts.record",
+        "backup_facts.write_outcome",
         "rb_writer._candidate_app_paths",
         "rb_writer._loaded_config",
         "rb_writer._pins",
