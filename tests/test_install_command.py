@@ -86,6 +86,13 @@ def test_a_pipx_environment_whose_source_cannot_be_read_gets_the_readme_form(
     )
 
 
+def test_a_moved_clone_still_keeps_the_extras_pipx_recorded(tmp_path, monkeypatch):
+    """The source is unusable, the record of what was chosen is not."""
+    prefix = _pipx_prefix(tmp_path, str(tmp_path / "moved" / "cratekit") + "[analysis]")
+    monkeypatch.setattr(sys, "prefix", str(prefix))
+    assert extras.install_command("vocals") == "pipx install --force '.[analysis,vocals]'"
+
+
 def test_the_parser_stub_and_the_workers_read_one_source(tmp_path, monkeypatch):
     clone = tmp_path / "cratekit"
     clone.mkdir()

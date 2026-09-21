@@ -59,9 +59,12 @@ def install_command(extras: str) -> str:
 def _pipx_source(metadata: Path) -> tuple[str, tuple[str, ...]]:
     """The clone pipx installed from and the extras it recorded.
 
-    Falls back to ``.``, the README's form, which is run from inside the clone,
-    whenever the record cannot name a directory that still exists. That covers
-    an unreadable file, a moved clone, and a source that is not a folder at all.
+    The source falls back to ``.``, the README's form, which is run from inside
+    the clone, whenever the record cannot name a directory that still exists:
+    an unreadable file, a moved clone, a source that is not a folder at all.
+    The recorded extras are kept whenever they can be read, even when the
+    source cannot be used, because dropping them is the failure the pipx form
+    exists to prevent.
     """
     try:
         recorded = json.loads(metadata.read_text(encoding="utf-8"))
@@ -69,10 +72,11 @@ def _pipx_source(metadata: Path) -> tuple[str, tuple[str, ...]]:
     except (OSError, ValueError, KeyError, TypeError):
         return ".", ()
     match = _SPEC.match(spec) if isinstance(spec, str) else None
-    if match is None or not Path(match["source"]).is_dir():
+    if match is None:
         return ".", ()
     chosen = tuple(e.strip() for e in (match["extras"] or "").split(",") if e.strip())
-    return match["source"], chosen
+    source = match["source"] if Path(match["source"]).is_dir() else "."
+    return source, chosen
 
 
 __all__ = ["DISTRIBUTION", "PIPX_METADATA", "install_command"]
