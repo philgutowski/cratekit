@@ -743,6 +743,192 @@ def test_a_cache_written_by_another_build_is_discarded_rather_than_deserialized(
     assert [t.title for t in index] == ["Title"]
 
 
+def test_a_cache_parsed_under_another_template_is_discarded(tmp_path):
+    """A cached entry is the OUTPUT of a parse, and the template is its other input.
+
+    Changing the lossy marker changes every marked file's clean title and match
+    key while touching no file's modification time, so a cache keyed on path and
+    time alone would serve the old title for ever. Driven with the marker moving
+    from one literal to another over a file that never changes.
+    """
+    root = tmp_path / "lib"
+    root.mkdir()
+    (root / "a.flac").touch()
+    cache = tmp_path / "cache.json"
+
+    def reader(path):
+        return {"title": "08A - 124 - [LOSSY] Title", "artist": "Alder"}
+
+    other = NameTemplate(markers=(MarkerRule(field="lossy", literal="[LOSSY]"),))
+    first = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=reader)
+    second = setbuilder.build_index(root, template=other, cache_path=cache, reader=reader)
+    assert [t.title for t in first] == ["[LOSSY] Title"]
+    assert [t.title for t in second] == ["Title"], "the old template's parse was served"
+
+
+def test_the_template_stamp_is_the_same_string_in_every_process():
+    """A stamp that moved on its own would discard the cache on every run.
+
+    The template holds a frozenset, whose repr follows string hashing and so
+    differs between two runs of one build. Asserted against a literal rather
+    than against a second call in this process, which would agree with itself
+    under any hash seed and prove nothing.
+
+    A stand-in carries the set, because the real template refuses most optional
+    sets at construction and one member cannot show an ordering.
+    """
+    import dataclasses
+
+    @dataclasses.dataclass(frozen=True)
+    class Shape:
+        head_optional: frozenset[str]
+        head_sep: str = " - "
+
+    stamp = setbuilder._template_stamp(Shape(frozenset({"key", "bpm", "energy", "vox"})))
+    assert stamp == "head_optional=['bpm', 'energy', 'key', 'vox'];head_sep=' - '"
+    assert setbuilder._template_stamp(TEMPLATE) != setbuilder._template_stamp(NameTemplate())
+
+
+def test_a_cache_with_no_template_stamp_is_discarded(tmp_path):
+    root = tmp_path / "lib"
+    root.mkdir()
+    audio = root / "a.flac"
+    audio.touch()
+    cache = tmp_path / "cache.json"
+    stale = {"mtime": audio.stat().st_mtime, "track": None}
+    cache.write_text(
+        json.dumps({"cache_version": setbuilder.CACHE_VERSION, "entries": {str(audio): stale}})
+    )
+    index = setbuilder.build_index(
+        root,
+        template=TEMPLATE,
+        cache_path=cache,
+        reader=lambda p: {"title": "08A - 124 - Title", "artist": "Alder"},
+    )
+    assert [t.title for t in index] == ["Title"], "an unstamped cache was trusted"
+
+
+def _one_file_library(tmp_path):
+    root = tmp_path / "lib"
+    root.mkdir()
+    audio = root / "a.flac"
+    audio.write_bytes(b"first")
+    return root, audio, tmp_path / "state" / "cache.json"
+
+
+GOOD = {"title": "08A - 124 - Title", "artist": "Alder"}
+
+
+def test_a_read_that_returned_nothing_is_never_cached_as_the_files_answer(tmp_path):
+    """Found by the built in review, and newly reachable once a verb passed a path.
+
+    The shared reader answers None for an absent tag and for a file it could not
+    open alike. One momentary failure, cached under an unchanged time, dropped an
+    analyzed track from the index until somebody touched the file.
+    """
+    root, audio, cache = _one_file_library(tmp_path)
+    failed = dict.fromkeys(setbuilder.INDEX_FIELDS)
+    first = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: failed)
+    second = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
+    assert first == () and [t.title for t in second] == ["Title"]
+
+
+def test_a_keyless_file_that_did_read_is_still_cached_as_nothing(tmp_path):
+    """The other half, so the fix above did not quietly end the keyless cache."""
+    root, audio, cache = _one_file_library(tmp_path)
+    reads = []
+
+    def reader(path):
+        reads.append(path)
+        return {"title": "No Head Here", "artist": "Alder"}
+
+    setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=reader)
+    setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=reader)
+    assert len(reads) == 1
+
+
+def test_new_bytes_under_an_old_modification_time_are_re_read(tmp_path):
+    """``rsync -a``, ``cp -p`` and rclone all restore a file under its old time."""
+    import os
+
+    root, audio, cache = _one_file_library(tmp_path)
+    before = audio.stat()
+    setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
+    audio.write_bytes(b"different bytes, longer")
+    os.utime(audio, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert audio.stat().st_mtime_ns == before.st_mtime_ns
+
+    other = {"title": "09A - 126 - Replaced", "artist": "Alder"}
+    index = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: other)
+    assert [(t.title, t.key) for t in index] == [("Replaced", "9A")]
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        [],
+        "text",
+        {"mtime_ns": "IDENTITY", "size": "IDENTITY", "track": []},
+        {"mtime_ns": "IDENTITY", "size": "IDENTITY", "track": {"artist": 7}},
+    ],
+    ids=["list", "text", "track-not-a-mapping", "track-missing-fields"],
+)
+def test_a_cache_entry_of_the_wrong_shape_costs_one_read_and_never_the_run(tmp_path, entry):
+    root, audio, cache = _one_file_library(tmp_path)
+    setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
+    document = json.loads(cache.read_text())
+    stat = audio.stat()
+    if isinstance(entry, dict):
+        entry = {**entry, "mtime_ns": stat.st_mtime_ns, "size": stat.st_size}
+    document["entries"][str(audio)] = entry
+    cache.write_text(json.dumps(document))
+
+    index = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
+    assert [t.title for t in index] == ["Title"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("bpm", "124"), ("energy", True), ("vox", [3]), ("title", None), ("voxgender", 4)],
+)
+def test_a_cached_track_with_the_right_names_and_wrong_types_is_re_read(tmp_path, field, value):
+    """``Track(**raw)`` constructs it without complaint and the ranking fails later."""
+    root, audio, cache = _one_file_library(tmp_path)
+    setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
+    document = json.loads(cache.read_text())
+    document["entries"][str(audio)]["track"][field] = value
+    cache.write_text(json.dumps(document))
+    reads = []
+
+    def reader(path):
+        reads.append(path)
+        return GOOD
+
+    index = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=reader)
+    assert reads == [audio], "a track of the wrong types was served from the cache"
+    assert [(t.title, t.bpm) for t in index] == [("Title", 124.0)]
+
+
+def test_the_cache_is_renamed_into_place_and_leaves_nothing_beside_it(tmp_path):
+    root, audio, cache = _one_file_library(tmp_path)
+    setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
+    assert sorted(p.name for p in cache.parent.iterdir()) == ["cache.json"]
+    assert stat.S_IMODE(cache.stat().st_mode) == 0o600
+
+
+def test_an_empty_walk_writes_no_cache(tmp_path):
+    """An unmounted volume leaves an empty directory where the library was.
+
+    Creating a state directory inside that leftover mountpoint is how the real
+    volume comes to mount under a second name, and every configured path misses.
+    """
+    root = tmp_path / "lib"
+    root.mkdir()
+    cache = root / ".state" / "cache.json"
+    assert setbuilder.build_index(root, template=TEMPLATE, cache_path=cache) == ()
+    assert list(root.iterdir()) == []
+
+
 def test_the_index_cache_has_a_declared_home_in_the_state_inventory(cfg):
     """A module composing its own path under a state root invents a file the
     inventory cannot find, snapshot, or clear."""

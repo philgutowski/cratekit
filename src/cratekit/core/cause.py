@@ -1341,6 +1341,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # decides ownership and a track it does not hold cannot be ranked
         # against, whichever of the three reasons put it outside.
         "setbuild-anchor-not-indexed": ExitCode.PRECONDITION,
+        # R-187's one, beside its siblings. A name given with ``--named``
+        # reached owned tracks and could not choose between them, or named a
+        # longer version than the one the library holds. Its own slug rather
+        # than ``not-indexed``, because the remedies are opposite acts: that one
+        # says the library does not have it, and this one says the library has
+        # it more than once and lists them.
+        "setbuild-anchor-ambiguous": ExitCode.PRECONDITION,
         # U98's two, beside their siblings. An unowned anchor named with no
         # Camelot key: the engine answers unresolved rather than guessing, and
         # nothing here looks one up. And a key or tempo supplied beside a PATH

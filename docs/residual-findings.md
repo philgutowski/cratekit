@@ -10721,6 +10721,38 @@ and the finding is promoted or dismissed on the measurement.
 
 ## R-187. The engine's fuzzy anchor lookup cannot tell a title from that title plus a version suffix
 
+**CLOSED 2026-09-20, by issue 175 on `relay/175`.** The first half of the
+closing condition is met: a caller for the lookup ships, and the tie break it
+said that would need is in. `crate setbuild --named TEXT` names the anchor by
+artist and title. `setbuilder.match_in_index` compares the comparison key
+EXACTLY before it takes any fuzzy score, so the driven case below now returns
+the original whichever order the index runs in. After that a hit counts only
+when it holds every typed word, give or take a slip of the finger. One such hit
+resolves. Several refuse as `setbuild-anchor-ambiguous` and list each candidate
+with its path, in an order that does not follow the walk. Hits that all lack
+part of the name refuse under the same slug and say "different version".
+`find_in_index` is rebuilt on the verdict, and `resolve_anchor` answers
+unresolved on an ambiguous name instead of falling through to "not in your
+library", which was the same shape one function over.
+
+**Two things were found closing it that the finding above does not say,** both
+by the built in review and both driven.
+
+1. The subset score is 100 in BOTH directions, so a name LONGER than the owned
+   title resolved to it, "(Extended Mix)" against an owned original. And on a
+   long title the set score stays over 90 while the one telling word differs,
+   "Original Mix" against "Extended Mix", with neither side a subset. The
+   whole-word rule covers both, and `WORD_THRESHOLD` is pinned from both sides
+   in `docs/mutation/r187-a.md`.
+2. A partial reach with a supplied key is the unowned question, a remix of an
+   owned original whose key the person typed. `resolve_anchor` lets that
+   through to the unowned answer rather than discarding the key.
+
+The one other fuzzy site in `src`, `acquire/match.py` `_approximate`, was read
+and does not reproduce the shape: it scores with `token_sort_ratio`, which has
+no subset ceiling, and it offers every hit for review rather than picking one.
+Read, not driven.
+
 **Found by** U43 while deciding the setbuild verb's positional argument,
 2026-08-26. Filed rather than fixed because its input is not reachable from any
 shipped verb.
@@ -10758,6 +10790,32 @@ along with the web-enrichment seam it exists to serve.
 ---
 
 ## R-188. A declared state file has no writer, so every set costs a full library scan
+
+**CLOSED 2026-09-20, by issue 175 on `relay/175`.** The decision this entry
+waited for had been made in the registry on 2026-09-08, by the unit that landed
+`analyze.calibrate`: that verb writes two library scoped state files and
+declares no write surface, on the recorded ground that `writes` names the
+library's own material, files, database and XML. `crate setbuild` now follows
+that ruling. It passes `config.state_path("setbuilder_index_cache", cfg)` to
+`build_index`, declares no write surface, and stays out of the destructive
+gates. A second run over an unchanged library reads no tag, and a third reads
+exactly the file that changed, counted at the engine's own reader in
+`test_a_second_run_reads_no_tag_it_already_holds`. No `state` member was added
+to `WRITE_SURFACES`, because one verb already ships without it.
+
+**Switching the cache on made its failure paths reachable, and the built in
+review drove six.** The cache is stamped with the name template it was parsed
+under. Identity is size and modification time in nanoseconds. A read that
+returned no field at all is not cached, since the shared reader answers None
+for an absent tag and for a file it could not open alike. An entry of the wrong
+shape or a track of the wrong types costs one read and never the run. The write
+goes through `config.atomic_write_bytes`. Nothing is written after an empty
+walk, which is what an unmounted volume's leftover mountpoint looks like.
+`CACHE_VERSION` is 3.
+
+**Still unmeasured, as it was:** the seconds this saves on a real library. The
+live library is off limits by standing constraint, so the measurement above is
+reads, not time. What is left of the cache's exposure is R-623.
 
 **Found by** U43, 2026-08-26, as the consequence of the cache decision that
 unit's brief asked to make explicitly.
@@ -24866,6 +24924,14 @@ suite's remedy assertions replaces them all.
 
 ## R-621. An unowned setbuild label naming an owned track only up to a suffix is not reported as held
 
+**NARROWED 2026-09-20, by issue 175 on `relay/175`.** The first half of the
+closing condition is met and the second is not. R-187 is closed, and the engine
+can now tell the cases apart: `setbuilder.match_in_index` reports the owned
+titles a name reaches and whether any of them holds the whole name. `plan_for`
+does not call it yet, so `held` still reports exact copies only. What is open
+is that one call and a `near` list beside `held`, which was out of that
+issue's scope.
+
 **Found:** 2026-09-21, U98's review round on `relay/143`.
 
 `setbuilder/cli.py`, `plan_for`, drops and reports as `totals.held` the library
@@ -24888,3 +24954,53 @@ duplicate the empty index was chosen to avoid.
 **Closes when:** R-187 gives the engine a way to tell a title from that title
 plus a version suffix, and `held` reports the near matches it finds, separately
 from the exact ones.
+
+---
+
+## R-622. Two files sharing a comparison key are one index entry, so the second cannot be an anchor by path or by name
+
+**Found:** 2026-09-20, by the built in review on `relay/175`, issue 175.
+
+`setbuilder.build_index` collapses tracks whose `match_key` is equal and keeps
+the first in walk order. That is deliberate for the POOL, where the cost of
+being wrong is one duplicate line. It also decides what can be an ANCHOR, which
+nothing chose. Two owned files with one artist and title and two analyses, a
+remaster in another folder at 9A beside the original at 8A, are one entry.
+`crate setbuild <path of the second>` refuses as `setbuild-anchor-not-indexed`
+about a file that is audio, under the root and keyed, and `--named` resolves to
+the first without listing the second. `match_in_index` has a branch that lists
+exact duplicates rather than picking one, and `build_index` can never hand it
+any, so that branch holds only for an index built by hand.
+
+**Measured cost:** the collapse is driven by the engine's own suite. The
+refusal of the second path was READ from `anchor_in_index` and `build_index`
+and NOT driven. The path half predates this issue.
+
+**Why not fixed here.** Keeping both copies changes what the pool dedupes on,
+which is the engine's grounding rule and not a lookup's.
+
+**Closes when:** the index keeps every file for anchor lookup and collapses
+only the pool, or the path refusal names the copy that shadowed it.
+
+---
+
+## R-623. A tag read that fails for some fields and not others is cached as the file's answer
+
+**Found:** 2026-09-20, by the built in review on `relay/175`, issue 175.
+
+`read_index_tags` opens the file once per field through `tags.read_tag`, which
+answers None for an absent tag and for a read that raised alike. Issue 175 made
+`crate setbuild` fill the index cache, and stopped a WHOLLY empty read from
+being cached. A read where the title and key came back and the energy or vox
+read failed is still cached, under an unchanged size and modification time, so
+the track ranks with a neutral signal until the file is touched or the cache is
+deleted. Before that issue no verb passed a cache path and the next run healed
+itself.
+
+**Measured cost:** unmeasured. No partial failure was produced. It needs an I/O
+error between two opens of one file inside one scan, and none of the fixtures
+here can raise one. Reachability is unmeasured, which is why this is a residual.
+
+**Closes when:** `read_index_tags` opens the file once and reports a failed
+read as a failure rather than as absent fields, so the index can decline to
+cache it.

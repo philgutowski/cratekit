@@ -445,26 +445,225 @@ def test_the_vocal_signal_is_reachable_only_because_a_threshold_can_be_supplied(
 # ── the anchor lookup, which is the whole reason the positional is a path ─────
 
 
-def test_the_anchor_is_found_by_path_and_never_by_title():
-    """THE DESIGN DECISION, DRIVEN RATHER THAN ARGUED.
+def test_an_exact_name_is_never_lost_to_a_longer_title_whichever_came_first():
+    """R-187, DRIVEN ON THE SHAPE ITS ENTRY DROVE.
 
-    ``token_set_ratio`` scores a subset at 100, so the engine's fuzzy lookup
-    cannot distinguish a title from that title plus a version suffix, and
-    ``extractOne`` returns whichever it met first. Driven here on both paths in
-    one test: the fuzzy lookup returns the WRONG file for an exact query naming
-    the original, and the path lookup returns the right one. Building a set
-    around the wrong anchor is this verb's worst answer, because every pick after
-    it is internally consistent and therefore looks right.
+    ``token_set_ratio`` scores a subset at 100, so an exact query naming the
+    original scores identically against the original and against the extended
+    mix. Before the exact comparison the lookup returned whichever the index held
+    first, and with this index that was the WRONG file. Both orders are driven,
+    because an answer that is right in one walk order and wrong in the other is
+    the defect and not a fix for it.
+    """
+    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
+    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
+
+    for index in ((extended, original), (original, extended)):
+        assert setbuilder.find_in_index("Alder - Anchor Work", index) is original
+        assert setbuild_cli.named_anchor("Alder - Anchor Work", index) is original
+        assert (
+            setbuild_cli.named_anchor("Alder - Anchor Work (Extended Mix)", index) is extended
+        )
+    assert setbuild_cli.anchor_in_index(Path("/library/orig.flac"), (extended, original)) is original
+
+
+def test_a_name_that_reaches_two_versions_lists_both_and_picks_neither():
+    """The refusal IS the feature, so its contents are asserted and not its slug alone.
+
+    "Anchor Work" is a subset of both titles, so both score 100 and nothing but
+    the person can choose. The candidates carry their paths, because the remedy
+    is a paste, and they come back in one order whichever way the index runs.
+    """
+    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
+    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
+    other = track("Gum", "Wrong Key", "3B", path="/library/gum.flac")
+
+    listings = []
+    for index in ((extended, original, other), (other, original, extended)):
+        with pytest.raises(CratekitError) as caught:
+            setbuild_cli.named_anchor("Anchor Work", index)
+        cause = caught.value.cause
+        assert cause.reason == "setbuild-anchor-ambiguous"
+        assert cause.detail["reached"] == 2
+        listings.append(cause.detail["candidates"])
+        steps = " ".join(cause.remediation.steps)
+        assert "/library/orig.flac" in steps and "/library/ext.flac" in steps
+        assert "/library/gum.flac" not in steps
+
+    assert listings[0] == listings[1], "the listing follows the walk order"
+    assert listings[0] == [
+        {"display": "Alder - Anchor Work", "path": "/library/orig.flac"},
+        {"display": "Alder - Anchor Work (Extended Mix)", "path": "/library/ext.flac"},
+    ]
+
+
+def test_a_name_longer_than_the_owned_title_is_refused_and_not_shortened():
+    """The subset score is 100 in BOTH directions, and this is the other one.
+
+    The library holds the original only. A person naming the extended mix named a
+    version that is not here, and resolving it to the original would build the
+    set around a track they did not ask about. The one candidate is listed, so
+    "the original will do" is one paste away and is theirs to say.
+    """
+    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
+    index = (original, track("Gum", "Wrong Key", "3B"))
+
+    assert setbuilder.match_in_index("Alder - Anchor Work (Extended Mix)", index) == (
+        setbuilder.AnchorMatch(candidates=(original,), partial=True)
+    )
+    with pytest.raises(CratekitError) as caught:
+        setbuild_cli.named_anchor("Alder - Anchor Work (Extended Mix)", index)
+    cause = caught.value.cause
+    assert cause.reason == "setbuild-anchor-ambiguous"
+    assert cause.detail["reached"] == 1 and cause.detail["partial"] is True
+    assert cause.detail["candidates"] == [
+        {"display": "Alder - Anchor Work", "path": "/library/orig.flac"}
+    ]
+    assert "different version" in cause.message
+    assert "--unowned" in cause.remediation.steps[-1]
+
+
+def test_one_differing_word_in_a_long_title_is_a_different_version():
+    """Found by the built in review, and the set score CANNOT see it.
+
+    On a long title the shared words dominate, so "Extended Mix" against an
+    owned "Original Mix" scores above the threshold with neither side a subset
+    of the other. The lone hit resolved, and the set was built around a version
+    nobody named. Asserted on the score as well, so the day the scorer stops
+    rating this pair as a match the test says its premise moved.
+    """
+    owned = track(
+        "Some Long Artist Name", "A Very Long Track Title Indeed (Original Mix)", "8A"
+    )
+    named = "Some Long Artist Name - A Very Long Track Title Indeed (Extended Mix)"
+    from rapidfuzz import fuzz
+
+    assert fuzz.token_set_ratio(
+        setbuilder.match_key("", named), owned.match
+    ) >= setbuilder.MATCH_THRESHOLD, "the pair no longer scores as a match"
+    assert setbuilder.match_in_index(named, (owned,)) == setbuilder.AnchorMatch(
+        candidates=(owned,), partial=True
+    )
+    dub = track("Alder", "A Rather Long Anchor Work Title (Dub Mix)", "8A")
+    matched = setbuilder.match_in_index("Alder - A Rather Long Anchor Work Title (Club Mix)", (dub,))
+    assert matched.track is None
+
+
+def test_the_one_title_holding_every_typed_word_wins_over_titles_holding_fewer():
+    """Both titles score 100 on "anchor work", and only one holds "extended"."""
+    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
+    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
+    for index in ((extended, original), (original, extended)):
+        assert setbuild_cli.named_anchor("anchor work extended", index) is extended
+
+
+def test_a_file_with_no_artist_tag_is_reachable_by_the_name_the_refusal_lists():
+    """Found by the built in review: the remedy has to be one that works.
+
+    The file's comparison key is its title alone, so typing the artist a person
+    knows it by names more than it holds and is refused. The refusal used to say
+    "name it exactly, artist and full title", which is what they had just done.
+    It now says to type it AS LISTED, and that is driven here rather than read.
+    """
+    bare = track("", "Anchor Work", "8A", path="/library/bare.flac")
+    with pytest.raises(CratekitError) as caught:
+        setbuild_cli.named_anchor("Alder - Anchor Work", (bare,))
+    listed = caught.value.cause.detail["candidates"][0]["display"]
+    assert listed in caught.value.cause.remediation.steps[1]
+    assert setbuild_cli.named_anchor(listed, (bare,)) is bare
+
+
+def test_a_name_typed_short_resolves_when_only_one_track_answers_to_it(index):
+    """What fuzzy is FOR: a person types what they remember, which is less."""
+    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
+    library = (extended, *index[1:])
+    assert setbuild_cli.named_anchor("anchor work", library) is extended
+    assert setbuild_cli.named_anchor("Alder - Anchr Work Extended Mix", library) is extended
+
+
+def test_a_name_nothing_answers_to_is_not_indexed_and_not_ambiguous(index):
+    with pytest.raises(CratekitError) as caught:
+        setbuild_cli.named_anchor("Nobody - Absent", index)
+    assert caught.value.cause.reason == "setbuild-anchor-not-indexed"
+    assert caught.value.cause.detail == {"named": "Nobody - Absent", "indexed": len(index)}
+
+
+@pytest.mark.parametrize("text", ["", "   ", " - "])
+def test_a_name_with_nothing_in_it_is_an_unknown_anchor(text, index):
+    """" - " is punctuation only, so its comparison key is empty too."""
+    with pytest.raises(CratekitError) as caught:
+        setbuild_cli.named_anchor(text, index)
+    assert caught.value.cause.reason == "setbuild-anchor-unknown"
+
+
+def test_two_indexed_tracks_under_one_comparison_key_are_listed_and_not_chosen():
+    """``build_index`` collapses these, and a hand built index need not have.
+
+    The exact branch must not read "several" as "the first", which is the same
+    defect one comparison earlier.
+    """
+    flac = track("Alder", "Anchor Work", "8A", path="/library/b.flac")
+    mp3 = track("Alder", "Anchor Work", "8A", path="/library/a.mp3")
+    matched = setbuilder.match_in_index("Alder - Anchor Work", (flac, mp3))
+    assert matched == setbuilder.AnchorMatch(candidates=(mp3, flac))
+
+
+def test_the_listing_is_capped_and_says_how_many_it_reached():
+    many = tuple(
+        track("Alder", f"Work Part {n:02d}", "8A", path=f"/library/{n:02d}.flac")
+        for n in range(setbuilder.CANDIDATE_LIMIT + 3)
+    )
+    with pytest.raises(CratekitError) as caught:
+        setbuild_cli.named_anchor("Alder Work Part", many)
+    detail = caught.value.cause.detail
+    assert detail["reached"] == setbuilder.CANDIDATE_LIMIT + 3
+    assert len(detail["candidates"]) == setbuilder.CANDIDATE_LIMIT
+
+
+def test_the_engine_says_ambiguous_and_never_not_in_your_library():
+    """The same shape one file over: ``resolve_anchor`` and ``build_set``.
+
+    Falling through on an ambiguous name would call an owned track unowned. With
+    no key that was "not in your library" said about a name that hit two tracks,
+    and with a key it ranked the library's own copies as companions to
+    themselves. Both forms now answer unresolved and name what was reached.
     """
     extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
     original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
     index = (extended, original)
 
-    assert setbuilder.find_in_index("Alder - Anchor Work", index) is extended, (
-        "the fuzzy lookup no longer mis-resolves, so the argument for a path "
-        "positional has changed and this file should say the new one"
-    )
-    assert setbuild_cli.anchor_in_index(Path("/library/orig.flac"), index) is original
+    for supplied in (None, "8A"):
+        anchor = setbuilder.resolve_anchor("Anchor Work", index, key=supplied)
+        assert anchor.key is None and anchor.owned is False and anchor.track is None
+        assert "names 2 owned tracks" in anchor.unresolved
+        assert "Alder - Anchor Work (Extended Mix)" in anchor.unresolved
+        assert "not in your library" not in anchor.unresolved
+    plan = setbuilder.build_set("Anchor Work", index, taxonomy=TAXONOMY, key="8A")
+    assert plan.pool == () and plan.sequence == ()
+
+
+def test_a_remix_the_library_lacks_is_unowned_once_its_key_is_supplied():
+    """Found by the built in review. The supplied key must not be thrown away.
+
+    The library holds the original. Naming somebody's remix of it reaches that
+    original and holds more than it does, which is a PARTIAL reach. With no key
+    that is unresolved and says why without claiming several tracks were hit.
+    With one it is the unowned question, answered with the supplied key, and the
+    owned original is an ordinary companion rather than the anchor.
+    """
+    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
+    index = (original, track("Birch", "Same Key Lower", "8A"))
+    remix = "Alder - Anchor Work (Someone Remix)"
+
+    bare = setbuilder.resolve_anchor(remix, index)
+    assert bare.key is None and "may be a version you do not own" in bare.unresolved
+    assert "owned tracks" not in bare.unresolved
+
+    keyed = setbuilder.resolve_anchor(remix, index, key="8A")
+    assert (keyed.key, keyed.owned, keyed.track, keyed.display) == ("8A", False, None, remix)
+    assert keyed.key_needs_confirming is True and keyed.unresolved == ""
+    plan = setbuilder.build_set(remix, index, taxonomy=TAXONOMY, key="8A")
+    assert original in [scored.track for scored in plan.pool]
 
 
 def test_an_anchor_spelled_through_a_symlink_still_resolves(tmp_path):
@@ -690,25 +889,94 @@ def test_a_library_holding_only_the_anchor_is_an_empty_plan_and_not_a_failure(
     assert document["outcome"] == "ok"
 
 
-def test_the_verb_writes_nothing_at_all(configured, place):
-    """"No write" as a structural assertion rather than a promise.
+def material(cfg) -> dict[Path, int]:
+    """Everything under the library that is the LIBRARY'S, with when it changed.
 
-    It covers the cache decision specifically: ``build_index`` is called with no
-    cache path, so the declared ``setbuilder_index_cache`` state file must not
-    appear. A cache would be a ``files`` write, and the registry entry declares
-    none.
+    The product's own state directory is left out and nothing else is, so a file
+    written anywhere beside the audio still fails the comparison.
+    """
+    library = Path(cfg.library.root)
+    state = config.library_state_dir(cfg)
+    return {
+        p: p.stat().st_mtime_ns
+        for p in sorted(library.rglob("*"))
+        if p != state and state not in p.parents
+    }
+
+
+def test_the_verb_writes_its_declared_cache_and_nothing_of_the_librarys(configured, place):
+    """"No write to the library" as a structural assertion rather than a promise.
+
+    The ONE file the verb may create is the declared ``setbuilder_index_cache``
+    state file, at the path the state inventory resolves and nowhere else
+    (R-188). Everything else under the library is compared by modification time.
     """
     anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
     place("Birch", "Same Key Lower", "08A", 124, energy=4)
-    library = Path(configured.library.root)
-    before = {p: p.stat().st_mtime_ns for p in sorted(library.rglob("*"))}
+    cache = config.state_path("setbuilder_index_cache", configured)
+    before = material(configured)
+    assert not cache.exists()
 
     code, _ = envelope_of(["setbuild", str(anchor)])
 
     assert code == int(ExitCode.OK)
-    after = {p: p.stat().st_mtime_ns for p in sorted(library.rglob("*"))}
-    assert after == before, "the verb touched the library"
-    assert not (library / "setbuilder_index.json").exists()
+    assert material(configured) == before, "the verb touched the library"
+    state = config.library_state_dir(configured)
+    assert [p for p in state.rglob("*") if p.is_file()] == [cache]
+    assert str(anchor) in json.loads(cache.read_text(encoding="utf-8"))["entries"]
+
+
+def test_a_second_run_reads_no_tag_it_already_holds(configured, place, monkeypatch):
+    """The cost R-188 names, measured as READS rather than as seconds.
+
+    The second run over an unchanged library must open no file, and a third
+    after one file is rewritten must open exactly that one. Counted at the
+    engine's own reader, which is the scan the state file's declaration says
+    costs minutes on a real library.
+    """
+    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    other = place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    reads: list[Path] = []
+    real = setbuilder.read_index_tags
+
+    def counting(path):
+        reads.append(path)
+        return real(path)
+
+    # ``build_index`` binds its reader as a default argument, so the default is
+    # what has to be replaced, not the module attribute.
+    monkeypatch.setattr(setbuilder.build_index, "__kwdefaults__", {
+        **setbuilder.build_index.__kwdefaults__, "reader": counting,
+    })
+
+    first = envelope_of(["setbuild", str(anchor)])[1]["data"]
+    assert sorted(reads) == sorted([anchor, other])
+    reads.clear()
+    second = envelope_of(["setbuild", str(anchor)])[1]["data"]
+    assert reads == [], "the cache was written and not read back"
+    assert second == first, "a cached index answered differently from a scanned one"
+
+    assert tags.write_tags(other, {"energylevel": 9})
+    envelope_of(["setbuild", str(anchor)])
+    assert reads == [other]
+
+
+def test_a_cache_that_cannot_be_written_does_not_cost_the_set(configured, place):
+    """A performance feature must not become an outage.
+
+    A FILE sits where the state directory belongs, so the cache directory cannot
+    be made. The set is still built and the blocker is untouched.
+    """
+    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    blocker = config.library_state_dir(configured)
+    blocker.write_text("not a directory", encoding="utf-8")
+
+    code, document = envelope_of(["setbuild", str(anchor)])
+
+    assert code == int(ExitCode.OK)
+    assert [item["title"] for item in document["data"]["items"]] == ["Same Key Lower"]
+    assert blocker.read_text(encoding="utf-8") == "not a directory"
 
 
 def test_an_anchor_that_is_not_in_the_library_refuses_with_a_vocabulary_code(
@@ -826,8 +1094,7 @@ def test_an_unowned_anchor_is_ranked_through_the_dispatcher(configured, place):
     place("Birch", "Same Key Lower", "08A", 124, energy=4)
     place("Cedar", "Neighbour Up", "09A", 125, energy=8)
     place("Gum", "Wrong Key", "03B", 124, energy=5)
-    library = Path(configured.library.root)
-    before = {p: p.stat().st_mtime_ns for p in sorted(library.rglob("*"))}
+    before = material(configured)
 
     code, document = envelope_of(
         ["setbuild", "--unowned", "Oak - Not Bought Yet", "--key", "08A", "--bpm", "124"]
@@ -847,8 +1114,7 @@ def test_an_unowned_anchor_is_ranked_through_the_dispatcher(configured, place):
     titles = {item["title"] for item in document["data"]["items"]}
     assert titles == {"Same Key Lower", "Neighbour Up"}
     assert document["data"]["totals"]["held"] == []
-    after = {p: p.stat().st_mtime_ns for p in sorted(library.rglob("*"))}
-    assert after == before, "the unowned form touched the library"
+    assert material(configured) == before, "the unowned form touched the library"
 
 
 def test_an_unowned_anchor_with_no_key_refuses_through_the_dispatcher(configured, place):
@@ -906,6 +1172,82 @@ def test_a_path_anchor_is_unchanged_by_the_unowned_form(configured, place):
     assert document["data"]["totals"]["anchor"]["owned"] is True
     assert document["data"]["totals"]["anchor"]["key_needs_confirming"] is False
     assert {item["title"] for item in document["data"]["items"]} == {"Same Key Lower"}
+
+
+def test_what_plays_after_a_track_is_asked_by_name(configured, place):
+    """THE COST IN THE BRIEF, as the workflow a person runs. No path is typed.
+
+    The library holds the original AND its extended mix, which is the state the
+    old lookup answered wrongly, and the plan is the one the path form gives for
+    the same file, digest and all.
+    """
+    original = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    place("Alder", "Anchor Work (Extended Mix)", "08A", 124, energy=6)
+    place("Cedar", "Neighbour Up", "09A", 125, energy=8)
+
+    code, document = envelope_of(
+        ["setbuild", "--named", "Alder - Anchor Work", "--role", "after"]
+    )
+
+    assert code == int(ExitCode.OK)
+    assert document["data"]["totals"]["anchor"]["display"] == "Alder - Anchor Work"
+    assert document["data"]["totals"]["anchor"]["owned"] is True
+    assert "held" not in document["data"]["totals"]
+    by_path = envelope_of(["setbuild", str(original), "--role", "after"])[1]
+    assert document["data"] == by_path["data"]
+
+
+def test_an_ambiguous_name_refuses_through_the_dispatcher_and_lists_the_paths(
+    configured, place
+):
+    original = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    extended = place("Alder", "Anchor Work (Extended Mix)", "08A", 124, energy=6)
+
+    code, document = envelope_of(["setbuild", "--named", "Anchor Work"])
+
+    assert code == int(ExitCode.PRECONDITION)
+    assert document["cause"]["reason"] == "setbuild-anchor-ambiguous"
+    assert {c["path"] for c in document["cause"]["detail"]["candidates"]} == {
+        str(original),
+        str(extended),
+    }
+    steps = " ".join(document["cause"]["remediation"]["steps"])
+    assert str(original) in steps and str(extended) in steps
+
+
+def test_a_name_the_library_does_not_hold_refuses_as_not_indexed(configured, place):
+    place("Alder", "Anchor Work", "08A", 124, energy=6)
+    code, document = envelope_of(["setbuild", "--named", "Nobody - Absent"])
+    assert code == int(ExitCode.PRECONDITION)
+    assert document["cause"]["reason"] == "setbuild-anchor-not-indexed"
+    assert "Nobody - Absent" in document["cause"]["message"]
+
+
+def test_an_empty_name_refuses_before_any_scan(configured, place):
+    """Measured by the cache, which every scan writes and this run must not."""
+    place("Alder", "Anchor Work", "08A", 124, energy=6)
+    code, document = envelope_of(["setbuild", "--named", " - "])
+    assert code == int(ExitCode.PRECONDITION)
+    assert document["cause"]["reason"] == "setbuild-anchor-unknown"
+    assert not config.state_path("setbuilder_index_cache", configured).exists()
+
+
+@pytest.mark.parametrize(
+    "other", [["--unowned", "Oak", "--key", "8A"], ["Music/x.flac"]], ids=["unowned", "path"]
+)
+def test_a_name_beside_another_anchor_form_is_the_parsers_verdict(
+    configured, capsys, other
+):
+    code, _, _ = drive(["--output", "json", "setbuild", "--named", "Alder", *other])
+    assert code == int(ExitCode.USAGE)
+    assert "not allowed with argument" in capsys.readouterr().err
+
+
+def test_a_supplied_key_beside_a_name_refuses_rather_than_being_ignored(configured, place):
+    place("Alder", "Anchor Work", "08A", 124, energy=6)
+    code, document = envelope_of(["setbuild", "--named", "Alder - Anchor Work", "--key", "9A"])
+    assert code == int(ExitCode.PRECONDITION)
+    assert document["cause"]["reason"] == "setbuild-supplied-needs-unowned"
 
 
 def test_the_role_flag_reaches_the_engine(configured, place):

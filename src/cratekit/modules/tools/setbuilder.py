@@ -56,12 +56,12 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from rapidfuzz import fuzz, process
 
-from cratekit.core import routing, tags
+from cratekit.core import config, routing, tags
 from cratekit.core.naming import (
     AUDIO_EXTS,
     NameTemplate,
@@ -89,8 +89,13 @@ INDEX_FIELDS: tuple[str, ...] = (
 
 #: Cache format. Bumped when :class:`Track` gains or loses a field, because a
 #: cached entry is deserialized straight into one and a stale shape would raise
-#: on a machine that had simply run an older build.
-CACHE_VERSION = 2
+#: on a machine that had simply run an older build. ALSO BUMPED WHEN THE PARSE
+#: THAT FILLS ONE CHANGES, ``match_key``, the head parser or the Camelot parser:
+#: a cached entry is that parse's output, and a changed parse touches no file's
+#: modification time, so nothing else would ever retire the old answers. The
+#: template stamp covers the parse's one DATA input; this covers its code.
+#: 3: an entry carries the file's size and its modification time in nanoseconds.
+CACHE_VERSION = 3
 
 
 # ---------------------------------------------------------------------------
@@ -357,10 +362,33 @@ def build_index(
     create a file nothing walking that inventory can find, snapshot, or clear.
     None is what a test wants and what a one-off run can afford.
 
-    The cache is keyed on path AND modification time, so an edited file
-    invalidates only itself. A file whose parse yielded nothing is cached as
-    nothing: without that, every keyless file in the library is re-read on every
-    run, which is the majority of the cost on a library with unanalyzed corners.
+    The cache is keyed on path, modification time in nanoseconds AND size, so an
+    edited file invalidates only itself. Size is there because the time alone is
+    forgeable by exactly the tools a library is restored with: ``rsync -a``,
+    ``cp -p`` and rclone all put different bytes at the same path under the old
+    time, and the rest of this product pairs the two for that reason.
+
+    THE WHOLE CACHE IS ALSO STAMPED WITH THE TEMPLATE it was parsed under,
+    because a cached entry is the OUTPUT of a parse and the template is that
+    parse's other input: a changed lossy marker alters every marked file's clean
+    title and match key while touching no file's modification time, so without
+    the stamp the old titles would be served for ever. A stamp that differs
+    discards the cache, at the cost of one scan.
+
+    A file whose parse yielded nothing is cached as nothing: without that, every
+    keyless file in the library is re-read on every run, which is the majority
+    of the cost on a library with unanalyzed corners. BUT A READ THAT RETURNED
+    NO FIELD AT ALL IS NOT CACHED. The shared reader answers None for an absent
+    tag and for a file it could not open alike, so a wholly empty read cannot be
+    told from a momentary I/O error on an external volume, and caching it would
+    drop an analyzed track from the index until somebody touched the file.
+    Re-reading a file with no tags at all costs one open per run, which is the
+    cheaper of the two mistakes.
+
+    NOTHING IS WRITTEN WHEN THE WALK FOUND NO FILE. An empty walk over a root
+    that is a directory is what an unmounted volume's leftover mountpoint looks
+    like, and creating a state directory inside it is how the real volume comes
+    to mount under a second name.
 
     A cache write failure is logged and swallowed. The cache is an optimization,
     and refusing to produce a set because a cache could not be written would turn
@@ -368,7 +396,8 @@ def build_index(
     """
     root = Path(root)
     files = list(lister(root))
-    cached = _load_cache(cache_path)
+    stamp = _template_stamp(template)
+    cached = _load_cache(cache_path, stamp)
 
     fresh: dict[str, dict] = {}
     tracks: list[Track] = []
@@ -376,25 +405,63 @@ def build_index(
     for path in files:
         key = str(path)
         try:
-            mtime = path.stat().st_mtime
+            stat = path.stat()
+            identity = {"mtime_ns": stat.st_mtime_ns, "size": stat.st_size}
         except OSError:
-            mtime = 0.0
+            # A file that cannot be stat'ed has no identity to cache under.
+            identity = None
         entry = cached.get(key)
-        if entry is not None and entry.get("mtime") == mtime:
+        if identity is not None and _entry_is_current(entry, identity):
             track = _track_from_cache(entry.get("track"))
+            fresh[key] = entry
         else:
-            track = parse_entry(reader(path), path=key, template=template)
-        fresh[key] = {"mtime": mtime, "track": asdict(track) if track else None}
+            raw = reader(path)
+            track = parse_entry(raw, path=key, template=template)
+            if identity is not None and any(value is not None for value in raw.values()):
+                fresh[key] = {**identity, "track": asdict(track) if track else None}
         if track is None or not track.match or track.match in seen:
             continue
         seen.add(track.match)
         tracks.append(track)
 
-    _save_cache(cache_path, fresh)
+    if files:
+        _save_cache(cache_path, fresh, stamp)
     return tuple(tracks)
 
 
-def _load_cache(cache_path: Path | None) -> dict[str, dict]:
+def _entry_is_current(entry: object, identity: Mapping[str, int]) -> bool:
+    """Whether a cached entry describes the file as it is now.
+
+    Every comparison is against a value of the right TYPE, because the cache is a
+    file on a volume that syncs, and a hand edit or a conflict copy can hold any
+    JSON at all. A cache that cannot be trusted costs one read, never the run.
+    """
+    return (
+        isinstance(entry, dict)
+        and entry.get("mtime_ns") == identity["mtime_ns"]
+        and entry.get("size") == identity["size"]
+        and (entry.get("track") is None or _track_from_cache(entry.get("track")) is not None)
+    )
+
+
+def _template_stamp(template: NameTemplate) -> str:
+    """The template as a string that is equal exactly when the template is.
+
+    Built field by field rather than taken from ``repr``, because the template
+    holds a frozenset and a set's repr follows string hashing, which differs
+    between two runs of the same build. A stamp that moved on its own would
+    discard the cache on every run and look exactly like a cache that works.
+    """
+    parts = []
+    for field in fields(template):
+        value = getattr(template, field.name)
+        if isinstance(value, (set, frozenset)):
+            value = sorted(value)
+        parts.append(f"{field.name}={value!r}")
+    return ";".join(parts)
+
+
+def _load_cache(cache_path: Path | None, stamp: str) -> dict[str, dict]:
     if cache_path is None or not cache_path.is_file():
         return {}
     try:
@@ -406,19 +473,22 @@ def _load_cache(cache_path: Path | None) -> dict[str, dict]:
         # not have. Discarding it costs one scan; deserializing it costs a
         # TypeError in the middle of a run.
         return {}
+    if data.get("template") != stamp:
+        return {}
     entries = data.get("entries")
     return entries if isinstance(entries, dict) else {}
 
 
-def _save_cache(cache_path: Path | None, entries: Mapping[str, dict]) -> None:
+def _save_cache(cache_path: Path | None, entries: Mapping[str, dict], stamp: str) -> None:
     if cache_path is None:
         return
+    payload = json.dumps(
+        {"cache_version": CACHE_VERSION, "template": stamp, "entries": dict(entries)}
+    )
     try:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(
-            json.dumps({"cache_version": CACHE_VERSION, "entries": dict(entries)}),
-            encoding="utf-8",
-        )
+        # The shared state writer: a rename into place, so a killed run or two
+        # runs at once leave the old cache or the new one and never half of one.
+        config.atomic_write_bytes(payload.encode("utf-8"), cache_path)
     except OSError as exc:
         log.debug("set-builder index cache not written to %s: %s", cache_path, exc)
 
@@ -427,9 +497,24 @@ def _track_from_cache(raw: object) -> Track | None:
     if not isinstance(raw, dict):
         return None
     try:
-        return Track(**raw)
+        track = Track(**raw)
     except TypeError:
         return None
+    # The right NAMES with the wrong TYPES construct without complaint and fail
+    # later, inside the ranking, where nothing says the cache was the cause.
+    texts = (track.artist, track.title, track.key, track.genre, track.match, track.path)
+    if not all(isinstance(value, str) for value in texts):
+        return None
+    if not isinstance(track.voxgender, str | None):
+        return None
+    if not all(_is_number(value) for value in (track.bpm, track.energy, track.vox)):
+        return None
+    return track
+
+
+def _is_number(value: object) -> bool:
+    """None, or a real number. A bool is an int to Python and not to this."""
+    return value is None or (isinstance(value, int | float) and not isinstance(value, bool))
 
 
 # ---------------------------------------------------------------------------
@@ -701,25 +786,119 @@ WebKeyLookup = Callable[[str, str], Mapping[str, object] | None]
 #: internally consistent and therefore looks right.
 MATCH_THRESHOLD = 90
 
+#: How many candidates a refusal names. A vague query can reach a whole label's
+#: worth of titles, and a listing nobody can read is not a remedy.
+CANDIDATE_LIMIT = 10
+
+#: How close one typed WORD must be to a word of the title to count as that
+#: word. Low enough that a slip of the finger still lands, "anchr" on "anchor",
+#: and high enough that the words which tell two versions apart never do:
+#: "extended" on "original", "club" on "dub" and "remix" on "mix" all fall under.
+WORD_THRESHOLD = 80
+
+
+@dataclass(frozen=True, slots=True)
+class AnchorMatch:
+    """What a typed anchor names in the index: one track, several, or nothing.
+
+    Three answers and not two. ``track`` set is a resolution. ``track`` None with
+    ``candidates`` is a REFUSAL THAT KNOWS WHY: the name reached owned tracks and
+    could not choose between them, and the caller shows them rather than picking.
+    Both empty is an ordinary absence. Folding the middle answer into either
+    neighbour is the defect this type exists to end (R-187): folded into the
+    first it builds a set around whichever track the walk met first, and folded
+    into the last it tells a person their track is not in their library.
+    """
+
+    track: Track | None = None
+    #: The owned tracks the name reached, best score first, when none was chosen.
+    candidates: tuple[Track, ...] = ()
+    #: True when NO candidate holds every word of the name. Several candidates
+    #: that each hold all of it is a choice between owned tracks. Candidates that
+    #: all lack part of it is a different statement: the person named a version,
+    #: a remix or a credit the library's copies do not carry, so what they named
+    #: may not be owned at all.
+    partial: bool = False
+
+
+def match_in_index(
+    query: str, index: Sequence[Track], *, threshold: int = MATCH_THRESHOLD
+) -> AnchorMatch:
+    """Resolve ``query`` against the index, refusing rather than guessing.
+
+    AN EXACT HIT ON THE COMPARISON KEY WINS OUTRIGHT, before any fuzzy score is
+    taken. ``token_set_ratio`` scores a subset at 100, so "Alder - Anchor Work"
+    scores identically against that track and against "Alder - Anchor Work
+    (Extended Mix)", and no threshold separates two candidates that are both at
+    the ceiling. The exact comparison is the only thing that can.
+
+    Fuzzy after that, because a user types what they remember, and the library's
+    titles carry remix credits, feature credits, and label suffixes that nobody
+    types. EVERY hit at the threshold is collected, never the first: one hit is
+    a resolution and two are a question only the person can answer.
+
+    A HIT COUNTS ONLY WHEN IT HOLDS EVERY WORD OF THE NAME. The set score cannot
+    say so: it is 100 whenever one side is a subset of the other, in EITHER
+    direction, and on a long title it stays above the threshold while the one
+    word that matters differs, "Original Mix" against "Extended Mix". So each
+    typed word is looked for among the hit's own, with room for a slip of the
+    finger and none for a different word. Typing LESS than the title is
+    remembering; typing something the title does not hold is naming something
+    else. One hit that holds the whole name is the resolution, even when other
+    titles scored as high on fewer words. Several are a question only the person
+    can answer. Hits that ALL lack part of the name come back ``partial``.
+
+    Candidates are ordered by score and then by match key and path, so the
+    listing does not depend on the order a filesystem walk produced.
+    """
+    wanted = match_key("", query)
+    if not wanted or not index:
+        return AnchorMatch()
+    exact = [t for t in index if t.match == wanted]
+    if len(exact) == 1:
+        return AnchorMatch(track=exact[0])
+    if exact:
+        return AnchorMatch(candidates=tuple(sorted(exact, key=lambda t: t.path)))
+    hits = process.extract(
+        wanted,
+        [t.match for t in index],
+        scorer=fuzz.token_set_ratio,
+        score_cutoff=threshold,
+        limit=None,
+    )
+    ordered = tuple(
+        index[position]
+        for _, score, position in sorted(
+            hits, key=lambda hit: (-hit[1], index[hit[2]].match, index[hit[2]].path)
+        )
+    )
+    holding = tuple(t for t in ordered if _holds_every_word(t.match, wanted))
+    if len(holding) == 1:
+        return AnchorMatch(track=holding[0])
+    if holding:
+        return AnchorMatch(candidates=holding)
+    return AnchorMatch(candidates=ordered, partial=bool(ordered))
+
+
+def _holds_every_word(match: str, wanted: str) -> bool:
+    """Whether every word of ``wanted`` is a word of ``match``, give or take a slip."""
+    held = match.split()
+    return all(
+        any(fuzz.ratio(word, other) >= WORD_THRESHOLD for other in held)
+        for word in wanted.split()
+    )
+
 
 def find_in_index(
     query: str, index: Sequence[Track], *, threshold: int = MATCH_THRESHOLD
 ) -> Track | None:
-    """The best fuzzy match for ``query`` in the index, or None.
+    """The one track ``query`` names, or None. See :func:`match_in_index`.
 
-    Fuzzy rather than exact because a user types what they remember, and the
-    library's titles carry remix credits, feature credits, and label suffixes
-    that nobody types.
+    None covers both "nothing matched" and "more than one did", which is right
+    for a caller that only wants an owned anchor when there is exactly one. A
+    caller that has to TELL a person which it was reads the verdict instead.
     """
-    wanted = match_key("", query)
-    if not wanted or not index:
-        return None
-    best = process.extractOne(
-        wanted, [t.match for t in index], scorer=fuzz.token_set_ratio
-    )
-    if best is None or best[1] < threshold:
-        return None
-    return index[best[2]]
+    return match_in_index(query, index, threshold=threshold).track
 
 
 def resolve_anchor(
@@ -741,7 +920,29 @@ def resolve_anchor(
     ships no network call, and a fabricated key would produce a full, confident,
     wrong set.
     """
-    owned = find_in_index(query, index)
+    matched = match_in_index(query, index)
+    # A PARTIAL REACH WITH A SUPPLIED KEY IS THE UNOWNED ANSWER, and falls
+    # through to it: the person named a remix the library's copies do not carry
+    # and said what key it is in, which is the "should I buy this" question.
+    if matched.track is None and matched.candidates and not (matched.partial and key):
+        # REACHED AND NOT CHOSEN, which is neither of the answers below. Falling
+        # through would call an owned track unowned: with a key it would rank
+        # the library's own copies as companions to themselves, and without one
+        # it would say "not in your library" about a name that hit several.
+        named = "; ".join(t.display for t in matched.candidates[:CANDIDATE_LIMIT])
+        if matched.partial:
+            why = (
+                f"that anchor names more than the library's nearest copies hold, "
+                f"so it may be a version you do not own; supply its Camelot key "
+                f"if so, or name one of these as it is written: {named}"
+            )
+        else:
+            why = (
+                f"that anchor names {len(matched.candidates)} owned tracks, and "
+                f"picking for you would build a set around the wrong one: {named}"
+            )
+        return Anchor(key=None, bpm=None, owned=False, display=query, unresolved=why)
+    owned = matched.track
     if owned is not None:
         resolved_key = canonical_key(key) or owned.key
         return Anchor(
@@ -939,7 +1140,9 @@ def _scored_payload(scored: Scored) -> dict:
 
 __all__ = [
     "CACHE_VERSION",
+    "CANDIDATE_LIMIT",
     "MATCH_THRESHOLD",
+    "WORD_THRESHOLD",
     "DEFAULT_BPM_WIDTH",
     "DEFAULT_POOL",
     "DEFAULT_SIDE",
@@ -948,6 +1151,7 @@ __all__ = [
     "PAYLOAD_VERSION",
     "TIER_SCORE",
     "Anchor",
+    "AnchorMatch",
     "Scored",
     "SetPlan",
     "Track",
@@ -963,6 +1167,7 @@ __all__ = [
     "compatible_keys",
     "energy_score",
     "find_in_index",
+    "match_in_index",
     "harmonic_score",
     "in_band",
     "iter_audio",

@@ -1,18 +1,25 @@
 """``crate setbuild``: rank owned tracks that mix with an anchor, and sequence them.
 
-THE ANCHOR IS A PATH UNDER THE LIBRARY, NOT A TYPED TITLE, and that is the one
-design decision in this file worth arguing about. The engine offers
-:func:`~cratekit.modules.tools.setbuilder.resolve_anchor`, which fuzzy matches a
-typed string against the index at a deliberately high threshold, because the
-source system took what a person remembered of a title. A path is better here for
-two reasons. It is what every other file-taking verb in this product accepts, so
-a test can hand it something under the CONFIGURED library rather than shipping a
-real path off somebody's machine (R1). And it removes the failure the fuzzy
-matcher cannot rule out: ``token_set_ratio`` scores a subset at 100, so "Alder -
-Anchor Work" and "Alder - Anchor Work (Extended Mix)" are indistinguishable to it
-and the first one found wins. Building a set around the WRONG anchor is the worst
-answer this verb can give, because every pick after it is internally consistent
-and therefore looks right.
+THE POSITIONAL ANCHOR IS A PATH UNDER THE LIBRARY, NOT A TYPED TITLE. It is what
+every other file-taking verb in this product accepts, so a test can hand it
+something under the CONFIGURED library rather than shipping a real path off
+somebody's machine (R1), and a path names exactly one file.
+
+A TYPED NAME IS ITS OWN FORM, ``--named TEXT``, and it never picks for you.
+"What plays after X" is asked by name, and a person who has to hunt for a file
+path first has been handed a chore instead of an answer (R-187). The flag is
+explicit rather than a positional that guesses whether it was given a path or a
+title, because a verb that guesses which question was asked answers the wrong
+one some of the time and says nothing about it. The name resolves through
+:func:`~cratekit.modules.tools.setbuilder.match_in_index`: an exact hit on the
+comparison key wins, then the one title holding every typed word, and a name
+that reaches several owned tracks, or names more than any of them holds,
+REFUSES AND LISTS THEM with their paths. ``token_set_ratio`` scores
+a subset at 100, so "Alder - Anchor Work" and "Alder - Anchor Work (Extended
+Mix)" are indistinguishable to a fuzzy score, and before the exact comparison
+the first one the walk met won. Building a set around the WRONG anchor is the
+worst answer this verb can give, because every pick after it is internally
+consistent and therefore looks right.
 
 AN UNOWNED ANCHOR IS A SEPARATE, EXPLICIT FORM, added by U98 for the "should I
 buy this" question: ``--unowned LABEL --key 8A`` ranks the library against a
@@ -28,15 +35,17 @@ anchor are REFUSED rather than ignored, because the path form takes both from
 the library and a flag that silently does nothing tells a person their value
 was used.
 
-THIS VERB WRITES NOTHING, INCLUDING NO CACHE. ``build_index`` accepts a
-``cache_path`` and there is a declared state file, ``setbuilder_index_cache``,
-waiting for one. It is not passed, because the registry entry declares no write
-surface and :class:`cratekit.cli.registry.Entry` turns ``writes={"files"}`` into
-``destructive=True`` by invariant, which would bind a read-only recommender to
-the library lock, the backup acknowledgment and the volume identity assertion.
-Correcting the entry to earn a cache is a decision about what this verb IS, and
-it is above a shell unit. The cost is a full tag scan of the library on every
-run, and it is recorded as a residual rather than paid for quietly.
+THIS VERB WRITES NOTHING OF THE LIBRARY'S OWN, AND IT DOES KEEP A CACHE. The
+index cache is the declared state file ``setbuilder_index_cache``, resolved
+through the state inventory and handed to ``build_index``, so a repeat run
+re-reads only the files that changed instead of scanning every tag in the
+library. It is NOT a ``writes`` surface, and the registry decided that rather
+than this file: ``writes`` names the library's own material, files, database and
+XML, and ``analyze.calibrate`` writes its library scoped state files under the
+same ruling. Declaring ``files`` for a cache would make a read-only recommender
+destructive by :class:`cratekit.cli.registry.Entry`'s invariant and bind it to
+the library lock, the backup acknowledgment and the volume identity assertion
+(R-188). A cache that cannot be written is logged and the set is still built.
 
 THE PLAN SURFACE IS CLOSED, SO THE ANCHOR TRAVELS IN ``totals``. ``plan/1``
 declares exactly ``digest``, ``items``, ``totals`` and ``chunk``, and
@@ -150,7 +159,7 @@ def positive_tempo(text: str) -> float:
 def build(parser, entry) -> None:
     """Declare the surface. ``entry`` is untyped so this layer does not name it."""
     del entry
-    # One or the other and never both, decided by the parser: a path and a label
+    # One of the three and never two, decided by the parser: a path and a name
     # together would leave the verb choosing which question was asked.
     anchor = parser.add_mutually_exclusive_group()
     anchor.add_argument(
@@ -158,6 +167,16 @@ def build(parser, entry) -> None:
         nargs="?",
         default=None,
         help="the track to build around, as a path under the library",
+    )
+    anchor.add_argument(
+        "--named",
+        default=None,
+        metavar="TEXT",
+        help=(
+            "build around an owned track named by artist and title, as you "
+            "remember it; a name that reaches several tracks lists them and "
+            "refuses rather than picking one"
+        ),
     )
     anchor.add_argument(
         "--unowned",
@@ -229,6 +248,7 @@ def anchor_path(anchor: str, root: Path) -> Path:
             "setbuild needs the track to build the set around",
             steps=(
                 "pass the path of an analyzed track in your library",
+                "or name an owned track with --named TEXT",
                 "or name a track you do not own with --unowned LABEL --key CODE",
             ),
             origin=("setbuilder", "cli"),
@@ -282,6 +302,93 @@ def anchor_in_index(path: Path, index: Sequence[setbuilder.Track]) -> setbuilder
         except OSError:
             continue
     return None
+
+
+def names_something(text: str) -> bool:
+    """Whether ``text`` survives into the comparison key at all.
+
+    Asked of the KEY and not of the text, because " - " is not blank and names
+    nothing: every character in it is punctuation the key drops. Read as a name
+    it would reach no track and be reported as one the library does not hold.
+    """
+    return bool(setbuilder.match_key("", text))
+
+
+def named_anchor(text: str, index: Sequence[setbuilder.Track]) -> setbuilder.Track:
+    """The one indexed track ``text`` names, or a refusal that says which it was.
+
+    THREE REFUSALS AND THEY ARE NOT INTERCHANGEABLE. An empty name asked nothing.
+    A name that reached no owned track is the same fact as a path the index does
+    not hold, so it shares that slug. A name that REACHED tracks and could not
+    choose is the one this function exists for: it lists every candidate with
+    its path, so the remedy is one paste, and it never picks, because a set built
+    around the wrong version looks exactly as right as one built around the
+    right one.
+
+    Candidates that all LACK part of the name are listed too, and said to be
+    that. It is the different-version case: the person named more than the
+    library's copies hold, "(Extended Mix)" against an owned original, and
+    whether the original will do is theirs to say.
+    """
+    if not names_something(text):
+        raise refuse(
+            "setbuild-anchor-unknown",
+            "setbuild needs the track to build the set around",
+            steps=("pass the artist and title of an owned track with --named",),
+            origin=("setbuilder", "cli"),
+        )
+    matched = setbuilder.match_in_index(text, index)
+    if matched.track is not None:
+        return matched.track
+    if not matched.candidates:
+        raise refuse(
+            "setbuild-anchor-not-indexed",
+            f"no track named {text} is in the library index, so nothing can be "
+            f"ranked against it. A file is indexed when it is audio under the "
+            f"library root and carries a Camelot key, from its own tag or from "
+            f"its name",
+            steps=(
+                "check the artist and title, or pass the track's path instead",
+                "or, for a track you do not own, pass --unowned LABEL --key CODE",
+            ),
+            origin=("setbuilder", "cli"),
+            detail={"named": text, "indexed": len(index)},
+        )
+    shown = matched.candidates[: setbuilder.CANDIDATE_LIMIT]
+    listed = "; ".join(t.display for t in shown)
+    if matched.partial:
+        message = (
+            f"{text} names more than the library's nearest copies hold ({listed}), "
+            f"so it may be a different version, and a set built around the wrong "
+            f"version looks exactly as right as one built around the right one"
+        )
+        last = "or, if you do not own the one you named, pass --unowned LABEL --key CODE"
+    else:
+        message = (
+            f"{text} reaches {len(matched.candidates)} tracks in the library, "
+            f"and a set built around the wrong one looks exactly as right as "
+            f"one built around the right one, so none was picked"
+        )
+        last = None
+    steps = [
+        "pass the path of the one you mean: " + "; ".join(t.path for t in shown),
+        # AS LISTED, not "artist and full title": a file with no artist tag is
+        # listed by its title alone, and typing the artist a person knows it by
+        # is what reached this refusal in the first place.
+        f"or name it with --named exactly as it is listed here: {listed}",
+    ]
+    raise refuse(
+        "setbuild-anchor-ambiguous",
+        message,
+        steps=tuple(steps + ([last] if last else [])),
+        origin=("setbuilder", "cli"),
+        detail={
+            "named": text,
+            "reached": len(matched.candidates),
+            "partial": matched.partial,
+            "candidates": [{"display": t.display, "path": t.path} for t in shown],
+        },
+    )
 
 
 def owned_anchor(track: setbuilder.Track) -> setbuilder.Anchor:
@@ -447,23 +554,27 @@ def set_build(ctx) -> Envelope:
         )
     if ctx.args.unowned is not None:
         anchor = unowned_anchor(ctx.args.unowned, ctx.args.key, ctx.args.tempo)
-        index = setbuilder.build_index(root, template=_template(cfg))
-        return _emit(ctx, anchor, index)
+        return _emit(ctx, anchor, _index(cfg, root))
     if ctx.args.key is not None or ctx.args.tempo is not None:
         raise refuse(
             "setbuild-supplied-needs-unowned",
-            "--key and --bpm describe a track the library does not hold, and a "
-            "path anchor takes both from the library's own analysis, so the "
+            "--key and --bpm describe a track the library does not hold, and an "
+            "owned anchor takes both from the library's own analysis, so the "
             "supplied value would be ignored",
             steps=(
                 "drop --key and --bpm to build around the owned track",
-                "or pass --unowned LABEL instead of a path",
+                "or pass --unowned LABEL instead of a path or a name",
             ),
             origin=("setbuilder", "cli"),
             detail={"key": ctx.args.key, "tempo": ctx.args.tempo},
         )
+    if ctx.args.named is not None:
+        # An empty name refuses inside ``named_anchor`` before it reads the
+        # index, so it is handed an empty one and never pays for the walk.
+        index = _index(cfg, root) if names_something(ctx.args.named) else ()
+        return _emit(ctx, named_anchor(ctx.args.named, index), index)
     candidate = anchor_path(str(ctx.args.anchor or ""), root)
-    index = setbuilder.build_index(root, template=_template(cfg))
+    index = _index(cfg, root)
     track = anchor_in_index(candidate, index)
     if track is None:
         raise refuse(
@@ -479,6 +590,19 @@ def set_build(ctx) -> Envelope:
             detail={"anchor": str(candidate), "indexed": len(index)},
         )
     return _emit(ctx, track, index)
+
+
+def _index(cfg: config.Config, root: Path) -> tuple[setbuilder.Track, ...]:
+    """The library index, through the declared cache. ONE call site for three forms.
+
+    The cache path comes from the state inventory and never from a path composed
+    here, so the file is one the inventory can find, snapshot and clear.
+    """
+    return setbuilder.build_index(
+        root,
+        template=_template(cfg),
+        cache_path=config.state_path("setbuilder_index_cache", cfg),
+    )
 
 
 def _emit(ctx, anchor, index: Sequence[setbuilder.Track]) -> Envelope:
@@ -499,6 +623,8 @@ __all__ = [
     "anchor_path",
     "build",
     "camelot_key",
+    "named_anchor",
+    "names_something",
     "owned_anchor",
     "plan_for",
     "positive_count",

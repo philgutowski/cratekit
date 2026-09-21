@@ -1,0 +1,78 @@
+name = "r187-b"
+pass_kind = "light"
+
+# Batch B of two for issue 175, the index cache a shipped verb now fills. Eight
+# rows. What was dropped for the cap is logged at the head of batch A.
+
+[[rows]]
+id = "B1_size_dropped"
+description = "_entry_is_current: drop the size, so new bytes restored under an old modification time serve the old track"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''        and entry.get("size") == identity["size"]
+'''
+new = "\n"
+
+[[rows]]
+id = "B3_entry_not_a_mapping"
+description = "_entry_is_current: accept any entry that is present, so a list where a mapping belongs raises mid scan"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''        isinstance(entry, dict)
+        and entry.get("mtime_ns")'''
+new = '''        entry is not None
+        and entry.get("mtime_ns")'''
+
+[[rows]]
+id = "B4_empty_read_cached"
+description = "build_index: cache a read that returned no field at all, so one failed read drops the track until the file is touched"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''            if identity is not None and any(value is not None for value in raw.values()):'''
+new = '''            if identity is not None:'''
+
+[[rows]]
+id = "B5_empty_walk_writes"
+description = "build_index: write the cache after an empty walk, creating a state directory inside a leftover mountpoint"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    if files:
+        _save_cache(cache_path, fresh, stamp)'''
+new = '''    if True:
+        _save_cache(cache_path, fresh, stamp)'''
+
+[[rows]]
+id = "B6_stamp_unchecked"
+description = "_load_cache: trust a cache parsed under another template, so a changed lossy marker serves the old titles"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    if data.get("template") != stamp:
+        return {}
+'''
+new = "\n"
+
+[[rows]]
+id = "B8_bool_is_a_number"
+description = "_is_number: let a bool through as an int, so a cached energy of true is served"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "maintainer"
+old = '''    return value is None or (isinstance(value, int | float) and not isinstance(value, bool))'''
+new = '''    return value is None or isinstance(value, int | float)'''
+
+[[rows]]
+id = "B10_bad_track_is_current"
+description = "_entry_is_current: a cached track that cannot be rebuilt still counts as current, so it is served as a keyless file"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''        and (entry.get("track") is None or _track_from_cache(entry.get("track")) is not None)
+'''
+new = "\n"
+
+[[rows]]
+id = "B12_not_carried_forward"
+description = "build_index: a current entry is served and not carried into the next cache, so every other run is a full scan"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''            track = _track_from_cache(entry.get("track"))
+            fresh[key] = entry'''
+new = '''            track = _track_from_cache(entry.get("track"))'''

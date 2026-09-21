@@ -1,0 +1,158 @@
+name = "r187-a"
+pass_kind = "light"
+
+# Batch A of two for issue 175, the matcher and the named form. Seventeen rows.
+# Batch B is the cache, eight rows, which makes the cap of 25 exactly.
+#
+# DROPPED FOR THE CAP, ranked below it and logged so the truncation is visible:
+# the refusal's first step listing displays instead of paths (the dispatcher
+# test asserts the paths, and the row is a reword of one join), the stamp built
+# without sorting (a one in twenty four chance of surviving by luck makes the
+# row a timing row in disguise), the cached text fields left unvalidated (the
+# number validation row beside it exercises the same return), the modification
+# time dropped from the identity (an existing guard that the size row's
+# neighbour already samples), the resolve_anchor branch inverted (A9 removes the
+# half of it this unit added), and two copies under one comparison key resolving
+# to the first (a branch build_index cannot reach, maintainer facing).
+
+[[rows]]
+id = "A1_exact_first"
+description = "match_in_index: never find an exact hit, so an exact name falls to the fuzzy score that cannot separate it from a longer title"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    exact = [t for t in index if t.match == wanted]'''
+new = '''    exact = []'''
+
+[[rows]]
+id = "A3_holds_dropped"
+description = "match_in_index: count every hit at the threshold as holding the name, so one differing word in a long title resolves"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    holding = tuple(t for t in ordered if _holds_every_word(t.match, wanted))'''
+new = '''    holding = ordered'''
+
+[[rows]]
+id = "A4_word_threshold_low"
+description = "WORD_THRESHOLD 80 to 50, so club counts as dub"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''WORD_THRESHOLD = 80'''
+new = '''WORD_THRESHOLD = 50'''
+
+[[rows]]
+id = "A5_word_threshold_high"
+description = "WORD_THRESHOLD 80 to 95, so a slip of the finger no longer lands"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''WORD_THRESHOLD = 80'''
+new = '''WORD_THRESHOLD = 95'''
+
+[[rows]]
+id = "A6_first_of_several"
+description = "match_in_index: resolve to the first of several holding hits instead of listing them, the defect itself"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    if len(holding) == 1:
+        return AnchorMatch(track=holding[0])'''
+new = '''    if holding:
+        return AnchorMatch(track=holding[0])'''
+
+[[rows]]
+id = "A7_partial_never"
+description = "match_in_index: never report a partial reach, so a different version reads as a choice between owned tracks"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    return AnchorMatch(candidates=ordered, partial=bool(ordered))'''
+new = '''    return AnchorMatch(candidates=ordered, partial=False)'''
+
+[[rows]]
+id = "A8_walk_order"
+description = "match_in_index: order candidates by score alone, so the listing follows the filesystem walk"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''            hits, key=lambda hit: (-hit[1], index[hit[2]].match, index[hit[2]].path)'''
+new = '''            hits, key=lambda hit: -hit[1]'''
+
+[[rows]]
+id = "A9_key_discarded"
+description = "resolve_anchor: a partial reach with a supplied key answers unresolved, discarding the key"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    if matched.track is None and matched.candidates and not (matched.partial and key):'''
+new = '''    if matched.track is None and matched.candidates:'''
+
+[[rows]]
+id = "A10_ambiguous_falls_through"
+description = "resolve_anchor: only a partial reach answers unresolved, so an ambiguous name falls through to not in your library"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    if matched.track is None and matched.candidates and not (matched.partial and key):'''
+new = '''    if matched.track is None and matched.partial and not key:'''
+
+[[rows]]
+id = "A11_no_cutoff"
+description = "match_in_index: score cutoff to zero, so a name nothing answers to reaches the whole index"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''        score_cutoff=threshold,'''
+new = '''        score_cutoff=0,'''
+
+[[rows]]
+id = "A12_partial_message"
+description = "resolve_anchor: a partial reach uses the several owned tracks sentence, which is false when one was reached"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''        if matched.partial:
+            why = ('''
+new = '''        if False:
+            why = ('''
+
+[[rows]]
+id = "C1_blank_not_key"
+description = "names_something: ask the text and not the comparison key, so a name of punctuation alone is searched for"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    return bool(setbuilder.match_key("", text))'''
+new = '''    return bool(text.strip())'''
+
+[[rows]]
+id = "C2_uncapped"
+description = "named_anchor: list every candidate, so a vague name prints a whole label"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    shown = matched.candidates[: setbuilder.CANDIDATE_LIMIT]'''
+new = '''    shown = matched.candidates'''
+
+[[rows]]
+id = "C3_mutex"
+description = "build: declare --named on the parser and not in the exclusive group, so it can sit beside a path or a label"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    anchor.add_argument(
+        "--named",'''
+new = '''    parser.add_argument(
+        "--named",'''
+
+[[rows]]
+id = "C4_key_beside_name"
+description = "set_build: a key beside --named is let through and silently ignored"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if ctx.args.key is not None or ctx.args.tempo is not None:'''
+new = '''    if ctx.args.named is None and (ctx.args.key is not None or ctx.args.tempo is not None):'''
+
+[[rows]]
+id = "C5_empty_name_scans"
+description = "set_build: an empty name pays for the library walk before it is refused"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        index = _index(cfg, root) if names_something(ctx.args.named) else ()'''
+new = '''        index = _index(cfg, root)'''
+
+[[rows]]
+id = "C6_no_cache_path"
+description = "_index: pass no cache path, which is R-188 itself, every set a full scan"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        cache_path=config.state_path("setbuilder_index_cache", cfg),'''
+new = '''        cache_path=None,'''
