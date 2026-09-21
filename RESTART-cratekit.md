@@ -4,7 +4,23 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-349, issue #102, `relay/102`, 2026-09-21.**
+**Last merged: R-395, issue #109, `relay/109`, 2026-09-21.**
+A missing extra now prints an install command for the environment `crate` runs
+in, which CLOSES R-395. **ONE SOURCE, IN THE MODULES LAYER**, `modules/extras.py`,
+because the analysis workers may not import the CLI and nothing below modules
+may spell a package manager line; the parser stub, both worker refusals and
+`cli.registry.DISTRIBUTION` read it. A process whose `sys.prefix` holds
+`pipx_metadata.json` gets `pipx install --force` against the recorded clone
+with the recorded extras kept; any other gets `<its interpreter> -m pip`.
+Driven live in a scratch pipx home, including a `pipx reinstall` that kept the
+extra. The built in review raised one finding, fixed in round one.
+Battery: ruff clean, **9820 passed** and 1 skipped in 94 seconds. Scan clean.
+Mutation table `docs/mutation/r395.md`, read in `r395-notes.md`: **11 rows, the
+author's own, all killed.** Filed R-646, the `.` fallback must be run from inside
+the clone and does not say so, not on the board bar.
+**Main's highest residual number is R-646.**
+
+**The session before: R-349, issue #102, `relay/102`, 2026-09-21.**
 A queued backup item's commands now reach the job record, which CLOSES R-349.
 `PortionOutcome.commands` records every command handed to the runner, index for
 index with `results`, and `outcome_payload` renders each argv and return code.
@@ -21,8 +37,6 @@ Mutation tables `docs/mutation/r349-a.md` to `r349-c.md`, read in
 `r349-notes.md`: **12 rows, the author's own, all killed.** Filed R-644, the
 failure envelope prints no commands, and R-645, a failed commit escapes the
 driver. Neither is on the board bar.
-**Main's highest residual number is R-645.**
-
 **The session before: R-388, issue #100, `relay/100`, 2026-09-21.**
 A restore listing on the remote that fails no longer tells a person to take a
 backup, which CLOSES R-388 and R-387. `backup.Refusal.SNAPSHOT_LISTING_FAILED`,

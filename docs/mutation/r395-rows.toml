@@ -1,0 +1,96 @@
+name = "r395"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_no_pipx_detection"
+description = "Drop the pipx branch, every environment gets the pip form"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+old = '''    if (prefix / PIPX_METADATA).is_file():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M2_bare_pip"
+description = "Print a bare pip instead of the running interpreter's pip"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+old = '''[sys.executable, "-m", "pip", "install", f"{DISTRIBUTION}[{extras}]"]'''
+new = '''["pip", "install", f"{DISTRIBUTION}[{extras}]"]'''
+
+[[rows]]
+id = "M3_drop_recorded_extras"
+description = "Name only the missing extra, dropping those pipx recorded"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+old = '''        wanted = ",".join(sorted({*chosen, extras}))'''
+new = '''        wanted = extras'''
+
+[[rows]]
+id = "M4_no_force"
+description = "Drop --force from the pipx form"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+old = '''["pipx", "install", "--force", f"{source}[{wanted}]"]'''
+new = '''["pipx", "install", f"{source}[{wanted}]"]'''
+
+[[rows]]
+id = "M5_trust_missing_source"
+description = "Use the recorded source even when the directory is gone"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+old = '''    source = match["source"] if Path(match["source"]).is_dir() else "."'''
+new = '''    source = match["source"]'''
+
+[[rows]]
+id = "M6_always_dot"
+description = "Always print the '.' form, ignoring the recorded clone"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+old = '''    source = match["source"] if Path(match["source"]).is_dir() else "."'''
+new = '''    source = "."'''
+
+[[rows]]
+id = "M7_fallback_drops_extras"
+description = "The review's defect: an unusable source drops the recorded extras"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+old = '''    source = match["source"] if Path(match["source"]).is_dir() else "."
+    return source, chosen'''
+new = '''    if not Path(match["source"]).is_dir():
+        return ".", ()
+    return match["source"], chosen'''
+
+[[rows]]
+id = "M8_unguarded_metadata_read"
+description = "Let an unreadable metadata file raise instead of falling back"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+old = '''    except (OSError, ValueError, KeyError, TypeError):
+        return ".", ()'''
+new = '''    except OSError:
+        return ".", ()'''
+
+[[rows]]
+id = "M9_worker_literal"
+description = "Put the old bare pip literal back in the analysis worker refusal"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''"install": extras.install_command("analysis")'''
+new = '''"install": "pip install 'cratekit[analysis]'"'''
+
+[[rows]]
+id = "M10_vocals_literal"
+description = "Put the old bare pip literal back in the vocals install text"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+old = '''    return extras.install_command("vocals")'''
+new = '''    return "pip install 'cratekit[vocals]'"'''
+
+[[rows]]
+id = "M11_render_literal"
+description = "Put the old bare pip literal back in the parser stub"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+old = '''    return extras.install_command(entry.extras)'''
+new = '''    return f"pip install '{registry.DISTRIBUTION}[{entry.extras}]'"'''

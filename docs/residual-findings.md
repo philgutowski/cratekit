@@ -18303,6 +18303,23 @@ running from, for a pipx install and for a plain virtual environment, or the
 message points at the README instead of naming a command. The three tests that
 assert the literal `pip install 'cratekit[analysis]'` change with it.
 
+**Closed 2026-09-21 on `relay/109`.** The command has one source,
+`modules/extras.py`, read by the parser stub through `render.install_command`
+and by both worker refusals. It sits in the modules layer because the analysis
+workers may not import the CLI and nothing below modules may spell a package
+manager line; `cli.registry.DISTRIBUTION` is re-exported from it. A process
+whose `sys.prefix` holds `pipx_metadata.json` prints `pipx install --force`
+against the source pipx recorded, with the extras it recorded kept, since
+`--force` reinstalls from exactly the spec given and naming only the missing
+extra drops the other. Any other process prints `<its interpreter> -m pip
+install 'cratekit[x]'`. Driven live in a scratch pipx home: the vocals refusal
+printed the pipx form against the clone, the printed analysis command was run
+from an unrelated folder, librosa imported afterwards, the next vocals command
+named `[analysis,vocals]`, and `pipx reinstall` kept librosa. The built in
+review raised one finding, fixed in round one: the fallback discarded the
+recorded extras. What this leaves is R-646. Table `docs/mutation/r395.md`, read
+in `r395-notes.md`.
+
 ---
 
 ## R-396. A restore into a scratch directory still takes the live library's lock and still needs rekordbox closed
@@ -25823,3 +25840,26 @@ board bar.
 
 **Closes when:** a failed commit is driven through `jobs.drive` and either
 fails the item with a named cause or is shown unreachable.
+
+---
+
+## R-646. The pipx fallback command must be run from inside the clone and does not say so
+
+**Found:** building R-395 on `relay/109`, 2026-09-21.
+
+When pipx's record cannot name a clone that still exists, a moved clone, an
+install from a git URL or a package name, or an unreadable
+`pipx_metadata.json`, the printed command falls back to the README's form,
+`pipx install --force '.[analysis]'`. The `.` means the current folder, so the
+command only works when run from inside the clone, and neither the refusal nor
+the stub says that. Run anywhere else, pipx fails to find a project, or installs
+whatever project that folder holds.
+
+**Measured cost:** read from the code and pinned by
+`test_a_pipx_environment_whose_source_cannot_be_read_gets_the_readme_form`, not
+driven under a real moved clone. The README documents the same command with the
+same condition. Not on the board bar: it is wording, and it is reached only off
+the documented install path.
+
+**Closes when:** the fallback is either worded to name the clone folder as the
+place to run it, or the refusal carries that sentence beside the command.
