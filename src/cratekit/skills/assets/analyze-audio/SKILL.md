@@ -72,24 +72,44 @@ that still have no head.
 
 ## Calibrate fits a threshold to this library's own data
 
-Calibration wants a labelled folder to work from, tracks whose right answer you
-already know, and it fits the threshold against those rather than against a
-number somebody else's library liked.
+A calibration is a description of one library, the spread of its energy and the
+cut between its instrumentals and its vocal tracks, so it has to be fitted over
+the library and not over one shelf of it. Fitted over a single genre folder it
+still loads and every later restamp still succeeds, and the whole library ends
+up rated on that folder's scale with nothing on screen to say so. Give it the
+library root and `--recursive`.
 
 ```bash
-crate analyze calibrate /path/to/labelled
+crate analyze calibrate /path/to/library --recursive
+crate analyze calibrate /path/to/library --recursive --sample 1000
 crate analyze calibrate
 ```
 
-It is read only. It writes no file, renames nothing, and touches no database, so
-running it costs only time. The folder is optional and running it bare is a
-legitimate move: the report comes back as a list of checks, each with its own
-status and its own detail, and a check that has not got what it needs says so in
-its own row instead of failing the whole verb. That is how you find out what it
-wants without guessing.
+It writes two small state files under the library root, the energy calibration
+and the vocal cut, and nothing else: no audio file, no rename, no database. The
+energy half measures a sample, 500 tracks unless `--sample` says otherwise, taken
+at an even stride over the sorted walk, so the same library gives the same sample
+every time and a big library costs no more than a small one. The vocal half reads
+a tag per file, which is cheap, so it reads every track under the walk.
+
+Only the library root, or the music folder under it, walked recursively counts
+as the library. Anything else fails the `calibrate.sample` check and nothing is
+measured or written. So does a walk that had to leave a folder out, a genre
+folder that is a symbolic link or one the account cannot read, because that is a
+fit over a library missing a genre. `--accept-partial` fits over what was walked
+anyway, and the answer then carries a warning saying whose scale the numbers are
+on, and the file records it. Both files are ALWAYS written under the configured
+library root, whatever folder was fitted over, so do not use the flag to
+calibrate some other library: it would overwrite this one's calibration with
+that one's numbers.
+
+The report comes back as a list of checks, each with its own status and its own
+detail, and a check that has not got what it needs says so in its own row
+instead of failing the whole verb. Running it bare is a legitimate move for the
+same reason, it tells you what it wants without guessing.
 
 ```bash
-crate --output json analyze calibrate /path/to/labelled
+crate --output json analyze calibrate /path/to/library --recursive
 ```
 
 Reach for the JSON form when something other than a person is going to read the

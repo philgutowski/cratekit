@@ -161,8 +161,8 @@ def load_vocal_calibration(cfg: config.Config) -> dict[str, Any] | None:
             f"this library's vocal calibration at {path} could not be read "
             f"({type(exc).__name__}: {exc}), so no with-vox cut can be taken from it",
             steps=(
-                "calibrate again over a folder holding both vocal and "
-                "instrumental tracks, which rewrites it",
+                "calibrate again over the whole library, the library root walked "
+                "recursively, which rewrites it from every scored track",
                 f"or delete {path}, after which My Tags use the default cut of "
                 f"{DEFAULT_VOCAL_THRESHOLD} and the routing passes file nothing "
                 f"under the vocal sub-playlist until a calibration is written",

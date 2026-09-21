@@ -4,7 +4,77 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-375 with R-12, issue #173, `relay/173`, 2026-09-20.**
+**Last merged: U94, issue #139, `relay/139`, 2026-09-20.**
+`analyze calibrate` fits over a library wide sample and refuses a partial one,
+which CLOSES R-409 on its second arm. Until now a calibration fitted over one
+genre folder loaded, restamped cleanly, and rated the whole library on that
+folder's scale with nothing on screen to say so.
+**THREE FLAGS AND ONE NEW CHECK ROW.** `--recursive`, `--sample N`, default 500,
+and `--accept-partial`. `calibrate.sample` answers BEFORE anything is measured.
+The only walk it treats as the library is the library root, or the music folder
+under it, asked with `samefile` so a link or a case difference is still the
+root, walked recursively WITH NOTHING LEFT OUT. One genre folder, the root read
+one level deep, a recursive walk of a subtree, and a root walk that declined a
+linked folder or could not list one are all PARTIAL: the row fails and nothing
+is written. With `--accept-partial` the fit goes ahead, the row reads `skipped`
+and never `ok`, the envelope carries `calibration-partial-sample`, and the note
+in both files says `fitted over N of M under ROOT` and how many folders were not
+walked, because the file outlives the warning. The sample floor, ten, is a
+different question and the flag does not waive it.
+**CHEAPEST REFUSAL FIRST.** The floor needs an integer and the folder's standing
+needs one `samefile`, so both answer before the walk and before the missing
+extra. Only what the walk left out waits for the walk.
+**THE SAMPLE IS AN EVEN STRIDE OVER THE SORTED WALK,** `items[i * M // N]`, so
+the same tree gives the same sample and the tail folders are reached, where the
+first N would be the first folders of the alphabet. Only the energy half is
+sampled. The vocal half reads a tag per file and reads every one. No job, no
+cache, no resume, by the brief.
+**The walk is U93's, `core.discovery`.** Its two warnings take a `verb` now,
+`queued` by default and `read` for calibrate, which has no queue to speak of.
+**The outcome is `ok` when EITHER half wrote.** It read the energy half alone,
+so a run that replaced only the vocal cut answered `no_op`.
+`summary.calibrated` is still the energy half's.
+**Both files are always written under the CONFIGURED root**, whatever folder was
+fitted over. The shipped skill had advised `--accept-partial` for some other
+library, which would overwrite this one's calibration, and it had said the verb
+writes no file. Both corrected, with `docs/GUIDE.md`.
+**The built in code review raised ten findings, all driven, eight applied in one
+round**: the empty walk answered before the check so the normal root layout was
+never told about `--recursive`, the music folder refused as not the library, a
+walk with omissions reading `ok`, the outcome, the borrowed warning wording, the
+skill's advice, a test that did not do what its name said, and a double join
+with `getattr` defaults. Two became residuals. Then the full suite caught what
+the touched files could not: `test_layering` forbids a module below the CLI from
+spelling a command line, and `write/metadata_cli.py` had been given one.
+Battery: ruff clean, **9415 passed** and 1 skipped in 62 seconds, 9416
+collected, scan clean. No new slow test, no test identifier removed, 24 added.
+The kebab literal pin in `tests/test_reserved_causes.py` moved 471 to 472,
+differenced as sets against main: `calibration-partial-sample`, a warning code.
+Mutation tables, `docs/mutation/u94-a.md`, `u94-b.md` and `u94-c.md`, rows files
+beside them: **25 rows, the author's own, 25 killed, no zero row.** Null control
+at zero in all three, baselines green, every restore verified against
+`git show HEAD:`. The driver ran in the FOREGROUND, three tables to stay inside
+the tool ceiling, the longest six minutes. Batches A and B were measured twice,
+because two helpers were renamed off a name `session/restore_cli.py` already
+uses and the rows quote them. Six candidate rows were dropped and are logged in
+the rows files.
+Filed: **R-601**, a library wide calibrate walks set recordings, which the
+config composes under the music folder, size unmeasured; **R-602**, the default
+run is 500 tracks synchronous with no progress and no resume, per track cost
+unmeasured, and it carries what is OWED TO AN ATTENDED SITTING, a real
+calibration over the real library; **R-603**, two reworded remedies have no
+test and the three new flags are ignored without a word beside `--vocal-cut`.
+**R-604**, `test_restore.py::test_round2_repeating_a_failing_restore_does_not_accumulate_latches`
+FAILED ONCE in a full parallel run on a tree that does not touch it, then
+passed alone three times and in the next two full runs, about one red battery
+in ten. Its failure text was not captured and no cause is offered. If the gate
+goes red on that one test, run the battery again before blaming the unit.
+None meets the board bar, each closes or is sized only at an attended sitting
+or is maintainer facing. No follow up issue was opened.
+No learning filed, an ordinary run. `CONCEPTS.md` gains "Library wide walk".
+**Main's highest residual number is R-604.**
+
+**The session before: R-375 with R-12, issue #173, `relay/173`, 2026-09-20.**
 A gated database write now leaves a session record, so the capture it takes is
 an undo `restore list` can show and `restore run` can spend, and the pruning scan
 protects it while the write is in flight. CLOSES R-375 and R-12, one shape found
@@ -63,7 +133,7 @@ opened as its one follow up. The rest do not.
 One learning, `docs/solutions/workflow-issues/`, a record nested inside the
 gates closes before the gates have judged the session.
 `CONCEPTS.md` gains "Kept record" and "Commit witness".
-**Main's highest residual number is R-600.**
+**Main's highest residual number was R-600 at that merge.**
 
 **The session before: U96, issue #141, `relay/141`, 2026-09-20.**
 `crate restore bare-metal --target DIR --accept-replacement` recovers the mirror

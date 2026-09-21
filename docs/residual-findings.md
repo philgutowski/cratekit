@@ -18775,6 +18775,31 @@ calibrate that refuses an unrepresentative sample, and choosing between those is
 U94's. Until U94 lands, the convenient way to calibrate still silently fits the
 wrong population.
 
+**CLOSED 2026-09-20 on `relay/139`, U94, on its second arm: calibrate refuses a
+sample it cannot treat as representative.** `analyze calibrate` takes
+`--recursive`, `--sample N`, default 500, and `--accept-partial`, and a new
+check row, `calibrate.sample`, answers before anything is measured. The only
+walk it treats as the library is the library root, or the music folder under
+it, walked recursively with nothing left out. One genre folder, the root read
+one level deep, a recursive walk of a subtree, and a root walk that declined a
+linked folder or could not list one all fail the row and write nothing. With
+`--accept-partial` the fit goes ahead, the row reads skipped and not ok, the
+envelope carries `calibration-partial-sample`, and the note in both files says
+`fitted over N of M under ROOT` and how many folders were not walked. The
+energy half measures an even stride over the sorted walk, so the same tree
+gives the same sample, and the vocal half reads every tagged file.
+
+Two readings stricter than the brief, both deliberate. The brief refused "a
+folder that is not the library root" when `--recursive` is absent and was silent
+on the root read one level deep and on `--recursive` over a subtree. Both are
+partial here, because one level of a root that holds genre folders is only its
+loose files and a recursive walk of one genre is still one genre. And one
+reading wider: the brief named the root alone, and every module that places a
+track places it under `root / music_dir`, so that folder qualifies too.
+
+The first arm, a library wide PASS for calibrate as a resumable job, is not
+built and is out of U94's scope by the brief. What that leaves is R-602.
+
 ---
 
 ## R-410. `crate setbuild` cannot anchor on a track the library does not own
@@ -24315,3 +24340,101 @@ caller in `src`. These two writers now hold the record it needs.
 
 **Closes when:** the change summary carries a surface beside the key, or a
 second non tree writer arrives and makes the overload worth a field.
+
+---
+
+## R-601. A library wide calibrate walks set recordings and whatever other audio sits under the root
+
+**Found:** 2026-09-20 on `relay/139`, U94, by the built in review.
+
+`analyze calibrate ROOT --recursive` fits over every audio file the walker
+finds under the root. `core/config.py` composes the set workspaces under
+`root / music_dir / sets_dir`, so hour long set recordings and a mastering
+workspace's intermediate files are in the walked population, under the root and
+under the music folder alike, and the stride sample takes them at the rate they
+occur. The `calibrate.sample` row then says the fit is over the library's own
+distribution. `analyze restamp --recursive` and `analyze vocals --recursive`
+walk the same folders, U93, and restamp a set recording's energy tag.
+
+**Measured cost:** none taken, and it cannot be taken without the real library.
+A handful of recordings among thousands of tracks moves a decile by less than
+one track's width. A workspace that holds many intermediates would move it
+more. `energy.features_from_path` decodes the central 120 seconds only, so a
+long file costs what a short one does. Reachability unmeasured.
+
+**Closes when:** the walk for the three analysis verbs prunes the configured
+sets directory and says so, or a count on a real library shows the population
+is too small to matter.
+
+---
+
+## R-602. The default calibrate measures 500 tracks in one synchronous run, with no progress, no cache and no resume
+
+**Found:** 2026-09-20 on `relay/139`, U94, by the built in review. Decided by the
+unit's brief, recorded here with its cost.
+
+Each half writes once at its end, so a sleep, an ejected volume or an interrupt
+at track 480 discards every measurement and the next run starts from zero. The
+verb prints nothing while it measures. The source system cached features. The
+default of 500 is justified on the fit, the second percentile onset floor rests
+on ten tracks at that size and each level bin holds fifty, and NOT on a clock:
+what one measured track costs on the real library was not measured.
+
+**Owed to an attended sitting:** a real calibration over the real library, which
+is also where the per track cost gets its first number.
+
+**Measured cost:** none taken.
+
+**Closes when:** the real run is timed and found tolerable, or the energy half
+becomes a job with a feature cache, which the brief put out of scope.
+
+---
+
+## R-603. Two remedy strings U94 reworded have no test, and the three sample flags are silently ignored beside `--vocal-cut`
+
+**Found:** 2026-09-20 on `relay/139`, U94, by the author.
+
+`energy.load_calibration`'s unreadable refusal and
+`metadata_cli.load_vocal_calibration`'s both now send a person to the library
+root walked recursively. Only the restamp refusal in `analysis/cli.py` has a
+test reading its steps, so either of the other two can be reworded back to one
+folder with a green suite. Not measured as a mutation row, dropped at the cap
+and logged in `docs/mutation/u94-b-rows.toml`.
+
+Separately, `crate analyze calibrate --vocal-cut 5 --recursive --sample 9`
+sets the cut and says nothing about the three flags it did not read.
+
+**Measured cost:** wording. Maintainer facing.
+
+**Closes when:** a test reads both remedies, and the hand cut either refuses the
+flags or names them as unread.
+
+---
+
+## R-604. A restore test failed once under the parallel suite on a tree that does not touch it, and passed every other time
+
+**Found:** 2026-09-20 on `relay/139`, U94, at the last battery before the record.
+
+`tests/test_restore.py::test_round2_repeating_a_failing_restore_does_not_accumulate_latches`
+failed once in a full `-n auto` run. The branch changes no file under
+`session`, `backup` or `write`, and no file that test imports. On the identical
+committed tree it then passed three times alone with `-n 0`, once with its whole
+file, and in both of the next two full parallel runs. The five mutation
+baselines taken earlier in the session, full parallel runs of nearly the same
+tree, were green as well. So roughly one failure in ten full runs, and none in
+isolation.
+
+**THE FAILURE TEXT WAS NOT CAPTURED.** The run that failed was piped through a
+two line tail, and the failure did not come back to be read. No mechanism is
+offered, because none was measured. What is known is only where to look: the
+test opens `restore.recovery_session` three times in a row, and that function
+was rewritten one merge earlier, on `relay/173`, to ask the gates for its
+record.
+
+**Measured cost:** one red battery in about ten, which under Relay is a gate
+that refuses a merge for a unit that did nothing wrong. Maintainer facing.
+
+**Closes when:** the failure is reproduced with its text, `pytest -n auto -p
+no:randomly --count` or a loop over the full suite with `--tb=long` kept whole,
+and is either fixed or shown to be machine load.
+

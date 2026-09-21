@@ -1,0 +1,80 @@
+name = "u94-c"
+pass_kind = "light"
+
+# U94, batch C of three: the stride sample, the two halves, and the order of refusals.
+
+[[rows]]
+id = "N1_stride_is_the_first_n"
+description = "stride_sample: take the first N of the sorted walk, which is the first few folders of the alphabet"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    return [items[index * total // count] for index in range(count)]'''
+new = '''    return list(items[:count])'''
+
+[[rows]]
+id = "N2_stride_is_a_fixed_step"
+description = "stride_sample: a fixed step of len // count, which stops short of the tail whenever the division has a remainder"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    return [items[index * total // count] for index in range(count)]'''
+new = '''    return [items[index * (total // count)] for index in range(count)]'''
+
+[[rows]]
+id = "N3_sample_ignored"
+description = "analyze_calibrate: measure every walked track whatever --sample says, the unbounded run the brief rules out"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    sampled = stride_sample(paths, sample)'''
+new = '''    sampled = list(paths)'''
+
+[[rows]]
+id = "N4_vocal_half_sampled"
+description = "analyze_calibrate: hand the vocal half the sample instead of every file under the walk"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''        _calibrate_vocals(cfg, folder, paths, left_out),'''
+new = '''        _calibrate_vocals(cfg, folder, sampled, left_out),'''
+
+[[rows]]
+id = "N5_note_m_is_the_sample"
+description = "analyze_calibrate: record the sample size as M, so the note reads N of N and hides how much of the library was fitted"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''        _calibrate_energy(cfg, folder, sampled, len(paths), left_out),'''
+new = '''        _calibrate_energy(cfg, folder, sampled, len(sampled), left_out),'''
+
+[[rows]]
+id = "N6_default_sample_halved"
+description = "DEFAULT_CALIBRATION_SAMPLE: halve the coefficient, 500 to 250"
+file = "src/cratekit/analysis/cli.py"
+old = '''DEFAULT_CALIBRATION_SAMPLE = 500'''
+new = '''DEFAULT_CALIBRATION_SAMPLE = 250'''
+
+[[rows]]
+id = "N7_root_not_required_first"
+description = "analyze_calibrate: ask the folder's standing with the library away, so an unmounted volume is blamed on the folder"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    _require_library_root(cfg)
+    partial = _partial_before_walk'''
+new = '''    partial = _partial_before_walk'''
+
+[[rows]]
+id = "N8_absent_folder_not_told_apart"
+description = "analyze_calibrate: drop the not a folder answer, so a mistyped path is told it is not the library root"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+old = '''    if not folder.is_dir():
+        return _calibrate_refusal('''
+new = '''    if False:
+        return _calibrate_refusal('''
+
+[[dropped]]
+id = "D_stride_count_zero"
+description = "stride_sample: drop the count <= 0 branch"
+reason = "ranked below the cap: unreachable from the verb, which refuses a sample below ten before the stride is asked, and the pure function test holds it"
+
+[[dropped]]
+id = "D_walk_before_refusal"
+description = "Make the walk before the standing check again"
+reason = "a reordering across forty lines is not one exact replacement; test_a_refusal_known_before_the_walk_does_not_make_the_walk records scan_audio calls and asserts none"

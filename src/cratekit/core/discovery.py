@@ -88,8 +88,9 @@ def scan_audio(folder: Path, *, recursive: bool = False) -> Scan:
     """The item ids for the audio under ``folder``, sorted, dotfiles skipped.
 
     One level by default, which is byte for byte what both queued verbs did
-    before U93, so an existing job, an existing resume and ``analyze calibrate``
-    are unchanged. Recursive walks the tree and returns POSIX relative paths.
+    before U93, so an existing job and an existing resume are unchanged.
+    Recursive walks the tree and returns POSIX relative paths. ``analyze
+    calibrate`` reads both modes too (U94), synchronously and with no job.
 
     The two modes agree where they overlap: a top level file's relative path is
     its own name, so switching a folder of loose tracks to recursive produces
@@ -186,8 +187,14 @@ def _folders(count: int) -> str:
     return f"{count} folder" if count == 1 else f"{count} folders"
 
 
-def link_warning(paths: tuple[str, ...]) -> dict[str, str] | None:
-    """What a recursive walk declined to enter, phrased for an envelope."""
+def link_warning(paths: tuple[str, ...], verb: str = "queued") -> dict[str, str] | None:
+    """What a recursive walk declined to enter, phrased for an envelope.
+
+    ``verb`` is what the caller would have done with the tracks inside. The two
+    queued verbs queue them, and ``analyze calibrate`` has no queue at all, so
+    the sentence it first borrowed told a person about a job that did not exist
+    and never said the folder was left out of the fit (U94 review).
+    """
     if not paths:
         return None
     return {
@@ -196,12 +203,12 @@ def link_warning(paths: tuple[str, ...]) -> dict[str, str] | None:
             f"{_folders(len(paths))} under this tree "
             f"{'is a symbolic link' if len(paths) == 1 else 'are symbolic links'} "
             f"and {'was' if len(paths) == 1 else 'were'} not walked, so no track "
-            f"inside {'it' if len(paths) == 1 else 'one'} was queued: {_named(paths)}"
+            f"inside {'it' if len(paths) == 1 else 'one'} was {verb}: {_named(paths)}"
         ),
     }
 
 
-def unreadable_warning(paths: tuple[str, ...]) -> dict[str, str] | None:
+def unreadable_warning(paths: tuple[str, ...], verb: str = "queued") -> dict[str, str] | None:
     """What a recursive walk could not list, phrased for an envelope."""
     if not paths:
         return None
@@ -209,7 +216,7 @@ def unreadable_warning(paths: tuple[str, ...]) -> dict[str, str] | None:
         "code": "folder-unreadable",
         "message": (
             f"{_folders(len(paths))} under this tree could not be read, so no "
-            f"track inside {'it' if len(paths) == 1 else 'one'} was queued; check "
+            f"track inside {'it' if len(paths) == 1 else 'one'} was {verb}; check "
             f"the permissions on {'it' if len(paths) == 1 else 'them'} and that the "
             f"volume is healthy: {_named(paths)}"
         ),
@@ -217,7 +224,7 @@ def unreadable_warning(paths: tuple[str, ...]) -> dict[str, str] | None:
 
 
 def walk_warnings(
-    skipped_links: Sequence[str] = (), unreadable: Sequence[str] = ()
+    skipped_links: Sequence[str] = (), unreadable: Sequence[str] = (), *, verb: str = "queued"
 ) -> tuple[dict[str, str], ...]:
     """Both omissions as envelope warnings, in the order they are read.
 
@@ -228,8 +235,8 @@ def walk_warnings(
     the queue and the resume cannot describe one omission two ways.
     """
     said = (
-        link_warning(tuple(skipped_links)),
-        unreadable_warning(tuple(unreadable)),
+        link_warning(tuple(skipped_links), verb),
+        unreadable_warning(tuple(unreadable), verb),
     )
     return tuple(one for one in said if one is not None)
 

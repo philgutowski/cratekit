@@ -1,0 +1,295 @@
+{
+  "name": "u94-c",
+  "pass_kind": "light",
+  "branch": "relay/139",
+  "head": "14b0b89",
+  "when": "2026-09-21 00:08 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9416,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/analysis/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/analysis/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "3cd54f7639498b9e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9416,
+    "baseline_collected": 9416,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "N1_stride_is_the_first_n",
+      "description": "stride_sample: take the first N of the sorted walk, which is the first few folders of the alphabet",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a976bbbbfdd28acb",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_the_same_tree_gives_the_same_sample_twice",
+        "tests/test_analysis_workers.py::test_the_stride_sample_is_even_ordered_and_reaches_the_tail"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return [items[index * total // count] for index in range(count)]",
+      "new": "    return list(items[:count])"
+    },
+    {
+      "id": "N2_stride_is_a_fixed_step",
+      "description": "stride_sample: a fixed step of len // count, which stops short of the tail whenever the division has a remainder",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4b365bf27ff38478",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_the_stride_sample_is_even_ordered_and_reaches_the_tail"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return [items[index * total // count] for index in range(count)]",
+      "new": "    return [items[index * (total // count)] for index in range(count)]"
+    },
+    {
+      "id": "N3_sample_ignored",
+      "description": "analyze_calibrate: measure every walked track whatever --sample says, the unbounded run the brief rules out",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e10d28183223b01b",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_sample_at_the_fit_floor_is_accepted",
+        "tests/test_analysis_workers.py::test_the_same_tree_gives_the_same_sample_twice",
+        "tests/test_analysis_workers.py::test_the_vocal_cut_reads_every_tagged_file_while_energy_reads_the_sample"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    sampled = stride_sample(paths, sample)",
+      "new": "    sampled = list(paths)"
+    },
+    {
+      "id": "N4_vocal_half_sampled",
+      "description": "analyze_calibrate: hand the vocal half the sample instead of every file under the walk",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d450d68edf0ba763",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_the_vocal_cut_reads_every_tagged_file_while_energy_reads_the_sample"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        _calibrate_vocals(cfg, folder, paths, left_out),",
+      "new": "        _calibrate_vocals(cfg, folder, sampled, left_out),"
+    },
+    {
+      "id": "N5_note_m_is_the_sample",
+      "description": "analyze_calibrate: record the sample size as M, so the note reads N of N and hides how much of the library was fitted",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "625b5a3e0e78afdf",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_the_same_tree_gives_the_same_sample_twice"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        _calibrate_energy(cfg, folder, sampled, len(paths), left_out),",
+      "new": "        _calibrate_energy(cfg, folder, sampled, len(sampled), left_out),"
+    },
+    {
+      "id": "N6_default_sample_halved",
+      "description": "DEFAULT_CALIBRATION_SAMPLE: halve the coefficient, 500 to 250",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "de9eb72ba8905a8c",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_the_default_sample_is_what_the_parser_hands_the_verb"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DEFAULT_CALIBRATION_SAMPLE = 500",
+      "new": "DEFAULT_CALIBRATION_SAMPLE = 250"
+    },
+    {
+      "id": "N7_root_not_required_first",
+      "description": "analyze_calibrate: ask the folder's standing with the library away, so an unmounted volume is blamed on the folder",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7acf5c6ae77f5c48",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_calibrate_refuses_with_the_library_away_rather_than_writing_beside_the_mount"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _require_library_root(cfg)\n    partial = _partial_before_walk",
+      "new": "    partial = _partial_before_walk"
+    },
+    {
+      "id": "N8_absent_folder_not_told_apart",
+      "description": "analyze_calibrate: drop the not a folder answer, so a mistyped path is told it is not the library root",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dd8b934c47757ad3",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one",
+        "tests/test_analysis_workers.py::test_calibrate_over_a_folder_that_is_not_there_says_that_and_not_empty"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not folder.is_dir():\n        return _calibrate_refusal(",
+      "new": "    if False:\n        return _calibrate_refusal("
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D_stride_count_zero",
+      "description": "stride_sample: drop the count <= 0 branch",
+      "reason": "ranked below the cap: unreachable from the verb, which refuses a sample below ten before the stride is asked, and the pure function test holds it"
+    },
+    {
+      "id": "D_walk_before_refusal",
+      "description": "Make the walk before the standing check again",
+      "reason": "a reordering across forty lines is not one exact replacement; test_a_refusal_known_before_the_walk_does_not_make_the_walk records scan_audio calls and asserts none"
+    }
+  ]
+}
