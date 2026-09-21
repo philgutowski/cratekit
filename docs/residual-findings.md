@@ -919,6 +919,21 @@ routing apply that opens a native tree) still sit behind part 3, because
 succeeding on a synthetic schema is not the same proof as succeeding on a
 write.
 
+**Closed 2026-09-21 on `relay/151`, U106, verified against `src` at `1e3202f`.** The
+closing condition is met. Conformance 3 runs over every landed entry against
+the disposable database the `configured` fixture builds,
+`tests/test_cli_contract.py:97`, which copies a supplied `CRATEKIT_TEST_DB`
+snapshot when there is one and builds a synthetic file otherwise, so it
+substitutes rather than skips. Every verb this entry named as waiting on part 3
+has landed: `route.inbox`, `route.unplaced`, `route.resort` and `route.pending`
+in `cratekit.write.routing_cli`, `rebuild` in `cratekit.cli.rebuild`,
+`restore.run`, `adopt.apply` and `name.apply`, each `landed` with no
+`planned_in` in `src/cratekit/cli/registry.py`. Driven 2026-09-21, the
+conformance 3 cases for those eight verbs, eleven collected ids, all pass.
+`ROUTING_CLI_UNIT` and `REBUILD_CLI_UNIT` at `registry.py:352` and `:378` still
+name U20, which is history rather than an obligation, since neither module is in
+`tests/_pending.py`.
+
 ---
 
 ## R-14. Analysis-file paths are share-relative, and the wrong join finds nothing
@@ -3235,6 +3250,13 @@ drifted, so the change would be a store shape edit with no defect behind it.
 **Not fixed here** because the round was scoped to the recognition question, and
 because the measurement says the class is present while the instance is not.
 
+**The "nothing has shipped" premise expired, noted 2026-09-21 on `relay/151`,
+U106, and this entry stays OPEN.** Cratekit is installed with pipx and used for
+real (`README.md:64`, and R-395 is a finding about that install), so a store
+written by an earlier build can now exist on a real machine and an upgrade is a
+reachable input rather than a future one. Nothing in this entry was re-driven
+under that premise. Its reachability is now UNMEASURED, not ruled out.
+
 ---
 
 ## R-54. The row coordinate is unmeasurable by construction, and this round widened what reaches it
@@ -3267,6 +3289,13 @@ deaths. What remains unmeasured is the KEY, which is the pair itself.
 another's with the row coordinates deliberately perturbed on one side only, which
 needs a fixture that can produce a foreign stamp without planting one.
 
+**The "nothing has shipped" premise expired, noted 2026-09-21 on `relay/151`,
+U106, and this entry stays OPEN.** Cratekit is installed with pipx and used for
+real (`README.md:64`, and R-395 is a finding about that install), so a store
+written by an earlier build can now exist on a real machine and an upgrade is a
+reachable input rather than a future one. Nothing in this entry was re-driven
+under that premise. Its reachability is now UNMEASURED, not ruled out.
+
 ---
 
 ## R-55. Two document format versions are hand set and nothing measures the document against them
@@ -3292,6 +3321,11 @@ U11's and out of this unit's reach.
 **Closes when** each version constant is paired with a test that pins the exact
 key set of the document it stamps, so a field added without a bump goes red at
 the moment it is added rather than at the moment somebody upgrades.
+
+**The same premise, noted 2026-09-21 on `relay/151`, U106, and this entry stays
+OPEN.** Its cost lands when somebody upgrades, and with the pipx install in real
+use that is now a reachable moment. Checked, neither `WATERMARK_VERSION` nor
+`DECISION_STORE_VERSION` is named anywhere in `tests/`.
 ## R-56. Five accepted findings from the U38 reviews
 
 **Found:** during U38's two adversarial review rounds, 2026-08-02 and
@@ -8474,6 +8508,15 @@ describe a build nobody has.
 naming one, or the two refusals are separated so an unreachable directory and a
 damaged record are different causes rather than one.
 
+**Closed 2026-09-21 on `relay/151`, U106, verified against `src` at `1e3202f`.** The
+first clause is met. `src/cratekit/core/session.py:1072` refuses
+`backup-facts-unreadable` with `remedy=Remedy(str(exc.remedy))`, the exception's
+own remedy, so an unreadable directory now reaches a person as
+`grant-path-access` rather than as a damaged record. Landed by U48 on 2026-09-02
+in `95f4d6d`, and the reservation note at `src/cratekit/cli/exit_codes.py:268`
+already says so. The backup shell and doctor read the same remedy, at
+`src/cratekit/backup/cli.py:764` and `src/cratekit/cli/doctor.py:1599`.
+
 ## R-129. Folder-level XML import appends children, and rekordbox parses masterPlaylists6.xml on every play
 
 **Found:** 2026-08-15, diagnosing a rekordbox spinning wheel on the source
@@ -9236,6 +9279,14 @@ R-139, not a second engine.
 and refuses when that listing cannot be read, rather than iterating a
 raw `.tracks` attribute.
 
+**Closed 2026-09-21 on `relay/151`, U106, verified against `src` at `1e3202f`.** The
+harvest verb lists at `src/cratekit/label/cli.py:963` through
+`playlist_tracks_or_refuse`, which calls `harvest.playlist_tracks` at `:780`, a
+one line delegate to `listing.playlist_tracks`
+(`src/cratekit/label/harvest.py:106-108`), and refuses
+`label-playlist-unreadable` at `:785` when the provider cannot list it. No raw
+`.tracks` attribute is read. On `main` since relay task 70, `0afd592`.
+
 ---
 
 ## R-143. Harvest does not pass through per-row unreadable
@@ -9314,6 +9365,15 @@ would not satisfy the live gate the brief names.
 hearts sweep has run through these engines, the remote account matches
 the reported added and unmatched sets, and a second run of each updates
 rather than duplicates.
+
+**Closed 2026-09-17 at the fourth attended sitting, pointer added 2026-09-21 on
+`relay/151`, U106.** The closing paragraph for this entry was filed under R-147
+by mistake, headed "CLOSED 2026-09-17, the fourth attended sitting". Its content
+is this entry's condition met, one real playlist exported twice, the second run
+creating and adding nothing, and one real hearts sweep run twice, the second
+hearting nothing. It stays where it is, because the ledger is append only. The
+two halves it names as still open, the local colour and tag write and the
+forward acquisition of unowned hearts, are open under their own numbers.
 
 ## R-145. The report verbs resolve the SHIPPED taxonomy, never the library's ACTIVE copy
 
@@ -9429,6 +9489,13 @@ listing's ordering keeps it from biting in practice.
 **The unmatched rows are R-356, measured.** Of the export's two, both carry an
 ISRC the provider answers with several tracks: three releases for one, two for
 the other.
+
+**Still OPEN, checked 2026-09-21 on `relay/151`, U106.** The paragraph above
+headed CLOSED is R-144's closure, filed here by mistake, and says nothing about
+this entry. This entry's condition is unmet. `tests/test_pending_units.py`
+sweeps for skips outside the register with an AST walk and compares `PENDING`
+against `EXPECTED_PENDING`, and nothing in `tests/` or `scripts/` collects the
+literal keys passed to `requires(...)` and asserts each is declared.
 
 ---
 
@@ -10585,6 +10652,15 @@ queued verbs are bound now. The closing condition asks for EVERY long-running
 verb's engine to have a caller, eleven still do not, and those eleven are
 `R-203`.
 
+**Closed 2026-09-21 on `relay/151`, U106, verified against `src` at `1e3202f`.** Both
+clauses are met. `cratekit.cli.handlers.run_job` claims and dispatches by
+handler key, and R-203 closed at U61. Driven 2026-09-21 against the registry
+rather than read: twenty entries are `landed` and `long_running`, nineteen of
+their handler keys are in `HANDLERS` at `src/cratekit/cli/handlers.py:74`, and the
+twentieth is `job.resume`, the only key in `HANDLERS_NOT_YET_BOUND` at `:120`,
+exempt by role since U46. No planned entry is `long_running`. The retag this
+entry was raised over has run its items since U56.
+
 ## R-184. `plan_genre_retag` drops a row whose wanted genre is empty with no skip
 
 **Found by** U40's first-caller drive of `write/metadata`, 2026-08-26.
@@ -10716,6 +10792,21 @@ different branch is how the two come to disagree at the merge.
 **Closes when:** `resolve_genre_id` reads the marker through
 `trees.soft_delete_marker`, or somebody drives a binding that omits the column
 and the finding is promoted or dismissed on the measurement.
+
+**Closed 2026-09-21 on `relay/151`, U106, verified against `src` at `1e3202f`.** On
+its substance, and by neither clause as written, which is said here so the
+closure is not read as the literal condition. The defect was the default, a row
+that could not report `rb_local_deleted` resolved as a live genre.
+`resolve_genre_id` at `src/cratekit/write/metadata.py:184` now reads the column
+through `rb_writer.SOFT_DELETE_COLUMN` with a sentinel and no permissive
+default, and a row whose marker is absent or `None` refuses
+`soft-delete-marker-unreadable` at `:229` rather than resolving. It does not
+call `trees.soft_delete_marker`, and the docstring says why a lookup row answers
+differently from a content row, since a tombstoned genre means keep reading while an
+unreadable marker refuses. Landed with the parked conformance branch, merged in
+relay task 77, `e2e9ae2`. The refusal is pinned, `M2_refusal_removed` in U59's
+table kills four. The producer of an unreadable marker is still undriven, and that
+is now a question about a refusal rather than about a silent wrong link.
 
 ---
 
@@ -10936,6 +11027,13 @@ queues a recording that does not exist, re-enters the verb with `--job`, and rea
 which is where a reader looking for the slug on the job would not have found it.
 This does not close the entry: it turns on `R-183`, which U46 narrows and does not
 close, so this stays open on its first clause alone.
+
+**Closed 2026-09-21 on `relay/151`, U106, verified against `src` at `1e3202f`.** Its
+first clause turned on R-183, which is closed above on the same date, and its
+second is `tests/test_master_cli.py:652`,
+`test_a_missing_recording_reports_the_engines_own_cause_on_the_item`, which
+reads `source-missing` off the item. `master` is bound at
+`src/cratekit/cli/handlers.py:99`.
 
 ---
 
@@ -11767,6 +11865,15 @@ that made this unit's own bar unreachable are fixed, so the unit that binds the
 handler is making an already-corrected path reachable rather than a broken one.
 It still owns whatever it finds, per the doctrine this entry cites.
 
+**Closed 2026-09-21 on `relay/151`, U106, verified against `src` at `1e3202f`.** Both
+halves of the closing condition are met. `acquire.download` is bound at
+`src/cratekit/cli/handlers.py:75`, and its worker calls `download.acquire_paced`
+at `src/cratekit/acquire/cli.py:660`, which reaches `acquire_concurrently`. U47
+took R-195, R-196 and R-197. What this entry still names without owning is
+R-295's, since `adapter.dispatch_invocation` and `acquire.adapter_names` still return
+a definition and an export line under `git grep` over `src` and nothing else,
+measured 2026-09-21, so R-295 stays open and carries it.
+
 ---
 
 ## R-205. No test sees the whole `crate job resume` path in one piece
@@ -12011,6 +12118,15 @@ in this one.
 **Closes when:** the landed codec reaches the `TrackResult`, so the marker
 decision is made from the file rather than from the offer.
 
+**Closed 2026-09-21 on `relay/151`, U106, verified against `src` at `1e3202f`.** On the
+second clause, which is the finding, and not the first, which was a proposed
+mechanism. The landed codec does not reach `TrackResult`. The marker decision
+is made from the file anyway. `src/cratekit/acquire/cli.py:707` sets `required`
+from the offer OR `lossy_landing` (`:567`), which asks `vendored.codec_of` of the
+landed path under any policy that is not strict. So a lossless offer that lands
+lossy is committed marked. Landed by U54, merged in `b648c19`. The one case left,
+a file the probe cannot read committed unmarked, is R-292 and stays open there.
+
 ---
 
 ## R-212. The re-authorisation hop leaves a live refresh token in a plaintext file
@@ -12069,6 +12185,17 @@ than assumed away.
 
 **Closes when:** the codec probe is reachable from both adapters and the
 conformance suite drives a lossy landing through each.
+
+**Narrowed 2026-09-21 on `relay/151`, U106, verified against `src` at `1e3202f`,
+and this entry stays OPEN on its second clause.** The first is met.
+`checked_landing` at `src/cratekit/acquire/cli.py:525` runs the probe on the
+landed file whichever adapter landed it, called at `:701` for the acquisition
+worker and at `src/cratekit/acquire/fallback_cli.py:622` for the fallback fetch,
+and `lossy_landing` at `:707` makes the marker decision from the same file. So
+switching adapters no longer drops the guard. The second is not met.
+`tests/test_adapter_contract.py` drives lossy OFFERS through each adapter, and no
+test lands a lossy file through the alternative adapter, whose tool is still not
+installed on this machine.
 
 ---
 
