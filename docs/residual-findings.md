@@ -17852,6 +17852,18 @@ recorded in the cursor, so it is new to every future pass of both systems.
 queued it, or the cursor is stated to be the sync source's private bookkeeping and
 the verbs say so.
 
+**Closed 2026-09-21 on `relay/96`.** The first arm. `sync.playlists` reconciles
+over `playlist_jobs`, every `intake.playlist` job for the library whatever
+queued it, so a playlist run to done by `crate intake playlist` is recorded on
+the next pass and an open one is held back as in flight. A hand typed URL or
+share link is read through the provider's reference parser, now on the
+catalogue seam, so it records the identifier the listing carries. The hearts
+reference records nothing and `intake.set` is kept out by its key.
+`source_jobs` stays the pass's own set for the mark verb, which narrows every
+mark to its pass, so a playlist ingested by hand is recorded but never renamed
+by a mark. The cursor still moves only at the top of a pass. Driven through
+the verb and then `crate sync all`; table in `docs/mutation/r382.md`.
+
 ---
 
 ## R-383. The favourites listing stops at the first short page, so it reads a fraction of the account
