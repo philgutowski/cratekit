@@ -1,0 +1,45 @@
+name = "r349-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_absent_is_none"
+description = "A job with no outcome directory reports an empty mapping rather than no field"
+file = "src/cratekit/core/backup_facts.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''    if not directory.is_dir():
+        return None'''
+new = '''    if not directory.is_dir():
+        return {}'''
+
+[[rows]]
+id = "B2_iterdir"
+description = "Revert the listing to Path.glob, which swallows a permission error"
+file = "src/cratekit/core/backup_facts.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        files = sorted(p for p in directory.iterdir() if p.suffix == ".json")'''
+new = '''        files = sorted(directory.glob("*.json"))'''
+
+[[rows]]
+id = "B3_clear_before_attempt"
+description = "The handler no longer clears the previous attempt's record"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''    backup_facts.clear_outcome(job.job_id, named)
+    report = perform_backup('''
+new = '''    report = perform_backup('''
+
+[[rows]]
+id = "B4_stage_error_completes"
+description = "A staging write error escapes the handler instead of completing the item"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''    except OSError:
+        return None
+    return jobs.Produced'''
+new = '''    except KeyError:
+        return None
+    return jobs.Produced'''

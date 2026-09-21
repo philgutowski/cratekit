@@ -936,6 +936,25 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="backup_outcomes",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.DIRECTORY,
+        relative="backup_outcomes",
+        why=(
+            "What each queued backup item actually ran, one JSON file per job "
+            "and item: every rclone argv and its return code (R-349). Without it "
+            "a failed transfer could not be diagnosed from the job record, "
+            "because the job keeps counts and a cause and the per command report "
+            "left the claimed item with nowhere to go. A FAILED item writes here "
+            "directly rather than through the engine's artifact commit, since a "
+            "commit completes the item and a completed item is never re-armed. "
+            "Installation-scoped beside the job queue it is keyed by, so job "
+            "show finds it from the job identifier alone. NEVER_RESTORED for the "
+            "job queue's reason: it describes one machine's work, not the library."
+        ),
+    ),
+    StateFile(
         key="run_state",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,

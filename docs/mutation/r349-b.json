@@ -1,0 +1,156 @@
+{
+  "name": "r349-b",
+  "pass_kind": "light",
+  "branch": "relay/102",
+  "head": "205f0b2",
+  "when": "2026-09-21 09:09 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9812,
+  "baseline_exit": 0,
+  "pytest_runs": 7,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/backup_facts.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/backup_facts.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "67a98546e058c5f1",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9812,
+    "baseline_collected": 9812,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_absent_is_none",
+      "description": "A job with no outcome directory reports an empty mapping rather than no field",
+      "file": "src/cratekit/core/backup_facts.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "79d45448d8d2ea12",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_job_of_another_verb_grows_no_outcomes_field"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not directory.is_dir():\n        return None",
+      "new": "    if not directory.is_dir():\n        return {}"
+    },
+    {
+      "id": "B2_iterdir",
+      "description": "Revert the listing to Path.glob, which swallows a permission error",
+      "file": "src/cratekit/core/backup_facts.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0d5707867512dbe2",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_an_outcome_directory_that_cannot_be_listed_is_not_read_as_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        files = sorted(p for p in directory.iterdir() if p.suffix == \".json\")",
+      "new": "        files = sorted(directory.glob(\"*.json\"))"
+    },
+    {
+      "id": "B3_clear_before_attempt",
+      "description": "The handler no longer clears the previous attempt's record",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "77452f4a69540b7c",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_retry_that_fails_another_way_does_not_show_the_last_attempt_s_commands"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    backup_facts.clear_outcome(job.job_id, named)\n    report = perform_backup(",
+      "new": "    report = perform_backup("
+    },
+    {
+      "id": "B4_stage_error_completes",
+      "description": "A staging write error escapes the handler instead of completing the item",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5247372b35d0f551",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_record_that_cannot_be_staged_does_not_fail_a_completed_backup"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except OSError:\n        return None\n    return jobs.Produced",
+      "new": "    except KeyError:\n        return None\n    return jobs.Produced"
+    }
+  ],
+  "dropped": []
+}

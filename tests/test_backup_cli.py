@@ -1210,10 +1210,12 @@ def test_the_handler_uses_the_configuration_it_was_handed(cfg, tmp_path, rclone)
     item = jobs.Item(
         job_id="J2", item_id="files", ordinal=0, state=jobs.ItemState.CLAIMED
     )
-    assert backup_cli.handle(job, item, frozen) is None, (
-        "the handler produced something for the engine to commit, but a backup "
-        "writes to a remote and leaves no local file to put in place"
-    )
+    produced = backup_cli.handle(job, item, frozen)
+    # R-349 reversed the "returns nothing" half of this test: the outcome record
+    # is now the item's artifact. What stays is that it is the only one.
+    assert produced == jobs.Produced(
+        staged=produced.staged, final=backup_facts.outcome_path("J2", "files")
+    ), produced
     invoked = rclone.read_text()
     assert "remote:the-frozen-one" in invoked, invoked
     assert "remote:the-later-one" not in invoked, (
@@ -1643,7 +1645,10 @@ def test_the_handler_does_not_fail_an_item_over_the_age_read_back(cfg, rclone):
     item = jobs.Item(
         job_id="J3", item_id="files", ordinal=0, state=jobs.ItemState.CLAIMED
     )
-    assert backup_cli.handle(job, item, cfg) is None, (
+    # Returning at all is the claim: a read back would have raised. The
+    # ``Produced`` is R-349's outcome record, asserted in its own tests.
+    produced = backup_cli.handle(job, item, cfg)
+    assert produced is not None and produced.staged.is_file(), (
         "the handler read the age back, so an unreadable fact file fails an item "
         "over a rehearsal that copied nothing and every resume repeats it"
     )
@@ -2620,3 +2625,303 @@ def test_the_outcome_itself_records_which_kind_of_run_it_was(cfg, rclone):
     assert rehearsed.dry_run is True and performed.dry_run is False
     assert backup.outcome_payload(rehearsed)["dry_run"] is True
     assert backup.outcome_payload(performed)["dry_run"] is False
+
+
+# ---------------------------------------------------------------------------
+# R-349: what each backup item ran reaches the job record, on both channels
+# ---------------------------------------------------------------------------
+
+
+def _shown_outcomes(job_id: str) -> dict | None:
+    """What ``crate job show`` says each item ran, through the real dispatcher."""
+    code, shown = _drive(["job", "show", job_id])
+    assert code == int(ExitCode.OK), shown
+    return shown["data"]["progress"].get(backup_facts.OUTCOMES_FIELD)
+
+
+def _argv_lines(outcome: dict) -> list[str]:
+    """Every command one item's outcome names, one argv per line."""
+    return [
+        " ".join(command["argv"])
+        for portion in outcome["portions"]
+        for command in portion["commands"]
+    ]
+
+
+def test_a_queued_backup_names_every_command_it_ran_in_job_show(cfg, rclone):
+    """R-349's first scenario: the item is DONE and ``job show`` names its argv.
+
+    Compared against the stand-in program's own log rather than against a list
+    written here, so what is asserted is that the record names the commands
+    rclone was really asked to run, not this file's idea of them.
+    """
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert _item_states(job_id) == {"files": "done", "database": "done"}
+
+    shown = _shown_outcomes(job_id)
+    assert shown is not None and set(shown) == {"files", "database"}, shown
+    recorded = [line for item in shown.values() for line in _argv_lines(item)]
+    invoked = rclone.read_text().splitlines()
+    assert sorted(" ".join(line.split()[1:]) for line in recorded) == sorted(invoked), (
+        "job show does not name the commands rclone actually ran"
+    )
+    assert all(
+        command["returncode"] == 0
+        for item in shown.values()
+        for portion in item["portions"]
+        for command in portion["commands"]
+    )
+    assert resumed["data"]["progress"][backup_cli.OUTCOMES] == shown, (
+        "the --job envelope and job show describe the same items differently"
+    )
+
+
+def test_a_rehearsal_s_outcome_is_recorded_and_says_it_was_one(cfg, rclone):
+    """R-349's second scenario: a dry run is persisted and flagged ``dry_run``."""
+    _, queued = _drive(["backup", "run", "--dry-run"])
+    job_id = queued["data"]["job_id"]
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+
+    shown = _shown_outcomes(job_id)
+    assert shown is not None and set(shown) == {"files", "database"}, shown
+    for item in shown.values():
+        assert item["dry_run"] is True, item
+    assert any("--dry-run" in line for line in _argv_lines(shown["files"])), (
+        "the record names the real transfer rather than the neutralized one the "
+        "rehearsal ran"
+    )
+
+
+def test_a_failed_transfer_leaves_the_item_failed_and_job_show_names_its_argv(
+    cfg, rclone, monkeypatch
+):
+    """R-349's third scenario, the one the residual was filed for.
+
+    The database transfer exits non zero. The item must stay FAILED with the
+    transfer cause, no age may be published for it, and ``job show`` must still
+    name the command that failed, read from the state file because the engine
+    committed no artifact for this item.
+    """
+    monkeypatch.setattr(backup, "subprocess_runner", _failing_on(backup.SNAPSHOT_DATABASE))
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+    code, failed = _drive(["backup", "run", "--job", job_id])
+    assert code != int(ExitCode.OK), failed
+    assert _item_states(job_id) == {"files": "done", "database": "failed"}
+    with jobs.open_store() as store:
+        database = next(i for i in jobs.items(store, job_id) if i.item_id == "database")
+    assert database.cause is not None and database.cause.reason == "backup-transfer-failed"
+    assert _ages(cfg)["database"].state is backup_facts.AgeState.NEVER_RECORDED
+
+    shown = _shown_outcomes(job_id)
+    assert shown is not None and "database" in shown, shown
+    commands = [
+        command
+        for portion in shown["database"]["portions"]
+        for command in portion["commands"]
+    ]
+    failing = [command for command in commands if command["returncode"] != 0]
+    assert [command["label"] for command in failing] == [backup.SNAPSHOT_DATABASE], commands
+    assert "remote:database-snapshots" in " ".join(failing[0]["argv"]), failing
+
+
+def test_a_job_of_another_verb_grows_no_outcomes_field(cfg):
+    """R-349's fourth scenario: the field is backup's, not every job's."""
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store, handler_key="tag.retag", payload={}, cfg=cfg, item_ids=("one",)
+        )
+    code, shown = _drive(["job", "show", job.job_id])
+    assert code == int(ExitCode.OK), shown
+    assert backup_facts.OUTCOMES_FIELD not in shown["data"]["progress"], shown
+
+
+def test_a_failed_backup_item_is_re_armed_and_its_record_replaced(
+    cfg, rclone, monkeypatch
+):
+    """R-349's fifth scenario: the failure channel never completes the item.
+
+    ``jobs.retry`` re-arms FAILED and claimed items and leaves DONE ones alone,
+    so the item being re-armed is the proof the failure did not take the
+    ``Produced`` route. The record is then replaced by the successful attempt's.
+    """
+    monkeypatch.setattr(backup, "subprocess_runner", _failing_on(backup.SNAPSHOT_DATABASE))
+    _, queued = _drive(["backup", "run"])
+    job_id = queued["data"]["job_id"]
+    _drive(["backup", "run", "--job", job_id])
+
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    assert _item_states(job_id)["database"] == "pending", _item_states(job_id)
+
+    monkeypatch.setattr(backup, "subprocess_runner", _answering(0))
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    shown = _shown_outcomes(job_id)
+    assert all(
+        command["returncode"] == 0
+        for portion in shown["database"]["portions"]
+        for command in portion["commands"]
+    ), shown["database"]
+    assert not list(backup_facts.outcome_path(job_id, "database").parent.glob("*.staged"))
+
+
+def test_the_outcome_record_is_private_under_a_permissive_umask(cfg, rclone):
+    """P1 on the new directory, WALKED rather than listed (P3).
+
+    Both channels are driven, a success for one item and a failure for the
+    other, and every directory and file under the outcome root is checked.
+    """
+    import os
+    import stat
+
+    def mirror_fails(command):
+        if command.label == backup.MIRROR:
+            return backup.CommandResult(returncode=1, stderr="connection refused")
+        return backup.CommandResult(returncode=0)
+
+    previous = os.umask(0)
+    try:
+        _, queued = _drive(["backup", "run"])
+        job_id = queued["data"]["job_id"]
+        backup.subprocess_runner, saved = mirror_fails, backup.subprocess_runner
+        try:
+            _drive(["backup", "run", "--job", job_id])
+        finally:
+            backup.subprocess_runner = saved
+    finally:
+        os.umask(previous)
+
+    root = config.state_path(backup_facts.OUTCOMES_KEY)
+    found = [root, *root.rglob("*")]
+    assert any(p.is_file() and p.stem == "files" for p in found), found
+    assert any(p.is_file() and p.stem == "database" for p in found), found
+    for path in found:
+        mode = stat.S_IMODE(path.stat().st_mode)
+        wanted = 0o700 if path.is_dir() else 0o600
+        assert mode == wanted, f"{path} is {oct(mode)}, wanted {oct(wanted)}"
+
+
+def test_a_record_that_cannot_be_written_does_not_replace_the_transfer_failure(
+    cfg, monkeypatch
+):
+    """The failure channel's own failure keeps the refusal it was recording."""
+
+    def cannot_write(*_args, **_kwargs):
+        raise PermissionError("the outcome directory is read only")
+
+    monkeypatch.setattr(backup_facts, "write_outcome", cannot_write)
+    with pytest.raises(CratekitError) as caught:
+        backup_cli.perform_backup(
+            {},
+            portion=backup_facts.Portion.DATABASE,
+            cfg=cfg,
+            runner=_failing_on(backup.SNAPSHOT_DATABASE),
+            read_back=False,
+            outcome_to=("J9", "database"),
+        )
+    assert caught.value.cause.reason == "backup-transfer-failed"
+    assert any("could not be written" in step for step in caught.value.cause.remediation.steps)
+
+
+def test_every_command_the_engine_ran_is_paired_with_its_own_return_code(cfg, rclone):
+    """The engine half: ``commands`` and ``results`` are the same runner calls.
+
+    A runner that fails only the listing gives a portion whose result list is
+    not the plan's command list, which is where a pairing by position would go
+    wrong. The failing return code must sit on the listing and nowhere else.
+    """
+
+    def listing_fails(command):
+        if " lsf " in f" {' '.join(command.argv)} ":
+            return backup.CommandResult(returncode=3)
+        return backup.CommandResult(returncode=0)
+
+    report = backup_cli.perform_backup(
+        {}, portion=backup_facts.Portion.FILES, cfg=cfg, runner=listing_fails, read_back=False
+    )
+    commands = report["portions"][0]["commands"]
+    assert [c["returncode"] for c in commands if "lsf" in c["argv"]] == [3], commands
+    assert all(c["returncode"] == 0 for c in commands if "lsf" not in c["argv"]), commands
+
+
+def _claimed(job_id: str, item_id: str) -> tuple[jobs.Job, jobs.Item]:
+    """A running job and one claimed item, built by hand for the handler seam."""
+    job = jobs.Job(
+        job_id=job_id,
+        handler_key="backup.run",
+        payload={},
+        config_fingerprint="",
+        config_toml="",
+        library_id="",
+        state=jobs.JobState.RUNNING,
+        created=MOMENT.isoformat(),
+        updated=MOMENT.isoformat(),
+    )
+    return job, jobs.Item(
+        job_id=job_id, item_id=item_id, ordinal=0, state=jobs.ItemState.CLAIMED
+    )
+
+
+def test_an_outcome_directory_that_cannot_be_listed_is_not_read_as_nothing(cfg):
+    """R-349 review: ``glob`` swallows a permission error, ``iterdir`` does not."""
+    backup_facts.write_outcome("J10", "files", {"portions": []})
+    directory = backup_facts.outcome_path("J10", "files").parent
+    directory.chmod(0o000)
+    try:
+        found = backup_facts.read_outcomes("J10")
+    finally:
+        directory.chmod(0o700)
+    assert found is not None and backup_facts.UNLISTABLE in found, found
+
+
+def test_a_retry_that_fails_another_way_does_not_show_the_last_attempt_s_commands(
+    cfg, monkeypatch
+):
+    """R-349 review: the record on disk is only ever the current attempt's."""
+    backup_facts.write_outcome("J11", "database", {"portions": [{"commands": ["old"]}]})
+
+    def runner_breaks(command):
+        raise RuntimeError("the runner itself fell over")
+
+    monkeypatch.setattr(backup, "subprocess_runner", runner_breaks)
+    job, item = _claimed("J11", "database")
+    with pytest.raises(RuntimeError):
+        backup_cli.handle(job, item, cfg)
+    assert not backup_facts.outcome_path("J11", "database").exists(), (
+        "the previous attempt's failed commands still describe an attempt that "
+        "failed for a different reason"
+    )
+
+
+def test_a_record_that_cannot_be_staged_does_not_fail_a_completed_backup(
+    cfg, monkeypatch
+):
+    """R-349 review: after the transfer, a record write error completes the item."""
+    monkeypatch.setattr(backup, "subprocess_runner", _answering(0))
+
+    real = config.atomic_write_bytes
+
+    def cannot_stage(payload, path, **kwargs):
+        # Only the staged record: the age publish shares this writer, and
+        # failing it would be a different condition from the one under test.
+        if path.name.endswith(".staged"):
+            raise PermissionError("the outcome directory is read only")
+        return real(payload, path, **kwargs)
+
+    monkeypatch.setattr(config, "atomic_write_bytes", cannot_stage)
+    job, item = _claimed("J12", "files")
+    assert backup_cli.handle(job, item, cfg) is None
+
+
+def test_a_record_that_cannot_be_parsed_is_reported_rather_than_skipped(cfg):
+    """Skipping it would show the other item alone, as though this one never ran."""
+    backup_facts.write_outcome("J13", "files", {"portions": []})
+    backup_facts.outcome_path("J13", "database").write_text("{ not json")
+    found = backup_facts.read_outcomes("J13")
+    assert found is not None and set(found) == {"files", "database"}, found
+    assert "unreadable" in found["database"], found

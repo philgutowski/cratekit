@@ -397,6 +397,12 @@ class PortionOutcome:
     detail: str = ""
     results: tuple[CommandResult, ...] = field(default_factory=tuple)
     warnings: tuple[Mapping[str, str], ...] = field(default_factory=tuple)
+    #: The commands handed to the runner, index for index with ``results``
+    #: (R-349). A return code with no argv beside it cannot say which rclone
+    #: invocation failed, and that is the question a failed backup is asked. It
+    #: is the command AS RUN, so a rehearsal records its neutralized argv and
+    #: the rotation records its listing and every purge it attempted.
+    commands: tuple[Command, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1045,6 +1051,17 @@ def run_backup(
         results: list[CommandResult] = []
         warnings: list[Mapping[str, str]] = list(entry.warnings)
         failed: CommandResult | None = None
+        # EVERY RUNNER CALL IN THIS PORTION GOES THROUGH ``recorded``, including
+        # the ones ``_prune_archive`` makes, so ``executed`` and ``results`` are
+        # built by the same calls and cannot fall out of step. Pairing them
+        # afterwards by position would be a second reading of which result
+        # belongs to which command, and the prune returns a variable number.
+        executed: list[Command] = []
+
+        def recorded(command: Command, _executed: list[Command] = executed) -> CommandResult:
+            _executed.append(command)
+            return runner(command)
+
         for command in entry.commands:
             if command.label == PRUNE_ARCHIVE:
                 # THE ONE CLASS THIS LOOP DOES NOT FAIL ON, AND NO LONGER STAYS
@@ -1065,7 +1082,7 @@ def run_backup(
                 pruned, warning = _prune_archive(
                     cfg,
                     command,
-                    runner=runner,
+                    runner=recorded,
                     keep=plan.archive_keep,
                     purge=not dry_run,
                 )
@@ -1075,7 +1092,7 @@ def run_backup(
                 continue
             if dry_run:
                 command = Command(label=command.label, argv=dry_run_argv(command))
-            result = runner(command)
+            result = recorded(command)
             results.append(result)
             if result.returncode != 0 and command.label == SNAPSHOT_IDENTITY:
                 # THE SECOND CLASS THIS LOOP DOES NOT FAIL ON. By the time the
@@ -1109,6 +1126,7 @@ def run_backup(
                     detail=f"{entry.portion.value} portion failed: {failed.stderr.strip()[-400:]}",
                     results=tuple(results),
                     warnings=tuple(warnings),
+                    commands=tuple(executed),
                 )
             )
             continue
@@ -1126,6 +1144,7 @@ def run_backup(
                 ran=True,
                 results=tuple(results),
                 warnings=tuple(warnings),
+                commands=tuple(executed),
             )
         )
 
@@ -2090,6 +2109,17 @@ def outcome_payload(outcome: BackupOutcome) -> dict:
                 "refusal": entry.refusal.value if entry.refusal else None,
                 "detail": entry.detail,
                 "warnings": [dict(warning) for warning in entry.warnings],
+                # R-349. STRICT, because ``run_backup`` builds both from the same
+                # runner calls, and a mismatch would pair a return code with the
+                # wrong argv, which is worse than printing neither.
+                "commands": [
+                    {
+                        "label": command.label,
+                        "argv": list(command.argv),
+                        "returncode": result.returncode,
+                    }
+                    for command, result in zip(entry.commands, entry.results, strict=True)
+                ],
             }
             for entry in outcome.portions
         ],

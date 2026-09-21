@@ -1,0 +1,41 @@
+name = "r349-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_prune_recorded"
+description = "The prune calls the bare runner, so its commands are not recorded beside its results"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py", "tests/modules/test_tools.py"]
+old = '''                    runner=recorded,'''
+new = '''                    runner=runner,'''
+
+[[rows]]
+id = "C2_write_failure_step"
+description = "A failed record write returns the refusal without the step saying the record is missing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''    except OSError as exc:
+        cause = refusal.cause'''
+new = '''    except OSError as exc:
+        return refusal
+        cause = refusal.cause'''
+
+[[rows]]
+id = "C3_unparseable_reported"
+description = "An unparseable record is skipped rather than reported unreadable"
+file = "src/cratekit/core/backup_facts.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''            found[path.stem] = {"unreadable": f"{path}: {exc}"}'''
+new = '''            continue'''
+
+[[rows]]
+id = "C4_argv_rendered"
+description = "outcome_payload renders the label where the argv belongs"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py", "tests/modules/test_tools.py"]
+old = '''                        "argv": list(command.argv),'''
+new = '''                        "argv": [command.label],'''

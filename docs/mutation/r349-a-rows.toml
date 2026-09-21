@@ -1,0 +1,38 @@
+name = "r349-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_failure_write"
+description = "Drop the failure path JSON write: raise the refusal without writing the outcome"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''            raise _with_outcome_recorded(refusal, outcome, outcome_to)'''
+new = '''            raise refusal'''
+
+[[rows]]
+id = "A2_success_produced"
+description = "The handler returns nothing on success instead of the staged record"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''    return jobs.Produced(staged=staged, final=final)'''
+new = '''    return None'''
+
+[[rows]]
+id = "A3_job_show_field"
+description = "job show stops attaching the outcomes field"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        summary[backup_facts.OUTCOMES_FIELD] = outcomes'''
+new = '''        pass'''
+
+[[rows]]
+id = "A4_envelope_field"
+description = "The backup run --job envelope stops attaching the outcomes field"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''        progress[OUTCOMES] = outcomes'''
+new = '''        pass'''
