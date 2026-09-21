@@ -1,0 +1,64 @@
+name = "r388-a"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_named_identity_listing_back_to_absence"
+description = "A named snapshot whose identity marker listing exits 1 raises no-snapshot-available again, the defect the unit fixes"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''            Refusal.SNAPSHOT_LISTING_FAILED,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed, so which library'''
+new = '''            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed, so which library'''
+
+[[rows]]
+id = "M2_identity_listing_message_reworded"
+description = "Reword could not be listed to could not be read in the identity listing refusal (R-387's row)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''could not "
+            f"be listed, so which library'''
+new = '''could not "
+            f"be read, so which library'''
+
+[[rows]]
+id = "M3_contents_listing_back_to_absence"
+description = "A named snapshot whose db folder listing exits 1 raises no-snapshot-available again"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''            Refusal.SNAPSHOT_LISTING_FAILED,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed; a restore'''
+new = '''            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
+            f"be listed; a restore'''
+
+[[rows]]
+id = "M4_contents_listing_message_reworded"
+description = "Reword could not be listed to could not be read in the contents listing refusal, the sidecar row R-387 recorded as G9"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''could not "
+            f"be listed; a restore'''
+new = '''could not "
+            f"be read; a restore'''
+
+[[rows]]
+id = "M5_root_listing_back_to_absence"
+description = "A snapshot root listing that exits 1 raises no-snapshot-available again"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''            Refusal.SNAPSHOT_LISTING_FAILED,
+            f"the dated database snapshots under {root} could not be listed'''
+new = '''            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the dated database snapshots under {root} could not be listed'''
+
+[[rows]]
+id = "M6_root_listing_message_reworded"
+description = "Reword could not be listed to could not be read in the root listing refusal"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''snapshots under {root} could not be listed, so '''
+new = '''snapshots under {root} could not be read, so '''
