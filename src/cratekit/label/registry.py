@@ -192,7 +192,21 @@ class Registry:
     renamed: Mapping[str, str] = field(default_factory=dict)
 
     def by_id(self, label_id: str) -> LabelEntry | None:
-        return self.labels.get(label_id)
+        """The entry, following an R-381 move when the old identifier is free.
+
+        A sweep job queued before the move froze the old identifier as its
+        item, and refusing it ``label-unknown`` would send a person to add a
+        label literally named that. A held identifier always wins, so an old one
+        reused by a new label is that label's.
+        """
+        found = self.labels.get(label_id)
+        if found is None and label_id in self.renamed:
+            found = self.labels.get(self.renamed[label_id])
+        return found
+
+    def live_renames(self) -> dict[str, str]:
+        """The moves still in force, those whose old identifier nobody holds."""
+        return {old: new for old, new in self.renamed.items() if old not in self.labels}
 
     def by_name(self, name: str) -> LabelEntry | None:
         wanted = _name_key(name)
@@ -375,10 +389,13 @@ class RegistryStore:
             "version": REGISTRY_VERSION,
             "labels": {key: entry.to_json() for key, entry in held.labels.items()},
         }
-        if held.renamed:
+        renamed = held.live_renames()
+        if renamed:
             # Only when something moved, so a registry R-381 never touched
-            # keeps the shape it has always had.
-            payload["renamed"] = dict(held.renamed)
+            # keeps the shape it has always had. A move whose old identifier a
+            # new label now holds is dropped, so it can never hand that label's
+            # watermark to the label that moved.
+            payload["renamed"] = renamed
         config.atomic_write_bytes(
             (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
             self.path,

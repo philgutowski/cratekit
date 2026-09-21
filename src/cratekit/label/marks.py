@@ -87,7 +87,7 @@ def _follow(records: dict[str, str]) -> bool:
     identifier it was written with, and the registry's own verbs refuse it.
     """
     try:
-        renamed = registry.RegistryStore().load().renamed
+        renamed = registry.RegistryStore().load().live_renames()
     except CratekitError:
         return False
     moved = False

@@ -207,3 +207,31 @@ def test_re_adding_a_migrated_label_does_not_file_it_twice(cfg):
     held = labels.RegistryStore().load()
     assert list(held.labels) == ["sueno"]
     assert held.by_id("sueno").track_limit == 10
+
+
+def test_an_identifier_frozen_before_the_move_still_finds_its_label(cfg):
+    """A sweep item queued as ``sue-o`` is driven after the loader moved it."""
+    del cfg
+    store_registry({"sue-o": "Sueño"})
+
+    held = labels.RegistryStore().load()
+
+    assert held.by_id("sue-o").label_id == "sueno"
+    assert held.resolve("sue-o").label_id == "sueno"
+
+
+def test_an_old_identifier_reused_by_a_new_label_stops_following(cfg):
+    """``Sue O`` slugs to the ``sue-o`` Sueño left, and keeps its own year."""
+    store_registry({"sue-o": "Sueño"})
+    labels.RegistryStore().load()
+
+    reused = labels.RegistryStore().add("Sue O")
+    marks.advance(cfg, reused, year="2026")
+
+    assert reused == "sue-o"
+    held = labels.RegistryStore().load()
+    assert held.by_id("sue-o").name == "Sue O"
+    assert "renamed" not in stored_registry()
+    assert marks.read(cfg, "sue-o") == "2026"
+    assert marks.read(cfg, "sueno") is None
+    assert stored_marks(cfg) == {"sue-o": "2026"}
