@@ -816,6 +816,29 @@ class Placed:
     content_ids: tuple[str, ...] = ()
 
 
+def row_placement(alive: trees.RowMatch, removed: trees.RowMatch) -> Placement:
+    """Which placement one location's two row answers amount to.
+
+    ``alive`` is the match against the live rows and ``removed`` the match against
+    the tombstoned ones, produced by ONE locate each. The rule every surface that
+    reports a placement reads, so the deferred pass and the inbox apply cannot
+    come to call one state by two names (R-318). A destination the taxonomy no
+    longer declares is not a row answer and is decided by the caller.
+    """
+    if alive.outcome is trees.MatchOutcome.MATCHED:
+        return Placement.RESOLVED
+    if alive.outcome is trees.MatchOutcome.AMBIGUOUS:
+        return Placement.AMBIGUOUS
+    if alive.outcome is trees.MatchOutcome.UNRESOLVED:
+        return Placement.UNRESOLVED
+    if removed.outcome in (trees.MatchOutcome.MATCHED, trees.MatchOutcome.AMBIGUOUS):
+        # A row exists and every one of them is a tombstone: imported once, then
+        # removed in rekordbox. Distinguishable from "no row at all", and the
+        # distinction is the whole of the fifth approach point.
+        return Placement.WITHDRAWN
+    return Placement.NOT_IMPORTED
+
+
 def resolve_placements(
     intents: Sequence[RoutingIntent],
     index: RowIndex,
@@ -864,21 +887,15 @@ def resolve_placements(
                 )
             )
             continue
-        if alive.outcome is trees.MatchOutcome.MATCHED:
-            placement, content_id, ids = Placement.RESOLVED, alive.content_id, ()
-        elif alive.outcome is trees.MatchOutcome.AMBIGUOUS:
-            placement, content_id, ids = Placement.AMBIGUOUS, None, alive.content_ids
-        elif alive.outcome is trees.MatchOutcome.UNRESOLVED:
-            placement, content_id, ids = Placement.UNRESOLVED, None, ()
-        elif removed.outcome in (trees.MatchOutcome.MATCHED, trees.MatchOutcome.AMBIGUOUS):
-            # A row exists and every one of them is a tombstone: imported once,
-            # then removed in rekordbox. Distinguishable from "no row at all",
-            # and the distinction is the whole of the fifth approach point.
-            placement = Placement.WITHDRAWN
-            content_id = removed.content_id
-            ids = removed.content_ids
+        placement = row_placement(alive, removed)
+        if placement is Placement.RESOLVED:
+            content_id, ids = alive.content_id, ()
+        elif placement is Placement.AMBIGUOUS:
+            content_id, ids = None, alive.content_ids
+        elif placement is Placement.WITHDRAWN:
+            content_id, ids = removed.content_id, removed.content_ids
         else:
-            placement, content_id, ids = Placement.NOT_IMPORTED, None, ()
+            content_id, ids = None, ()
         out.append(
             Placed(
                 intent=intent,
@@ -1505,6 +1522,7 @@ __all__ = [
     "readiness",
     "record_intents",
     "resolve_placements",
+    "row_placement",
     "track_id",
     "write",
 ]
