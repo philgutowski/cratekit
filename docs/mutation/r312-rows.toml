@@ -177,7 +177,7 @@ new = '''    return CratekitError(
 
 [[rows]]
 id = "W7_pre_drive_refusal_extended"
-description = "_resume: drop the guard that re-raises a refusal raised before the drive"
+description = "_resume: drop the guard that re-raises a refusal raised before the drive. Measured ZERO on the first pass over a full run of 9679, then re-measured after test_a_refusal_raised_before_the_drive_carries_no_leftover_step was written against it"
 file = "src/cratekit/write/routing_cli.py"
 surface = "maintainer"
 old = '''        if frozen is None:

@@ -74,7 +74,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Outcome
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild
 from tests.test_config import valid_data
@@ -1374,6 +1374,52 @@ def test_a_second_process_names_what_the_first_ones_tree_left(
     assert calls == [TREE_ID, "second_tree", "second_tree"], calls
     (warning,) = _left_behind(done)
     assert ARRIVED in warning["message"], warning
+
+
+def test_a_refusal_raised_before_the_drive_carries_no_leftover_step(
+    acknowledged, native, leftover, monkeypatch
+):
+    """A run that drove nothing answers for no tree, whatever an earlier one wrote.
+
+    The first resume finishes this tree, commits its report and fails the other.
+    The retry then refuses on its calibration before any item is claimed. That
+    refusal is about a file, and hanging the earlier run's leftovers on it would
+    be this run reporting a comparison it never made. Found as a zero row in the
+    unit's own mutation table and turned into a death.
+    """
+    from cratekit.write import metadata_cli
+
+    del acknowledged, native, leftover
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="route.resort",
+            payload={},
+            cfg=config.load(),
+            item_ids=(TREE_ID, "second_tree"),
+        )
+    real = rebuild.rebuild_governed_tree
+
+    def one_of_two(cfg, *, tree_id, workflow, **rest):
+        if tree_id != TREE_ID:
+            raise RuntimeError("this tree is not there")
+        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
+
+    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+    code, first = _drive(["route", "resort", "--job", job.job_id])
+    assert ARRIVED in " ".join(first["cause"]["remediation"]["steps"]), first
+    with jobs.open_store() as store:
+        jobs.retry(store, job.job_id)
+
+    def corrupt(cfg):
+        del cfg
+        raise refuse("config-unusable", "the calibration cannot be read")
+
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", corrupt)
+    code, refused = _drive(["route", "resort", "--job", job.job_id])
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "config-unusable", refused
+    assert ARRIVED not in " ".join(refused["cause"]["remediation"]["steps"]), refused
 
 
 def _difference(n: int, **fields) -> dict:
