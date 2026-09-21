@@ -19,7 +19,7 @@ session release` clears the lock and abandons the record, the precheck passes.
 Another machine with this host name and a record with no machine are kept.
 R-647 CLOSED in place. Filed R-649, a disk image cloned on Linux or Windows
 shares a machine identity (unmeasured, no issue).
-Battery: ruff clean, **9876 passed** and 1 skipped. Scan clean.
+Battery: ruff clean, **9869 passed** and 1 skipped in 74 seconds. Scan clean.
 Mutation table `docs/mutation/r647-a.md`: **17 rows, the author's own, all
 killed**, notes in `r647-notes.md`. The learning is a new section of the R-598
 entry in `docs/solutions/workflow-issues/`.
