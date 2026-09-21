@@ -329,9 +329,10 @@ def resume(
     spec,
     job_id: str,
     *,
-    digest: Callable[[str, str, list[str]], str],
+    digest: Callable[..., str],
     summary: Callable[[config.Config, str], Mapping[str, Sequence[str]]],
     standing: tuple[dict[str, str], ...] = (),
+    frozen_extra: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
 ):
     """Answer the gate from the frozen payload, then drive the job's items.
 
@@ -351,6 +352,11 @@ def resume(
     child ``jobs.spawn`` starts rebuilds its command line from that payload, so
     the two sides of the comparison have to be built from the same values or the
     job meets ``DecisionStale`` on every respawn.
+
+    ``frozen_extra`` IS FOR A SHELL WHOSE DIGEST COVERS MORE THAN THE THREE
+    SHARED KEYS. It is handed the frozen payload and returns keyword arguments
+    for ``digest``, so what one verb adds to its digest is read off the payload
+    here, where the payload is, and the other verb's digest is untouched.
 
     RECONCILE BEFORE DRIVING. A resume arrives after something stopped, and a
     claim left behind by a driver that died is state the queue cannot see for
@@ -372,6 +378,7 @@ def resume(
                 str(payload.get(PLAYLIST) or ""),
                 str(payload.get(EXPORT) or ""),
                 [str(track) for track in payload.get(TRACKS) or ()],
+                **(frozen_extra(payload) if frozen_extra is not None else {}),
             ),
         )
         if option == "abort":

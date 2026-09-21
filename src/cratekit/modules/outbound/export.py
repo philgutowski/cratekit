@@ -47,12 +47,18 @@ class Unmatched:
 
 @dataclass(frozen=True, slots=True)
 class ExportPlan:
-    """What an export will write, including the tracks it will not."""
+    """What an export will write, including the tracks it will not.
+
+    ``adopts`` is the recorded key this crate used to live under, when the verb
+    recognised one and a person confirmed it (R-229). Empty means create or
+    reuse by this key alone, which is every export before that finding.
+    """
 
     playlist_key: str
     name: str
     matched: tuple[tuple[str, str], ...]
     unmatched: tuple[Unmatched, ...]
+    adopts: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +71,10 @@ class ExportReport:
     added: tuple[str, ...]
     already: tuple[str, ...]
     unmatched: tuple[Unmatched, ...]
+    #: The key the recorded remote playlist was moved from BY THIS CALL, or
+    #: empty. Set once per job under the per item shape: the first item moves
+    #: the record and the rest find it under their own key.
+    adopted_from: str = ""
 
 
 def plan(
@@ -73,6 +83,7 @@ def plan(
     playlist_key: str,
     name: str,
     account: RemoteAccount,
+    adopts: str = "",
 ) -> ExportPlan:
     """Match every track. Unmatched stay on the plan; they are not omitted."""
     matched: list[tuple[str, str]] = []
@@ -100,6 +111,7 @@ def plan(
         name=name,
         matched=tuple(matched),
         unmatched=tuple(unmatched),
+        adopts=adopts,
     )
 
 
@@ -116,30 +128,39 @@ def apply(
     made another one. Under the per item shape the outbound verbs use, that is one
     orphan per track: driven as three remote playlists from one three track
     export. ``ledger.reserve_playlist`` carries the ordering and the argument.
+
+    EVERY MATCHED ROW'S LIBRARY IDENTITY IS RECORDED, added or already there
+    (R-229). Those identities are the only thing that can recognise this crate
+    once rekordbox shows it under another path, and a row that was already on
+    the remote playlist is as much a part of the crate as one written just now.
     """
-    remote_id, created = ledger.reserve_playlist(
+    reserved = ledger.reserve_playlist(
         cfg,
         planned.playlist_key,
         # RESOLVED LAZILY, so an unwritable ledger refuses before the account is
         # touched at all rather than after.
         lambda: account.create_playlist(planned.name),
+        adopts=planned.adopts,
     )
+    remote_id = reserved.remote_id
     already_on = set(account.playlist_tracks(remote_id))
     already_recorded = set(ledger.playlist_added(cfg, planned.playlist_key))
     added: list[str] = []
     already: list[str] = []
-    for _local, remote in planned.matched:
+    for local, remote in planned.matched:
         if remote in already_on or remote in already_recorded:
+            ledger.record_playlist_row(cfg, planned.playlist_key, local)
             already.append(remote)
             continue
         account.add_to_playlist(remote_id, remote)
-        ledger.record_playlist_track(cfg, planned.playlist_key, remote)
+        ledger.record_playlist_track(cfg, planned.playlist_key, remote, local=local)
         added.append(remote)
     return ExportReport(
         playlist_key=planned.playlist_key,
         remote_id=remote_id,
-        created=created,
+        created=reserved.created,
         added=tuple(added),
         already=tuple(already),
         unmatched=planned.unmatched,
+        adopted_from=reserved.adopted_from,
     )

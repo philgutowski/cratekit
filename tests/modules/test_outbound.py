@@ -261,6 +261,230 @@ def test_reexporting_the_same_playlist_updates_rather_than_creating_a_duplicate(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# 2b. R-229. A crate under a new path is recognised, and the record moves
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _write_ledger(cfg, playlists: dict) -> None:
+    path = config.state_path("outbound_writes", cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": 1, "playlists": playlists, "hearts": {}}))
+
+
+def _read_ledger(cfg) -> dict:
+    return json.loads(config.state_path("outbound_writes", cfg).read_text())["playlists"]
+
+
+def _recognise(cfg, key="New", *, name="New", tracks=("1", "2", "3", "4"), live=("New",)):
+    return ledger.recognise(cfg, key, name=name, track_ids=tracks, live_keys=live)
+
+
+@pytest.mark.parametrize(
+    "recorded, adopted",
+    [
+        (["1", "2", "3", "4"], True),
+        (["1", "2", "8", "9"], True),
+        (["1", "7", "8", "9"], False),
+        (["1", "2", "7", "8", "9"], False),
+        (["7", "8", "9"], False),
+    ],
+    ids=["all", "exactly-half", "a-quarter", "two-of-five", "none"],
+)
+def test_a_record_is_recognised_when_the_crate_still_carries_half_its_tracks(
+    cfg, recorded, adopted
+):
+    _write_ledger(cfg, {"Old": {"remote_id": "pl-9", "added": [], "tracks": recorded}})
+    found = _recognise(cfg)
+    assert (found.adopts == "Old") is adopted
+    if adopted:
+        assert found.remote_id == "pl-9"
+        assert found.recorded == len(recorded)
+        assert found.shared == len(set(recorded) & {"1", "2", "3", "4"})
+    else:
+        assert found == ledger.Recognition()
+
+
+def test_a_key_the_export_still_carries_is_not_a_candidate(cfg):
+    _write_ledger(cfg, {"Old": {"remote_id": "pl-9", "tracks": ["1", "2", "3", "4"]}})
+    assert _recognise(cfg, live=("New", "Old")) == ledger.Recognition()
+
+
+def test_a_crate_with_its_own_record_recognises_nothing(cfg):
+    _write_ledger(
+        cfg,
+        {
+            "Old": {"remote_id": "pl-9", "tracks": ["1", "2", "3", "4"]},
+            "New": {"remote_id": "pl-1", "tracks": ["1"]},
+        },
+    )
+    assert _recognise(cfg) == ledger.Recognition()
+
+
+def test_a_stub_under_the_crates_own_key_does_not_hide_the_orphan(cfg):
+    """``record_playlist_track`` can leave a record with no remote id."""
+    _write_ledger(
+        cfg,
+        {
+            "Old": {"remote_id": "pl-9", "tracks": ["1", "2"]},
+            "New": {"remote_id": "", "added": []},
+        },
+    )
+    assert _recognise(cfg).adopts == "Old"
+
+
+def test_a_record_with_no_remote_playlist_is_never_offered(cfg):
+    _write_ledger(cfg, {"Old": {"remote_id": "", "tracks": ["1", "2", "3", "4"]}})
+    assert _recognise(cfg) == ledger.Recognition()
+
+
+@pytest.mark.parametrize(
+    "recorded_key, name, adopted",
+    [
+        ("Crate", "Crate", True),
+        ("2024/Crate", "Crate", True),
+        ("2024/Other", "Crate", False),
+        ("2024/Big Crate", "Crate", False),
+        ("2024/A/B", "A/B", True),
+        ("Crate", "", False),
+    ],
+)
+def test_a_record_written_before_tracks_were_kept_is_recognised_by_name(
+    cfg, recorded_key, name, adopted
+):
+    """The legacy rule: a crate dragged into a folder keeps its display name."""
+    _write_ledger(cfg, {recorded_key: {"remote_id": "pl-9", "added": ["tid-1"]}})
+    found = _recognise(cfg, f"Sets/{name}", name=name, live=(f"Sets/{name}",))
+    assert (found.adopts == recorded_key) is adopted
+    assert (found.shared, found.recorded) == (0, 0)
+
+
+def test_a_record_that_holds_tracks_is_never_recognised_by_name(cfg):
+    """An old name reused for different music is a different crate."""
+    _write_ledger(cfg, {"Crate": {"remote_id": "pl-9", "tracks": ["7", "8"]}})
+    found = _recognise(cfg, "Sets/Crate", name="Crate", live=("Sets/Crate",))
+    assert found == ledger.Recognition()
+
+
+def test_a_tracks_field_that_is_not_a_list_reads_as_a_legacy_record(cfg):
+    _write_ledger(cfg, {"Crate": {"remote_id": "pl-9", "tracks": "1,2"}})
+    found = _recognise(cfg, "Sets/Crate", name="Crate", live=("Sets/Crate",))
+    assert found.adopts == "Crate"
+
+
+def test_two_candidates_are_both_named_and_neither_is_adopted(cfg):
+    _write_ledger(
+        cfg,
+        {
+            "B": {"remote_id": "pl-2", "tracks": ["1", "2"]},
+            "A": {"remote_id": "pl-1", "tracks": ["3", "4"]},
+        },
+    )
+    found = _recognise(cfg)
+    assert found.adopts == ""
+    assert found.remote_id == ""
+    assert found.candidates == ("A", "B")
+    assert found.ambiguous is True
+
+
+def _plan(account, key, *identities, adopts=""):
+    return export.plan(
+        [export.LocalTrack(identity=i, title=i.upper()) for i in identities],
+        playlist_key=key,
+        name=key,
+        account=account,
+        adopts=adopts,
+    )
+
+
+def test_an_adopted_record_moves_and_no_playlist_is_created(cfg):
+    account = FakeAccount(catalog={"a": "tid-a", "b": "tid-b"})
+    first = export.apply(cfg, account, _plan(account, "Old", "a"))
+
+    moved = export.apply(cfg, account, _plan(account, "New", "a", "b", adopts="Old"))
+
+    assert account.created == ["Old"]
+    assert moved.remote_id == first.remote_id
+    assert moved.created is False
+    assert moved.adopted_from == "Old"
+    assert moved.added == ("tid-b",)
+    assert moved.already == ("tid-a",)
+    assert _read_ledger(cfg) == {
+        "New": {
+            "remote_id": first.remote_id,
+            "added": ["tid-a", "tid-b"],
+            "tracks": ["a", "b"],
+            "formerly": ["Old"],
+        }
+    }
+
+
+def test_the_move_is_reported_once_under_the_per_item_shape(cfg):
+    account = FakeAccount(catalog={"a": "tid-a", "b": "tid-b"})
+    export.apply(cfg, account, _plan(account, "Old", "a"))
+    reports = [
+        export.apply(cfg, account, _plan(account, "New", item, adopts="Old"))
+        for item in ("a", "b")
+    ]
+    assert [report.adopted_from for report in reports] == ["Old", ""]
+    assert account.created == ["Old"]
+    assert _read_ledger(cfg)["New"]["formerly"] == ["Old"]
+
+
+def test_an_adoption_naming_a_record_that_is_gone_creates(cfg):
+    account = FakeAccount(catalog={"a": "tid-a"})
+    report = export.apply(cfg, account, _plan(account, "New", "a", adopts="Gone"))
+    assert report.created is True
+    assert report.adopted_from == ""
+    assert account.created == ["New"]
+
+
+def test_a_crate_with_its_own_record_ignores_a_frozen_adoption(cfg):
+    account = FakeAccount(catalog={"a": "tid-a"})
+    export.apply(cfg, account, _plan(account, "Old", "a"))
+    export.apply(cfg, account, _plan(account, "New", "a"))
+    report = export.apply(cfg, account, _plan(account, "New", "a", adopts="Old"))
+    assert report.adopted_from == ""
+    assert report.remote_id == "pl-2"
+    assert sorted(_read_ledger(cfg)) == ["New", "Old"]
+
+
+def test_a_move_keeps_what_a_stub_under_the_new_key_already_held(cfg):
+    _write_ledger(
+        cfg,
+        {
+            "Old": {"remote_id": "pl-9", "added": ["tid-a"], "tracks": ["a"]},
+            "New": {"remote_id": "", "added": ["tid-z"], "tracks": ["z"]},
+        },
+    )
+    reserved = ledger.reserve_playlist(cfg, "New", lambda: "never", adopts="Old")
+    assert reserved == ledger.Reserved("pl-9", adopted_from="Old")
+    assert _read_ledger(cfg)["New"]["added"] == ["tid-a", "tid-z"]
+    assert _read_ledger(cfg)["New"]["tracks"] == ["a", "z"]
+
+
+def test_a_legacy_record_gains_its_tracks_on_the_next_export_under_its_key(cfg):
+    """Every row is already there, nothing is added, and the rows are recorded."""
+    account = FakeAccount(catalog={"a": "tid-a", "b": "tid-b"})
+    account.playlists["pl-9"] = ["tid-a", "tid-b"]
+    _write_ledger(cfg, {"Crate": {"remote_id": "pl-9", "added": ["tid-a", "tid-b"]}})
+
+    report = export.apply(cfg, account, _plan(account, "Crate", "a", "b"))
+
+    assert report.added == ()
+    assert _read_ledger(cfg)["Crate"]["tracks"] == ["a", "b"]
+    assert _read_ledger(cfg)["Crate"]["added"] == ["tid-a", "tid-b"]
+
+
+def test_a_settled_crate_costs_no_ledger_writes(cfg, monkeypatch):
+    account = FakeAccount(catalog={"a": "tid-a"})
+    export.apply(cfg, account, _plan(account, "Crate", "a"))
+    writes: list[object] = []
+    monkeypatch.setattr(ledger, "_write", lambda *args: writes.append(args))
+    export.apply(cfg, account, _plan(account, "Crate", "a"))
+    assert writes == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # 3. Hearts sync never removes a heart or a colour
 # ═══════════════════════════════════════════════════════════════════════════
 

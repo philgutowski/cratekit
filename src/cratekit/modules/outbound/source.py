@@ -276,6 +276,17 @@ def _display_path(playlist: library_export.Playlist) -> str:
     return "/".join(playlist.path)
 
 
+def playlist_keys(library: Library) -> frozenset[str]:
+    """Every playlist path this export carries, spelled as a ledger key.
+
+    THE SAME SPELLING :func:`resolve` GIVES ``ResolvedPlaylist.key``, from the
+    same function, because the outbound ledger asks of each recorded key
+    whether the library still carries it (R-229) and a second spelling would
+    answer no for every crate there is.
+    """
+    return frozenset(_display_path(playlist) for playlist in library.view.playlists)
+
+
 def resolve(library: Library, identifier: str) -> ResolvedPlaylist:
     """The playlist ``identifier`` names, or a refusal saying which way it failed.
 
