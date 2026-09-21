@@ -274,11 +274,17 @@ def _plan_inbound(spec: sources.SourceSpec, cfg: config.Config) -> _Inbound:
 def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
     """Plan the read only half, resolve the sweep, and leave its queueing to the question."""
     from cratekit.favorites import cli as favorites_cli
-    from cratekit.modules.outbound import shell
+    from cratekit.modules.outbound import shell, source
 
     plan = _Plan(spec=spec)
+    # LOADED ONCE, for both halves (R-227). A configuration that cannot be read
+    # raises here and reaches ``_plan`` as this source's refusal, and that drops
+    # nothing, because the read half needs the same configuration and has not
+    # been planned yet. Two loads would be two reads of a file somebody may be
+    # editing, and two answers about one pass.
+    cfg = _load()
     if spec.inbound_key is not None:
-        plan.inbound = _plan_inbound(spec, _load())
+        plan.inbound = _plan_inbound(spec, cfg)
     try:
         exported, resolved = favorites_cli.resolve_sweep(
             getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
@@ -295,8 +301,13 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
     # queueing branch would be absent here, which is the pass most people run.
     # ``_envelope`` below extends only the plans that filed, so a declined or
     # refused favourites source says nothing about a write it never reached.
+    #
+    # THE EXPORT'S AGE TRAVELS THE SAME WAY AND FOR THE SAME REASON (R-227). It
+    # is read once here and goes to both places a person reads: the question
+    # below, and the warnings of the pass that queued.
+    age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
     plan.warnings = (
-        *shell.queue_warnings(resolved, noun="favourite"),
+        *shell.queue_warnings(resolved, noun="favourite", age=age),
         *favorites_cli.local_write_warning(),
     )
 
@@ -305,7 +316,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
         option = ctx.gate.require(
             gate,
             digest=favorites_cli.sweep_digest(exported, resolved),
-            context=_awaiting(plans),
+            context={**_awaiting(plans), **shell.shown_export(age)},
         )
         if option == "abort":
             plan.not_queued = DECLINED

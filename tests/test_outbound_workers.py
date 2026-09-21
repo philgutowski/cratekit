@@ -24,7 +24,10 @@ a guard pointed at a key nothing uses.
 from __future__ import annotations
 
 import io
+import os
+import time
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -38,6 +41,7 @@ from cratekit.export import cli as export_cli
 from cratekit.favorites import cli as favorites_cli
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import artifacts, ledger, source
+from cratekit.modules.outbound import shell as shell_module
 from cratekit.modules.reports import export as library_export
 from tests import outbound_fakes
 from tests._containers import synth_container
@@ -1462,3 +1466,299 @@ def test_aborting_the_confirmation_queues_nothing(installed, exported):
     assert aborted["outcome"] == "no_op"
     assert aborted["data"]["state"] == "declined"
     assert _queue_is_empty()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-227. The export is a file somebody made by hand, and it can be old
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: A fixed instant, so an age is a subtraction rather than a race with the clock.
+_WRITTEN = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+BOTH_VERBS = pytest.mark.parametrize(
+    "verb, gate",
+    [
+        pytest.param("export", "export.playlist.confirm", id="export.playlist"),
+        pytest.param("favorites", "sync.favorites.confirm", id="sync.favorites"),
+    ],
+)
+
+
+def _invocation(verb: str, exported: Path) -> list[str]:
+    return export_verb(exported) if verb == "export" else favorites_verb(exported)
+
+
+def _written_days_ago(exported: Path, days: float) -> datetime:
+    """Set the export's modification time, and return the instant it now carries.
+
+    THE RETURNED INSTANT IS READ BACK OFF THE FILE rather than computed here, so
+    a filesystem that rounds a timestamp cannot make the expected date disagree
+    with the one the product reads.
+    """
+    moment = datetime.now(timezone.utc).timestamp() - days * 86_400
+    os.utime(exported, (moment, moment))
+    return datetime.fromtimestamp(exported.stat().st_mtime, tz=timezone.utc)
+
+
+def _local(moment: datetime) -> str:
+    """The instant as the product shows it: this machine's zone, to the second.
+
+    LOCAL BECAUSE A PERSON COMPARES IT WITH THEIR MEMORY AND WITH FINDER. An
+    evening export west of Greenwich is the next day in UTC, which is a day off
+    on the one fact this surface exists to show.
+    """
+    return moment.astimezone().replace(microsecond=0).isoformat()
+
+
+def _configure_stale_days(days: int) -> None:
+    current = config.load()
+    config.save(replace(current, outbound=replace(current.outbound, export_stale_days=days)))
+    config.reset_cache()
+
+
+@BOTH_VERBS
+def test_a_month_old_export_is_called_old_in_the_plan_the_gate_shows(
+    installed, exported, verb, gate
+):
+    """R-227's cost, reproduced. The person deciding is told the file's date.
+
+    Before this, a month old export met the gate with no ``shown`` at all, so
+    the question arrived with nothing about the document it was asked over.
+    """
+    del installed
+    written = _written_days_ago(exported, 30)
+    code, refused = drive(_invocation(verb, exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert detail["gate"] == gate
+    shown = detail["shown"]["export"]
+    assert shown["file"] == exported.name
+    assert shown["written"] == _local(written)
+    assert shown["age_days"] == 30
+    assert shown["stale_after_days"] == 7
+    assert shown["freshness"] == "stale"
+    # THE SENTENCE IS AT THE GATE, not only on the envelope that follows the
+    # answer. Advice to export again is no use to somebody who already confirmed.
+    assert "Export the collection again" in shown["warning"]
+    assert written.astimezone().date().isoformat() in shown["warning"]
+
+
+@BOTH_VERBS
+def test_the_date_reaches_a_person_who_is_not_reading_json(
+    installed, exported, verb, gate
+):
+    """``drive`` is json only, and the human renderer is a second reader."""
+    del installed, gate
+    written = _written_days_ago(exported, 30)
+    code, text = _human(_invocation(verb, exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), text
+    assert written.astimezone().date().isoformat() in text
+    assert "freshness: stale" in text
+    assert "Export the collection again" in text
+
+
+@BOTH_VERBS
+def test_the_queueing_envelope_warns_that_the_export_is_old(
+    installed, exported, monkeypatch, verb, gate
+):
+    """Refuse nothing, the person decides. And say it again where they queued."""
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
+    written = _written_days_ago(exported, 30)
+    run_id = _answer_the_confirm(_invocation(verb, exported), gate)
+    code, queued = drive(["--run", run_id, *_invocation(verb, exported)])
+    assert code == int(ExitCode.OK), queued
+    stale = [w for w in queued["warnings"] if w["code"] == "outbound-export-stale"]
+    assert len(stale) == 1, queued["warnings"]
+    assert written.astimezone().date().isoformat() in stale[0]["message"]
+    assert "30 days" in stale[0]["message"]
+    with jobs.open_store() as store:
+        assert jobs.items(store, queued["data"]["job_id"]), "a stale export refuses nothing"
+
+
+@BOTH_VERBS
+def test_a_fresh_export_shows_its_date_and_warns_of_nothing(
+    installed, exported, monkeypatch, verb, gate
+):
+    """The date is shown EVERY time, the warning only past the limit.
+
+    A plan that named the date only when it was old would make a missing line
+    mean "fresh", which is absence read as evidence.
+    """
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
+    _written_days_ago(exported, 2)
+    code, refused = drive(_invocation(verb, exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]["export"]
+    assert shown["freshness"] == "within-limit"
+    assert shown["age_days"] == 2
+    assert "warning" not in shown, "a recent export has nothing to be warned of"
+    run_id = _answer_the_confirm(_invocation(verb, exported), gate)
+    code, queued = drive(["--run", run_id, *_invocation(verb, exported)])
+    assert code == int(ExitCode.OK), queued
+    codes = {w["code"] for w in queued.get("warnings") or ()}
+    assert not codes & {"outbound-export-stale", "outbound-export-age-unknown"}
+
+
+@BOTH_VERBS
+def test_the_limit_is_the_configured_one_in_both_directions(
+    installed, exported, verb, gate
+):
+    """A longer limit quiets a month old file, a shorter one flags a two day old one."""
+    del installed, gate
+    _written_days_ago(exported, 30)
+    _configure_stale_days(60)
+    _code, refused = drive(_invocation(verb, exported))
+    shown = refused["cause"]["detail"]["shown"]["export"]
+    assert (shown["freshness"], shown["stale_after_days"]) == ("within-limit", 60)
+
+    _written_days_ago(exported, 2)
+    _configure_stale_days(1)
+    _code, refused = drive(_invocation(verb, exported))
+    shown = refused["cause"]["detail"]["shown"]["export"]
+    assert (shown["freshness"], shown["stale_after_days"]) == ("stale", 1)
+
+
+def test_old_means_past_the_limit_and_not_at_it(tmp_path):
+    """Seven days exactly is not past seven days, and one second more is.
+
+    Compared as DURATIONS. Floored whole days would read seven days and twenty
+    three hours as seven, and call it fresh for a day longer than the key says.
+    """
+    document = tmp_path / "collection.xml"
+    document.write_text("<x/>")
+    os.utime(document, (_WRITTEN.timestamp(), _WRITTEN.timestamp()))
+    at = source.export_age(document, limit_days=7, now=_WRITTEN + timedelta(days=7))
+    past = source.export_age(
+        document, limit_days=7, now=_WRITTEN + timedelta(days=7, seconds=1)
+    )
+    late = source.export_age(
+        document, limit_days=7, now=_WRITTEN + timedelta(days=7, hours=23)
+    )
+    assert (at.stale, at.age_days) == (False, 7)
+    assert (past.stale, past.age_days) == (True, 7)
+    assert (late.stale, late.age_days) == (True, 7)
+    assert at.written == _WRITTEN
+
+
+def test_a_few_hours_ahead_is_a_clock_and_reads_as_written_just_now(tmp_path):
+    """A volume whose clock runs ahead, or an exFAT zone skew, is not news."""
+    document = tmp_path / "collection.xml"
+    document.write_text("<x/>")
+    os.utime(document, (_WRITTEN.timestamp(), _WRITTEN.timestamp()))
+    age = source.export_age(document, limit_days=7, now=_WRITTEN - timedelta(hours=14))
+    assert (age.stale, age.age_days, age.future_dated) == (False, 0, False)
+    assert shell_module.freshness(age) == "within-limit"
+
+
+def test_a_date_well_in_the_future_is_not_the_freshest_export_there_could_be(tmp_path):
+    """Found by the built in review. Clamped to zero it read ``within-limit``
+    until the clock caught up, so an old export was never called old. A date
+    that cannot be true is a date that cannot be judged, and it says so."""
+    document = tmp_path / "collection.xml"
+    document.write_text("<x/>")
+    os.utime(document, (_WRITTEN.timestamp(), _WRITTEN.timestamp()))
+    age = source.export_age(document, limit_days=7, now=_WRITTEN - timedelta(days=400))
+    assert age.future_dated is True
+    assert (age.stale, age.age_days) == (False, None)
+    assert shell_module.freshness(age) == "future-dated"
+    (warning,) = shell_module.age_warnings(age)
+    assert warning["code"] == "outbound-export-age-unknown"
+    assert _WRITTEN.astimezone().date().isoformat() in warning["message"]
+    shown = shell_module.shown_export(age)["export"]
+    assert shown["written"] == _local(_WRITTEN)
+    assert shown["warning"] == warning["message"]
+
+
+def test_the_date_is_the_persons_own_and_not_greenwichs(tmp_path, monkeypatch):
+    """Nine in the evening in New York is one in the morning, tomorrow, in UTC.
+
+    THE ZONE IS SET HERE, because read off the machine this is a guard that
+    holds only at some hours of the day and on some machines, and a CI runner in
+    UTC would agree with the defect for ever.
+    """
+    document = tmp_path / "collection.xml"
+    document.write_text("<x/>")
+    written = datetime(2026, 8, 2, 1, 0, 0, tzinfo=timezone.utc)
+    os.utime(document, (written.timestamp(), written.timestamp()))
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        age = source.export_age(document, limit_days=7, now=written + timedelta(days=30))
+        (warning,) = shell_module.age_warnings(age)
+        block = shell_module.shown_export(age)["export"]
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+    assert "2026-08-01" in warning["message"]
+    assert "2026-08-02" not in warning["message"]
+    assert block["written"] == "2026-08-01T21:00:00-04:00"
+
+
+def test_the_sentence_does_not_say_seven_is_past_seven(tmp_path):
+    """Found by the built in review. Staleness is a duration and the sentence
+    printed floored days, so for a whole day it read "7 day(s) ago, which is
+    past the 7 day(s)" allowed."""
+    document = tmp_path / "collection.xml"
+    document.write_text("<x/>")
+    os.utime(document, (_WRITTEN.timestamp(), _WRITTEN.timestamp()))
+    age = source.export_age(
+        document, limit_days=7, now=_WRITTEN + timedelta(days=7, hours=5)
+    )
+    (warning,) = shell_module.age_warnings(age)
+    assert "7 days 5 hours ago" in warning["message"]
+    assert shell_module.shown_export(age)["export"]["age"] == "7 days 5 hours"
+
+
+def test_a_limit_too_large_for_a_duration_does_not_crash_the_question(tmp_path):
+    """Found by the built in review, reproduced as an OverflowError from
+    ``timedelta(days=10_000_000_000)``. Validation bounds the key now; this is
+    the value object holding on its own, since it is constructible from code
+    that never touched a file."""
+    document = tmp_path / "collection.xml"
+    document.write_text("<x/>")
+    os.utime(document, (_WRITTEN.timestamp(), _WRITTEN.timestamp()))
+    age = source.export_age(
+        document, limit_days=10_000_000_000, now=_WRITTEN + timedelta(days=30)
+    )
+    assert age.stale is False
+
+
+def test_an_age_is_built_whole_or_not_at_all(tmp_path):
+    """A date with no instant to judge it at would read as known and not stale,
+    which is unknown folded into recent by construction."""
+    with pytest.raises(ValueError):
+        source.ExportAge(path=tmp_path / "x.xml", limit_days=7, written=_WRITTEN)
+    with pytest.raises(ValueError):
+        source.ExportAge(path=tmp_path / "x.xml", limit_days=7, judged_at=_WRITTEN)
+
+
+def test_a_modification_time_no_date_can_hold_is_unknown_rather_than_a_crash(
+    tmp_path, monkeypatch
+):
+    """``export_age`` says it never raises, and only the stat was guarded."""
+    document = tmp_path / "collection.xml"
+    document.write_text("<x/>")
+
+    class _Stat:
+        st_mtime = 1e20
+
+    monkeypatch.setattr(Path, "stat", lambda self, **kwargs: _Stat())
+    age = source.export_age(document, limit_days=7, now=_WRITTEN)
+    assert age.known is False
+
+
+def test_an_age_that_cannot_be_read_is_unknown_rather_than_fresh(tmp_path):
+    """Absence of a date is not evidence of a recent one (METHOD, pattern one)."""
+    age = source.export_age(tmp_path / "gone.xml", limit_days=7, now=_WRITTEN)
+    assert age.written is None
+    assert age.age_days is None
+    assert age.stale is False
+    assert age.known is False
+    codes = [w["code"] for w in shell_module.age_warnings(age)]
+    assert codes == ["outbound-export-age-unknown"]
+    shown = shell_module.shown_export(age)["export"]
+    assert shown["written"] is None
+    assert shown["age_days"] is None
+    assert shown["freshness"] == "unknown"

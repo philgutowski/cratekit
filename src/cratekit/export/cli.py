@@ -214,14 +214,24 @@ def export_playlist(ctx) -> Envelope:
     # that is about to refuse, and so the digest can name what they confirmed.
     exported = source.required_path(getattr(ctx.args, "export", None))
     resolved = source.resolve(source.read_library(exported), playlist)
+    # THE CONFIGURATION IS LOADED BEFORE THE GATE NOW (R-227), because the age
+    # the gate shows is judged against a day count the person owns. It also
+    # means a configuration that cannot be read refuses before a person is asked
+    # to confirm a write that could not have queued, which is the rule the
+    # resolution above already follows.
+    cfg = shell.load_config("export.cli")
+    age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
 
-    option = ctx.gate.require(spec, digest=confirm_digest(resolved.key, str(exported), resolved.track_ids))
+    option = ctx.gate.require(
+        spec,
+        digest=confirm_digest(resolved.key, str(exported), resolved.track_ids),
+        context=shell.shown_export(age),
+    )
     if option == "abort":
         # THE DECLARED SHAPE, and nothing about the playlist. See
         # ``shell.declined``: this verb declares ``job_state/1`` and the payload
         # that named the playlist carried none of that surface's four fields.
         return ctx.envelope(data=shell.declined(), outcome=Outcome.NO_OP)
-    cfg = shell.load_config("export.cli")
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
@@ -243,7 +253,7 @@ def export_playlist(ctx) -> Envelope:
         )
         return ctx.envelope(
             data=shell.reported(store, job, cfg, summary),
-            warnings=shell.queue_warnings(resolved, noun="track"),
+            warnings=shell.queue_warnings(resolved, noun="track", age=age),
         )
 
 

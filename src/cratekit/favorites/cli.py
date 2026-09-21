@@ -255,13 +255,19 @@ def sync_favorites(ctx) -> Envelope:
         getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
     )
 
-    option = ctx.gate.require(spec, digest=sweep_digest(exported, resolved))
+    # LOADED BEFORE THE GATE (R-227), so the age the gate shows is judged against
+    # the person's own day count. See ``export/cli.py`` for the other half of why.
+    cfg = shell.load_config("favorites.cli")
+    age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
+
+    option = ctx.gate.require(
+        spec, digest=sweep_digest(exported, resolved), context=shell.shown_export(age)
+    )
     if option == "abort":
         # THE DECLARED SHAPE, and nothing about the playlist. See
         # ``shell.declined``: this verb declares ``job_state/1`` and the payload
         # that named the playlist carried none of that surface's four fields.
         return ctx.envelope(data=shell.declined(), outcome=Outcome.NO_OP)
-    cfg = shell.load_config("favorites.cli")
     run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
     with jobs.open_store() as store:
         job = queue_sweep(
@@ -276,7 +282,7 @@ def sync_favorites(ctx) -> Envelope:
         return ctx.envelope(
             data=shell.reported(store, job, cfg, summary),
             warnings=(
-                *shell.queue_warnings(resolved, noun="favourite"),
+                *shell.queue_warnings(resolved, noun="favourite", age=age),
                 *local_write_warning(),
             ),
         )

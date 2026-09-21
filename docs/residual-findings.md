@@ -12641,6 +12641,43 @@ confidently wrong is worse than one that refuses.
 **Closes when:** a collection reader against the live database lands, or the
 verbs learn to refuse an export older than some declared age.
 
+**Narrowed 2026-09-21 on `relay/164`, issue 164. The stale half is answered and
+the manual step is what stays open.** `source.export_age` reads the export's
+modification time against `outbound.export_stale_days`, a new configured key
+defaulting to seven, and `shell.shown_export` puts the file's date, its age in
+days and hours, the limit and one of four words on the confirm gate, where it
+reaches a person in json and through the human renderer. The date is shown every
+time, so a missing line can never come to mean recent. Past the limit the
+sentence naming the date and advising a new export is on the gate and again as
+`outbound-export-stale` on the queueing envelope. All three shells that queue an
+outbound write carry it: `export playlist`, `sync favorites`, and `sync all`,
+which builds the favourites plan itself and would otherwise have shown nothing.
+`queue_warnings` takes the age as a required argument so a fourth caller cannot
+leave it out with nothing failing.
+
+**It warns and refuses nothing, which is the issue's decision and not this
+entry's closing condition as first written.** Somebody who has not touched their
+library in a month has a month old export that is exactly right, and only they
+know that.
+
+**What a person should know about the date, stated rather than hidden.** It is
+the file's modification time, because a rekordbox export carries no date of its
+own. A copy that does not preserve times, or a sync client that rewrites the
+file, gives an old export a new date, so a recent date is weaker evidence than
+an old one. A date that cannot be read is `unknown`, and a date more than a day
+ahead of the clock is `future-dated`; both warn and neither reads as recent.
+How often a sync client really does rewrite an export's date was not measured.
+
+**Deliberately not done.** The resume path says nothing about the age. It reads
+nothing from the document by design and writes a frozen, digest covered track
+set that the person confirmed with the date in front of them. The age is not in
+the confirm digest, since it would stale every recorded decision at midnight.
+
+**Still open:** the path to a sweep is one manual step longer than the thing it
+replaces. **Closes when** a collection reader against the live database lands,
+which is R-203's reason too. Mutation table `docs/mutation/r227.md`, 24 rows, the
+author's own, all killed. The same shape one file over is R-629.
+
 ---
 
 ## R-228. A pink row outside the named playlist is not swept
@@ -25195,3 +25232,39 @@ answer. Maintainer facing, so it does not meet the board bar.
 **Closes when:** a favorites worker records the cursor on a clean completion
 and the spec's `no_cursor` is removed, or the per source status is judged not
 to be owed for favorites and this entry says so.
+
+
+---
+
+## R-629. Six more verbs read a hand made export and none names its date
+
+**Found by** the R-227 fix, METHOD's fifth pattern, 2026-09-21. Read, NOT driven.
+
+R-227 was filed against the two outbound verbs, and the document they read is
+read by others. Measured by grep for the reader and for an `--export` argument:
+the four read only reports in `cli/reports.py`, which take the export as a
+positional, and `route inbox --export` and `route unplaced --export` in
+`write/routing_cli.py`, which read one and write `<name>_routed.xml` or
+`<name>_placed.xml` beside it for a person to import. None looks at the file's
+date. `cli/reports.py` says so in its own module docstring, "a stale export
+answers every question here confidently and wrongly", and answers it by taking
+no default path, which makes the person name the file and does not tell them how
+old it is. The routing help text asks for a "fresh export" and nothing checks.
+
+`intake imported --export` reads one too and is NOT this shape: a stale export
+there holds none of the run's files, so the proof fails, which is the safe
+direction. `sync mark` uses the XML's modification time as identity, not as age.
+
+**Measured cost:** none measured, nothing here was driven. By reading, a report
+over a month old export is a clean report about a library that has moved, and a
+routed or placed file built from one carries membership as it stood then.
+
+**Board bar:** arguably (b), the product saying something false, for the reports,
+on the same reasoning that queued R-227. NO ISSUE WAS CREATED, because METHOD
+creates the issue after the merge that carries the entry and the session that
+found this ends before that merge. It is owed, and RESTART says so.
+
+**Closes when:** each of the six shows the export's date where a person reads the
+answer, which `source.export_age` and `shell.shown_export` already compute and
+would need a home below `modules/outbound` to be shared, or a collection reader
+against the live database lands and the export stops being the input.

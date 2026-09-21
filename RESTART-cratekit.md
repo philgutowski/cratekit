@@ -4,7 +4,41 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-263, issue #163, `relay/163`, 2026-09-20.**
+**Last merged: R-227, issue #164, `relay/164`, 2026-09-21.**
+An outbound write now shows the date of the export it was read from, in the plan
+the confirm gate asks over, which NARROWS R-227 to its manual step.
+`source.export_age` reads the file's modification time against
+`outbound.export_stale_days`, a new configured key defaulting to seven and
+bounded at ten years, and `shell.shown_export` puts the date, the age in days
+and hours, the limit and one of four words, `within-limit`, `stale`,
+`future-dated`, `unknown`, on the gate. Past the limit the sentence advising a
+new export is on the gate AND on the queueing envelope as
+`outbound-export-stale`. **IT WARNS AND REFUSES NOTHING,** the issue's decision.
+**THREE SHELLS QUEUE AN OUTBOUND WRITE, NOT TWO.** `sync all` builds the
+favourites plan itself, so it carries the block too, and `queue_warnings` takes
+the age as a required argument so a fourth caller cannot leave it out silently.
+All three now load the configuration BEFORE the gate, as `session ack` does.
+**THE DATE IS A MODIFICATION TIME,** all a rekordbox export offers, so a copy
+that drops times makes an old export look recent. Shown in the machine's own
+zone. The resume path is untouched and the age is not in the confirm digest.
+The built in review raised nine findings and all nine were driven and fixed,
+among them the advice arriving only after the answer, a future date reading as
+the freshest export possible, and a ten billion day limit crashing all three
+verbs at the gate.
+Battery: ruff clean, **9610 passed** and 1 skipped in 68 seconds, 9611
+collected, 32 more than R-263 recorded, reconciled by identifier: 19 in
+`tests/test_outbound_workers.py`, 4 in `tests/test_sync_all.py`, 9 in
+`tests/test_config.py`. Scan clean. The kebab literal census in
+`tests/test_reserved_causes.py` was re-pinned, four joined and nothing left.
+Mutation table `docs/mutation/r227.md`, rows file beside it: **24 rows, the
+author's own, all killed.**
+Filed: **R-629**, six more verbs read a hand made export and none names its
+date, read and not driven. **IT ARGUABLY MEETS BOARD BAR (b) AND ITS ISSUE IS
+OWED.** None was created, because METHOD creates the issue after the merge that
+carries the entry and the session that found it ended before that merge.
+**Main's highest residual number is R-629.**
+
+**The session before: R-263, issue #163, `relay/163`, 2026-09-20.**
 `crate doctor` no longer tells a person a labels sweep that succeeded never ran,
 which CLOSES R-263. `sources.SourceSpec` gains `no_cursor`, the reason nothing
 records a source's watermark, and `watermarks.status_rows` reports such a
@@ -19,9 +53,8 @@ scan clean.
 Mutation table `docs/mutation/r263.md`, rows file beside it: **6 rows, the
 author's own, all killed.**
 Filed: **R-628**, maintainer facing, no issue.
-**Main's highest residual number is R-628.**
 
-**The session before: U105, issue #150, `relay/150`, 2026-09-20.**
+**Two sessions before: U105, issue #150, `relay/150`, 2026-09-20.**
 `crate master` joins a recording the player split into several files and takes
 a loudness target, which CLOSES R-193 and R-194. A set that arrived as three
 files no longer needs the source system's script.

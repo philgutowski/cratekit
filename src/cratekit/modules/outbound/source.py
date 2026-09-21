@@ -8,8 +8,10 @@ collection export the operator produced, through
 :func:`cratekit.modules.reports.export.read_export_file`, which is the one reader
 ``cli/reports.py`` already uses. A second reader would be a second answer to
 "what does this library contain", and two answers is how they come to disagree.
-The operator cost of reading a document somebody has to make by hand, and the
-fact that nothing warns when it is stale, are R-227.
+The operator cost of reading a document somebody has to make by hand is R-227.
+That a stale one used to resolve, queue and write with nothing said is the half
+of R-227 :func:`export_age` answers: the file's date is read here and shown in
+the plan a person confirms, and nothing is refused over it.
 
 **WHY THIS MODULE EXISTS RATHER THAN TWO COPIES.** ``export.playlist`` and
 ``sync.favorites`` ask the same question, "which library rows is this write made
@@ -34,6 +36,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Mapping
 
@@ -87,6 +90,121 @@ class ResolvedPlaylist:
     track_ids: tuple[str, ...]
     dangling: tuple[str, ...] = ()
     repeated: tuple[str, ...] = ()
+
+
+#: How far ahead of the clock a file may be dated and still be read as written
+#: just now. A network volume whose clock runs ahead is seconds out, and exFAT
+#: stores local time with no zone, which is up to fourteen hours. Past a day it
+#: is no longer a clock, it is a date that cannot be true.
+FUTURE_TOLERANCE = timedelta(days=1)
+
+_SECONDS_PER_DAY = 86_400
+
+
+@dataclass(frozen=True, slots=True)
+class ExportAge:
+    """When the export document was last written, against a declared limit.
+
+    ``written`` IS THE FILE'S MODIFICATION TIME, because a rekordbox collection
+    export carries no date of its own: its header names the product and the
+    version and nothing else. That makes it a proxy with a known weakness, which
+    is stated rather than hidden. A copy made without preserving times, or a sync
+    client that rewrites the file, gives an old export a new date, so a recent
+    date is weaker evidence than an old one. It is why this is shown to a person
+    and never decided on.
+
+    FOUR STATES, AND ONLY ONE OF THEM IS "RECENT". ``written`` is none when the
+    file could not be asked. It is set and :attr:`future_dated` when the date is
+    further ahead of the clock than :data:`FUTURE_TOLERANCE`, which cannot be
+    true and so cannot be judged. Otherwise the age is a duration and is either
+    past the limit or within it. "I could not read a date" folded into "the date
+    is recent" is the first recurring defect pattern in ``docs/METHOD.md``, and
+    a future date clamped to an age of nothing was that pattern arriving by a
+    second route: it read as the freshest export there could be until the clock
+    caught up with it.
+
+    THE AGE IS DERIVED, never stored beside the date. ``written`` and
+    ``judged_at`` are set together or not at all, and the constructor refuses
+    anything else, so no caller can build a date that looks known and carries no
+    age to be stale by.
+    """
+
+    path: Path
+    limit_days: int
+    written: datetime | None = None
+    judged_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if (self.written is None) != (self.judged_at is None):
+            raise ValueError(
+                "an export's date and the instant it is judged at are one fact: "
+                "set both or neither"
+            )
+
+    @property
+    def known(self) -> bool:
+        return self.written is not None
+
+    @property
+    def future_dated(self) -> bool:
+        if self.written is None or self.judged_at is None:
+            return False
+        return self.written - self.judged_at > FUTURE_TOLERANCE
+
+    @property
+    def age(self) -> timedelta | None:
+        """How long ago it was written, or none when that cannot be said."""
+        if self.written is None or self.judged_at is None or self.future_dated:
+            return None
+        return max(self.judged_at - self.written, timedelta(0))
+
+    @property
+    def age_days(self) -> int | None:
+        """Whole days, floored. For display; :attr:`stale` compares durations."""
+        age = self.age
+        return None if age is None else age.days
+
+    @property
+    def stale(self) -> bool:
+        """PAST the limit, as a duration. Seven days exactly is not past seven.
+
+        Not ``age_days > limit_days``: floored days read seven days and twenty
+        three hours as seven, which is fresh for a day longer than the key says.
+        COMPARED IN SECONDS rather than against ``timedelta(days=limit_days)``,
+        which raises ``OverflowError`` on a limit no duration can hold.
+        Validation bounds the configured key, and this holds for a value built
+        in code that never touched a file.
+        """
+        age = self.age
+        return age is not None and age.total_seconds() > self.limit_days * _SECONDS_PER_DAY
+
+
+def export_age(path: Path, *, limit_days: int, now: datetime | None = None) -> ExportAge:
+    """How old the export at ``path`` is. Never raises and never refuses.
+
+    A STAT RATHER THAN A FIELD ON :class:`Library`, because the parsed document
+    is memoized for the life of the process and the age is a question about the
+    file as it is now. ``limit_days`` is required for the reason ``cfg`` is on
+    :func:`local_tracks`: a default would let a caller that forgot the
+    configuration warn on somebody else's number.
+
+    THE CONVERSION IS INSIDE THE SAME GUARD AS THE STAT. A modification time no
+    date can hold, which a damaged FAT volume or a network share can return,
+    raises from ``fromtimestamp`` rather than from ``stat``. Either way the
+    answer is that the date could not be read, never a traceback: this is not a
+    ``CratekitError``, so escaping from here would end a whole ``sync all`` pass.
+    """
+    located = Path(path)
+    try:
+        written = datetime.fromtimestamp(located.stat().st_mtime, tz=timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return ExportAge(path=located, limit_days=limit_days)
+    return ExportAge(
+        path=located,
+        limit_days=limit_days,
+        written=written,
+        judged_at=now or datetime.now(timezone.utc),
+    )
 
 
 #: Parsed exports, keyed on the resolved absolute path.
@@ -454,8 +572,11 @@ def _rows(
 
 __all__ = [
     "DEFAULT_FAVORITES_PLAYLIST",
+    "FUTURE_TOLERANCE",
+    "ExportAge",
     "Library",
     "ResolvedPlaylist",
+    "export_age",
     "forget_libraries",
     "heart_candidates",
     "isrc_for",
