@@ -1268,6 +1268,7 @@ def test_the_fingerprint_does_not_depend_on_key_order(library):
         ("backup", "remote", "somewhere"),
         ("profile", "name", "full"),
         ("reports", "intake_stale_days", 45),
+        ("outbound", "export_stale_days", 14),
     ],
 )
 def test_the_fingerprint_changes_when_any_value_changes(library, section, key, value):
@@ -2596,3 +2597,26 @@ def test_the_overlap_contract_names_are_pinned_while_the_old_system_reads_them()
     assert default == ".cratekit"
     assert config._LIBRARY_SUBDIR_BY_ROLE[config.SnapshotRole.NEVER_RESTORED] == "local"
     assert config._LIBRARY_SUBDIR_BY_ROLE[config.SnapshotRole.COUPLED] == "coupled"
+
+
+# R-227: the age past which an outbound verb calls its export old.
+
+
+def test_the_export_staleness_default_is_seven_days_and_a_file_can_move_it(library):
+    assert config.from_dict(valid_data(library)).outbound.export_stale_days == 7
+    moved = config.from_dict(valid_data(library, outbound={"export_stale_days": 21}))
+    assert moved.outbound.export_stale_days == 21
+
+
+@pytest.mark.parametrize("value", [0, -3, "seven", 2.5, True])
+def test_an_export_staleness_that_is_not_a_positive_day_count_is_refused(library, value):
+    """``True`` by name: it is an ``int`` to ``isinstance``, and read as one day
+    it would warn on nearly every export while looking like a switch."""
+    problems = config.validate(valid_data(library, outbound={"export_stale_days": value}))
+    assert [p for p in problems if "outbound.export_stale_days" in p], problems
+    assert all("positive whole number" in p for p in problems), problems
+
+
+def test_an_absent_export_staleness_is_not_a_problem(library):
+    assert config.validate(valid_data(library)) == []
+    assert config.validate(valid_data(library, outbound={})) == []

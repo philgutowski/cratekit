@@ -2404,6 +2404,31 @@ class ReportsConfig:
     intake_expired_days: int = DEFAULT_INTAKE_EXPIRED_DAYS
 
 
+#: How old a hand made collection export may be before the outbound verbs say so.
+#: Named here as well as on the field for the reason the intake ages above give:
+#: ``slots=True`` hides a field default from the validator.
+DEFAULT_EXPORT_STALE_DAYS = 7
+
+
+@dataclass(frozen=True, slots=True)
+class OutboundConfig:
+    """Policy for the verbs that write to a streaming account (R-227).
+
+    ``export_stale_days`` is A WARNING THRESHOLD AND NEVER A REFUSAL. Both
+    outbound verbs read a rekordbox collection export somebody made by hand, so
+    a sweep is only as current as that file, and past this many days the plan a
+    person confirms names the file's date and says it is old. The person still
+    decides: somebody who has not touched their library in a month has a month
+    old export that is exactly right, and only they know that.
+
+    A day count in the user's file rather than a constant in the module, on the
+    rule ``ReportsConfig`` states: the mechanism belongs to the module and the
+    value belongs to the user.
+    """
+
+    export_stale_days: int = DEFAULT_EXPORT_STALE_DAYS
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     """The whole validated configuration, frozen.
@@ -2431,6 +2456,7 @@ class Config:
     # into the middle of one dataclass by two units auto-merge, and an append
     # conflicts textually, which is a conflict somebody reads.
     reports: ReportsConfig = field(default_factory=ReportsConfig)
+    outbound: OutboundConfig = field(default_factory=OutboundConfig)
 
     # -- derived views -----------------------------------------------------
 
@@ -2751,6 +2777,7 @@ def validate(data: Mapping) -> list[str]:
         )
 
     problems += _validate_aging_thresholds(data)
+    problems += _validate_export_staleness(data)
 
     return problems
 
@@ -2803,6 +2830,27 @@ def _validate_aging_thresholds(data: Mapping) -> list[str]:
                 f"changing only one of the two able to produce this."
             )
     return problems
+
+
+def _validate_export_staleness(data: Mapping) -> list[str]:
+    """The age past which an outbound verb calls its export old (R-227).
+
+    Checked here for the reason the intake ages are: a wrong number in a file is
+    a problem with a key name attached. A ``bool`` is refused by name because it
+    IS an ``int`` to ``isinstance``, and ``true`` read as one day would warn on
+    nearly every export while looking like a switch somebody turned on.
+    """
+    key = "outbound.export_stale_days"
+    value = _dig(data, key)
+    if value is None:
+        return []
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        return [
+            f"{key} must be a positive whole number of days, found {value!r}. "
+            f"Zero or a negative threshold does not switch the warning off, it "
+            f"calls every export old on the day it is made."
+        ]
+    return []
 
 
 def _is_inside(child: Path, parent: Path) -> bool:
@@ -3043,6 +3091,7 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         rekordbox=_build(RekordboxConfig, data.get("rekordbox") or {}),
         backup=_build(BackupConfig, data.get("backup") or {}),
         reports=_build(ReportsConfig, data.get("reports") or {}),
+        outbound=_build(OutboundConfig, data.get("outbound") or {}),
     )
 
 
