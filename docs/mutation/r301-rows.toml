@@ -1,0 +1,176 @@
+name = "r301"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_shipped_month_unbounded"
+description = "The shipped budget carries no monthly bound, which is the tree before this unit"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py"]
+old = '''        return cls(per_run=MAX_CALLS_PER_RUN, monthly=recognition.monthly_calls)'''
+new = '''        return cls(per_run=MAX_CALLS_PER_RUN, monthly=None)'''
+
+[[rows]]
+id = "B2_bound_host_ignored"
+description = "The bound identifier asks the default region whatever the section names"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py"]
+old = '''            host=recognition.host,'''
+new = '''            host=config.DEFAULT_RECOGNITION_HOST,'''
+
+[[rows]]
+id = "B3_refusal_detail_no_key"
+description = "The monthly refusal's detail no longer names the key that raises the bound"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py"]
+old = '''                "key": MONTHLY_KEY,
+'''
+new = ""
+
+[[rows]]
+id = "B4_refusal_message_no_key"
+description = "The monthly refusal's message is reworded so it no longer names the key"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py"]
+old = '''            f"or raise {MONTHLY_KEY} in the configuration if the plan allows more",'''
+new = '''            f"or adjust the configured bound if the plan allows more",'''
+
+[[rows]]
+id = "S1_month_ignores_ledger"
+description = "Sample of an existing guard: the monthly check ignores what the month already spent"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py"]
+old = '''    if budget.monthly is not None and used_this_month + planned > budget.monthly:'''
+new = '''    if budget.monthly is not None and planned > budget.monthly:'''
+
+[[rows]]
+id = "R1_seam_falls_back_to_defaults"
+description = "The seam builds a default section when none is handed over instead of refusing"
+file = "src/cratekit/intake/recognize.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_pipeline.py", "tests/intake/test_workers.py"]
+old = '''            raise TypeError(
+                "the bound identifier needs the configuration's recognition "
+                "section, which names the host and the month's bound"
+            )'''
+new = '''            recognition = config.RecognitionConfig()'''
+
+[[rows]]
+id = "P1_pipeline_drops_section"
+description = "identify_only hands the seam no section"
+file = "src/cratekit/intake/pipeline.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_workers.py"]
+old = '''        source, identifier=identifier, refresh=refresh, recognition=recognition'''
+new = '''        source, identifier=identifier, refresh=refresh, recognition=None'''
+
+[[rows]]
+id = "C1_set_uses_default_section"
+description = "intake set identifies under a default section rather than the configured one it freezes"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''                held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition'''
+new = '''                held.path, refresh=bool(ctx.args.refresh), recognition=type(cfg.recognition)()'''
+
+[[rows]]
+id = "C2_identify_uses_default_section"
+description = "intake identify identifies under a default section rather than the configured one"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''            held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
+        )'''
+new = '''            held.path, refresh=bool(ctx.args.refresh), recognition=type(cfg.recognition)()
+        )'''
+
+[[rows]]
+id = "F1_section_not_built"
+description = "The recognition section is never read from the file, so every install gets the default"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/intake/test_workers.py"]
+old = '''        recognition=_build(RecognitionConfig, data.get("recognition") or {}),'''
+new = '''        recognition=RecognitionConfig(),'''
+
+[[rows]]
+id = "V1_validator_not_called"
+description = "validate never checks the recognition section"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''    problems += _validate_recognition(data)
+'''
+new = ""
+
+[[rows]]
+id = "V2_any_domain"
+description = "The host may sit under any domain, so the credential can travel anywhere"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''    if not all(_HOST_LABEL.match(label) for label in labels) or not value.endswith(
+        f".{RECOGNITION_HOST_DOMAIN}"
+    ):'''
+new = '''    if not all(_HOST_LABEL.match(label) for label in labels):'''
+
+[[rows]]
+id = "V3_suffix_without_dot"
+description = "The domain is checked as a bare suffix, so evilacrcloud.com passes"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''        f".{RECOGNITION_HOST_DOMAIN}"'''
+new = '''        f"{RECOGNITION_HOST_DOMAIN}"'''
+
+[[rows]]
+id = "V4_label_shape_loose"
+description = "A host label may hold anything, so a scheme, a path or a port passes"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''_HOST_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")'''
+new = '''_HOST_LABEL = re.compile(r"^.+$")'''
+
+[[rows]]
+id = "V5_non_string_host"
+description = "A host that is not a string is not refused by name"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config.py"]
+old = '''    if not isinstance(value, str):
+        return f"{key} must be a hostname, found {value!r}"
+'''
+new = '''    value = str(value)
+'''
+
+[[rows]]
+id = "V6_bool_is_a_bound"
+description = "A boolean monthly bound is accepted, so true reads as one call a month"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''        not isinstance(bound, int) or isinstance(bound, bool) or bound < 1
+    ):'''
+new = '''        not isinstance(bound, int) or bound < 1
+    ):'''
+
+[[rows]]
+id = "V7_zero_is_a_bound"
+description = "A zero monthly bound is accepted, which refuses every paid call"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''        not isinstance(bound, int) or isinstance(bound, bool) or bound < 1
+    ):'''
+new = '''        not isinstance(bound, int) or isinstance(bound, bool) or bound < 0
+    ):'''
+
+[[dropped]]
+id = "D1_default_value"
+description = "Move DEFAULT_RECOGNITION_MONTHLY_CALLS to another positive number"
+reason = "a value choice and not a guard; every test reads the constant, so the row measures nothing, and the choice itself is recorded as a residual"
