@@ -1,0 +1,324 @@
+{
+  "name": "u94-b",
+  "pass_kind": "light",
+  "branch": "relay/139",
+  "head": "98414f4",
+  "when": "2026-09-21 00:02 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9416,
+  "baseline_exit": 0,
+  "pytest_runs": 14,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/analysis/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/analysis/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "3cd54f7639498b9e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9416,
+    "baseline_collected": 9416,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "W1_after_walk_refusal_dropped",
+      "description": "analyze_calibrate: ask what the walk left out and fit anyway without the flag, so the omission is known and ignored",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "449cd293d228fcd0",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_folder_the_walk_could_not_list_is_not_the_library_either",
+        "tests/test_analysis_workers.py::test_a_walk_that_left_a_folder_out_is_not_the_library"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if partial is not None and not accepted:\n            return _calibrate_refusal(ctx, _refused(partial), summary, omitted)",
+      "new": "        if False:\n            return _calibrate_refusal(ctx, _refused(partial), summary, omitted)"
+    },
+    {
+      "id": "W2_unreadable_not_counted",
+      "description": "_partial_after_walk: count declined links only, so a folder the walk could not list does not make the walk partial",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9f796ba1fff7a5d9",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_folder_the_walk_could_not_list_is_not_the_library_either"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    left_out = len(scan.skipped_links) + len(scan.unreadable)\n    if not left_out:",
+      "new": "    left_out = len(scan.skipped_links)\n    if not left_out:"
+    },
+    {
+      "id": "W3_accepted_reads_ok",
+      "description": "_accepted: report an accepted partial as ok, so it reads as the library wide fit on the check row",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b7992c99df8f9201",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_walk_that_left_a_folder_out_is_not_the_library",
+        "tests/test_analysis_workers.py::test_accept_partial_writes_and_warns"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"skipped\",\n        f\"{what}; fitted anyway",
+      "new": "        \"ok\",\n        f\"{what}; fitted anyway"
+    },
+    {
+      "id": "W4_partial_warning_dropped",
+      "description": "analyze_calibrate: never put calibration-partial-sample on the envelope",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ca3ac67bc1bad980",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_walk_that_left_a_folder_out_is_not_the_library",
+        "tests/test_analysis_workers.py::test_accept_partial_writes_and_warns"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "if partial is not None and wrote else ())",
+      "new": "if False else ())"
+    },
+    {
+      "id": "W5_warning_without_a_write",
+      "description": "analyze_calibrate: warn about what was written when neither half wrote anything",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fdb32b3d57f8fe67",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_partial_fit_that_wrote_nothing_does_not_warn_about_a_calibration"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "if partial is not None and wrote else ())",
+      "new": "if partial is not None else ())"
+    },
+    {
+      "id": "W6_outcome_energy_only",
+      "description": "analyze_calibrate: derive the outcome from the energy half alone, so a run that replaced only the vocal cut answers no_op",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2796aead24bc209a",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_run_where_only_the_vocal_half_wrote_does_not_answer_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        outcome=Outcome.OK if wrote else Outcome.NO_OP,",
+      "new": "        outcome=Outcome.OK if calibrated else Outcome.NO_OP,"
+    },
+    {
+      "id": "W7_omissions_dropped_from_the_fit",
+      "description": "analyze_calibrate: leave the walk's omissions off the envelope of a fit that went ahead",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "267d4cb0fc36283d",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_walk_that_left_a_folder_out_is_not_the_library"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        + tuple(omitted),",
+      "new": "        + tuple(()),"
+    },
+    {
+      "id": "W8_note_forgets_the_omission",
+      "description": "fitted_note: never record how many folders were not walked, so the file a later restamp trusts reads as a whole fit",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7af447424a74e80c",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.analysis.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 171,
+      "baseline_collected": 171,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_walk_that_left_a_folder_out_is_not_the_library"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if left_out:\n        note +=",
+      "new": "    if False:\n        note +="
+    },
+    {
+      "id": "W9_walk_warning_says_queued",
+      "description": "discovery.walk_warnings: ignore the verb for a declined link, so calibrate tells a person about a queue it does not have",
+      "file": "src/cratekit/core/discovery.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3dc82b4409417c75",
+      "subset": [
+        "tests/test_discovery.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.discovery",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 9416,
+      "baseline_collected": 9416,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_walk_that_left_a_folder_out_is_not_the_library"
+      ],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        link_warning(tuple(skipped_links), verb),",
+      "new": "        link_warning(tuple(skipped_links)),"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D_unreadable_warning_verb",
+      "description": "discovery.walk_warnings: ignore the verb for an unreadable folder",
+      "reason": "ranked below the cap: the same guard family as W9 one line below it, and test_a_folder_the_walk_could_not_list asserts the word"
+    },
+    {
+      "id": "D_remedy_rewordings",
+      "description": "Reword the three remedy strings back to a representative folder",
+      "reason": "ranked below the cap: a message mutation on a maintainer chosen phrase; test_the_restamp_refusal_names_the_library_wide_calibrate holds the one in analysis/cli.py and the other two are unasserted, recorded as a residual rather than measured"
+    }
+  ]
+}
