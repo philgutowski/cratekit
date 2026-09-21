@@ -160,17 +160,13 @@ def decided(store: review.ReviewStore) -> Decided:
     A verdict this build cannot read arrives as None, which is how every reader
     of the queue treats one, so it is counted open and nothing is renamed on it.
     """
-    page = review.list_items(
-        store,
-        queue=str(Queue.PATH_REPAIR),
-        kinds=(KIND,),
-        include_resolved=True,
-        include_suppressed=True,
-        limit=None,
-    )
+    # PAGED, through the walk the queue provides for exactly this. The queue
+    # keeps every settled item, so a library sweep leaves thousands of rows here
+    # and only the accepted ones are held past their page.
+    selection = review.Predicate(queue=str(Queue.PATH_REPAIR), kind=KIND)
     accepted: list[Accepted] = []
     kept = rejected = still_open = 0
-    for item in page.items:
+    for item in review.iter_items(store, predicate=selection, include_resolved=True):
         if item.verdict is Verdict.REJECTED:
             rejected += 1
         elif item.verdict is not Verdict.ACCEPTED:

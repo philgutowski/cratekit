@@ -174,6 +174,8 @@ def test_a_proposal_for_a_referenced_file_refuses_and_its_sibling_is_renamed(col
     assert (detail["renamed"], detail["incomplete_count"]) == (1, 1)
     assert detail["incomplete"][0]["from"] == LONG
     assert "collection references it" in detail["incomplete"][0]["why"]
+    # A second run holds the same file, so a driver must not be told to retry.
+    assert envelope["cause"]["retryable"] is False
 
 
 def test_an_open_or_rejected_or_kept_proposal_is_untouched(configured):
@@ -219,6 +221,7 @@ def test_a_collision_refuses_that_file_and_names_it(configured):
     assert envelope["outcome"] != "ok"
     assert envelope["cause"]["reason"] == "rename-incomplete"
     assert LONG in envelope["cause"]["message"]
+    assert envelope["cause"]["retryable"] is True
     assert envelope["cause"]["detail"]["incomplete"][0]["from"] == LONG
     assert SHORT in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
@@ -254,7 +257,7 @@ def test_without_the_flag_an_accepted_proposal_is_not_applied(configured):
     assert _names(folder) == {LONG}
 
 
-def test_a_second_apply_reads_the_rename_as_done_and_answers_ok(configured):
+def test_a_second_apply_converges_and_claims_only_what_it_observed(configured):
     folder = _folder(configured)
     path = _audio(folder, LONG)
     _scan(folder)
@@ -264,13 +267,14 @@ def test_a_second_apply_reads_the_rename_as_done_and_answers_ok(configured):
     code, envelope = _answer("apply")
 
     assert code == int(ExitCode.OK), envelope
-    assert _actions(envelope["data"]) == {LONG: "applied"}
+    assert _actions(envelope["data"]) == {LONG: "missing"}
+    assert "already carried out" in envelope["data"]["items"][0]["why"]
     totals = envelope["data"]["totals"]
-    assert (totals["count"], totals["applied"], totals["renamed"]) == (0, 1, 0)
+    assert (totals["count"], totals["missing"], totals["renamed"]) == (0, 1, 0)
     assert _names(folder) == {SHORT}
 
 
-def test_an_accepted_file_that_is_gone_is_missing_and_not_called_applied(configured):
+def test_an_accepted_file_that_is_gone_says_no_file_carries_the_name(configured):
     folder = _folder(configured)
     path = _audio(folder, LONG)
     _scan(folder)
@@ -281,8 +285,84 @@ def test_an_accepted_file_that_is_gone_is_missing_and_not_called_applied(configu
 
     assert code == int(ExitCode.OK), envelope
     assert _actions(envelope["data"]) == {LONG: "missing"}
+    assert "none carries the proposed name" in envelope["data"]["items"][0]["why"]
     assert envelope["data"]["totals"]["missing"] == 1
     assert _names(folder) == set()
+
+
+def test_a_proposal_that_asked_for_no_change_is_listed_with_its_reason(configured):
+    folder = _folder(configured)
+    path = _audio(folder, LONG)
+    _scan(folder)
+    _accept(configured, path)
+    # What a proposal that failed to fit looks like: its own name, and why.
+    _rewrite_payload(configured, path, proposed=LONG, error="the path is over budget")
+
+    code, envelope = _answer("apply")
+
+    assert code == int(ExitCode.OK), envelope
+    assert _actions(envelope["data"]) == {LONG: "unchanged"}
+    assert envelope["data"]["items"][0]["why"] == "the path is over budget"
+    assert envelope["data"]["totals"]["unchanged"] == 1
+    assert _names(folder) == {LONG}
+
+
+def test_a_linked_file_is_never_renamed_through_its_link(configured, tmp_path):
+    folder = _folder(configured)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    real = _audio(elsewhere, "track01.flac", b"fLaC real")
+    link = folder / LONG
+    link.symlink_to(real)
+    _scan(folder)
+    _accept(configured, link)
+
+    code, envelope = _answer("apply")
+
+    assert real.read_bytes() == b"fLaC real"
+    assert _names(elsewhere) == {"track01.flac"}
+    assert _names(folder) == {LONG}
+    assert [item["action"] for item in envelope["data"]["items"]] == ["unusable"]
+    assert code == int(ExitCode.PRECONDITION)
+    assert "linked file" in envelope["cause"]["detail"]["incomplete"][0]["why"]
+
+
+def test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub(
+    configured, monkeypatch
+):
+    folder = _folder(configured)
+    path = _audio(folder, LONG, b"fLaC mine")
+    _scan(folder)
+    _accept(configured, path)
+
+    def interrupted(self, target):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(Path, "rename", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        _answer("apply")
+
+    assert _names(folder) == {LONG}
+    assert path.read_bytes() == b"fLaC mine"
+
+
+def test_a_refused_rename_is_named_and_leaves_no_stub(configured, monkeypatch):
+    folder = _folder(configured)
+    path = _audio(folder, LONG)
+    _scan(folder)
+    _accept(configured, path)
+
+    def refused(self, target):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "rename", refused)
+    code, envelope = _answer("apply")
+
+    assert _names(folder) == {LONG}
+    assert code == int(ExitCode.PRECONDITION)
+    assert "Permission denied" in envelope["cause"]["detail"]["incomplete"][0]["why"]
+    assert envelope["cause"]["retryable"] is True
+    assert envelope["data"]["totals"]["renamed"] == 0
 
 
 def test_two_accepted_proposals_for_one_name_rename_neither(configured):
@@ -339,19 +419,22 @@ def test_an_unreadable_collection_refuses_and_renames_nothing(configured, monkey
     assert _names(folder) == {LONG}
 
 
-def _rewrite_proposed(cfg, path: Path, proposed: str) -> None:
-    """Put a name in the stored payload, as an edited import document could."""
+def _rewrite_payload(cfg, path: Path, **fields: str) -> None:
+    """Put values in the stored payload, as an edited import document could."""
     wanted = review.item_id_for(
         str(Queue.PATH_REPAIR), repair.KIND, {"path": str(path.resolve())}
     )
     with review.open_store(cfg) as store:
-        payload = dict(review.get(store, wanted).payload)
-        payload["proposed"] = proposed
+        payload = {**review.get(store, wanted).payload, **fields}
         with store.immediate() as conn:
             conn.execute(
                 "UPDATE review_items SET payload = ? WHERE item_id = ?",
                 (json.dumps(payload), wanted),
             )
+
+
+def _rewrite_proposed(cfg, path: Path, proposed: str) -> None:
+    _rewrite_payload(cfg, path, proposed=proposed)
 
 
 @pytest.mark.parametrize(
@@ -398,6 +481,47 @@ def test_a_root_limits_the_apply_and_counts_what_it_left_out(configured):
     assert _names(inside) == {SHORT}
     assert _names(outside) == {OTHER_LONG}
     assert envelope["data"]["totals"]["outside_root"] == 1
+
+
+def test_a_root_typed_in_another_case_still_names_the_folder(configured):
+    folder = _folder(configured)
+    path = _audio(folder, LONG)
+    _scan(folder)
+    _accept(configured, path)
+    shouted = folder.parent / folder.name.upper()
+
+    code, envelope = _answer("apply", "--root", str(shouted))
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["outside_root"] == 0
+    assert _names(folder) == {SHORT}
+
+
+def test_a_root_that_only_shares_a_prefix_is_not_the_folder(configured):
+    folder = _folder(configured)
+    sibling = folder.parent / (folder.name + "s")
+    sibling.mkdir()
+    path = _audio(sibling, LONG)
+    _scan(sibling)
+    _accept(configured, path)
+
+    code, envelope = _answer("apply", "--root", str(folder))
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["outside_root"] == 1
+    assert _names(sibling) == {LONG}
+
+
+def test_the_decided_reader_pages_through_a_queue_larger_than_one_page(configured):
+    folder = _folder(configured)
+    count = review.DEFAULT_PAGE + 3
+    for index in range(count):
+        _audio(folder, f"04A - 124 - Song{index} - Artist - Song{index}.flac")
+    _scan(folder)
+    for index in range(count):
+        _accept(configured, folder / f"04A - 124 - Song{index} - Artist - Song{index}.flac")
+    with review.open_store(configured) as store:
+        assert len(repair.decided(store).accepted) == count
 
 
 def test_the_decided_reader_reads_accepted_as_verdict_and_option_together(configured):

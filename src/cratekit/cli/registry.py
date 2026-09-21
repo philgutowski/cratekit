@@ -589,7 +589,7 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="repair.paths",
-        summary="repair recorded file paths the library can no longer resolve",
+        summary="propose a name for each file rekordbox would reject, and apply the accepted ones",
         module=REPAIR_CLI_MODULE,
         builder="build_repair_paths",
         handler_key="repair.paths",

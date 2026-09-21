@@ -26,7 +26,7 @@ from pathlib import Path
 
 from cratekit.cli import output
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, naming, review
+from cratekit.core import config, locations, naming, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import repair
@@ -35,15 +35,19 @@ from cratekit.write import naming_cli
 RENAME = "rename"
 REFERENCED = "referenced"
 COLLIDES = "collides"
-APPLIED = "applied"
 MISSING = "missing"
+UNCHANGED = "unchanged"
 UNUSABLE = "unusable"
 
 #: The plan classes that are a rename a person accepted and this run cannot
-#: perform. ``applied`` is absent because that rename already happened, and
-#: ``missing`` is absent because there is no file left to rename, so a run over
-#: either has nothing outstanding and answering otherwise would fail for ever.
+#: perform. ``missing`` is absent because there is no file left to rename, and
+#: ``unchanged`` because the proposal asked for none, so a run over either has
+#: nothing outstanding and answering otherwise would fail for ever.
 _HELD = (REFERENCED, COLLIDES, UNUSABLE)
+#: The held classes a second run cannot clear by itself. A referenced file stays
+#: referenced and an unusable item stays unusable until a person changes the
+#: queue, so a run holding only these must not call itself retryable.
+_NEEDS_A_PERSON = (REFERENCED, UNUSABLE)
 
 
 def _load() -> config.Config:
@@ -118,13 +122,35 @@ def _unusable_why(accepted: repair.Accepted) -> str:
         return f"its proposed name {proposed!r} is not a bare filename"
     if Path(proposed).suffix.lower() != Path(accepted.path).suffix.lower():
         return f"its proposed name {proposed!r} would change the file's extension"
+    if accepted.recorded and Path(accepted.path).name != accepted.recorded:
+        # THE QUEUE ADDRESSES AN ITEM BY THE RESOLVED PATH, and the proposal was
+        # made for the name the scan SAW. They differ exactly when the scanned
+        # file was a link, and then the stored path is the link's target, a file
+        # the person was never shown, possibly outside the library altogether.
+        return (
+            f"it was offered for {accepted.recorded} and the queue addresses it as "
+            f"{Path(accepted.path).name}, which is how a linked file reads, and the "
+            f"file a link points at is not the one the proposal was shown for"
+        )
     return ""
+
+
+def _key(path: str) -> str:
+    """One path as ``--root`` compares it, which is how the guard beside it does.
+
+    NFC and casefolded, for the reason ``naming_cli._key`` gives: the volume a
+    library normally sits on ignores case, so a root typed in another case names
+    the same folder. Compared exactly, every accepted item would read as outside
+    it and the run would answer ok over a plan with nothing in it.
+    """
+    return locations.norm_for_compare(path).casefold()
 
 
 def _under(path: str, root: Path | None) -> bool:
     if root is None:
         return True
-    return Path(path).is_relative_to(root.resolve())
+    held, wanted = _key(path), _key(str(root.resolve())).rstrip("/")
+    return held == wanted or held.startswith(wanted + "/")
 
 
 def _plan_for(decided: repair.Decided, *, root: Path | None, cfg: config.Config) -> dict:
@@ -165,10 +191,6 @@ def _plan_for(decided: repair.Decided, *, root: Path | None, cfg: config.Config)
             )
             continue
         path = Path(accepted.path)
-        if path.name == accepted.proposed:
-            # A proposal that failed to fit proposes the name the file has. It
-            # is accepted and it asks for nothing, so it is not a rename.
-            continue
         target = path.with_name(accepted.proposed)
         base = {
             "item_id": accepted.item_id,
@@ -176,13 +198,34 @@ def _plan_for(decided: repair.Decided, *, root: Path | None, cfg: config.Config)
             "to": accepted.proposed,
             "path": str(path),
         }
+        if path.name == accepted.proposed:
+            # A proposal that failed to fit proposes the name the file has, and
+            # carries why. It is accepted and asks for nothing, so it is not a
+            # rename, and it is LISTED, with that reason, rather than dropped.
+            items.append(
+                {
+                    "action": UNCHANGED,
+                    **base,
+                    "why": accepted.error or "the proposal is the name the file has",
+                }
+            )
+            continue
         if not path.is_file():
-            # SOURCE GONE AND TARGET PRESENT IS A RENAME THAT ALREADY HAPPENED,
-            # which is what every accepted item reads as on the run after the
-            # one that applied it, since nothing retires an item from the queue.
-            # Both halves are observed. Source gone alone is a missing file.
-            done = target.is_file()
-            items.append({"action": APPLIED if done else MISSING, **base})
+            # ONE CLASS, AND IT CLAIMS ONLY WHAT WAS OBSERVED. Source gone with
+            # the proposed name present is what every accepted item reads as on
+            # the run after the one that applied it, since nothing retires an
+            # item from the queue. It is also what a deleted file beside an
+            # unrelated file of that name reads as, and nothing here can tell
+            # the two apart, so the plan says which names exist and does not
+            # call either one a rename that was carried out.
+            if target.is_file():
+                why = (
+                    f"no file is at that path and {target.name} is in the folder, "
+                    f"which is how a rename already carried out reads"
+                )
+            else:
+                why = "no file is at that path, and none carries the proposed name"
+            items.append({"action": MISSING, **base, "why": why})
             continue
         candidates.append((accepted, path))
 
@@ -225,8 +268,8 @@ def _plan_for(decided: repair.Decided, *, root: Path | None, cfg: config.Config)
             "count": _count(RENAME),
             "referenced": _count(REFERENCED),
             "collides": _count(COLLIDES),
-            "applied": _count(APPLIED),
             "missing": _count(MISSING),
+            "unchanged": _count(UNCHANGED),
             "unusable": _count(UNUSABLE),
             "outside_root": outside,
             "kept": decided.kept,
@@ -237,7 +280,9 @@ def _plan_for(decided: repair.Decided, *, root: Path | None, cfg: config.Config)
     }
 
 
-def _incomplete_cause(incomplete: list[dict[str, str]], *, renamed: int) -> Cause:
+def _incomplete_cause(
+    incomplete: list[dict[str, str]], *, renamed: int, retryable: bool
+) -> Cause:
     """What the run answers when an accepted rename did not happen (R-172).
 
     The same reason ``name apply`` answers with, worded the same way: the count
@@ -245,6 +290,10 @@ def _incomplete_cause(incomplete: list[dict[str, str]], *, renamed: int) -> Caus
     same sentence, and every item is in the detail, capped. The step is this
     verb's own, because here each outstanding rename is a decision sitting in the
     review queue, and the way to stop being told about one is to change it.
+
+    ``retryable`` is the caller's to say, because it depends on WHICH renames
+    are outstanding: a referenced file is held on every run, so a driver told to
+    retry over one would retry for ever.
     """
     count = len(incomplete)
     return refuse(
@@ -259,7 +308,7 @@ def _incomplete_cause(incomplete: list[dict[str, str]], *, renamed: int) -> Caus
             "rejected in the review queue, which takes it out of this plan",
         ),
         scope=Scope.RUN,
-        retryable=True,
+        retryable=retryable,
         origin=("intake.repair_cli",),
         detail={
             "renamed": renamed,
@@ -286,7 +335,16 @@ def _apply(ctx, cfg: config.Config) -> Envelope:
         if item["action"] in _HELD
     ]
 
+    # TRUE ONCE ANYTHING OUTSTANDING COULD CLEAR WITHOUT A PERSON: a collision,
+    # since the file in the way can move, and everything found after the gate.
+    retryable = any(
+        item["action"] in _HELD and item["action"] not in _NEEDS_A_PERSON
+        for item in plan["items"]
+    )
+
     def _owed(item: dict[str, str], why: str) -> None:
+        nonlocal retryable
+        retryable = True
         incomplete.append({"from": item["from"], "path": item["path"], "why": why})
 
     renamed = 0
@@ -315,13 +373,22 @@ def _apply(ctx, cfg: config.Config) -> Envelope:
         if not claimed:
             _owed(item, f"{item['to']} is already taken in the folder")
             continue
+        # THE CLAIM IS A ZERO BYTE FILE UNDER AN AUDIO NAME, and ``claim_target``
+        # says the caller owns removing it on ANY failure after a True. An
+        # interrupt between the claim and the rename is such a failure, so the
+        # removal is in a ``finally`` and not only in the ``OSError`` branch:
+        # a stub left behind holds the name against this same rename for ever.
+        moved = False
         try:
             path.rename(target)
+            moved = True
         except OSError as exc:
-            target.unlink(missing_ok=True)
             _owed(item, f"the filesystem refused the rename: {exc.strerror or exc}")
-            continue
-        renamed += 1
+        finally:
+            if not moved:
+                target.unlink(missing_ok=True)
+        if moved:
+            renamed += 1
 
     plan["totals"] = {**plan["totals"], "renamed": renamed, "incomplete": len(incomplete)}
     if not incomplete:
@@ -334,7 +401,7 @@ def _apply(ctx, cfg: config.Config) -> Envelope:
         verb=ctx.entry.name,
         run_id=ctx.run.run_id,
         started=ctx.started,
-        cause=_incomplete_cause(incomplete, renamed=renamed),
+        cause=_incomplete_cause(incomplete, renamed=renamed, retryable=retryable),
         schema=ctx.entry.output_schema or output.current_schema("plan"),
         data=plan,
     )

@@ -194,11 +194,13 @@ crate repair paths
 crate repair paths --root /path/to/folder
 ```
 
-Without `--apply` this verb writes nothing to the library. It walks for recorded
-locations that no longer resolve, proposes what it believes each row now points at, and offers
-every proposal into the path repair queue. A wrong answer re-points a library row
-at somebody else's file, which is a quiet and expensive kind of wrong, so the
-decision belongs to a person and is recorded rather than inferred.
+Without `--apply` this verb writes nothing to the library. It walks the folder
+for audio files whose name is over the path budget or repeats its own title at
+the end, which are the names rekordbox rejects on import, proposes a name that
+fits, and offers every proposal into the path repair queue. It does not re-point
+a library row and it does not rewrite an export. A rename is still a quiet and
+expensive kind of wrong when it is the wrong one, so the decision belongs to a
+person and is recorded rather than inferred.
 
 ```bash
 crate review list --queue path-repair --limit 50
