@@ -4,7 +4,26 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-388, issue #100, `relay/100`, 2026-09-21.**
+**Last merged: R-349, issue #102, `relay/102`, 2026-09-21.**
+A queued backup item's commands now reach the job record, which CLOSES R-349.
+`PortionOutcome.commands` records every command handed to the runner, index for
+index with `results`, and `outcome_payload` renders each argv and return code.
+**TWO CHANNELS, BECAUSE `jobs.drive` WILL NOT PAIR THEM.** A success is staged
+and returned as `jobs.Produced`, so the item is DONE once the record is
+durable. A refusal writes the record to the installation scoped
+`backup_outcomes` state directory before re-raising, so the item stays FAILED
+and `jobs.retry` re-arms it. `job show` and the `backup run --job` envelope carry
+the records under `progress.outcomes`; a job of another verb gains no field.
+The built in review raised three findings, fixed in round one.
+Battery: ruff clean, **9811 passed** and 1 skipped in 75 seconds. Scan clean. No
+test of this unit's is among the slowest.
+Mutation tables `docs/mutation/r349-a.md` to `r349-c.md`, read in
+`r349-notes.md`: **12 rows, the author's own, all killed.** Filed R-644, the
+failure envelope prints no commands, and R-645, a failed commit escapes the
+driver. Neither is on the board bar.
+**Main's highest residual number is R-645.**
+
+**The session before: R-388, issue #100, `relay/100`, 2026-09-21.**
 A restore listing on the remote that fails no longer tells a person to take a
 backup, which CLOSES R-388 and R-387. `backup.Refusal.SNAPSHOT_LISTING_FAILED`,
 slug `snapshot-listing-failed`, is reserved at 30 with steps naming the remote,
@@ -22,7 +41,6 @@ Mutation tables `docs/mutation/r388-a.md` to `r388-d.md`, read in
 `r388-notes.md`: **17 rows, the author's own, all killed** after one zero was
 pinned. Filed R-643, exit 3 measured on the local backend only, not on the
 board bar.
-**Main's highest residual number is R-643.**
 
 **The session before: R-381, issue #97, `relay/97`, 2026-09-21.**
 A favourite label's slug now transliterates before it folds, which CLOSES R-381.

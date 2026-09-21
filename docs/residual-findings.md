@@ -16830,6 +16830,21 @@ the command by hand.
 **Closes when:** the outcome payload is persisted with the job, the foreground
 envelope carries it, and `job show` prints it.
 
+**Closed 2026-09-21 on `relay/102`.** `PortionOutcome.commands` records every
+command handed to the runner, prune listing and purges included, index for
+index with `results`, and `outcome_payload` renders each argv with its return
+code. On success the queued handler stages the report and returns it as a
+`jobs.Produced`, so the engine commits it and the item is DONE. On a refusal
+`perform_backup` writes the same report to the new installation scoped
+`backup_outcomes` state directory first and re-raises unchanged, so the item
+stays FAILED and `jobs.retry` re-arms it. `job show` and the `backup run --job`
+envelope read the records under `progress.outcomes` whatever the item states
+are, and a job of another verb gains no field. The built in review raised three
+findings, all fixed in round one: `Path.glob` swallowing a permission error,
+a previous attempt's record outliving a retry that failed another way, and a
+staging error failing a completed backup. What this leaves is R-644 and R-645.
+Tables `docs/mutation/r349-a.md` to `r349-c.md`, read in `r349-notes.md`.
+
 ---
 
 ## R-350. A token refresh after the catalogue opens lives only in memory
@@ -25767,3 +25782,44 @@ the wording is the cost.
 **Closes when:** rclone's exit for a missing folder is measured on the backend
 the backups are written to, and either it is 3 or the listings read the one it
 is.
+
+---
+
+## R-644. A backup resume that fails prints no commands, `job show` does
+
+**Found:** building R-349 on `relay/102`, 2026-09-21.
+
+The brief's goal names the foreground envelope on failure as well as on
+success. The `--job` branch leaves through the engine's refusal whenever an
+item failed, and a refusal envelope carries the cause and no payload, so the
+per item commands reach the person only through `crate job show`. The success
+envelope carries them under `progress.outcomes`. Adding them to the refusal
+means extending `_raise_refusal`, which is careful about object identity and
+the exception chain, and was left alone rather than risked in this unit.
+
+**Measured cost:** one extra command. The refusal already names the failed
+portion and rclone's stderr tail, and `job show` names every argv. Not on the
+board bar: nothing false is said and nothing is lost.
+
+**Closes when:** a failed `backup run --job` refusal names the job show command
+or carries the outcomes in its detail, with the rehearsal step and the chain
+rules `_raise_refusal` states still holding.
+
+---
+
+## R-645. A committed outcome record whose rename fails escapes the job driver
+
+**Found:** building R-349 on `relay/102`, 2026-09-21, reading `jobs.drive`.
+
+`jobs.drive` calls `commit_artifact` outside the per item `try`, so an `OSError`
+from the flush or rename leaves the driver entirely rather than failing the
+item. The backup handler is now the second producer of a `Produced`, beside
+`master`. The staged file sits in the directory the final path names, which the
+atomic writer has just created, so the rename crosses no filesystem.
+
+**Measured cost:** unmeasured. No candidate was driven. The shape is the
+engine's and predates this unit; the backup handler only joins it. Not on the
+board bar.
+
+**Closes when:** a failed commit is driven through `jobs.drive` and either
+fails the item with a named cause or is shown unreachable.
