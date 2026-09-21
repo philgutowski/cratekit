@@ -1,0 +1,78 @@
+name = "r598-b"
+pass_kind = "light"
+
+# R-598, relay/187. The release verb and the doctor clause. B1 to B6 are this
+# unit's own guards in the shells; B7 is a fixed sample of the existing release
+# refusal the new sweep now sits behind.
+
+[[rows]]
+id = "B1_sweep_before_the_lock"
+description = "release_lock: abandon the orphans before releasing the lock, so a live holder's refusal arrives after records were already ended"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_cli.py"]
+old = '''    cleared = session.release_stale_lock(cfg)
+    abandoned = ['''
+new = '''    abandoned_first = session.abandon_orphaned_sessions(cfg)
+    cleared = session.release_stale_lock(cfg)
+    abandoned = [record.session_id for record in abandoned_first] + ['''
+
+[[rows]]
+id = "B2_no_shown_list_passed"
+description = "release_lock: pass no shown list, so the sweep ends every orphan found at answer time"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_cli.py"]
+old = '''            cfg, only=[record.session_id for record in orphans]'''
+new = '''            cfg, only=None'''
+
+[[rows]]
+id = "B3_orphans_not_shown"
+description = "release_lock: show an empty orphan list at the gate, so the person decides without seeing what will be ended"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_cli.py"]
+old = '''                for record in orphans
+            ],'''
+new = '''                for record in orphans[:0]
+            ],'''
+
+[[rows]]
+id = "B4_abandon_only_reported_as_no_op"
+description = "release_lock: report a release that only abandoned records as a no-op, telling a person nothing changed"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_cli.py"]
+old = '''            outcome=Outcome.OK if abandoned else Outcome.NO_OP,'''
+new = '''            outcome=Outcome.NO_OP,'''
+
+[[rows]]
+id = "B5_kept_reports_nothing"
+description = "release_lock: report no kept records, hiding an open record the verb deliberately left"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_cli.py"]
+old = '''    kept = [record.session_id for record in session.records(cfg) if not record.terminal]'''
+new = '''    kept = []'''
+
+[[rows]]
+id = "B6_doctor_clause_dropped"
+description = "_open_state: list an orphaned record bare, so it reads as a run in progress with no verb named"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if session.orphaned(record):
+        return f"{record.state}, its process is gone, crate session release abandons it"'''
+new = '''    if False:
+        return f"{record.state}, its process is gone, crate session release abandons it"'''
+
+[[rows]]
+id = "B7_sample_live_holder_released"
+description = "release_stale_lock: skip the live holder refusal (existing guard, sampled because the sweep now sits behind it)"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_cli.py", "tests/test_write_session.py"]
+old = '''    if holder_alive(recorded):
+        raise refuse('''
+new = '''    if False:
+        raise refuse('''

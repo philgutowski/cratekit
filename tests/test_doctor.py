@@ -784,6 +784,30 @@ def test_a_committed_unverified_session_is_reported_before_the_next_write(config
     assert "s-1" in finding.detail
 
 
+def test_an_open_session_whose_process_is_gone_names_the_verb_that_ends_it(configured):
+    """R-598. Listed bare, a record a hard kill left reads as a run in progress.
+
+    The live record beside it is the control: the clause is about the dead
+    holder, not about being open.
+    """
+    import subprocess
+    import sys
+
+    finished = subprocess.Popen([sys.executable, "-c", "pass"])
+    finished.wait()
+    here = session.current_holder()
+    gone = session.Holder(host=here.host, boot=here.boot, pid=finished.pid, started="1.000")
+    orphan = session.open_session(configured, workflow="w", session_id="s-dead", holder=gone)
+    live = session.open_session(configured, workflow="w", session_id="s-live", holder=here)
+
+    finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    assert finding.status is doctor.Status.INFO
+    assert f"{orphan.session_id} (open, its process is gone, crate session release" in (
+        finding.detail
+    )
+    assert f"{live.session_id} (open)" in finding.detail
+
+
 def test_an_unreadable_session_record_is_reported_rather_than_dropped(configured):
     """A gate reading its own state through a tolerant reader fails OPEN.
 

@@ -30,6 +30,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import signal
 import stat
 import subprocess
 import sys
@@ -543,6 +544,8 @@ def test_releasing_a_lock_nobody_holds_asks_anyway_and_reports_a_no_op(installed
         "released": False,
         "recorded": False,
         "unreadable": False,
+        "abandoned": [],
+        "kept": [],
     }
 
 
@@ -559,6 +562,189 @@ def test_aborting_the_release_clears_nothing(installed):
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert session.read_lock_holder(path) == gone
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# session release, and the open records a hard killed write left (R-598)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _hard_killed_gated_write(cfg) -> str:
+    """Enter the gates keeping a record, in a child, and SIGKILL it inside the body.
+
+    A REAL KILL AND NOT A GATE LEFT UNEXITED IN THIS PROCESS. Left unexited here,
+    the lock would stay held by this process and the record's holder would be a
+    live one, which is the opposite of the state a kill leaves. Forking carries
+    this test's monkeypatched platform seams into the child, and the kernel drops
+    the child's lock when it dies, exactly as it does for a person's run. Every
+    failure in the child ends in ``os._exit`` so nothing of the suite runs twice.
+    """
+    reader, writer = os.pipe()
+    child = os.fork()
+    if child == 0:  # pragma: no cover - measured by the parent's assertions
+        try:
+            # A lock another thread held at the fork stays held in the child for
+            # ever. The alarm turns that hang into a death by the wrong signal,
+            # which the parent's assertion then names.
+            signal.alarm(30)
+            os.close(reader)
+            gates = session.assert_gates(
+                cfg, workflow="metadata.mytags-vocals", keep=session.Keep.RECORD
+            )
+            entered = gates.__enter__()
+            os.write(writer, entered.record.session_id.encode("utf-8"))
+            os.close(writer)
+            os.kill(os.getpid(), signal.SIGKILL)
+        finally:
+            os._exit(3)
+    os.close(writer)
+    with os.fdopen(reader, "rb") as pipe:
+        session_id = pipe.read().decode("utf-8")
+    _pid, status = os.waitpid(child, 0)
+    assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL, status
+    assert session_id, "the child never got inside the gates"
+    return session_id
+
+
+def _release(option: str = "release") -> tuple[int, dict, dict]:
+    """Drive ``crate session release`` through its gate, and return both halves."""
+    code, refused = _drive(["session", "release"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _answer(refused["run_id"], RELEASE_GATE, option)
+    code, envelope = _drive(["--run", refused["run_id"], "session", "release"])
+    return code, refused, envelope
+
+
+def _left_by(cfg, holder: session.Holder, state: session.SessionState) -> str:
+    """A gated record naming ``holder``, persisted in ``state``, and its identifier."""
+    record = session.open_session(cfg, workflow="write.trees", holder=holder)
+    record.state = state
+    session.write_record(record, cfg)
+    return record.session_id
+
+
+@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
+def test_a_hard_killed_gated_write_blocks_cutover_until_release_abandons_it(
+    installed, tmp_path
+):
+    """R-598's cost, reproduced first, and then the verb that ends it.
+
+    A SIGKILL inside a gated write runs no exit code, so the record stays
+    ``open`` and the cutover precheck refuses with ``cutover-open-run`` whose
+    first step no verb offered. After ``session release`` the record is
+    abandoned, the capture it named is released, and the same precheck passes.
+    """
+    from cratekit.core import tree_registry
+    from cratekit.core.cause import CratekitError
+    from tests.test_intake_imported import _verified_snapshot
+
+    _verified_snapshot(installed)
+    _code, _refusal, minted = _mint_through_the_cli()
+    assert minted["data"]["summary"]["recorded"] is True
+    session_id = _hard_killed_gated_write(installed)
+    assert session.read_record(session_id, installed).state is session.SessionState.OPEN
+
+    export = tmp_path / "fresh-export.xml"
+    export.write_text("<DJ_PLAYLISTS/>")
+    with pytest.raises(CratekitError) as refused:
+        tree_registry.assert_cutover_ready(installed, export=export)
+    assert refused.value.cause.reason == "cutover-open-run"
+
+    code, asked, envelope = _release()
+    assert [row["session_id"] for row in asked["cause"]["detail"]["shown"]["orphans"]] == [
+        session_id
+    ]
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["abandoned"] == [session_id]
+    ended = session.read_record(session_id, installed)
+    assert ended.state is session.SessionState.ABANDONED
+    assert ended.ended is not None
+    tree_registry.assert_cutover_ready(installed, export=export)
+
+
+def test_a_record_whose_holder_is_alive_is_kept_open(installed):
+    """Ending a live run's record would release a capture it is still writing behind."""
+    here = session.current_holder()
+    session_id = _left_by(installed, here, session.SessionState.OPEN)
+    before = session.log_path(session_id, installed).read_bytes()
+
+    code, asked, envelope = _release()
+    assert asked["cause"]["detail"]["shown"]["orphans"] == []
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["abandoned"] == []
+    assert envelope["data"]["summary"]["kept"] == [session_id]
+    assert session.log_path(session_id, installed).read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "state",
+    [session.SessionState.AWAITING_IMPORT, session.SessionState.COMMITTED_UNVERIFIED],
+)
+def test_the_two_states_with_their_own_remedy_are_never_abandoned(installed, state):
+    """Each has its own remedy, an import or a restore, and abandoning either hides it.
+
+    The holder is dead in both, so the holder check alone would pass them. What
+    keeps them is the state check, which is why it is its own row in the table.
+    """
+    session_id = _left_by(installed, _a_process_that_is_gone(), state)
+    before = session.log_path(session_id, installed).read_bytes()
+
+    code, _asked, envelope = _release()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["abandoned"] == []
+    assert session.log_path(session_id, installed).read_bytes() == before
+
+
+def test_an_open_record_that_names_no_holder_is_never_abandoned(installed):
+    """No holder recorded is no proof, and an intake landing is exactly this shape.
+
+    A landing whose import was proven stays ``open`` across processes until a
+    cutover places its tracks (R-501), and it is opened without the lock, so it
+    carries no holder. A sweep that read "no holder" as "holder gone" would end
+    every one of them.
+    """
+    record = session.open_session(installed, workflow="intake")
+    before = session.log_path(record.session_id, installed).read_bytes()
+
+    code, _asked, envelope = _release()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["abandoned"] == []
+    assert envelope["data"]["summary"]["kept"] == [record.session_id]
+    assert session.log_path(record.session_id, installed).read_bytes() == before
+
+
+def test_a_live_lock_holder_refuses_and_abandons_nothing(installed):
+    """The release refuses first, so no record is ended behind a running session."""
+    _lock_recording(installed, session.current_holder())
+    session_id = _left_by(installed, _a_process_that_is_gone(), session.SessionState.OPEN)
+
+    code, _asked, envelope = _release()
+    assert envelope["cause"]["reason"] == "session-lock-held", envelope
+    assert session.read_record(session_id, installed).state is session.SessionState.OPEN
+
+
+def test_aborting_the_release_abandons_nothing(installed):
+    """The gate covers the records as well as the lock."""
+    session_id = _left_by(installed, _a_process_that_is_gone(), session.SessionState.OPEN)
+
+    code, _asked, envelope = _release("abort")
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert session.read_record(session_id, installed).state is session.SessionState.OPEN
+
+
+def test_a_release_that_only_abandons_is_a_change_and_passes_the_contract(installed):
+    """No lock to clear and one record ended is an OK outcome, not a no-op."""
+    from cratekit.cli import output
+
+    session_id = _left_by(installed, _a_process_that_is_gone(), session.SessionState.OPEN)
+
+    code, _asked, envelope = _release()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] != "no_op", envelope
+    assert envelope["data"]["summary"]["released"] is False
+    assert envelope["data"]["summary"]["abandoned"] == [session_id]
+    assert output.envelope_problems(envelope) == [], envelope
 
 
 # ═══════════════════════════════════════════════════════════════════════════

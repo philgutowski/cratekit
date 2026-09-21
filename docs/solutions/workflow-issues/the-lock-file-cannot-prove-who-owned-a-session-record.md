@@ -1,0 +1,90 @@
+---
+title: The lock file cannot prove who owned a session record, so the record carries its own holder
+date: 2026-09-21
+category: workflow-issues
+module: "src/cratekit/core/session.py"
+problem_type: workflow_issue
+component: seam_design
+root_cause: incorrect_assumption
+resolution_type: code_fix
+severity: medium
+symptoms:
+  - "A gated write was SIGKILLed and its session record reads `open` for ever"
+  - "The cutover precheck refuses with `cutover-open-run` and its first step is one no verb offers"
+  - "`session release` reports nothing recorded, although a dead process left the record"
+applies_when:
+  - "Deciding whether some state a process left behind can be cleaned up because that process is gone"
+  - "Reusing the stale lock proof (`holder_alive`) for anything other than the lock itself"
+  - "Staging a hard kill in a test"
+  - "Adding an open state that can outlive its process on purpose, like an intake landing"
+tags:
+  - "session"
+  - "lock"
+  - "hard-kill"
+  - "holder"
+  - "r-598"
+---
+
+# The lock file cannot prove who owned a session record
+
+## Problem
+
+A gated write that is hard killed runs no exit code, so the session record the
+gates opened stays `open`. The ledger entry and the card both suggested
+`session release` as the fix, on the reasoning that it already proves the lock's
+holder is dead and a record opened under that lock belongs to the same process.
+
+## Why the obvious fix does not hold
+
+The lock file names only the LAST holder. On a local filesystem the kernel drops
+the lock when the process dies, so the next gated session acquires it and
+overwrites the holder record. The gates do not refuse on an open record, only on
+a `committed-unverified` one, so that next session runs. After it, the lock file
+names a live or cleanly finished process and says nothing about the one that
+left the record. A release keyed on the lock file's holder would work only if
+the person ran it before any other write, which is not a property a verb can
+rely on.
+
+## What was done
+
+The record carries its own copy of the holder. `assert_gates` works out one
+claimant, `holder or current_holder()`, and hands the same value to the lock and
+to the record, under `detail.holder`. `session.orphaned` then asks three things
+of a record: the state is exactly `open`, a holder is recorded, and
+`holder_alive` says that holder is gone.
+
+Each condition keeps a record somebody still needs:
+
+- `awaiting-import` is ended by an import and `committed-unverified` by a
+  restore. Widening the state check to `not terminal` abandons both.
+- An intake landing opens without the lock, names no holder, and stays `open`
+  across processes ON PURPOSE when its only debt is a deferred placement
+  (R-501). Reading "no holder" as "holder gone" would end every one of them.
+  That is the trap in this area: `open` does not mean "a process is running".
+- `holder_alive` fails towards alive on another host, another boot and a
+  missing start time. So a power loss, where the holder is from the previous
+  boot, is NOT proven gone. That is R-647, and the fix is a machine identity
+  two machines cannot share, not loosening `holder_alive`.
+
+## Staging a real hard kill in the suite
+
+A gate entered and never exited in the test process is not a kill: the lock
+stays held by that process and the record's holder is alive. Fork instead. The
+child inherits the test's monkeypatched platform seams, enters the gates with
+`Keep.RECORD`, and sends itself `SIGKILL`. The parent waits and asserts the child
+died by that signal. Put `signal.alarm` in the child, because a lock another
+thread held at the fork stays held in the child and would hang the suite
+instead of failing it. Every path in the child ends in `os._exit`. See
+`_hard_killed_gated_write` in `tests/test_session_cli.py`.
+
+Do not add a `pytest.mark.skipif` for platforms without fork. The pending
+registry refuses a skip built anywhere but `tests/_pending.py`.
+
+## An explicit gate's answer is not bound to what its question showed
+
+The question and the answer are two invocations. `session.release.confirm`
+declares no digest, so the answering invocation acts on what it reads then, not
+on what was shown. Narrowing the engine to a list the shell hands it does not
+help, because the shell builds that list in the answering invocation. The
+mutation row for that narrowing is a zero for exactly this reason. Binding needs
+`digest_source` on the gate, which is R-648.

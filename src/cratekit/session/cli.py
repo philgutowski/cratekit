@@ -51,6 +51,13 @@ opening one would need the acknowledgment it exists to create, which is a verb
 that can never run on the library it is for. ``session.release`` acquires the
 lock file directly through the engine and gives it straight back.
 
+``session.release`` ALSO ENDS WHAT A DEAD HOLDER LEFT OPEN (R-598). A gated
+write that was hard killed ran no exit code, so its session record stays open,
+keeps its capture from retention and refuses every cutover. The record names the
+process that held the lock, and once that process is provably gone the record is
+abandoned here, through the ungated close. It is the same proof this verb
+already makes about the lock, so it is the same verb.
+
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, and that one is foundation-ranked under KTD25 for the reason
 ``session.restore_cli`` gives beside it: a modules-layer file reaching for
@@ -344,12 +351,19 @@ def release_lock(ctx) -> Envelope:
     # second as the first tells a person nothing is wrong on the one surface
     # that could have told them something is.
     unreadable = holder is None and path.exists() and bool(path.read_bytes().strip())
+    # THE OPEN RECORDS A DEAD HOLDER LEFT ARE SHOWN BEFORE THE QUESTION (R-598),
+    # for the reason the holder is: the person decides over what will be ended.
+    orphans = [record for record in session.records(cfg) if session.orphaned(record)]
     spec = _gate(ctx.entry, "session.release.confirm")
     option = ctx.gate.require(
         spec,
         context={
             "holder": holder.to_json() if holder is not None else None,
             "record": "unreadable" if unreadable else ("present" if holder else "absent"),
+            "orphans": [
+                {"session_id": record.session_id, "workflow": record.workflow}
+                for record in orphans
+            ],
         },
     )
     if option == "abort":
@@ -357,28 +371,55 @@ def release_lock(ctx) -> Envelope:
             data={"checks": [], "summary": {"released": False, "aborted": True}},
             outcome=Outcome.NO_OP,
         )
+    # THE LOCK FIRST, so a holder still running refuses before any record is
+    # ended behind it. The records are judged again, since the answer may come
+    # long after the question, and only among those this invocation listed. The
+    # answer is not bound to what the ASKING invocation listed, for orphans as
+    # for the holder above, and that is R-648.
     cleared = session.release_stale_lock(cfg)
+    abandoned = [
+        record.session_id
+        for record in session.abandon_orphaned_sessions(
+            cfg, only=[record.session_id for record in orphans]
+        )
+    ]
+    kept = [record.session_id for record in session.records(cfg) if not record.terminal]
+    # ``key``, for the reason the acknowledgment's rows give: it is the field the
+    # check table renders and ``name`` prints as a question mark.
+    checks = [
+        {
+            "key": "session.record",
+            "status": "ok",
+            "detail": f"abandoned {session_id}, its holder is gone",
+        }
+        for session_id in abandoned
+    ]
     if cleared is None:
         return ctx.envelope(
             data={
-                "checks": [],
+                "checks": checks,
                 "summary": {
                     "released": False,
                     "recorded": False,
                     "unreadable": unreadable,
+                    "abandoned": abandoned,
+                    "kept": kept,
                 },
             },
-            outcome=Outcome.NO_OP,
+            outcome=Outcome.OK if abandoned else Outcome.NO_OP,
         )
     return ctx.envelope(
         data={
-            # ``key``, for the reason the acknowledgment's rows give: it is the
-            # field the check table renders and ``name`` prints as a question
-            # mark.
             "checks": [
-                {"key": "session.lock", "status": "ok", "detail": cleared.describe()}
+                {"key": "session.lock", "status": "ok", "detail": cleared.describe()},
+                *checks,
             ],
-            "summary": {"released": True, "holder": cleared.to_json()},
+            "summary": {
+                "released": True,
+                "holder": cleared.to_json(),
+                "abandoned": abandoned,
+                "kept": kept,
+            },
         }
     )
 
