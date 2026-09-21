@@ -696,10 +696,18 @@ def _gone_since_an_earlier_boot(holder: Holder, reference: Holder) -> bool:
     * the holder's boot must be EARLIER, past the clock drift margin. A later or
       a nearby reading is either the same boot read twice or a clock nobody can
       reason about;
-    * the holder's start time must be known, so the last check can ask about it;
-    * and no process with its identifier may be running now with its start time,
-      or with one this platform will not report. A live match means the "earlier
-      boot" was this boot after all, read through a clock that moved.
+    * and no process with its identifier may be running now AT ALL, whatever
+      start time it reports, and the platform must say so rather than decline.
+
+    THE LAST CONDITION DOES NOT COMPARE START TIMES, and that is deliberate. A
+    stepped clock moves the boot reading, and on Linux it moves a live process's
+    reported start time by the same amount, because that is derived from the
+    boot reading. A live holder read through such a clock carries a boot that
+    looks earlier and a start time that looks recycled, and a comparison would
+    clear its claim mid write. Any live process with the identifier keeps the
+    claim instead. The cost is a record kept until an unrelated process that
+    inherited the number after the restart exits, which is the side to be wrong
+    on.
     """
     if UNKNOWN_IDENTITY in (holder.machine, reference.machine):
         return False
@@ -711,14 +719,10 @@ def _gone_since_an_earlier_boot(holder: Holder, reference: Holder) -> bool:
         return False
     if not math.isfinite(earlier_by) or earlier_by <= BOOT_DRIFT_SECONDS:
         return False
-    if holder.started == UNKNOWN_IDENTITY:
-        return False
-    exists = process_exists(holder.pid)
-    if exists is None:
-        return False
-    if exists and process_started(holder.pid) in (holder.started, UNKNOWN_IDENTITY):
-        return False
-    return True
+    # False is the one answer that proves it. True may be the holder itself and
+    # None is a platform declining to say; see the docstring for why a start
+    # time is not asked.
+    return process_exists(holder.pid) is False
 
 
 def holder_alive(holder: Holder, *, here: Holder | None = None) -> bool:

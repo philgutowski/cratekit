@@ -836,7 +836,6 @@ def test_a_holder_from_an_earlier_boot_of_this_machine_is_gone(cfg):
         ("a later boot", {"boot": "1086400"}),
         ("a boot that is not a number", {"boot": "yesterday"}),
         ("a boot that is not finite", {"boot": "-inf"}),
-        ("no recorded start time", {"started": session.UNKNOWN_IDENTITY}),
     ],
 )
 def test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine(
@@ -872,13 +871,20 @@ def test_a_live_process_read_through_a_moved_clock_is_kept(cfg):
     assert session.holder_alive(moved, here=here) is True
 
 
-def test_a_live_process_whose_start_time_cannot_be_read_is_kept(cfg, monkeypatch):
-    """A recycled identifier is not proven when the platform will not say when it began."""
+def test_a_live_process_whose_start_time_moved_with_the_clock_is_kept(cfg):
+    """The Linux shape of a stepped clock, where the start time moves with the boot.
+
+    Linux derives a process's start time from the boot reading, so a live holder
+    read after a forward step reports a start time that differs from the one it
+    recorded. Comparing the two would read the holder as a recycled identifier
+    and clear a claim mid write, so a live identifier keeps the claim whatever
+    start time it reports.
+    """
     here = _here()
-    recycled = _before_a_power_loss(here, pid=here.pid)
-    assert session.holder_alive(recycled, here=here) is False
-    monkeypatch.setattr(session, "process_started", lambda pid: session.UNKNOWN_IDENTITY)
-    assert session.holder_alive(recycled, here=here) is True
+    stepped = _before_a_power_loss(
+        here, pid=here.pid, started=f"{float(here.started) - 86400:.3f}"
+    )
+    assert session.holder_alive(stepped, here=here) is True
 
 
 def test_a_platform_that_cannot_say_whether_the_process_exists_keeps_it(cfg, monkeypatch):
