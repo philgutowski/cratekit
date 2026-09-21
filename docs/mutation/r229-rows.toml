@@ -1,0 +1,214 @@
+name = "r229"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_a_third_suffices"
+description = "The share of a record's tracks a crate must still carry drops from a half to a third, so two of five is recognised"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''SHARED_DENOMINATOR = 2'''
+new = '''SHARED_DENOMINATOR = 3'''
+
+[[rows]]
+id = "L2_exactly_half_is_not_enough"
+description = "Exactly half no longer qualifies, the boundary moved from at least to more than"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''    return shared >= 1 and shared * SHARED_DENOMINATOR >= len(written) * SHARED_NUMERATOR'''
+new = '''    return shared >= 1 and shared * SHARED_DENOMINATOR > len(written) * SHARED_NUMERATOR'''
+
+[[rows]]
+id = "L3_nothing_shared_is_a_match"
+description = "The at least one shared track guard is removed, so an empty record is carried by anything"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''    return shared >= 1 and shared * SHARED_DENOMINATOR >= len(written) * SHARED_NUMERATOR'''
+new = '''    return shared * SHARED_DENOMINATOR >= len(written) * SHARED_NUMERATOR'''
+
+[[rows]]
+id = "L4_an_eighth_of_the_crate"
+description = "The crate side bound loosens from a quarter to an eighth, so a crate one past quadrupled is recognised"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''GROWN_DENOMINATOR = 4'''
+new = '''GROWN_DENOMINATOR = 8'''
+
+[[rows]]
+id = "L5_no_crate_side_bound"
+description = "A candidate is judged on the record's side alone, so a three thousand track crate is offered an eight track orphan"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''            if _still_carries(written, wanted) and _grown_within(written, wanted):'''
+new = '''            if _still_carries(written, wanted):'''
+
+[[rows]]
+id = "L6_a_living_crate_is_a_candidate"
+description = "A recorded key the export still carries is offered, so two crates sharing their tracks adopt each other"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        if key in living and (not written or _still_carries(written, living[key])):'''
+new = '''        if False and (not written or _still_carries(written, living[key])):'''
+
+[[rows]]
+id = "L7_a_reused_path_keeps_its_record"
+description = "A displaced record is never freed, so a crate renamed away from a reused path forks as it did before"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        if key in living and (not written or _still_carries(written, living[key])):'''
+new = '''        if key in living:'''
+
+[[rows]]
+id = "L8_a_living_legacy_record_is_freed"
+description = "A legacy record under a living path is freed with no contents to say the path was reused"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        if key in living and (not written or _still_carries(written, living[key])):'''
+new = '''        if key in living and _still_carries(written, living[key]):'''
+
+[[rows]]
+id = "L9_an_empty_list_is_a_legacy_record"
+description = "A record this build wrote with no contents qualifies by name, as a record from before the field existed does"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        elif _legacy(record) and _same_name(key, name):'''
+new = '''        elif _same_name(key, name):'''
+
+[[rows]]
+id = "L10_a_name_matches_by_bare_suffix"
+description = "The name rule drops the separator, so Big Crate is recognised as Crate"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''    return bool(name) and (recorded_key == name or recorded_key.endswith("/" + name))'''
+new = '''    return bool(name) and (recorded_key == name or recorded_key.endswith(name))'''
+
+[[rows]]
+id = "L11_an_empty_name_matches"
+description = "The empty name guard is removed, so a nameless playlist matches any key ending in the separator"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''    return bool(name) and (recorded_key == name or recorded_key.endswith("/" + name))'''
+new = '''    return recorded_key == name or recorded_key.endswith("/" + name)'''
+
+[[rows]]
+id = "L12_the_first_of_several_is_adopted"
+description = "Two candidates are settled by taking the first rather than reported and left"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''    if len(found) != 1:
+        return Recognition(crate=len(wanted), candidates=candidates)'''
+new = '''    if not found:
+        return Recognition(crate=len(wanted), candidates=candidates)'''
+
+[[rows]]
+id = "L13_a_mismatch_is_never_said"
+description = "A record under the crate's own path written from other music is reported as an ordinary update"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        mismatched = bool(written) and not _still_carries(written, wanted)'''
+new = '''        mismatched = False'''
+
+[[rows]]
+id = "L14_a_recorded_crate_is_a_claimant"
+description = "A living crate with its own remote playlist is named as the one a mismatched record belongs to"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''                and not (playlists.get(key) or {}).get("remote_id")
+'''
+new = ''''''
+
+[[rows]]
+id = "L15_every_item_moves_the_record"
+description = "Under a frozen adoption the crate's own key is not looked at first, so the second item finds the old record gone and refuses"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        if adopts:
+            if own:
+                return _settled(cfg, document, playlist_key, held)
+'''
+new = '''        if adopts:
+'''
+
+[[rows]]
+id = "L16_a_moved_record_is_not_followed"
+description = "The confirmed remote id is ignored, so a half driven job whose record moved creates a second playlist"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        if expected and own != expected:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "L17_a_late_job_rewrites_the_contents"
+description = "A job following its record to the crate's new path overwrites what the crate holds now with what it held then"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''            return _settled(cfg, document, holders[0], ())'''
+new = '''            return _settled(cfg, document, holders[0], held)'''
+
+[[rows]]
+id = "L18_contents_grow"
+description = "The recorded contents are appended to rather than replaced, which is the ever growing log the review found"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        record["tracks"] = contents
+        dirty = True'''
+new = '''        record["tracks"] = [*_listed(record, "tracks"), *contents]
+        dirty = True'''
+
+[[rows]]
+id = "L19_a_copy_not_a_move"
+description = "The adopted record is copied to the new key and left under the old one, so two keys name one remote playlist"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''    record = playlists.pop(recorded_key)'''
+new = '''    record = dict(playlists[recorded_key])'''
+
+[[rows]]
+id = "C1_the_offer_is_not_digested"
+description = "The adoption never joins the confirm digest, so a confirmed update authorises a queue that creates"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''    if adopts:
+        covered["adopts"] = adopts'''
+new = '''    if False:
+        covered["adopts"] = adopts'''
+
+[[rows]]
+id = "C2_the_flag_declines_nothing"
+description = "The new playlist flag is read and ignored, so a wrong offer cannot be declined"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''        found = found.declined()'''
+new = '''        pass'''
+
+[[rows]]
+id = "C3_no_remote_id_is_frozen"
+description = "The job freezes no remote id, so nothing can follow a record that moves after the job is confirmed"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''                REMOTE: found.own_remote_id or found.remote_id or None,'''
+new = '''                REMOTE: None,'''
+
+[[rows]]
+id = "C4_an_item_is_the_crate"
+description = "The worker hands the engine no crate contents, so each item records itself as the whole crate"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''        contents=[str(track) for track in payload.get(shell.TRACKS) or ()],'''
+new = '''        contents=None,'''
+
+[[rows]]
+id = "C5_the_worker_adopts_nothing"
+description = "The frozen adoption never reaches the engine, which is the tree before this unit at drive time"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''        adopts=str(payload.get(ADOPTS) or ""),'''
+new = '''        adopts="",'''
+
+[[rows]]
+id = "S1_the_resume_digests_three_keys"
+description = "The resume ignores what a shell adds to its digest, so a confirmed adoption meets a stale decision on every respawn"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''                **(frozen_extra(payload) if frozen_extra is not None else {}),
+'''
+new = ''''''
