@@ -161,9 +161,11 @@ ANALYSIS_SHARE_ABSENT = "analysis-share-absent"
 #: A STABLE MIRROR AND NOT A COPY INSIDE EACH DATED SNAPSHOT (R-338). Dated
 #: snapshots are never rotated and copy whole, so a share of a few gigabytes
 #: inside each one fills a consumer quota within a handful of runs, after which
-#: the backup itself fails. A mirror costs the share once, and its dated archive
-#: keeps one run undoable, which is what the library mirror already gives a share
-#: that sits under the root.
+#: the backup itself fails. A mirror costs the share once plus what changes, and
+#: its dated archive keeps every run undoable. THAT ARCHIVE IS NEVER ROTATED,
+#: unlike the library mirror's, so it grows by whatever rekordbox rewrote between
+#: runs. Recorded as a residual rather than pruned here, because a prune is a
+#: delete on the remote and this unit's brief is a read and a copy.
 SHARE_DEST_DIRNAME = "analysis-share"
 
 #: The mirror's folder for a library with no identity a path can carry. The
@@ -1271,6 +1273,29 @@ def _prune_archive(
 # ---------------------------------------------------------------------------
 
 
+class ShareRestore(StrEnum):
+    """What a restore does about the analysis share, in one word (R-338).
+
+    Four answers because there are four facts, and a boolean over them would
+    fold two of them into "nothing was pulled", which is the silence this
+    finding was about. Single words on purpose: a hyphenated value would join
+    the population the reserved cause guard reads as cause shaped.
+    """
+
+    #: The share sits under the library root, so the mirror half carries it and
+    #: the database half has nothing to do.
+    MIRRORED = "mirrored"
+    #: Outside the root, held on the remote, and a transfer is planned.
+    PULLED = "pulled"
+    #: Outside the root, and the remote holds no mirror of it, which is every
+    #: backup taken before the share was carried. Rows come back without grids.
+    ABSENT = "absent"
+    #: Outside the root, and the place it would land is under the analysis
+    #: watch, so it is NOT pulled and the remote is not asked. See
+    #: :func:`_plan_restore_inside_the_gates`.
+    WITHHELD = "withheld"
+
+
 @dataclass(frozen=True, slots=True)
 class RestorePlan:
     """What a restore will do, including the sidecars it clears first.
@@ -1292,11 +1317,10 @@ class RestorePlan:
     #: The identity the snapshot's own marker records, normalized, or None for a
     #: snapshot that carries no marker and was pulled because it was named.
     recorded_volume: str | None = None
-    #: True when the analysis share sits outside the library root and the remote
-    #: holds no mirror of it, so this restore brings back rows without their
-    #: grids. Named rather than transferred, as ``absent_sidecars`` is. Always
-    #: False for a share under the root, which the mirror half carries.
-    share_absent: bool = False
+    #: What this restore does about the analysis share. Named on the plan, as
+    #: ``absent_sidecars`` is, so a restore that pulled nothing for the share
+    #: cannot read as one that pulled it.
+    share: ShareRestore = ShareRestore.MIRRORED
 
 
 def database_target_for(cfg: config.Config, target: Path) -> Path:
@@ -1660,6 +1684,7 @@ def plan_restore(
     snapshot_volume: str | None = None,
     accept_unrecorded: bool | None = None,
     include_mirror: bool = False,
+    pull_share: bool = True,
     runner: Runner = subprocess_runner,
     process_lister: ProcessLister | None = None,
     gates: GateGuard | None = None,
@@ -1676,6 +1701,13 @@ def plan_restore(
     different costs and are wanted at different times. Recovering from a bad
     write means the database alone; recovering from a dead drive means both, and
     the second is hundreds of gigabytes.
+
+    ``pull_share`` is for the one caller that already knows it will not spend the
+    database half, the bare metal recovery of a library whose database was never
+    on the lost volume. An outside share rides that half, so with this off it is
+    WITHHELD and the remote is not asked about it: a listing that fails refuses
+    the plan, and refusing a recovery of the music over a share nobody was going
+    to pull is a refusal with no reason behind it.
 
     THE MIRROR IS PULLED WITH A COPY, NEVER A SYNC. A sync would make the target
     match the remote by DELETING anything the remote does not have, and the
@@ -1704,6 +1736,7 @@ def plan_restore(
             snapshot_volume=snapshot_volume,
             accept_unrecorded=accept_unrecorded,
             include_mirror=include_mirror,
+            pull_share=pull_share,
             runner=runner,
             process_lister=process_lister,
         )
@@ -1718,6 +1751,7 @@ def _plan_restore_inside_the_gates(
     snapshot_volume: str | None,
     accept_unrecorded: bool | None,
     include_mirror: bool,
+    pull_share: bool,
     runner: Runner,
     process_lister: ProcessLister | None,
 ) -> RestorePlan:
@@ -1822,26 +1856,40 @@ def _plan_restore_inside_the_gates(
     # SYNC, for the reason the mirror half gives: the share beside a database
     # being restored may hold analysis the mirror never saw.
     #
+    # NOT UNDER THE ANALYSIS WATCH. A restore onto the live library runs inside a
+    # session that fingerprints every analysis file under the library root and
+    # the live share, and refuses at its close when one appeared or changed.
+    # Driven on 2026-09-20: a share pulled there ended the restore refused as
+    # moved analysis files, after the database had already been replaced. So a
+    # landing place the watch covers is WITHHELD, said on the plan, and the
+    # remote is not asked a question whose answer could change nothing. The
+    # share comes back through a restore that names a target, which is also the
+    # one restore that lands this layout's database where the person chose.
+    #
     # WHOSE SHARE: the library the snapshot's marker names. An unmarked snapshot
     # falls back to this configuration's identity, because a marker that failed
     # to write is a warning and the same run still mirrored the share under it.
-    share_absent = False
+    share = ShareRestore.MIRRORED
     if _outside_share(cfg) is not None:
+        landing = database_target.parent / analysis_store.SHARE_DIRNAME
         whose = resolved.recorded_volume or cfg.library.volume_id
-        if share_is_held(cfg, identity=whose, runner=runner):
+        if not pull_share or analysis_store.is_watched(cfg, landing):
+            share = ShareRestore.WITHHELD
+        elif share_is_held(cfg, identity=whose, runner=runner):
+            share = ShareRestore.PULLED
             commands.append(
                 Command(
                     label=RESTORE_SHARE,
                     argv=(
                         rclone, "copy",
                         f"{share_destination(cfg, identity=whose)}/current",
-                        str(database_target.parent / analysis_store.SHARE_DIRNAME),
+                        str(landing),
                         "--transfers", "8", "--checkers", "16",
                     ),
                 )
             )
         else:
-            share_absent = True
+            share = ShareRestore.ABSENT
     return RestorePlan(
         target=target,
         database_target=database_target,
@@ -1850,7 +1898,7 @@ def _plan_restore_inside_the_gates(
         commands=tuple(commands),
         absent_sidecars=tuple(absent),
         recorded_volume=resolved.recorded_volume,
-        share_absent=share_absent,
+        share=share,
     )
 
 
@@ -2046,6 +2094,7 @@ __all__ = [
     "RESTORE_SHARE",
     "SNAPSHOT_SHARE",
     "RestorePlan",
+    "ShareRestore",
     "absent_analysis_share",
     "database_fileset",
     "database_target_for",

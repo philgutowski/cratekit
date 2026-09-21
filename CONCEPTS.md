@@ -479,8 +479,10 @@ different key shape, regenerable, and no row resolves into it. A database
 outside the library root takes its share with it.
 In that layout the library mirror never reaches it, so the backup's database
 portion mirrors it to `analysis-share/<volume identity>/current` under the
-snapshot root, with a dated `archive` beside it, and a restore copies it back
-beside wherever the database lands (R-338).
+snapshot root, with a dated `archive` beside it. A restore that names a target
+copies it back beside the restored database. A restore onto the live library
+withholds it, because that session's analysis watch refuses any analysis file
+that moves (R-338).
 
 ### Pending register
 The one declaration of guards whose subject does not exist yet. Each entry names

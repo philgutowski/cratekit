@@ -571,7 +571,7 @@ def test_a_restore_puts_an_outside_share_back_beside_the_database(
         str(plan.database_target.parent / analysis_store.SHARE_DIRNAME),
     )
     assert plan.commands[-1] == shares[0], "the share is pulled before the database set"
-    assert plan.share_absent is False
+    assert plan.share is backup.ShareRestore.PULLED
 
     backup.run_restore(plan, outside, runner=remote, gates=_open_gates)
     assert remote.labelled(backup.RESTORE_SHARE) == shares
@@ -589,7 +589,7 @@ def test_the_share_is_listed_before_anything_is_cleared(outside, rclone_on_path,
 
     assert log.exists(), "planning cleared a sidecar"
     assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
-    assert plan.share_absent is True
+    assert plan.share is backup.ShareRestore.ABSENT
 
 
 def test_a_share_mirror_that_lists_empty_is_absent_too(outside, rclone_on_path, tmp_path):
@@ -598,7 +598,7 @@ def test_a_share_mirror_that_lists_empty_is_absent_too(outside, rclone_on_path, 
     plan = _planned(outside, tmp_path / "recovered", remote)
 
     assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
-    assert plan.share_absent is True
+    assert plan.share is backup.ShareRestore.ABSENT
 
 
 def test_a_share_mirror_that_could_not_be_listed_refuses_before_the_sidecars_go(
@@ -640,7 +640,54 @@ def test_a_contained_restore_neither_lists_nor_pulls_a_share(
 
     assert remote.labelled(backup.LIST_SHARE) == []
     assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
-    assert plan.share_absent is False
+    assert plan.share is backup.ShareRestore.MIRRORED
+
+
+def test_a_share_that_would_land_under_the_analysis_watch_is_withheld_and_not_asked_about(
+    outside, volume, home, rclone_on_path
+):
+    """A live restore is watched for moved analysis files, so it is not handed any.
+
+    Both watched roots, because either one ends the session refused: the library
+    root, where this layout's database lands today, and the live share's own
+    parent, where it would land if that were ever corrected.
+    """
+    home.mkdir(parents=True)
+    for target in (volume, home):
+        remote = _Remote()
+
+        plan = _planned(outside, target, remote)
+
+        assert plan.share is backup.ShareRestore.WITHHELD, target
+        assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
+        assert remote.labelled(backup.LIST_SHARE) == [], (
+            "the remote was asked a question whose answer could change nothing, "
+            "and a listing that fails refuses the restore"
+        )
+
+
+def test_a_caller_that_will_not_spend_the_database_half_is_not_refused_over_the_share(
+    outside, rclone_on_path, tmp_path
+):
+    """The bare metal recovery's switch: withheld, and the remote is never asked."""
+    remote = _Remote(share="", share_exit=1)
+    target = tmp_path / "recovered"
+    target.mkdir()
+
+    plan = backup.plan_restore(
+        outside,
+        target=target,
+        confirmed=True,
+        snapshot=STAMP,
+        pull_share=False,
+        runner=remote,
+        process_lister=lambda: (),
+        gates=_open_gates,
+    )
+
+    assert plan.share is backup.ShareRestore.WITHHELD
+    assert remote.labelled(backup.LIST_SHARE) == []
+    assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
 
 
 def test_a_rehearsed_restore_transfers_no_share(outside, rclone_on_path, tmp_path):

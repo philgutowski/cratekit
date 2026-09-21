@@ -1132,14 +1132,14 @@ def test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar(cfg, t
 
 
 @pytest.mark.parametrize(
-    ("listing", "pulled", "absent"),
+    ("listing", "pulled", "word"),
     [
-        ("PIONEER/\n", (backup.RESTORE_DATABASE, backup.RESTORE_SHARE), False),
-        ("", (backup.RESTORE_DATABASE,), True),
+        ("PIONEER/\n", (backup.RESTORE_DATABASE, backup.RESTORE_SHARE), "pulled"),
+        ("", (backup.RESTORE_DATABASE,), "absent"),
     ],
 )
 def test_a_restore_in_the_outside_layout_says_whether_the_share_came_back(
-    cfg, tmp_path, listing, pulled, absent
+    cfg, tmp_path, listing, pulled, word
 ):
     """R-338 at the report a person reads: the grids arrived, or it says they did not.
 
@@ -1176,9 +1176,56 @@ def test_a_restore_in_the_outside_layout_says_whether_the_share_came_back(
     )
 
     assert report.pulled == pulled
-    assert report.share_absent is absent
+    assert report.share == word
     totals = restore_cli._performed(report, {"digest": "d"})["totals"]
-    assert totals["analysis_share_absent"] is absent
+    assert totals["analysis_share"] == word
+
+
+def test_a_live_restore_in_the_outside_layout_withholds_the_share_and_closes_clean(
+    cfg, tmp_path
+):
+    """Driven against the REAL analysis watch, with a runner that really writes.
+
+    The first version of this pulled the share on every outside restore. On the
+    live path that put analysis files under the watched library root, and the
+    session closed refused as moved analysis files after the database had
+    already been replaced. The runner below writes a grid wherever a share
+    transfer is aimed, so a pull that came back would fail this the same way.
+    """
+    home = tmp_path / "home" / "rekordbox"
+    home.mkdir(parents=True)
+    (home / "master.db").write_bytes(b"live")
+    outside = replace(
+        cfg,
+        library=replace(
+            cfg.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-20",
+        ),
+    )
+    acknowledge(outside)
+
+    def runner(command):
+        if command.label == backup.RESTORE_SHARE:
+            grid = Path(command.argv[3]) / "PIONEER" / "USBANLZ" / "8d2" / "k" / "ANLZ0000.DAT"
+            grid.parent.mkdir(parents=True, exist_ok=True)
+            grid.write_bytes(b"PMAI")
+        answers = {backup.LIST_SNAPSHOT_CONTENTS: "master.db\n", backup.LIST_SHARE: "PIONEER/\n"}
+        return backup.CommandResult(returncode=0, stdout=answers.get(command.label, ""))
+
+    report = restore_cli.restore_under_one_session(
+        outside,
+        session_id=None,
+        from_backup=True,
+        snapshot="2026-08-01T000000Z",
+        runner=runner,
+        process_lister=lambda: (),
+        **gate_seams(outside),
+    )
+
+    assert report.pulled == (backup.RESTORE_DATABASE,)
+    assert report.share == "withheld"
+    assert not list(Path(outside.library.root).rglob("ANLZ*"))
 
 
 def test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect(installed):
@@ -2735,9 +2782,9 @@ def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_
     # THE SHARE RIDES THE DATABASE HALF (R-338). It was beside the database, so
     # it was never on the lost volume either, and the remote holding a mirror of
     # it is not a reason to pour gigabytes of it onto the replacement.
-    assert [c.label for c in remote.calls if c.label == backup.LIST_SHARE], (
-        "the share was never planned, so its absence from the transfers pins nothing"
-    )
+    # Withheld before the remote is asked, so a listing that fails cannot
+    # refuse a recovery of the music over a share it was never going to pull.
+    assert [c.label for c in remote.calls if c.label == backup.LIST_SHARE] == []
     assert not (target / "share").exists()
     assert (home / "master.db").read_bytes() == b"alive, and never on the lost volume"
     assert report.database == ()
