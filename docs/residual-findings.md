@@ -24697,6 +24697,38 @@ honour it on rerun, which needs `replacing_existing=True` and so inherits R-585.
 **Closes when:** an interrupted recovery can be run again with no manual step,
 and a test interrupts one and reruns it.
 
+**NARROWED, 2026-09-21, by relay/186 (the R-592 card).** Option (1), no marker.
+`restore.assert_recovery_target` now refuses only when a file exists where THIS
+library's database or one of its companions lands,
+`restore.recovered_database_fileset`, pinned to `backup.database_target_for` by
+`test_the_occupancy_fileset_is_the_one_the_restore_plan_writes`. That is the one
+fileset a recovery replaces: the mirror is `rclone copy` and deletes nothing, and
+the database half clears and overwrites exactly those paths. The restore mirror
+now passes the backup mirror's own excludes, `backup._mirror_excludes`, so a
+remote mirror taken before the backup excluded the database cannot land it
+there either (found by the built in review). `restore_cli.RERUN_STEP` became
+`rerun_step(database_target)`, naming that fileset only, and only a failure at
+or after the database half carries it. `replacing_existing` is still never
+passed, so R-585 is not reached. Driven in `tests/test_restore_cli.py`: a
+database half that failed, and a mirror cut off after landing `queue.db` and a
+capture, each rerun with nothing removed and complete. A library whose database
+sits at the landing path is still refused, a lone companion included.
+
+**What is still open.** A database half that lands part of the fileset, the
+database and not its log, leaves a target the rerun refuses, because a database
+at that path cannot be told from somebody else's library by the target alone.
+The step names those files and nothing else, and
+`test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step`
+follows it. Only option (2), the marker, removes that, and it inherits R-585.
+
+**What the narrowing gave up, stated rather than left to be found.** A target
+holding somebody else's library whose database is at a DIFFERENT relative path
+is no longer refused. Nothing of it is deleted, since the mirror is a copy, and
+its database is not written, but a file of theirs at a path the mirror also
+carries is overwritten. Reachability unmeasured: no producer of a replacement
+drive already holding a second library was driven. Mutation tables
+`docs/mutation/r592-a.md` to `r592-c.md`, 16 rows, the author's own, all killed.
+
 ---
 
 ## R-593. A bare metal recovery lands coupled state and a database that can describe different moments

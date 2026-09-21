@@ -1,0 +1,16 @@
+name = "r592-c"
+pass_kind = "light"
+
+# R-592, relay/186, fix round 1. Row B3 of r592-b measured zero on the full
+# suite: no test failed a rehearsal's database half. The test added for it is
+# test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything,
+# and this row is B3 measured again against it.
+
+[[rows]]
+id = "C1_step_on_a_rehearsal_remeasured"
+description = "_half_failed: give the removal step to a rehearsal whose database half failed, though a rehearsal landed nothing (B3 of r592-b, re-measured)"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    if not dry_run and half == DATABASE_HALF:'''
+new = '''    if half == DATABASE_HALF:'''

@@ -1,0 +1,88 @@
+name = "r592-a"
+pass_kind = "light"
+
+# R-592, relay/186. The engine's occupancy guard, narrowed from any database file
+# anywhere under the target to the fileset this library's database lands as.
+# Rows A1 to A7 are this round's own diff in core/restore.py; A8 is a fixed
+# sample of an existing guard beside it, the stub check the brief says must stay
+# untouched.
+
+[[rows]]
+id = "A1_occupancy_guard_removed"
+description = "assert_recovery_target: find nothing occupied whatever the target holds, so a library whose database sits where this one lands is replaced unasked"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''    existing = [entry for entry in recovered_database_fileset(cfg, where) if entry.exists()]'''
+new = '''    existing = []'''
+
+[[rows]]
+id = "A2_database_dropped_from_fileset"
+description = "recovered_database_fileset: return the companions only, so a database already at the landing path is not an occupied target"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''    return (landing, *companions)'''
+new = '''    return companions'''
+
+[[rows]]
+id = "A3_companions_dropped_from_fileset"
+description = "recovered_database_fileset: return the database only, so a lone write-ahead log the database half would clear is not an occupied target"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''    return (landing, *companions)'''
+new = '''    return (landing,)'''
+
+[[rows]]
+id = "A4_fileset_not_rebased"
+description = "recovered_database_fileset: land the database at its bare name at the top of the target for every layout, so the guard tests a path the transfer never writes"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''        landing = target / database.relative_to(cfg.library.root)
+    except ValueError:'''
+new = '''        landing = target / database.name
+    except ValueError:'''
+
+[[rows]]
+id = "A5_replacing_existing_inverted"
+description = "assert_recovery_target: refuse an occupied target only when it WAS named for replacement"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''    if existing and not replacing_existing:'''
+new = '''    if existing and replacing_existing:'''
+
+[[rows]]
+id = "A6_old_suffix_rule_restored"
+description = "assert_recovery_target: put the recursive any-database rule back, the behaviour R-592 records, so every interrupted recovery is refused on rerun"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''    existing = [entry for entry in recovered_database_fileset(cfg, where) if entry.exists()]'''
+new = '''    existing = sorted(entry for entry in where.rglob("*.db") if entry.is_file())'''
+
+[[rows]]
+id = "A7_companion_suffix_wrong"
+description = "recovered_database_fileset: name each companion with a dot before its suffix, master.db.-wal, so no real companion is ever found"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''        landing.with_name(landing.name + sidecar.suffix)
+        for sidecar in config.state_file("rekordbox_db").sidecars
+    )
+    return (landing, *companions)'''
+new = '''        landing.with_name(landing.name + "." + sidecar.suffix)
+        for sidecar in config.state_file("rekordbox_db").sidecars
+    )
+    return (landing, *companions)'''
+
+[[rows]]
+id = "A8_sample_stub_check_beside"
+description = "SAMPLE, existing guard: assert_recovery_target refuses only a stub at or under the configured root, not the suffixed name beside it"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''    if (inside_configured or beside_configured) and not probe(where):'''
+new = '''    if inside_configured and not probe(where):'''

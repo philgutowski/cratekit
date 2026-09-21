@@ -1852,9 +1852,15 @@ def _plan_restore_inside_the_gates(
         commands.append(
             Command(
                 label=RESTORE_MIRROR,
+                # THE BACKUP MIRROR'S OWN EXCLUDES, the database fileset
+                # included. A mirror taken before that exclusion existed can
+                # still hold the database, and landing it here puts a file where
+                # the database half writes, which a bare-metal rerun refuses as
+                # an occupied target (R-592). The database comes from the
+                # snapshot and nowhere else.
                 argv=(
                     rclone, "copy", str(cfg.backup.dest), str(target),
-                    *_exclude_args(VOLUME_EXCLUDES),
+                    *_exclude_args(_mirror_excludes(cfg)),
                     "--transfers", "8", "--checkers", "16",
                 ),
             )

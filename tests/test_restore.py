@@ -1490,11 +1490,62 @@ def test_bare_metal_recovery_refuses_a_target_holding_a_library_in_a_subdirector
     assert "named for replacement" in excinfo.value.cause.message
 
 
-def test_bare_metal_recovery_refuses_a_target_that_already_holds_a_library(cfg, tmp_path):
+def test_bare_metal_recovery_opens_over_databases_it_would_not_replace(cfg, tmp_path):
+    """R-592: an interrupted recovery leaves the state directory's own databases.
+
+    The mirror carries the review queue and every capture, and deletes nothing, so
+    a database anywhere but where this library's lands is neither replaced nor
+    reason to refuse the rerun that finishes the job. Untouched afterwards.
+    """
     seams = _volume_is_gone(cfg)
     target = tmp_path / "recovered"
-    target.mkdir()
-    (target / "master.db").write_bytes(b"somebody else's library")
+    left = {
+        ".cratekit/queue.db": b"the queue the mirror carried",
+        ".cratekit/snapshots/one/master.db": b"a capture the mirror carried",
+        "deep/er/master.db": b"somebody else's library, elsewhere on the drive",
+    }
+    for relative, body in left.items():
+        (target / relative).parent.mkdir(parents=True, exist_ok=True)
+        (target / relative).write_bytes(body)
+
+    with restore.bare_metal_session(
+        cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
+    ) as open_session:
+        assert open_session.authorises == target
+
+    assert {r: (target / r).read_bytes() for r in left} == left
+
+
+def test_the_occupancy_fileset_is_the_one_the_restore_plan_writes(cfg, tmp_path):
+    """The guard and the transfer re-base the database separately; held together here."""
+    fileset = restore.recovered_database_fileset(cfg, tmp_path)
+    assert fileset[0] == tmp_path / "db" / "master.db"
+    assert fileset[0] == backup.database_target_for(cfg, tmp_path)
+    assert {p.name for p in fileset[1:]} >= {"master.db-wal", "master.db-shm"}
+    assert all(p.parent == fileset[0].parent for p in fileset)
+
+    outside = dataclasses.replace(
+        cfg,
+        library=dataclasses.replace(
+            cfg.library,
+            db_path=tmp_path / "home" / "master.db",
+            db_outside_root_acknowledged_on="2026-09-21",
+        ),
+    )
+    assert restore.recovered_database_fileset(outside, tmp_path)[0] == tmp_path / "master.db"
+    assert restore.recovered_database_fileset(outside, tmp_path)[0] == (
+        backup.database_target_for(outside, tmp_path)
+    )
+
+
+def test_bare_metal_recovery_refuses_a_target_that_already_holds_a_library(cfg, tmp_path):
+    """A COMPANION ALONE IS AN OCCUPIED TARGET. The database half clears every
+    companion at this path before it copies, so a lone write-ahead log here is a
+    file the recovery would delete, whoever it belongs to (R-592)."""
+    seams = _volume_is_gone(cfg)
+    target = tmp_path / "recovered"
+    (target / "db").mkdir(parents=True)
+    (target / "db" / "master.db-wal").write_bytes(b"somebody else's library")
 
     with pytest.raises(CratekitError) as excinfo:
         with restore.bare_metal_session(

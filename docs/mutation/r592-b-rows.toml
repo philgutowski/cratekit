@@ -1,0 +1,71 @@
+name = "r592-b"
+pass_kind = "light"
+
+# R-592, relay/186. The session layer's rerun step and the restore mirror's
+# excludes. B1 to B6 are this round's own diff; B7 is a fixed sample of the
+# existing split into halves that the rerun step depends on.
+
+[[rows]]
+id = "B1_step_on_every_failure"
+description = "_half_failed: give the removal step to a mirror failure too, sending a person to delete files the mirror never lands"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    if not dry_run and half == DATABASE_HALF:'''
+new = '''    if not dry_run:'''
+
+[[rows]]
+id = "B2_step_on_the_wrong_half"
+description = "_half_failed: give the removal step to the mirror half and not the database half, so a database half that landed part of the fileset says nothing about it"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    if not dry_run and half == DATABASE_HALF:'''
+new = '''    if not dry_run and half == MIRROR_HALF:'''
+
+[[rows]]
+id = "B3_step_on_a_rehearsal"
+description = "_half_failed: give the removal step to a rehearsal whose database half failed, though a rehearsal landed nothing"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    if not dry_run and half == DATABASE_HALF:'''
+new = '''    if half == DATABASE_HALF:'''
+
+[[rows]]
+id = "B4_step_names_the_wrong_directory"
+description = "rerun_step: name the target rather than the directory the database lands in, so the person looks for it in the wrong place"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        f"companion of it in {database_target.parent} if one is there, because a "'''
+new = '''        f"companion of it in {database_target.parent.parent} if one is there, because a "'''
+
+[[rows]]
+id = "B5_step_names_no_file"
+description = "rerun_step: say the database rather than its file name, so the step does not say which file to remove"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''        f"before running the recovery again, remove {database_target.name} and any "'''
+new = '''        f"before running the recovery again, remove the database and any "'''
+
+[[rows]]
+id = "B6_restore_mirror_carries_the_database"
+description = "_plan_restore_inside_the_gates: exclude volume clutter only from the restore mirror, so a mirror still holding the database lands it where the database half writes"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_backup_cli.py", "tests/test_restore.py"]
+old = '''                    rclone, "copy", str(cfg.backup.dest), str(target),
+                    *_exclude_args(_mirror_excludes(cfg)),'''
+new = '''                    rclone, "copy", str(cfg.backup.dest), str(target),
+                    *_exclude_args(VOLUME_EXCLUDES),'''
+
+[[rows]]
+id = "B7_sample_halves_split"
+description = "SAMPLE, existing guard: _halves hands the whole plan to the mirror half, so a failed mirror lands the database behind it"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)'''
+new = '''    mirror = tuple(decided.commands)'''

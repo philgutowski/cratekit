@@ -1219,18 +1219,26 @@ class BareMetalReport:
     database_elsewhere: Path | None = None
 
 
-#: What a rerun needs, said once because three different failures end in it. The
-#: engine refuses a target holding ANY database file, and the mirror carries
-#: several of this product's own: the review queue and every capture live in the
-#: state directory beside the library, which the mirror copies. So once a half
-#: has landed, the rerun is refused until they are gone, and removing them loses
-#: nothing, because the rerun transfers every one of them again.
-RERUN_STEP = (
-    "before running the recovery again, remove every file ending .db under the "
-    "target, because a target holding one is refused; each came from the mirror "
-    "or the snapshot, and the rerun transfers it again along with whatever else "
-    "has not arrived"
-)
+def rerun_step(database_target: Path) -> str:
+    """What a rerun needs after a failure that may have landed the database.
+
+    NARROWER THAN IT WAS (R-592). The engine used to refuse a target holding ANY
+    database file, and the mirror carries several of this product's own, the
+    review queue and every capture, so every rerun needed every one removed. It
+    now refuses only the fileset at ``database_target``, the one path the
+    database half writes, and the session opened over a target holding none of
+    it. So whatever is there arrived during this run, from the snapshot or from a
+    rekordbox opened onto the new volume, and removing it loses nothing because
+    the rerun transfers the database again. A MIRROR THAT FAILED LANDS NONE OF IT,
+    which is why that failure carries no step of this kind.
+    """
+    return (
+        f"before running the recovery again, remove {database_target.name} and any "
+        f"companion of it in {database_target.parent} if one is there, because a "
+        f"target already holding this library's database is refused; whatever is "
+        f"there arrived during this run, and the rerun transfers the database "
+        f"again. Nothing else on the target needs removing"
+    )
 
 
 def _database_elsewhere(cfg: config.Config) -> Path | None:
@@ -1289,12 +1297,14 @@ def _half_failed(
     THE RESERVED SENTENCE FOR A FAILED TRANSFER IS FALSE HERE, which is why it
     is not reused. It says the live companion files were cleared and tells the
     person to run the restore again. Nothing was cleared, because the target
-    held no database, and a rerun is refused until what this run landed is
-    removed (:data:`RERUN_STEP`). The slug and its exit code are kept; the
-    engine's own sentence, which carries the return code, rides in the detail.
+    held no database, and a rerun is refused while any of the database fileset
+    this run may have landed is still there (:func:`rerun_step`). The slug and
+    its exit code are kept; the engine's own sentence, which carries the return
+    code, rides in the detail.
 
-    A REHEARSAL LANDED NOTHING, so its rerun needs nothing removed and the step
-    is left off rather than sending a person to delete files that are not there.
+    ONLY A FAILURE AT OR AFTER THE DATABASE HALF CARRIES THAT STEP. A mirror that
+    failed never reached the database half, and a rehearsal landed nothing, so
+    neither sends a person to delete files that are not there.
     """
     slug = str(exc.refusal)
     detail: dict[str, Any] = {
@@ -1326,7 +1336,10 @@ def _half_failed(
             f"way, and the database half was not attempted, so the target holds "
             f"no database from the snapshot"
         )
-        steps = ("check the remote is reachable",)
+        steps = (
+            "check the remote is reachable, then run the recovery again; what "
+            "arrived stays and nothing needs removing first",
+        )
     else:
         message = (
             f"the mirror half completed and the database half of the recovery "
@@ -1334,8 +1347,8 @@ def _half_failed(
             f"one of its companions may have arrived without the rest"
         )
         steps = ("do not open the library", "check the remote is reachable")
-    if not dry_run:
-        steps = (*steps, RERUN_STEP)
+    if not dry_run and half == DATABASE_HALF:
+        steps = (*steps, rerun_step(decided.database_target))
     return CratekitError(
         Cause(
             reason=slug,
@@ -1371,10 +1384,10 @@ def recover_under_bare_metal_session(
     FOR. That guard substitutes the three library-scoped gates, which all sit on
     the disk that died, and says what each substitute is worth. Nothing here
     softens one: the library must be genuinely gone, the target must be a real
-    filesystem holding no database, a person must be at a terminal, and
-    ``accepted`` is the acknowledgment. All four are the engine's refusals and
-    are raised before its lock is taken, so a refused recovery leaves the disk
-    as it found it.
+    filesystem holding no database where this one lands, a person must be at a
+    terminal, and ``accepted`` is the acknowledgment. All four are the engine's
+    refusals and are raised before its lock is taken, so a refused recovery
+    leaves the disk as it found it.
 
     ``held.guard`` IS THE ``gates`` SEAM FOR BOTH ENGINE CALLS, for the reason
     :func:`restore_under_one_session` gives, and with one more here: left to
@@ -1604,5 +1617,6 @@ __all__ = [
     "perform_bare_metal",
     "perform_restore",
     "recover_under_bare_metal_session",
+    "rerun_step",
     "restore_under_one_session",
 ]
