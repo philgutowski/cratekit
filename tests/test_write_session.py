@@ -833,6 +833,7 @@ def test_a_holder_from_an_earlier_boot_of_this_machine_is_gone(cfg):
         ("another machine with this host name", {"machine": "f" * 32}),
         ("recorded before the machine identity", {"machine": session.UNKNOWN_IDENTITY}),
         ("a boot inside the drift margin", {"boot": "999990"}),
+        ("a boot exactly at the drift margin", {"boot": "999940"}),
         ("a later boot", {"boot": "1086400"}),
         ("a boot that is not a number", {"boot": "yesterday"}),
         ("a boot that is not finite", {"boot": "-inf"}),
@@ -850,6 +851,21 @@ def test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine(
     """
     here = _here()
     assert session.holder_alive(_before_a_power_loss(here, **changes), here=here) is True, label
+
+
+def test_a_boot_just_past_the_drift_margin_is_gone(cfg):
+    """The margin is sixty seconds, pinned from both sides by this and the row above."""
+    here = _here()
+    assert session.BOOT_DRIFT_SECONDS == 60.0
+    assert session.holder_alive(_before_a_power_loss(here, boot="999939"), here=here) is False
+
+
+def test_two_unknown_machine_identities_are_not_one_machine(cfg):
+    """Unknown on both sides compares equal as text, and proves nothing."""
+    here = replace(_here(), machine=session.UNKNOWN_IDENTITY)
+    gone = _before_a_power_loss(here)
+    assert gone.machine == here.machine == session.UNKNOWN_IDENTITY
+    assert session.holder_alive(gone, here=here) is True
 
 
 def test_this_machine_with_no_identity_keeps_every_holder_from_another_boot(cfg):
