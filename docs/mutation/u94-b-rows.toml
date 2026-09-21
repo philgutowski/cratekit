@@ -9,9 +9,9 @@ description = "analyze_calibrate: ask what the walk left out and fit anyway with
 file = "src/cratekit/analysis/cli.py"
 surface = "user"
 old = '''        if partial is not None and not accepted:
-            return _calibrate_refusal(ctx, _refused(partial), summary, omitted)'''
+            return _calibrate_refusal(ctx, _partial_refused(partial), summary, omitted)'''
 new = '''        if False:
-            return _calibrate_refusal(ctx, _refused(partial), summary, omitted)'''
+            return _calibrate_refusal(ctx, _partial_refused(partial), summary, omitted)'''
 
 [[rows]]
 id = "W2_unreadable_not_counted"
@@ -25,7 +25,7 @@ new = '''    left_out = len(scan.skipped_links)
 
 [[rows]]
 id = "W3_accepted_reads_ok"
-description = "_accepted: report an accepted partial as ok, so it reads as the library wide fit on the check row"
+description = "_partial_accepted: report an accepted partial as ok, so it reads as the library wide fit on the check row"
 file = "src/cratekit/analysis/cli.py"
 surface = "user"
 old = '''        "skipped",

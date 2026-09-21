@@ -29,10 +29,10 @@ description = "analyze_calibrate: never refuse a walk known to be partial before
 file = "src/cratekit/analysis/cli.py"
 surface = "user"
 old = '''    if partial is not None and not accepted:
-        return _calibrate_refusal(ctx, _refused(partial), summary)
+        return _calibrate_refusal(ctx, _partial_refused(partial), summary)
 '''
 new = '''    if False:
-        return _calibrate_refusal(ctx, _refused(partial), summary)
+        return _calibrate_refusal(ctx, _partial_refused(partial), summary)
 '''
 
 [[rows]]

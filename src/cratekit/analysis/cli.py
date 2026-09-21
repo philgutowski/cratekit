@@ -1237,7 +1237,7 @@ def _partial_after_walk(scan: discovery.Scan) -> tuple[str, str] | None:
     )
 
 
-def _refused(partial: tuple[str, str]) -> dict[str, str | None]:
+def _partial_refused(partial: tuple[str, str]) -> dict[str, str | None]:
     what, fix = partial
     return _sample_row(
         "failed",
@@ -1247,7 +1247,7 @@ def _refused(partial: tuple[str, str]) -> dict[str, str | None]:
     )
 
 
-def _accepted(partial: tuple[str, str]) -> dict[str, str | None]:
+def _partial_accepted(partial: tuple[str, str]) -> dict[str, str | None]:
     """NOT ``ok``. An accepted partial must not read as the library wide fit."""
     what, fix = partial
     return _sample_row(
@@ -1360,7 +1360,7 @@ def analyze_calibrate(ctx) -> Envelope:
     _require_library_root(cfg)
     partial = _partial_before_walk(cfg, folder, recursive=recursive)
     if partial is not None and not accepted:
-        return _calibrate_refusal(ctx, _refused(partial), summary)
+        return _calibrate_refusal(ctx, _partial_refused(partial), summary)
 
     scan = discovery.scan_audio(folder, recursive=recursive)
     # SAID ON EVERY ANSWER BELOW, the empty one included.
@@ -1384,7 +1384,7 @@ def analyze_calibrate(ctx) -> Envelope:
     if partial is None:
         partial = _partial_after_walk(scan)
         if partial is not None and not accepted:
-            return _calibrate_refusal(ctx, _refused(partial), summary, omitted)
+            return _calibrate_refusal(ctx, _partial_refused(partial), summary, omitted)
     _require_heavy(energy.extractor_bound(), "measuring a folder's energy")
 
     sampled = stride_sample(paths, sample)
@@ -1396,7 +1396,7 @@ def analyze_calibrate(ctx) -> Envelope:
             None,
         )
         if partial is None
-        else _accepted(partial),
+        else _partial_accepted(partial),
         _calibrate_energy(cfg, folder, sampled, len(paths), left_out),
         _calibrate_vocals(cfg, folder, paths, left_out),
     ]
