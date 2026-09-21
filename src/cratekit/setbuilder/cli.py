@@ -14,13 +14,19 @@ and the first one found wins. Building a set around the WRONG anchor is the wors
 answer this verb can give, because every pick after it is internally consistent
 and therefore looks right.
 
-WHAT THAT COSTS, STATED RATHER THAN HIDDEN. Because the anchor is resolved by
-path against the index, an unowned anchor cannot be expressed at all, and neither
-can a supplied Camelot key. The engine supports both, and both exist to serve a
-web lookup this unit deliberately does not ship. A verb whose grounding rule is
-"index membership IS ownership" has nothing to say about a track that is not in
-the index, so it refuses rather than offering a set built from a key nobody
-measured.
+AN UNOWNED ANCHOR IS A SEPARATE, EXPLICIT FORM, added by U98 for the "should I
+buy this" question: ``--unowned LABEL --key 8A`` ranks the library against a
+track it does not hold. Three rules keep it from undoing the decision above.
+The key is REQUIRED, because nothing here looks one up and a set built from a
+key nobody supplied is the confident wrong answer the engine refuses to invent.
+The label is resolved against an EMPTY index, so the fuzzy owned match the path
+form exists to avoid can never happen by this route either; the label is a
+display string and nothing else. And the envelope says so, ``owned`` false and
+``key_needs_confirming`` true, so a consumer cannot read the picks as grounded
+in the library's own analysis of the anchor. ``--key`` and ``--bpm`` with a path
+anchor are REFUSED rather than ignored, because the path form takes both from
+the library and a flag that silently does nothing tells a person their value
+was used.
 
 THIS VERB WRITES NOTHING, INCLUDING NO CACHE. ``build_index`` accepts a
 ``cache_path`` and there is a declared state file, ``setbuilder_index_cache``,
@@ -48,6 +54,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -111,12 +118,70 @@ def positive_count(text: str) -> int:
     return value
 
 
+def camelot_key(text: str) -> str:
+    """Parse ``--key`` to the engine's canonical Camelot form, AT THE PARSER.
+
+    A code off the wheel is the same kind of statement ``--count 0`` is, a value
+    the flag cannot take, so it is the parser's status 2 rather than a refusal.
+    Canonicalized here so the engine receives exactly the spelling its index
+    carries, and "08A" and "8A" are one key.
+    """
+    canonical = setbuilder.canonical_key(text)
+    if not canonical:
+        raise ValueError(f"{text!r} is not a Camelot code between 1A and 12B")
+    return canonical
+
+
+def positive_tempo(text: str) -> float:
+    """Parse ``--bpm``, refusing zero, negatives and non-finite values.
+
+    NOT A GUARD AGAINST WRITING, since this verb writes nothing; a guard against
+    a silently empty answer. ``in_band`` compares every candidate against the
+    supplied tempo, so NaN excludes the whole library and zero or a negative
+    excludes everything but tracks within the band of nothing, and each would
+    come back as an honest looking "nothing here mixes with it".
+    """
+    value = float(text)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{text!r} is not a positive tempo")
+    return value
+
+
 def build(parser, entry) -> None:
     """Declare the surface. ``entry`` is untyped so this layer does not name it."""
     del entry
-    parser.add_argument(
+    # One or the other and never both, decided by the parser: a path and a label
+    # together would leave the verb choosing which question was asked.
+    anchor = parser.add_mutually_exclusive_group()
+    anchor.add_argument(
         "anchor",
+        nargs="?",
+        default=None,
         help="the track to build around, as a path under the library",
+    )
+    anchor.add_argument(
+        "--unowned",
+        default=None,
+        metavar="LABEL",
+        help=(
+            "build around a track the library does not hold, named by LABEL; "
+            "needs --key, and nothing looks the key up"
+        ),
+    )
+    parser.add_argument(
+        "--key",
+        type=camelot_key,
+        default=None,
+        metavar="CODE",
+        help="the Camelot key of an --unowned anchor, as you know it",
+    )
+    parser.add_argument(
+        "--bpm",
+        dest="tempo",
+        type=positive_tempo,
+        default=None,
+        metavar="N",
+        help="the tempo of an --unowned anchor, used for ranking and never written",
     )
     parser.add_argument(
         "--count",
@@ -216,8 +281,49 @@ def anchor_in_index(path: Path, index: Sequence[setbuilder.Track]) -> setbuilder
     return None
 
 
+def owned_anchor(track: setbuilder.Track) -> setbuilder.Anchor:
+    """An indexed track as the engine's anchor, every value from the library."""
+    return setbuilder.Anchor(
+        key=track.key,
+        bpm=track.bpm,
+        owned=True,
+        track=track,
+        display=track.display,
+    )
+
+
+def unowned_anchor(label: str, key: str | None, tempo: float | None) -> setbuilder.Anchor:
+    """A track the library does not hold, from the values a person supplied.
+
+    Resolved through the engine against an EMPTY index, and the emptiness is the
+    guarantee: ``resolve_anchor`` tries a fuzzy owned match first, and with no
+    index there is nothing for it to match, so a label that happens to resemble
+    an owned title cannot quietly become that title. With no key the engine
+    answers unresolved rather than guessing, and that is a refusal here.
+    """
+    if not label:
+        raise refuse(
+            "setbuild-anchor-unknown",
+            "setbuild needs the track to build the set around",
+            steps=("pass a label with --unowned, and its Camelot key with --key",),
+            origin=("setbuilder", "cli"),
+        )
+    resolved = setbuilder.resolve_anchor(label, (), key=key, bpm=tempo)
+    if resolved.key is None:
+        raise refuse(
+            "setbuild-unowned-key-missing",
+            f"{label} is not in your library and no Camelot key was supplied for "
+            f"it, and nothing here looks a key up, so there is nothing to rank "
+            f"the library against",
+            steps=("pass the track's Camelot key with --key, for example --key 8A",),
+            origin=("setbuilder", "cli"),
+            detail={"label": label, "unresolved": resolved.unresolved},
+        )
+    return resolved
+
+
 def plan_for(
-    anchor: setbuilder.Track,
+    anchor: setbuilder.Track | setbuilder.Anchor,
     index: Sequence[setbuilder.Track],
     *,
     declared,
@@ -241,15 +347,17 @@ def plan_for(
 
     THE ANCHOR IS IN THE DIGEST as well as the items. Two anchors with the same
     companions are two different plans, and without the anchor a consumer holding
-    a digest could not tell which question it answered.
+    a digest could not tell which question it answered. That includes WHETHER IT
+    IS OWNED: the rendered anchor carries ``owned`` and ``key_needs_confirming``,
+    so an owned anchor and an unowned one in the same key are two digests even
+    when every companion is the same.
+
+    An indexed ``Track`` is wrapped as an owned anchor. A resolved ``Anchor``,
+    which is how an unowned one arrives, is used as given and may carry no
+    track; the engine's pool and ranking read every track signal through
+    ``anchor.track`` guardedly and score an absent one neutral.
     """
-    resolved = setbuilder.Anchor(
-        key=anchor.key,
-        bpm=anchor.bpm,
-        owned=True,
-        track=anchor,
-        display=anchor.display,
-    )
+    resolved = anchor if isinstance(anchor, setbuilder.Anchor) else owned_anchor(anchor)
     ranked = setbuilder.rank(
         setbuilder.build_pool(resolved, index),
         resolved,
@@ -303,6 +411,9 @@ def set_build(ctx) -> Envelope:
     An empty answer is OK and not a failure. A library holding the anchor and
     nothing compatible with it is a true report, and the person asked a question
     that has "nothing here mixes with it" as a legitimate answer.
+
+    The unowned form is decided first and the flag check after it, both before
+    the scan, so a refused invocation never pays for a walk of the library.
     """
     cfg = _load()
     root = Path(cfg.library.root)
@@ -314,10 +425,27 @@ def set_build(ctx) -> Envelope:
             origin=("setbuilder", "cli"),
             detail={"root": str(root)},
         )
+    if ctx.args.unowned is not None:
+        anchor = unowned_anchor(ctx.args.unowned, ctx.args.key, ctx.args.tempo)
+        index = setbuilder.build_index(root, template=_template(cfg))
+        return _emit(ctx, anchor, index)
+    if ctx.args.key is not None or ctx.args.tempo is not None:
+        raise refuse(
+            "setbuild-supplied-needs-unowned",
+            "--key and --bpm describe a track the library does not hold, and a "
+            "path anchor takes both from the library's own analysis, so the "
+            "supplied value would be ignored",
+            steps=(
+                "drop --key and --bpm to build around the owned track",
+                "or pass --unowned LABEL instead of a path",
+            ),
+            origin=("setbuilder", "cli"),
+            detail={"key": ctx.args.key, "tempo": ctx.args.tempo},
+        )
     candidate = anchor_path(str(ctx.args.anchor or ""), root)
     index = setbuilder.build_index(root, template=_template(cfg))
-    anchor = anchor_in_index(candidate, index)
-    if anchor is None:
+    track = anchor_in_index(candidate, index)
+    if track is None:
         raise refuse(
             "setbuild-anchor-not-indexed",
             f"{candidate} is not in the library index, so nothing can be ranked "
@@ -330,6 +458,10 @@ def set_build(ctx) -> Envelope:
             origin=("setbuilder", "cli"),
             detail={"anchor": str(candidate), "indexed": len(index)},
         )
+    return _emit(ctx, track, index)
+
+
+def _emit(ctx, anchor, index: Sequence[setbuilder.Track]) -> Envelope:
     plan = plan_for(
         anchor,
         index,
@@ -346,7 +478,11 @@ __all__ = [
     "anchor_in_index",
     "anchor_path",
     "build",
+    "camelot_key",
+    "owned_anchor",
     "plan_for",
     "positive_count",
+    "positive_tempo",
     "set_build",
+    "unowned_anchor",
 ]

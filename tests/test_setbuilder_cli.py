@@ -15,6 +15,7 @@ wrote one would be testing a shape the product refuses to produce.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import shutil
@@ -25,6 +26,7 @@ import pytest
 from cratekit import cli
 from cratekit.cli import output, registry
 from cratekit.core import config, tags, taxonomy
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.tools import setbuilder
 from cratekit.setbuilder import cli as setbuild_cli
@@ -188,6 +190,109 @@ def test_the_same_anchor_and_index_always_digest_the_same(index):
     assert first["digest"] == second["digest"]
 
 
+def test_an_unowned_anchor_in_8a_ranks_the_library_against_it(index):
+    """U98's scenario: companions for a track the index does not hold."""
+    anchor = setbuild_cli.unowned_anchor("Oak - Not Bought Yet", "8A", None)
+    plan = setbuild_cli.plan_for(anchor, index, declared=TAXONOMY)
+
+    assert plan["totals"]["anchor"]["owned"] is False
+    assert plan["totals"]["anchor"]["key_needs_confirming"] is True
+    assert plan["totals"]["anchor"]["key"] == "8A"
+    assert plan["totals"]["anchor"]["display"] == "Oak - Not Bought Yet"
+    assert plan["items"], "an unowned 8A anchor found no companions in the fixture"
+    tiers = setbuilder.compatible_keys("8A")
+    assert all(item["key"] in tiers for item in plan["items"])
+    assert "Wrong Key" not in {item["title"] for item in plan["items"]}
+
+
+def test_an_unowned_label_that_names_an_owned_title_is_never_matched_to_it(index):
+    """The empty index is the guarantee, so drive a label that WOULD fuzzy match.
+
+    Given the index, ``resolve_anchor`` would resolve this label to the owned
+    "Anchor Work", take its key and exclude it from the pool. Against the empty
+    index it cannot, so the owned copy comes back as a companion and the key is
+    the supplied one rather than the library's.
+    """
+    owned = anchor_of(index)
+    assert setbuilder.resolve_anchor(owned.display, index, key="9A").owned, (
+        "the label no longer fuzzy matches the owned track, so this measures nothing"
+    )
+    anchor = setbuild_cli.unowned_anchor(owned.display, "9A", None)
+    plan = setbuild_cli.plan_for(anchor, index, declared=TAXONOMY)
+
+    assert anchor.owned is False and anchor.track is None
+    assert plan["totals"]["anchor"]["key"] == "9A"
+    assert owned.path in {item["path"] for item in plan["items"]}
+
+
+def test_an_unowned_anchor_with_no_key_refuses():
+    with pytest.raises(CratekitError) as caught:
+        setbuild_cli.unowned_anchor("Oak - Not Bought Yet", None, None)
+    assert caught.value.cause.reason == "setbuild-unowned-key-missing"
+    assert caught.value.cause.remediation.steps
+
+
+def test_an_empty_unowned_label_refuses_as_an_unknown_anchor():
+    with pytest.raises(CratekitError) as caught:
+        setbuild_cli.unowned_anchor("", "8A", None)
+    assert caught.value.cause.reason == "setbuild-anchor-unknown"
+
+
+@pytest.mark.parametrize("text", ["13C", "13A", "0A", "8C", "", "eight"])
+def test_a_key_off_the_wheel_is_refused_at_the_parser(text):
+    with pytest.raises(ValueError):
+        setbuild_cli.camelot_key(text)
+
+
+def test_a_key_is_canonicalized_at_the_parser():
+    assert setbuild_cli.camelot_key("08A") == "8A"
+    assert setbuild_cli.camelot_key("12b") == "12B"
+
+
+@pytest.mark.parametrize("text", ["0", "-124", "nan", "inf", "-inf"])
+def test_a_tempo_that_would_empty_the_pool_is_refused_at_the_parser(text):
+    with pytest.raises(ValueError):
+        setbuild_cli.positive_tempo(text)
+
+
+def test_a_supplied_tempo_narrows_an_unowned_anchor_to_its_band(index):
+    """``--bpm`` is a ranking input: with it, the tempo band applies."""
+    keyless = setbuild_cli.plan_for(
+        setbuild_cli.unowned_anchor("Oak", "8A", None), index, declared=TAXONOMY
+    )
+    banded = setbuild_cli.plan_for(
+        setbuild_cli.unowned_anchor("Oak", "8A", 124.0), index, declared=TAXONOMY
+    )
+    assert "Right Key Wrong Tempo" in {item["title"] for item in keyless["items"]}
+    assert "Right Key Wrong Tempo" not in {item["title"] for item in banded["items"]}
+    assert banded["totals"]["anchor"]["tempo"] == 124.0
+
+
+def test_an_owned_and_an_unowned_anchor_in_one_key_digest_apart(index):
+    """Ownership is part of the question, so it is part of the identity.
+
+    Built so that EVERY OTHER INPUT IS EQUAL. The owned anchor sits outside the
+    index and carries no genre, energy or vocal reading, which is exactly what an
+    unowned anchor contributes, and the label is its display. The items therefore
+    come out identical and the rendered anchor differs only in ``owned`` and
+    ``key_needs_confirming``, so the digest is the only thing left to tell them
+    apart.
+    """
+    owned = dataclasses.replace(
+        track("Oak", "Not Bought Yet", "8A", 124.0), genre=None, energy=None
+    )
+    first = setbuild_cli.plan_for(owned, index, declared=TAXONOMY)
+    second = setbuild_cli.plan_for(
+        setbuild_cli.unowned_anchor(owned.display, "8A", 124.0), index, declared=TAXONOMY
+    )
+
+    assert first["items"] == second["items"], (
+        "the two anchors ranked differently, so the digest is not the only difference"
+    )
+    assert first["items"], "no companions, so the comparison is between two empty plans"
+    assert first["digest"] != second["digest"]
+
+
 def test_a_role_narrows_the_answer_to_one_side(index):
     plan = setbuild_cli.plan_for(anchor_of(index), index, declared=TAXONOMY, role="before")
     assert plan["items"], "the fixture produced nothing for one side"
@@ -335,8 +440,6 @@ def test_a_relative_anchor_is_taken_against_the_library_and_not_the_process(tmp_
 
 
 def test_an_anchor_that_walks_out_of_the_library_is_refused(tmp_path):
-    from cratekit.core.cause import CratekitError
-
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     with pytest.raises(CratekitError) as caught:
@@ -652,6 +755,92 @@ def test_a_count_below_one_is_the_parsers_verdict_and_not_a_refusal(
     assert code == int(ExitCode.USAGE)
     assert not out.strip() and not err.strip(), "a usage failure emitted an envelope"
     assert "invalid positive_count value: '0'" in capsys.readouterr().err
+
+
+def test_an_unowned_anchor_is_ranked_through_the_dispatcher(configured, place):
+    """``crate setbuild --unowned LABEL --key 8A`` over a real library."""
+    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    place("Cedar", "Neighbour Up", "09A", 125, energy=8)
+    place("Gum", "Wrong Key", "03B", 124, energy=5)
+    library = Path(configured.library.root)
+    before = {p: p.stat().st_mtime_ns for p in sorted(library.rglob("*"))}
+
+    code, document = envelope_of(
+        ["setbuild", "--unowned", "Oak - Not Bought Yet", "--key", "08A", "--bpm", "124"]
+    )
+
+    assert code == int(ExitCode.OK)
+    assert document["outcome"] == "ok"
+    anchor = document["data"]["totals"]["anchor"]
+    assert anchor == {
+        "display": "Oak - Not Bought Yet",
+        "key": "8A",
+        "tempo": 124.0,
+        "owned": False,
+        "key_needs_confirming": True,
+        "unresolved": "",
+    }
+    titles = {item["title"] for item in document["data"]["items"]}
+    assert titles == {"Same Key Lower", "Neighbour Up"}
+    after = {p: p.stat().st_mtime_ns for p in sorted(library.rglob("*"))}
+    assert after == before, "the unowned form touched the library"
+
+
+def test_an_unowned_anchor_with_no_key_refuses_through_the_dispatcher(configured, place):
+    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    code, document = envelope_of(["setbuild", "--unowned", "Oak - Not Bought Yet"])
+
+    assert code == int(ExitCode.PRECONDITION)
+    assert document["cause"]["reason"] == "setbuild-unowned-key-missing"
+    assert document["cause"]["remediation"]["steps"]
+
+
+def test_a_key_off_the_wheel_is_the_parsers_verdict(configured, capsys):
+    code, out, err = drive(
+        ["--output", "json", "setbuild", "--unowned", "Oak", "--key", "13C"]
+    )
+    assert code == int(ExitCode.USAGE)
+    assert not out.strip() and not err.strip(), "a usage failure emitted an envelope"
+    assert "invalid camelot_key value: '13C'" in capsys.readouterr().err
+
+
+def test_a_path_and_an_unowned_label_together_are_the_parsers_verdict(
+    configured, place, capsys
+):
+    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    code, _, _ = drive(
+        ["--output", "json", "setbuild", str(anchor), "--unowned", "Oak", "--key", "8A"]
+    )
+    assert code == int(ExitCode.USAGE)
+    assert "not allowed with argument" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "flags", [["--key", "9A"], ["--bpm", "126"]], ids=["key", "tempo"]
+)
+def test_a_supplied_value_beside_a_path_anchor_refuses_rather_than_being_ignored(
+    configured, place, flags
+):
+    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+
+    code, document = envelope_of(["setbuild", str(anchor), *flags])
+
+    assert code == int(ExitCode.PRECONDITION)
+    assert document["cause"]["reason"] == "setbuild-supplied-needs-unowned"
+
+
+def test_a_path_anchor_is_unchanged_by_the_unowned_form(configured, place):
+    """The path form still reads owned, with the library's own key."""
+    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+
+    code, document = envelope_of(["setbuild", str(anchor)])
+
+    assert code == int(ExitCode.OK)
+    assert document["data"]["totals"]["anchor"]["owned"] is True
+    assert document["data"]["totals"]["anchor"]["key_needs_confirming"] is False
+    assert {item["title"] for item in document["data"]["items"]} == {"Same Key Lower"}
 
 
 def test_the_role_flag_reaches_the_engine(configured, place):

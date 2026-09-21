@@ -5000,7 +5000,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # that module's own, registered and not in the reserved table, exactly as
     # credential-missing beside it is. Population 169 to 170, non-reserved 142 to
     # 143, reserved half UNCHANGED at 27.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (170, 143, 27)
+    #
+    # Re-pinned on U98, 2026-09-20. TWO slugs, named rather than counted:
+    # setbuild-unowned-key-missing, which the set builder raises when an anchor
+    # the library does not hold is named with no Camelot key, and
+    # setbuild-supplied-needs-unowned, which it raises when a key or tempo is
+    # typed beside a path anchor that takes both from the library, so neither
+    # value is dropped in silence. Both are the verb's own, registered and not in
+    # the reserved table, exactly as the three setbuild-anchor slugs beside them
+    # are. Population 170 to 172, non-reserved 143 to 145, reserved half
+    # UNCHANGED at 27.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (172, 145, 27)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5548,7 +5558,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # carries when an outside share is not a directory, a warning and not a
     # cause because the database portion still runs. The one refusal the new
     # listing raises is no-snapshot-available, already reserved.
-    assert (len(literals), len(literals - set(causes))) == (476, 307), (
+    # Re-pinned on U98, 2026-09-20: 476 to 478 distinct, non-keys UNCHANGED at
+    # 307. TWO literals joined and NOTHING left, differenced as SETS over main's
+    # own `src/cratekit` read out of `git archive`. Named:
+    # setbuild-unowned-key-missing and setbuild-supplied-needs-unowned, both in
+    # `setbuilder/cli.py`, a holder already, and both KEYS, which is why the
+    # non-key half does not move.
+    assert (len(literals), len(literals - set(causes))) == (478, 307), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
