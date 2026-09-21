@@ -76,7 +76,7 @@ from cratekit.core import (
 )
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import ExitCode
-from cratekit.write import rebuild
+from cratekit.write import rebuild, routing_cli, routing_pass, trees
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import (
     RECORDED_APP_VERSION,
@@ -529,9 +529,215 @@ def test_a_confirmed_inbox_on_a_library_with_no_native_tree_says_so(stocked):
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["reason"] == "no-native-tree"
     assert envelope["data"]["totals"]["applied"] is False
+    assert envelope["data"]["totals"]["skipped_files"] == []
     assert not Path(stocked.library.db_path).exists(), (
         "the apply opened a database on a library that has flipped no tree"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Claim 3b: the apply names every file it skipped, and why (R-318)
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: A file dropped into the intake folder and never imported, the case R-318
+#: measured: a confirmed apply over it answered a count and no file.
+UNIMPORTED = "Third Track.flac"
+
+
+def _skipped_warnings(envelope: dict) -> list[str]:
+    return [
+        warning["message"]
+        for warning in envelope["warnings"]
+        if warning["code"] == routing_cli.SKIPPED_WARNING
+    ]
+
+
+def _set_row(cfg: config.Config, sql: str, *params: str) -> None:
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute(sql, params)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_a_confirmed_inbox_names_the_file_it_could_not_file_and_why(acknowledged, native):
+    """The measured cost in one test: twenty unimported files read as ``skipped: 20``.
+
+    The totals carry the file and a reason from the deferred pass's own
+    vocabulary, and the warning, which is what the human output prints, names the
+    file and says what to do next. Asserted beside the database, so the report is
+    checked against what the write actually did.
+    """
+    (_intake_dir(acknowledged) / UNIMPORTED).write_bytes(b"")
+
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert _membership(acknowledged, native) == {"2"}
+    totals = applied["data"]["totals"]
+    assert totals["skipped"] == 1
+    assert totals["skipped_files"] == [
+        {
+            "path": str(_intake_dir(acknowledged) / UNIMPORTED),
+            "reason": str(routing_pass.Placement.NOT_IMPORTED),
+            "trees": [TREE_ID],
+            "content_ids": [],
+        }
+    ]
+    (message,) = _skipped_warnings(applied)
+    assert UNIMPORTED in message
+    assert "import" in message.lower()
+    assert ARRIVED not in message, "a file the apply DID file was named as skipped"
+
+
+def test_the_human_output_names_the_skipped_file(acknowledged, native):
+    """The surface R-318 is about: a person reading the default output.
+
+    The human renderer prints no totals at all, so a reason carried only in the
+    payload would reach a script and never a person.
+    """
+    (_intake_dir(acknowledged) / UNIMPORTED).write_bytes(b"")
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(
+        ["--output", "human", "-d", "route.inbox.apply=apply", "route", "inbox"],
+        stdout=out,
+        stderr=err,
+    )
+    assert code == int(ExitCode.OK), err.getvalue()
+    assert UNIMPORTED in out.getvalue(), out.getvalue()
+
+
+def test_a_row_rekordbox_removed_is_reported_withdrawn_not_unimported(acknowledged, native):
+    """``WITHDRAWN`` against ``NOT_IMPORTED`` is the pair the vocabulary exists for.
+
+    The writer's own matcher sees both as absent, because it indexes live rows
+    only. Telling a person to import a track they imported and then removed sends
+    them round the same loop for ever.
+    """
+    _set_row(acknowledged, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", "2")
+
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    (entry,) = applied["data"]["totals"]["skipped_files"]
+    assert entry["reason"] == str(routing_pass.Placement.WITHDRAWN)
+    assert entry["content_ids"] == ["2"]
+    (message,) = _skipped_warnings(applied)
+    assert ARRIVED in message
+    assert "removed" in message
+
+
+def test_a_file_two_rows_claim_is_reported_ambiguous_with_both_rows(acknowledged, native):
+    """Both rows are named, because a person has to see both to pick the mistake."""
+    _set_row(
+        acknowledged,
+        "UPDATE djmdContent SET FolderPath = ? WHERE ID = ?",
+        str(_intake_dir(acknowledged) / ARRIVED),
+        "1",
+    )
+
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    (entry,) = applied["data"]["totals"]["skipped_files"]
+    assert entry["reason"] == str(routing_pass.Placement.AMBIGUOUS)
+    assert sorted(entry["content_ids"]) == ["1", "2"]
+    (message,) = _skipped_warnings(applied)
+    assert ARRIVED in message
+
+
+def test_a_clean_apply_names_no_skipped_file(acknowledged, native):
+    """The negative half, so a warning emitted on every run cannot pass the above."""
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert applied["data"]["totals"]["skipped"] == 0
+    assert applied["data"]["totals"]["skipped_files"] == []
+    assert _skipped_warnings(applied) == []
+
+
+def _match(outcome: str, *ids: str) -> trees.RowMatch:
+    kind = trees.MatchOutcome(outcome)
+    return trees.RowMatch(
+        "x.flac",
+        kind,
+        content_id=ids[0] if kind is trees.MatchOutcome.MATCHED else None,
+        content_ids=ids if kind is trees.MatchOutcome.AMBIGUOUS else (),
+    )
+
+
+@pytest.mark.parametrize(
+    ("alive", "removed", "expected"),
+    [
+        (("matched", "1"), ("absent",), routing_pass.Placement.RESOLVED),
+        (("ambiguous", "1", "2"), ("absent",), routing_pass.Placement.AMBIGUOUS),
+        (("unresolved",), ("unresolved",), routing_pass.Placement.UNRESOLVED),
+        (("absent",), ("matched", "3"), routing_pass.Placement.WITHDRAWN),
+        (("absent",), ("ambiguous", "3", "4"), routing_pass.Placement.WITHDRAWN),
+        (("absent",), ("absent",), routing_pass.Placement.NOT_IMPORTED),
+    ],
+    ids=["resolved", "ambiguous", "unresolved", "withdrawn", "withdrawn-twice", "not-imported"],
+)
+def test_the_placement_of_a_row_answer_is_one_rule(alive, removed, expected):
+    """The one mapping both the deferred pass and the apply read."""
+    assert routing_pass.row_placement(_match(*alive), _match(*removed)) is expected
+
+
+def test_every_placement_a_skip_can_carry_has_its_own_next_act():
+    """A reason with no sentence would reach a person as a bare token.
+
+    Derived from the enum rather than listed, so a placement added later fails
+    here until somebody writes what a person does about it. ``UNDECLARED`` is
+    excluded because the apply never resolves a destination from a ledger.
+    """
+    owed = set(routing_pass.Placement) - routing_pass.WRITABLE - {
+        routing_pass.Placement.UNDECLARED
+    }
+    assert set(routing_cli.SKIP_NEXT_ACT) == owed
+    sentences = list(routing_cli.SKIP_NEXT_ACT.values())
+    assert len(set(sentences)) == len(sentences), "two reasons share one next act"
+
+
+def test_the_skip_warning_counts_every_file_and_caps_the_names():
+    """A long list cannot read as a short one.
+
+    Literal numbers throughout. Reading the cap back from the module made this
+    test follow the constant wherever it went, so halving it stayed green.
+    """
+    many = [
+        {"path": f"/in/{index:03d}.flac", "reason": "not-imported", "trees": [], "content_ids": []}
+        for index in range(15)
+    ]
+    (warning,) = routing_cli.skipped_warnings(many)
+    message = warning["message"]
+    assert warning["code"] == routing_cli.SKIPPED_WARNING
+    assert message.startswith("15 file(s)")
+    assert "000.flac" in message
+    assert "009.flac" in message
+    assert "010.flac" not in message
+    assert "and 5 more" in message
+
+
+def test_a_file_skipped_twice_in_one_tree_names_that_tree_once():
+    """An additive sub-class declares one file into two playlists of one tree,
+    and the writer skips it once per playlist."""
+    cfg = SimpleNamespace(
+        library=SimpleNamespace(root="/library"), resolved_prefix_map=lambda: ()
+    )
+    absent = trees.RowMatch("/library/INBOX/a.flac", trees.MatchOutcome.ABSENT)
+    (record,) = routing_cli._skipped_files(
+        cfg, [], {absent.requested: (absent, ["one", "two", "one"])}
+    )
+    assert record["trees"] == ["one", "two"]
+    assert record["reason"] == str(routing_pass.Placement.NOT_IMPORTED)
+
+
+def test_the_skip_warnings_are_one_per_reason_in_a_stable_order():
+    records = [
+        {"path": "/in/b.flac", "reason": "withdrawn", "trees": [], "content_ids": ["9"]},
+        {"path": "/in/a.flac", "reason": "not-imported", "trees": [], "content_ids": []},
+        {"path": "/in/c.flac", "reason": "not-imported", "trees": [], "content_ids": []},
+    ]
+    first = routing_cli.skipped_warnings(records)
+    assert len(first) == 2
+    assert first == routing_cli.skipped_warnings(list(reversed(records)))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

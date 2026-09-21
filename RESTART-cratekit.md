@@ -4,7 +4,37 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-301, issue #168, `relay/168`, 2026-09-21.**
+**Last merged: R-318, issue #169, `relay/169`, 2026-09-21.**
+A confirmed `crate route inbox` now names every intake file it could not file
+and why, which CLOSES R-318. The totals carry `skipped_files`, one record per
+file with its path, the trees it was declared into, the rows named and a reason
+from `routing_pass.Placement`, the deferred pass's own vocabulary. The rule that
+turns row matches into a placement moved out of `resolve_placements` into
+`routing_pass.row_placement`, so both surfaces read one mapping. **THE WRITER'S
+MATCHER SEES LIVE ROWS ONLY,** so its `absent` is split into `not-imported` and
+`withdrawn` by indexing the tombstoned rows again. The human surface is
+`route-write-skipped` warnings, one per reason, naming up to ten files and the
+next act, because the renderer prints warnings and no totals. `skipped` is
+unchanged and counts once per tree.
+The cost was reproduced first on a disposable database: one unimported file,
+`skipped: 1` and no `skipped_files`. The fifth pattern was looked for:
+`route_pending` in the same file ignores the whole report `routing_pass.route`
+returns and answers OK, filed as R-641, read and not driven.
+The built in review found nothing.
+Battery: ruff clean, **9727 passed** and 1 skipped in 70 seconds, 9728
+collected, 15 more than R-301 recorded, all in `tests/test_routing_workers.py`.
+Scan clean. No test of this unit's is among the ten slowest.
+Mutation tables `docs/mutation/r318.md` and `r318-b.md`, read in
+`r318-notes.md`: **20 rows, the author's own, 19 killed after one fix round.**
+The cap test read its own constant back and was rewritten with literals. The
+zero left, P5, is an existing guard on ids nothing reads, part of R-641.
+Measured with the driver behind a wrapper that interrupts it at 560 seconds and
+resumes, since one foreground pass passed the tool ceiling.
+Filed: **R-641**, no issue until it is driven. The at-risk pin in
+`tests/test_reserved_causes.py` moved 23 to 24 for `SKIPPED_NAMED`.
+**Main's highest residual number is R-641.**
+
+**The session before: R-301, issue #168, `relay/168`, 2026-09-21.**
 Paid recognition reads its host and its monthly bound from a new
 `[recognition]` configuration section, which CLOSES R-301. `acrcloud.HOST` is
 gone and the shipped budget is built from the section, so both intake verbs now
@@ -34,7 +64,7 @@ refusal of a host that is not a string, which the domain check covers. One row
 dropped and logged, the default's value. Measured in one foreground invocation,
 4 minutes 51 seconds.
 Filed: **R-640**, the two defaults and the drift a pre existing queued job
-names. No issue. **Main's highest residual number is R-640.**
+names. No issue. **Main's highest residual number was R-640 at that merge.**
 
 **The session before: R-312, issue #166, `relay/166`, 2026-09-21.**
 `crate route resort` now says it is additive and names what it left where it

@@ -6157,7 +6157,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # leftover memberships one warning names before it counts the rest. It is a
     # length and is never an exit status. Measured by reading the unit's own
     # diff of that file, and by this pair moving by one and not by more.
-    assert (len(literal_holders), len(literal_both)) == (103, 23), (
+    # Re-pinned on the residual finding "The apply counts what it skipped and
+    # never says which files", 2026-09-21: holders UNCHANGED at 103, and the also-holds-an-integer
+    # half moves 23 to 24. No module joined the holders, since
+    # write/routing_cli.py named its refusals on main already. ONE holder gained
+    # an in-range integer: the unit's diff of that file adds exactly one integer
+    # constant, the 10 of SKIPPED_NAMED, how many skipped intake files one
+    # warning names before it counts the rest. It is a length and is never an
+    # exit status. Measured by reading the unit's own diff of that file, and by
+    # this pair moving by one and not by more.
+    assert (len(literal_holders), len(literal_both)) == (103, 24), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

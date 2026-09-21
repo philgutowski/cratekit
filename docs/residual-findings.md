@@ -15600,6 +15600,26 @@ person a number and no next act.
 `routing_pass.resolve_placements` already does for the deferred pass, whose six
 placements are the vocabulary this should reuse rather than invent.
 
+**Closed 2026-09-21 on `relay/169`, issue 169.** `apply_inbox` keeps each
+tree's skipped `RowMatch` values by path and returns `skipped_files`, one record
+per file with `path`, `reason`, `trees` and `content_ids`. The reason is a
+`routing_pass.Placement` value from `routing_pass.row_placement`, the rule moved
+out of `resolve_placements` so both surfaces read one mapping. The writer's
+matcher indexes live rows only, so its `absent` is split into `not-imported`
+and `withdrawn` by indexing the tombstoned half with the writer's root and
+prefix map. `route_inbox` turns the records into `route-write-skipped` warnings,
+one per reason, each counting the whole set, naming up to ten file names and
+saying what to do next. They are warnings because the human renderer prints
+warnings and no totals. `skipped` is unchanged and still counts once per tree,
+so on a library with two native trees it can be twice the number of files
+named; `skipped_files` is the per file answer. Driven through the shipped
+command line on a disposable database in `tests/test_routing_workers.py` for
+not imported, withdrawn, ambiguous, clean and the human output, failing first
+on the tree before the fix. `unresolved` is pinned at the rule, not driven.
+Mutation tables `docs/mutation/r318.md` and `r318-b.md`, read in
+`r318-notes.md`: 20 rows, 19 killed after one fix round, and the zero is an
+existing guard filed as R-641.
+
 ---
 
 ## R-319. A stray file in the intake folder is offered a placement it can never receive
@@ -25622,3 +25642,33 @@ what a person types, and the body under it now says additive.
 
 **Closes when:** the default bound is confirmed or moved at a sitting, and the
 service's regional domains are checked against the host rule.
+
+---
+
+## R-641. `route pending` throws away the pass report and answers OK over tracks it could not place
+
+**Found:** on `relay/169`, 2026-09-21, closing R-318, as the same shape one
+file over. Read at `write/routing_cli.py` `route_pending` and NOT driven.
+
+`route_pending` calls `routing_pass.route` once per session and ignores what it
+returns. That `RoutingReport` carries the readiness answer and one `Placed` per
+track, with the same six placements R-318's fix now reports for the inbox
+apply. `route` returns a not ready report rather than raising when no track has
+a row yet, and the verb then answers `ok` with the plan of session ids and no
+warning. So a run whose tracks are not imported, withdrawn or ambiguous reads
+the same as one that placed everything. The ledger keeps them outstanding, so
+nothing is lost, and the run does not close.
+
+The one zero of `docs/mutation/r318.md`, P5, belongs here: the ids a withdrawn
+`Placed` carries are read by nothing in `src`, because this is the only caller
+that would surface them.
+
+**Measured cost:** unmeasured. The producer is a native tree with recorded
+intents and a pass run before the import, and it was not driven here. Driven,
+it would likely meet the board bar under (b), a clean report over tracks the
+verb could not place. No issue until it is driven.
+
+**Closes when:** `route pending` carries each unsettled track's placement in
+its totals and a warning per reason, using `routing_pass.Placement` and the
+wording `routing_cli.SKIP_NEXT_ACT` already holds, or the finding is driven and
+shown not to reach a person.

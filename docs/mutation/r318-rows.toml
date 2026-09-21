@@ -1,0 +1,175 @@
+name = "r318"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_withdrawn_branch_removed"
+description = "row_placement: never answer withdrawn, so a track imported then removed in rekordbox is reported as never imported and the person is sent to import it again"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+old = '''    if removed.outcome in (trees.MatchOutcome.MATCHED, trees.MatchOutcome.AMBIGUOUS):
+        # A row exists and every one of them is a tombstone: imported once, then'''
+new = '''    if False:
+        # A row exists and every one of them is a tombstone: imported once, then'''
+
+[[rows]]
+id = "P2_withdrawn_on_single_tombstone_only"
+description = "row_placement: withdrawn only when exactly one tombstone claims the location, two tombstones read as not imported"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+old = '''    if removed.outcome in (trees.MatchOutcome.MATCHED, trees.MatchOutcome.AMBIGUOUS):
+        # A row exists and every one of them is a tombstone: imported once, then'''
+new = '''    if removed.outcome in (trees.MatchOutcome.MATCHED,):
+        # A row exists and every one of them is a tombstone: imported once, then'''
+
+[[rows]]
+id = "P3_unresolved_branch_removed"
+description = "row_placement: drop the unresolved answer, so a location no prefix maps falls through to not imported, a configuration failure reported as a missing import"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+old = '''    if alive.outcome is trees.MatchOutcome.UNRESOLVED:
+        return Placement.UNRESOLVED
+'''
+new = ''
+
+[[rows]]
+id = "P4_ambiguous_reads_not_imported"
+description = "row_placement: two live rows claiming a location answer not imported instead of ambiguous"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+old = '''    if alive.outcome is trees.MatchOutcome.AMBIGUOUS:
+        return Placement.AMBIGUOUS'''
+new = '''    if alive.outcome is trees.MatchOutcome.AMBIGUOUS:
+        return Placement.NOT_IMPORTED'''
+
+[[rows]]
+id = "P5_resolve_withdrawn_ids_from_alive"
+description = "resolve_placements (existing guard sample): a withdrawn placement carries the live match's ids, which are empty, instead of the tombstones'"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+old = '''            content_id, ids = removed.content_id, removed.content_ids'''
+new = '''            content_id, ids = alive.content_id, alive.content_ids'''
+
+[[rows]]
+id = "C1_skipped_files_always_empty"
+description = "apply_inbox: skipped_files is always empty, the headline defect R-318 measured, a count and no file"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        "skipped_files": _skipped_files(cfg, rows, missed),'''
+new = '''        "skipped_files": [],'''
+
+[[rows]]
+id = "C2_tombstones_not_consulted"
+description = "_skipped_files: match against the live index instead of the tombstoned one, so withdrawn can never be told from not imported"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        paths, index.by_tombstoned_location, root=cfg.library.root, prefix_map=rules'''
+new = '''        paths, index.by_active_location, root=cfg.library.root, prefix_map=rules'''
+
+[[rows]]
+id = "C3_ambiguous_ids_dropped"
+description = "_skipped_files: an ambiguous file names no rows, so a person cannot see which two rows to choose between"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''            ids = alive.content_ids
+        elif'''
+new = '''            ids = ()
+        elif'''
+
+[[rows]]
+id = "C4_withdrawn_ids_dropped"
+description = "_skipped_files: a withdrawn file names no tombstoned row"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''            ids = dead.content_ids or ((dead.content_id,) if dead.content_id else ())'''
+new = '''            ids = ()'''
+
+[[rows]]
+id = "C5_withdrawn_single_id_dropped"
+description = "_skipped_files: a withdrawn file with ONE tombstone names nothing, only the ambiguous-tombstone ids survive"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''            ids = dead.content_ids or ((dead.content_id,) if dead.content_id else ())'''
+new = '''            ids = dead.content_ids'''
+
+[[rows]]
+id = "C6_trees_emptied"
+description = "_skipped_files: the record names no tree it was declared into"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                "trees": sorted(set(tree_ids)),'''
+new = '''                "trees": [],'''
+
+[[rows]]
+id = "C7_trees_not_deduplicated"
+description = "_skipped_files: a tree the writer skipped a file in twice is listed twice"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                "trees": sorted(set(tree_ids)),'''
+new = '''                "trees": sorted(tree_ids),'''
+
+[[rows]]
+id = "C8_path_reduced_to_name"
+description = "_skipped_files: the payload carries the file name instead of the full path"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                "path": path,'''
+new = '''                "path": Path(path).name,'''
+
+[[rows]]
+id = "C9_warnings_not_emitted"
+description = "route_inbox: the skip warnings never reach the envelope, so the human output, which prints warnings and no totals, names no file"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                *skipped_warnings(result["skipped_files"]),'''
+new = ''
+
+[[rows]]
+id = "W1_cap_not_applied"
+description = "skipped_warnings: name every file, the cap never applied"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        named = names[:SKIPPED_NAMED]'''
+new = '''        named = names'''
+
+[[rows]]
+id = "W2_cap_halved"
+description = "Halve the cap on how many skipped files a warning names, 10 to 5"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''SKIPPED_NAMED = 10'''
+new = '''SKIPPED_NAMED = 5'''
+
+[[rows]]
+id = "W3_count_is_named_not_whole"
+description = "skipped_warnings: the count is the number named rather than the whole set, so a long list reads as a short one"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                    f"{len(names)} file(s) in the intake folder were not filed because "'''
+new = '''                    f"{len(named)} file(s) in the intake folder were not filed because "'''
+
+[[rows]]
+id = "W4_reasons_unsorted"
+description = "skipped_warnings: reasons in arrival order, so two runs over one state say things in two orders"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    for reason in sorted(by_reason):'''
+new = '''    for reason in by_reason:'''
+
+[[rows]]
+id = "W5_next_act_dropped"
+description = "skipped_warnings: the reason sentence and its next act are replaced by a bare phrase"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        why = SKIP_NEXT_ACT[routing_pass.Placement(reason)]'''
+new = '''        why = "of its state"'''
+
+[[rows]]
+id = "N1_no_native_key_dropped"
+description = "apply_inbox: the no-native-tree answer carries no skipped_files key, so the payload shape differs by branch"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+old = '''            "skipped": 0,
+            "skipped_files": [],
+        }'''
+new = '''            "skipped": 0,
+        }'''

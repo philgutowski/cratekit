@@ -1,0 +1,130 @@
+{
+  "name": "r318-b",
+  "pass_kind": "light",
+  "branch": "relay/169",
+  "head": "52882ac",
+  "when": "2026-09-21 06:55 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9728,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/routing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/routing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d24071f8a3353ece",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9728,
+    "baseline_collected": 9728,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C7_trees_not_deduplicated",
+      "description": "_skipped_files: a tree the writer skipped a file in twice is listed twice",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d7dd89f90720efea",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 208,
+      "baseline_collected": 208,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_file_skipped_twice_in_one_tree_names_that_tree_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"trees\": sorted(set(tree_ids)),",
+      "new": "                \"trees\": sorted(tree_ids),"
+    },
+    {
+      "id": "W2_cap_halved",
+      "description": "Halve the cap on how many skipped files a warning names, 10 to 5",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7a9b8ef8c8a16c76",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 208,
+      "baseline_collected": 208,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_skip_warning_counts_every_file_and_caps_the_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "SKIPPED_NAMED = 10",
+      "new": "SKIPPED_NAMED = 5"
+    },
+    {
+      "id": "N1_no_native_key_dropped",
+      "description": "apply_inbox: the no-native-tree answer carries no skipped_files key, so the payload shape differs by branch",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "8464c42f4a99b5c7",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.routing_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 208,
+      "baseline_collected": 208,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_confirmed_inbox_on_a_library_with_no_native_tree_says_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"skipped\": 0,\n            \"skipped_files\": [],\n        }",
+      "new": "            \"skipped\": 0,\n        }"
+    }
+  ],
+  "dropped": []
+}

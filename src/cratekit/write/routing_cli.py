@@ -252,6 +252,118 @@ def resort_argv(job) -> list[str]:
     return ["route", "resort", "--job", job.job_id]
 
 
+#: The warning a confirmed apply carries for the files it could not file. The
+#: code every other routing write already uses for "a write the tree could not
+#: take", so a consumer filtering on it sees this one too.
+SKIPPED_WARNING = "route-write-skipped"
+
+#: How many file names one skip warning spells out. The count is always the
+#: whole set, and the payload's ``skipped_files`` lists every one.
+SKIPPED_NAMED = 10
+
+#: Why a file was not filed and what a person does about it, one per placement a
+#: skip can carry. The vocabulary is the deferred pass's own (R-318), so the two
+#: surfaces say one thing about one state. Each sentence follows "was not filed
+#: because".
+SKIP_NEXT_ACT: dict[routing_pass.Placement, str] = {
+    routing_pass.Placement.NOT_IMPORTED: (
+        "rekordbox holds no row for it yet. Import it into rekordbox, then run "
+        "route inbox again"
+    ),
+    routing_pass.Placement.WITHDRAWN: (
+        "it was imported and then removed in rekordbox. Import it again if it "
+        "belongs in the library, or take it out of the intake folder"
+    ),
+    routing_pass.Placement.AMBIGUOUS: (
+        "two or more collection rows claim its location. Remove the duplicate in "
+        "rekordbox, then run route inbox again"
+    ),
+    routing_pass.Placement.UNRESOLVED: (
+        "its location maps to no path this machine can read. Check the library "
+        "root and the prefix map with crate doctor, then run route inbox again"
+    ),
+}
+
+
+def _skipped_files(
+    cfg: config.Config,
+    rows: list[trees.ContentRow],
+    skipped: dict[str, tuple[trees.RowMatch, list[str]]],
+) -> list[dict[str, Any]]:
+    """One record per file the write skipped, with the reason and the rows named.
+
+    THE WRITER'S MATCHER SEES LIVE ROWS ONLY, so its ``absent`` is two different
+    states: a file never imported and a file imported then removed. The rows are
+    indexed again here, both halves, with the root and the prefix map the writer
+    used, and the placement comes from :func:`routing_pass.row_placement`, the
+    rule the deferred pass reports with.
+
+    ONE RECORD PER FILE, NOT PER TREE. Every tree matches against the same rows,
+    so a file's reason cannot differ between trees; ``trees`` says which ones it
+    was declared into.
+    """
+    if not skipped:
+        return []
+    rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
+    index = routing_pass.index_rows(rows, root=cfg.library.root, prefix_map=rules)
+    paths = sorted(skipped)
+    removed = trees.match_indexed_rows(
+        paths, index.by_tombstoned_location, root=cfg.library.root, prefix_map=rules
+    )
+    out: list[dict[str, Any]] = []
+    for path, dead in zip(paths, removed):
+        alive, tree_ids = skipped[path]
+        placement = routing_pass.row_placement(alive, dead)
+        if placement is routing_pass.Placement.AMBIGUOUS:
+            ids = alive.content_ids
+        elif placement is routing_pass.Placement.WITHDRAWN:
+            ids = dead.content_ids or ((dead.content_id,) if dead.content_id else ())
+        else:
+            ids = ()
+        out.append(
+            {
+                "path": path,
+                "reason": str(placement),
+                # A SET, because an additive sub-class declares one file into
+                # two playlists of one tree and the writer skips it twice.
+                "trees": sorted(set(tree_ids)),
+                "content_ids": list(ids),
+            }
+        )
+    return out
+
+
+def skipped_warnings(records: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """The envelope warnings over ``skipped_files``, one per reason.
+
+    THE WARNINGS ARE THE HUMAN SURFACE. The default renderer prints warnings and
+    no totals, so a reason carried only in the payload reaches a script and never
+    the person who confirmed the apply. Files are named by their file name, which
+    is what a person looks for in the intake folder, and the full path is in the
+    payload. Sorted, so two runs over one state say one thing.
+    """
+    by_reason: dict[str, list[str]] = {}
+    for record in records:
+        by_reason.setdefault(record["reason"], []).append(Path(record["path"]).name)
+    warnings: list[dict[str, str]] = []
+    for reason in sorted(by_reason):
+        names = sorted(by_reason[reason])
+        named = names[:SKIPPED_NAMED]
+        rest = len(names) - len(named)
+        why = SKIP_NEXT_ACT[routing_pass.Placement(reason)]
+        warnings.append(
+            {
+                "code": SKIPPED_WARNING,
+                "message": (
+                    f"{len(names)} file(s) in the intake folder were not filed because "
+                    f"{why}. Not filed ({reason}): {'; '.join(named)}"
+                    + (f"; and {rest} more" if rest else "")
+                ),
+            }
+        )
+    return warnings
+
+
 def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, Any]:
     """File the intake folder into every tree that has cut over.
 
@@ -279,7 +391,13 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
     entries = tree_registry.read(cfg)
     native = _native_trees(entries)
     if not native:
-        return {"applied": False, "reason": "no-native-tree", "added": 0, "skipped": 0}
+        return {
+            "applied": False,
+            "reason": "no-native-tree",
+            "added": 0,
+            "skipped": 0,
+            "skipped_files": [],
+        }
     # THE CALIBRATED CUT, read before the database is opened so a corrupt
     # calibration refuses before anything is written (U89). None on a library
     # never calibrated, and the engine then names the dimension it left out.
@@ -288,6 +406,10 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
     declared = taxonomy.default_taxonomy()
     added = 0
     skipped = 0
+    # WHICH FILES, AND WHY, kept rather than counted (R-318). A confirmed apply
+    # over an intake folder nobody had imported answered ``skipped: 20`` and named
+    # no file, which reads as a failed verb rather than as a step not yet taken.
+    missed: dict[str, tuple[trees.RowMatch, list[str]]] = {}
     # WHAT THE ENGINE SAID IT DID NOT COMPARE, kept rather than dropped (R-316).
     # Dropping it is how a confirmed apply over a taxonomy that declares a vocal
     # sub-playlist reported an ordinary write while filing nothing into it.
@@ -336,6 +458,8 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
             )
             added += report.added
             skipped += len(report.skipped)
+            for match in report.skipped:
+                missed.setdefault(match.requested, (match, []))[1].append(tree_id)
     finally:
         rb_writer.close_db(handle)
     return {
@@ -343,6 +467,7 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
         "reason": None,
         "added": added,
         "skipped": skipped,
+        "skipped_files": _skipped_files(cfg, rows, missed),
         "trees": len(native),
         "not_compared": tuple(sorted(not_compared)),
     }
@@ -1047,7 +1172,10 @@ def route_inbox(ctx) -> Envelope:
         warnings=(
             [{"code": "no-native-tree", "message": EXPORT_REMEDY}]
             if result["reason"] == "no-native-tree"
-            else list(rebuild.not_compared_warnings(not_compared))
+            else [
+                *rebuild.not_compared_warnings(not_compared),
+                *skipped_warnings(result["skipped_files"]),
+            ]
         ),
     )
 
