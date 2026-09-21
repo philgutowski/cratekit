@@ -94,6 +94,8 @@ membership and then fails.
 
 ## What is still open
 
-A hard kill runs no exit code at all, so it leaves the record `open`, and no
-verb abandons one. That is R-598, driven: the cutover precheck refuses on it and
-names a step nobody can take.
+A hard kill runs no exit code at all, so it leaves the record `open`. That was
+R-598, closed on `relay/187`: the record now names the lock's holder and
+`crate session release` abandons it once that holder is provably gone. See
+`the-lock-file-cannot-prove-who-owned-a-session-record.md`. A power loss is
+still open as R-647.

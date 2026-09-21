@@ -24863,6 +24863,25 @@ natural home is `session release-lock`, which already establishes that the
 lock's holder is dead before it acts, and a record opened under that lock
 belongs to the same dead process. Bar met: c.
 
+**CLOSED 2026-09-21 on `relay/187`, for a hard kill, narrowed to R-647 for a
+power loss.** The gates now write the lock's claimant into the record they
+open, under `detail.holder`, because the lock file's copy is overwritten by the
+next gated session and the record's copy is not. `session.orphaned` asks three
+things: the state is exactly `open`, the record names a holder, and
+`holder_alive` says that holder is gone. `crate session release` shows the
+orphans before its gate, releases the lock first so a live holder refuses
+before anything ends, and then abandons each orphan through the ungated close.
+`awaiting-import` and `committed-unverified` records are never touched, and
+neither is an intake landing, which opens without the lock, names no holder,
+and stays open across processes on purpose (R-501). Doctor names the verb
+beside an orphaned record. Driven through the dispatcher with a real SIGKILL: a
+forked child enters the gates with `Keep.RECORD` and kills itself, the cutover
+precheck refuses with `cutover-open-run`, `session release` abandons the
+record, and the same precheck passes. The same shape one file over:
+`restore.recovery_session` keeps its record through the same gates, so it is
+covered. The intake landing is excluded by design. Mutation tables `r598-a` and
+`r598-b`, thirteen of fourteen killed, the zero explained in `r598-notes.md`.
+
 ---
 
 ## R-599. Every gated database write adds a session record that nothing ever removes, and the gate parses the whole log on every write
@@ -26022,3 +26041,55 @@ the documented install path.
 
 **Closes when:** the fallback is either worded to name the clone folder as the
 place to run it, or the refusal carries that sentence beside the command.
+
+---
+
+## R-647. A gated write cut off by a power loss leaves an open record no verb ends
+
+**Found:** 2026-09-21 on `relay/187`, by the built in review of R-598's fix.
+
+R-598's fix ends an open session record once its holder is provably gone, and
+the proof is `holder_alive`. That function judges a holder from another boot of
+the same host alive, deliberately: a library drive moved between two machines
+that share a host name would otherwise let one clear the other's claim. After a
+power loss the machine has restarted, so the dead write's holder is from another
+boot, and the record stays `open`. The cutover precheck keeps refusing on it and
+its capture is kept from retention. `session release` also refuses that boot's
+lock record, as it did before R-598.
+
+**Measured cost:** read from `holder_alive` and not driven, since a restart
+cannot be staged in the suite. Conservative in the direction that matters,
+since nothing is lost, and a dead end all the same, the same dead end R-598
+was for a kill.
+
+**Closes when:** a holder from another boot is provably gone, which needs an
+identity for the machine that two machines cannot share, such as a hardware
+identifier recorded beside the host name. Then `holder_alive` can say gone for
+this machine's previous boot and still say alive for a different machine. Bar
+met: c.
+
+---
+
+## R-648. The session release answer is not bound to what the question showed
+
+**Found:** 2026-09-21 on `relay/187`, by the built in review, then measured by
+row B2 of `r598-b`.
+
+`session.release.confirm` is an explicit gate, so the question and the answer
+are two invocations. The asking one shows the lock holder and, since R-598, the
+orphaned session records. The answering one reads both again and acts on what it
+finds then. The gate declares no digest, so nothing ties the recorded answer to
+what was shown: a lock whose holder changed, or a record orphaned between the
+two invocations, is released or abandoned without having been listed. The engine
+takes the list it is handed (`abandon_orphaned_sessions(only=...)`), and the
+shell hands it the answering invocation's own list, which row B2 measured as a
+zero for exactly this reason.
+
+**Measured cost:** not driven as a user cost. Anything acted on is still
+provably dead, so what is ended is what the verb exists to end. The loss is only
+that a person approved a list the action did not match. Maintainer facing, off
+the board bar.
+
+**Closes when:** the gate carries a digest of the holder and the orphan
+identifiers and the answering invocation refuses as stale when they differ,
+which is the `digest_source` machinery other explicit gates already use.
