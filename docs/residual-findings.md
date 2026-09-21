@@ -26068,6 +26068,29 @@ identifier recorded beside the host name. Then `holder_alive` can say gone for
 this machine's previous boot and still say alive for a different machine. Bar
 met: c.
 
+**CLOSED 2026-09-21 on `relay/188`.** `Holder` records a fifth field,
+`machine`, a digest of the platform's own machine identifier (the hardware UUID
+on macOS, `/etc/machine-id` on Linux, `MachineGuid` on Windows), and a holder
+recorded before the field existed reads back as unknown. `holder_alive` still
+says alive for another host and for an unknown boot. For another boot of this
+host it now asks `_gone_since_an_earlier_boot`, which says gone only when both
+machine identities are known and equal, the holder's boot parses and is earlier
+by more than `BOOT_DRIFT_SECONDS` (60), and `process_exists` says no process
+has that identifier now. Any live process with the identifier keeps the claim,
+whatever start time it reports, because on Linux a stepped clock moves a live
+process's reported start time along with the boot reading (the built in
+review's finding, fixed in round one). The host name alone is never the proof.
+Driven through the dispatcher with the state a restart leaves, written directly
+because a restart cannot be staged: a lock record and an open record from this
+machine's previous boot. The cutover precheck refuses `cutover-open-run`,
+`session release` clears the lock and abandons the record, and the precheck
+passes. Another machine with this host name, and a record with no machine, are
+kept. The same shape one file over: `release_stale_lock` and
+`_lock_held_refusal` judge through the same `holder_alive`, and the job
+driver's lock in `core/jobs.py` is decided by the kernel rather than by host
+and boot, so it does not share the shape. Mutation table `r647-a`, seventeen
+rows, all killed. The cloned identity limit is R-649.
+
 ---
 
 ## R-648. The session release answer is not bound to what the question showed
@@ -26093,3 +26116,26 @@ the board bar.
 **Closes when:** the gate carries a digest of the holder and the orphan
 identifiers and the answering invocation refuses as stale when they differ,
 which is the `digest_source` machinery other explicit gates already use.
+
+---
+
+## R-649. Two machines cloned from one disk image share a machine identity
+
+**Found:** building R-647 on `relay/188`, 2026-09-21, reading the probes behind
+`session.machine_identity`.
+
+The Linux identity is a file, `/etc/machine-id`, and the Windows one is a
+registry value, `MachineGuid`. A disk image cloned without regenerating either
+gives two machines one identity. If those two machines also share a host name
+and a library drive, each reads the other's holder from another boot as its own
+previous boot, and `holder_alive` says gone for a claim that is live. The macOS
+identity is the hardware UUID and is not copied by a clone.
+
+**Measured cost:** not driven. It needs a cloned image, a shared host name and a
+drive moved between the two while a gated write runs, and rekordbox itself does
+not run on Linux. Conservative everywhere else, since the live process check
+still keeps a claim whose identifier is running on the reading machine. Not on
+the board bar: reachability is unmeasured and no candidate was driven.
+
+**Closes when:** the identity is one a clone cannot copy on each platform that
+reports one, or a clone is detectable and reads as unknown.
