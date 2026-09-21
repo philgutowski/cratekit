@@ -2617,6 +2617,19 @@ def test_an_export_staleness_that_is_not_a_positive_day_count_is_refused(library
     assert all("positive whole number" in p for p in problems), problems
 
 
+def test_an_export_staleness_nobody_could_mean_is_refused_with_its_ceiling(library):
+    """Found by the built in review. Ten billion days, a guess at switching the
+    warning off, passed validation and then overflowed the duration it was
+    compared against, which crashed all three verbs at the gate."""
+    ceiling = config.MAX_EXPORT_STALE_DAYS
+    assert config.validate(valid_data(library, outbound={"export_stale_days": ceiling})) == []
+    problems = config.validate(
+        valid_data(library, outbound={"export_stale_days": 10_000_000_000})
+    )
+    assert len(problems) == 1 and "outbound.export_stale_days" in problems[0]
+    assert str(ceiling) in problems[0]
+
+
 def test_an_absent_export_staleness_is_not_a_problem(library):
     assert config.validate(valid_data(library)) == []
     assert config.validate(valid_data(library, outbound={})) == []

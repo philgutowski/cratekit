@@ -277,15 +277,18 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
     from cratekit.modules.outbound import shell, source
 
     plan = _Plan(spec=spec)
+    # LOADED ONCE, for both halves (R-227). A configuration that cannot be read
+    # raises here and reaches ``_plan`` as this source's refusal, and that drops
+    # nothing, because the read half needs the same configuration and has not
+    # been planned yet. Two loads would be two reads of a file somebody may be
+    # editing, and two answers about one pass.
+    cfg = _load()
     if spec.inbound_key is not None:
-        plan.inbound = _plan_inbound(spec, _load())
+        plan.inbound = _plan_inbound(spec, cfg)
     try:
         exported, resolved = favorites_cli.resolve_sweep(
             getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
         )
-        # INSIDE THE TRY, so a configuration that cannot be read is this half's
-        # refusal like any other and the read half above is kept.
-        stale_days = _load().outbound.export_stale_days
     except CratekitError as exc:
         # THE WRITE HALF'S OWN PRECONDITION, recorded here rather than raised to
         # ``_plan``, which would build a fresh plan and drop the read half with
@@ -302,7 +305,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
     # THE EXPORT'S AGE TRAVELS THE SAME WAY AND FOR THE SAME REASON (R-227). It
     # is read once here and goes to both places a person reads: the question
     # below, and the warnings of the pass that queued.
-    age = source.export_age(exported, limit_days=stale_days)
+    age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
     plan.warnings = (
         *shell.queue_warnings(resolved, noun="favourite", age=age),
         *favorites_cli.local_write_warning(),

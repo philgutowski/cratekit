@@ -260,7 +260,10 @@ def test_the_composed_gate_names_the_exports_date_beside_what_would_queue(
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
     assert shown["would_queue"] == ["favorites", "labels"]
-    assert shown["export"]["written"] == written.replace(microsecond=0).isoformat()
+    assert shown["export"]["written"] == (
+        written.astimezone().replace(microsecond=0).isoformat()
+    )
+    assert "Export the collection again" in shown["export"]["warning"]
     assert shown["export"]["age_days"] == 30
     assert shown["export"]["freshness"] == "stale"
 
@@ -277,7 +280,7 @@ def test_a_pass_that_queued_over_an_old_export_warns_and_still_queues(
     assert code == int(ExitCode.OK), passed
     stale = [w for w in passed["warnings"] if w["code"] == "outbound-export-stale"]
     assert len(stale) == 1, passed["warnings"]
-    assert written.date().isoformat() in stale[0]["message"]
+    assert written.astimezone().date().isoformat() in stale[0]["message"]
     assert "sync.favorites" in {job.handler_key for job in _jobs()}, (
         "a stale export refuses nothing"
     )

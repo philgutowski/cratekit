@@ -118,19 +118,46 @@ def reported(
     }
 
 
-#: The three things :func:`shown` can say about an export's date, spelled once.
-#: WORDS RATHER THAN A BOOLEAN, because there are three states and the human
-#: renderer prints a missing boolean as "none", which reads as "not stale".
+#: The four things :func:`shown` can say about an export's date, spelled once.
+#: WORDS RATHER THAN A BOOLEAN, because only one of the four means recent and the
+#: human renderer prints a missing boolean as "none", which reads as "not stale".
 STALE = "stale"
 WITHIN_LIMIT = "within-limit"
+FUTURE_DATED = "future-dated"
 UNKNOWN = "unknown"
 
 
 def freshness(age: ExportAge) -> str:
-    """Which of the three an age is. Unknown is asked FIRST, never defaulted to."""
+    """Which of the four an age is. The two that cannot be judged are asked FIRST."""
     if not age.known:
         return UNKNOWN
+    if age.future_dated:
+        return FUTURE_DATED
     return STALE if age.stale else WITHIN_LIMIT
+
+
+def _local_date(moment) -> str:
+    """The date as the person's own machine spells it.
+
+    LOCAL, NOT UTC, on the one surface where it matters. A person compares this
+    with their memory of when they exported and with the date Finder shows, and
+    an evening export west of Greenwich is the next day in UTC.
+    """
+    return moment.astimezone().date().isoformat()
+
+
+def _spelled(age: ExportAge) -> str | None:
+    """The age in days and hours, so "past seven days" never reads as seven.
+
+    Staleness is judged on the duration and whole days are floored, so an export
+    seven days and five hours old printed as "7 day(s) ago, which is past the 7
+    day(s)" allowed. The hours are what make that sentence true.
+    """
+    elapsed = age.age
+    if elapsed is None:
+        return None
+    hours = elapsed.seconds // 3600
+    return f"{elapsed.days} days {hours} hours"
 
 
 def shown(age: ExportAge) -> dict[str, Any]:
@@ -140,23 +167,32 @@ def shown(age: ExportAge) -> dict[str, Any]:
     it was old would make a missing line mean "recent", and the person deciding
     is the only one who knows whether their library moved since that date.
 
+    THE WARNING'S SENTENCE RIDES HERE AS WELL AS ON THE ENVELOPE. A refusal
+    carries no warnings, so on the envelope alone the advice to export again
+    reached a person only after they had confirmed and the write was queued,
+    which is the one moment it is no use. ``warning`` is absent when there is
+    nothing to warn of, and ``freshness`` is always present, so the absence is
+    never the only thing saying the date is fine.
+
     IT IS A DISPLAY VALUE AND IS NOT IN THE CONFIRM DIGEST, deliberately. The
     digest covers the track set, which is what the write is. An age in the
     digest would stale every recorded decision at midnight.
     """
-    return {
-        "export": {
-            "file": age.path.name,
-            "written": (
-                age.written.replace(microsecond=0).isoformat()
-                if age.written is not None
-                else None
-            ),
-            "age_days": age.age_days,
-            "stale_after_days": age.limit_days,
-            "freshness": freshness(age),
-        }
+    export: dict[str, Any] = {
+        "file": age.path.name,
+        "written": (
+            age.written.astimezone().replace(microsecond=0).isoformat()
+            if age.written is not None
+            else None
+        ),
+        "age": _spelled(age),
+        "age_days": age.age_days,
+        "stale_after_days": age.limit_days,
+        "freshness": freshness(age),
     }
+    for warning in age_warnings(age):
+        export["warning"] = warning["message"]
+    return {"export": export}
 
 
 def age_warnings(age: ExportAge) -> tuple[dict[str, str], ...]:
@@ -166,6 +202,8 @@ def age_warnings(age: ExportAge) -> tuple[dict[str, str], ...]:
     a month has a month old export that is exactly right, and only they know
     that. The date is called "last written" rather than "exported" because it is
     the file's modification time, which is all a rekordbox export offers.
+
+    AT MOST ONE, which :func:`shown` relies on to carry it as a single sentence.
     """
     written = age.written
     if written is None:
@@ -179,14 +217,26 @@ def age_warnings(age: ExportAge) -> tuple[dict[str, str], ...]:
                 ),
             },
         )
+    if age.future_dated:
+        return (
+            {
+                "code": "outbound-export-age-unknown",
+                "message": (
+                    f"{age.path.name} is dated {_local_date(written)}, which is "
+                    f"in the future, so its age cannot be judged and nothing "
+                    f"here can say whether it still describes the library. "
+                    f"Export the collection again if it may have moved"
+                ),
+            },
+        )
     if age.stale:
         return (
             {
                 "code": "outbound-export-stale",
                 "message": (
                     f"{age.path.name} was last written on "
-                    f"{written.date().isoformat()}, {age.age_days} day(s) "
-                    f"ago, which is past the {age.limit_days} day(s) "
+                    f"{_local_date(written)}, {_spelled(age)} ago, which is "
+                    f"past the {age.limit_days} days "
                     f"outbound.export_stale_days allows. Anything the library "
                     f"gained or lost since then is not in this write. Export "
                     f"the collection again if it has moved"

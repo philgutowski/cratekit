@@ -92,6 +92,15 @@ class ResolvedPlaylist:
     repeated: tuple[str, ...] = ()
 
 
+#: How far ahead of the clock a file may be dated and still be read as written
+#: just now. A network volume whose clock runs ahead is seconds out, and exFAT
+#: stores local time with no zone, which is up to fourteen hours. Past a day it
+#: is no longer a clock, it is a date that cannot be true.
+FUTURE_TOLERANCE = timedelta(days=1)
+
+_SECONDS_PER_DAY = 86_400
+
+
 @dataclass(frozen=True, slots=True)
 class ExportAge:
     """When the export document was last written, against a declared limit.
@@ -104,25 +113,56 @@ class ExportAge:
     date is weaker evidence than an old one. It is why this is shown to a person
     and never decided on.
 
-    ``written`` IS NONE WHEN THE FILE COULD NOT BE ASKED, and that is a third
-    state rather than a fresh one. "I could not read a date" folded into "the
-    date is recent" is the first of the recurring defect patterns in
-    ``docs/METHOD.md``.
+    FOUR STATES, AND ONLY ONE OF THEM IS "RECENT". ``written`` is none when the
+    file could not be asked. It is set and :attr:`future_dated` when the date is
+    further ahead of the clock than :data:`FUTURE_TOLERANCE`, which cannot be
+    true and so cannot be judged. Otherwise the age is a duration and is either
+    past the limit or within it. "I could not read a date" folded into "the date
+    is recent" is the first recurring defect pattern in ``docs/METHOD.md``, and
+    a future date clamped to an age of nothing was that pattern arriving by a
+    second route: it read as the freshest export there could be until the clock
+    caught up with it.
+
+    THE AGE IS DERIVED, never stored beside the date. ``written`` and
+    ``judged_at`` are set together or not at all, and the constructor refuses
+    anything else, so no caller can build a date that looks known and carries no
+    age to be stale by.
     """
 
     path: Path
     limit_days: int
     written: datetime | None = None
-    age: timedelta | None = None
+    judged_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if (self.written is None) != (self.judged_at is None):
+            raise ValueError(
+                "an export's date and the instant it is judged at are one fact: "
+                "set both or neither"
+            )
 
     @property
     def known(self) -> bool:
         return self.written is not None
 
     @property
+    def future_dated(self) -> bool:
+        if self.written is None or self.judged_at is None:
+            return False
+        return self.written - self.judged_at > FUTURE_TOLERANCE
+
+    @property
+    def age(self) -> timedelta | None:
+        """How long ago it was written, or none when that cannot be said."""
+        if self.written is None or self.judged_at is None or self.future_dated:
+            return None
+        return max(self.judged_at - self.written, timedelta(0))
+
+    @property
     def age_days(self) -> int | None:
         """Whole days, floored. For display; :attr:`stale` compares durations."""
-        return None if self.age is None else self.age.days
+        age = self.age
+        return None if age is None else age.days
 
     @property
     def stale(self) -> bool:
@@ -130,8 +170,13 @@ class ExportAge:
 
         Not ``age_days > limit_days``: floored days read seven days and twenty
         three hours as seven, which is fresh for a day longer than the key says.
+        COMPARED IN SECONDS rather than against ``timedelta(days=limit_days)``,
+        which raises ``OverflowError`` on a limit no duration can hold.
+        Validation bounds the configured key, and this holds for a value built
+        in code that never touched a file.
         """
-        return self.age is not None and self.age > timedelta(days=self.limit_days)
+        age = self.age
+        return age is not None and age.total_seconds() > self.limit_days * _SECONDS_PER_DAY
 
 
 def export_age(path: Path, *, limit_days: int, now: datetime | None = None) -> ExportAge:
@@ -143,21 +188,22 @@ def export_age(path: Path, *, limit_days: int, now: datetime | None = None) -> E
     :func:`local_tracks`: a default would let a caller that forgot the
     configuration warn on somebody else's number.
 
-    A date in the future is a clock that moved rather than an old export, so the
-    age floors at nothing instead of going negative.
+    THE CONVERSION IS INSIDE THE SAME GUARD AS THE STAT. A modification time no
+    date can hold, which a damaged FAT volume or a network share can return,
+    raises from ``fromtimestamp`` rather than from ``stat``. Either way the
+    answer is that the date could not be read, never a traceback: this is not a
+    ``CratekitError``, so escaping from here would end a whole ``sync all`` pass.
     """
     located = Path(path)
     try:
-        modified = located.stat().st_mtime
-    except OSError:
+        written = datetime.fromtimestamp(located.stat().st_mtime, tz=timezone.utc)
+    except (OSError, OverflowError, ValueError):
         return ExportAge(path=located, limit_days=limit_days)
-    written = datetime.fromtimestamp(modified, tz=timezone.utc)
-    moment = now or datetime.now(timezone.utc)
     return ExportAge(
         path=located,
         limit_days=limit_days,
         written=written,
-        age=max(moment - written, timedelta(0)),
+        judged_at=now or datetime.now(timezone.utc),
     )
 
 
@@ -526,6 +572,7 @@ def _rows(
 
 __all__ = [
     "DEFAULT_FAVORITES_PLAYLIST",
+    "FUTURE_TOLERANCE",
     "ExportAge",
     "Library",
     "ResolvedPlaylist",
