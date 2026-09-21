@@ -544,3 +544,92 @@ def test_the_playlist_exclusions_in_the_order_a_person_is_told():
     assert decide("Warmup", recorded={"Warmup"}) is None
     assert decide("downloaded Warmup") is None
     assert decide("DOWNLOADEDWarmup") is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-263: a source that records no cursor is not a source that never ran
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _row(cfg, source_id: str) -> dict[str, str]:
+    rows = [row for row in watermarks.status_rows(cfg) if row["source_id"] == source_id]
+    assert len(rows) == 1, rows
+    return rows[0]
+
+
+def test_a_clean_labels_sweep_is_not_reported_as_never_having_run(cfg):
+    """The cost, driven: a sweep that succeeds, then the row doctor prints."""
+    source = OfferingSource("labels", [_candidate("r1", "3"), _candidate("r2", "2")])
+    result = run.increment(
+        source,
+        owned=set(),
+        limit=10,
+        watermarks=watermarks.WatermarkStore(cfg),
+        artifacts=artifacts.ArtifactRegistry(cfg),
+        run_id="run-r263",
+        staging=Path(cfg.paths.download_staging),
+    )
+    assert result.shortfall is None
+    assert result.processed == ("r1", "r2")
+
+    row = _row(cfg, "labels")
+    assert row["state"] == "unrecorded"
+    assert "no clean increment has completed" not in row["detail"]
+    assert "review queue" in row["detail"]
+
+
+def test_the_labels_spec_agrees_with_the_source_that_offers():
+    """The declaration on the spec and the one on the source are one fact."""
+    from cratekit.label import sweep
+
+    by_id = {spec.source_id: spec for spec in sources.SPECS}
+    assert sweep.LabelSource.acquires is False
+    assert by_id["labels"].no_cursor
+
+
+def test_favorites_is_not_reported_as_never_having_run(cfg):
+    """METHOD's fifth pattern, one source over: nothing records this cursor."""
+    row = _row(cfg, "favorites")
+    assert row["state"] == "unrecorded"
+    assert "no clean increment has completed" not in row["detail"]
+
+
+def test_a_source_that_records_a_cursor_still_reports_never_then_completed(cfg):
+    """The third state is declared per source, never granted to the absence."""
+    assert sources.SPECS[-1].source_id == "playlists"
+    assert sources.SPECS[-1].no_cursor is None
+    row = _row(cfg, "playlists")
+    assert row["state"] == "never"
+    assert row["detail"] == "no clean increment has completed"
+
+    watermarks.WatermarkStore(cfg).record_swept("playlists", ["pl-1"], library_id="F1E2-D3C4")
+    row = _row(cfg, "playlists")
+    assert row["state"] == "completed"
+    assert "cursor pl-1" in row["detail"]
+
+
+def test_a_stale_cursor_on_a_source_that_records_none_is_not_a_live_completion(cfg):
+    """A record an earlier build wrote no longer moves, and the row says so."""
+    watermarks.WatermarkStore(cfg).advance(
+        "labels",
+        cursor="old-release",
+        items=4,
+        library_id="F1E2-D3C4",
+        now="2026-08-01T00:00:00+00:00",
+    )
+    row = _row(cfg, "labels")
+    assert row["state"] == "unrecorded"
+    assert "review queue" in row["detail"]
+    assert "2026-08-01T00:00:00+00:00" in row["detail"]
+    assert "no longer moves" in row["detail"]
+
+
+def test_doctor_prints_the_labels_row_it_is_given(cfg):
+    """The consumer, driven, so the finding a person reads carries the fix."""
+    from cratekit.cli import doctor
+
+    found = {f.key: f for f in doctor._source_findings(cfg)}
+    labels = found["source.labels.watermark"]
+    assert "no clean increment has completed" not in labels.detail
+    assert "review queue" in labels.detail
+    assert found["source.playlists.watermark"].detail == "no clean increment has completed"
