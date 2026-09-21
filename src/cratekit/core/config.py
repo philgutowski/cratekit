@@ -2435,6 +2435,49 @@ class OutboundConfig:
     export_stale_days: int = DEFAULT_EXPORT_STALE_DAYS
 
 
+#: The recognition service's identify endpoint for the region most accounts are
+#: made in. Named here as well as on the field for the reason the intake ages
+#: give: ``slots=True`` hides a field default from the validator.
+DEFAULT_RECOGNITION_HOST = "identify-us-west-2.acrcloud.com"
+
+#: Paid recognition calls this machine may make in one calendar month before
+#: it refuses. About three two hour sets. A DEFAULT RATHER THAN NO BOUND, because
+#: the source system shipped with none and spent 565 calls into a spent quota
+#: before anyone noticed; a person on a larger plan raises it in one line, and
+#: the refusal names the line.
+DEFAULT_RECOGNITION_MONTHLY_CALLS = 1000
+
+#: The only domain a recognition host may sit under. The access key and a
+#: signature over it go to this host with every paid call, so a typed value that
+#: named some other domain would hand them to whoever holds it.
+RECOGNITION_HOST_DOMAIN = "acrcloud.com"
+
+_HOST_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+
+
+@dataclass(frozen=True, slots=True)
+class RecognitionConfig:
+    """Where paid recognition is sent and how much of it a month may cost (R-301).
+
+    ``host`` is the account's regional identify endpoint. An account belongs to
+    one region, and asking another region's host is an HTTP answer the
+    identifier reads as transient, five times, before it stops.
+
+    ``monthly_calls`` is A REFUSAL AND NEVER A WARNING. The identifier checks
+    what is owed against what the ledger already holds for the month before the
+    first chunk is carved, and refuses naming this key. The ledger counts what
+    THIS machine spent, so the service's own quota answer is still the ceiling
+    when another tool shares the key.
+
+    Both live in the user's file rather than as constants in the module, on the
+    rule ``ReportsConfig`` states, and both are frozen with a queued job like
+    everything else the job reads.
+    """
+
+    host: str = DEFAULT_RECOGNITION_HOST
+    monthly_calls: int = DEFAULT_RECOGNITION_MONTHLY_CALLS
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     """The whole validated configuration, frozen.
@@ -2463,6 +2506,7 @@ class Config:
     # conflicts textually, which is a conflict somebody reads.
     reports: ReportsConfig = field(default_factory=ReportsConfig)
     outbound: OutboundConfig = field(default_factory=OutboundConfig)
+    recognition: RecognitionConfig = field(default_factory=RecognitionConfig)
 
     # -- derived views -----------------------------------------------------
 
@@ -2784,6 +2828,7 @@ def validate(data: Mapping) -> list[str]:
 
     problems += _validate_aging_thresholds(data)
     problems += _validate_export_staleness(data)
+    problems += _validate_recognition(data)
 
     return problems
 
@@ -2886,6 +2931,56 @@ def _validate_export_staleness(data: Mapping) -> list[str]:
         maximum=MAX_EXPORT_STALE_DAYS,
     )
     return [] if problem is None else [problem]
+
+
+def recognition_host_problem(value: object) -> str | None:
+    """What is wrong with a recognition host, or none. The rule, once.
+
+    A BARE HOSTNAME UNDER ``RECOGNITION_HOST_DOMAIN``, lowercase, nothing else.
+    The identifier composes ``https://`` and the endpoint around it, so a scheme,
+    a path, a port or a space would build an address nobody meant, and the
+    domain is checked because the credential travels to it.
+    """
+    key = "recognition.host"
+    if not isinstance(value, str):
+        return f"{key} must be a hostname, found {value!r}"
+    labels = value.split(".")
+    if not all(_HOST_LABEL.match(label) for label in labels) or not value.endswith(
+        f".{RECOGNITION_HOST_DOMAIN}"
+    ):
+        return (
+            f"{key} must be a bare lowercase hostname under "
+            f"{RECOGNITION_HOST_DOMAIN}, such as {DEFAULT_RECOGNITION_HOST}, found "
+            f"{value!r}. No scheme and no path: the access key and its signature "
+            f"are sent to this host with every paid call."
+        )
+    return None
+
+
+def _validate_recognition(data: Mapping) -> list[str]:
+    """The recognition host and the monthly call bound (R-301).
+
+    Checked here for the reason the intake ages are: a wrong value in a file is
+    a problem with a key name attached, and a wrong host reaching the identifier
+    is five paid attempts read as a network blip.
+    """
+    problems: list[str] = []
+    host = _dig(data, "recognition.host")
+    if host is not None:
+        problem = recognition_host_problem(host)
+        if problem is not None:
+            problems.append(problem)
+    key = "recognition.monthly_calls"
+    bound = _dig(data, key)
+    if bound is not None and (
+        not isinstance(bound, int) or isinstance(bound, bool) or bound < 1
+    ):
+        problems.append(
+            f"{key} must be a positive whole number of paid recognition calls, "
+            f"found {bound!r}. There is no value that switches the bound off; a "
+            f"person on a larger plan writes a larger number."
+        )
+    return problems
 
 
 def _is_inside(child: Path, parent: Path) -> bool:
@@ -3127,6 +3222,7 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         backup=_build(BackupConfig, data.get("backup") or {}),
         reports=_build(ReportsConfig, data.get("reports") or {}),
         outbound=_build(OutboundConfig, data.get("outbound") or {}),
+        recognition=_build(RecognitionConfig, data.get("recognition") or {}),
     )
 
 

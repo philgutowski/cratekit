@@ -59,9 +59,12 @@ def identify_only(
     *,
     identifier: Identifier | None = None,
     refresh: bool = False,
+    recognition: config.RecognitionConfig | None = None,
 ) -> IdentifyResult:
     """Identify the tracks in ``source`` and stop. Download nothing."""
-    found = recognize.identify(source, identifier=identifier, refresh=refresh)
+    found = recognize.identify(
+        source, identifier=identifier, refresh=refresh, recognition=recognition
+    )
     return IdentifyResult(
         rows=found.rows,
         tracklist=recognize.tracklist_text(found.rows),

@@ -33,16 +33,14 @@ shipped defaults, so the suite drives the whole mapping through fakes and the
 battery passes with no credential recorded and no binary installed. The live
 key binding and the first paid call are R-132's attended half.
 
-**THE HOST IS A CONSTANT AND ONLY THE PER RUN CAP IS ENFORCED, both recorded
-rather than hidden.** ACRCloud's identify endpoint is regional and an account
-belongs to one region; the source system kept the host beside the credentials,
-and here the two credentials are the whole recognition surface, so the host
-is the module's default and the attended binding is where a different region
-would be discovered. The monthly bound is a parameter nothing in the shipped
-path sets, so in production the ledger COUNTS and does not refuse: the per run
-cap is the only bound a person meets today. A configuration section naming
-the region and the monthly bound is the right home for both and is filed as a
-residual, not built here.
+**THE HOST AND THE MONTHLY BOUND ARE THE USER'S, read from the frozen
+configuration (R-301).** ACRCloud's identify endpoint is regional and an
+account belongs to one region, so the host is ``recognition.host``; the month
+is bounded by ``recognition.monthly_calls``, which has a default, so a machine
+nobody configured is still bounded. Neither has a default HERE: ``identify``
+takes both as required arguments and ``bound_identifier`` builds them from the
+section it is handed, so no caller reaches the paid path with a host or a
+month nobody chose.
 
 **THE RESPONSE MAPPING IS THE SOURCE SYSTEM'S, corrected once, and unverified
 against a live account.** The status families below are the ones
@@ -80,8 +78,7 @@ from cratekit.intake.recognize import Identified
 # The grid, the bound, the endpoint
 # ---------------------------------------------------------------------------
 
-#: The identify endpoint's regional host. See the module docstring.
-HOST = "identify-us-west-2.acrcloud.com"
+#: The identify endpoint's path. The regional host is ``recognition.host``.
 ENDPOINT = "/v1/identify"
 
 #: One chunk is twelve seconds of 16 kHz mono PCM, which is under the service's
@@ -298,7 +295,7 @@ def request_for(
     *,
     access_key: str,
     signing_key: str,
-    host: str = HOST,
+    host: str,
     timestamp: str | None = None,
 ) -> Request:
     """One identify call for ``sample``. The signing key is consumed here and
@@ -380,9 +377,8 @@ class Ledger:
     ADVISORY BY NATURE. The service's answer carries no remaining quota field,
     so the count here is what THIS machine spent and can drift from the
     account when another tool shares the key. The live quota code is the real
-    ceiling; this ledger is what stops a run that would obviously exceed a
-    configured monthly bound from making the first call, and today nothing
-    configures one, so it counts and does not refuse.
+    ceiling; this ledger is what stops a run that would obviously exceed
+    ``recognition.monthly_calls`` from making the first call.
 
     A ledger that cannot be READ counts as zero rather than refusing, because a
     corrupt counter must not lock recognition out; a ledger that cannot be
@@ -439,11 +435,22 @@ class Ledger:
 @dataclass(frozen=True, slots=True)
 class Budget:
     """What a run may spend. ``monthly`` of None means the month is not bounded
-    by this tool, and the ledger still counts. See the module docstring for
-    why nothing in the shipped path sets it yet."""
+    by this tool and the ledger still counts; only a caller that builds a
+    budget by hand can say that, because the shipped path builds it with
+    :meth:`from_config` and the section always carries a bound."""
 
     per_run: int = MAX_CALLS_PER_RUN
     monthly: int | None = None
+
+    @classmethod
+    def from_config(cls, recognition: config.RecognitionConfig) -> Budget:
+        """The shipped budget: the per run cap, and the month the user set."""
+        return cls(per_run=MAX_CALLS_PER_RUN, monthly=recognition.monthly_calls)
+
+
+#: The configuration key a monthly refusal names, so a person on a larger plan
+#: is told the one line to change.
+MONTHLY_KEY = "recognition.monthly_calls"
 
 
 def assert_within(budget: Budget, *, planned: int, used_this_month: int) -> None:
@@ -462,7 +469,8 @@ def assert_within(budget: Budget, *, planned: int, used_this_month: int) -> None
             "intake-recognition-spend-bound",
             f"this recording would take {planned} recognition calls, "
             f"{used_this_month} were already spent this month, and the monthly "
-            f"bound is {budget.monthly}; nothing was sent",
+            f"bound is {budget.monthly}; nothing was sent. Wait for next month, "
+            f"or raise {MONTHLY_KEY} in the configuration if the plan allows more",
             remedy=Remedy.RETRY_LATER,
             origin=("intake.acrcloud",),
             detail={
@@ -470,6 +478,7 @@ def assert_within(budget: Budget, *, planned: int, used_this_month: int) -> None
                 "used": used_this_month,
                 "bound": budget.monthly,
                 "kind": "monthly",
+                "key": MONTHLY_KEY,
             },
         )
 
@@ -624,10 +633,10 @@ class ChunkPlan:
 
     digest: str
     offsets: tuple[int, ...]
+    host: str
     chunk_s: int = CHUNK_S
     interval_s: int = INTERVAL_S
     sample_rate: int = SAMPLE_RATE
-    host: str = HOST
 
     def material(self) -> dict[str, Any]:
         return {
@@ -817,12 +826,12 @@ def identify(
     *,
     transport: Transport,
     carver: Carver,
+    budget: Budget,
+    host: str,
     credentials: Credentials = keychain_credentials,
-    budget: Budget | None = None,
     ledger: Ledger | None = None,
     cache: RecognitionCache | None = None,
     refresh: bool = False,
-    host: str = HOST,
     month: str | None = None,
 ) -> Identified:
     """Identify the tracks in ``source``. Bounded before the first call.
@@ -866,8 +875,13 @@ def identify(
     nineteen answers before it are written first, so the pass after the quota
     resets pays for the rest and not for the set. What this does not cover is
     a process that dies outright between the first answer and the write.
+
+    ``budget`` AND ``host`` HAVE NO DEFAULT (R-301). A default is how the
+    shipped path came to bound no month and ask one region: nothing passed
+    them, so nothing was chosen. :func:`bound_identifier` builds both from the
+    configuration's recognition section.
     """
-    spend = budget or Budget()
+    spend = budget
     counter = ledger or Ledger()
     kept_in = cache or RecognitionCache()
     try:
@@ -1058,10 +1072,10 @@ def _heard(payload: Mapping[str, Any], *, offset_s: int) -> Match | None:
 
 
 def bound_identifier(
+    recognition: config.RecognitionConfig,
     *,
     transport: Transport | None = None,
     carver: Carver | None = None,
-    budget: Budget | None = None,
     ledger: Ledger | None = None,
     cache: RecognitionCache | None = None,
     refresh: bool = False,
@@ -1072,7 +1086,11 @@ def bound_identifier(
     looked up when the returned callable runs, so nothing here touches a
     binary or a network until a recording is actually handed over, and a
     suite that replaces either on the module reaches the paid path.
+
+    ``recognition`` is the configuration's section, the one a queued job
+    freezes, and it is the ONLY source of the host and the monthly bound.
     """
+    budget = Budget.from_config(recognition)
 
     def run(source: Path) -> Identified:
         return identify(
@@ -1080,6 +1098,7 @@ def bound_identifier(
             transport=transport or http_transport,
             carver=carver or FfmpegCarver(),
             budget=budget,
+            host=recognition.host,
             ledger=ledger,
             cache=cache,
             refresh=refresh,
@@ -1093,11 +1112,11 @@ __all__ = [
     "CACHE_VERSION",
     "CHUNK_S",
     "ENDPOINT",
-    "HOST",
     "INTERVAL_S",
     "LEDGER_KEY",
     "LEDGER_LOCK_KEY",
     "MAX_CALLS_PER_RUN",
+    "MONTHLY_KEY",
     "SAMPLE_RATE",
     "UNREACHED_STOP",
     "Budget",

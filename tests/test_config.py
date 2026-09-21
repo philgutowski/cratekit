@@ -1269,6 +1269,8 @@ def test_the_fingerprint_does_not_depend_on_key_order(library):
         ("profile", "name", "full"),
         ("reports", "intake_stale_days", 45),
         ("outbound", "export_stale_days", 14),
+        ("recognition", "host", "identify-eu-west-1.acrcloud.com"),
+        ("recognition", "monthly_calls", 250),
     ],
 )
 def test_the_fingerprint_changes_when_any_value_changes(library, section, key, value):
@@ -2633,3 +2635,72 @@ def test_an_export_staleness_nobody_could_mean_is_refused_with_its_ceiling(libra
 def test_an_absent_export_staleness_is_not_a_problem(library):
     assert config.validate(valid_data(library)) == []
     assert config.validate(valid_data(library, outbound={})) == []
+
+
+# R-301: the recognition host and the monthly bound are the user's.
+
+
+def test_the_recognition_defaults_bound_the_month_and_name_one_region(library):
+    section = config.from_dict(valid_data(library)).recognition
+    assert section.host == config.DEFAULT_RECOGNITION_HOST
+    assert section.monthly_calls == config.DEFAULT_RECOGNITION_MONTHLY_CALLS
+    assert section.monthly_calls > 0, "an unconfigured machine must still bound the month"
+    moved = config.from_dict(
+        valid_data(
+            library,
+            recognition={"host": "identify-ap-southeast-1.acrcloud.com", "monthly_calls": 5},
+        )
+    ).recognition
+    assert moved == config.RecognitionConfig(
+        host="identify-ap-southeast-1.acrcloud.com", monthly_calls=5
+    )
+
+
+def test_the_recognition_section_round_trips_through_the_file(library):
+    built = config.from_dict(
+        valid_data(library, recognition={"host": "identify-eu-west-1.acrcloud.com"})
+    )
+    again = config.from_dict(tomllib.loads(built.to_toml_bytes().decode()))
+    assert again.recognition == built.recognition
+    assert again.fingerprint() == built.fingerprint()
+
+
+@pytest.mark.parametrize("value", [0, -3, "many", 2.5, True])
+def test_a_monthly_bound_that_is_not_a_positive_call_count_is_refused(library, value):
+    """``True`` by name, since it is an ``int`` to ``isinstance``; zero because
+    there is no value that switches the bound off."""
+    problems = config.validate(valid_data(library, recognition={"monthly_calls": value}))
+    assert len(problems) == 1, problems
+    assert "recognition.monthly_calls" in problems[0]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://identify-eu-west-1.acrcloud.com",
+        "identify-eu-west-1.acrcloud.com/v1/identify",
+        "identify-eu-west-1.acrcloud.com:443",
+        "identify eu.acrcloud.com",
+        "Identify-EU-west-1.acrcloud.com",
+        "identify-eu-west-1.acrcloud.com.attacker.example",
+        "acrcloud.com.example",
+        "evilacrcloud.com",
+        "acrcloud.com",
+        "",
+        "-bad.acrcloud.com",
+        7,
+    ],
+)
+def test_a_host_that_is_not_a_bare_name_under_the_service_is_refused(library, value):
+    """The access key and its signature travel to this host, so a value that
+    names another domain, or builds an address nobody meant, is refused."""
+    problems = config.validate(valid_data(library, recognition={"host": value}))
+    assert len(problems) == 1, problems
+    assert "recognition.host" in problems[0]
+
+
+def test_an_absent_recognition_section_is_not_a_problem(library):
+    assert config.validate(valid_data(library, recognition={})) == []
+    assert config.validate(
+        valid_data(library, recognition={"host": "identify-eu-west-1.acrcloud.com"})
+    ) == []
