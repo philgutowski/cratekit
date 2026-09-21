@@ -1,0 +1,46 @@
+name = "r388-c"
+pass_kind = "light"
+
+[[rows]]
+id = "M13_credential_step_dropped"
+description = "Drop the credential step from the listing failure's reservation"
+file = "src/cratekit/cli/exit_codes.py"
+surface = "user"
+old = '''            "check the remote's credential has not expired or been revoked, and "
+            "reconnect it in rclone if it has",
+'''
+new = ""
+
+[[rows]]
+id = "M14_status_registration_dropped"
+description = "Remove the slug from core.cause REASONS, the P5 registration beside the reservation"
+file = "src/cratekit/core/cause.py"
+old = '''        "snapshot-listing-failed": ExitCode.PRECONDITION,
+'''
+new = ""
+
+[[rows]]
+id = "M15_status_code_disagrees"
+description = "Register the slug in core.cause at a code the reservation does not hold"
+file = "src/cratekit/core/cause.py"
+old = '''        "snapshot-listing-failed": ExitCode.PRECONDITION,'''
+new = '''        "snapshot-listing-failed": ExitCode.LIBRARY_UNAVAILABLE,'''
+
+[[rows]]
+id = "M16_named_stamp_step_dropped"
+description = "Drop the named stamp step added to no-snapshot-available"
+file = "src/cratekit/cli/exit_codes.py"
+surface = "user"
+old = '''            "when --snapshot named a stamp, that snapshot or its database "
+            "folder is not on the remote; check the stamp, or leave the flag "
+            "off to take the newest",
+'''
+new = ""
+
+[[rows]]
+id = "M17_slug_respelled"
+description = "Respell the enum value, so the engine raises a slug nothing reserved"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    SNAPSHOT_LISTING_FAILED = "snapshot-listing-failed"'''
+new = '''    SNAPSHOT_LISTING_FAILED = "snapshot-listing-error"'''

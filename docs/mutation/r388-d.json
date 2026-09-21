@@ -1,0 +1,73 @@
+{
+  "name": "r388-d",
+  "pass_kind": "light",
+  "branch": "relay/100",
+  "head": "9dc5a83",
+  "when": "2026-09-21 08:45 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9800,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/cli/exit_codes.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/cli/exit_codes.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "efbd7ac8fa06e8f2",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9800,
+    "baseline_collected": 9800,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M16_named_stamp_step_dropped_remeasured",
+      "description": "Re-measure of M16 after the pin: drop the named stamp step added to no-snapshot-available",
+      "file": "src/cratekit/cli/exit_codes.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "595dfaa1cc9f42ee",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_reserved_causes.py",
+        "tests/test_restore_cli.py",
+        "tests/test_write_session.py"
+      ],
+      "subset_reason": "test files importing cratekit.cli.exit_codes",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 645,
+      "baseline_collected": 645,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_tools.py::test_a_folder_rclone_says_is_absent_is_not_a_listing_failure[list-snapshot-contents-2026-08-01T000000Z-holds no database folder]",
+        "tests/modules/test_tools.py::test_a_folder_rclone_says_is_absent_is_not_a_listing_failure[list-snapshot-identity-2026-08-01T000000Z-the snapshot 2026-08-01T000000Z was not found]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"when --snapshot named a stamp, that snapshot or its database \"\n            \"folder is not on the remote; check the stamp, or leave the flag \"\n            \"off to take the newest\",\n",
+      "new": ""
+    }
+  ],
+  "dropped": []
+}

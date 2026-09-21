@@ -4,7 +4,27 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-381, issue #97, `relay/97`, 2026-09-21.**
+**Last merged: R-388, issue #100, `relay/100`, 2026-09-21.**
+A restore listing on the remote that fails no longer tells a person to take a
+backup, which CLOSES R-388 and R-387. `backup.Refusal.SNAPSHOT_LISTING_FAILED`,
+slug `snapshot-listing-failed`, is reserved at 30 with steps naming the remote,
+its credential and `backup.db_dest_root`, and registered in `core.cause` in the
+same commit. It is raised by all four restore listings that exit non zero: the
+identity marker and database folder listings of a snapshot, the snapshot root
+and the analysis share mirror. **RCLONE'S EXIT 3 IS ABSENCE, NOT FAILURE**, on
+the three snapshot listings as it already was on the share, so a mistyped or
+pruned stamp, an unwritten root and a backup cut off before its database folder
+keep `no-snapshot-available`, whose reservation gained a first step for a typed
+stamp. The built in review raised that one finding, fixed in round one.
+Battery: ruff clean, **9799 passed** and 1 skipped in 69 seconds. Scan clean. No
+test of this unit's is among the slowest.
+Mutation tables `docs/mutation/r388-a.md` to `r388-d.md`, read in
+`r388-notes.md`: **17 rows, the author's own, all killed** after one zero was
+pinned. Filed R-643, exit 3 measured on the local backend only, not on the
+board bar.
+**Main's highest residual number is R-643.**
+
+**The session before: R-381, issue #97, `relay/97`, 2026-09-21.**
 A favourite label's slug now transliterates before it folds, which CLOSES R-381.
 `registry.slug` maps `ä ö ü ß` and their capitals to `ae oe ue ss`, drops
 combining marks after NFKD, then folds, so `Sueño` is `sueno` and `Voll Schön`
@@ -26,7 +46,6 @@ test of this unit's is among the slowest.
 Mutation table `docs/mutation/r381.md`, re-measured in `r381-b.md`, read in
 `r381-notes.md`: **17 rows, the author's own, all killed** after two zeros were
 pinned. Filed R-642, three leftovers, none on the board bar.
-**Main's highest residual number is R-642.**
 
 **The session before: R-382, issue #96, `relay/96`, 2026-09-21.**
 A playlist run to done by `crate intake playlist` is now recorded in the

@@ -1,0 +1,64 @@
+name = "r388-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M7_share_listing_back_to_absence"
+description = "An analysis share listing that exits 1 raises no-snapshot-available again"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''            Refusal.SNAPSHOT_LISTING_FAILED,
+            f"the analysis share mirror'''
+new = '''            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the analysis share mirror'''
+
+[[rows]]
+id = "M8_share_listing_message_reworded"
+description = "Reword could not be listed to could not be read in the share listing refusal"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''could not "
+            f"be listed (exit {result.returncode})'''
+new = '''could not "
+            f"be read (exit {result.returncode})'''
+
+[[rows]]
+id = "M9_root_absent_read_as_failure"
+description = "Drop the exit 3 branch on the root listing, so a root no backup wrote is a listing failure"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        # A root no backup has written yet is an empty root, not a remote that
+        # did not answer, and its answer is to take a backup.
+        return ()
+'''
+new = ""
+
+[[rows]]
+id = "M10_named_stamp_absent_read_as_failure"
+description = "Drop the exit 3 branch on the identity listing, so a mistyped stamp sends the person to the remote"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        # A mistyped or pruned stamp.'''
+new = '''    if False:
+        # A mistyped or pruned stamp.'''
+
+[[rows]]
+id = "M11_db_folder_absent_read_as_failure"
+description = "Drop the exit 3 branch on the contents listing, so a cut off backup sends the person to the remote"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        # A backup cut off before its database folder was written.'''
+new = '''    if False:
+        # A backup cut off before its database folder was written.'''
+
+[[rows]]
+id = "M12_listing_steps_say_take_a_backup"
+description = "Replace the listing failure's first reserved step with the take a backup step it replaced"
+file = "src/cratekit/cli/exit_codes.py"
+surface = "user"
+old = '''            "check the backup remote is reachable from this machine; the snapshot "
+            "is not known to be missing, a listing of it failed",'''
+new = '''            "no dated database snapshot exists for this library yet; take a "
+            "backup before a restore can be planned",'''

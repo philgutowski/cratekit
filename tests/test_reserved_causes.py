@@ -5040,7 +5040,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # removes none. It is the engine's own, registered and not in the reserved
     # table, exactly as outbound-ledger-unusable is. Population 174 to 175,
     # non-reserved 147 to 148, reserved half UNCHANGED at 27.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (175, 148, 27)
+    #
+    # Re-pinned on the residual finding "A snapshot whose listing fails tells
+    # the person to take a backup", 2026-09-21. ONE slug, named rather than
+    # counted: snapshot-listing-failed, which the backup engine raises when a
+    # listing on the remote exits non zero, so a snapshot that exists is never
+    # answered with a step to take one. It is a member of the engine's own
+    # refusal enum, so like the three provenance slugs above it IS in the
+    # reserved table, and the reserved half moves. Population 175 to 176,
+    # non-reserved UNCHANGED at 148, reserved half 27 to 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (176, 148, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5638,7 +5647,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # report is staged in and committed to, the same kind of literal as
     # intake-artifacts. None is a cause, because the unit refuses nothing of its
     # own, which is why both halves move by three.
-    assert (len(literals), len(literals - set(causes))) == (492, 318), (
+    # Re-pinned on the residual finding "A snapshot whose listing fails tells
+    # the person to take a backup", 2026-09-21: 492 to 493 distinct, non-keys
+    # UNCHANGED at 318. ONE literal joined and NOTHING left, read off the
+    # unit's own diff of `src/cratekit`, which adds the one kebab shaped string
+    # snapshot-listing-failed, in `modules/tools/backup.py`, `core/cause.py` and
+    # `cli/exit_codes.py`. It is a KEY, the refusal the backup engine raises
+    # when a listing on the remote fails, which is why the non-key half does
+    # not move.
+    assert (len(literals), len(literals - set(causes))) == (493, 318), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
