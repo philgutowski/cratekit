@@ -250,9 +250,20 @@ def test_an_unowned_sequence_places_each_companion_once(index):
     """Every companion of an unowned anchor has no energy relation to it, so most
     are ``either``, and ``either`` filler used to be picked for BOTH sides. The
     positions then skipped 1 and a companion was in the set twice.
+
+    THE LIBRARY IS NARROWED TO THE ANCHOR'S OWN WHEEL NUMBER so no companion
+    moves around the wheel and every one is ``either``. Over the full fixture
+    the after side fills from its own 9A and 10A picks and never reaches the
+    filler, and this test passed with the fix reverted, measured as P1's first
+    run in ``docs/mutation/u98-b.md``.
     """
+    same_number = tuple(t for t in index if t.key in ("8A", "8B"))
     plan = setbuild_cli.plan_for(
-        setbuild_cli.unowned_anchor("Oak", "8A", 124.0), index, declared=TAXONOMY
+        setbuild_cli.unowned_anchor("Oak", "8A", 124.0), same_number, declared=TAXONOMY
+    )
+    assert {item["role"] for item in plan["items"]} == {"either"}
+    assert len(plan["items"]) > setbuilder.DEFAULT_SIDE, (
+        "too few companions for the before side to leave any for the after side"
     )
     placed = [item["position"] for item in plan["items"] if item["position"] is not None]
     paths = [item["path"] for item in plan["items"]]

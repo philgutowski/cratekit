@@ -1,0 +1,10 @@
+name = "u98-c"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_either_twice_rerun"
+description = "P1 again after the unowned sequence test was narrowed to one wheel number: the after side draws from the whole ranked list, so either filler is placed on both sides"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''            [s for s in ranked if id(s) not in taken], "after", DEFAULT_SIDE'''
+new = '''            ranked, "after", DEFAULT_SIDE'''
