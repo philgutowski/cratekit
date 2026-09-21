@@ -1151,6 +1151,8 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
             origin=("backup", "cli"),
             detail={"item_id": named, "portions": list(declared)},
         ) from None
+    # BEFORE the attempt, so the record on disk is only ever this attempt's.
+    backup_facts.clear_outcome(job.job_id, named)
     report = perform_backup(
         dict(job.payload or {}),
         portion=portion,
@@ -1167,7 +1169,16 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
     # ``atomic_write_bytes`` creates the directory owner only (P1) and the file
     # at 0600; the engine's ``commit_artifact`` then renames it over any record a
     # failed attempt of this item left, so the file always describes the latest.
-    config.atomic_write_bytes(backup_facts.encode_outcome(report), staged)
+    #
+    # A RECORD THAT CANNOT BE STAGED DOES NOT FAIL THE ITEM. By this line the
+    # transfer completed and the engine published its age, so the backup exists.
+    # Failing here would record ``internal-error`` over a good backup and send
+    # the retry to repeat the whole transfer. The item completes with no
+    # artifact instead, which is exactly what it did before R-349.
+    try:
+        config.atomic_write_bytes(backup_facts.encode_outcome(report), staged)
+    except OSError:
+        return None
     return jobs.Produced(staged=staged, final=final)
 
 

@@ -2847,3 +2847,72 @@ def test_every_command_the_engine_ran_is_paired_with_its_own_return_code(cfg, rc
     commands = report["portions"][0]["commands"]
     assert [c["returncode"] for c in commands if "lsf" in c["argv"]] == [3], commands
     assert all(c["returncode"] == 0 for c in commands if "lsf" not in c["argv"]), commands
+
+
+def _claimed(job_id: str, item_id: str) -> tuple[jobs.Job, jobs.Item]:
+    """A running job and one claimed item, built by hand for the handler seam."""
+    job = jobs.Job(
+        job_id=job_id,
+        handler_key="backup.run",
+        payload={},
+        config_fingerprint="",
+        config_toml="",
+        library_id="",
+        state=jobs.JobState.RUNNING,
+        created=MOMENT.isoformat(),
+        updated=MOMENT.isoformat(),
+    )
+    return job, jobs.Item(
+        job_id=job_id, item_id=item_id, ordinal=0, state=jobs.ItemState.CLAIMED
+    )
+
+
+def test_an_outcome_directory_that_cannot_be_listed_is_not_read_as_nothing(cfg):
+    """R-349 review: ``glob`` swallows a permission error, ``iterdir`` does not."""
+    backup_facts.write_outcome("J10", "files", {"portions": []})
+    directory = backup_facts.outcome_path("J10", "files").parent
+    directory.chmod(0o000)
+    try:
+        found = backup_facts.read_outcomes("J10")
+    finally:
+        directory.chmod(0o700)
+    assert found is not None and backup_facts.UNLISTABLE in found, found
+
+
+def test_a_retry_that_fails_another_way_does_not_show_the_last_attempt_s_commands(
+    cfg, monkeypatch
+):
+    """R-349 review: the record on disk is only ever the current attempt's."""
+    backup_facts.write_outcome("J11", "database", {"portions": [{"commands": ["old"]}]})
+
+    def runner_breaks(command):
+        raise RuntimeError("the runner itself fell over")
+
+    monkeypatch.setattr(backup, "subprocess_runner", runner_breaks)
+    job, item = _claimed("J11", "database")
+    with pytest.raises(RuntimeError):
+        backup_cli.handle(job, item, cfg)
+    assert not backup_facts.outcome_path("J11", "database").exists(), (
+        "the previous attempt's failed commands still describe an attempt that "
+        "failed for a different reason"
+    )
+
+
+def test_a_record_that_cannot_be_staged_does_not_fail_a_completed_backup(
+    cfg, monkeypatch
+):
+    """R-349 review: after the transfer, a record write error completes the item."""
+    monkeypatch.setattr(backup, "subprocess_runner", _answering(0))
+
+    real = config.atomic_write_bytes
+
+    def cannot_stage(payload, path, **kwargs):
+        # Only the staged record: the age publish shares this writer, and
+        # failing it would be a different condition from the one under test.
+        if path.name.endswith(".staged"):
+            raise PermissionError("the outcome directory is read only")
+        return real(payload, path, **kwargs)
+
+    monkeypatch.setattr(config, "atomic_write_bytes", cannot_stage)
+    job, item = _claimed("J12", "files")
+    assert backup_cli.handle(job, item, cfg) is None

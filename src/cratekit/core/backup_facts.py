@@ -417,6 +417,17 @@ def write_outcome(job_id: str, item_id: str, payload: dict) -> Path:
     return path
 
 
+def clear_outcome(job_id: str, item_id: str) -> None:
+    """Remove one item's record before a new attempt at that item.
+
+    A retried item that fails some other way, before any transfer or on a fact
+    file it cannot write, reaches neither channel. Without this the previous
+    attempt's failed commands would sit beside the new attempt's different
+    cause, and a person would debug a failure that did not happen this time.
+    """
+    outcome_path(job_id, item_id).unlink(missing_ok=True)
+
+
 def encode_outcome(payload: dict) -> bytes:
     """The bytes both channels write, so a staged success and a direct failure
     are the same format."""
@@ -440,7 +451,10 @@ def read_outcomes(job_id: str) -> dict[str, dict] | None:
     if not directory.is_dir():
         return None
     try:
-        files = sorted(directory.glob("*.json"))
+        # ``iterdir`` and not ``glob``: on 3.12 ``glob`` swallows a permission
+        # error on the directory and yields nothing, which is the "nothing ran"
+        # reading this branch exists to refuse. Measured in review, 2026-09-21.
+        files = sorted(p for p in directory.iterdir() if p.suffix == ".json")
     except OSError as exc:
         # A directory that exists and cannot be listed is not "nothing ran".
         return {UNLISTABLE: {"unreadable": f"{directory}: {exc}"}}
@@ -468,6 +482,7 @@ __all__ = [
     "PortionAge",
     "Remedy",
     "ages",
+    "clear_outcome",
     "encode_outcome",
     "oldest_usable_age",
     "outcome_path",
