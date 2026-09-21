@@ -5594,7 +5594,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # KEY, and join-order, the warning code the mastering verb says a split
     # recording's order back under, which is not a cause and is why the non-key
     # half moves by one. Both in `master/cli.py`.
-    assert (len(literals), len(literals - set(causes))) == (481, 308), (
+    # Re-pinned on the residual finding "The library both outbound verbs read is
+    # an export the operator makes by hand", 2026-09-21: 481 to 485 distinct,
+    # non-keys 308 to 312. FOUR literals joined and NOTHING left, differenced as
+    # SETS over main's own `src/cratekit` read out of `git archive` into a
+    # scratch directory. All four are in `modules/outbound/shell.py` and none is
+    # a cause, because the unit refuses nothing: outbound-export-stale and
+    # outbound-export-age-unknown are the WARNING codes a queued write carries
+    # about the age of the export it was read from, and within-limit and
+    # future-dated are two of the four WORDS the confirm gate shows for that
+    # age. The other two words, stale and unknown, are not kebab shaped and so
+    # were never in this population.
+    assert (len(literals), len(literals - set(causes))) == (485, 312), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
