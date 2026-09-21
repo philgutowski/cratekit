@@ -28,8 +28,8 @@ the anchor, so one same-key, equal-energy companion was the sequence twice with
 position 2 and no 1. An unowned anchor hit it on most runs.
 Battery: ruff clean, **9473 passed** and 1 skipped in 64 seconds, 9474
 collected, scan clean. 28 tests joined, all in `tests/test_setbuilder_cli.py`:
-20 in the pure half, counting 11 parametrized cases, and 8 through the
-dispatcher. The two new slugs moved the cause population pin 170 to
+21 in the pure half, counting 11 parametrized cases, and 7 through the
+dispatcher, counting 2. The two new slugs moved the cause population pin 170 to
 172 and the kebab literal pin 476 to 478, differenced as sets against main.
 Mutation tables, `docs/mutation/u98-a.md`, `u98-b.md` and `u98-c.md`, rows files
 beside them, notes in `u98-notes.md`: **17 rows, the author's own, all killed.**
