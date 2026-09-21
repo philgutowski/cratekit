@@ -157,10 +157,12 @@ crate job cancel JOB_ID
 
 The resort adds and never removes. After a genre or a band change the track is
 in its new playlist and still in its old one, because nothing in this product
-deletes a playlist membership. The finished resort carries a
-`membership-left-behind` warning naming each old playlist and the file left in
-it, so the person can take it out in rekordbox, and `crate converge` lists the
-same leftovers by identifier at any time.
+deletes a playlist membership. The driven resort carries a
+`membership-left-behind` warning naming each playlist and the file still in it,
+so the person can take it out in rekordbox if it no longer belongs there. The
+warning names the first twenty, counts the rest, and ends with the directory
+the whole list is written in. A resort that failed part way says the same thing
+as a step on its refusal. `crate converge` says whether a tree still differs.
 
 `--state` is repeatable and refuses a state it does not recognise instead of
 matching nothing, because a filter that silently matches nothing looks exactly

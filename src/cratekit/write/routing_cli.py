@@ -42,13 +42,14 @@ Layer: write.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
 from cratekit.core import (
     analysis_store,
+    artifacts,
     config,
     convergence,
     jobs,
@@ -59,7 +60,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import metadata_cli, rbxml, rebuild, routing_pass, trees
 
@@ -70,13 +71,13 @@ from cratekit.write import metadata_cli, rbxml, rebuild, routing_pass, trees
 INBOX_WORKFLOW = "route-inbox"
 RESORT_WORKFLOW = "route-resort"
 
-#: What each driven resort left where it was, by job, from the worker to the
-#: resume that drove it (R-312). PROCESS LOCAL ON PURPOSE. The driver runs the
-#: worker inside the resume's own process, and a worker's return is the artifact
-#: channel and nothing else, so this is the one way the engine's measurement
-#: reaches the envelope without a second walk of the library. The resume drains
-#: its own job's entry, so nothing outlives the run that measured it.
-_LEFT_BEHIND: dict[str, list[rebuild.Difference]] = {}
+#: Where each resorted tree's report is committed, under the queue root beside
+#: the job's lock and log (R-312). ONE REPORT PER ITEM, MADE DURABLE BY THE
+#: DRIVER before the item flips to done, so what the engine measured survives a
+#: killed process and reaches a resume that ends in a refusal. The first version
+#: of this kept it in a dict in memory, and the built in review named the two
+#: runs that loses: the one a partial failure ends, and the one that died.
+RESORT_ARTIFACTS = artifacts.Location(final="resort-artifacts", staging="resort-staging")
 
 
 def _load() -> config.Config:
@@ -1390,43 +1391,49 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             detail={"job_id": job.job_id, "handler": job.handler_key},
         )
     warnings: tuple[dict[str, str], ...] = ()
-    if job.is_open():
-        if not jobs.items(store, job.job_id):
-            raise refuse(
-                "internal-error",
-                f"job {job.job_id} has no tree to re-place, so driving it would "
-                f"report a resort that swept a library nothing read. It was queued "
-                f"by a build that did not record its items",
-                remedy=Remedy.REPORT_DEFECT,
-                steps=(
-                    "cancel this job, then queue the resort again, which records "
-                    "one item per governed tree",
-                ),
-                origin=("routing_cli",),
-                detail={"job_id": job.job_id},
-            )
-        # THE CUT THE WORKER WILL READ, read the same way first (U89): the one
-        # loader, at the path the frozen configuration names. The file itself
-        # is read as it stands, not frozen with the job. A corrupt calibration
-        # refuses here before any item is claimed.
-        threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
-        try:
+    frozen: config.Config | None = None
+    try:
+        if job.is_open():
+            if not jobs.items(store, job.job_id):
+                raise refuse(
+                    "internal-error",
+                    f"job {job.job_id} has no tree to resort, so driving it would "
+                    f"report a resort that swept a library nothing read. It was queued "
+                    f"by a build that did not record its items",
+                    remedy=Remedy.REPORT_DEFECT,
+                    steps=(
+                        "cancel this job, then queue the resort again, which records "
+                        "one item per governed tree",
+                    ),
+                    origin=("routing_cli",),
+                    detail={"job_id": job.job_id},
+                )
+            # THE CUT THE WORKER WILL READ, read the same way first (U89): the one
+            # loader, at the path the frozen configuration names. The file itself
+            # is read as it stands, not frozen with the job. A corrupt calibration
+            # refuses here before any item is claimed.
+            threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
+            # FROM HERE THIS RUN DROVE, so from here a refusal owes the leftovers.
+            frozen = jobs.frozen_config(job)
             _, warnings = ctx.run_job(store, job)
-        finally:
-            # DRAINED WHETHER OR NOT THE DRIVE RETURNED, so a job that raised
-            # leaves nothing behind for a later one in this process to inherit.
-            left_behind = _LEFT_BEHIND.pop(job.job_id, [])
-        job = jobs.get(store, job.job_id)
-        # THE SAME ENGINE AS THE REBUILD, SO THE SAME GAP (R-316). Only on the
-        # branch that drove, because a job finished on entry was compared by an
-        # earlier run and this one compared nothing at all. The leftovers sit
-        # on the same branch for the same reason (R-312).
-        warnings = (
-            *warnings,
-            *rebuild.not_compared_warnings(rebuild.governed_not_compared(threshold)),
-            *rebuild.left_behind_warnings(left_behind),
-        )
-    jobs.raise_for_state(job)
+            job = jobs.get(store, job.job_id)
+            # THE SAME ENGINE AS THE REBUILD, SO THE SAME GAP (R-316). Only on the
+            # branch that drove, because a job finished on entry was compared by
+            # an earlier run and this one compared nothing at all. The leftovers
+            # sit on the same branch for the same reason (R-312).
+            records, listed_in = _left_behind(frozen, job.job_id)
+            warnings = (
+                *warnings,
+                *rebuild.not_compared_warnings(rebuild.governed_not_compared(threshold)),
+                *rebuild.left_behind_warnings(records, listed_in=listed_in),
+            )
+        jobs.raise_for_state(job)
+    except CratekitError as failed:
+        # BOTH EXITS, which is the rule a queued verb's advisory owes. Only when
+        # this run drove: a refusal raised before the drive wrote nothing.
+        if frozen is None:
+            raise
+        raise _with_left_behind(failed, frozen, job.job_id) from failed
     return ctx.envelope(data=_reported(store, job), warnings=warnings)
 
 
@@ -1475,16 +1482,15 @@ def handle_resort(job, item, cfg) -> None:
     has no database removal path to offer, so the verb's summary says additive
     and the resume NAMES what was left, which is R-312.
 
-    THE ENGINE'S OWN MEASUREMENT IS WHAT GETS NAMED. ``after.unexpected`` is the
-    check the engine ran on the handle it had just written through, so keeping
-    it costs no second walk of the library and cannot refuse after a job that
-    succeeded. It is kept in :data:`_LEFT_BEHIND` rather than returned, because
-    a worker's return is the artifact channel and nothing else.
+    THE ENGINE'S OWN MEASUREMENT IS WHAT GETS NAMED. ``after`` is the check the
+    engine ran on the handle it had just written through, so keeping it costs
+    no second walk of the library and cannot refuse after a job that succeeded.
+    It is returned as this item's report, the durable channel the driver already
+    owns, so the resume reads it back whichever way the job ended.
 
     ``cfg`` is the configuration this job was FROZEN against (KTD9). Nothing here
     loads one.
     """
-    del job
     report = rebuild.rebuild_governed_tree(
         cfg,
         tree_id=str(item.item_id),
@@ -1493,8 +1499,56 @@ def handle_resort(job, item, cfg) -> None:
         # configuration names. None on a library never calibrated (U89, D7).
         vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
     )
-    _LEFT_BEHIND.setdefault(item.job_id, []).extend(report.after.unexpected)
-    return None
+    left = rebuild.left_behind(report.after, taxonomy.default_taxonomy())
+    return artifacts.produced(
+        RESORT_ARTIFACTS,
+        cfg,
+        job,
+        item,
+        {
+            "tree_id": str(item.item_id),
+            "left_behind": [rebuild.left_behind_record(entry) for entry in left],
+        },
+    )
+
+
+def _left_behind(cfg: config.Config, job_id: str) -> tuple[list[dict[str, Any]], str]:
+    """Every leftover this job's committed reports name, and where they are kept.
+
+    READ BACK RATHER THAN ACCUMULATED, so a job continued by a second process
+    names what the first one's trees left as well as its own.
+    """
+    records = [
+        entry
+        for report in artifacts.committed(RESORT_ARTIFACTS, cfg, job_id)
+        for entry in report.get("left_behind") or ()
+    ]
+    return records, str(jobs.store_dir(cfg) / RESORT_ARTIFACTS.final / job_id)
+
+
+def _with_left_behind(error: CratekitError, cfg: config.Config, job_id: str) -> CratekitError:
+    """The same refusal, carrying what the trees that DID finish left behind.
+
+    A RESORT QUEUES ONE ITEM PER TREE, so a partial failure is its ordinary bad
+    ending, and that ending leaves through the job's cause with no warnings at
+    all. The trees that finished were written to all the same. The step is
+    appended and the cause is otherwise untouched, through ``rebuilt`` so a
+    blocked or cancelled job keeps the type the dispatcher reads.
+    """
+    records, listed_in = _left_behind(cfg, job_id)
+    message = rebuild.left_behind_message(records, listed_in=listed_in)
+    if message is None:
+        return error
+    cause = error.cause
+    return rebuilt(
+        error,
+        replace(
+            cause,
+            remediation=replace(
+                cause.remediation, steps=(*cause.remediation.steps, message)
+            ),
+        ),
+    )
 
 
 def route_pending(ctx) -> Envelope:

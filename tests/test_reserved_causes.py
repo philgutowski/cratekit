@@ -5628,14 +5628,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # `modules/outbound/ledger.py` raises when a job's confirmed record is gone,
     # which is why the non-key half moves by three and not four.
     # Re-pinned on the residual finding "The resort is additive, so a genre
-    # change leaves the track in two places", 2026-09-21: 489 to 490 distinct,
-    # non-keys 315 to 316. ONE literal joined and NOTHING left, read off the
-    # unit's own diff of `src/cratekit`, which adds one kebab shaped string.
+    # change leaves the track in two places", 2026-09-21: 489 to 492 distinct,
+    # non-keys 315 to 318. THREE literals joined and NOTHING left, read off the
+    # unit's own diff of `src/cratekit`, which adds three kebab shaped strings.
     # Named: membership-left-behind, in `write/rebuild.py`, the WARNING code a
     # resort's resume carries when the additive write left a track where it
-    # was. It is not a cause, because the unit refuses nothing, which is why
-    # both halves move by one.
-    assert (len(literals), len(literals - set(causes))) == (490, 316), (
+    # was, and resort-artifacts and resort-staging, in `write/routing_cli.py`,
+    # the two DIRECTORY names under the queue root that a resorted tree's
+    # report is staged in and committed to, the same kind of literal as
+    # intake-artifacts. None is a cause, because the unit refuses nothing of its
+    # own, which is why both halves move by three.
+    assert (len(literals), len(literals - set(causes))) == (492, 318), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
