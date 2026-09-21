@@ -541,6 +541,10 @@ def test_the_check_reports_a_difference_in_both_directions(
     report = _check(cfg, db, adopted_root, declared, _placements(cfg, declared, COMPOSED))
     assert report.missing == ()
     assert [entry.content_id for entry in report.unexpected] == ["2"]
+    # NAMED BY ITS FILE AS WELL (R-312). Only a person can settle this direction,
+    # and a person finds a track by its file, never by its row identifier.
+    (leftover,) = report.unexpected
+    assert leftover.location is not None and leftover.location.endswith(PLAIN), leftover
 
     # And the first direction, from a tree the declaration outgrew: everything
     # the write placed is still there, so widening the declaration is what makes
@@ -748,6 +752,37 @@ def test_a_library_with_no_vocal_calibration_reports_what_it_did_not_compare(
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], vocal_threshold=None)
     assert report.after.converged
     assert rebuild.VOCAL_DIMENSION in report.after.not_compared
+
+
+def test_a_vocal_playlist_nothing_compared_is_not_named_as_left_behind(
+    cfg, gates_pass, db, adopted_root, declared
+):
+    """"I could not observe" must not reach a person as "take this out" (R-312).
+
+    DRIVEN, because the built in review argued it from the source. A calibrated
+    rebuild fills the vocal sub-playlist and records its node. A later run with
+    no calibration derives nothing for that sub, the recorded destination is
+    still compared, and the track that is correctly there arrives as unexpected.
+    The check keeps saying so, which is its job. What a verb tells a person to
+    consider removing leaves it out, and keeps a leftover that IS comparable.
+    """
+    truth = _truth(cfg, declared, PLAIN, voxlevel=90)
+    _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=5.0)
+    report = _rebuild(
+        cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=None
+    )
+    assert [entry.sub for entry in report.after.unexpected] == [trees.VOX_SUB_CLASS]
+    assert rebuild.left_behind(report.after, declared) == ()
+
+    # The calibration is back and the track no longer clears it: NOW it is a
+    # leftover somebody can act on, and it is named.
+    quiet = _truth(cfg, declared, PLAIN, voxlevel=0)
+    report = _rebuild(
+        cfg, db, adopted_root, declared, [PLAIN], truth=quiet, vocal_threshold=5.0
+    )
+    assert [entry.sub for entry in rebuild.left_behind(report.after, declared)] == [
+        trees.VOX_SUB_CLASS
+    ]
 
 
 def test_the_read_only_report_derives_through_the_registrys_recorded_source(

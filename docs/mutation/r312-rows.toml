@@ -1,0 +1,221 @@
+name = "r312"
+pass_kind = "light"
+
+[[rows]]
+id = "E1_vocal_gap_filter"
+description = "left_behind: drop the early return, so the vocal filter runs even when the vocal dimension WAS compared and a real vocal leftover is hidden"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    if VOCAL_DIMENSION not in after.not_compared:
+        return after.unexpected
+    skipped'''
+new = '''    skipped'''
+
+[[rows]]
+id = "E2_vocal_gap_filter_off"
+description = "left_behind: return every unexpected membership, so a vocal playlist nothing compared is named as left behind"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    return tuple(entry for entry in after.unexpected if entry.sub not in skipped)'''
+new = '''    return tuple(entry for entry in after.unexpected if entry.sub is not None)'''
+
+[[rows]]
+id = "E3_additive_inverted"
+description = "left_behind: skip the subs that are NOT additive, the inverse set"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    skipped = {entry.id for entry in declared.sub_classes if entry.additive}'''
+new = '''    skipped = {entry.id for entry in declared.sub_classes if not entry.additive}'''
+
+[[rows]]
+id = "E4_cap_halved"
+description = "Halve the cap on how many leftovers a warning names, 20 to 10"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''LEFT_BEHIND_NAMED = 20'''
+new = '''LEFT_BEHIND_NAMED = 10'''
+
+[[rows]]
+id = "E5_cap_not_applied"
+description = "left_behind_message: name every leftover, the cap never applied"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    named = found[:LEFT_BEHIND_NAMED]'''
+new = '''    named = found[:]'''
+
+[[rows]]
+id = "E6_count_is_the_cap"
+description = "left_behind_message: state the count of the NAMED leftovers, so a long list reads as a short one"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''so {len(found)} membership(s) the "'''
+new = '''so {len(named)} membership(s) the "'''
+
+[[rows]]
+id = "E7_rest_not_counted"
+description = "left_behind_message: drop the and N more clause"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''        + (f"; and {rest} more" if rest else "")'''
+new = '''        + ""'''
+
+[[rows]]
+id = "E8_unsorted"
+description = "left_behind_message: keep arrival order, so the capped names depend on the order the reports were read"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    found = sorted(
+        f"{entry['folder']}/{entry['playlist']}: "'''
+new = '''    found = list(
+        f"{entry['folder']}/{entry['playlist']}: "'''
+
+[[rows]]
+id = "E9_row_fallback_blank"
+description = "left_behind_message: a leftover with no file is named by nothing, the row identifier dropped"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''        f"{entry.get('location') or 'row ' + str(entry.get('content_id'))}"'''
+new = '''        f"{entry.get('location') or ''}"'''
+
+[[rows]]
+id = "E10_empty_still_warns"
+description = "left_behind_message: a run that left nothing still produces a sentence"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    if not found:
+        return None
+    named'''
+new = '''    named'''
+
+[[rows]]
+id = "E11_code_reworded"
+description = "Reword the warning code a filter would key on"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''LEFT_BEHIND = "membership-left-behind"'''
+new = '''LEFT_BEHIND = "membership-left"'''
+
+[[rows]]
+id = "E12_check_names_no_file"
+description = "check: an unexpected difference carries no file location, the state before this unit"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''            replace(entry, location=located_at.get(entry.content_id or ""))'''
+new = '''            replace(entry, location=None)'''
+
+[[rows]]
+id = "E13_record_drops_location"
+description = "left_behind_record: the written record carries no location, so the message falls back to a row number"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''        "location": entry.location,
+    }'''
+new = '''        "location": None,
+    }'''
+
+[[rows]]
+id = "E14_listed_in_dropped"
+description = "left_behind_message: reword the closing sentence so it no longer says where the whole list is"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''        f"Every one is listed in {listed_in}"'''
+new = '''        "Every one was recorded"'''
+
+[[rows]]
+id = "W1_worker_bypasses_the_filter"
+description = "handle_resort: write the raw unexpected list, not the filtered one"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    left = rebuild.left_behind(report.after, taxonomy.default_taxonomy())'''
+new = '''    left = report.after.unexpected'''
+
+[[rows]]
+id = "W2_worker_writes_nothing"
+description = "handle_resort: the item report always says nothing was left"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''            "left_behind": [rebuild.left_behind_record(entry) for entry in left],'''
+new = '''            "left_behind": [],'''
+
+[[rows]]
+id = "W3_success_exit_silent"
+description = "_resume: the success envelope carries no leftover warning"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                *rebuild.left_behind_warnings(records, listed_in=listed_in),
+'''
+new = ""
+
+[[rows]]
+id = "W4_failure_exit_silent"
+description = "_resume: a refusal is re-raised as it came, the leftovers never added to it"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        raise _with_left_behind(failed, frozen, job.job_id) from failed'''
+new = '''        raise'''
+
+[[rows]]
+id = "W5_cause_steps_replaced"
+description = "_with_left_behind: replace the recorded steps with the leftover step, not append to them"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                cause.remediation, steps=(*cause.remediation.steps, message)'''
+new = '''                cause.remediation, steps=(message,)'''
+
+[[rows]]
+id = "W6_type_not_carried"
+description = "_with_left_behind: rebuild as a plain CratekitError, dropping the blocked or cancelled type"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    return rebuilt(
+        error,
+        replace(
+            cause,'''
+new = '''    return CratekitError(
+        replace(
+            cause,'''
+
+[[rows]]
+id = "W7b_pre_drive_refusal_extended"
+description = "_resume: drop the guard that re-raises a refusal raised before the drive. Measured ZERO on the first pass over a full run of 9679, then re-measured after test_a_refusal_raised_before_the_drive_carries_no_leftover_step was written against it"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+old = '''        if frozen is None:
+            raise
+        raise _with_left_behind'''
+new = '''        raise _with_left_behind'''
+
+[[rows]]
+id = "W8_list_not_by_job"
+description = "_left_behind: point at the shared reports directory, not this job's"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    return records, str(jobs.store_dir(cfg) / RESORT_ARTIFACTS.final / job_id)'''
+new = '''    return records, str(jobs.store_dir(cfg) / RESORT_ARTIFACTS.final)'''
+
+[[rows]]
+id = "W9_old_report_tolerance"
+description = "_left_behind: index the key directly, so a report with no such key raises rather than reading as nothing left"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+old = '''        for entry in report.get("left_behind") or ()'''
+new = '''        for entry in report["left_behind"]'''
+
+[[rows]]
+id = "R1_summary_promises_a_replace"
+description = "Put the registry summary back to the promise the verb does not keep"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+old = '''        summary="add already-routed tracks to their new place after a genre or energy "
+        "change, additive, the old membership stays and is named",'''
+new = '''        summary="re-place already-routed tracks after a genre or energy change",'''
+
+[[dropped]]
+id = "W10_leftovers_outside_the_drive_branch"
+description = "Report the leftovers on a resume that drove nothing"
+reason = "not expressible as one exact string replacement without restructuring the try block. test_a_resort_resume_that_drove_nothing_names_no_leftover asserts the behaviour directly"
+
+[[dropped]]
+id = "W11_reports_pooled_across_jobs"
+description = "Read every job's reports, not this job's"
+reason = "the read is one call into core.artifacts keyed by job, and a mutation of it is a mutation of another unit's module. test_one_jobs_leftovers_are_not_counted_under_another asserts the count across two jobs"

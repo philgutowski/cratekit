@@ -790,6 +790,29 @@ the driver needs it, which is the only import in the chain.
 A handler runs against the FROZEN configuration, handed to it rather than loaded.
 Loading a fresh one is the resume bug KTD9 closes, reintroduced.
 
+### Item report
+The one file a handler may return for its item, staged by `core.artifacts` and
+committed by the job driver BEFORE the item's row flips to done. It is the only
+channel from a handler to the verb that reports the job, and it is durable: it
+survives a killed process, and a resume that ends in a refusal can still read
+it. A value a handler merely holds in memory is gone when the item completes.
+The resort's report carries what its tree left behind, introduced by the R-312
+fix.
+
+*Avoid:* a module level holder the resume drains. It works in the one process
+that drove every item and ended well, and those are the two runs that need it
+least.
+
+### Left behind
+A membership in a governed playlist that the declaration does not place there,
+as a resort names it to a person. The engine's word for the same thing is an
+UNEXPECTED difference. They differ by one rule: a sub the run did not derive,
+the vocal one on a library with no calibration, is unexpected to the check and
+is NOT left behind, because nothing looked.
+
+*Avoid:* reading it as "this resort moved the track". A track somebody filed by
+hand arrives the same way, so the removal is offered and never instructed.
+
 ### Driver
 Here, the loop that claims a job's items and runs the handler against each,
 taking the driver lock first, releasing an orphaned claim once, checking the

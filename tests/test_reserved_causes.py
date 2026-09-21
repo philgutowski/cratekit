@@ -5627,7 +5627,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # lands on. The fourth is outbound-record-moved, a KEY, the refusal
     # `modules/outbound/ledger.py` raises when a job's confirmed record is gone,
     # which is why the non-key half moves by three and not four.
-    assert (len(literals), len(literals - set(causes))) == (489, 315), (
+    # Re-pinned on the residual finding "The resort is additive, so a genre
+    # change leaves the track in two places", 2026-09-21: 489 to 492 distinct,
+    # non-keys 315 to 318. THREE literals joined and NOTHING left, read off the
+    # unit's own diff of `src/cratekit`, which adds three kebab shaped strings.
+    # Named: membership-left-behind, in `write/rebuild.py`, the WARNING code a
+    # resort's resume carries when the additive write left a track where it
+    # was, and resort-artifacts and resort-staging, in `write/routing_cli.py`,
+    # the two DIRECTORY names under the queue root that a resorted tree's
+    # report is staged in and committed to, the same kind of literal as
+    # intake-artifacts. None is a cause, because the unit refuses nothing of its
+    # own, which is why both halves move by three.
+    assert (len(literals), len(literals - set(causes))) == (492, 318), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6137,7 +6148,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # before it counts the rest, which is below the reserved range and is never
     # an exit status. Measured by listing this file's own holders on the branch
     # and asking the same walk whether that one file holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (103, 22), (
+    # Re-pinned on the residual finding "The resort is additive, so a genre
+    # change leaves the track in two places", 2026-09-21: holders UNCHANGED at
+    # 103, and the also-holds-an-integer half moves 22 to 23. No module joined
+    # the holders, since write/rebuild.py named its refusals on main already.
+    # ONE holder gained an in-range integer: the unit's diff of that file adds
+    # exactly one integer constant, the 20 of LEFT_BEHIND_NAMED, how many
+    # leftover memberships one warning names before it counts the rest. It is a
+    # length and is never an exit status. Measured by reading the unit's own
+    # diff of that file, and by this pair moving by one and not by more.
+    assert (len(literal_holders), len(literal_both)) == (103, 23), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

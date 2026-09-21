@@ -58,6 +58,7 @@ import json
 import sqlite3
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -73,7 +74,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Outcome
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild
 from tests.test_config import valid_data
@@ -358,6 +359,18 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     seen: list[tuple[str, str]] = []
     cuts: list[tuple[object, object]] = []
     frozen = object()
+    measured = object()
+    after = object()
+    staged: list[tuple] = []
+
+    def left_behind(report, declared):
+        assert report is after
+        del declared
+        return (measured,)
+
+    def produced(*handed):
+        staged.append(handed)
+        return "staged"
 
     def spy(cfg, *, tree_id, workflow, vocal_threshold, **rest):
         # NO DEFAULT ON ``workflow`` OR ``vocal_threshold``. A spy that supplied
@@ -366,6 +379,8 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
         del cfg, rest
         seen.append((tree_id, workflow))
         cuts.append(vocal_threshold)
+        # The one field of the engine's report a worker reads (R-312).
+        return SimpleNamespace(after=after)
 
     def loader(cfg):
         # U89: the cut each worker hands the engine is the one loader's answer
@@ -375,9 +390,20 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
 
     monkeypatch.setattr(rebuild, "rebuild_governed_tree", spy)
     monkeypatch.setattr(metadata_cli, "load_vocal_threshold", loader)
+    monkeypatch.setattr(rebuild, "left_behind", left_behind)
+    monkeypatch.setattr(rebuild, "left_behind_record", lambda entry: {"kept": entry})
+    monkeypatch.setattr(routing_cli.artifacts, "produced", produced)
     item = jobs.Item(job_id="j", item_id=TREE_ID, ordinal=0, state=jobs.ItemState.PENDING)
     assert rebuild_verb.handle(object(), item, frozen) is None
-    assert routing_cli.handle_resort(object(), item, frozen) is None
+    # WHAT THE ENGINE MEASURED BECOMES THE RESORT ITEM'S REPORT (R-312), handed
+    # to the one helper that stages it under the job and the ordinal. The
+    # rebuild worker has no surface that reads one and still produces nothing.
+    driven = SimpleNamespace(job_id="j")
+    assert routing_cli.handle_resort(driven, item, frozen) == "staged"
+    assert staged == [
+        (routing_cli.RESORT_ARTIFACTS, frozen, driven, item,
+         {"tree_id": TREE_ID, "left_behind": [{"kept": measured}]})
+    ]
 
     assert cuts == [7.5, 7.5]
     assert [tree for tree, _ in seen] == [TREE_ID, TREE_ID]
@@ -1134,6 +1160,337 @@ def test_the_warning_code_is_the_locked_spelling():
     (warning,) = rebuild.not_compared_warnings((rebuild.VOCAL_DIMENSION,))
     assert warning["code"] == "vocal-dimension-not-compared"
     assert rebuild.not_compared_warnings(()) == ()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-312: the resort is additive, and says what it left where it was
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _left_behind(envelope: dict) -> list[dict]:
+    return [w for w in envelope["warnings"] if w["code"] == rebuild.LEFT_BEHIND]
+
+
+@pytest.fixture
+def leftover(acknowledged, native) -> str:
+    """A governed playlist holding a track the declaration does not place there.
+
+    PRODUCED BY A SHIPPED VERB rather than planted: the confirmed inbox files
+    the intake track, and the declaration a resort derives walks the music
+    directory, which that file is not under. It is the state a genre change
+    leaves behind seen from the side the engine reads it from, a membership in a
+    declared destination that the declaration no longer asks for.
+    """
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert _membership(acknowledged, native) == {"2"}
+    return "2"
+
+
+def test_a_resort_names_the_membership_it_left_where_it_was(acknowledged, native, leftover):
+    """The cost R-312 records, then the answer to it.
+
+    The resort adds the declared track and leaves the other one in place, and
+    until this unit its envelope was a clean OK over a tree that held both. The
+    warning names the playlist by its display and the track by its file, which
+    are the two things a person needs to find the row in rekordbox and take it
+    out, because nothing in this build removes it for them.
+    """
+    job_id = _drive(["route", "resort"])[1]["data"]["job_id"]
+    code, done = _drive(["route", "resort", "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert _membership(acknowledged, native) == {"1", leftover}, (
+        "the resort removed a membership, which this build has no governed path for"
+    )
+    (warning,) = _left_behind(done)
+    assert "Electronica / Other/Unsorted" in warning["message"], warning
+    assert ARRIVED in warning["message"], warning
+    assert SHELVED not in warning["message"], (
+        "the track the declaration places was named as a leftover"
+    )
+    assert "1 membership" in warning["message"], warning
+    assert "adds and never removes" in warning["message"], warning
+
+
+def test_a_resort_that_left_nothing_behind_says_nothing_about_it(acknowledged, native):
+    """A converged tree carries no leftover warning, so the warning means something."""
+    job_id = _drive(["route", "resort"])[1]["data"]["job_id"]
+    code, done = _drive(["route", "resort", "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert _membership(acknowledged, native) == {"1"}
+    assert _left_behind(done) == []
+
+
+def test_a_resort_resume_that_drove_nothing_names_no_leftover(acknowledged, native, leftover):
+    """A job finished on entry was measured by the run that drove it, not this one.
+
+    The second resume holds no report, so naming a leftover there would be this
+    run answering for a comparison it never made. The queue only answer is the
+    same: nothing has been compared when a job is merely filed.
+    """
+    del acknowledged, native, leftover
+    code, queued = _drive(["route", "resort"])
+    assert _left_behind(queued) == []
+    job_id = queued["data"]["job_id"]
+    assert len(_left_behind(_drive(["route", "resort", "--job", job_id])[1])) == 1
+    code, again = _drive(["route", "resort", "--job", job_id])
+    assert code == int(ExitCode.OK), again
+    assert _left_behind(again) == []
+
+
+def test_one_jobs_leftovers_are_not_counted_under_another(acknowledged, native, leftover):
+    """TWO jobs over one state each name the one leftover, never the pool of both.
+
+    The reports are read back by job, and a read that ignored the job would
+    count the first resort's report again under the second.
+    """
+    del acknowledged, native, leftover
+    for _ in range(2):
+        job_id = _drive(["route", "resort"])[1]["data"]["job_id"]
+        (warning,) = _left_behind(_drive(["route", "resort", "--job", job_id])[1])
+        assert "1 membership" in warning["message"], warning
+        assert job_id in warning["message"], "the warning does not say where this job's list is"
+
+
+def test_the_whole_list_is_written_where_the_warning_says_it_is(
+    acknowledged, native, leftover
+):
+    """The names in a warning are capped, so the place it points at has to be real."""
+    del acknowledged, native
+    job_id = _drive(["route", "resort"])[1]["data"]["job_id"]
+    (warning,) = _left_behind(_drive(["route", "resort", "--job", job_id])[1])
+    listed_in = Path(warning["message"].rsplit("listed in ", 1)[1])
+    (report,) = sorted(listed_in.glob("*.json"))
+    written = json.loads(report.read_text(encoding="utf-8"))
+    assert written["tree_id"] == TREE_ID
+    assert [entry["content_id"] for entry in written["left_behind"]] == [leftover]
+    assert written["left_behind"][0]["location"].endswith(ARRIVED)
+
+
+def test_a_resort_that_failed_part_way_still_names_what_the_finished_tree_left(
+    acknowledged, native, leftover, monkeypatch
+):
+    """THE OTHER EXIT, which is the one a resort over several trees usually takes.
+
+    A job that closed carrying a cause leaves through that cause, and a refusal
+    envelope has no warnings. The tree that finished was written to all the
+    same, so the refusal carries the leftovers as one more thing left to do, on
+    the cause the queue recorded rather than on a rebuilt one.
+    """
+    del acknowledged, native, leftover
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="route.resort",
+            payload={},
+            cfg=config.load(),
+            item_ids=(TREE_ID, "second_tree"),
+        )
+    real = rebuild.rebuild_governed_tree
+
+    def one_of_two(cfg, *, tree_id, workflow, **rest):
+        if tree_id != TREE_ID:
+            raise RuntimeError("this tree is not there")
+        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
+
+    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+    code, refused = _drive(["route", "resort", "--job", job.job_id])
+    assert code != int(ExitCode.OK), refused
+    with jobs.open_store() as store:
+        stored = jobs.get(store, job.job_id).cause
+    steps = list(refused["cause"]["remediation"]["steps"])
+    assert steps[: len(stored.remediation.steps)] == list(stored.remediation.steps)
+    (added,) = steps[len(stored.remediation.steps) :]
+    assert ARRIVED in added and "1 membership" in added, added
+    assert tuple(refused["cause"]["origin"])[: len(stored.origin)] == stored.origin
+    assert refused["cause"]["reason"] == stored.reason
+
+
+def test_a_resort_that_failed_with_nothing_left_behind_adds_no_step(
+    acknowledged, native, monkeypatch
+):
+    """Gated on what ran. A refusal over a converged tree names no leftover."""
+    del acknowledged, native
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="route.resort",
+            payload={},
+            cfg=config.load(),
+            item_ids=(TREE_ID, "second_tree"),
+        )
+    real = rebuild.rebuild_governed_tree
+
+    def one_of_two(cfg, *, tree_id, workflow, **rest):
+        if tree_id != TREE_ID:
+            raise RuntimeError("this tree is not there")
+        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
+
+    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+    code, refused = _drive(["route", "resort", "--job", job.job_id])
+    assert code != int(ExitCode.OK), refused
+    with jobs.open_store() as store:
+        stored = jobs.get(store, job.job_id).cause
+    assert list(refused["cause"]["remediation"]["steps"]) == list(stored.remediation.steps)
+
+
+def test_a_second_process_names_what_the_first_ones_tree_left(
+    acknowledged, native, leftover, monkeypatch
+):
+    """The driver that died is the run an in memory note loses.
+
+    The first drive finishes this tree and fails the other, which is what a kill
+    between two items leaves in the queue: one item done with its report
+    committed, one not. A retry then drives only the second item, in what is a
+    different process in life, and still names the first tree's leftover because
+    it reads the reports back.
+    """
+    del acknowledged, native, leftover
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="route.resort",
+            payload={},
+            cfg=config.load(),
+            item_ids=(TREE_ID, "second_tree"),
+        )
+    real = rebuild.rebuild_governed_tree
+    calls: list[str] = []
+
+    def second_tree_fails_once(cfg, *, tree_id, workflow, **rest):
+        calls.append(tree_id)
+        if tree_id != TREE_ID:
+            if calls.count(tree_id) == 1:
+                raise RuntimeError("this tree is not there")
+            return SimpleNamespace(after=rebuild.ConvergenceReport(tree_id, "root", derived=1))
+        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
+
+    monkeypatch.setattr(rebuild, "rebuild_governed_tree", second_tree_fails_once)
+    assert _drive(["route", "resort", "--job", job.job_id])[0] != int(ExitCode.OK)
+    with jobs.open_store() as store:
+        jobs.retry(store, job.job_id)
+    code, done = _drive(["route", "resort", "--job", job.job_id])
+    assert code == int(ExitCode.OK), done
+    assert calls == [TREE_ID, "second_tree", "second_tree"], calls
+    (warning,) = _left_behind(done)
+    assert ARRIVED in warning["message"], warning
+
+
+def test_a_refusal_raised_before_the_drive_carries_no_leftover_step(
+    acknowledged, native, leftover, monkeypatch
+):
+    """A run that drove nothing answers for no tree, whatever an earlier one wrote.
+
+    The first resume finishes this tree, commits its report and fails the other.
+    The retry then refuses on its calibration before any item is claimed. That
+    refusal is about a file, and hanging the earlier run's leftovers on it would
+    be this run reporting a comparison it never made. Found as a zero row in the
+    unit's own mutation table and turned into a death.
+    """
+    from cratekit.write import metadata_cli
+
+    del acknowledged, native, leftover
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="route.resort",
+            payload={},
+            cfg=config.load(),
+            item_ids=(TREE_ID, "second_tree"),
+        )
+    real = rebuild.rebuild_governed_tree
+
+    def one_of_two(cfg, *, tree_id, workflow, **rest):
+        if tree_id != TREE_ID:
+            raise RuntimeError("this tree is not there")
+        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
+
+    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+    code, first = _drive(["route", "resort", "--job", job.job_id])
+    assert ARRIVED in " ".join(first["cause"]["remediation"]["steps"]), first
+    with jobs.open_store() as store:
+        jobs.retry(store, job.job_id)
+
+    def corrupt(cfg):
+        del cfg
+        raise refuse("config-unusable", "the calibration cannot be read")
+
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", corrupt)
+    code, refused = _drive(["route", "resort", "--job", job.job_id])
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "config-unusable", refused
+    assert ARRIVED not in " ".join(refused["cause"]["remediation"]["steps"]), refused
+
+
+def _difference(n: int, **fields) -> dict:
+    return {
+        "bucket": "b",
+        "sub": "s",
+        "folder": "Folder",
+        "playlist": "Playlist",
+        "content_id": str(n),
+        "location": f"Music/track-{n:03}.flac",
+        **fields,
+    }
+
+
+def test_the_leftover_warning_is_capped_and_still_counts_every_one():
+    """A back catalogue can leave thousands, and the count must not be the cap."""
+    # HANDED OVER BACKWARDS, so the names that survive the cap are the first in
+    # order and not the first to arrive, which is what makes two runs agree.
+    records = [_difference(n) for n in reversed(range(rebuild.LEFT_BEHIND_NAMED + 3))]
+    (warning,) = rebuild.left_behind_warnings(records, listed_in="/queue/reports")
+    assert f"{rebuild.LEFT_BEHIND_NAMED + 3} membership" in warning["message"]
+    assert "track-000.flac" in warning["message"]
+    assert f"track-{rebuild.LEFT_BEHIND_NAMED - 1:03}.flac" in warning["message"]
+    assert f"track-{rebuild.LEFT_BEHIND_NAMED:03}.flac" not in warning["message"]
+    assert "and 3 more" in warning["message"]
+    assert warning["message"].endswith("listed in /queue/reports")
+
+
+def test_a_leftover_with_no_readable_file_is_named_by_its_row():
+    """The identifier is the fallback, never a blank."""
+    (warning,) = rebuild.left_behind_warnings(
+        [_difference(41, location=None)], listed_in="/queue/reports"
+    )
+    assert "Folder/Playlist: row 41." in warning["message"], warning
+    assert " more" not in warning["message"], "one leftover was reported as a capped list"
+
+
+def test_the_record_a_worker_writes_is_the_one_the_message_reads():
+    """Two halves of one file format, pinned against each other rather than apart."""
+    entry = rebuild.Difference(
+        direction=rebuild.Direction.UNEXPECTED,
+        bucket="b",
+        sub="s",
+        folder="Folder",
+        playlist="Playlist",
+        content_id="7",
+        location="Music/seven.flac",
+    )
+    message = rebuild.left_behind_message(
+        [rebuild.left_behind_record(entry)], listed_in="/queue/reports"
+    )
+    assert message is not None and "Folder/Playlist: Music/seven.flac" in message
+
+
+def test_the_leftover_code_is_the_locked_spelling():
+    assert rebuild.LEFT_BEHIND == "membership-left-behind"
+    # The shipped skill says "the first twenty" in words, so the number is pinned.
+    assert rebuild.LEFT_BEHIND_NAMED == 20
+    assert rebuild.left_behind_warnings((), listed_in="/queue/reports") == ()
+
+
+def test_the_resort_summary_says_the_verb_is_additive():
+    """The registry line is what help prints, and it promised a re-place.
+
+    Named by what it must say and what it must stop saying, so a reword that
+    keeps the promise under new words still fails.
+    """
+    summary = registry.entry("route.resort").summary
+    assert "add" in summary, summary
+    assert "re-place" not in summary, summary
+    assert "old" in summary, summary
 
 
 # ═══════════════════════════════════════════════════════════════════════════

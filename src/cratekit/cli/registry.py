@@ -1281,7 +1281,8 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="route.resort",
-        summary="re-place already-routed tracks after a genre or energy change",
+        summary="add already-routed tracks to their new place after a genre or energy "
+        "change, additive, the old membership stays and is named",
         module="cratekit.write.routing_cli",
         builder="build_resort",
         handler_key="route.resort",

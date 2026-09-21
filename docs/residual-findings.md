@@ -15344,6 +15344,35 @@ derivation delete a person's playlist contents. Recorded rather than built.
 or the registry summary is reworded to say the verb is additive and the
 convergence check is what names what is left over.
 
+**CLOSED 2026-09-21 on `relay/166`, issue 166, by the SECOND arm, and the verb
+names the leftovers itself.** The cost was reproduced first, through the verbs:
+a confirmed inbox filed the intake track, a resort then added the declared one,
+and the resume answered a clean OK over a playlist holding both, with no warning
+but the vocal one. No removal path was built. That stays a product decision and
+is R-638.
+
+The registry summary now reads "add already-routed tracks to their new place
+after a genre or energy change, additive, the old membership stays and is
+named". The resort worker returns the engine's own `after` measurement as its
+item's report through `core.artifacts`, under `resort-artifacts` in the queue
+root, which the driver makes durable before the item flips to done. The resume
+that drove reads the job's reports back and carries `membership-left-behind`,
+naming each playlist by display and each track by file, the first twenty named,
+the whole count stated, and the directory holding the full list. A resort that
+failed part way leaves through its cause, so the same sentence is appended as a
+step on the cause the queue recorded, extended through `rebuilt` and never
+re-created. `check` fills the file location on an unexpected difference, which
+it carried only for the missing direction.
+
+THE FIRST VERSION KEPT THE MEASUREMENT IN MEMORY AND THE BUILT IN REVIEW TOOK IT
+APART: a refusal envelope has no warnings, and a killed driver takes a dict with
+it. It also found that with no vocal calibration every track in a correctly
+filled vocal playlist arrives as unexpected, since the recorded node is still
+compared while nothing is derived for it. Driven at the engine level, real, and
+`rebuild.left_behind` now leaves out a sub the run did not derive. The closing
+line above says "the convergence check is what names what is left over", and
+that turned out to be only partly true of the verb, which is R-636.
+
 ---
 
 ## R-313. `route.unplaced` declares that it writes and it only reports
@@ -25422,3 +25451,127 @@ issue.
 
 **Closes when:** each named site is driven with the rename or move that would
 break it, and either gets its own entry with a measured cost or is struck here.
+
+---
+
+## R-635. The rebuild verb drives the same additive engine and says nothing about what it left
+
+**Found by** the R-312 fix on `relay/166`, 2026-09-21, METHOD's fifth pattern,
+one file over. Read, and the built in review raised it too. NOT driven through
+the verb.
+
+`cli/rebuild.py:handle` calls `rebuild_governed_tree` and returns None, so the
+`after.unexpected` the engine measured is dropped exactly as the resort's was.
+A rebuild over a tree holding a membership the declaration does not place ends
+OK, and the engine's only word about it is a logger warning. Its summary does
+not promise a removal, which is why this is not R-312 again: nothing it says is
+false. The tree stays flagged unconverged, which `crate status` shows.
+
+**Measured cost:** none measured. Not silent, so it does not meet the board bar
+and has no issue.
+
+**Why not fixed here.** Out of the unit's scope, and R-443 records that an
+earlier brief pinned this worker's None return.
+`test_the_rebuild_worker_still_returns_none` holds it.
+
+**Closes when:** the rebuild worker returns its item's report the way
+`handle_resort` does and its resume reads it on both exits, or the silence is
+confirmed as intended at an attended sitting. R-443 closes with it, since the
+same report carries `not_compared`.
+
+---
+
+## R-636. The convergence verb names at most twenty differences per tree, the missing ones first, with no count
+
+**Found by** the built in review of the R-312 fix on `relay/166`, 2026-09-21.
+Read at `cli/converge.py`, `_compare`, NOT driven.
+
+A differing tree's detail is `"; ".join(report.summaries()[:20])`. `summaries`
+lists the missing direction before the unexpected one, and the detail carries
+no count. So on a tree with five hundred differences a person reads twenty and
+is given no sign that there are more, and the unexpected direction, the one only
+a person can settle, is the one the cap cuts first. R-312's closing line leaned
+on this verb to name what a resort leaves, and the first wording of the new
+warning sent people to it for the whole list. The warning now points at the
+job's own reports instead.
+
+**Measured cost:** unmeasured, read only. **This one likely MEETS the board bar
+under (b)**, a truncated list shown as the list. The issue is OWED and is filed
+after the merge that carries this entry, since the number is not the finding's
+until it is on `main`. This session ran under Relay and does not merge.
+
+**Closes when:** the detail states the whole count in each direction and names
+where the full list is, or the cap is removed.
+
+---
+
+## R-637. A leftover is named by the path this machine resolved, which a prefix mapped library spells differently in rekordbox
+
+**Found by** the built in review of the R-312 fix on `relay/166`, 2026-09-21.
+Read, NOT driven.
+
+`check` reads a leftover's file off the active row index, whose key is the
+location AFTER the prefix map. On a library whose rows were recorded under an
+older volume name the warning shows the new spelling and rekordbox shows the old
+one. The file NAME is the same in both, and the message and its docstring now
+say the file name is the thing to search for. A track title would be better
+still and `ContentRow` does not carry one.
+
+**Measured cost:** none measured. A person searches by file name and finds the
+row. Maintainer facing, no issue.
+
+**Closes when:** the leftover carries the recorded spelling or the title, or
+this is confirmed as enough on a library that has a prefix map.
+
+---
+
+## R-638. Whether a resort should ever remove the old membership is a product decision nobody has made
+
+**Found:** R-312, 2026-09-10, and carried out of it when that entry closed on
+`relay/166`, 2026-09-21, so the decision outlives the entry.
+
+The resort is additive because nothing in the package deletes a membership row
+from the database, and the write whitelist permits only additions. Three ways
+forward. **(a)** Leave it: the verb names each leftover and a person removes it
+in rekordbox. This is what ships, and it is the conservative one, because a
+defect in a derivation can then add a wrong membership and can never empty a
+playlist. **(b)** A governed removal inside the destructive session, offered
+per leftover through a confirm gate, never automatic, limited to a membership
+whose track the SAME run placed elsewhere in the same tree, so a hand filed
+track is never offered. **(c)** Emit the removals on the XML medium only, where
+`apply_playlist_changes` already exists, and let the person import them.
+
+**Measured cost of (a):** after a genre change across a back catalogue a person
+removes each old membership by hand. The count on the real library is
+unmeasured, and it is what decides whether (b) is worth its risk.
+
+**Closes when:** Phillip picks one at an attended sitting. Not a session's call.
+
+---
+
+## R-639. Four smaller things the R-312 fix decided or left, in one place
+
+**Found:** on `relay/166`, 2026-09-21.
+
+1. **A resume that drove nothing names no leftover,** though the job's reports
+   are still on disk. Deliberate, the rule R-316 set for the vocal warning: a
+   run answers for what it compared. The cost is that a person who lost the
+   first envelope has to read the reports directory or resort again.
+2. **`crate job resume` drives the resort in a child whose envelope goes to the
+   job log,** so the warning lands there and not on the terminal. True of every
+   queued verb's warnings and not new here. The shipped skill recommends that
+   door.
+3. **Nothing removes `resort-artifacts` when a job is cancelled or aged out.**
+   Whether any feature's committed reports are ever cleaned was not checked.
+   Unmeasured.
+4. **The one zero row of `docs/mutation/r312.md`, W9,** is the tolerance for a
+   committed report with no `left_behind` key. No producer writes one, so it is
+   a guard over an input nothing reachable produces, and the author could not
+   kill it. One line, maintainer facing.
+
+The shipped skill's trigger list keeps the words "re-place", on purpose: it is
+what a person types, and the body under it now says additive.
+
+**Measured cost:** none. No issue.
+
+**Closes when:** each is confirmed or struck at a sitting.

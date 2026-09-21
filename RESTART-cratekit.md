@@ -4,7 +4,61 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-229, issue #165, `relay/165`, 2026-09-21.**
+**Last merged: R-312, issue #166, `relay/166`, 2026-09-21.**
+`crate route resort` now says it is additive and names what it left where it
+was, which CLOSES R-312 by its second arm. NO REMOVAL PATH WAS BUILT. Whether a
+resort should ever take a track out of its old playlist is R-638, Phillip's
+call, with three options written down.
+The cost was reproduced first through the verbs: a confirmed inbox files the
+intake track, a resort adds the declared one, and the resume answered a clean OK
+over a playlist holding both. The registry summary promised a re-place and now
+reads "add already-routed tracks to their new place after a genre or energy
+change, additive, the old membership stays and is named".
+**THE RESORT WORKER NOW RETURNS AN ITEM REPORT,** the engine's own `after`
+measurement, through `core.artifacts` under `resort-artifacts` in the queue
+root. The resume that drove reads the job's reports back and carries the new
+warning `membership-left-behind`: each playlist by display, each track by file,
+the first twenty named, the whole count stated, and the directory holding the
+full list. A resort that failed part way leaves through its cause, so the same
+sentence is one more step on the cause the queue recorded, extended through
+`rebuilt`. `rebuild.check` fills the file location on an unexpected difference.
+The rebuild worker is untouched and still returns None, R-635.
+**THE FIRST VERSION WAS WRONG AND THE BUILT IN REVIEW TOOK IT APART.** It kept
+the measurement in a dict in memory, because the learning on this seam said no
+channel from a worker to its resume existed. One does, the item report, and the
+learning is corrected in place. The review raised ten findings and eight were
+applied. Two changed the design, the refusal exit and the killed driver. One was
+a real harm, driven before it was fixed: with no vocal calibration every track
+in a correctly filled vocal playlist arrives as unexpected, and the warning would
+have told a person to consider emptying it. `rebuild.left_behind` leaves out a
+sub the run did not derive. Two findings are recorded and not fixed, R-635 and
+R-637.
+Battery: ruff clean, **9679 passed** and 1 skipped in 65 seconds, 9680
+collected, 15 more than R-229 recorded, reconciled by file against main: 14 in
+`tests/test_routing_workers.py`, 1 in `tests/test_rebuild.py`. Scan clean. No
+test of this unit's is among the ten slowest. Two pins in
+`tests/test_reserved_causes.py` moved, the kebab literal census by three joined,
+the warning code and the two report directory names, and the holders that also
+hold an in range integer by one, the twenty of the cap. Each is named there.
+Mutation table `docs/mutation/r312.md`, rows file beside it: **24 rows, the
+author's own, 23 killed and 1 zero.** The zero is W9, maintainer facing, the
+tolerance for a report with no `left_behind` key, which no producer writes. W7
+measured zero on the first pass, a test was written against it, and it was
+renamed W7b so the driver measured it again, killed. The table was measured in
+five invocations of the driver with `--resume`, each in the foreground under the
+600 second tool ceiling, since a Relay session may not background one. `src` did
+not change between them. Two rows dropped and logged.
+Filed: **R-635** the rebuild verb is silent over the same leftovers, **R-636**
+`crate converge` names at most twenty differences per tree with no count,
+**R-637** a leftover is named by the resolved path, **R-638** the removal
+decision, **R-639** four smaller decisions. **R-636 LIKELY MEETS THE BOARD BAR
+under (b) and its issue is OWED,** to be filed after this merge since a Relay
+session does not merge. R-629's issue is still owed from two sessions before.
+The learning `a-queued-workers-report-does-not-reach-its-resume-envelope.md` is
+corrected in place. `CONCEPTS.md` gains Item report and Left behind.
+**Main's highest residual number is R-639.**
+
+**The session before: R-229, issue #165, `relay/165`, 2026-09-21.**
 A crate renamed or dragged into a folder in rekordbox no longer gets a second
 remote playlist on its next export, which CLOSES R-229.
 **THE ISSUE'S APPROACH WAS WRONG AND THE CARD WAS CORRECTED.** It asked for the
@@ -52,7 +106,6 @@ None meets the board bar, so none has an issue. Learning filed under
 `docs/solutions/workflow-issues/`, on evidence as a snapshot and not a log.
 `CONCEPTS.md` gains Playlist adoption. **R-629's issue is STILL OWED** from the
 session before.
-**Main's highest residual number is R-634.**
 
 **The session before: R-227, issue #164, `relay/164`, 2026-09-21.**
 An outbound write now shows the date of the export it was read from, in the plan

@@ -75,7 +75,7 @@ for.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -112,6 +112,15 @@ VOCAL_DIMENSION = "vocal"
 #: The envelope warning code a surface carries when the vocal dimension was not
 #: derived this run (R-316). One spelling, owned beside the dimension it names.
 VOCAL_NOT_COMPARED = "vocal-dimension-not-compared"
+
+#: The envelope warning code a resort carries when it left a membership where it
+#: was (R-312). The engine adds and never removes, so a track whose genre or band
+#: changed sits in its new sub and its old one until a person takes it out.
+LEFT_BEHIND = "membership-left-behind"
+
+#: How many leftovers one warning names before it counts the rest. A back
+#: catalogue can leave thousands behind, and an envelope is read by a person.
+LEFT_BEHIND_NAMED = 20
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +342,83 @@ def not_compared_warnings(not_compared: Iterable[str]) -> tuple[dict[str, str], 
             ),
         },
     )
+
+
+def left_behind(
+    after: "ConvergenceReport", declared: taxonomy.Taxonomy
+) -> tuple["Difference", ...]:
+    """The unexpected memberships of one check that a person can act on.
+
+    A DIMENSION THIS RUN DID NOT DERIVE IS NOT IN HERE. With no vocal calibration
+    the derivation places nothing in a vocal sub-playlist, and a destination a
+    previous write recorded is still compared, so every track in a correctly
+    filled vocal playlist arrives as unexpected. That is "I could not observe",
+    and naming those as leftovers would tell a person to empty a playlist that
+    is right. The gap already has its own warning, which says nothing checked.
+    """
+    if VOCAL_DIMENSION not in after.not_compared:
+        return after.unexpected
+    skipped = {entry.id for entry in declared.sub_classes if entry.additive}
+    return tuple(entry for entry in after.unexpected if entry.sub not in skipped)
+
+
+def left_behind_record(entry: "Difference") -> dict[str, str | None]:
+    """One leftover as a worker writes it into its item's report."""
+    return {
+        "bucket": entry.bucket,
+        "sub": entry.sub,
+        "folder": entry.folder,
+        "playlist": entry.playlist,
+        "content_id": entry.content_id,
+        "location": entry.location,
+    }
+
+
+def left_behind_message(records: Iterable[Mapping[str, Any]], *, listed_in: str) -> str | None:
+    """The sentence naming what an additive write left in the tree, or None.
+
+    NAMED SO A PERSON CAN REMOVE IT, because nothing in this build can (R-312).
+    Removing a membership row is a database delete on the one path where a wrong
+    derivation would empty somebody's playlist, so the product reports and a
+    person decides. The playlist is named by its DISPLAY, which is what rekordbox
+    shows, and the track by the FILE this machine resolved its row to, so the
+    file name is the thing to search for and the directory may be spelled
+    differently in rekordbox on a library with a prefix map.
+
+    IT DOES NOT SAY WHY THE MEMBERSHIP IS THERE. A track whose genre or band
+    changed is one producer. A track somebody filed by hand is another, and so
+    is one the inbox filed from outside the music directory. The check cannot
+    tell them apart, so the removal is offered and never instructed.
+
+    THE COUNT IS THE WHOLE SET AND THE NAMES ARE CAPPED, so a long list cannot
+    read as a short one, and ``listed_in`` is where the whole set is written.
+    Sorted, so two runs over one state say one thing.
+    """
+    found = sorted(
+        f"{entry['folder']}/{entry['playlist']}: "
+        f"{entry.get('location') or 'row ' + str(entry.get('content_id'))}"
+        for entry in records
+    )
+    if not found:
+        return None
+    named = found[:LEFT_BEHIND_NAMED]
+    rest = len(found) - len(named)
+    return (
+        f"this verb adds and never removes, so {len(found)} membership(s) the "
+        f"declaration does not place are still in the tree: {'; '.join(named)}"
+        + (f"; and {rest} more" if rest else "")
+        + ". A track whose genre or energy band changed is in its new playlist and "
+        "its old one. Remove one in rekordbox if it no longer belongs there. "
+        f"Every one is listed in {listed_in}"
+    )
+
+
+def left_behind_warnings(
+    records: Iterable[Mapping[str, Any]], *, listed_in: str
+) -> tuple[dict[str, str], ...]:
+    """The envelope warning over :func:`left_behind_message`, or nothing."""
+    message = left_behind_message(records, listed_in=listed_in)
+    return () if message is None else ({"code": LEFT_BEHIND, "message": message},)
 
 
 #: One derivation per source a tree may cut over on. A MAPPING rather than a
@@ -1091,6 +1177,18 @@ def check(
                     content_id=content_id,
                 )
             )
+    if unexpected:
+        # THE FILE EACH LEFTOVER ROW RESOLVED TO, read off the one walk above and
+        # only when there is a leftover to name. This direction is something
+        # only a person can settle, and a person finds a track by its file and
+        # not by its row identifier (R-312).
+        located_at = {
+            content_id: location for location, ids in index.items() for content_id in ids
+        }
+        unexpected = [
+            replace(entry, location=located_at.get(entry.content_id or ""))
+            for entry in unexpected
+        ]
 
     return ConvergenceReport(
         tree_id=tree_id,
@@ -1779,6 +1877,8 @@ def governed_not_compared(vocal_threshold: float | None) -> tuple[str, ...]:
 
 __all__ = [
     "DERIVATIONS",
+    "LEFT_BEHIND",
+    "LEFT_BEHIND_NAMED",
     "REBUILD_ACTOR",
     "REBUILD_ANSWERS_KIND",
     "REBUILD_WORKFLOW",
@@ -1799,6 +1899,10 @@ __all__ = [
     "declared_membership",
     "derive_from_taxonomy",
     "governed_not_compared",
+    "left_behind",
+    "left_behind_message",
+    "left_behind_record",
+    "left_behind_warnings",
     "library_truth",
     "not_compared_warnings",
     "not_derived",
