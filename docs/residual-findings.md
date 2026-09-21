@@ -16205,6 +16205,31 @@ destructive path:
 from it puts the share back beside the restored database, and the warning code
 has no producer left.
 
+**CLOSED 2026-09-20 on `relay/174`, by option 2 without its setup change, and
+with option 3 as written.** In the outside layout the database portion mirrors
+the share, last and behind the rekordbox gate, to
+`analysis-share/<volume identity>/current` under the configured
+`backup.db_dest_root`, so no fourth destination is asked for, with what each
+run replaced kept in `archive/<stamp>` beside it. Option 1 was not taken because
+dated snapshots are never rotated and copy whole, so the share inside each one
+fills a consumer quota within a handful of runs and then the backup itself
+fails. A share that fails to copy fails the portion, and no database age is
+published. A restore that names a target lists the mirror before anything is
+cleared and copies the share back as `share` beside the restored database. A
+mirror that is not there, which is every backup older than this, plans nothing
+and the totals say `absent`. A listing that did not answer refuses before the
+sidecars are touched. `analysis-share-not-carried` has no producer in `src`, and
+a test reads the tree to say so. One narrower warning replaces it,
+`analysis-share-absent`, for an outside share that is not a directory.
+**WHAT IT DID NOT CLOSE IS NAMED, NOT FOLDED IN.** A restore onto the live
+library WITHHOLDS the share, because that session's analysis watch refuses any
+analysis file that moves, R-606, and in this layout that restore does not land
+the database where rekordbox reads it either, which was true before this unit
+and is R-605. R-607 to R-615 are the mirror's other limits. **Owed to an
+attended sitting:** one real `backup run` and one `restore run --from-backup
+--target` against a real remote in the outside layout, which is also where
+R-615's exit code gets measured.
+
 ---
 
 ## R-339. The open pins the argument, and nothing checks which file the connection opened
@@ -24438,3 +24463,211 @@ that refuses a merge for a unit that did nothing wrong. Maintainer facing.
 no:randomly --count` or a loop over the full suite with `--tb=long` kept whole,
 and is either fixed or shown to be machine load.
 
+---
+
+## R-605. A live restore in the outside layout lands the database at the top of the library root and reports it restored
+
+**Found:** 2026-09-20 on `relay/174`, closing R-338, DRIVEN. **Bar met: b. Issue OWED**, since a Relay session cannot open one before the merge puts the number on `main`. It predates that unit and is on `main` today.
+
+`restore run --from-backup` with no target restores into `cfg.library.root`.
+`backup.database_target_for` rebases the configured database path onto the
+target, and a database outside the root has no position under it, so it answers
+`<library root>/master.db`. Driven through `restore_under_one_session` with the
+acknowledged outside layout: the one transfer was aimed at the library root, the
+live database beside rekordbox was untouched, and the report listed
+`restore-database` as pulled. `session/restore_cli.py` already says why that
+answer is wrong for a recovery, in `_database_elsewhere`, and the bare metal
+verb skips the half because of it. The live restore has no such check, and
+`--target` refuses the live database's own directory, so in rekordbox's default
+layout NO verb puts a snapshot's database back where rekordbox reads it.
+
+**Measured cost:** a person recovering from a bad write is told the database was
+restored, opens rekordbox, and sees the bad write. One candidate was driven and
+it produces it.
+
+**Options, none taken,** because each changes the most destructive path this
+product has: land a live restore on the configured database path when it is
+outside the root, which is what "live" means in the contained layout; or refuse
+a live restore in this layout and name the target restore and the move by hand.
+
+**Closes when:** a live restore in the outside layout either replaces the
+database rekordbox reads or refuses by name, and a test drives whichever it is.
+The share follows without further work: it lands beside `database_target`.
+
+---
+
+## R-606. A restore that brings analysis files back is refused by its own analysis watch
+
+**Found:** 2026-09-20 on `relay/174`, by the built in review and then DRIVEN. **Bar met: c. Issue OWED**, for the reason R-605 gives.
+
+`restore_under_one_session` arms `analysis_files_unmoved` over
+`analysis_store.watch_roots`, and that guard counts a file that APPEARED as
+drift. A restore exists to make files appear. Driven twice with a runner that
+writes one `ANLZ0000.DAT` where its transfer is aimed: the contained layout with
+`--include-mirror`, which is `main`'s behaviour, and the outside layout with the
+first version of R-338's share pull. Both closed refused as moved analysis files,
+after the database had been replaced.
+
+R-338's fix steps around it and does not solve it: a share whose landing place
+the watch covers is WITHHELD, the totals say so, and the grids come back through
+`--target` and a move by hand. The contained `--include-mirror` case is
+untouched and still refuses whenever the mirror brings back a grid the volume
+lacks, which is the partial recovery the flag exists for. Whether
+`restore bare-metal` has the same fault was NOT driven.
+
+**Closes when:** a restore can put analysis files back under a watched root and
+close clean, by exempting what its own planned transfers wrote and nothing else,
+and the live restore pulls an outside share.
+
+---
+
+## R-607. A share mirror that was interrupted partway reads as held, and its restore says pulled
+
+**Found:** 2026-09-20 on `relay/174`, by the built in review. Read, NOT driven: the producer is a real rclone cut off mid transfer, which is attended. **Bar met: b if reachable, and the reachability is unmeasured. Issue OWED.**
+
+`share_is_held` reads any listing of `current/` that names something as a
+mirror. Nothing marks a sync as finished. A first sync cut off by a quota, a
+network or a closed lid fails the portion, correctly, and leaves a fraction of
+the share under `current/` beside a dated snapshot whose marker was written
+earlier in the same run. A restore of that snapshot copies the fraction and
+reports `pulled`.
+
+**Option, not taken,** because it needs the identity marker's warn and do not
+fail treatment for a remote that cannot hold an empty file, and a fifth word for
+the restore: `rclone touch` a completion marker beside `current/` after the
+sync, and have the restore say unverified when there is none.
+
+**Closes when:** a restore from a mirror no sync ever completed does not say
+`pulled`.
+
+---
+
+## R-608. The share mirror's dated archive is never rotated
+
+**Found:** 2026-09-20 on `relay/174`, planned and then raised by the built in review.
+
+The library mirror pairs its `--backup-dir` with `prune-archive`. The share's
+sync has no such command, and `_prune_archive` lists `backup.archive_root`
+alone. rekordbox rewrites analysis files when cues or analysis change, so each
+run archives what changed into a new dated folder that stays. A reinstall or a
+full analysis archives the whole share once. **Measured cost:** none, no real
+share was synced. Growth is what changed and not the share per run, which is why
+this was preferred to the share inside each dated snapshot. Not pruned here
+because a prune is a delete on the remote and the unit's brief was a read and a
+copy.
+
+**Closes when:** the share archive is rotated under the rule the library
+archive's is, newest run held, only after a sync that succeeded.
+
+---
+
+## R-609. An older named snapshot restores against the newest share
+
+**Found:** 2026-09-20 on `relay/174`, planned and then raised by the built in review. Read, not driven.
+
+The share has one mirror and the database has a snapshot per run, so
+`--snapshot` with last month's stamp pulls today's share. Grids for tracks
+deleted since then are in `archive/<stamp>` and no verb pulls from there. This
+is the contained layout's behaviour too, where the share rides the one library
+mirror, so it is parity and not a regression. `rclone copy` also overwrites a
+differing local file with the mirror's, which only a target restore into a
+directory already holding a share can meet.
+
+**Closes when:** a restore can pull the share as it was at a named stamp, or the
+totals say the share is newer than the snapshot.
+
+---
+
+## R-610. Libraries with no usable volume identity share one share mirror
+
+**Found:** 2026-09-20 on `relay/174`, by the built in review. Read, not driven.
+
+`share_destination` keys the mirror by the identity `identity_marker` accepts,
+and everything else goes to `_unrecorded`. A saved configuration cannot lack an
+identity, so the producer is two libraries under one `db_dest_root` whose
+identities are both not plainly a name. Each sync then archives the other's
+grids. `snapshot-identity-not-written` fires for both and says nothing about the
+share. No candidate producing two such libraries was driven.
+
+**Closes when:** that warning names the share, or the key falls back to
+something per library.
+
+---
+
+## R-611. Three listing refusals carry `no-snapshot-available`, whose reserved steps say no snapshot exists
+
+**Found:** 2026-09-20 on `relay/174`, by the built in review, and the same shape was then found twice more one function over.
+
+`share_is_held`, `snapshot_filenames` and `snapshot_identities` each refuse a
+listing that did not answer with `no-snapshot-available`. Its reservation in
+`cli/exit_codes.py` carries the steps "no dated database snapshot exists for
+this library yet; take a backup", which is false for all three: the snapshot
+exists and the remote did not answer. The detail text is right in each. A
+fourth member was not added here because a new refusal is a new reserved cause,
+exit code and remediation, which is a unit of its own.
+
+**Closes when:** a listing that failed has its own cause whose steps say check
+the remote.
+
+---
+
+## R-612. `run_restore` reads no return code until every command has run, so the share transfers after a database copy that failed
+
+**Found:** 2026-09-20 on `relay/174`, by the built in review. Read, not driven.
+
+`restore_cli._halves` documents this for the mirror and splits the bare metal
+plan around it. The target restore is not split, and R-338 added a second large
+transfer to it. A failed `restore-database` is followed by the share's download
+and only then by the refusal. **Measured cost:** none. Whether the rerun
+transfers the share again was not measured; `rclone copy` is documented to skip
+a file whose size and time match.
+
+**Closes when:** `run_restore` stops at the first failed transfer.
+
+---
+
+## R-613. The rekordbox gate the share rides is read when the plan is built, not when the sync starts
+
+**Found:** 2026-09-20 on `relay/174`, by the built in review.
+
+Through the shipped verb each portion is planned in its own job item, so the
+window between the process check and the share's sync is the database, marker
+and settings copies, the window the settings already have. A caller that ran
+both portions from one plan would put the whole library mirror inside it, and
+`backup/cli.py` is the only caller in `src`. Maintainer facing until a second
+caller exists.
+
+**Closes when:** `run_backup` asks again before a command that reads what
+rekordbox writes, as the bare metal verb does before its database half.
+
+---
+
+## R-614. rekordbox's settings directories are in every snapshot, and no restore puts them back
+
+**Found:** 2026-09-20 on `relay/174`, by looking one file over for R-338's shape, METHOD's fifth pattern.
+
+`_plan_database` copies each settings directory into the dated snapshot,
+because they hold the pointer to where the database lives. `git grep` for the
+label and for the directory name finds no reader: no restore command names them,
+and `restore bare-metal` does not either. Unlike R-338 the bytes ARE in the
+backup, so nothing is lost, and a person who knows can pull the folder with
+rclone. No verb or guide line tells them to.
+
+**Closes when:** a restore can put the settings back, or the guide says how.
+
+---
+
+## R-615. rclone's missing directory exit was measured on the local backend only
+
+**Found:** 2026-09-20 on `relay/174`.
+
+`share_is_held` reads exit 3 as "no mirror here", which is what makes every
+backup older than R-338's fix restorable, and any other failure as a remote that
+did not answer, which refuses. `rclone lsf` over a missing LOCAL directory
+exited 3 on 2026-09-20 and rclone documents 3 as directory not found. No remote
+was asked, which is attended. If a provider reports a missing folder any other
+way, a target restore of an old backup in the outside layout refuses with a
+listing error when it should say `absent`.
+
+**Closes when:** the exit is measured against the configured provider, at the
+attended sitting R-338's closing paragraph names.
