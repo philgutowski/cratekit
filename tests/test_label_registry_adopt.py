@@ -175,11 +175,12 @@ def test_a_label_held_under_a_folded_name_is_reported_not_duplicated(installed, 
 
 
 def test_a_carried_over_accented_label_is_not_filed_twice(installed):
-    """R-381: ``Sueño`` held under the source system's ``sueno`` slugs to ``sue-o``.
+    """R-381: ``Sueño`` carried over under the source system's ``sueno``.
 
-    A presence check on the slug alone files a second entry, which is the
-    hazard the brief names. Offered decomposed, so the name also has to fold
-    through NFC to be recognised.
+    Written before R-381 closed, when the name slugged to ``sue-o`` and a
+    presence check on the slug alone filed a second entry. The slug now matches,
+    and the test still holds the name fold. Offered decomposed, so the name also
+    has to fold through NFC to be recognised.
     """
     store = labels.RegistryStore()
     store.update(

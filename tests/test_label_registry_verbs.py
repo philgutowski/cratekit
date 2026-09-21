@@ -227,12 +227,12 @@ def test_a_field_flag_on_an_action_that_does_not_set_it_refuses(installed, actio
 
 
 def test_set_finds_an_accented_name_typed_in_decomposed_form(installed):
-    """Hazard R-381, issue 97: the identifier is mangled, so the name must resolve.
+    """Hazard R-381: the name must resolve however the terminal composed it.
 
-    ``Sueño`` slugs to ``sue-o`` today, and a terminal can hand the same name
-    over decomposed, an ``n`` and a combining tilde, which slugs to ``suen-o``
-    and matches nothing by identifier. Resolving by the normalized name is what
-    lets a person edit the label they see.
+    Written when ``Sueño`` slugged to ``sue-o`` and its decomposed form, an
+    ``n`` and a combining tilde, to ``suen-o``. Both now slug to ``sueno``, and
+    resolving by the normalized name still has to hold for a stored identifier
+    the slug does not derive.
     """
     del installed
     composed = unicodedata.normalize("NFC", "Sueño")
