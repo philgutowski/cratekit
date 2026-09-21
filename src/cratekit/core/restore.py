@@ -2611,6 +2611,27 @@ def _is_mount_point(path: Path) -> bool:
         return False
 
 
+def recovered_database_fileset(cfg: config.Config, target: Path) -> tuple[Path, ...]:
+    """Where a recovery onto ``target`` lands the database, then each companion.
+
+    THE SAME RE-BASING ``backup.database_target_for`` DOES, and the same companion
+    names the restore plan clears, repeated here because this layer does not import
+    the backup module. ``test_the_occupancy_fileset_is_the_one_the_restore_plan_writes``
+    holds the two together, since a guard testing one path while the transfer
+    writes another guards nothing.
+    """
+    database = config.state_path("rekordbox_db", cfg)
+    try:
+        landing = target / database.relative_to(cfg.library.root)
+    except ValueError:
+        landing = target / database.name
+    companions = tuple(
+        landing.with_name(landing.name + sidecar.suffix)
+        for sidecar in config.state_file("rekordbox_db").sidecars
+    )
+    return (landing, *companions)
+
+
 def assert_recovery_target(
     cfg: config.Config,
     target: Path | str,
@@ -2662,11 +2683,19 @@ def assert_recovery_target(
             target=str(where),
             configured_root=str(configured),
         )
-    # RECURSIVE. The non-recursive form missed a target holding a library whose
-    # database is in a subdirectory, which is the layout the containment rule
-    # produces and the layout this unit's own fixtures use, so the check passed on
-    # precisely the arrangement it exists to catch.
-    existing = sorted(entry for entry in where.rglob("*.db") if entry.is_file())
+    # WHERE THIS LIBRARY'S DATABASE LANDS, NOT ANY DATABASE ANYWHERE (R-592). The
+    # recursive suffix test this replaced refused every rerun of an interrupted
+    # recovery, because the mirror carries the state directory beside the library
+    # and every capture in it is a database file. What a recovery replaces is only
+    # this fileset: the mirror is a copy and deletes nothing, and the database half
+    # clears the companions and overwrites the database at exactly these paths. A
+    # target holding somebody else's library whose database sits here is refused
+    # still, including the subdirectory layout the containment rule produces.
+    existing = [
+        entry
+        for entry in recovered_database_fileset(cfg, where)
+        if entry.is_symlink() or entry.exists()
+    ]
     if existing and not replacing_existing:
         raise _refuse_target(
             f"{where} already holds {existing[0].name}; a recovery that replaced "
@@ -2744,8 +2773,9 @@ def bare_metal_session(
     AND THE LOCK ARGUMENT ABOVE PREDATES THE WRITE PATH. "Nothing is lost" was
     written when this session could write nothing. A target that already holds a
     recovered library holds that library's own lock, which this does not take.
-    That needs ``replacing_existing``, because a target holding a database is
-    otherwise refused, and the shipped verb never passes it. The ledger records
+    That needs ``replacing_existing``, because a target holding a database where
+    this library's lands is otherwise refused, and the shipped verb never passes
+    it. The ledger records
     what is left, owned by whichever unit first does.
     """
     assert_library_volume_is_gone(
@@ -2817,6 +2847,7 @@ __all__ = [
     "assert_gates_are_open",
     "assert_library_volume_is_gone",
     "assert_recovery_target",
+    "recovered_database_fileset",
     "bare_metal_session",
     "capture_root_of",
     "list_sessions",
