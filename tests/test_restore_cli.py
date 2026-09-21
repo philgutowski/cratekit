@@ -2374,7 +2374,15 @@ class _Remote:
         if source.rsplit("/", 1)[-1] in self.failing_files:
             return backup.CommandResult(3)
         if command.label == backup.RESTORE_MIRROR:
+            # AN ANCHORED EXCLUDE IS HONOURED, the way rclone reads one, so a
+            # mirror still carrying the database is measured on the disk.
+            argv = command.argv
+            excluded = {
+                argv[i + 1] for i, arg in enumerate(argv[:-1]) if arg == "--exclude"
+            }
             for relative in self.mirrored:
+                if f"/{relative}" in excluded:
+                    continue
                 landed = destination / relative
                 landed.parent.mkdir(parents=True, exist_ok=True)
                 landed.write_bytes(b"mirrored")
@@ -2742,6 +2750,34 @@ def test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed(cfg, tm
     )
 
     assert report.mirror == (backup.RESTORE_MIRROR,)
+    assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
+    assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
+
+
+def test_a_mirror_still_carrying_the_database_does_not_land_it(cfg, tmp_path):
+    """A mirror taken before the backup excluded the database may still hold it.
+
+    Landed by the mirror half, it would sit where the database half writes, and a
+    mirror cut off after it arrived would leave a rerun refused with no step
+    saying what to remove. The restore mirror excludes the fileset the backup
+    mirror does, so it never arrives that way, and the rerun needs nothing.
+    """
+    target = _replacement(tmp_path)
+    seams = _gone(cfg)
+    stale = (*CARRIED, "db/master.db", "db/master.db-wal")
+    first = _Remote(cfg, cut={backup.RESTORE_MIRROR}, mirrored=stale)
+    with pytest.raises(CratekitError):
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, runner=first, **seams
+        )
+    assert (target / ".cratekit" / "queue.db").exists(), "the fixture landed nothing"
+    assert not (target / "db" / "master.db").exists()
+    assert not (target / "db" / "master.db-wal").exists()
+
+    report = restore_cli.recover_under_bare_metal_session(
+        cfg, target=target, accepted=True, runner=_Remote(cfg, mirrored=stale), **seams
+    )
+
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
     assert (target / "db" / "master.db").read_bytes() == b"from the snapshot"
 
