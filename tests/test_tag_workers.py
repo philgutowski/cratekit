@@ -807,7 +807,7 @@ def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
     reads them, and a report that merged them would send somebody looking for
     files that are not there.
     """
-    for name in ("a", "b", "c", "d"):
+    for name in ("a", "b", "c", "d", "e"):
         place(folder, silence, name)
     bound(
         monkeypatch,
@@ -817,6 +817,7 @@ def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
                 "b": hit("gqom", "gqom", off_taxonomy=True),
                 "c": hit("Deep House", "Deep House"),
                 "d": hit("Techno"),
+                "e": hit("bubblegum bass", "bubblegum bass", off_taxonomy=True),
             }
         ),
     )
@@ -826,20 +827,30 @@ def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
     _code, resumed = drive(resume_argv(job.job_id))
 
     tagging = resumed["data"]["progress"]["tagging"]
-    assert tagging["off_taxonomy"] == {"gqom": 2}
+    assert tagging["off_taxonomy"] == {"gqom": 2, "bubblegum bass": 1}
     assert tagging["unresolved"] == {"Techno": 1}
-    assert tagging["tagged"] == 3, "they were written, so they are tagged"
+    assert tagging["tagged"] == 4, "they were written, so they are tagged"
     assert [report["off_taxonomy"] for report in artifacts.committed(cfg, job.job_id)] == [
         True,
         True,
         False,
         False,
+        True,
     ]
 
     warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    assert tag_cli.OFF_TAXONOMY == "tag-folder-off-taxonomy", (
+        "the code is the surface a log filter matches on, so it is pinned here "
+        "rather than only referred to by name"
+    )
     assert tag_cli.OFF_TAXONOMY in warnings
-    assert "gqom" in warnings[tag_cli.OFF_TAXONOMY]
-    assert "Deep House" not in warnings[tag_cli.OFF_TAXONOMY]
+    message = warnings[tag_cli.OFF_TAXONOMY]
+    assert "3 of the 4 files" in message
+    # SORTED AND NOT IN WALK ORDER, so two runs over one unchanged folder agree.
+    # The files were committed with gqom first, and the message must not say so.
+    assert "bubblegum bass, gqom" in message
+    assert "Deep House" not in message
+    assert "Techno" not in message, "a decline is the other map's, and nothing was written"
 
 
 def test_a_sweep_with_nothing_off_taxonomy_carries_no_such_warning(

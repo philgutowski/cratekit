@@ -471,54 +471,73 @@ def test_a_custom_taxonomy_splits_on_tempo_where_it_declares_one(second):
     assert unknown.bucket_id == "slow_burn" and unknown.needs_review is True
 
 
-def test_a_templates_own_display_names_are_never_reported_off_taxonomy(default, second):
-    """R-650. The library's own vocabulary is not a gap in the library.
+def test_a_buckets_own_display_name_is_never_reported_off_taxonomy(default, second):
+    """R-650. The library's own folder names are not a gap in the library.
 
     ``suggest_tag`` has NO tier that recognises a display name, deliberately:
     recognising one is routing's job, and tagging must not invent a bucket. So a
     catalogue answering with a bucket's own name, which happens constantly
     because this tagger writes bucket names back onto files, reaches the last
-    tier and passes through as itself. The TAG is right. Reporting it as a word
-    nobody has heard of would put the person's own template in front of them as
-    something to go and fix.
+    tier and passes through as itself. The TAG is right, routing places it by
+    its own second tier, and reporting it would put the person's own template in
+    front of them as something to go and fix.
 
-    BOTH TEMPLATES, because the shipped one exercises only the bucket half.
-    Measured 2026-09-21: two shipped bucket displays reach that tier and no sub
-    display does, while the second template reaches it with three of each, which
-    is the only place the sub half of the index is driven at all.
+    BOTH TEMPLATES, because the shipped one has two such buckets and the second
+    has three, measured 2026-09-21. A template whose every bucket display also
+    has an alias would make this vacuous, which is what the second loop rules
+    out.
     """
     for declared in (default, second):
-        displays = [bucket.display for bucket in declared.buckets] + [
-            sub.display for bucket in declared.buckets for sub in bucket.subs
-        ]
+        displays = [bucket.display for bucket in declared.buckets]
         assert displays
         assert [d for d in displays if routing.suggest_tag(declared, d).off_taxonomy] == []
 
     # NOT VACUOUS, which is the half a passing assertion above cannot show. Each
-    # of these is declared, is claimed by no alias, and comes back out of the
-    # resolver as itself with no bucket, which is the last tier's own shape.
-    for declared, display in ((default, "NonElectronic"), (second, "Birds")):
-        assert declared.declares_display(display)
+    # of these is claimed by no alias and comes back out of the resolver as
+    # itself with no bucket, which is the last tier's own shape.
+    for declared, display in ((default, "NonElectronic"), (second, "Floor Filler")):
+        assert declared.bucket_for_display(display) is not None
         assert declared.tagging_alias(display.lower()) is None
         answer = routing.suggest_tag(declared, display)
         assert (answer.tag, answer.bucket_id, answer.declined) == (display, None, False)
 
 
-def test_a_sub_display_is_declared_vocabulary_and_is_still_not_a_bucket(second):
-    """The two display lookups answer two questions and must not be one.
+def test_a_sub_display_and_a_changed_case_are_both_reported(default, second):
+    """The two ways a declared-looking word still does not land where it says.
 
-    ``bucket_for_display`` places a name in the tree and must answer for buckets
-    only, since a sub's display resolving to its parent puts a track one level
-    up. ``declares_display`` asks whether the template uses the word at all, so a
-    sub's display is a yes. One index answering both would have to pick, and
-    either answer is wrong for the other caller.
+    The suppression above is the ROUTING tier, not the vocabulary, and this is
+    the measurement that decided it. A sub's display is a word the template
+    declares and ``resolve_bucket`` does not recognise, so the file wears it and
+    lands in the fallback. A bucket display in another case is the same story,
+    and it is not hypothetical: the Bandcamp picker only ever selects a tag
+    equal to its own lowercase, so that is the case this product produces.
+
+    Both are exactly the cost R-650 names, so both are reported rather than
+    suppressed for looking familiar.
     """
-    assert second.declares_display("Birds")
-    assert second.bucket_for_display("Birds") is None
-    assert second.declares_display("Floor Filler")
-    assert second.bucket_for_display("Floor Filler") == "floor_filler"
-    assert not second.declares_display("gqom")
-    assert not second.declares_display("")
+    for display in ("Birds", "Water", "Engines"):
+        assert routing.suggest_tag(second, display).off_taxonomy is True
+        assert routing.resolve_bucket(second, display).bucket_id == second.fallback.bucket
+
+    lowered = "nonelectronic"
+    assert default.bucket_for_display("NonElectronic") is not None
+    assert routing.suggest_tag(default, lowered).off_taxonomy is True
+    assert routing.resolve_bucket(default, lowered).bucket_id == default.fallback.bucket
+
+
+def test_an_off_taxonomy_word_can_still_route_to_a_real_bucket(default):
+    """The flag is about the WORD, and reading it as a place is wrong both ways.
+
+    ``suggest_tag``'s last tier and ``resolve_bucket``'s keyword tier read two
+    different rule lists, so a string nothing tags can still be routed by a
+    fuzzy rule. Driven 2026-09-21 on two ordinary Beatport genre strings. This
+    is why the sweep's warning says what was written and not where it went.
+    """
+    for value in ("Psy-Trance", "Hardcore / Hard Techno"):
+        assert routing.suggest_tag(default, value).off_taxonomy is True
+        landing = routing.resolve_bucket(default, value)
+        assert landing.bucket_id != default.fallback.bucket, value
+        assert landing.match is routing.Match.FUZZY
 
 
 def test_two_taxonomies_coexist_in_one_process(default, second):

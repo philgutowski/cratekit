@@ -196,6 +196,18 @@ def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:
     SORTED, because the order artifacts are committed in is the order files were
     walked, and a warning whose text changes between two runs over one unchanged
     folder is one nobody can diff.
+
+    IT SAYS NOTHING ABOUT WHERE THE TRACKS LANDED, and the first draft did. It
+    told the person these words route to the fallback bucket, which is the
+    ledger entry's own second cost and is FALSE for a measured class: driven on
+    2026-09-21, ``Psy-Trance`` and ``Hardcore / Hard Techno`` are both off
+    taxonomy and both routed by a fuzzy rule to a real bucket, while ``gqom``
+    and ``Leftfield Bass`` landed in the catch-all. The two tiers read two
+    different rule lists, so one cannot be read off the other. Telling somebody
+    their correctly filed tracks are in the wrong folder is the same defect this
+    warning exists to fix, one turn further on, so this says only the part that
+    is true of every word it names. Which of them also landed in the catch-all
+    is recorded as a residual rather than guessed at here.
     """
     counted = summary.get("off_taxonomy") or {}
     if not counted:
@@ -207,10 +219,11 @@ def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:
             "code": OFF_TAXONOMY,
             "message": (
                 f"{files} of the {summary.get('tagged', 0)} files tagged were "
-                f"given a genre the declared taxonomy does not know, from these "
-                f"catalogue answers: {words}. Each word was written onto its file "
-                f"as the catalogue said it, and routes to the fallback bucket, so "
-                f"add an alias for the ones you want a folder of their own"
+                f"given a genre your taxonomy has no place of its own for, from "
+                f"these catalogue answers: {words}. Each word was written onto "
+                f"its file exactly as the catalogue said it, so the tags on disk "
+                f"are no longer only the ones your template declares; add an "
+                f"alias for any you want the taxonomy to own"
             ),
         },
     )
