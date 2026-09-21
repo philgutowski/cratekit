@@ -1341,6 +1341,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # decides ownership and a track it does not hold cannot be ranked
         # against, whichever of the three reasons put it outside.
         "setbuild-anchor-not-indexed": ExitCode.PRECONDITION,
+        # U98's two, beside their siblings. An unowned anchor named with no
+        # Camelot key: the engine answers unresolved rather than guessing, and
+        # nothing here looks one up. And a key or tempo supplied beside a PATH
+        # anchor, which takes both from the library, so the value would be
+        # silently ignored. PRECONDITION for both on the argument above: the
+        # parser accepted each flag, and what is wrong is how they combine. Two
+        # slugs because the remedies are two acts, add a key, or drop the flags.
+        "setbuild-unowned-key-missing": ExitCode.PRECONDITION,
+        "setbuild-supplied-needs-unowned": ExitCode.PRECONDITION,
         # ── U44's refusals, appended for the reason every block above gives ────
         #
         # WHY THESE ARRIVE SO LATE, since the mastering engine shipped in U35.

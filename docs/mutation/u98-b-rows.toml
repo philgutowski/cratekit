@@ -1,0 +1,71 @@
+name = "u98-b"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_supplied_beside_path"
+description = "set_build: drop the refusal of --key or --bpm beside a path anchor, so both are silently ignored"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if ctx.args.key is not None or ctx.args.tempo is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S2_tempo_half"
+description = "set_build: drop only the tempo half of that refusal"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if ctx.args.key is not None or ctx.args.tempo is not None:'''
+new = '''    if ctx.args.key is not None:'''
+
+[[rows]]
+id = "H1_held_not_excluded"
+description = "plan_for: report the exact match copies but leave them in the ranked index"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        index = [t for t in index if not (label and t.match == label)]'''
+new = ""
+
+[[rows]]
+id = "H2_held_not_reported"
+description = "plan_for: exclude the exact match copies but report none"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        totals["held"] = held'''
+new = '''        totals["held"] = []'''
+
+[[rows]]
+id = "H3_held_fuzzy"
+description = "plan_for: widen the exact match to containment, the fuzzy shape the empty index exists to avoid"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''        index = [t for t in index if not (label and t.match == label)]'''
+new = '''        index = [t for t in index if not (label and label in t.match)]'''
+
+[[rows]]
+id = "P1_either_twice"
+description = "build_plan: the after side draws from the whole ranked list again, so either filler is placed on both sides"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''            [s for s in ranked if id(s) not in taken], "after", DEFAULT_SIDE'''
+new = '''            ranked, "after", DEFAULT_SIDE'''
+
+[[rows]]
+id = "E1_existing_containment"
+description = "existing sample: anchor_path drops the library containment refusal"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if not _within(candidate, root):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E2_existing_count"
+description = "existing sample: positive_count admits zero"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if value < 1:'''
+new = '''    if value < 0:'''
+
+[[dropped]]
+id = "R1_refusal_messages"
+description = "reword the two new refusal messages"
+reason = "the suite asserts the slug and the remediation steps, not the sentence, so a reword is a known zero by construction and says nothing about the guard"

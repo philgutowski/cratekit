@@ -4,7 +4,45 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U97, issue #142, `relay/142`, 2026-09-21.**
+**Last merged: U98, issue #143, `relay/143`, 2026-09-21.**
+`crate setbuild --unowned LABEL --key 8A [--bpm N]` ranks the library against a
+track it does not hold, which CLOSES R-410. The "should I buy this" workflow.
+**THE LABEL IS RESOLVED AGAINST AN EMPTY INDEX,** `unowned_anchor` in
+`setbuilder/cli.py` calling the engine's `resolve_anchor(label, (), ...)`, so
+the fuzzy owned match the path form was built to avoid cannot happen by this
+route either. The envelope's anchor carries `owned` false and
+`key_needs_confirming` true. `--key` is required and parsed at the parser, so
+"13C" is a status 2; a missing one refuses as `setbuild-unowned-key-missing`.
+`--bpm`, dest `tempo`, is a ranking input and rejects zero, negatives, NaN and
+inf at the parser, since each would empty the pool into an honest looking
+"nothing mixes". A path and `--unowned` together are a parser error, and
+`--key` or `--bpm` beside a path refuses as `setbuild-supplied-needs-unowned`
+rather than being ignored. `plan_for` takes a resolved `Anchor` as well as an
+indexed `Track`.
+**The built in code review raised one finding and it was DRIVEN**: a label
+naming an owned track exactly ranked the library's own copy as its best
+companion. `plan_for` now drops exact match key copies and reports them as
+`totals.held`, on the unowned form only. **DRIVING IT FOUND A DEFECT ON MAIN**,
+fixed in the engine: `build_plan` placed an `either` companion on both sides of
+the anchor, so one same-key, equal-energy companion was the sequence twice with
+position 2 and no 1. An unowned anchor hit it on most runs.
+Battery: ruff clean, **9473 passed** and 1 skipped in 64 seconds, 9474
+collected, scan clean. 28 tests joined, all in `tests/test_setbuilder_cli.py`:
+21 in the pure half, counting 11 parametrized cases, and 7 through the
+dispatcher, counting 2. The two new slugs moved the cause population pin 170 to
+172 and the kebab literal pin 476 to 478, differenced as sets against main.
+Mutation tables, `docs/mutation/u98-a.md`, `u98-b.md` and `u98-c.md`, rows files
+beside them, notes in `u98-notes.md`: **17 rows, the author's own, all killed.**
+One row killed only the owned pin at first; the unowned test was narrowed and
+the row re-run in batch C.
+Filed: **R-621**, an unowned label naming an owned track only up to a version
+suffix is not reported as held, which waits on R-187. It does not meet the board
+bar, so no issue was opened.
+No learning filed.
+**OWED TO AN ATTENDED SITTING:** none.
+**Main's highest residual number is R-621.**
+
+**The session before: U97, issue #142, `relay/142`, 2026-09-21.**
 The remedy for a provider session names the procedure instead of a verb that
 cannot perform it, which CLOSES R-411. `crate login` records a value somebody
 already holds and refuses without one, so a first run person who followed the
@@ -63,7 +101,7 @@ test takes its expected remedy text from the renderer it tests.
 One learning filed,
 `docs/solutions/integration-issues/a-remedy-that-points-at-a-repository-document-is-a-dead-end-on-every-installed-machine.md`.
 **OWED TO AN ATTENDED SITTING:** none.
-**Main's highest residual number is R-620.**
+**Main's highest residual number was R-620 at that merge.**
 
 **The session before: R-338, issue #174, `relay/174`, 2026-09-20.**
 An analysis share outside the library root is now in the backup, and a restore

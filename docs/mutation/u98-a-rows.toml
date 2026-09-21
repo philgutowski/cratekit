@@ -1,0 +1,87 @@
+name = "u98-a"
+pass_kind = "light"
+
+[[rows]]
+id = "K1_key_off_wheel"
+description = "camelot_key: drop the refusal, so a code off the wheel parses to the empty string"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''
+    if not canonical:
+        raise ValueError(f"{text!r} is not a Camelot code between 1A and 12B")
+'''
+new = "\n"
+
+[[rows]]
+id = "T1_tempo_nonfinite"
+description = "positive_tempo: drop the finiteness half, so NaN and inf parse"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''if not math.isfinite(value) or value <= 0:'''
+new = '''if value <= 0:'''
+
+[[rows]]
+id = "T2_tempo_zero"
+description = "positive_tempo: move the bound to strictly negative, so zero parses"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''if not math.isfinite(value) or value <= 0:'''
+new = '''if not math.isfinite(value) or value < 0:'''
+
+[[rows]]
+id = "X1_mutex"
+description = "build: declare the anchor and --unowned on the parser, not in an exclusive group"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    anchor = parser.add_mutually_exclusive_group()'''
+new = '''    anchor = parser'''
+
+[[rows]]
+id = "U1_empty_label"
+description = "unowned_anchor: drop the empty label refusal, so an empty label resolves by key alone"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if not label:
+        raise refuse(
+            "setbuild-anchor-unknown",
+            "setbuild needs the track to build the set around",
+            steps=("pass a label with --unowned, and its Camelot key with --key",),
+            origin=("setbuilder", "cli"),
+        )
+'''
+new = ""
+
+[[rows]]
+id = "U2_key_missing"
+description = "unowned_anchor: drop the key missing refusal, so an unresolved anchor reaches the engine"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''    if resolved.key is None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "U3_reported_owned"
+description = "unowned_anchor: return the anchor marked owned and confirmed, the envelope's honesty flags"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''            detail={"label": label, "unresolved": resolved.unresolved},
+        )
+    return resolved'''
+new = '''            detail={"label": label, "unresolved": resolved.unresolved},
+        )
+    return setbuilder.Anchor(
+        key=resolved.key, bpm=resolved.bpm, owned=True, display=resolved.display
+    )'''
+
+[[rows]]
+id = "U4_tempo_dropped"
+description = "unowned_anchor: pass no tempo to the engine, so --bpm is silently ignored"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+old = '''resolve_anchor(label, (), key=key, bpm=tempo)'''
+new = '''resolve_anchor(label, (), key=key, bpm=None)'''
+
+[[dropped]]
+id = "U5_nonempty_index"
+description = "resolve the label against the library index instead of the empty tuple"
+reason = "not expressible as a one site replacement, unowned_anchor has no index in scope; the property is pinned by test_an_unowned_label_that_names_an_owned_title_is_never_matched_to_it, which asserts the fuzzy match WOULD fire given the index"

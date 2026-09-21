@@ -1,0 +1,282 @@
+{
+  "name": "u98-b",
+  "pass_kind": "light",
+  "branch": "relay/143",
+  "head": "9e0d025",
+  "when": "2026-09-21 02:09 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9474,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/setbuilder/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/setbuilder/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "fa9880b36256f983",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9474,
+    "baseline_collected": 9474,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "S1_supplied_beside_path",
+      "description": "set_build: drop the refusal of --key or --bpm beside a path anchor, so both are silently ignored",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "868225907bdd1754",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_supplied_value_beside_a_path_anchor_refuses_rather_than_being_ignored[key]",
+        "tests/test_setbuilder_cli.py::test_a_supplied_value_beside_a_path_anchor_refuses_rather_than_being_ignored[tempo]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.args.key is not None or ctx.args.tempo is not None:",
+      "new": "    if False:"
+    },
+    {
+      "id": "S2_tempo_half",
+      "description": "set_build: drop only the tempo half of that refusal",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "36f212f076870ab4",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_supplied_value_beside_a_path_anchor_refuses_rather_than_being_ignored[tempo]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.args.key is not None or ctx.args.tempo is not None:",
+      "new": "    if ctx.args.key is not None:"
+    },
+    {
+      "id": "H1_held_not_excluded",
+      "description": "plan_for: report the exact match copies but leave them in the ranked index",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6f82d9b0bb8bb9a8",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_an_unowned_label_naming_an_owned_track_exactly_is_held_and_not_ranked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        index = [t for t in index if not (label and t.match == label)]",
+      "new": ""
+    },
+    {
+      "id": "H2_held_not_reported",
+      "description": "plan_for: exclude the exact match copies but report none",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5e0e31a4c76a2d09",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_an_unowned_label_naming_an_owned_track_exactly_is_held_and_not_ranked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        totals[\"held\"] = held",
+      "new": "        totals[\"held\"] = []"
+    },
+    {
+      "id": "H3_held_fuzzy",
+      "description": "plan_for: widen the exact match to containment, the fuzzy shape the empty index exists to avoid",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e1e05da3302f7ab9",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_an_unowned_label_that_names_an_owned_title_is_never_matched_to_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        index = [t for t in index if not (label and t.match == label)]",
+      "new": "        index = [t for t in index if not (label and label in t.match)]"
+    },
+    {
+      "id": "P1_either_twice",
+      "description": "build_plan: the after side draws from the whole ranked list again, so either filler is placed on both sides",
+      "file": "src/cratekit/modules/tools/setbuilder.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "266bd1aa5135784f",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.tools.setbuilder",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 248,
+      "baseline_collected": 248,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_one_either_companion_of_an_owned_anchor_is_placed_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            [s for s in ranked if id(s) not in taken], \"after\", DEFAULT_SIDE",
+      "new": "            ranked, \"after\", DEFAULT_SIDE"
+    },
+    {
+      "id": "E1_existing_containment",
+      "description": "existing sample: anchor_path drops the library containment refusal",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b7c86f8cb291b85f",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_an_anchor_outside_the_library_refuses_before_any_scan",
+        "tests/test_setbuilder_cli.py::test_an_anchor_that_walks_out_of_the_library_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not _within(candidate, root):",
+      "new": "    if False:"
+    },
+    {
+      "id": "E2_existing_count",
+      "description": "existing sample: positive_count admits zero",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "10d83df3ac0bba78",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.setbuilder.cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 62,
+      "baseline_collected": 62,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_count_below_one_is_refused_at_the_parser[0]",
+        "tests/test_setbuilder_cli.py::test_a_count_below_one_is_the_parsers_verdict_and_not_a_refusal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if value < 1:",
+      "new": "    if value < 0:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "R1_refusal_messages",
+      "description": "reword the two new refusal messages",
+      "reason": "the suite asserts the slug and the remediation steps, not the sentence, so a reword is a known zero by construction and says nothing about the guard"
+    }
+  ]
+}
