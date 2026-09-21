@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import ast
 import io
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -236,6 +238,61 @@ def test_the_gate_asks_over_the_digest_sync_favorites_itself_offers(
     _, alone = drive(["sync", "favorites", "--export", str(exported)])
     offered = gates.load(composed["run_id"]).offers[CONFIRM]
     assert offered == gates.load(alone["run_id"]).offers[sync_cli.FAVORITES_CONFIRM]
+
+
+def _written_days_ago(exported: Path, days: float) -> datetime:
+    moment = datetime.now(timezone.utc).timestamp() - days * 86_400
+    os.utime(exported, (moment, moment))
+    return datetime.fromtimestamp(exported.stat().st_mtime, tz=timezone.utc)
+
+
+def test_the_composed_gate_names_the_exports_date_beside_what_would_queue(
+    installed, exported
+):
+    """R-227, one file over. This verb builds the favourites plan ITSELF rather
+    than calling ``sync_favorites``, so a date shown by that verb's own gate is
+    absent here, on the pass most people run. The pass's own block must survive
+    beside it, because the two are merged into one ``shown``."""
+    del installed
+    register(LABELS[0])
+    written = _written_days_ago(exported, 30)
+    code, refused = drive(_verb(exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["would_queue"] == ["favorites", "labels"]
+    assert shown["export"]["written"] == written.replace(microsecond=0).isoformat()
+    assert shown["export"]["age_days"] == 30
+    assert shown["export"]["freshness"] == "stale"
+
+
+def test_a_pass_that_queued_over_an_old_export_warns_and_still_queues(
+    installed, exported
+):
+    """A label is registered in BOTH halves so each pass reaches the report
+    rather than the refusal, which carries no warnings to be absent from."""
+    del installed
+    register(LABELS[0])
+    written = _written_days_ago(exported, 30)
+    _, code, passed = _confirmed(exported)
+    assert code == int(ExitCode.OK), passed
+    stale = [w for w in passed["warnings"] if w["code"] == "outbound-export-stale"]
+    assert len(stale) == 1, passed["warnings"]
+    assert written.date().isoformat() in stale[0]["message"]
+    assert "sync.favorites" in {job.handler_key for job in _jobs()}, (
+        "a stale export refuses nothing"
+    )
+
+
+def test_a_pass_over_a_recent_export_carries_no_age_warning(installed, exported):
+    del installed
+    register(LABELS[0])
+    _written_days_ago(exported, 2)
+    _, code, passed = _confirmed(exported)
+    assert code == int(ExitCode.OK), passed
+    assert "sync.favorites" in {job.handler_key for job in _jobs()}
+    codes = {w["code"] for w in passed["warnings"]}
+    assert not codes & {"outbound-export-stale", "outbound-export-age-unknown"}
+    assert codes, "the favourites standing warning proves the loop ran"
 
 
 def test_aborting_the_confirmation_queues_no_favourites_job_and_says_so(
