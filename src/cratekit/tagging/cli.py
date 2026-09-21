@@ -49,6 +49,13 @@ from cratekit.tagging import artifacts, searchers, shell
 # ``export``.
 from cratekit.tagging import tag as tag_engine
 
+#: The warning a sweep carries when some of what it tagged is a word the declared
+#: taxonomy does not know. A WARNING CODE AND NOT A CAUSE, on the rule the three
+#: no-op codes in this module already follow: the verb succeeded, the files were
+#: written, and a catalogue using a word this template has never declared is a
+#: fact about the template rather than a reason anything did not happen.
+OFF_TAXONOMY = "tag-folder-off-taxonomy"
+
 
 def _load() -> config.Config:
     """Read config, turning a configuration failure into a typed cause.
@@ -118,6 +125,16 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     a catalogue chose, so there is no set to fill and every key present is one a
     person can go and add an alias for (R24).
 
+    ``off_taxonomy`` IS THE THIRD DISPOSITION AND IS COUNTED APART FROM BOTH. A
+    file whose genre came from the catalogue's own word was written, so it is
+    still in ``tagged``, and it is not a clean tag, so its string is listed here
+    the way a decline's is listed in ``unresolved``. The two maps are never
+    merged: a decline left the file askable and this one is already on disk,
+    which are different jobs for the person reading them. Same not zero filled
+    rule, for the same reason, and keyed on the SOURCE string rather than the
+    written one, because the alias a person would add is written against what
+    the catalogue said (R-650).
+
     ``art_repair`` COUNTS EVERY STATUS THE REPAIR CAN REPORT, zero filled on the
     first rule, because it is a closed set this build declares. A report
     committed before the repair existed carries no status and is counted under
@@ -132,6 +149,7 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     art_repair = dict.fromkeys(art.REPAIR_STATUSES, 0)
     art_fetch = dict.fromkeys(tag_engine.ART_FETCH_STATUSES, 0)
     unresolved: dict[str, int] = {}
+    off_taxonomy: dict[str, int] = {}
     tagged = 0
     for report in artifacts.committed(cfg, job_id):
         reason = str(report.get("skipped") or "")
@@ -140,6 +158,8 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
             skipped[reason] += 1
         elif report.get("genre_written"):
             tagged += 1
+            if report.get("off_taxonomy") and source_genre:
+                off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1
         if reason == tag_engine.UNMAPPED_GENRE and source_genre:
             unresolved[source_genre] = unresolved.get(source_genre, 0) + 1
         status = str(report.get("art_repair") or "")
@@ -152,9 +172,48 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
         "tagged": tagged,
         "skipped": skipped,
         "unresolved": unresolved,
+        "off_taxonomy": off_taxonomy,
         "art_repair": art_repair,
         "art_fetch": art_fetch,
     }
+
+
+def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:
+    """Say out loud that some of what was tagged is outside the declared table.
+
+    THE PAYLOAD ALONE IS NOT THE FIX, which is the product decision inside this
+    unit. R-650's cost is that a person is TOLD the folder tagged cleanly, and a
+    count nobody reads leaves that sentence in place on the surface they do read.
+    The warning names the strings, so the next move, adding an alias or leaving
+    the word alone, is one a person can make without opening the artifacts.
+
+    IT DOES NOT MAKE THE VERB FAIL, and that is deliberate. The files ARE tagged,
+    the sweep is unattended by design, and turning a new genre into a failure
+    would stop the very acquisition run this tier exists to let through. A
+    warning on a success is the shape this module already uses for a no-op it
+    wants seen.
+
+    SORTED, because the order artifacts are committed in is the order files were
+    walked, and a warning whose text changes between two runs over one unchanged
+    folder is one nobody can diff.
+    """
+    counted = summary.get("off_taxonomy") or {}
+    if not counted:
+        return ()
+    files = sum(counted.values())
+    words = ", ".join(sorted(counted))
+    return (
+        {
+            "code": OFF_TAXONOMY,
+            "message": (
+                f"{files} of the {summary.get('tagged', 0)} files tagged were "
+                f"given a genre the declared taxonomy does not know, from these "
+                f"catalogue answers: {words}. Each word was written onto its file "
+                f"as the catalogue said it, and routes to the fallback bucket, so "
+                f"add an alias for the ones you want a folder of their own"
+            ),
+        },
+    )
 
 
 def _empty(reason: str, detail: str) -> tuple[dict, tuple[dict[str, str], ...]]:
@@ -258,9 +317,13 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
             origin=("tagging", "cli"),
             nothing_to_run="report a tagging sweep over a folder it never walked",
         )
+        # ONE SUMMARY, READ ONCE. The warning is derived from the same dictionary
+        # the payload carries, so the count a person is warned about and the
+        # count they can go and read cannot disagree.
+        summary = _summary(cfg, job.job_id)
         return ctx.envelope(
-            data=shell.reported(store, job, {"tagging": _summary(cfg, job.job_id)}),
-            warnings=warnings,
+            data=shell.reported(store, job, {"tagging": summary}),
+            warnings=tuple(warnings) + _off_taxonomy_warning(summary),
         )
 
 
@@ -326,6 +389,7 @@ def handle(job, item, cfg) -> jobs.Produced:
             "skipped": result.skipped,
             "source": result.source,
             "source_genre": result.source_genre,
+            "off_taxonomy": result.off_taxonomy,
             "art_repair": result.art_repair,
             "art_repair_detail": result.art_repair_detail,
             "art_fetch": result.art_fetch,

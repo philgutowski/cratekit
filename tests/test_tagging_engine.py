@@ -343,6 +343,70 @@ def test_a_catalogue_answer_the_taxonomy_could_not_map_is_its_own_reason(folder,
     assert tags.read_genre_from_file(path) is None
 
 
+def test_a_word_the_taxonomy_does_not_know_is_written_and_reported(folder, silence):
+    """R-650. A write, and a write the report can tell from a clean one.
+
+    The file really is tagged, because refusing here is how a genuinely new
+    genre stops entering the library at all, so ``skipped`` is None and the
+    word is on disk. What used to be missing is the second half: the result
+    says the word came from the catalogue rather than from the declared table.
+    """
+    path = place(folder, silence, "track")
+    hit = SearchHit(
+        genre="gqom", source="beatport", source_genre="gqom", off_taxonomy=True
+    )
+
+    result = tag.tag_one(path, searcher=answering({"track": hit}))
+
+    assert result.skipped is None
+    assert result.genre_written == "gqom"
+    assert tags.read_genre_from_file(path) == "gqom"
+    assert result.off_taxonomy is True
+
+
+def test_a_tag_the_declared_table_produced_is_not_off_taxonomy(folder, silence):
+    """The ordinary write, which is the majority of every sweep, stays clean."""
+    path = place(folder, silence, "track")
+    hit = SearchHit(genre=SPECIFIC, source="beatport", source_genre="Deep House")
+
+    result = tag.tag_one(path, searcher=answering({"track": hit}))
+
+    assert result.genre_written == SPECIFIC
+    assert result.off_taxonomy is False
+
+
+def test_a_file_this_engine_did_not_tag_is_never_off_taxonomy(folder, silence):
+    """The flag qualifies a write, so no skip may carry it.
+
+    The third case is the one worth driving rather than arguing. A file that
+    already has a genre is still SEARCHED, for its art, so it holds a hit whose
+    flag is set, and reading that hit would report a word this run did not
+    write and that is not on the file. The other two never write either.
+    """
+    tagged = place(folder, silence, "tagged")
+    assert tags.write_genre(tagged, SPECIFIC)
+    flagged = SearchHit(
+        genre="gqom", source="beatport", source_genre="gqom", off_taxonomy=True
+    )
+    result = tag.tag_one(tagged, searcher=answering({"tagged": flagged}))
+    assert result.skipped == tag.HAS_GENRE
+    assert result.off_taxonomy is False
+    assert tags.read_genre_from_file(tagged) == SPECIFIC
+
+    unmapped = place(folder, silence, "unmapped")
+    result = tag.tag_one(
+        unmapped,
+        searcher=answering(
+            {"unmapped": SearchHit(genre=None, source="beatport", source_genre="Techno")}
+        ),
+    )
+    assert (result.skipped, result.off_taxonomy) == (tag.UNMAPPED_GENRE, False)
+
+    missed = place(folder, silence, "missed")
+    result = tag.tag_one(missed, searcher=answering({"missed": None}))
+    assert (result.skipped, result.off_taxonomy) == (tag.NO_HIT, False)
+
+
 def test_a_hit_with_no_genre_and_no_source_genre_is_a_plain_miss(folder, silence):
     """The two reasons are separated by the SOURCE GENRE and by nothing else.
 

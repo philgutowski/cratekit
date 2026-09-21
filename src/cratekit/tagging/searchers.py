@@ -46,6 +46,15 @@ never select again, so the two tagging verbs would disagree about one catalogue
 answer and bounce the file between them for ever. Declining leaves the file
 askable, which is what a decline is for.
 
+AN UNRECOGNIZED ANSWER THAT IS NOT TOO COARSE IS STILL WRITTEN, AND IS NOW SAID
+OUT LOUD. That last tier existed so a genuinely new genre would survive long
+enough for someone to notice it, and for a year nothing implemented the
+noticing: the word went onto the file and the verb's report counted it as a
+clean tag (R-650). The hit carries ``off_taxonomy`` up to the report, which names
+the distinct strings and warns. Making the tier decline instead would be the
+blanket genre bug in reverse, so what changed is the reporting and not the
+resolving.
+
 A DECLINE STILL NAMES WHAT IT DECLINED. The hit carries ``source`` and
 ``source_genre`` even when ``genre`` is None, so the item artifact and the verb's
 report can say which catalogue answered and with what string. Without it a
@@ -763,6 +772,11 @@ def _resolved(declared: Taxonomy, outcome: SourceOutcome) -> SearchHit:
 
     The hit is returned either way, because a decline that cannot say what it
     declined is a decline nobody can act on.
+
+    A TAG AND A DECLINE ARE THE TWO OUTCOMES, AND ``off_taxonomy`` QUALIFIES THE
+    FIRST ONE ONLY. It rides a genre that is actually going to be written, so a
+    pass through string this taxonomy calls too coarse to be a final tag is a
+    plain decline and carries no flag: a file gets one disposition, never two.
     """
     suggestion = routing.suggest_tag(declared, outcome.source_genre)
     tag = suggestion.tag
@@ -773,6 +787,7 @@ def _resolved(declared: Taxonomy, outcome: SourceOutcome) -> SearchHit:
         source=outcome.source,
         source_genre=outcome.source_genre,
         art_url=outcome.art_url,
+        off_taxonomy=tag is not None and suggestion.off_taxonomy,
     )
 
 
