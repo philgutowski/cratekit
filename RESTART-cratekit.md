@@ -4,7 +4,27 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U106, issue #151, `relay/151`, 2026-09-21.**
+**Last merged: R-592, issue #186, `relay/186`, 2026-09-21.**
+An interrupted bare metal recovery reruns with nothing removed, which NARROWS
+R-592. Option (1) of its brief, no marker: `restore.assert_recovery_target`
+refuses only a file where this library's database or a companion lands,
+`restore.recovered_database_fileset`, rather than any `.db` anywhere, because
+the mirror is a copy and the database half writes only that fileset. The
+restore mirror now passes the backup mirror's own excludes, so a stale remote
+mirror cannot land the database there (the built in review's one finding, fixed
+in round one). `restore_cli.RERUN_STEP` became `rerun_step(database_target)`,
+carried only by a failure at or after the database half. Still open: a database
+half that lands part of the fileset is refused on rerun until the step is
+followed; only the marker option removes that, and it inherits R-585. A
+different library elsewhere on the target is no longer refused, recorded in the
+entry. `replacing_existing` is still never passed.
+Battery: ruff clean, **9826 passed** and 1 skipped in 65 seconds. Scan clean.
+Mutation tables `docs/mutation/r592-a.md` to `r592-c.md`: **16 rows, the
+author's own, all killed**, after B3's zero got a test in round one. Learning
+filed in `docs/solutions/integration-issues/`. Nothing filed to the ledger.
+**Main's highest residual number is R-646.**
+
+**The session before: U106, issue #151, `relay/151`, 2026-09-21.**
 Ledger hygiene, docs only, append only. Each candidate was verified against
 `src` before it was marked. CLOSED in place, each naming the file and line:
 R-13, R-128, R-142, R-183, R-186, R-191, R-204 and R-211. R-186 and R-211 close
