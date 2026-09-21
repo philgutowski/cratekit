@@ -1,0 +1,52 @@
+name = "r263"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_no_unrecorded_state"
+description = "status_rows ignores the declared no_cursor reason, so every absent record reads as never"
+file = "src/cratekit/sync/watermarks.py"
+surface = "user"
+old = '''        reason = no_cursor.get(source_id)'''
+new = '''        reason = None'''
+
+[[rows]]
+id = "W2_state_word"
+description = "A cursorless source is reported with state never, detail unchanged"
+file = "src/cratekit/sync/watermarks.py"
+surface = "user"
+old = '''"state": "unrecorded"'''
+new = '''"state": "never"'''
+
+[[rows]]
+id = "W3_stale_record_as_completion"
+description = "A stale record on a cursorless source is reported as its last completion again"
+file = "src/cratekit/sync/watermarks.py"
+surface = "user"
+old = '''        if reason is not None:'''
+new = '''        if reason is not None and mark is None:'''
+
+[[rows]]
+id = "W4_stale_suffix"
+description = "Drop the note that an earlier build's cursor no longer moves"
+file = "src/cratekit/sync/watermarks.py"
+surface = "user"
+old = '''            if mark is not None:
+                detail += ('''
+new = '''            if False:
+                detail += ('''
+
+[[rows]]
+id = "S1_labels_reason"
+description = "Labels declares no reason, so it records a cursor as far as status knows"
+file = "src/cratekit/sync/sources.py"
+surface = "user"
+old = '''        no_cursor="a labels sweep offers releases to the review queue rather "'''
+new = '''        no_cursor="" and "a labels sweep offers releases to the review queue rather "'''
+
+[[rows]]
+id = "S2_favorites_reason"
+description = "Favorites declares no reason, so its absent record reads as never again"
+file = "src/cratekit/sync/sources.py"
+surface = "user"
+old = '''        no_cursor="no favorites worker records a cursor, so a completed sync "'''
+new = '''        no_cursor="" and "no favorites worker records a cursor, so a completed sync "'''

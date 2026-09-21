@@ -13900,6 +13900,19 @@ different unit from the one that stopped writing the record.
 in `status_rows` rather than reporting that it never ran. R-260 records the
 `IncrementResult` half of the same split; this entry names the reader.
 
+**Closed 2026-09-20 on `relay/163`, issue 163.** `sources.SourceSpec` gains
+`no_cursor`, the reason nothing records a source's watermark, and
+`watermarks.status_rows` reports a source carrying one as `unrecorded` with that
+reason as its detail, never as `never`. Labels carries it by design, the sweep
+offering to the review queue, and the row now points there. A record an earlier
+build left for such a source is reported as a stale cursor that no longer moves,
+not as the source's last completion. Driven: a real `run.increment` over an
+offering `labels` source succeeds, and both `status_rows` and doctor's
+`_source_findings` now say so rather than "no clean increment has completed".
+The same shape one source over was `favorites`, whose record nothing in `src`
+writes at all, so it carries `no_cursor` too; R-628 records the writer it lacks.
+`playlists` records a cursor and still reports `never` then `completed`.
+
 ---
 
 ## R-264. An interrupt cannot reach a label item mid crawl
@@ -25159,3 +25172,26 @@ whole.
 limit, or `master_parts` probes the joined duration against the parts' sum and
 refuses a shortfall.
 
+
+---
+
+## R-628. Nothing records the favorites source cursor
+
+**Found by** the R-263 fix, METHOD's fifth pattern, 2026-09-20.
+
+`source_watermarks.json` has two writers in `src`, measured by grep:
+`run.increment`, whose only caller is the labels sweep, and the playlists
+sweep's `record_swept`. `crate sync all` queues favorites under
+`sync.favorites` and its inbound half under `intake.playlist`, and neither
+records a cursor. Until R-263's fix, doctor therefore told a person after every
+clean favorites sync that the source had never completed one. The fix declares
+`no_cursor` on the favorites spec, so the row now says truthfully that no
+favorites worker records a cursor.
+
+**Measured cost:** since the fix, none that is false. A person cannot read
+from doctor when favorites last synced cleanly, which the playlists row does
+answer. Maintainer facing, so it does not meet the board bar.
+
+**Closes when:** a favorites worker records the cursor on a clean completion
+and the spec's `no_cursor` is removed, or the per source status is judged not
+to be owed for favorites and this entry says so.

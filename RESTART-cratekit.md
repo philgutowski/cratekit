@@ -4,7 +4,24 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U105, issue #150, `relay/150`, 2026-09-20.**
+**Last merged: R-263, issue #163, `relay/163`, 2026-09-20.**
+`crate doctor` no longer tells a person a labels sweep that succeeded never ran,
+which CLOSES R-263. `sources.SourceSpec` gains `no_cursor`, the reason nothing
+records a source's watermark, and `watermarks.status_rows` reports such a
+source as `unrecorded` with that reason, never as `never`. A stale record an
+earlier build left for it is reported as a cursor that no longer moves.
+**FAVORITES HAD THE SAME FALSE ROW,** since nothing in `src` writes its cursor,
+so it carries `no_cursor` too and R-628 records the writer it lacks. Playlists
+records a cursor and still reports `never` then `completed`.
+Battery: ruff clean, **9578 passed** and 1 skipped in 66 seconds, 9579
+collected, 6 more than U105 recorded, all in `tests/test_incremental_sync.py`,
+scan clean.
+Mutation table `docs/mutation/r263.md`, rows file beside it: **6 rows, the
+author's own, all killed.**
+Filed: **R-628**, maintainer facing, no issue.
+**Main's highest residual number is R-628.**
+
+**The session before: U105, issue #150, `relay/150`, 2026-09-20.**
 `crate master` joins a recording the player split into several files and takes
 a loudness target, which CLOSES R-193 and R-194. A set that arrived as three
 files no longer needs the source system's script.
