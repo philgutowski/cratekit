@@ -5607,14 +5607,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # were never in this population.
     # Re-pinned on the residual finding "The ledger key is a display path, so a
     # rekordbox reorganisation forks the remote playlist", 2026-09-21: 485 to
-    # 487 distinct, non-keys 312 to 314. TWO literals joined and NOTHING left,
+    # 489 distinct, non-keys 312 to 315. FOUR literals joined and NOTHING left,
     # differenced as SETS over main's own `src/cratekit` read out of
-    # `git archive` into a scratch directory. Both are in `export/cli.py` and
-    # neither is a cause, because the unit refuses nothing:
-    # outbound-playlist-adopted and outbound-playlist-adoption-ambiguous are the
-    # WARNING codes a queued export carries when a crate with no record is, or
-    # could be, a recorded one under a new path.
-    assert (len(literals), len(literals - set(causes))) == (487, 314), (
+    # `git archive` into a scratch directory. Three are in `export/cli.py` and
+    # are not causes: outbound-playlist-adopted,
+    # outbound-playlist-adoption-ambiguous and outbound-playlist-record-mismatch
+    # are the WARNING codes a queued export carries about the remote playlist it
+    # lands on. The fourth is outbound-record-moved, a KEY, the refusal
+    # `modules/outbound/ledger.py` raises when a job's confirmed record is gone,
+    # which is why the non-key half moves by three and not four.
+    assert (len(literals), len(literals - set(causes))) == (489, 315), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

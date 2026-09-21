@@ -50,8 +50,15 @@ class ExportPlan:
     """What an export will write, including the tracks it will not.
 
     ``adopts`` is the recorded key this crate used to live under, when the verb
-    recognised one and a person confirmed it (R-229). Empty means create or
-    reuse by this key alone, which is every export before that finding.
+    recognised one and a person confirmed it (R-229). ``expected`` is the remote
+    playlist the person was shown this write updating. Both empty means create
+    or reuse by this key alone, which is every export before that finding.
+
+    ``contents`` IS THE WHOLE CRATE, NOT THIS PLAN'S ROWS. The outbound verb
+    plans one track per item, so the rows here are one row of the crate, and the
+    ledger records what the crate holds so it can be recognised under another
+    path. Matched or not: a row the provider does not carry is still a row of
+    the crate.
     """
 
     playlist_key: str
@@ -59,6 +66,8 @@ class ExportPlan:
     matched: tuple[tuple[str, str], ...]
     unmatched: tuple[Unmatched, ...]
     adopts: str = ""
+    expected: str = ""
+    contents: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,8 +93,15 @@ def plan(
     name: str,
     account: RemoteAccount,
     adopts: str = "",
+    expected: str = "",
+    contents: Sequence[str] | None = None,
 ) -> ExportPlan:
-    """Match every track. Unmatched stay on the plan; they are not omitted."""
+    """Match every track. Unmatched stay on the plan; they are not omitted.
+
+    ``contents`` defaults to the rows handed in, which is right for a caller
+    planning a whole playlist at once and wrong for one planning a single item,
+    so the per item verb always passes the frozen track set.
+    """
     matched: list[tuple[str, str]] = []
     unmatched: list[Unmatched] = []
     for track in tracks:
@@ -112,6 +128,13 @@ def plan(
         matched=tuple(matched),
         unmatched=tuple(unmatched),
         adopts=adopts,
+        expected=expected,
+        contents=tuple(
+            str(item)
+            for item in (
+                contents if contents is not None else [t.identity for t in tracks]
+            )
+        ),
     )
 
 
@@ -129,10 +152,10 @@ def apply(
     orphan per track: driven as three remote playlists from one three track
     export. ``ledger.reserve_playlist`` carries the ordering and the argument.
 
-    EVERY MATCHED ROW'S LIBRARY IDENTITY IS RECORDED, added or already there
-    (R-229). Those identities are the only thing that can recognise this crate
-    once rekordbox shows it under another path, and a row that was already on
-    the remote playlist is as much a part of the crate as one written just now.
+    EVERYTHING AFTER THE RESERVE IS RECORDED UNDER ``reserved.key`` (R-229),
+    which is this plan's key unless the record moved to the crate's new path
+    after this job was confirmed. Recording under the plan's own key then would
+    start a second record for a remote playlist that already has one.
     """
     reserved = ledger.reserve_playlist(
         cfg,
@@ -141,19 +164,20 @@ def apply(
         # touched at all rather than after.
         lambda: account.create_playlist(planned.name),
         adopts=planned.adopts,
+        expected=planned.expected,
+        contents=planned.contents,
     )
     remote_id = reserved.remote_id
     already_on = set(account.playlist_tracks(remote_id))
-    already_recorded = set(ledger.playlist_added(cfg, planned.playlist_key))
+    already_recorded = reserved.added
     added: list[str] = []
     already: list[str] = []
-    for local, remote in planned.matched:
+    for _local, remote in planned.matched:
         if remote in already_on or remote in already_recorded:
-            ledger.record_playlist_row(cfg, planned.playlist_key, local)
             already.append(remote)
             continue
         account.add_to_playlist(remote_id, remote)
-        ledger.record_playlist_track(cfg, planned.playlist_key, remote, local=local)
+        ledger.record_playlist_track(cfg, reserved.key, remote)
         added.append(remote)
     return ExportReport(
         playlist_key=planned.playlist_key,

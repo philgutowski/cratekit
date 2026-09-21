@@ -1614,6 +1614,18 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # PRECONDITION rather than USAGE for the reason ``vocal-cut-out-of-range``
         # gives: the parser accepted a number.
         "target-lufs-out-of-range": ExitCode.PRECONDITION,
+        # ── R-229's refusal, appended for the reason U19's block gives ───────
+        #
+        # A queued export was confirmed against one remote playlist, to update
+        # it or to adopt it from the path the crate used to live under, and by
+        # drive time the outbound ledger no longer holds that record where the
+        # job expects it. Its own slug rather than ``outbound-ledger-unusable``,
+        # because the ledger read cleanly and the remedy is to queue again, not
+        # to repair a file. Refused rather than created, because the person
+        # confirmed an update and a second remote playlist is the cost the
+        # finding is named for. PRECONDITION: a ledger that moved under a queued
+        # job is a thing that happens, not a defect to report.
+        "outbound-record-moved": ExitCode.PRECONDITION,
     }
 )
 

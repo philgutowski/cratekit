@@ -276,15 +276,24 @@ def _display_path(playlist: library_export.Playlist) -> str:
     return "/".join(playlist.path)
 
 
-def playlist_keys(library: Library) -> frozenset[str]:
-    """Every playlist path this export carries, spelled as a ledger key.
+def playlist_contents(library: Library) -> dict[str, tuple[str, ...]]:
+    """Every playlist path this export carries, as a ledger key, with its tracks.
 
     THE SAME SPELLING :func:`resolve` GIVES ``ResolvedPlaylist.key``, from the
     same function, because the outbound ledger asks of each recorded key
     whether the library still carries it (R-229) and a second spelling would
-    answer no for every crate there is.
+    answer no for every crate there is. The tracks ride along because a path
+    can be reused for a different crate, and only its contents say so.
+
+    TWO PLAYLISTS CAN SHARE ONE PATH, which :func:`resolve` refuses as ambiguous
+    when it is the one asked for. Here their tracks are pooled, so a record
+    under that path stays a living crate's while either of them carries it.
     """
-    return frozenset(_display_path(playlist) for playlist in library.view.playlists)
+    pooled: dict[str, tuple[str, ...]] = {}
+    for playlist in library.view.playlists:
+        key = _display_path(playlist)
+        pooled[key] = (*pooled.get(key, ()), *playlist.track_ids)
+    return pooled
 
 
 def resolve(library: Library, identifier: str) -> ResolvedPlaylist:
