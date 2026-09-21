@@ -133,14 +133,20 @@ class Recorder:
     a test states what a stage returns without restating how the stage is spelled.
     """
 
-    def __init__(self, *, stdout_for=None, fail_labels=()):
+    def __init__(self, *, stdout_for=None, fail_labels=(), absent_labels=()):
         self.commands = []
         self.stdout_for = dict(stdout_for or {})
         self.fail_labels = set(fail_labels)
+        # Answered with rclone's directory not found exit rather than a failure.
+        self.absent_labels = set(absent_labels)
 
     def __call__(self, command):
         self.commands.append(command)
-        rc = 1 if command.label in self.fail_labels else 0
+        rc = (
+            backup.RCLONE_DIRECTORY_NOT_FOUND if command.label in self.absent_labels
+            else 1 if command.label in self.fail_labels
+            else 0
+        )
         return backup.CommandResult(
             returncode=rc, stdout=self.stdout_for.get(command.label, "")
         )
@@ -2832,6 +2838,33 @@ def test_no_snapshot_at_all_still_says_to_take_a_backup(cfg, tmp_path, rclone_on
     assert "no dated database snapshot was found" in excinfo.value.detail
     steps = exit_codes.remediation_for(str(excinfo.value.refusal)).steps
     assert any("take a backup" in step for step in steps)
+
+
+@pytest.mark.parametrize(
+    "absent, named, phrase",
+    [
+        (backup.LIST_SNAPSHOTS, None, "no dated database snapshot was found"),
+        (backup.LIST_SNAPSHOT_IDENTITY, STAMP, f"the snapshot {STAMP} was not found"),
+        (backup.LIST_SNAPSHOT_CONTENTS, STAMP, "holds no database folder"),
+    ],
+)
+def test_a_folder_rclone_says_is_absent_is_not_a_listing_failure(
+    cfg, tmp_path, rclone_on_path, absent, named, phrase
+):
+    """Directory not found is an absence, so the remote is not what to check.
+
+    A mistyped or pruned stamp, a root no backup has written, and a backup cut
+    off before its database folder all answer with rclone's exit 3. Sending the
+    person to the remote and its credential for any of them sends them to the
+    one place nothing is wrong.
+    """
+    recorder = Recorder(absent_labels={absent})
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, snapshot=named,
+            runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert phrase in excinfo.value.detail
 
 
 def test_an_unmarked_snapshot_is_pulled_only_when_a_person_named_it(

@@ -1377,6 +1377,10 @@ def _snapshot_names(cfg: config.Config, *, runner: Runner) -> tuple[str, ...] | 
             argv=(_rclone(), "lsf", f"{cfg.backup.db_dest_root}/", "--dirs-only"),
         )
     )
+    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        # A root no backup has written yet is an empty root, not a remote that
+        # did not answer, and its answer is to take a backup.
+        return ()
     if result.returncode != 0:
         return None
     return tuple(
@@ -1429,6 +1433,13 @@ def snapshot_identities(
             argv=(_rclone(), "lsf", f"{cfg.backup.db_dest_root}/{snapshot}/", "--files-only"),
         )
     )
+    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        # A mistyped or pruned stamp. The folder is absent, so the remote and
+        # its credential are not what a person should go and check.
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} was not found under {cfg.backup.db_dest_root}",
+        )
     if result.returncode != 0:
         raise BackupRefused(
             Refusal.SNAPSHOT_LISTING_FAILED,
@@ -1638,6 +1649,14 @@ def snapshot_filenames(
             ),
         )
     )
+    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        # A backup cut off before its database folder was written. Nothing is
+        # there to restore, which is an absence and not a remote fault.
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the snapshot {snapshot} under {cfg.backup.db_dest_root} holds no "
+            f"database folder, so there is nothing in it to restore",
+        )
     if result.returncode != 0:
         raise BackupRefused(
             Refusal.SNAPSHOT_LISTING_FAILED,

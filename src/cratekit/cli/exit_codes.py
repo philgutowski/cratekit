@@ -371,8 +371,11 @@ RESERVATIONS: tuple[Reservation, ...] = (
         cause="no-snapshot-available",
         code=ExitCode.PRECONDITION,
         steps=(
-            "no dated database snapshot exists for this library yet; take a "
-            "backup before a restore can be planned",
+            "when --snapshot named a stamp, that snapshot or its database "
+            "folder is not on the remote; check the stamp, or leave the flag "
+            "off to take the newest",
+            "otherwise no dated database snapshot exists for this library yet; "
+            "take a backup before a restore can be planned",
         ),
         note=(
             "steps rather than a token, because no token in the vocabulary says "
