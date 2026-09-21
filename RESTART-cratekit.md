@@ -13,7 +13,9 @@ earlier build left for it is reported as a cursor that no longer moves.
 **FAVORITES HAD THE SAME FALSE ROW,** since nothing in `src` writes its cursor,
 so it carries `no_cursor` too and R-628 records the writer it lacks. Playlists
 records a cursor and still reports `never` then `completed`.
-Battery: BATTERY_LINE
+Battery: ruff clean, **9578 passed** and 1 skipped in 66 seconds, 9579
+collected, 6 more than U105 recorded, all in `tests/test_incremental_sync.py`,
+scan clean.
 Mutation table `docs/mutation/r263.md`, rows file beside it: **6 rows, the
 author's own, all killed.**
 Filed: **R-628**, maintainer facing, no issue.
