@@ -464,6 +464,92 @@ def test_a_proposed_name_that_is_not_a_same_suffix_filename_is_never_applied(
     assert said in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
+def test_an_item_with_no_stored_path_is_held_and_never_guessed_at(configured):
+    folder = _folder(configured)
+    path = _audio(folder, LONG)
+    _scan(folder)
+    _accept(configured, path)
+    # How an item that arrived by import reads: the identity column is empty.
+    with review.open_store(configured) as store, store.immediate() as conn:
+        conn.execute("UPDATE review_items SET identity = NULL")
+
+    code, envelope = _answer("apply")
+
+    assert _names(folder) == {LONG}
+    assert [item["action"] for item in envelope["data"]["items"]] == ["unusable"]
+    assert code == int(ExitCode.PRECONDITION)
+    assert "holds no path" in envelope["cause"]["detail"]["incomplete"][0]["why"]
+    assert envelope["cause"]["retryable"] is False
+
+
+def _after_the_gate(monkeypatch, act) -> None:
+    """Run ``act`` between the plan's collection read and the apply's.
+
+    The verb reads the collection twice, once for the plan and once after the
+    gate, so the second read is the one moment a test can stand where rekordbox
+    or another process stands in the race the post gate checks exist for.
+    """
+    reads = {"count": 0}
+
+    def recorded(cfg):
+        reads["count"] += 1
+        if reads["count"] == 2:
+            act()
+        return ()
+
+    monkeypatch.setattr(naming_cli, "_recorded", recorded)
+
+
+def test_a_name_taken_after_the_gate_is_never_overwritten(configured, monkeypatch):
+    folder = _folder(configured)
+    path = _audio(folder, LONG, b"fLaC mine")
+    _scan(folder)
+    _accept(configured, path)
+    _after_the_gate(monkeypatch, lambda: _audio(folder, SHORT, b"fLaC theirs"))
+
+    code, envelope = _answer("apply")
+
+    assert (folder / SHORT).read_bytes() == b"fLaC theirs"
+    assert (folder / LONG).read_bytes() == b"fLaC mine"
+    assert code == int(ExitCode.PRECONDITION)
+    assert _actions(envelope["data"]) == {LONG: "rename"}
+    assert "already taken" in envelope["cause"]["detail"]["incomplete"][0]["why"]
+
+
+def test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed(
+    configured, monkeypatch
+):
+    folder = _folder(configured)
+    path = _audio(folder, LONG)
+    _scan(folder)
+    _accept(configured, path)
+    _after_the_gate(monkeypatch, path.unlink)
+
+    code, envelope = _answer("apply")
+
+    assert code == int(ExitCode.PRECONDITION)
+    assert "no longer there" in envelope["cause"]["detail"]["incomplete"][0]["why"]
+    assert envelope["data"]["totals"]["renamed"] == 0
+    assert _names(folder) == set()
+
+
+def test_a_name_the_filesystem_refuses_to_claim_is_named(configured, monkeypatch):
+    folder = _folder(configured)
+    path = _audio(folder, LONG)
+    _scan(folder)
+    _accept(configured, path)
+
+    def refused(target):
+        raise OSError(63, "File name too long")
+
+    monkeypatch.setattr(naming_cli.naming, "claim_target", refused)
+    code, envelope = _answer("apply")
+
+    assert _names(folder) == {LONG}
+    assert code == int(ExitCode.PRECONDITION)
+    assert "File name too long" in envelope["cause"]["detail"]["incomplete"][0]["why"]
+
+
 def test_a_root_limits_the_apply_and_counts_what_it_left_out(configured):
     inside = _folder(configured)
     outside = Path(configured.library.root) / "Music" / "other"
