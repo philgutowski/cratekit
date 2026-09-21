@@ -59,8 +59,9 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -81,6 +82,20 @@ OUTPUT_SUFFIX = "_mastered.flac"
 #: The drift filter's accepted smoothing window, in frames. ffmpeg refuses
 #: outside this and refuses an even value.
 DRIFT_WINDOW_RANGE = (3, 301)
+
+#: The integrated loudness targets loudnorm accepts, LUFS. ffmpeg refuses a
+#: value outside this, and it refuses at the first measure pass rather than at
+#: the command line, so a mistyped ``--lufs`` would otherwise surface as an
+#: encoder failure naming the filter. U105 added the check: before it the target
+#: was a constant nobody could reach, so there was nothing to validate.
+LUFS_RANGE = (-70.0, -5.0)
+
+#: What a joined recording is called, after the first part's stem. The source
+#: system's ``master_set.sh`` names a joined set ``<first>_set`` for the same
+#: reason: the master of a joined set must not take the name the first part's
+#: own master would have, or mastering part one alone and then the whole set
+#: meets ``output-exists`` against a file that holds something else.
+JOINED_SUFFIX = "_set"
 
 
 class Refusal(StrEnum):
@@ -152,6 +167,15 @@ class Settings:
                 f"true_peak_db is a ceiling below full scale and must not be "
                 f"positive, found {self.true_peak_db}"
             )
+        low_lufs, high_lufs = LUFS_RANGE
+        # WRITTEN AS A NEGATED RANGE so a NaN fails it: every comparison with
+        # NaN is false, so ``x < low or x > high`` would admit one and hand
+        # loudnorm a target of ``nan``.
+        if not low_lufs <= self.target_lufs <= high_lufs:
+            raise ValueError(
+                f"target_lufs must be between {low_lufs:g} and {high_lufs:g} "
+                f"LUFS, found {self.target_lufs}"
+            )
 
 
 DEFAULT_SETTINGS = Settings()
@@ -193,6 +217,11 @@ class Report:
     source_bytes: int
     output_bytes: int
     bit_depth: str
+    #: The parts a joined run was built from, in the order they were joined, and
+    #: the verified archive copy of each. Both empty for a single recording,
+    #: whose one source and one archive are the two fields above.
+    parts: tuple[Path, ...] = ()
+    archives: tuple[Path, ...] = ()
 
     @property
     def size_reduction(self) -> float:
@@ -254,6 +283,31 @@ def output_path(source: Path, *, output_dir: Path | None = None) -> Path:
     """Where the mastered file lands: beside the source unless told otherwise."""
     directory = output_dir if output_dir is not None else source.parent
     return directory / f"{source.stem}{OUTPUT_SUFFIX}"
+
+
+def joined_name(parts: Sequence[Path]) -> str:
+    """The file name a joined recording is written under, before it is mastered.
+
+    The first part's stem and container, because the join is a stream copy and
+    the joined file is therefore in the first part's container.
+    """
+    first = parts[0]
+    return f"{first.stem}{JOINED_SUFFIX}{first.suffix}"
+
+
+def planned_output(parts: Sequence[Path | str], *, output_dir: Path | None = None) -> Path:
+    """Where the master of these parts lands. The one name builder for both shapes.
+
+    One part is exactly :func:`output_path`. Several are named for the joined
+    recording and land beside the FIRST part unless told otherwise, which is
+    where the person's recording already is. The shell checks the destination
+    with this before staging the encode, so the check and the encode cannot
+    disagree about which file they mean.
+    """
+    paths = [Path(p) for p in parts]
+    if len(paths) == 1:
+        return output_path(paths[0], output_dir=output_dir)
+    return output_path(paths[0].parent / joined_name(paths), output_dir=output_dir)
 
 
 def drift_filter(settings: Settings) -> str:
@@ -737,6 +791,152 @@ def concatenate(
     return destination
 
 
+def master_parts(
+    parts: Sequence[Path | str],
+    *,
+    settings: Settings = DEFAULT_SETTINGS,
+    output_dir: Path | None = None,
+    overwrite: bool = False,
+    runner: Runner = subprocess_runner,
+    workspace: Path | None = None,
+) -> Report:
+    """Master a recording a player split into several files, as one set.
+
+    ONE PART IS :func:`master` AND NOTHING ELSE, so a single recording takes
+    exactly the path it took before a join existed.
+
+    THE PARTS ARE JOINED IN THE ORDER GIVEN, NEVER SORTED. Only the person knows
+    the order: a recorder's counter rolls over, and a name sort puts
+    ``REC10`` before ``REC2``. The shell prints the order back before anything
+    runs, so a wrong order is seen rather than mastered.
+
+    THE ORDER OF THE STEPS IS THE ONE :func:`master` STATES, widened: refuse,
+    archive, then process. Every refusal that can be decided by reading comes
+    before the first write, including the probe of every part, because a stream
+    copy across parts at different sample rates does not fail. It writes a file
+    whose header claims one rate over samples taken at another, and the master of
+    that file plays part of the set at the wrong speed with nothing reported.
+    ffmpeg's concat demuxer does not resample, so this refuses instead of
+    inventing a conversion the person did not ask for.
+
+    EVERY PART IS ARCHIVED, each into the ``_originals`` beside it, which is the
+    rule :func:`master` applies to its one source. The joined file is this
+    module's own intermediate, so it is not archived and it does not survive the
+    run.
+
+    THE JOINED FILE IS WRITTEN INTO A PRIVATE DIRECTORY under the workspace,
+    created fresh and removed afterwards. It has to carry the name the master is
+    derived from, and writing ``REC001_set.wav`` straight into the person's
+    folder with ffmpeg's ``-y`` would replace a file of theirs that happened to
+    have that name.
+    """
+    paths = [Path(p) for p in parts]
+    if not paths:
+        raise MasteringRefused(Refusal.SOURCE_MISSING, "no recording was named")
+    if len(paths) == 1:
+        return master(
+            paths[0],
+            settings=settings,
+            output_dir=output_dir,
+            overwrite=overwrite,
+            runner=runner,
+            workspace=workspace,
+        )
+
+    for path in paths:
+        if not path.is_file():
+            raise MasteringRefused(
+                Refusal.SOURCE_MISSING, f"no such recording: {path}", path=path
+            )
+        if path.suffix.lower() not in SOURCE_SUFFIXES:
+            raise MasteringRefused(
+                Refusal.SOURCE_UNSUPPORTED,
+                f"{path.suffix!r} is not a container this reads; supported: "
+                f"{', '.join(SOURCE_SUFFIXES)}",
+                path=path,
+            )
+    seen: dict[Path, Path] = {}
+    for path in paths:
+        key = path.resolve()
+        if key in seen:
+            raise MasteringRefused(
+                Refusal.SOURCE_UNSUPPORTED,
+                f"{path} is named twice. Joining it twice would repeat that part "
+                f"of the set in the master; name each part once, in order.",
+                path=path,
+            )
+        seen[key] = path
+    containers = sorted({p.suffix.lower() for p in paths})
+    if len(containers) > 1:
+        raise MasteringRefused(
+            Refusal.SOURCE_UNSUPPORTED,
+            f"the parts are in different containers ({', '.join(containers)}). "
+            f"They are joined by stream copy, which cannot put one container's "
+            f"audio into another; convert them to one container first.",
+            path=paths[0],
+        )
+
+    target = planned_output(paths, output_dir=output_dir)
+    if target.exists() and not overwrite:
+        raise MasteringRefused(
+            Refusal.OUTPUT_EXISTS,
+            f"{target} already exists. Replacing it silently would discard a "
+            f"master that may already have been kept, and the settings that "
+            f"produced it are not recorded anywhere.",
+            path=target,
+        )
+
+    try:
+        binaries.resolve("ffmpeg")
+        ffprobe = binaries.resolve("ffprobe")
+    except binaries.BinaryNotFound as exc:
+        raise MasteringRefused(Refusal.ENCODER_MISSING, str(exc), path=paths[0]) from exc
+
+    probes = [probe_source(p, runner=runner, ffprobe=ffprobe) for p in paths]
+    shapes = {(p.sample_rate, p.sample_fmt) for p in probes}
+    if len(shapes) > 1:
+        described = "; ".join(
+            f"{path.name} is {probe.sample_rate} Hz {probe.sample_fmt or 'unknown format'}"
+            for path, probe in zip(paths, probes, strict=True)
+        )
+        raise MasteringRefused(
+            Refusal.SOURCE_UNSUPPORTED,
+            f"the parts do not share one sample rate and sample format ({described}). "
+            f"A stream copy across them would play part of the set at the wrong "
+            f"speed, and nothing is resampled without being asked; nothing was "
+            f"archived and nothing was written.",
+            path=paths[0],
+        )
+
+    archives = tuple(archive_source(p, p.parent / ARCHIVE_DIRNAME) for p in paths)
+
+    scratch = workspace or target.parent
+    scratch.mkdir(parents=True, exist_ok=True)
+    join_dir = Path(tempfile.mkdtemp(prefix=".cratekit-join-", dir=scratch))
+    try:
+        joined = concatenate(paths, join_dir / joined_name(paths), runner=runner)
+        report = master(
+            joined,
+            settings=settings,
+            output_dir=target.parent,
+            archive=False,
+            overwrite=overwrite,
+            runner=runner,
+            workspace=join_dir,
+        )
+    finally:
+        # The joined file is as large as the whole set and is this module's, not
+        # the person's, for the reason the drift intermediate is removed.
+        shutil.rmtree(join_dir, ignore_errors=True)
+    return replace(
+        report,
+        source=paths[0],
+        archived_to=archives[0],
+        parts=tuple(paths),
+        archives=archives,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Structured output (R32)
 # ---------------------------------------------------------------------------
@@ -745,8 +945,12 @@ PAYLOAD_VERSION = 1
 
 
 def as_payload(report: Report) -> dict:
-    """The report as plain data. Human rendering stays with the CLI."""
-    return {
+    """The report as plain data. Human rendering stays with the CLI.
+
+    ``parts`` and ``archives`` appear only for a joined run, so a single
+    recording's payload is the one it was before a join existed.
+    """
+    payload = {
         "payload_version": PAYLOAD_VERSION,
         "source": str(report.source),
         "output": str(report.output),
@@ -766,12 +970,18 @@ def as_payload(report: Report) -> dict:
         "output_bytes": report.output_bytes,
         "size_reduction": round(report.size_reduction, 6),
     }
+    if report.parts:
+        payload["parts"] = [str(p) for p in report.parts]
+        payload["archives"] = [str(p) for p in report.archives]
+    return payload
 
 
 __all__ = [
     "ARCHIVE_DIRNAME",
     "DEFAULT_SETTINGS",
     "DRIFT_WINDOW_RANGE",
+    "JOINED_SUFFIX",
+    "LUFS_RANGE",
     "OUTPUT_SUFFIX",
     "PAYLOAD_VERSION",
     "SOURCE_SUFFIXES",
@@ -790,11 +1000,14 @@ __all__ = [
     "digest",
     "drift_filter",
     "encoder_args",
+    "joined_name",
     "master",
+    "master_parts",
     "measure_filter",
     "output_path",
     "parse_loudness",
     "parse_output_loudness",
+    "planned_output",
     "probe_source",
     "subprocess_runner",
 ]

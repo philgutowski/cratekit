@@ -2570,11 +2570,13 @@ def test_every_source_entry_point_is_either_mapped_or_written_down_as_cut():
         for line in fixture.read_text().splitlines()
         if line.strip() and not line.startswith("#")
     ]
-    # 36 since 2026-09-18. It was 33, and 33 was wrong: three console scripts
+    # 37 since U105, which transcribed ``master_set.sh``, the mastering
+    # verb's predecessor, into the second block (R-193). 36 since 2026-09-18.
+    # It was 33, and 33 was wrong: three console scripts
     # in the source system's table were never transcribed, so this count pinned
     # an incomplete list and made the omission look deliberate. The pin still
     # earns its place, because a list that shrinks is the failure it catches.
-    assert len(scripts) == 36, "the transcribed entry-point list changed size"
+    assert len(scripts) == 37, "the transcribed entry-point list changed size"
 
     mapped = {name for entry in registry.entries() for name in entry.source_scripts}
     cut_text = (REPO_ROOT / "CUT.md").read_text()
