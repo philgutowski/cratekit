@@ -1812,6 +1812,7 @@ QUALIFIED_MUTATIONS = frozenset(
         "session._open_lock_file",
         "session._recorded",
         "session._write_holder",
+        "session.abandon_orphaned_sessions",
         "session.assert_gates",
         "session.attach_capture",
         "session.close_session",

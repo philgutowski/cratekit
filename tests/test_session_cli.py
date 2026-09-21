@@ -623,7 +623,6 @@ def _left_by(cfg, holder: session.Holder, state: session.SessionState) -> str:
     return record.session_id
 
 
-@pytest.mark.skipif(not hasattr(os, "fork"), reason="the hard kill is staged with fork")
 @pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
 def test_a_hard_killed_gated_write_blocks_cutover_until_release_abandons_it(
     installed, tmp_path
