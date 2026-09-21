@@ -1,0 +1,148 @@
+name = "r382"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_restore_source_filter"
+description = "Restore the source_id == playlists filter on playlist_jobs, the brief's named row: a hand queued job is no longer reconciled or in flight"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        if job.handler_key == handler_key and job.library_id == cfg.library.volume_id
+    )'''
+new = '''        if job.handler_key == handler_key and job.library_id == cfg.library.volume_id
+        and (job.payload or {}).get("source_id") == SOURCE_ID
+    )'''
+
+[[rows]]
+id = "M2_drop_handler_key"
+description = "Drop the handler key filter from playlist_jobs, so an intake.set job naming a playlist is reconciled"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        if job.handler_key == handler_key and job.library_id == cfg.library.volume_id
+    )'''
+new = '''        if job.library_id == cfg.library.volume_id
+    )'''
+
+[[rows]]
+id = "M3_drop_library"
+description = "Drop the library filter from playlist_jobs, so another library's finished job records here"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        if job.handler_key == handler_key and job.library_id == cfg.library.volume_id
+    )'''
+new = '''        if job.handler_key == handler_key
+    )'''
+
+[[rows]]
+id = "M4_hearts_recorded"
+description = "Drop the reserved hearts reference check in recorded_as, so a hearts job records favorites"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    if intake_cli.is_favorites(reference):
+        return ""'''
+new = ""
+
+[[rows]]
+id = "M5_no_verbatim_for_pass_jobs"
+description = "Drop the verbatim return for a pass's own job, so its listing id goes through the lowercasing parser"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    if (job.payload or {}).get("source_id") == SOURCE_ID:
+        return reference
+'''
+new = ""
+
+[[rows]]
+id = "M6_no_parse"
+description = "Record a hand typed reference verbatim instead of parsing it, so a typed URL is recorded as the URL"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        return typed_playlist_id(reference)'''
+new = '''        return reference'''
+
+[[rows]]
+id = "M7_invalid_records_nothing"
+description = "An unparseable hand reference records nothing instead of itself"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    except PlaylistReferenceInvalid:
+        return reference'''
+new = '''    except PlaylistReferenceInvalid:
+        return ""'''
+
+[[rows]]
+id = "M8_completed_raw"
+description = "completed reads the raw payload reference instead of recorded_as"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        identity = recorded_as(job)
+        if job.state == jobs.JobState.SUCCEEDED'''
+new = '''        identity = _playlist_of(job)
+        if job.state == jobs.JobState.SUCCEEDED'''
+
+[[rows]]
+id = "M9_open_raw"
+description = "open_playlists reads the raw payload reference instead of recorded_as"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    return frozenset(recorded_as(job) for job in found if job.is_open() and recorded_as(job))'''
+new = '''    return frozenset(_playlist_of(job) for job in found if job.is_open() and _playlist_of(job))'''
+
+[[rows]]
+id = "M10_open_empty_admitted"
+description = "open_playlists keeps an empty identity, so a hearts job adds the empty string to in flight"
+file = "src/cratekit/sync/playlists.py"
+old = '''    return frozenset(recorded_as(job) for job in found if job.is_open() and recorded_as(job))'''
+new = '''    return frozenset(recorded_as(job) for job in found if job.is_open())'''
+
+[[rows]]
+id = "M11_reconcile_source_jobs"
+description = "reconcile reads source_jobs again instead of playlist_jobs"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        for identity in completed(playlist_jobs(store, cfg, handler_key=handler_key))'''
+new = '''        for identity in completed(source_jobs(store, cfg, handler_key=handler_key))'''
+
+[[rows]]
+id = "M12_in_flight_source_jobs"
+description = "plan's in flight set reads source_jobs again instead of playlist_jobs"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    in_flight = open_playlists(playlist_jobs(store, cfg, handler_key=handler_key))'''
+new = '''    in_flight = open_playlists(source_jobs(store, cfg, handler_key=handler_key))'''
+
+[[rows]]
+id = "M13_marking_source_jobs"
+description = "marking_sweep reads source_jobs again instead of playlist_jobs"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    held.update(completed(playlist_jobs(store, cfg, handler_key=handler_key)))'''
+new = '''    held.update(completed(source_jobs(store, cfg, handler_key=handler_key)))'''
+
+[[rows]]
+id = "M14_completed_any_state"
+description = "Sample of an existing guard: completed records a job in any state, so a failed or cancelled hand job records"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        if job.state == jobs.JobState.SUCCEEDED and identity and identity not in seen:'''
+new = '''        if identity and identity not in seen:'''
+
+[[rows]]
+id = "M15_completed_duplicates"
+description = "Sample of an existing guard: completed records a playlist once per succeeded job"
+file = "src/cratekit/sync/playlists.py"
+old = '''        if job.state == jobs.JobState.SUCCEEDED and identity and identity not in seen:'''
+new = '''        if job.state == jobs.JobState.SUCCEEDED and identity:'''
+
+[[rows]]
+id = "M16_parser_moved_lowercase"
+description = "The moved parser keeps a bare identifier's case, checking the move kept its tests"
+file = "src/cratekit/label/catalogue.py"
+old = '''    if _UUID.fullmatch(text):
+        return text.lower()'''
+new = '''    if _UUID.fullmatch(text):
+        return text'''
+
+[[dropped]]
+id = "D1_source_jobs_mark_verb"
+description = "Widen source_jobs to playlist_jobs for the mark verb"
+reason = "source_jobs is unchanged by this unit; its guards are U82's and were measured there"
