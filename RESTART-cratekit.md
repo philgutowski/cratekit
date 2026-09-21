@@ -4,7 +4,90 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U94, issue #139, `relay/139`, 2026-09-20.**
+**Last merged: R-338, issue #174, `relay/174`, 2026-09-20.**
+An analysis share outside the library root is now in the backup, and a restore
+that names a target puts it back, which CLOSES R-338. In rekordbox's default
+layout the database sits outside the root and the `share` folder beside it
+holds every beat grid. The mirror never saw it, the snapshot copied the
+database alone, and the backup said so with a warning and carried nothing.
+**THE SHARE RIDES THE DATABASE PORTION, TO ITS OWN MIRROR.** `snapshot-share`
+is the portion's last command, behind the rekordbox gate, since rekordbox writes
+the share while it analyses: `rclone sync <share>` to
+`analysis-share/<volume identity>/current` under `backup.db_dest_root`, with
+`--backup-dir` aimed at `archive/<stamp>` beside it. No config key was added and
+`backup_facts.Portion` still has two members. NOT inside each dated snapshot,
+the ledger's option 1, because snapshots are never rotated and copy whole, so
+gigabytes per run fills a consumer quota in a handful of backups. Keyed by the
+normalized volume identity, `_unrecorded` when `identity_marker` refuses it,
+because two libraries can share one snapshot root and a sync makes its
+destination match its source. A share that fails to copy FAILS the portion, so
+no database age is published over grids that did not copy.
+**THE RESTORE HAS FOUR WORDS FOR THE SHARE,** `backup.ShareRestore`, on the plan
+and in the verb's totals as `analysis_share`. `mirrored`, under the root, the
+mirror half carries it. `pulled`, a `restore-share` copy, never a sync, to
+`share` beside the restored database, planned from a `list-share` listing taken
+before anything is cleared. `absent`, the remote holds no mirror, which is every
+backup older than this, read from an empty listing or rclone's exit 3. Any other
+listing failure refuses as `no-snapshot-available` before the sidecars go.
+`withheld`, see next.
+**A LIVE RESTORE WITHHOLDS THE SHARE, AND THE REVIEW IS WHY.** The first version
+pulled it on every outside restore. `restore_under_one_session` runs inside the
+analysis watch, which counts a file that APPEARED as drift, so driven with a
+runner that really writes a grid the restore closed refused as moved analysis
+files after the database had been replaced. No test saw it, because every fake
+runner returns a code and writes nothing. Now
+`analysis_store.is_watched(cfg, landing)` is asked first and the remote is not
+asked at all. `restore bare-metal` passes `pull_share=False`, since an outside
+share rides the database half it already skips. **The grids come back through
+`restore run --from-backup --target DIR` and a move by hand**, and `docs/GUIDE.md`
+says so.
+**`analysis-share-not-carried` HAS NO PRODUCER LEFT** and a test reads `src` to
+say so. `analysis-share-absent` replaces it for an outside share that is not a
+directory, asked at queue and at resume through `backup.absent_analysis_share`.
+**The beat grid constraint is asserted three ways:** in every backup command the
+share is a source and no destination is on this machine, the restore's share
+command is a copy aimed only beside the database target, and an AST walk finds
+no call in `modules/tools/backup.py` that opens or writes a file. The module
+hands analysis files to rclone and authors none.
+**The built in code review raised ten findings, all driven or read against the
+tree, three applied in one round**, the watch refusal, the wrong landing place
+it implied, and the bare metal listing. Seven became residuals.
+Battery: ruff clean, **9440 passed** and 1 skipped in 58 seconds, 9441
+collected, scan clean. Three test identifiers were RENAMED with the behaviour
+they described, the two outside share tests in `tests/test_analysis_store.py`
+and the queue and resume warning test in `tests/test_backup_cli.py`. The kebab
+literal pin moved 472 to 476, differenced as sets against main: five joined,
+`snapshot-share`, `restore-share`, `list-share`, `analysis-share` and
+`analysis-share-absent`, and `analysis-share-not-carried` left.
+Mutation tables, `docs/mutation/r338-a.md`, `r338-b.md` and `r338-c.md`, rows
+files beside them: **23 rows, the author's own, 23 killed, no zero row.** Null
+control at zero in all three, baselines green, every restore verified against
+`git show HEAD:`. Foreground, three tables to stay inside the tool ceiling. One
+hunt result before the table: a restore test took rclone's exit code from the
+module's own constant, X equals X, and now names the measured literal.
+Filed: **R-605 to R-615.** **R-605 meets the board bar and its issue is OWED**:
+DRIVEN, and on `main` before this unit, a live restore in the outside layout
+lands the database at `<library root>/master.db`, which rekordbox never reads,
+and reports it restored, so in the default layout no verb puts a snapshot's
+database back. **R-606's is OWED** too: a restore that brings analysis files
+back is refused by its own watch, which also refuses the contained layout's
+`--include-mirror` whenever the mirror returns a grid the volume lacks.
+**R-607's is OWED**, reachability unmeasured: a share sync cut off partway reads
+as held. R-608, the share archive is never rotated. R-609, an older snapshot
+restores against the newest share. R-610, identity less libraries share one
+mirror. R-611, three listing refusals carry steps saying no snapshot exists.
+R-612, `run_restore` reads no code until every command ran. R-613, the gate is
+read at plan time. R-614, the settings directories are captured and no restore
+puts them back, found one file over. R-615, exit 3 was measured on the local
+backend only. **OWED TO AN ATTENDED SITTING:** one real `backup run` and one
+target restore against a real remote in the outside layout.
+One learning filed,
+`docs/solutions/integration-issues/a-restore-that-brings-analysis-files-back-is-refused-by-the-watch-over-its-own-session.md`.
+`CONCEPTS.md`, "Analysis share" says where it is mirrored and when it is
+withheld.
+**Main's highest residual number is R-615.**
+
+**The session before: U94, issue #139, `relay/139`, 2026-09-20.**
 `analyze calibrate` fits over a library wide sample and refuses a partial one,
 which CLOSES R-409 on its second arm. Until now a calibration fitted over one
 genre folder loaded, restamped cleanly, and rated the whole library on that
@@ -72,7 +155,6 @@ goes red on that one test, run the battery again before blaming the unit.
 None meets the board bar, each closes or is sized only at an attended sitting
 or is maintainer facing. No follow up issue was opened.
 No learning filed, an ordinary run. `CONCEPTS.md` gains "Library wide walk".
-**Main's highest residual number is R-604.**
 
 **The session before: R-375 with R-12, issue #173, `relay/173`, 2026-09-20.**
 A gated database write now leaves a session record, so the capture it takes is

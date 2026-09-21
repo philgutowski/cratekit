@@ -14,8 +14,10 @@ from a wrong one that happens to land in the only place there is.
 from __future__ import annotations
 
 import ast
+import contextlib
 import re
 import stat
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -313,37 +315,135 @@ def test_a_contained_share_rides_the_mirror_and_draws_no_warning(
     assert plan.portion(backup_facts.Portion.DATABASE).warnings == ()
 
 
-def test_an_outside_share_is_named_in_the_plan_and_in_the_outcome(
+def _share_commands(plan: backup.BackupPlan) -> list[backup.Command]:
+    return [c for p in plan.portions for c in p.commands if c.label == backup.SNAPSHOT_SHARE]
+
+
+def _outside_library(home: Path) -> Path:
+    """An outside database with a grid in the share beside it. Returns the share."""
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "master.db").write_bytes(b"SQLite format 3\x00")
+    _plant(home / "share" / "PIONEER" / "USBANLZ" / "8d2" / KEY / "ANLZ0000.DAT")
+    return home / "share"
+
+
+def test_an_outside_share_rides_the_database_portion_to_its_own_mirror(
     outside, home, rclone_on_path
 ):
-    """Neither portion carries it, and the backup says so rather than reporting clean."""
-    database = home / "master.db"
-    database.parent.mkdir(parents=True)
-    database.write_bytes(b"SQLite format 3\x00")
-    share = home / "share"
+    """R-338's cost, reversed: a command names the share, and nothing warns.
+
+    Before this the plan named the share in no command and said so with a
+    warning, which is a backup that returns every row without its grids.
+    """
+    share = _outside_library(home)
 
     plan = backup.plan_backup(outside, process_lister=lambda: (), settings_dirs=())
 
-    planned = plan.portion(backup_facts.Portion.DATABASE)
-    assert planned.will_run, "the database portion refused, so the warning proves nothing"
-    assert _codes(planned.warnings) == [backup.ANALYSIS_SHARE_NOT_CARRIED]
-    assert str(share) in planned.warnings[0]["message"]
-    assert not any(
-        str(share) in arg for p in plan.portions for c in p.commands for arg in c.argv
-    ), "a command carries the share, so the warning is false"
-    planned_rows = {row["portion"]: row for row in backup.plan_payload(plan)["portions"]}
-    assert _codes(planned_rows["database"]["warnings"]) == [backup.ANALYSIS_SHARE_NOT_CARRIED]
-    assert planned_rows["files"]["warnings"] == []
+    database = plan.portion(backup_facts.Portion.DATABASE)
+    assert database.will_run
+    carried = _share_commands(plan)
+    assert len(carried) == 1, f"the share is carried by {len(carried)} commands, wanted one"
+    assert carried[0] in database.commands, "the share rides a portion with no rekordbox gate"
+    argv = carried[0].argv
+    assert argv[1:3] == ("sync", str(share))
+    assert argv[3] == "remote:database-snapshots/analysis-share/f1e2-d3c4/current"
+    # One run is undoable, as the mirror's is: whatever the sync would overwrite
+    # or delete moves to a dated folder first, outside the mirrored tree.
+    assert argv[argv.index("--backup-dir") + 1] == (
+        f"remote:database-snapshots/analysis-share/f1e2-d3c4/archive/{plan.stamp}"
+    )
+    assert database.warnings == ()
 
     outcome = backup.run_backup(outside, plan, runner=_succeeding, publish=False)
 
     ran = {row["portion"]: row for row in backup.outcome_payload(outcome)["portions"]}
     assert ran["database"]["ran"] is True
-    assert _codes(ran["database"]["warnings"]) == [backup.ANALYSIS_SHARE_NOT_CARRIED]
+    assert ran["database"]["warnings"] == []
 
 
-def test_the_share_warning_survives_a_refused_database_portion(outside, rclone_on_path):
-    """A skipped snapshot does not make the share covered."""
+def test_the_share_is_the_last_thing_the_database_portion_copies(
+    outside, home, rclone_on_path, tmp_path
+):
+    """Gigabytes go after the settings, so a share that fails costs nothing else."""
+    _outside_library(home)
+    settings = tmp_path / "rekordbox6"
+    settings.mkdir()
+
+    plan = backup.plan_backup(outside, process_lister=lambda: (), settings_dirs=(settings,))
+
+    labels = [c.label for c in plan.portion(backup_facts.Portion.DATABASE).commands]
+    assert labels == [
+        backup.SNAPSHOT_DATABASE,
+        backup.SNAPSHOT_IDENTITY,
+        backup.SNAPSHOT_SETTINGS,
+        backup.SNAPSHOT_SHARE,
+    ]
+
+
+def test_a_share_that_did_not_copy_fails_the_portion_and_publishes_no_age(
+    outside, home, rclone_on_path
+):
+    """A database age published over an uncarried share is R-338 said quietly."""
+    _outside_library(home)
+    plan = backup.plan_backup(outside, process_lister=lambda: (), settings_dirs=())
+
+    def runner(command: backup.Command) -> backup.CommandResult:
+        failed = command.label == backup.SNAPSHOT_SHARE
+        return backup.CommandResult(returncode=1 if failed else 0, stderr="quota exceeded")
+
+    outcome = backup.run_backup(outside, plan, runner=runner)
+
+    database = next(p for p in outcome.portions if p.portion is backup_facts.Portion.DATABASE)
+    assert database.ran is False
+    assert "quota exceeded" in database.detail
+    assert backup_facts.Portion.DATABASE not in backup_facts.read_facts(outside)
+    assert not outcome.ok
+
+
+def test_a_live_rekordbox_refuses_the_share_with_the_database(outside, home, rclone_on_path):
+    """rekordbox writes the share while it analyses, so the share has the database's gate."""
+    _outside_library(home)
+
+    for running in (("rekordbox",), ("rekordboxAgent",)):
+        plan = backup.plan_backup(outside, process_lister=lambda r=running: r, settings_dirs=())
+
+        database = plan.portion(backup_facts.Portion.DATABASE)
+        assert database.refusal is backup.Refusal.REKORDBOX_RUNNING
+        assert _share_commands(plan) == [], f"the share is copied under a live {running[0]}"
+
+
+def test_a_contained_share_is_not_copied_twice(contained, volume, rclone_on_path):
+    """The mirror already carries it, so the contained layout gains no command."""
+    _both_trees(volume)
+    config.state_path("rekordbox_db", contained).write_bytes(b"SQLite format 3\x00")
+
+    plan = backup.plan_backup(contained, process_lister=lambda: (), settings_dirs=())
+
+    assert _share_commands(plan) == []
+
+
+def test_an_outside_share_that_is_not_there_is_said_and_not_synced(
+    outside, home, rclone_on_path
+):
+    """Nothing to carry is a different fact from carried, and a sync of nothing empties the copy."""
+    home.mkdir(parents=True)
+    (home / "master.db").write_bytes(b"SQLite format 3\x00")
+
+    plan = backup.plan_backup(outside, process_lister=lambda: (), settings_dirs=())
+
+    database = plan.portion(backup_facts.Portion.DATABASE)
+    assert database.will_run, "the database portion refused, so the warning proves nothing"
+    assert _share_commands(plan) == []
+    assert _codes(database.warnings) == [backup.ANALYSIS_SHARE_ABSENT]
+    assert str(home / "share") in database.warnings[0]["message"]
+
+    outcome = backup.run_backup(outside, plan, runner=_succeeding, publish=False)
+    ran = {row["portion"]: row for row in backup.outcome_payload(outcome)["portions"]}
+    assert _codes(ran["database"]["warnings"]) == [backup.ANALYSIS_SHARE_ABSENT]
+
+
+def test_the_absent_share_warning_survives_a_refused_database_portion(outside, rclone_on_path):
+    """A skipped snapshot does not make an absent share a carried one."""
     plan = backup.plan_backup(
         outside, process_lister=lambda: ("rekordbox",), settings_dirs=()
     )
@@ -354,4 +454,335 @@ def test_the_share_warning_survives_a_refused_database_portion(outside, rclone_o
         p for p in outcome.portions if p.portion is backup_facts.Portion.DATABASE
     )
     assert database.refusal is backup.Refusal.REKORDBOX_RUNNING
-    assert _codes(database.warnings) == [backup.ANALYSIS_SHARE_NOT_CARRIED]
+    assert _codes(database.warnings) == [backup.ANALYSIS_SHARE_ABSENT]
+
+
+def test_two_libraries_under_one_snapshot_root_keep_two_share_mirrors(
+    volume, home, monkeypatch, rclone_on_path
+):
+    """A sync makes its destination match, so one shared mirror is each library archiving the other."""
+    _outside_library(home)
+    mine = _cfg(volume, home / "master.db", monkeypatch, acknowledged=ACCEPTED)
+    theirs = replace(mine, library=replace(mine.library, volume_id="0A0B-0C0D"))
+
+    destinations = {
+        _share_commands(
+            backup.plan_backup(each, process_lister=lambda: (), settings_dirs=())
+        )[0].argv[3]
+        for each in (mine, theirs)
+    }
+
+    assert len(destinations) == 2, destinations
+
+
+def test_a_library_with_no_usable_identity_still_carries_its_share(
+    volume, home, monkeypatch, rclone_on_path
+):
+    """An identity that cannot be a path component is not interpolated into one."""
+    _outside_library(home)
+    mine = _cfg(volume, home / "master.db", monkeypatch, acknowledged=ACCEPTED)
+    unnamed = replace(mine, library=replace(mine.library, volume_id="../up and out"))
+
+    carried = _share_commands(
+        backup.plan_backup(unnamed, process_lister=lambda: (), settings_dirs=())
+    )
+
+    assert carried[0].argv[3] == "remote:database-snapshots/analysis-share/_unrecorded/current"
+
+
+def test_a_rehearsed_backup_transfers_no_share(outside, home, rclone_on_path):
+    """The share's label is a transferring one, so the preview neutralizes it."""
+    _outside_library(home)
+    plan = backup.plan_backup(outside, process_lister=lambda: (), settings_dirs=())
+    issued: list[backup.Command] = []
+
+    def runner(command: backup.Command) -> backup.CommandResult:
+        issued.append(command)
+        return backup.CommandResult(returncode=0)
+
+    backup.run_backup(outside, plan, runner=runner, dry_run=True)
+
+    shares = [c for c in issued if c.label == backup.SNAPSHOT_SHARE]
+    assert shares and all(c.argv[-1] == "--dry-run" for c in shares)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The restore
+# ═══════════════════════════════════════════════════════════════════════════
+
+STAMP = "2026-08-01T000000Z"
+
+
+def _open_gates():
+    return contextlib.nullcontext()
+
+
+class _Remote:
+    """A runner that answers the restore's listings and records everything else."""
+
+    def __init__(self, *, share: str = "PIONEER/\n", share_exit: int = 0, marker: bool = True):
+        self.commands: list[backup.Command] = []
+        self.share = share
+        self.share_exit = share_exit
+        self.marker = marker
+
+    def __call__(self, command: backup.Command) -> backup.CommandResult:
+        self.commands.append(command)
+        if command.label == backup.LIST_SNAPSHOT_IDENTITY:
+            name = backup.IDENTITY_MARKER_PREFIX + "f1e2-d3c4\n"
+            return backup.CommandResult(returncode=0, stdout=name if self.marker else "")
+        if command.label == backup.LIST_SNAPSHOT_CONTENTS:
+            return backup.CommandResult(returncode=0, stdout="master.db\n")
+        if command.label == backup.LIST_SHARE:
+            return backup.CommandResult(returncode=self.share_exit, stdout=self.share)
+        return backup.CommandResult(returncode=0)
+
+    def labelled(self, label: str) -> list[backup.Command]:
+        return [c for c in self.commands if c.label == label]
+
+
+def _planned(cfg: config.Config, target: Path, remote: _Remote) -> backup.RestorePlan:
+    target.mkdir(parents=True, exist_ok=True)
+    return backup.plan_restore(
+        cfg,
+        target=target,
+        confirmed=True,
+        snapshot=STAMP,
+        runner=remote,
+        process_lister=lambda: (),
+        gates=_open_gates,
+    )
+
+
+def test_a_restore_puts_an_outside_share_back_beside_the_database(
+    outside, rclone_on_path, tmp_path
+):
+    """R-338's other half: the grids land where the restored rows look for them."""
+    remote = _Remote()
+    target = tmp_path / "recovered"
+
+    plan = _planned(outside, target, remote)
+
+    shares = [c for c in plan.commands if c.label == backup.RESTORE_SHARE]
+    assert len(shares) == 1
+    assert shares[0].argv[1:4] == (
+        "copy",
+        "remote:database-snapshots/analysis-share/f1e2-d3c4/current",
+        str(plan.database_target.parent / analysis_store.SHARE_DIRNAME),
+    )
+    assert plan.commands[-1] == shares[0], "the share is pulled before the database set"
+    assert plan.share is backup.ShareRestore.PULLED
+
+    backup.run_restore(plan, outside, runner=remote, gates=_open_gates)
+    assert remote.labelled(backup.RESTORE_SHARE) == shares
+
+
+def test_the_share_is_listed_before_anything_is_cleared(outside, rclone_on_path, tmp_path):
+    """The ledger's third option: planned from a listing, never found out by a failed copy."""
+    # THE LITERAL, measured with ``rclone lsf`` over a missing directory on
+    # 2026-09-20, and not the module's constant, which would make this X equals X.
+    remote = _Remote(share="", share_exit=3)
+    target = tmp_path / "recovered"
+    target.mkdir()
+    log = target / "master.db-wal"
+    log.write_bytes(b"live log")
+
+    plan = _planned(outside, target, remote)
+
+    assert log.exists(), "planning cleared a sidecar"
+    assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
+    assert plan.share is backup.ShareRestore.ABSENT
+
+
+def test_a_share_mirror_that_lists_empty_is_absent_too(outside, rclone_on_path, tmp_path):
+    remote = _Remote(share="\n")
+
+    plan = _planned(outside, tmp_path / "recovered", remote)
+
+    assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
+    assert plan.share is backup.ShareRestore.ABSENT
+
+
+def test_a_share_mirror_that_could_not_be_listed_refuses_before_the_sidecars_go(
+    outside, rclone_on_path, tmp_path
+):
+    """A remote that did not answer is not a remote holding no share."""
+    remote = _Remote(share="", share_exit=1)
+    target = tmp_path / "recovered"
+    target.mkdir()
+    log = target / "master.db-wal"
+    log.write_bytes(b"live log")
+
+    with pytest.raises(backup.BackupRefused) as refused:
+        _planned(outside, target, remote)
+
+    assert refused.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert "analysis share" in refused.value.detail
+    assert log.exists()
+    assert remote.labelled(backup.RESTORE_DATABASE) == []
+
+
+def test_an_unmarked_snapshot_pulls_this_librarys_share(outside, rclone_on_path, tmp_path):
+    """A marker that failed to write does not orphan the share the same run carried."""
+    remote = _Remote(marker=False)
+
+    plan = _planned(outside, tmp_path / "recovered", remote)
+
+    shares = [c for c in plan.commands if c.label == backup.RESTORE_SHARE]
+    assert shares[0].argv[2] == "remote:database-snapshots/analysis-share/f1e2-d3c4/current"
+
+
+def test_a_contained_restore_neither_lists_nor_pulls_a_share(
+    contained, rclone_on_path, tmp_path
+):
+    """The mirror half carries a contained share, so the database half gains nothing."""
+    remote = _Remote()
+
+    plan = _planned(contained, tmp_path / "recovered", remote)
+
+    assert remote.labelled(backup.LIST_SHARE) == []
+    assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
+    assert plan.share is backup.ShareRestore.MIRRORED
+
+
+def test_a_share_that_would_land_under_the_analysis_watch_is_withheld_and_not_asked_about(
+    outside, volume, home, rclone_on_path
+):
+    """A live restore is watched for moved analysis files, so it is not handed any.
+
+    Both watched roots, because either one ends the session refused: the library
+    root, where this layout's database lands today, and the live share's own
+    parent, where it would land if that were ever corrected.
+    """
+    home.mkdir(parents=True)
+    for target in (volume, home):
+        remote = _Remote()
+
+        plan = _planned(outside, target, remote)
+
+        assert plan.share is backup.ShareRestore.WITHHELD, target
+        assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
+        assert remote.labelled(backup.LIST_SHARE) == [], (
+            "the remote was asked a question whose answer could change nothing, "
+            "and a listing that fails refuses the restore"
+        )
+
+
+def test_a_caller_that_will_not_spend_the_database_half_is_not_refused_over_the_share(
+    outside, rclone_on_path, tmp_path
+):
+    """The bare metal recovery's switch: withheld, and the remote is never asked."""
+    remote = _Remote(share="", share_exit=1)
+    target = tmp_path / "recovered"
+    target.mkdir()
+
+    plan = backup.plan_restore(
+        outside,
+        target=target,
+        confirmed=True,
+        snapshot=STAMP,
+        pull_share=False,
+        runner=remote,
+        process_lister=lambda: (),
+        gates=_open_gates,
+    )
+
+    assert plan.share is backup.ShareRestore.WITHHELD
+    assert remote.labelled(backup.LIST_SHARE) == []
+    assert [c for c in plan.commands if c.label == backup.RESTORE_SHARE] == []
+
+
+def test_a_rehearsed_restore_transfers_no_share(outside, rclone_on_path, tmp_path):
+    remote = _Remote()
+    plan = _planned(outside, tmp_path / "recovered", remote)
+
+    backup.run_restore(plan, outside, runner=remote, dry_run=True, gates=_open_gates)
+
+    issued = remote.labelled(backup.RESTORE_SHARE)
+    assert issued and all(c.argv[-1] == "--dry-run" for c in issued)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The share is read and copied, and never authored
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _is_local(place: str) -> bool:
+    """Whether an rclone location is on this machine. A remote is ``name:path``."""
+    return ":" not in place.split("/", 1)[0]
+
+
+def test_no_backup_command_writes_to_this_machine_least_of_all_to_the_share(
+    outside, home, rclone_on_path, tmp_path
+):
+    """The beat grid constraint, for the capture: the share is a source and only a source.
+
+    Every grid this library holds is under the share, so a backup command with
+    the share, or anything local, as its destination is a command that can write
+    one. Read from the plan, which is the run (``run_backup`` executes the plan's
+    own commands and adds only a flag).
+    """
+    share = _outside_library(home)
+    settings = tmp_path / "rekordbox6"
+    settings.mkdir()
+    plan = backup.plan_backup(outside, process_lister=lambda: (), settings_dirs=(settings,))
+    assert _share_commands(plan), "no share command was planned, so this proves nothing"
+
+    for command in (c for p in plan.portions for c in p.commands):
+        verb, places = command.argv[1], [a for a in command.argv[2:] if not a.startswith("--")]
+        if verb in {"sync", "copy"}:
+            source, destination = places[0], places[1]
+            assert not _is_local(destination), f"{command.label} writes to {destination}"
+            assert not destination.startswith(str(share))
+            assert _is_local(source)
+        backup_dirs = [
+            command.argv[i + 1] for i, a in enumerate(command.argv) if a == "--backup-dir"
+        ]
+        assert not [d for d in backup_dirs if _is_local(d)], command
+
+
+def test_a_restore_writes_the_share_with_a_copy_and_only_beside_the_database(
+    outside, rclone_on_path, tmp_path
+):
+    """A copy adds and overwrites. A sync would delete every grid the mirror lacks."""
+    plan = _planned(outside, tmp_path / "recovered", _Remote())
+
+    share = next(c for c in plan.commands if c.label == backup.RESTORE_SHARE)
+    assert share.argv[1] == "copy"
+    assert "--backup-dir" not in share.argv
+    assert Path(share.argv[3]) == plan.database_target.parent / analysis_store.SHARE_DIRNAME
+    for command in plan.commands:
+        assert command.argv[1] == "copy", f"{command.label} is a {command.argv[1]}"
+
+
+def test_the_backup_module_moves_analysis_files_and_never_opens_one():
+    """The constraint's other half, read off the source: no file is authored here.
+
+    The module's whole file surface is a directory it makes and the sidecars it
+    clears. Anything that opens or writes a file would be the first thing in it
+    able to produce an analysis file rather than move one, so it is refused by
+    name rather than left to a review to notice.
+    """
+    tree = ast.parse((SRC / "modules" / "tools" / "backup.py").read_text())
+    authoring = {
+        "open", "write_bytes", "write_text", "touch", "copy", "copy2", "copyfile",
+        "copytree", "move", "replace", "rename",
+    }
+    called = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            target = node.func
+            name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", "")
+            called.add(name)
+    assert {"unlink", "mkdir"} <= called, "the walk is not seeing this module's file calls"
+    assert not (called & authoring), sorted(called & authoring)
+
+
+def test_the_retired_warning_has_no_producer_left():
+    """R-338's closing condition, third clause."""
+    holders = [
+        path.relative_to(SRC).as_posix()
+        for path in SRC.rglob("*.py")
+        if "share-not-carried" in path.read_text()
+    ]
+    assert holders == []

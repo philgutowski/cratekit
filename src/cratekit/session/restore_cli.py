@@ -790,6 +790,11 @@ class RestoreReport:
     #: rather than off the offer, so the report names what arrived.
     snapshot: str | None = None
     recorded_volume: str | None = None
+    #: What the off-machine half did about the analysis share, in the engine's
+    #: own word (``backup.ShareRestore``), or None when that half did not run.
+    #: Said for the reason ``absent`` is: a restore that pulled nothing for the
+    #: share must not read as one that pulled it (R-338).
+    share: str | None = None
 
 
 def restore_under_one_session(
@@ -926,6 +931,7 @@ def restore_under_one_session(
             arrived = {
                 "snapshot": pulled.snapshot,
                 "recorded_volume": pulled.recorded_volume,
+                "share": str(pulled.share),
             }
         if session_id is None:
             return RestoreReport(
@@ -1010,6 +1016,11 @@ def _performed(report: RestoreReport, offered: dict[str, Any]) -> dict[str, Any]
     if report.pulled:
         totals["snapshot"] = report.snapshot
         totals["recorded_volume"] = report.recorded_volume
+        # ONE WORD, never a slug: mirrored, pulled, absent or withheld. Absent
+        # is rows without their grids. Withheld is a live restore, which does
+        # not put analysis files under its own analysis watch, so the share
+        # comes back through a restore that names a target.
+        totals["analysis_share"] = report.share
     if outcome is not None:
         totals["converged"] = outcome.converged
         totals["outstanding"] = len(outcome.outstanding)
@@ -1421,6 +1432,11 @@ def recover_under_bare_metal_session(
                 snapshot=snapshot,
                 snapshot_volume=snapshot_volume,
                 include_mirror=True,
+                # AN OUTSIDE SHARE RIDES THE DATABASE HALF, and that half is
+                # skipped below exactly when the share is outside: it sat beside
+                # a database that was never on the lost volume (R-338). A share
+                # under the root arrives with the mirror whatever this says.
+                pull_share=False,
                 gates=held.guard,
                 **_seam("runner", runner),
                 **_seam("process_lister", process_lister),

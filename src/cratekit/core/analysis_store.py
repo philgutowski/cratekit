@@ -100,6 +100,17 @@ def watch_roots(cfg: config.Config) -> tuple[Path, ...]:
     return (root, share)
 
 
+def is_watched(cfg: config.Config, path: Path) -> bool:
+    """Whether ``path`` sits under a root the analysis watch covers.
+
+    Asked by anything that is about to PUT analysis files somewhere, because a
+    session armed over :func:`watch_roots` refuses at its close when an analysis
+    file under them appeared or changed, whoever moved it and however good the
+    reason (R-338).
+    """
+    return any(_is_within(Path(path), root) for root in watch_roots(cfg))
+
+
 def _is_within(child: Path, parent: Path) -> bool:
     """True when ``child`` is ``parent`` or sits under it, compared textually.
 
@@ -111,4 +122,4 @@ def _is_within(child: Path, parent: Path) -> bool:
     return child_parts[: len(parent_parts)] == parent_parts
 
 
-__all__ = ["SHARE_DIRNAME", "analysis_file", "share_root", "watch_roots"]
+__all__ = ["SHARE_DIRNAME", "analysis_file", "is_watched", "share_root", "watch_roots"]

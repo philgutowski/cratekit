@@ -477,6 +477,12 @@ analysis files and beat grids live. On an external volume it is
 with `PIONEER/USBANLZ` at the volume root, which is the USB export cache: a
 different key shape, regenerable, and no row resolves into it. A database
 outside the library root takes its share with it.
+In that layout the library mirror never reaches it, so the backup's database
+portion mirrors it to `analysis-share/<volume identity>/current` under the
+snapshot root, with a dated `archive` beside it. A restore that names a target
+copies it back beside the restored database. A restore onto the live library
+withholds it, because that session's analysis watch refuses any analysis file
+that moves (R-338).
 
 ### Pending register
 The one declaration of guards whose subject does not exist yet. Each entry names

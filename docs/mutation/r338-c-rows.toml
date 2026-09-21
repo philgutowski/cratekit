@@ -1,0 +1,65 @@
+name = "r338-c"
+pass_kind = "light"
+
+# R-338, batch C of three: the warning, the rehearsal, the verb, and the watch question.
+
+[[rows]]
+id = "C1_absent_share_never_said"
+description = "absent_analysis_share: never warn, so an outside share that is not a directory reads as a share that was carried"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    share = _outside_share(cfg)
+    if share is None or share.is_dir():
+        return ()'''
+new = '''    share = _outside_share(cfg)
+    if True:
+        return ()'''
+
+[[rows]]
+id = "C2_carried_share_still_warned"
+description = "absent_analysis_share: warn whenever the share is outside the root, carried or not, which is the retired warning back under a new code"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    share = _outside_share(cfg)
+    if share is None or share.is_dir():
+        return ()'''
+new = '''    share = _outside_share(cfg)
+    if share is None:
+        return ()'''
+
+[[rows]]
+id = "C3_rehearsed_restore_pulls_the_share"
+description = "TRANSFERRING_LABELS: leave the share's restore out, so a rehearsed restore really downloads it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''        RESTORE_DATABASE,
+        RESTORE_SHARE,
+    }'''
+new = '''        RESTORE_DATABASE,
+    }'''
+
+[[rows]]
+id = "C4_bare_metal_asks_about_the_share"
+description = "recover_under_bare_metal_session: let the plan ask the remote about a share the skipped database half will never pull"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+old = '''                pull_share=False,'''
+new = '''                pull_share=True,'''
+
+[[rows]]
+id = "C5_report_loses_the_word"
+description = "restore_under_one_session: stop carrying the plan's share word onto the report, so the totals say null whatever happened to the grids"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+old = '''                "share": str(pulled.share),
+'''
+new = '''
+'''
+
+[[rows]]
+id = "C6_only_the_first_root_is_watched"
+description = "is_watched: ask the library root alone, so a share aimed at the live share's own parent is pulled under the watch that refuses it"
+file = "src/cratekit/core/analysis_store.py"
+surface = "user"
+old = '''    return any(_is_within(Path(path), root) for root in watch_roots(cfg))'''
+new = '''    return _is_within(Path(path), watch_roots(cfg)[0])'''

@@ -16,6 +16,13 @@ silently wrong, which is the worst shape a backup can take. So the database
 fileset is EXCLUDED from the mirror outright and comes only from a gated, dated
 snapshot taken with both processes confirmed gone.
 
+THE ANALYSIS SHARE travels with whichever half reaches it (R-338). Under the
+library root it is in the mirror. Beside a database that sits outside the root,
+which is rekordbox's own default, the mirror never sees it, so the database
+portion mirrors it to its own stable destination, behind the same gate, because
+rekordbox writes the share while it analyses. This module READS analysis files
+and hands them to rclone. It never opens, authors or edits one.
+
 Because those two complete independently, what gets published is a fact PER
 PORTION (see ``core.backup_facts``). A single timestamp would report a library
 whose database has not been captured in three weeks as fully backed up, which is
@@ -112,11 +119,14 @@ PRUNE_ARCHIVE_FOLDER = "prune-archive-folder"
 SNAPSHOT_DATABASE = "snapshot-database"
 SNAPSHOT_SETTINGS = "snapshot-settings"
 SNAPSHOT_IDENTITY = "snapshot-identity"
+SNAPSHOT_SHARE = "snapshot-share"
 RESTORE_MIRROR = "restore-mirror"
 RESTORE_DATABASE = "restore-database"
+RESTORE_SHARE = "restore-share"
 LIST_SNAPSHOTS = "list-snapshots"
 LIST_SNAPSHOT_CONTENTS = "list-snapshot-contents"
 LIST_SNAPSHOT_IDENTITY = "list-snapshot-identity"
+LIST_SHARE = "list-share"
 
 #: What a portion says about a rotation that did not happen, as codes rather
 #: than as sentences, for the same reason the labels above are constants: a
@@ -137,11 +147,36 @@ LIST_SNAPSHOT_IDENTITY = "list-snapshot-identity"
 ARCHIVE_LISTING_FAILED = "archive-listing-failed"
 ARCHIVE_PURGE_FAILED = "archive-purge-failed"
 
-#: The warning code for an analysis share neither portion reaches (R-14). Not a
-#: refusal for the same reason as the two above: the database portion still runs
-#: and still protects the database, and what it cannot say on its own is that
-#: the grids beside it are in no copy at all.
-ANALYSIS_SHARE_NOT_CARRIED = "analysis-share-not-carried"
+#: The warning code for an outside layout whose analysis share is not a
+#: directory, so the database portion has nothing to carry (R-338). Not a refusal
+#: for the same reason as the two above: the database portion still runs and
+#: still protects the database. It is said because "there was no share to copy"
+#: and "the share was copied" are different facts, and only one of them means the
+#: grids are in a backup.
+ANALYSIS_SHARE_ABSENT = "analysis-share-absent"
+
+#: Where an outside share is mirrored, under the configured snapshot root. NOT
+#: STAMP SHAPED, so :func:`_snapshot_names` never offers it as a snapshot.
+#:
+#: A STABLE MIRROR AND NOT A COPY INSIDE EACH DATED SNAPSHOT (R-338). Dated
+#: snapshots are never rotated and copy whole, so a share of a few gigabytes
+#: inside each one fills a consumer quota within a handful of runs, after which
+#: the backup itself fails. A mirror costs the share once plus what changes, and
+#: its dated archive keeps every run undoable. THAT ARCHIVE IS NEVER ROTATED,
+#: unlike the library mirror's, so it grows by whatever rekordbox rewrote between
+#: runs. Recorded as a residual rather than pruned here, because a prune is a
+#: delete on the remote and this unit's brief is a read and a copy.
+SHARE_DEST_DIRNAME = "analysis-share"
+
+#: The mirror's folder for a library with no identity a path can carry. The
+#: leading underscore is what no real identity can start with
+#: (``_MARKER_IDENTITY``), so it cannot collide with one.
+SHARE_UNRECORDED = "_unrecorded"
+
+#: rclone's documented exit for a directory that does not exist. Measured on
+#: 2026-09-20 with ``rclone lsf`` over a missing local directory: exit 3, and
+#: ONLY ON THE LOCAL BACKEND. No remote was driven, which is an attended act.
+RCLONE_DIRECTORY_NOT_FOUND = 3
 
 #: Labels whose command TRANSFERS data, so a dry run must neutralize them.
 #: Derived membership, checked by a test, so a transferring command added later
@@ -152,8 +187,10 @@ TRANSFERRING_LABELS: frozenset[str] = frozenset(
         SNAPSHOT_DATABASE,
         SNAPSHOT_SETTINGS,
         SNAPSHOT_IDENTITY,
+        SNAPSHOT_SHARE,
         RESTORE_MIRROR,
         RESTORE_DATABASE,
+        RESTORE_SHARE,
     }
 )
 
@@ -739,7 +776,7 @@ def _plan_database(
     process_lister: ProcessLister | None,
     settings_dirs: Sequence[Path] | None,
 ) -> PortionPlan:
-    uncovered = uncovered_analysis_share(cfg)
+    uncovered = absent_analysis_share(cfg)
     running = rekordbox_processes_running(lister=process_lister)
     if running:
         return PortionPlan(
@@ -812,6 +849,29 @@ def _plan_database(
                 ),
             )
         )
+    # THE SHARE GOES LAST, AND IN THIS PORTION (R-338). In this portion because
+    # rekordbox writes the share while it analyses, so it needs the gate that was
+    # passed above and the mirror does not have. Last because it is gigabytes and
+    # the executor stops at the first failing command: a share that fails after
+    # the settings costs the settings nothing. It still FAILS the portion, so no
+    # database age is published over a library whose grids did not copy.
+    share = _outside_share(cfg)
+    if share is not None and share.is_dir():
+        kept = share_destination(cfg, identity=cfg.library.volume_id)
+        commands.append(
+            Command(
+                label=SNAPSHOT_SHARE,
+                argv=(
+                    rclone, "sync", str(share), f"{kept}/current",
+                    *_exclude_args(VOLUME_EXCLUDES),
+                    # The mirror's own rule: what this sync would overwrite or
+                    # delete moves to a dated folder first, so a share emptied by
+                    # a reinstall does not empty its only copy.
+                    "--backup-dir", f"{kept}/archive/{stamp}",
+                    "--transfers", "8", "--checkers", "16",
+                ),
+            )
+        )
     return PortionPlan(
         portion=backup_facts.Portion.DATABASE,
         commands=tuple(commands),
@@ -823,7 +883,7 @@ def snapshot_identity_warning(cfg: config.Config) -> tuple[Mapping[str, str], ..
     """A warning when this configuration's snapshots cannot say whose they are.
 
     PUBLIC, AND ASKED OF THE CONFIGURATION, for the reason
-    :func:`uncovered_analysis_share` is: the backup verb runs through the job
+    :func:`absent_analysis_share` is: the backup verb runs through the job
     queue, a claimed item's report does not reach the person, and a warning that
     rides only on the plan therefore reaches nobody. Every backup would write an
     unmarked snapshot in silence, and the first word of it would be a restore
@@ -844,34 +904,58 @@ def snapshot_identity_warning(cfg: config.Config) -> tuple[Mapping[str, str], ..
     )
 
 
-def uncovered_analysis_share(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
-    """A warning when the analysis share sits where neither portion reaches.
+def _outside_share(cfg: config.Config) -> Path | None:
+    """The analysis share when the mirror does NOT reach it, else None.
 
-    R-14. The share beside the database holds every beat grid, and the mirror
-    carries it only because it normally sits under the library root: the mirror
-    excludes the database fileset by name and nothing else. A database outside the
-    root is an acknowledged configuration, and in that layout the share is outside
-    it too, so the mirror never sees it and the snapshot copies the database file
-    alone. A restore from that backup brings back rows without their grids, and
-    the rows look fine.
-
-    SAID RATHER THAN CARRIED. Carrying it is a choice with a real cost, the share
-    is gigabytes and a dated snapshot copies whole, and it is recorded as a
-    residual with its options rather than made here. What is not acceptable is a
-    backup that reports complete over the one tree it exists to protect.
+    Asked through ``analysis_store.watch_roots`` rather than re-derived, so the
+    backup and the analysis watch cannot disagree about which layout this is.
     """
-    share = analysis_store.share_root(cfg)
     if analysis_store.watch_roots(cfg) == (Path(cfg.library.root),):
+        return None
+    return analysis_store.share_root(cfg)
+
+
+def share_destination(cfg: config.Config, *, identity: str | None) -> str:
+    """Where one library's outside share is mirrored on the remote.
+
+    KEYED BY THE VOLUME IDENTITY, for the reason the snapshot marker exists
+    (R-154): two libraries can share one snapshot root, and a sync makes its
+    destination match its source, so under one unkeyed folder each library's
+    backup would archive the other's grids and a restore would pull whichever
+    ran last. The key passes through :func:`identity_marker`, so a value that is
+    not plainly a name is never interpolated into a path.
+    """
+    marker = identity_marker(identity)
+    key = SHARE_UNRECORDED if marker is None else marker[len(IDENTITY_MARKER_PREFIX):]
+    return f"{cfg.backup.db_dest_root}/{SHARE_DEST_DIRNAME}/{key}"
+
+
+def absent_analysis_share(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
+    """A warning when an outside analysis share is not there to be carried.
+
+    R-338. The share beside the database holds every beat grid. Under the library
+    root the mirror carries it. Outside the root, which is an acknowledged
+    configuration and rekordbox's own default, the database portion mirrors it
+    (see ``SHARE_DEST_DIRNAME``). What is left to say is the one case where that
+    command is not planned: no directory at the path the database implies. That
+    is normal for a library nothing has analysed, and it is also what a wrong
+    ``db_path`` looks like, so it is said rather than folded into "carried".
+
+    PUBLIC, AND ASKED OF THE CONFIGURATION, because the backup verb runs through
+    the job queue, a claimed item's report does not reach the person, and a
+    warning that rides only on the plan therefore reaches nobody.
+    """
+    share = _outside_share(cfg)
+    if share is None or share.is_dir():
         return ()
     return (
         {
-            "code": ANALYSIS_SHARE_NOT_CARRIED,
+            "code": ANALYSIS_SHARE_ABSENT,
             "message": (
                 f"the analysis share {share} sits outside the library root "
-                f"{cfg.library.root}, so neither the mirror nor the database "
-                f"snapshot carries it. It holds this library's beat grids, and a "
-                f"database restored without it brings back every row without its "
-                f"analysis"
+                f"{cfg.library.root} and is not a directory, so this backup "
+                f"carries no beat grids or analysis. That is expected only for a "
+                f"library rekordbox has not analysed yet"
             ),
         },
     )
@@ -1189,6 +1273,29 @@ def _prune_archive(
 # ---------------------------------------------------------------------------
 
 
+class ShareRestore(StrEnum):
+    """What a restore does about the analysis share, in one word (R-338).
+
+    Four answers because there are four facts, and a boolean over them would
+    fold two of them into "nothing was pulled", which is the silence this
+    finding was about. Single words on purpose: a hyphenated value would join
+    the population the reserved cause guard reads as cause shaped.
+    """
+
+    #: The share sits under the library root, so the mirror half carries it and
+    #: the database half has nothing to do.
+    MIRRORED = "mirrored"
+    #: Outside the root, held on the remote, and a transfer is planned.
+    PULLED = "pulled"
+    #: Outside the root, and the remote holds no mirror of it, which is every
+    #: backup taken before the share was carried. Rows come back without grids.
+    ABSENT = "absent"
+    #: Outside the root, and the place it would land is under the analysis
+    #: watch, so it is NOT pulled and the remote is not asked. See
+    #: :func:`_plan_restore_inside_the_gates`.
+    WITHHELD = "withheld"
+
+
 @dataclass(frozen=True, slots=True)
 class RestorePlan:
     """What a restore will do, including the sidecars it clears first.
@@ -1210,6 +1317,10 @@ class RestorePlan:
     #: The identity the snapshot's own marker records, normalized, or None for a
     #: snapshot that carries no marker and was pulled because it was named.
     recorded_volume: str | None = None
+    #: What this restore does about the analysis share. Named on the plan, as
+    #: ``absent_sidecars`` is, so a restore that pulled nothing for the share
+    #: cannot read as one that pulled it.
+    share: ShareRestore = ShareRestore.MIRRORED
 
 
 def database_target_for(cfg: config.Config, target: Path) -> Path:
@@ -1535,6 +1646,35 @@ def snapshot_filenames(
     )
 
 
+def share_is_held(cfg: config.Config, *, identity: str | None, runner: Runner) -> bool:
+    """Whether the remote holds a mirror of this library's outside share.
+
+    THREE ANSWERS, AND ONLY TWO OF THEM ARE ABOUT THE SHARE. A listing that names
+    something is a mirror. A listing that names nothing, or a directory rclone
+    says does not exist, is a backup taken before the share was carried, which is
+    every backup older than R-338's fix and is normal. Anything else is a remote
+    that did not answer, and reading that as "no share" would plan a restore
+    that reports complete over grids it never looked for.
+    """
+    result = runner(
+        Command(
+            label=LIST_SHARE,
+            argv=(_rclone(), "lsf", f"{share_destination(cfg, identity=identity)}/current/"),
+        )
+    )
+    if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
+        return False
+    if result.returncode != 0:
+        raise BackupRefused(
+            Refusal.NO_SNAPSHOT_AVAILABLE,
+            f"the analysis share mirror under {cfg.backup.db_dest_root} could not "
+            f"be listed (exit {result.returncode}), so whether this library's beat "
+            f"grids are in the backup is unknown; a restore is not planned against "
+            f"a remote that did not answer",
+        )
+    return bool(result.stdout.strip())
+
+
 def plan_restore(
     cfg: config.Config,
     *,
@@ -1544,6 +1684,7 @@ def plan_restore(
     snapshot_volume: str | None = None,
     accept_unrecorded: bool | None = None,
     include_mirror: bool = False,
+    pull_share: bool = True,
     runner: Runner = subprocess_runner,
     process_lister: ProcessLister | None = None,
     gates: GateGuard | None = None,
@@ -1560,6 +1701,13 @@ def plan_restore(
     different costs and are wanted at different times. Recovering from a bad
     write means the database alone; recovering from a dead drive means both, and
     the second is hundreds of gigabytes.
+
+    ``pull_share`` is for the one caller that already knows it will not spend the
+    database half, the bare metal recovery of a library whose database was never
+    on the lost volume. An outside share rides that half, so with this off it is
+    WITHHELD and the remote is not asked about it: a listing that fails refuses
+    the plan, and refusing a recovery of the music over a share nobody was going
+    to pull is a refusal with no reason behind it.
 
     THE MIRROR IS PULLED WITH A COPY, NEVER A SYNC. A sync would make the target
     match the remote by DELETING anything the remote does not have, and the
@@ -1588,6 +1736,7 @@ def plan_restore(
             snapshot_volume=snapshot_volume,
             accept_unrecorded=accept_unrecorded,
             include_mirror=include_mirror,
+            pull_share=pull_share,
             runner=runner,
             process_lister=process_lister,
         )
@@ -1602,6 +1751,7 @@ def _plan_restore_inside_the_gates(
     snapshot_volume: str | None,
     accept_unrecorded: bool | None,
     include_mirror: bool,
+    pull_share: bool,
     runner: Runner,
     process_lister: ProcessLister | None,
 ) -> RestorePlan:
@@ -1699,6 +1849,47 @@ def _plan_restore_inside_the_gates(
                 ),
             )
         )
+    # THE SHARE COMES BACK BESIDE THE DATABASE, LAST, AND ONLY FROM A LISTING
+    # (R-338). Planned from a listing because the sidecars are cleared before the
+    # first transfer, so a copy from a mirror that is not there would fail after
+    # the clearing, which is the refusal ``_ran`` describes. A COPY, NEVER A
+    # SYNC, for the reason the mirror half gives: the share beside a database
+    # being restored may hold analysis the mirror never saw.
+    #
+    # NOT UNDER THE ANALYSIS WATCH. A restore onto the live library runs inside a
+    # session that fingerprints every analysis file under the library root and
+    # the live share, and refuses at its close when one appeared or changed.
+    # Driven on 2026-09-20: a share pulled there ended the restore refused as
+    # moved analysis files, after the database had already been replaced. So a
+    # landing place the watch covers is WITHHELD, said on the plan, and the
+    # remote is not asked a question whose answer could change nothing. The
+    # share comes back through a restore that names a target, which is also the
+    # one restore that lands this layout's database where the person chose.
+    #
+    # WHOSE SHARE: the library the snapshot's marker names. An unmarked snapshot
+    # falls back to this configuration's identity, because a marker that failed
+    # to write is a warning and the same run still mirrored the share under it.
+    share = ShareRestore.MIRRORED
+    if _outside_share(cfg) is not None:
+        landing = database_target.parent / analysis_store.SHARE_DIRNAME
+        whose = resolved.recorded_volume or cfg.library.volume_id
+        if not pull_share or analysis_store.is_watched(cfg, landing):
+            share = ShareRestore.WITHHELD
+        elif share_is_held(cfg, identity=whose, runner=runner):
+            share = ShareRestore.PULLED
+            commands.append(
+                Command(
+                    label=RESTORE_SHARE,
+                    argv=(
+                        rclone, "copy",
+                        f"{share_destination(cfg, identity=whose)}/current",
+                        str(landing),
+                        "--transfers", "8", "--checkers", "16",
+                    ),
+                )
+            )
+        else:
+            share = ShareRestore.ABSENT
     return RestorePlan(
         target=target,
         database_target=database_target,
@@ -1707,6 +1898,7 @@ def _plan_restore_inside_the_gates(
         commands=tuple(commands),
         absent_sidecars=tuple(absent),
         recorded_volume=resolved.recorded_volume,
+        share=share,
     )
 
 
@@ -1895,9 +2087,15 @@ __all__ = [
     "PortionOutcome",
     "PortionPlan",
     "Refusal",
+    "ANALYSIS_SHARE_ABSENT",
+    "LIST_SHARE",
     "LIST_SNAPSHOT_CONTENTS",
     "RESTORE_MIRROR",
+    "RESTORE_SHARE",
+    "SNAPSHOT_SHARE",
     "RestorePlan",
+    "ShareRestore",
+    "absent_analysis_share",
     "database_fileset",
     "database_target_for",
     "dry_run_argv",
@@ -1911,6 +2109,8 @@ __all__ = [
     "run_backup",
     "run_restore",
     "running_process_names",
+    "share_destination",
+    "share_is_held",
     "settings_directories",
     "stamp_for",
     "subprocess_runner",

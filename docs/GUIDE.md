@@ -531,6 +531,19 @@ refuses a directory that is the library, holds it, sits inside it, or would land
 the database on the live file. The gates are the live restore's: the backup
 acknowledgment, the library lock, and rekordbox closed.
 
+When the rekordbox database sits outside the library root, which is where
+rekordbox puts it by default, the `share` folder beside it holds every beat grid
+and the library mirror never sees it. The database portion of a backup mirrors
+that folder to `analysis-share/` under `backup.db_dest_root`, with rekordbox
+closed, and keeps what each run replaced in a dated `archive` beside it. A
+restore with `--target` copies it back as `share` beside the restored database,
+and the totals say `analysis_share`: `pulled`, `absent` for a backup taken before
+the share was carried, `withheld`, or `mirrored` when the share is under the
+library root and travels with the music. A restore onto the live library
+withholds it, because that restore refuses when any analysis file under the
+library moves. To put grids back, restore to a target with rekordbox closed and
+move `share` into place beside the database yourself.
+
 Each snapshot records the volume identity of the library it was taken from.
 `--from-backup` pulls the newest snapshot that is this library's, stepping over
 another library's under a shared remote, unless `--snapshot STAMP` names one,
