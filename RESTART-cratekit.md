@@ -4,7 +4,68 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-338, issue #174, `relay/174`, 2026-09-20.**
+**Last merged: U97, issue #142, `relay/142`, 2026-09-21.**
+The remedy for a provider session names the procedure instead of a verb that
+cannot perform it, which CLOSES R-411. `crate login` records a value somebody
+already holds and refuses without one, so a first run person who followed the
+product's own `fix:` line reached a second refusal.
+**THE TOKEN WAS ALWAYS RIGHT AND THE RENDERING WAS NOT,** so no producer moved
+and no verb was added. In `cli/render.py`, `AUTHENTICATE_PROVIDER` leaves
+`_COMMANDS` as `None`, the shape that table already used for a fix that is not
+a command, and gains an `_ADVICE` entry: mint with the vendored downloader's
+own login command, record with `crate login provider-session --from-file`, then
+erase the plaintext file. The erase is named because R4's promise is that no
+provider token sits on disk between invocations.
+**THREE SURFACES RAISE THE TOKEN AND THE BRIEF NAMED TWO.** Doctor's
+`credential.provider` check, `label/catalogue.py:387`, and
+`modules/outbound/account.py:164`, which the finding missed. One table answers
+all three. The brief's pointer at `catalogue.py:206` is a docstring; the issue
+body is corrected.
+**`REAUTHENTICATE_PROVIDER` WAS THE SAME DEAD END ONE LINE BELOW** and was
+fixed in the same round. It said "log in again", it is the token both the label
+seam and the outbound seam fall back to when a stored session is rejected, and
+it is the likelier path, since every session minted before 2026-09-01 is a
+device flow session the adapter refuses. Both entries now compose
+`_PROVIDER_SESSION_PROCEDURE`, one module constant, because two copies of a
+three act procedure is how they come to name two different second steps.
+**THE DOCUMENT IS NAMED AS THE PROJECT'S, NOT AS A LOCAL PATH.** The review
+raised it and it was DRIVEN: a wheel built from this tree into a temporary
+directory carries no `docs/` at all, while the first run skill asset does. An
+installed person told to open `docs/adapters.md` would find nothing, so the
+wording says the project's repository. R-617 records the class and the learning
+is filed.
+**The built in code review raised six findings, four applied in one round**,
+the unshipped document, the adjacent token, the "three commands" claim the
+document's own heading contradicts, and a test docstring that claimed a cross
+surface seam it never drove. Two became residuals.
+Battery: ruff clean, **9445 passed** and 1 skipped in 65 seconds, 9446
+collected, scan clean. Five tests joined, reconciled by identifier and not by
+total: two parametrized cases and a document guard in
+`tests/test_cli_contract.py`, one human mode doctor test, one label path test.
+The doctor one drives `cli.run` in DEFAULT output on purpose, because a json
+only driver cannot see a wrong human renderer, and pins the bare verb
+negatively as a whole line, since the fix contains `crate login` inside a longer
+command.
+Mutation tables, `docs/mutation/u97-a.md`, `u97-b.md` and `u97-c.md`, rows files
+beside them, notes in `u97-notes.md`: **13 rows, the author's own, 11 killed,
+2 zero, both paired with a composite that killed.** Null control at zero in all
+three, baselines green, all four mutated files differenced against
+`git show HEAD:` after the last batch. Foreground, three tables to stay inside
+the tool ceiling.
+Filed: **R-616 to R-620.** None meets the board bar, so no issue was opened.
+R-616, the adapter's own `REAUTHORISE_HINT` is a second wording of the
+procedure that stops before the erase, and D2 forbids the one constant that
+would fix it. R-617, the packaging class above. R-618, reversing the
+precedence between a remedy's words and a cause's first step kills zero, with
+52 reachable call sites measured by an AST walk. R-619, the outbound seam's
+remedy token kills zero while the refusal itself kills one. R-620, a doctor
+test takes its expected remedy text from the renderer it tests.
+One learning filed,
+`docs/solutions/integration-issues/a-remedy-that-points-at-a-repository-document-is-a-dead-end-on-every-installed-machine.md`.
+**OWED TO AN ATTENDED SITTING:** none.
+**Main's highest residual number is R-620.**
+
+**The session before: R-338, issue #174, `relay/174`, 2026-09-20.**
 An analysis share outside the library root is now in the backup, and a restore
 that names a target puts it back, which CLOSES R-338. In rekordbox's default
 layout the database sits outside the root and the `share` folder beside it
@@ -85,7 +146,7 @@ One learning filed,
 `docs/solutions/integration-issues/a-restore-that-brings-analysis-files-back-is-refused-by-the-watch-over-its-own-session.md`.
 `CONCEPTS.md`, "Analysis share" says where it is mirrored and when it is
 withheld.
-**Main's highest residual number is R-615.**
+**Main's highest residual number was R-615 at that merge.**
 
 **The session before: U94, issue #139, `relay/139`, 2026-09-20.**
 `analyze calibrate` fits over a library wide sample and refuses a partial one,
