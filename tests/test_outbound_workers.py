@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import io
 import os
+import time
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1668,6 +1669,31 @@ def test_a_date_well_in_the_future_is_not_the_freshest_export_there_could_be(tmp
     shown = shell_module.shown(age)["export"]
     assert shown["written"] == _local(_WRITTEN)
     assert shown["warning"] == warning["message"]
+
+
+def test_the_date_is_the_persons_own_and_not_greenwichs(tmp_path, monkeypatch):
+    """Nine in the evening in New York is one in the morning, tomorrow, in UTC.
+
+    THE ZONE IS SET HERE, because read off the machine this is a guard that
+    holds only at some hours of the day and on some machines, and a CI runner in
+    UTC would agree with the defect for ever.
+    """
+    document = tmp_path / "collection.xml"
+    document.write_text("<x/>")
+    written = datetime(2026, 8, 2, 1, 0, 0, tzinfo=timezone.utc)
+    os.utime(document, (written.timestamp(), written.timestamp()))
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        age = source.export_age(document, limit_days=7, now=written + timedelta(days=30))
+        (warning,) = shell_module.age_warnings(age)
+        block = shell_module.shown(age)["export"]
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+    assert "2026-08-01" in warning["message"]
+    assert "2026-08-02" not in warning["message"]
+    assert block["written"] == "2026-08-01T21:00:00-04:00"
 
 
 def test_the_sentence_does_not_say_seven_is_past_seven(tmp_path):

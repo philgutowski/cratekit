@@ -20,6 +20,7 @@ from __future__ import annotations
 import ast
 import io
 import os
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -284,6 +285,23 @@ def test_a_pass_that_queued_over_an_old_export_warns_and_still_queues(
     assert "sync.favorites" in {job.handler_key for job in _jobs()}, (
         "a stale export refuses nothing"
     )
+
+
+def test_the_composed_gate_judges_against_the_configured_limit(installed, exported):
+    """Not a seven spelled in this shell. A month old export under a sixty day
+    limit is within it, and the block says whose number that was."""
+    del installed
+    register(LABELS[0])
+    _written_days_ago(exported, 30)
+    current = config.load()
+    config.save(
+        replace(current, outbound=replace(current.outbound, export_stale_days=60))
+    )
+    config.reset_cache()
+    _, refused = drive(_verb(exported))
+    block = refused["cause"]["detail"]["shown"]["export"]
+    assert (block["freshness"], block["stale_after_days"]) == ("within-limit", 60)
+    assert "warning" not in block
 
 
 def test_a_pass_over_a_recent_export_carries_no_age_warning(installed, exported):
