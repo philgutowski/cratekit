@@ -1,0 +1,19 @@
+name = "r381-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M12_add_legacy_any_name"
+description = "add takes the entry under the old fold whatever its display name"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+old = '''                if legacy is not None and _name_key(legacy.name) == _name_key(name)'''
+new = '''                if legacy is not None'''
+
+[[rows]]
+id = "M14_follow_all_renames"
+description = "marks follows every recorded move, including one whose old identifier is held again"
+file = "src/cratekit/label/marks.py"
+surface = "user"
+old = '''        renamed = registry.RegistryStore().load().live_renames()'''
+new = '''        renamed = registry.RegistryStore().load().renamed'''
+
