@@ -1666,7 +1666,7 @@ def test_a_date_well_in_the_future_is_not_the_freshest_export_there_could_be(tmp
     (warning,) = shell_module.age_warnings(age)
     assert warning["code"] == "outbound-export-age-unknown"
     assert _WRITTEN.astimezone().date().isoformat() in warning["message"]
-    shown = shell_module.shown(age)["export"]
+    shown = shell_module.shown_export(age)["export"]
     assert shown["written"] == _local(_WRITTEN)
     assert shown["warning"] == warning["message"]
 
@@ -1687,7 +1687,7 @@ def test_the_date_is_the_persons_own_and_not_greenwichs(tmp_path, monkeypatch):
     try:
         age = source.export_age(document, limit_days=7, now=written + timedelta(days=30))
         (warning,) = shell_module.age_warnings(age)
-        block = shell_module.shown(age)["export"]
+        block = shell_module.shown_export(age)["export"]
     finally:
         monkeypatch.undo()
         time.tzset()
@@ -1708,7 +1708,7 @@ def test_the_sentence_does_not_say_seven_is_past_seven(tmp_path):
     )
     (warning,) = shell_module.age_warnings(age)
     assert "7 days 5 hours ago" in warning["message"]
-    assert shell_module.shown(age)["export"]["age"] == "7 days 5 hours"
+    assert shell_module.shown_export(age)["export"]["age"] == "7 days 5 hours"
 
 
 def test_a_limit_too_large_for_a_duration_does_not_crash_the_question(tmp_path):
@@ -1758,7 +1758,7 @@ def test_an_age_that_cannot_be_read_is_unknown_rather_than_fresh(tmp_path):
     assert age.known is False
     codes = [w["code"] for w in shell_module.age_warnings(age)]
     assert codes == ["outbound-export-age-unknown"]
-    shown = shell_module.shown(age)["export"]
+    shown = shell_module.shown_export(age)["export"]
     assert shown["written"] is None
     assert shown["age_days"] is None
     assert shown["freshness"] == "unknown"

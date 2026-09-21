@@ -225,7 +225,7 @@ def export_playlist(ctx) -> Envelope:
     option = ctx.gate.require(
         spec,
         digest=confirm_digest(resolved.key, str(exported), resolved.track_ids),
-        context=shell.shown(age),
+        context=shell.shown_export(age),
     )
     if option == "abort":
         # THE DECLARED SHAPE, and nothing about the playlist. See

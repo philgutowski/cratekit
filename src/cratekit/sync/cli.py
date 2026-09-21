@@ -316,7 +316,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
         option = ctx.gate.require(
             gate,
             digest=favorites_cli.sweep_digest(exported, resolved),
-            context={**_awaiting(plans), **shell.shown(age)},
+            context={**_awaiting(plans), **shell.shown_export(age)},
         )
         if option == "abort":
             plan.not_queued = DECLINED

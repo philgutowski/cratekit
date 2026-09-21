@@ -118,22 +118,22 @@ def reported(
     }
 
 
-#: The four things :func:`shown` can say about an export's date, spelled once.
+#: The four things :func:`shown_export` can say about an export's date, spelled once.
 #: WORDS RATHER THAN A BOOLEAN, because only one of the four means recent and the
 #: human renderer prints a missing boolean as "none", which reads as "not stale".
-STALE = "stale"
-WITHIN_LIMIT = "within-limit"
-FUTURE_DATED = "future-dated"
-UNKNOWN = "unknown"
+AGE_STALE = "stale"
+AGE_WITHIN_LIMIT = "within-limit"
+AGE_FUTURE_DATED = "future-dated"
+AGE_UNKNOWN = "unknown"
 
 
 def freshness(age: ExportAge) -> str:
     """Which of the four an age is. The two that cannot be judged are asked FIRST."""
     if not age.known:
-        return UNKNOWN
+        return AGE_UNKNOWN
     if age.future_dated:
-        return FUTURE_DATED
-    return STALE if age.stale else WITHIN_LIMIT
+        return AGE_FUTURE_DATED
+    return AGE_STALE if age.stale else AGE_WITHIN_LIMIT
 
 
 def _local_date(moment) -> str:
@@ -160,8 +160,12 @@ def _spelled(age: ExportAge) -> str | None:
     return f"{elapsed.days} days {hours} hours"
 
 
-def shown(age: ExportAge) -> dict[str, Any]:
+def shown_export(age: ExportAge) -> dict[str, Any]:
     """What the confirm gate shows about the document the write is read from.
+
+    NAMED FOR WHAT IT SHOWS. ``intake.candidates.shown`` is already a public
+    function about something else, and one symbol meaning two things in two
+    modules is a defect ``docs/METHOD.md`` says to hunt once a suite is green.
 
     SHOWN EVERY TIME, fresh or not (R-227). A plan that named the date only when
     it was old would make a missing line mean "recent", and the person deciding
@@ -203,7 +207,7 @@ def age_warnings(age: ExportAge) -> tuple[dict[str, str], ...]:
     that. The date is called "last written" rather than "exported" because it is
     the file's modification time, which is all a rekordbox export offers.
 
-    AT MOST ONE, which :func:`shown` relies on to carry it as a single sentence.
+    AT MOST ONE, which :func:`shown_export` relies on to carry it as a single sentence.
     """
     written = age.written
     if written is None:
@@ -422,5 +426,5 @@ __all__ = [
     "queue_warnings",
     "reported",
     "resume",
-    "shown",
+    "shown_export",
 ]

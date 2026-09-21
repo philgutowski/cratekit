@@ -261,7 +261,7 @@ def sync_favorites(ctx) -> Envelope:
     age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
 
     option = ctx.gate.require(
-        spec, digest=sweep_digest(exported, resolved), context=shell.shown(age)
+        spec, digest=sweep_digest(exported, resolved), context=shell.shown_export(age)
     )
     if option == "abort":
         # THE DECLARED SHAPE, and nothing about the playlist. See
