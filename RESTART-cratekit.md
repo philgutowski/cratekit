@@ -4,7 +4,27 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-592, issue #186, `relay/186`, 2026-09-21.**
+**Last merged: R-598, issue #187, `relay/187`, 2026-09-21.**
+A gated write that is hard killed no longer leaves a dead end. The gates write
+the lock's claimant into the record they open, `detail.holder`, because the lock
+file's copy is overwritten by the next session. `session.orphaned` needs the
+state exactly `open`, a recorded holder, and `holder_alive` saying gone.
+`crate session release` shows the orphans before its gate, releases the lock
+first, then abandons each orphan through the ungated close. `awaiting-import`,
+`committed-unverified` and intake landings (no holder, open on purpose) are
+never touched. Doctor names the verb beside an orphaned record. Driven with a
+real SIGKILL from a forked child: the cutover precheck refuses before the
+release and passes after it. R-598 CLOSED in place for a kill. Filed R-647, a
+power loss leaves a holder from another boot that `holder_alive` judges alive
+(bar c, issue opened), and R-648, the release answer is not bound to what the
+question showed (maintainer facing, no issue).
+Battery: ruff clean, **9848 passed** and 1 skipped in 68 seconds. Scan clean.
+Mutation tables `docs/mutation/r598-a.md` and `r598-b.md`: **14 rows, the
+author's own, 13 killed**, the zero B2 explained in `r598-notes.md`. Learning
+filed in `docs/solutions/workflow-issues/`.
+**Main's highest residual number is R-648.**
+
+**The session before: R-592, issue #186, `relay/186`, 2026-09-21.**
 An interrupted bare metal recovery reruns with nothing removed, which NARROWS
 R-592. Option (1) of its brief, no marker: `restore.assert_recovery_target`
 refuses only a file where this library's database or a companion lands,
@@ -22,7 +42,6 @@ Battery: ruff clean, **9826 passed** and 1 skipped in 65 seconds. Scan clean.
 Mutation tables `docs/mutation/r592-a.md` to `r592-c.md`: **16 rows, the
 author's own, all killed**, after B3's zero got a test in round one. Learning
 filed in `docs/solutions/integration-issues/`. Nothing filed to the ledger.
-**Main's highest residual number is R-646.**
 
 **The session before: U106, issue #151, `relay/151`, 2026-09-21.**
 Ledger hygiene, docs only, append only. Each candidate was verified against
