@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.acquire.match import Wanted
-from cratekit.core import binaries, secrets
+from cratekit.core import binaries, config, secrets
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 
@@ -111,6 +111,7 @@ def identify(
     *,
     identifier: Identifier | None = None,
     refresh: bool = False,
+    recognition: config.RecognitionConfig | None = None,
 ) -> Identified:
     """Identify the tracks in ``source``: the Wanted rows, and what it cost.
 
@@ -126,12 +127,22 @@ def identify(
     ``refresh`` asks the bound identifier to read nothing from the recognition
     cache and pay for every chunk again. An injected identifier is handed the
     recording and nothing else, so what it keeps is its own business.
+
+    ``recognition`` is the configuration's section, and THE PAID PATH WILL NOT
+    RUN WITHOUT IT (R-301). The host and the month's bound come from nowhere
+    else, so a caller that forgot to hand them over is a defect to be told
+    about rather than a run against a region and a month nobody chose.
     """
     assert_recognition_ready()
     if identifier is None:
+        if recognition is None:
+            raise TypeError(
+                "the bound identifier needs the configuration's recognition "
+                "section, which names the host and the month's bound"
+            )
         from cratekit.intake import acrcloud  # noqa: PLC0415 - bound only on the paid path
 
-        identifier = acrcloud.bound_identifier(refresh=refresh)
+        identifier = acrcloud.bound_identifier(recognition, refresh=refresh)
     found = identifier(source)
     if isinstance(found, Identified):
         return found

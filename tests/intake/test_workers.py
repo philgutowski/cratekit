@@ -1268,3 +1268,89 @@ def test_a_titles_other_reading_survives_the_freeze():
     ]
     plain = intake_cli.thawed({"artist": "A", "title": "T", "other_reading": ["only-one"]})
     assert plain.other_reading is None, "a malformed reading is dropped, not guessed"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-301: the recognition section is what the paid path reads
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _recognition(library: Path, **section) -> config.Config:
+    """A configured machine whose ``[recognition]`` section says ``section``."""
+    built = config.from_dict(
+        valid_data(library, profile={"name": "full"}, recognition=section)
+    )
+    config.save(built)
+    config.reset_cache()
+    return built
+
+
+@pytest.mark.parametrize("verb", ["identify", "set"])
+def test_an_unconfigured_machine_meets_a_monthly_bound_before_the_first_call(
+    cfg, library, recognised, verb
+):
+    """THE COST R-301 NAMED. With nothing configured the per run cap was the
+    only bound, so a month that had already spent its plan kept paying. The
+    default section bounds the month, and the refusal names the key to raise."""
+    recognised.ledger.record(config.DEFAULT_RECOGNITION_MONTHLY_CALLS - 1)
+    three_tracks(recognised)
+
+    code, envelope = drive(["intake", verb, str(recording(library))])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert envelope["cause"]["reason"] == "intake-recognition-spend-bound"
+    detail = envelope["cause"]["detail"]
+    assert detail["kind"] == "monthly"
+    assert detail["bound"] == config.DEFAULT_RECOGNITION_MONTHLY_CALLS
+    assert detail["key"] == "recognition.monthly_calls"
+    assert "recognition.monthly_calls" in envelope["cause"]["message"]
+    assert recognised.requests == [], "the month's bound was paid past"
+    assert recognised.ledger.used() == config.DEFAULT_RECOGNITION_MONTHLY_CALLS - 1
+
+
+@pytest.mark.parametrize("verb", ["identify", "set"])
+def test_the_configured_monthly_bound_is_the_one_the_verb_meets(library, recognised, verb):
+    _recognition(library, monthly_calls=2)
+    three_tracks(recognised)
+
+    code, envelope = drive(["intake", verb, str(recording(library))])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert envelope["cause"]["detail"]["bound"] == 2
+    assert recognised.requests == []
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == (), "a refused set queued a job"
+
+
+def test_a_month_within_the_configured_bound_is_paid_for(library, recognised):
+    _recognition(library, monthly_calls=3)
+    three_tracks(recognised)
+    code, envelope = drive(["intake", "identify", str(recording(library))])
+    assert code in (int(ExitCode.OK), int(ExitCode.PENDING_HUMAN)), envelope
+    assert len(recognised.requests) == 3
+    assert recognised.ledger.used() == 3
+
+
+@pytest.mark.parametrize("verb", ["identify", "set"])
+def test_the_configured_host_is_the_one_every_paid_call_is_sent_to(library, recognised, verb):
+    _recognition(library, host="identify-eu-west-1.acrcloud.com")
+    three_tracks(recognised)
+
+    code, envelope = drive(["intake", verb, str(recording(library))])
+
+    assert code in (int(ExitCode.OK), int(ExitCode.PENDING_HUMAN)), envelope
+    assert [request.url for request in recognised.requests] == [
+        f"https://identify-eu-west-1.acrcloud.com{acrcloud.ENDPOINT}"
+    ] * 3
+
+
+def test_a_queued_set_freezes_the_recognition_section_it_was_identified_under(
+    library, recognised
+):
+    _recognition(library, host="identify-eu-west-1.acrcloud.com", monthly_calls=50)
+    three_tracks(recognised)
+    job_id, _ = queued_set(recording(library))
+    frozen = jobs.frozen_config(job_of(job_id)).recognition
+    assert frozen == config.RecognitionConfig(
+        host="identify-eu-west-1.acrcloud.com", monthly_calls=50
+    )

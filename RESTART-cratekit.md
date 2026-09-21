@@ -4,7 +4,39 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-312, issue #166, `relay/166`, 2026-09-21.**
+**Last merged: R-301, issue #168, `relay/168`, 2026-09-21.**
+Paid recognition reads its host and its monthly bound from a new
+`[recognition]` configuration section, which CLOSES R-301. `acrcloud.HOST` is
+gone and the shipped budget is built from the section, so both intake verbs now
+refuse before the first call when the month's ledger plus the plan passes
+`recognition.monthly_calls`, and the refusal names that key. **THE MONTH IS
+BOUNDED BY DEFAULT, 1000 CALLS,** a choice made unattended and recorded as
+R-640 with the alternatives, since the source system's shape was no default and
+that is how 565 calls went unnoticed. The host must be a bare lowercase name
+under `acrcloud.com`, because the access key and its signature go to it.
+`identify` takes `budget` and `host` with no default and the seam refuses the
+paid path with no section, so no caller can fall back to a region or a month
+nobody chose. `intake set` freezes the section with its job.
+The cost was reproduced first through the real dispatcher: with 999 calls in the
+month's ledger, both verbs paid for three more, and a configured host never
+reached a request. The fifth pattern was looked for: the only other literal
+provider hosts in `src` are the tagging searchers and the vendored Tidal
+client, neither paid per call nor regional per account.
+The built in review found one thing, a dedented call site in `intake set`, fixed.
+Battery: ruff clean, **9712 passed** and 1 skipped in 60 seconds, 9713
+collected, 33 more than R-312 recorded, reconciled by file: 22 in
+`tests/test_config.py`, 8 in `tests/intake/test_workers.py`, 3 in
+`tests/intake/test_recognition.py`. Scan clean. No test of this unit's is among
+the ten slowest.
+Mutation table `docs/mutation/r301.md`, rows file beside it: **17 rows, the
+author's own, 16 killed and 1 zero.** The zero is V5, maintainer facing, the
+refusal of a host that is not a string, which the domain check covers. One row
+dropped and logged, the default's value. Measured in one foreground invocation,
+4 minutes 51 seconds.
+Filed: **R-640**, the two defaults and the drift a pre existing queued job
+names. No issue. **Main's highest residual number is R-640.**
+
+**The session before: R-312, issue #166, `relay/166`, 2026-09-21.**
 `crate route resort` now says it is additive and names what it left where it
 was, which CLOSES R-312 by its second arm. NO REMOVAL PATH WAS BUILT. Whether a
 resort should ever take a track out of its old playlist is R-638, Phillip's
@@ -56,7 +88,7 @@ under (b) and its issue is OWED,** to be filed after this merge since a Relay
 session does not merge. R-629's issue is still owed from two sessions before.
 The learning `a-queued-workers-report-does-not-reach-its-resume-envelope.md` is
 corrected in place. `CONCEPTS.md` gains Item report and Left behind.
-**Main's highest residual number is R-639.**
+**Main's highest residual number was R-639 at that merge.**
 
 **The session before: R-229, issue #165, `relay/165`, 2026-09-21.**
 A crate renamed or dragged into a folder in rekordbox no longer gets a second

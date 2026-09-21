@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import secrets
+from cratekit.core import config, secrets
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import acrcloud, recognize
@@ -104,6 +104,11 @@ def fixed_credentials() -> tuple[str, str]:
     return ("an-access-key", "a-signing-key")
 
 
+#: The host every direct call is handed. ``identify`` has no default host since
+#: R-301, so each test names one, and D1 keeps it off a real domain.
+HOST = "identify-test.example.invalid"
+
+
 @pytest.fixture
 def ledger(tmp_path) -> Ledger:
     """A ledger of this test's own, under its own lock."""
@@ -125,7 +130,8 @@ def run(
         transport=transport,
         carver=FakeCarver(duration_s),
         credentials=credentials,
-        budget=budget,
+        budget=budget or Budget(),
+        host=HOST,
         ledger=ledger,
         month=month,
     )
@@ -154,13 +160,15 @@ def test_the_signature_is_the_protocols_hmac_over_the_line_joined_tuple():
 
 def test_the_request_carries_the_access_key_and_never_the_signing_key():
     access, signing = fixed_credentials()
-    request = acrcloud.request_for(b"pcm", access_key=access, signing_key=signing, timestamp="1700000000")
+    request = acrcloud.request_for(
+        b"pcm", access_key=access, signing_key=signing, host=HOST, timestamp="1700000000"
+    )
     assert request.fields["access_key"] == "an-access-key"
     assert request.fields["sample_bytes"] == "3"
     assert request.fields["timestamp"] == "1700000000"
     assert "a-signing-key" not in json.dumps(dict(request.fields))
     assert "a-signing-key" not in request.url
-    assert request.url == f"https://{acrcloud.HOST}{acrcloud.ENDPOINT}"
+    assert request.url == f"https://{HOST}{acrcloud.ENDPOINT}"
     assert request.sample == b"pcm"
 
 
@@ -414,6 +422,7 @@ def test_the_per_run_bound_refuses_before_any_carve_call_or_credential(ledger):
             carver=carver,
             credentials=credentials,
             budget=Budget(per_run=10),
+            host=HOST,
             ledger=ledger,
             month="2026-09",
         )
@@ -435,7 +444,9 @@ def test_the_monthly_bound_counts_what_the_ledger_already_holds(ledger):
         run(transport, duration_s=100.0, budget=Budget(monthly=98), ledger=ledger)
     cause = excinfo.value.cause
     assert cause.reason == "intake-recognition-spend-bound"
-    assert cause.detail == {"planned": 4, "used": 95, "bound": 98, "kind": "monthly"}
+    assert cause.detail == {
+        "planned": 4, "used": 95, "bound": 98, "kind": "monthly", "key": acrcloud.MONTHLY_KEY
+    }
     assert cause.remediation.remedy == Remedy.RETRY_LATER
     assert transport.requests == []
     # A plan that fits exactly is allowed: 85 seconds is three chunks.
@@ -445,8 +456,25 @@ def test_the_monthly_bound_counts_what_the_ledger_already_holds(ledger):
     assert ledger.used("2026-09") == 98
 
 
-def test_the_default_budget_bounds_the_run_and_not_the_month():
+def test_a_hand_built_budget_bounds_the_run_and_not_the_month():
     assert Budget() == Budget(per_run=acrcloud.MAX_CALLS_PER_RUN, monthly=None)
+
+
+def test_the_shipped_budget_bounds_the_month_the_section_names():
+    """R-301. The configured budget always carries a month, the default one too."""
+    assert Budget.from_config(config.RecognitionConfig()) == Budget(
+        per_run=acrcloud.MAX_CALLS_PER_RUN,
+        monthly=config.DEFAULT_RECOGNITION_MONTHLY_CALLS,
+    )
+    assert Budget.from_config(config.RecognitionConfig(monthly_calls=7)).monthly == 7
+
+
+def test_the_monthly_refusal_names_the_key_that_raises_the_bound(ledger):
+    ledger.record(5, "2026-09")
+    with pytest.raises(CratekitError) as excinfo:
+        run(FakeTransport(), duration_s=85.0, budget=Budget(monthly=6), ledger=ledger)
+    assert excinfo.value.cause.detail["key"] == "recognition.monthly_calls"
+    assert "raise recognition.monthly_calls" in excinfo.value.cause.message
 
 
 def test_a_provider_quota_answer_is_a_spend_refusal_and_never_a_miss(ledger):
@@ -534,6 +562,7 @@ def test_a_recording_that_cannot_be_measured_or_carved_fails_without_a_call(ledg
         acrcloud.identify(
             Path("set.mp3"), transport=transport, carver=Unreadable(0.0),
             credentials=fixed_credentials, ledger=ledger, month="2026-09",
+            budget=Budget(), host=HOST,
         )
     assert excinfo.value.cause.reason == "intake-recognition-failed"
     assert transport.requests == []
@@ -549,6 +578,7 @@ def test_a_recording_that_cannot_be_measured_or_carved_fails_without_a_call(ledg
         acrcloud.identify(
             Path("set.mp3"), transport=transport, carver=Uncarvable(60.0),
             credentials=fixed_credentials, ledger=ledger, month="2026-09",
+            budget=Budget(), host=HOST,
         )
     assert excinfo.value.cause.reason == "intake-recognition-failed"
     assert excinfo.value.cause.detail["offset_s"] == 25
@@ -664,13 +694,32 @@ def test_the_seam_binds_this_identifier_when_none_is_injected(monkeypatch, tmp_p
     ledger = Ledger(path=tmp_path / "usage.json", lock_path=tmp_path / "usage.lock")
     monkeypatch.setattr(acrcloud, "Ledger", lambda: ledger)
 
-    found = recognize.identify(source)
+    found = recognize.identify(
+        source, recognition=config.RecognitionConfig(host="identify-x.acrcloud.com")
+    )
 
     assert isinstance(found, Identified)
     assert [(row.artist, row.title) for row in found.rows] == [("Aurora Bloom", "Sun Path")]
     assert (found.calls, found.chunks, found.misses, found.unreached) == (1, 1, 0, 0)
     assert transport.requests[0].fields["access_key"] == "k-1"
+    assert transport.requests[0].url == f"https://identify-x.acrcloud.com{acrcloud.ENDPOINT}"
     assert ledger.used() == 1
+
+
+def test_the_paid_path_will_not_run_without_the_recognition_section(monkeypatch, tmp_path):
+    """R-301. A caller that forgot the section is told, rather than sent to a
+    region and a month nobody chose. The gate still runs first."""
+    source = tmp_path / "set.mp3"
+    source.write_bytes(b"ID3")
+    secrets.set(str(secrets.Credential.IDENTIFY_KEY), "k-1")
+    secrets.set(str(secrets.Credential.IDENTIFY_SIGNING_KEY), "s-1")
+    monkeypatch.setattr(recognize.binaries, "find", lambda name: f"/usr/bin/{name}")
+    transport = FakeTransport()
+    monkeypatch.setattr(acrcloud, "http_transport", transport)
+    monkeypatch.setattr(acrcloud, "FfmpegCarver", lambda: FakeCarver(20.0))
+    with pytest.raises(TypeError, match="recognition section"):
+        recognize.identify(source)
+    assert transport.requests == []
 
 
 def test_the_gate_still_refuses_with_no_credentials_before_the_seam_is_touched(monkeypatch, tmp_path):
@@ -687,7 +736,7 @@ def test_the_gate_still_refuses_with_no_credentials_before_the_seam_is_touched(m
 
 
 def test_the_bound_identifier_resolves_its_seams_at_call_time(monkeypatch, tmp_path):
-    identifier = acrcloud.bound_identifier()
+    identifier = acrcloud.bound_identifier(config.RecognitionConfig())
     transport = FakeTransport(miss())
     monkeypatch.setattr(acrcloud, "http_transport", transport)
     monkeypatch.setattr(acrcloud, "FfmpegCarver", lambda: FakeCarver(5.0))
@@ -792,6 +841,8 @@ def counted_credentials():
 
 
 def cached_run(transport, source, cache, ledger, *, duration_s=85.0, **kwargs) -> Identified:
+    kwargs.setdefault("budget", Budget())
+    kwargs.setdefault("host", HOST)
     return acrcloud.identify(
         source,
         transport=transport,
@@ -880,7 +931,7 @@ def test_another_regional_host_misses_the_cache(tmp_path, cache, ledger):
     ids=lambda changed: next(iter(changed)),
 )
 def test_every_field_of_the_plan_moves_the_key(changed):
-    base = dict(digest="d", offsets=(0, 25, 50))
+    base = dict(digest="d", offsets=(0, 25, 50), host=HOST)
     assert acrcloud.ChunkPlan(**base).key() != acrcloud.ChunkPlan(**{**base, **changed}).key()
     assert acrcloud.ChunkPlan(**base).key() == acrcloud.ChunkPlan(**base).key()
 
@@ -980,7 +1031,9 @@ def test_the_pass_carries_the_recordings_digest(tmp_path, cache, ledger):
 
 def plan_of(source: Path, duration_s: float = 85.0) -> acrcloud.ChunkPlan:
     return acrcloud.ChunkPlan(
-        digest=acrcloud.content_digest(source), offsets=acrcloud.sample_offsets(duration_s)
+        digest=acrcloud.content_digest(source),
+        offsets=acrcloud.sample_offsets(duration_s),
+        host=HOST,
     )
 
 
@@ -1097,7 +1150,9 @@ def test_the_monthly_bound_reads_what_is_owed_and_the_per_run_bound_reads_the_gr
     other = real_recording(tmp_path, b"another recording", name="other.mp3")
     with pytest.raises(CratekitError) as monthly:
         cached_run(FakeTransport(), other, cache, ledger, budget=spent)
-    assert monthly.value.cause.detail == {"planned": 3, "used": 3, "bound": 3, "kind": "monthly"}
+    assert monthly.value.cause.detail == {
+        "planned": 3, "used": 3, "bound": 3, "kind": "monthly", "key": acrcloud.MONTHLY_KEY
+    }
 
 
 def test_the_monthly_bound_counts_only_the_gap_on_a_partly_kept_recording(tmp_path, cache, ledger):
@@ -1118,7 +1173,11 @@ def test_the_bound_identifier_hands_the_cache_through(tmp_path, cache, ledger):
     source = real_recording(tmp_path)
     transport = FakeTransport(*three_answers())
     identifier = acrcloud.bound_identifier(
-        transport=transport, carver=FakeCarver(85.0), ledger=ledger, cache=cache
+        config.RecognitionConfig(),
+        transport=transport,
+        carver=FakeCarver(85.0),
+        ledger=ledger,
+        cache=cache,
     )
     secrets.set(str(secrets.Credential.IDENTIFY_KEY), "k-1")
     secrets.set(str(secrets.Credential.IDENTIFY_SIGNING_KEY), "s-1")
