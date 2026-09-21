@@ -23,6 +23,7 @@ import tidalapi
 from tidalapi.exceptions import ObjectNotFound, TooManyRequests
 
 from cratekit.acquire import listing, match, provider_session
+from cratekit.cli import render
 from cratekit.core import config, jobs, review, secrets
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
@@ -285,6 +286,34 @@ def test_with_no_session_the_seam_still_refuses_the_credential_and_builds_no_cli
 
     assert excinfo.value.cause.reason == "credential-missing"
     assert client.logins == []
+
+
+def test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure(cfg, monkeypatch):
+    """U97, closing R-411, and deliberately narrow about what it proves.
+
+    It does NOT prove that two surfaces agree; doctor is never invoked here and
+    a test that claimed otherwise would be spending a name it had not earned.
+    What it holds is this path's half of the agreement: the refusal leaves
+    ``catalogue.resolve`` carrying ``AUTHENTICATE_PROVIDER`` and nothing else,
+    so the words it reaches a person with are the ones ``cli/render`` holds for
+    every surface. The words themselves are pinned once, in
+    ``tests/test_cli_contract.py``.
+
+    The token is asserted first and the rendering second, because a producer
+    that switched to another token would still render something sensible and
+    would still be the defect.
+    """
+    use_client(monkeypatch, FakeClient())
+
+    with pytest.raises(CratekitError) as excinfo:
+        catalogue.resolve(cfg)
+
+    cause = excinfo.value.cause
+    assert cause.remediation.remedy is Remedy.AUTHENTICATE_PROVIDER
+    line = render.remediation_line(cause)
+    assert line != "  fix: crate login"
+    assert "crate login provider-session --from-file" in line
+    assert "docs/adapters.md" in line
 
 
 class Response:

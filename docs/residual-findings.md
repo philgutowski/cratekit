@@ -18859,6 +18859,31 @@ or the decision to require ownership is recorded as final.
 
 ## R-411. Doctor's remedy for a missing provider credential names a verb that cannot supply one
 
+**CLOSED 2026-09-21, by U97 on `relay/142`.** The closing condition is met: the
+remedy names the procedure and no longer names a verb that cannot perform it.
+`cli/render.py` leaves `AUTHENTICATE_PROVIDER` with no command, which is the
+shape the table already used for a fix that is not a command, and gives it
+advice naming mint, record with `crate login provider-session --from-file`, and
+erase, pointing at the project's `docs/adapters.md`. No new verb, and the token
+itself never moved: it was always right and the rendering was not.
+
+**Three things were found closing it that the finding above does not say.**
+
+1. The finding names two raisers and there are THREE. `modules/outbound/account.py`
+   raises the same token for the write path. All three read the one table, so
+   the fix reached it, but the finding's own list was short.
+2. `REAUTHENTICATE_PROVIDER`, the line below it in the same table, rendered as
+   "log in again", which is the identical dead end reached from the other
+   direction and is the likelier path, since every session minted before
+   2026-09-01 is a device flow session the adapter now refuses, and it is the
+   token both `label/catalogue.py` and the outbound seam fall back to when a
+   stored session is rejected. It was fixed in the same round and now composes
+   the same procedure from one module constant.
+3. The finding's line pointer for the label path, `label/catalogue.py:206`, is a
+   docstring. The raise is at `:387`.
+
+**Original finding, kept as written:**
+
 **Found:** 2026-09-18, parity audit.
 
 `cli/doctor.py:1362` with `cli/render.py:56` renders the remedy for a missing
@@ -24671,3 +24696,140 @@ listing error when it should say `absent`.
 
 **Closes when:** the exit is measured against the configured provider, at the
 attended sitting R-338's closing paragraph names.
+
+---
+
+## R-616. One procedure, two shipped wordings, and they disagree about the erase
+
+**Found:** 2026-09-21, U97's review round on `relay/142`.
+
+`cli/render.py` now words the provider session procedure once, as
+`_PROVIDER_SESSION_PROCEDURE`, and both provider tokens compose it.
+`acquire/vendored.py:200` holds `REAUTHORISE_HINT`, a second wording of the
+same procedure, appended into the refusal MESSAGE on the adapter's
+authentication failures. It names mint and record and stops there. The erase is
+the step the CLI copy calls load bearing, because R4's promise is that no
+provider token sits on disk between invocations and the hop through a file is
+the one moment that is briefly false.
+
+**Measured cost:** a person meeting the adapter's own refusal reads a message
+that stops one step short, then reads a `fix:` line immediately below it that
+does not. Low. Both are actionable, they simply disagree about where the
+procedure ends, and the fuller one is the one on screen second.
+
+**Why not fixed here.** The two cannot share a constant. D2 puts the words in
+the CLI layer and `acquire` may not import it, so one copy is structural until
+somebody moves the hint to a token the renderer answers, which is a unit and
+not a wording fix. Driven only by reading both strings; no refusal was produced
+end to end.
+
+**Closes when:** the adapter's authentication refusals carry a token rather than
+a sentence, or the two wordings are pinned against each other by a test.
+
+---
+
+## R-617. A user facing remedy names a document that ships in no wheel
+
+**Found:** 2026-09-21, U97's review round on `relay/142`, driven.
+
+`docs/adapters.md` is the only place the minting command itself is written
+down, and U97's remedy points at it. **A wheel was built from this tree into a
+temporary directory and its entries listed: there is no `docs/` in it at all.**
+`pyproject.toml` package-data names templates, the skill assets and the
+vendored licence, and nothing else. The first run skill asset DOES ship, and it
+already carries `crate login provider-session --from-file`.
+
+The wording landed as "docs/adapters.md in the project's repository", which is
+true for an installed person and for a checkout both, so the product does not
+currently say anything false. What is unresolved is the class: any future
+remedy, refusal or step that names a repository path reads as a local file, and
+nothing in the repository makes the packaging boundary visible at the place the
+string is written.
+
+**Measured cost:** none today, by wording. The trap is live for the next such
+string.
+
+**Why not fixed here.** The fix is either shipping the document, which is a
+packaging decision with a licence and size question behind it, or a guard that
+refuses a repository path inside a user facing string, which needs a definition
+of user facing string this repository does not have yet.
+
+**Closes when:** the procedure is reachable from an installed machine without a
+browser, or a guard exists over paths in user facing strings.
+
+---
+
+## R-618. The precedence between a remedy's words and a cause's first step is pinned by nothing
+
+**Found:** 2026-09-21, U97's mutation pass, row `B5_remediation_line_prefers_a_step`.
+
+`cli/render.remediation_line` answers with the token's words when a cause
+carries a token, and falls back to the cause's first step. Reversing that
+order, so the step wins, **kills zero tests in the full suite of 9,446.**
+
+**The input is reachable and was measured rather than argued:** an AST walk over
+`src/cratekit` finds 52 call sites passing `steps` and `remedy` together, in
+twelve modules. The composite, `C2` in `docs/mutation/u97-c.md`, removes the
+token branch outright and kills 4, so the renderer's use of the table is held
+and only the precedence between the two is not.
+
+**Measured cost:** low. A person still reads an actionable sentence, it is just
+the producer's step instead of the table's words, and the table's words are the
+ones D2 exists to keep consistent across surfaces.
+
+**Why not fixed here.** It is a test gap on a read path with no user facing
+consequence today, so it did not meet the bar to hold the merge.
+
+**Closes when:** one test renders a cause carrying both and asserts which one
+answers.
+
+---
+
+## R-619. The outbound account seam's missing session refusal has a remedy nothing pins
+
+**Found:** 2026-09-21, U97's mutation pass, row `B4_outbound_path_raises_the_other_token`.
+
+`modules/outbound/account.py` refuses a missing provider session with
+`AUTHENTICATE_PROVIDER`. Swapping it to `REAUTHENTICATE_PROVIDER` **kills zero
+tests in the full suite**, so a person who never had a session would be told
+theirs was rejected and nothing would go red.
+
+The composite, `C1` in `docs/mutation/u97-c.md`, removes the refusal entirely
+and kills 1, and only on the full suite: the three worker files that look like
+the subset for this module killed nothing. So the refusal is held by exactly one
+test somewhere else, and its remedy is held by none.
+
+**Measured cost:** none today, since the token is correct. It is a guard that
+would not notice the regression, on the one provider path of the three that has
+no test naming its remedy.
+
+**Why not fixed here.** The equivalent guards for the doctor path and the label
+path both landed in this unit and both kill. This is the same assertion one file
+over, and it is a test to add rather than a defect to fix.
+
+**Closes when:** a test asserts the token this seam raises, the way
+`tests/test_label_tidal_catalogue.py` does for the label path.
+
+---
+
+## R-620. A doctor test takes its expected remedy text from the renderer it is testing
+
+**Found:** 2026-09-21, U97's hunt round on `relay/142`.
+
+`tests/test_doctor.py`, in the test asserting the human rendering shows the
+checks, reads `render.remedy_text(Remedy.INSTALL_KEYCHAIN_BACKEND)` and asserts
+it appears in the output. Both sides come from the same table, so the assertion
+is X equals X on the wording: any rewording of that advice, including one that
+makes it unperformable, keeps the test green. It genuinely exercises the path,
+which is why it was worth keeping rather than deleting.
+
+**Measured cost:** none observed. It is the shape that let R-411 live for a
+wording that had been wrong since the table was written.
+
+**Why not fixed here.** It is outside this unit's diff and the unit's own three
+guards all pin literal text instead, which is the pattern to copy. Filed rather
+than swept, because the sweep is worth doing over every remedy assertion at
+once and not one file at a time.
+
+**Closes when:** that assertion names the text it expects, or a sweep over the
+suite's remedy assertions replaces them all.

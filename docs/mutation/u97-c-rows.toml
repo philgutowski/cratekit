@@ -1,0 +1,36 @@
+name = "u97-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_outbound_refusal_removed"
+description = "composite for B4: remove the outbound account's missing session refusal entirely, so the seam opens a client with no credential. Shows what the guard holds when its remedy holds nothing"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_sync_all.py", "tests/test_label_workers.py"]
+old = '''    if not secrets.exists(str(secrets.Credential.PROVIDER_SESSION)):
+        raise refuse(
+            "credential-missing",
+            "no streaming provider session is stored, so there is no account "
+            "to write this playlist or these hearts to",'''
+new = '''    if False:
+        raise refuse(
+            "credential-missing",
+            "no streaming provider session is stored, so there is no account "
+            "to write this playlist or these hearts to",'''
+
+[[rows]]
+id = "C2_remediation_line_drops_the_token_branch"
+description = "composite for B5: drop the remedy branch altogether, so every cause with a token falls to its first step or the exit code's generic summary. Shows what the renderer holds when the precedence between the two holds nothing"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    remedy = cause.remediation.remedy
+    if remedy is not None:
+        words = remedy_text(remedy)
+        if words:
+            return f"  fix: {words}"'''
+new = '''    remedy = cause.remediation.remedy
+    if False:
+        words = remedy_text(remedy)
+        if words:
+            return f"  fix: {words}"'''
