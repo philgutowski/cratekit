@@ -1,0 +1,172 @@
+name = "r647-a"
+pass_kind = "light"
+
+# R-647, relay/188. The cross boot judgment in core.session and the machine
+# identity the holder now records. Every row is this unit's own guard.
+
+[[rows]]
+id = "B1_unknown_machine_not_refused"
+description = "_gone_since_an_earlier_boot: drop the unknown machine check, so two holders that both name no machine compare equal as text and a holder recorded before the field existed is cleared on a machine that cannot name itself"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    if UNKNOWN_IDENTITY in (holder.machine, reference.machine):
+        return False
+    if holder.machine != reference.machine:'''
+new = '''    if holder.machine != reference.machine:'''
+
+[[rows]]
+id = "B2_machine_equality_dropped"
+description = "_gone_since_an_earlier_boot: stop comparing machine identities, so another machine sharing the host name and the library drive has its claim cleared on the host name alone"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    if holder.machine != reference.machine:
+        return False'''
+new = '''    if holder.machine is None:
+        return False'''
+
+[[rows]]
+id = "B3_unparsable_boot_read_as_gone"
+description = "_gone_since_an_earlier_boot: judge a boot that is not a number as proof of an earlier boot rather than as no proof"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    except ValueError:
+        return False
+    if not math.isfinite(earlier_by)'''
+new = '''    except ValueError:
+        return process_exists(holder.pid) is False
+    if not math.isfinite(earlier_by)'''
+
+[[rows]]
+id = "B4_infinite_boot_accepted"
+description = "_gone_since_an_earlier_boot: drop the finiteness check, so a boot recorded as minus infinity reads as infinitely earlier"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    if not math.isfinite(earlier_by) or earlier_by <= BOOT_DRIFT_SECONDS:'''
+new = '''    if earlier_by <= BOOT_DRIFT_SECONDS:'''
+
+[[rows]]
+id = "B5_drift_margin_halved"
+description = "BOOT_DRIFT_SECONDS: 60 to 30, a realistic nearby value, so a clock adjustment of forty seconds reads as a restart"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''BOOT_DRIFT_SECONDS = 60.0'''
+new = '''BOOT_DRIFT_SECONDS = 30.0'''
+
+[[rows]]
+id = "B6_drift_margin_doubled"
+description = "BOOT_DRIFT_SECONDS: 60 to 120, so a restart a minute and a half apart is kept for no reason"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''BOOT_DRIFT_SECONDS = 60.0'''
+new = '''BOOT_DRIFT_SECONDS = 120.0'''
+
+[[rows]]
+id = "B7_margin_boundary_exclusive"
+description = "_gone_since_an_earlier_boot: less than instead of less than or equal, so a boot exactly at the margin is judged earlier"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''earlier_by <= BOOT_DRIFT_SECONDS:'''
+new = '''earlier_by < BOOT_DRIFT_SECONDS:'''
+
+[[rows]]
+id = "B8_direction_ignored"
+description = "_gone_since_an_earlier_boot: take the distance between the boots rather than which came first, so a LATER boot reading reads as an earlier boot"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''        earlier_by = float(reference.boot) - float(holder.boot)'''
+new = '''        earlier_by = abs(float(reference.boot) - float(holder.boot))'''
+
+[[rows]]
+id = "B9_platform_silence_read_as_gone"
+description = "_gone_since_an_earlier_boot: read a platform declining to say whether the process exists as gone"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    return process_exists(holder.pid) is False'''
+new = '''    return process_exists(holder.pid) is not True'''
+
+[[rows]]
+id = "B10_live_identifier_not_asked"
+description = "_gone_since_an_earlier_boot: skip the live process check, so a live holder read through a moved clock has its claim cleared mid write"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    return process_exists(holder.pid) is False'''
+new = '''    return True'''
+
+[[rows]]
+id = "B11_start_time_compared_again"
+description = "_gone_since_an_earlier_boot: the review's defect restored, a live identifier keeps the claim only when its start time matches, so the Linux shape of a stepped clock clears a live claim"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    return process_exists(holder.pid) is False'''
+new = '''    exists = process_exists(holder.pid)
+    if exists is None:
+        return False
+    return not (exists and process_started(holder.pid) == holder.started)'''
+
+[[rows]]
+id = "B12_cross_boot_never_judged"
+description = "holder_alive: every other boot judged alive again, the state before this unit, so a power loss stays a dead end"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    if holder.boot != reference.boot:
+        return not _gone_since_an_earlier_boot(holder, reference)'''
+new = '''    if holder.boot != reference.boot:
+        return True'''
+
+[[rows]]
+id = "B13_current_holder_names_no_machine"
+description = "current_holder: record the declared unknown instead of the machine identity, so no holder is ever provably this machine's"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''        machine=machine_identity(),'''
+new = '''        machine=UNKNOWN_IDENTITY,'''
+
+[[rows]]
+id = "B14_machine_not_read_back"
+description = "Holder.from_json: ignore the recorded machine, so a record or lock read from disk never names one"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''            machine=str(data.get("machine", UNKNOWN_IDENTITY)),'''
+new = '''            machine=UNKNOWN_IDENTITY,'''
+
+[[rows]]
+id = "B15_machine_not_written"
+description = "Holder.to_json: omit the machine, so nothing on disk carries it"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''            "machine": self.machine,
+'''
+new = ''''''
+
+[[rows]]
+id = "B16_serial_recorded_in_the_clear"
+description = "machine_identity: return the raw platform identifier instead of its digest, so a hardware serial is written into every lock and session record"
+file = "src/cratekit/core/session.py"
+surface = "maintainer"
+tests = ["tests/test_write_session.py"]
+old = '''    return hashlib.sha256(f"cratekit-machine:{raw}".encode()).hexdigest()[:32]'''
+new = '''    return raw'''
+
+[[rows]]
+id = "B17_macos_probe_reads_nothing"
+description = "_raw_machine_identity: the macOS branch finds nothing, so every holder on a Mac names no machine and a power loss is a dead end there"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py"]
+old = '''        return found.group(1) if found else None'''
+new = '''        return None'''

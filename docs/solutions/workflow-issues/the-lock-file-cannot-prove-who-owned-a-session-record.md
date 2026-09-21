@@ -16,6 +16,7 @@ applies_when:
   - "Deciding whether some state a process left behind can be cleaned up because that process is gone"
   - "Reusing the stale lock proof (`holder_alive`) for anything other than the lock itself"
   - "Staging a hard kill in a test"
+  - "Judging a holder recorded by another boot, or comparing process start times across boots"
   - "Adding an open state that can outlive its process on purpose, like an intake landing"
 tags:
   - "session"
@@ -23,6 +24,9 @@ tags:
   - "hard-kill"
   - "holder"
   - "r-598"
+  - "r-647"
+  - "power-loss"
+  - "machine-identity"
 ---
 
 # The lock file cannot prove who owned a session record
@@ -61,10 +65,34 @@ Each condition keeps a record somebody still needs:
   across processes ON PURPOSE when its only debt is a deferred placement
   (R-501). Reading "no holder" as "holder gone" would end every one of them.
   That is the trap in this area: `open` does not mean "a process is running".
-- `holder_alive` fails towards alive on another host, another boot and a
-  missing start time. So a power loss, where the holder is from the previous
-  boot, is NOT proven gone. That is R-647, and the fix is a machine identity
-  two machines cannot share, not loosening `holder_alive`.
+- `holder_alive` fails towards alive on another host and a missing start time.
+  A power loss, where the holder is from the previous boot, was not proven gone
+  until R-647 added a machine identity two machines cannot share. See the
+  section below before touching the cross boot judgment.
+
+## Judging a holder from another boot (R-647)
+
+The host name is not the proof, because two machines share one and a library
+drive moves between them. The holder records `machine`, a digest of the
+platform's machine identifier, and `_gone_since_an_earlier_boot` needs it known
+and equal on both sides, the recorded boot earlier past `BOOT_DRIFT_SECONDS`,
+and no live process with the recorded identifier.
+
+**Do not compare start times across boots.** The boot identity is
+`psutil.boot_time()`, a wall clock reading that a stepped clock moves. On Linux
+psutil also derives a process's start time from that boot reading plus a tick
+count, so a forward step moves a LIVE holder's boot and its start time by the
+same amount. Read after the step, that holder looks like an earlier boot whose
+identifier was recycled, and a start time comparison clears its claim mid write.
+The first build did exactly that and the built in review caught it. On macOS the
+start time is a fixed reading taken at launch, so a suite running there cannot
+show the failure; the test that pins it models the Linux shape by hand. Any live
+process with the identifier keeps the claim instead, and the cost is a record
+kept until an unrelated process that inherited the number exits.
+
+Test the cross boot judgment with an explicit `here=` holder carrying a pinned
+machine and a numeric boot, and pin `machine_identity` with monkeypatch in verb
+level tests, so no test depends on what the platform reports.
 
 ## Staging a real hard kill in the suite
 

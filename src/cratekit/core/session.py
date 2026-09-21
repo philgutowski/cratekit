@@ -13,9 +13,9 @@ This module is that spend, and it is four separate things that have to agree:
 2. **A library-scoped lock** (KTD21, KTD17). Both the lock and the log sit beside
    the library rather than beside an installation, so a second machine contends
    with the first instead of holding an invisible lock of its own. The holder is
-   named by host, boot identity, process identifier and process start time,
-   because a bare process identifier means nothing across machines and is reused
-   after a restart.
+   named by host, machine identity, boot identity, process identifier and
+   process start time, because a bare process identifier means nothing across
+   machines and is reused after a restart.
 
 3. **A session log the pruning scan can actually read.** The source system's
    equivalent got the filename, the state field and one of the two terminal
@@ -60,11 +60,15 @@ reaches a persisted record arrives as a parameter from the layer that owns one.
 
 from __future__ import annotations
 
+import functools
+import hashlib
 import json
 import logging
+import math
 import os
 import re
 import socket
+import subprocess
 import sys
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
@@ -492,29 +496,45 @@ UNKNOWN_IDENTITY = "unknown"
 class Holder:
     """Who holds the session lock, identified across machines and restarts.
 
-    Four fields, and each one closes a way the other three lie:
+    Five fields, and each one closes a way the others lie:
 
     * ``host`` alone cannot tell two machines apart from one machine's two runs;
+    * ``machine`` is what ``host`` cannot be, an identity two machines do not
+      share, because two machines can carry one host name and a library drive
+      moves between them. It is what lets a holder from this machine's previous
+      boot be judged gone after a power loss (R-647);
     * ``pid`` alone is meaningless on another machine and is REUSED after a
       restart, so a stale record can name a live and entirely unrelated process;
     * ``boot`` distinguishes this boot of this machine from the last one, which
       is what makes a recycled identifier detectable;
     * ``started`` distinguishes this process from the next one to receive the
       same identifier within one boot.
+
+    ``machine`` defaults to the declared unknown, which is also what a holder
+    recorded before the field existed reads back as, and an unknown machine is
+    never evidence that a holder from another boot is gone.
     """
 
     host: str
     boot: str
     pid: int
     started: str
+    machine: str = UNKNOWN_IDENTITY
 
     def to_json(self) -> dict[str, Any]:
-        return {"host": self.host, "boot": self.boot, "pid": self.pid, "started": self.started}
+        return {
+            "host": self.host,
+            "machine": self.machine,
+            "boot": self.boot,
+            "pid": self.pid,
+            "started": self.started,
+        }
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> Holder:
         return cls(
             host=str(data.get("host", UNKNOWN_IDENTITY)),
+            machine=str(data.get("machine", UNKNOWN_IDENTITY)),
             boot=str(data.get("boot", UNKNOWN_IDENTITY)),
             pid=int(data.get("pid", 0)),
             started=str(data.get("started", UNKNOWN_IDENTITY)),
@@ -538,6 +558,70 @@ def boot_identity() -> str:
     except Exception as exc:  # noqa: BLE001 - an unanswerable identity is not a failure
         logger.debug("boot identity is unavailable on this platform: %s", exc)
         return UNKNOWN_IDENTITY
+
+
+#: The files a Linux machine keeps its identity in, the systemd one first.
+_LINUX_MACHINE_ID_FILES = ("/etc/machine-id", "/var/lib/dbus/machine-id")
+
+#: How the macOS hardware identity reads in the platform registry's output.
+_IOREG_UUID = re.compile(r'"IOPlatformUUID"\s*=\s*"([^"]+)"')
+
+
+def _raw_machine_identity() -> str | None:
+    """The platform's own identifier for this machine, or None when it will not say."""
+    if sys.platform == "darwin":
+        completed = subprocess.run(
+            ["/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        found = _IOREG_UUID.search(completed.stdout)
+        return found.group(1) if found else None
+    if sys.platform.startswith("linux"):
+        for candidate in _LINUX_MACHINE_ID_FILES:
+            try:
+                text = Path(candidate).read_text().strip()
+            except OSError:
+                continue
+            if text:
+                return text
+        return None
+    if sys.platform == "win32":
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography"
+        ) as key:
+            return str(winreg.QueryValueEx(key, "MachineGuid")[0]) or None
+    return None
+
+
+@functools.cache
+def machine_identity() -> str:
+    """This machine, as an identity no other machine shares, or the declared unknown.
+
+    RECORDED AS A DIGEST, not as the identifier itself. The value only has to be
+    compared for equality, and a session record is not the place to keep a
+    hardware serial in the clear.
+
+    Cached for the life of the process, because a machine does not change
+    identity while a process runs and the macOS answer costs a subprocess.
+
+    THE HONEST LIMIT. A Linux identity is a file, and a disk image cloned without
+    regenerating it gives two machines one identity. Two such machines that also
+    share a host name and a library drive would each read the other's previous
+    boot as its own. That is the case this field narrows rather than closes.
+    """
+    try:
+        raw = _raw_machine_identity()
+    except Exception as exc:  # noqa: BLE001 - an unanswerable identity is not a failure
+        logger.debug("machine identity is unavailable on this platform: %s", exc)
+        raw = None
+    if not raw:
+        return UNKNOWN_IDENTITY
+    return hashlib.sha256(f"cratekit-machine:{raw}".encode()).hexdigest()[:32]
 
 
 def process_started(pid: int) -> str:
@@ -585,21 +669,76 @@ def current_holder() -> Holder:
     pid = os.getpid()
     return Holder(
         host=socket.gethostname(),
+        machine=machine_identity(),
         boot=boot_identity(),
         pid=pid,
         started=process_started(pid),
     )
 
 
+#: How far apart two readings of ONE boot's start may land. The boot identity is
+#: a wall clock reading of when the machine started, and a clock adjustment moves
+#: it, so two processes of one boot can record boots a few seconds apart. A
+#: holder is judged to be from an earlier boot only past this margin.
+BOOT_DRIFT_SECONDS = 60.0
+
+
+def _gone_since_an_earlier_boot(holder: Holder, reference: Holder) -> bool:
+    """Whether a holder from another boot is provably from THIS machine's earlier one.
+
+    No process survives a restart, so a holder recorded by an earlier boot of
+    this machine is gone. Every condition below is a way to be wrong about that,
+    and each one answers "not proven" (R-647):
+
+    * the machine identity must be known on both sides and equal. The host name
+      is not enough, because two machines share one and a library drive moves
+      between them; a holder recorded before the field existed has none;
+    * the holder's boot must be EARLIER, past the clock drift margin. A later or
+      a nearby reading is either the same boot read twice or a clock nobody can
+      reason about;
+    * and no process with its identifier may be running now AT ALL, whatever
+      start time it reports, and the platform must say so rather than decline.
+
+    THE LAST CONDITION DOES NOT COMPARE START TIMES, and that is deliberate. A
+    stepped clock moves the boot reading, and on Linux it moves a live process's
+    reported start time by the same amount, because that is derived from the
+    boot reading. A live holder read through such a clock carries a boot that
+    looks earlier and a start time that looks recycled, and a comparison would
+    clear its claim mid write. Any live process with the identifier keeps the
+    claim instead. The cost is a record kept until an unrelated process that
+    inherited the number after the restart exits, which is the side to be wrong
+    on.
+    """
+    if UNKNOWN_IDENTITY in (holder.machine, reference.machine):
+        return False
+    if holder.machine != reference.machine:
+        return False
+    try:
+        earlier_by = float(reference.boot) - float(holder.boot)
+    except ValueError:
+        return False
+    if not math.isfinite(earlier_by) or earlier_by <= BOOT_DRIFT_SECONDS:
+        return False
+    # False is the one answer that proves it. True may be the holder itself and
+    # None is a platform declining to say; see the docstring for why a start
+    # time is not asked.
+    return process_exists(holder.pid) is False
+
+
 def holder_alive(holder: Holder, *, here: Holder | None = None) -> bool:
     """Whether a recorded holder is still running.
 
     FAILS TOWARDS ALIVE, deliberately, on every question this process cannot
-    answer: a holder on another host, a holder from another boot of this host, a
-    holder whose record carries no start time, or a live process whose start time
-    this platform will not report. Guessing "dead" would let one machine clear
-    another machine's lock, and the operation the lock protects is the one that
-    removes files.
+    answer: a holder on another host, a holder from another boot that cannot be
+    proven to be this machine's earlier one, a holder whose record carries no
+    start time, or a live process whose start time this platform will not report.
+    Guessing "dead" would let one machine clear another machine's lock, and the
+    operation the lock protects is the one that removes files.
+
+    ANOTHER BOOT OF THIS MACHINE IS GONE, and that is the one cross boot answer
+    that may clear a claim, because it is what a power loss leaves (R-647). The
+    proof is the machine identity, never the host name; see
+    :func:`_gone_since_an_earlier_boot`.
 
     "DOES IT EXIST" AND "IS IT THE SAME PROCESS" ARE ASKED SEPARATELY, and that
     separation is the whole correctness of the last two lines. The start time is
@@ -612,10 +751,12 @@ def holder_alive(holder: Holder, *, here: Holder | None = None) -> bool:
     "release the stale lock" against a session that is writing right now.
     """
     reference = here or current_holder()
-    if holder.host != reference.host or holder.boot != reference.boot:
+    if holder.host != reference.host:
         return True
     if UNKNOWN_IDENTITY in (holder.boot, reference.boot):
         return True
+    if holder.boot != reference.boot:
+        return not _gone_since_an_earlier_boot(holder, reference)
     if holder.started == UNKNOWN_IDENTITY:
         return True
     exists = process_exists(holder.pid)
@@ -897,7 +1038,8 @@ def orphaned(record: SessionRecord, *, here: Holder | None = None) -> bool:
       one is not proof of anything: an intake landing stays open across
       processes on purpose and never names a holder;
     * :func:`holder_alive` says that holder is gone. It fails towards alive on
-      another host, another boot and a missing start time, so this does too.
+      another host, a missing start time, and another boot it cannot prove was
+      this machine's earlier one, so this does too.
 
     A holder this build cannot read is judged alive, for the same reason.
     """
@@ -926,10 +1068,10 @@ def abandon_orphaned_sessions(
     refuses every cutover, and before this the only way out was editing a file
     in the log by hand.
 
-    NOT A POWER LOSS, AND THAT IS A KNOWN GAP (R-647). After a restart the holder
-    is from another boot, and :func:`holder_alive` judges that alive, because a
-    library drive moved between two machines with one host name would otherwise
-    let one clear the other's claim. Such a record stays open.
+    A POWER LOSS AS WELL, since R-647. After a restart the holder is from another
+    boot, and :func:`holder_alive` judges it gone only when the recorded machine
+    identity is this machine's. A holder recorded on another machine sharing the
+    host name, or recorded before the identity was, still stays open.
 
     ``only`` limits the sweep to the records a caller listed. The release verb
     lists what its own invocation showed; the question and the answer are two
@@ -2599,6 +2741,7 @@ __all__ = [
     "ACK_KEY",
     "ACK_SCHEMA_VERSION",
     "ANLZ_NAME_PATTERN",
+    "BOOT_DRIFT_SECONDS",
     "DEFAULT_ACK_VALIDITY",
     "HOLDER_KEY",
     "IMPORT_VERIFIED_KEY",
@@ -2646,6 +2789,7 @@ __all__ = [
     "lock_path",
     "log_dir",
     "log_path",
+    "machine_identity",
     "mark_awaiting_import",
     "mark_import_verified",
     "new_session_id",

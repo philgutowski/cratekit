@@ -4,7 +4,28 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-598, issue #187, `relay/187`, 2026-09-21.**
+**Last merged: R-647, issue #188, `relay/188`, 2026-09-21.**
+A gated write cut off by a power loss is no longer a dead end. `Holder` records
+`machine`, a digest of the platform's machine identifier, beside the host name,
+and a holder recorded before the field reads back as unknown. `holder_alive`
+judges a holder from another boot gone only through
+`_gone_since_an_earlier_boot`: both machine identities known and equal, the
+recorded boot earlier by more than `BOOT_DRIFT_SECONDS` (60), and no live process
+with the recorded identifier. Start times are NOT compared across boots, since on
+Linux a stepped clock moves a live process's start time with the boot reading
+(the built in review's one finding, fixed in round one). Driven through the
+dispatcher with the state a restart leaves: the cutover precheck refuses, `crate
+session release` clears the lock and abandons the record, the precheck passes.
+Another machine with this host name and a record with no machine are kept.
+R-647 CLOSED in place. Filed R-649, a disk image cloned on Linux or Windows
+shares a machine identity (unmeasured, no issue).
+Battery: ruff clean, **9869 passed** and 1 skipped in 74 seconds. Scan clean.
+Mutation table `docs/mutation/r647-a.md`: **17 rows, the author's own, all
+killed**, notes in `r647-notes.md`. The learning is a new section of the R-598
+entry in `docs/solutions/workflow-issues/`.
+**Main's highest residual number is R-649.**
+
+**The session before: R-598, issue #187, `relay/187`, 2026-09-21.**
 A gated write that is hard killed no longer leaves a dead end. The gates write
 the lock's claimant into the record they open, `detail.holder`, because the lock
 file's copy is overwritten by the next session. `session.orphaned` needs the
@@ -22,7 +43,6 @@ Battery: ruff clean, **9848 passed** and 1 skipped in 68 seconds. Scan clean.
 Mutation tables `docs/mutation/r598-a.md` and `r598-b.md`: **14 rows, the
 author's own, 13 killed**, the zero B2 explained in `r598-notes.md`. Learning
 filed in `docs/solutions/workflow-issues/`.
-**Main's highest residual number is R-648.**
 
 **The session before: R-592, issue #186, `relay/186`, 2026-09-21.**
 An interrupted bare metal recovery reruns with nothing removed, which NARROWS

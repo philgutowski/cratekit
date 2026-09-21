@@ -41,6 +41,7 @@ import re
 import stat
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -757,11 +758,188 @@ def test_a_holder_on_another_machine_or_another_boot_is_assumed_alive(cfg):
     assert session.holder_alive(other_boot) is True
 
 
-def test_the_holder_carries_all_four_identifying_fields(cfg):
+def test_the_holder_carries_all_five_identifying_fields(cfg):
     """A bare process identifier is meaningless across machines and is reused."""
     holder = session.current_holder()
-    assert {"host", "boot", "pid", "started"} == set(holder.to_json())
+    assert {"host", "machine", "boot", "pid", "started"} == set(holder.to_json())
     assert session.Holder.from_json(holder.to_json()) == holder
+
+
+def test_a_holder_recorded_before_the_machine_identity_reads_back_as_unknown(cfg):
+    """A lock or record written by an earlier build names no machine, and says so."""
+    legacy = {"host": "h", "boot": "100", "pid": 7, "started": "1.000"}
+    assert session.Holder.from_json(legacy).machine == session.UNKNOWN_IDENTITY
+
+
+def test_this_platform_names_its_machine_as_a_digest_not_the_serial(cfg):
+    """The probe answers on the two platforms this ships for, and records no serial.
+
+    A platform with no answer gets the declared unknown, which fails towards
+    alive, so a missing answer costs the power loss recovery and nothing else.
+    """
+    machine = session.machine_identity()
+    assert session.current_holder().machine == machine
+    if sys.platform == "darwin" or sys.platform.startswith("linux"):
+        assert re.fullmatch(r"[0-9a-f]{32}", machine), machine
+    else:
+        assert machine == session.UNKNOWN_IDENTITY or re.fullmatch(r"[0-9a-f]{32}", machine)
+
+
+# ---------------------------------------------------------------------------
+# A holder from an earlier boot of this machine (R-647)
+# ---------------------------------------------------------------------------
+
+#: A machine identity for the tests below, in the digest's shape.
+THIS_MACHINE = "0123456789abcdef0123456789abcdef"
+
+
+def _here() -> session.Holder:
+    """This process, as a holder on a machine with a known identity and a numeric boot."""
+    live = session.current_holder()
+    return session.Holder(
+        host=live.host, machine=THIS_MACHINE, boot="1000000", pid=live.pid, started=live.started
+    )
+
+
+def _before_a_power_loss(here: session.Holder, **changes) -> session.Holder:
+    """A holder this machine's previous boot recorded, naming a process now gone.
+
+    A real finished process, so the last check in the judgment genuinely asks the
+    platform and is told no. A day before this boot, well past the drift margin.
+    """
+    finished = subprocess.Popen([sys.executable, "-c", "pass"])
+    finished.wait()
+    assert session.process_exists(finished.pid) is False
+    fields = {
+        "host": here.host,
+        "machine": here.machine,
+        "boot": str(float(here.boot) - 86400),
+        "pid": finished.pid,
+        "started": "900000.000",
+    }
+    fields.update(changes)
+    return session.Holder(**fields)
+
+
+def test_a_holder_from_an_earlier_boot_of_this_machine_is_gone(cfg):
+    """What a power loss leaves. No process survives a restart of its machine."""
+    here = _here()
+    assert session.holder_alive(_before_a_power_loss(here), here=here) is False
+
+
+@pytest.mark.parametrize(
+    ("label", "changes"),
+    [
+        ("another machine with this host name", {"machine": "f" * 32}),
+        ("recorded before the machine identity", {"machine": session.UNKNOWN_IDENTITY}),
+        ("a boot inside the drift margin", {"boot": "999990"}),
+        ("a boot exactly at the drift margin", {"boot": "999940"}),
+        ("a later boot", {"boot": "1086400"}),
+        ("a boot that is not a number", {"boot": "yesterday"}),
+        ("a boot that is not finite", {"boot": "-inf"}),
+    ],
+)
+def test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine(
+    cfg, label, changes
+):
+    """Every condition in the cross boot judgment, one row each, all failing alive.
+
+    The first row is the reason the host name is not the proof: a library drive
+    moved between two machines that share one would let either clear the other's
+    claim. Each row starts from the holder the test above judges gone, so a row
+    passing proves its own condition is what kept it.
+    """
+    here = _here()
+    assert session.holder_alive(_before_a_power_loss(here, **changes), here=here) is True, label
+
+
+def test_a_boot_just_past_the_drift_margin_is_gone(cfg):
+    """The margin is sixty seconds, pinned from both sides by this and the row above."""
+    here = _here()
+    assert session.BOOT_DRIFT_SECONDS == 60.0
+    assert session.holder_alive(_before_a_power_loss(here, boot="999939"), here=here) is False
+
+
+def test_two_unknown_machine_identities_are_not_one_machine(cfg):
+    """Unknown on both sides compares equal as text, and proves nothing."""
+    here = replace(_here(), machine=session.UNKNOWN_IDENTITY)
+    gone = _before_a_power_loss(here)
+    assert gone.machine == here.machine == session.UNKNOWN_IDENTITY
+    assert session.holder_alive(gone, here=here) is True
+
+
+def test_this_machine_with_no_identity_keeps_every_holder_from_another_boot(cfg):
+    """An unknown on THIS side is as much a gap as one on the recorded side."""
+    here = replace(_here(), machine=session.UNKNOWN_IDENTITY)
+    gone = _before_a_power_loss(_here())
+    assert session.holder_alive(gone, here=here) is True
+
+
+def test_a_live_process_read_through_a_moved_clock_is_kept(cfg):
+    """The boot moved and the process did not, so the boot was this one all along.
+
+    The boot identity is a wall clock reading and an adjusted clock moves it. The
+    holder here is this very process, recorded with a boot a day earlier: every
+    other condition says gone, and only the live process check keeps it.
+    """
+    here = _here()
+    moved = _before_a_power_loss(here, pid=here.pid, started=here.started)
+    assert session.holder_alive(moved, here=here) is True
+
+
+def test_a_live_process_whose_start_time_moved_with_the_clock_is_kept(cfg):
+    """The Linux shape of a stepped clock, where the start time moves with the boot.
+
+    Linux derives a process's start time from the boot reading, so a live holder
+    read after a forward step reports a start time that differs from the one it
+    recorded. Comparing the two would read the holder as a recycled identifier
+    and clear a claim mid write, so a live identifier keeps the claim whatever
+    start time it reports.
+    """
+    here = _here()
+    stepped = _before_a_power_loss(
+        here, pid=here.pid, started=f"{float(here.started) - 86400:.3f}"
+    )
+    assert session.holder_alive(stepped, here=here) is True
+
+
+def test_a_platform_that_cannot_say_whether_the_process_exists_keeps_it(cfg, monkeypatch):
+    """None is "will not say", and only a confident no may clear a claim."""
+    here = _here()
+    gone = _before_a_power_loss(here)
+    monkeypatch.setattr(session, "process_exists", lambda pid: None)
+    assert session.holder_alive(gone, here=here) is True
+
+
+def test_the_lock_left_by_this_machines_earlier_boot_is_releasable(cfg, monkeypatch):
+    """The release verb's lock half, through the same judgment and no other."""
+    monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
+    live = session.current_holder()
+    dead = _before_a_power_loss(live)
+    lock = session.lock_path(cfg)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text(json.dumps({"holder": dead.to_json()}))
+
+    assert session.release_stale_lock(cfg) == dead
+    assert session.read_lock_holder(lock) is None
+
+
+def test_the_lock_left_by_another_machine_with_this_host_name_is_not_releasable(
+    cfg, monkeypatch
+):
+    """The drive moved, the other machine is writing, and its claim stands."""
+    monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
+    live = session.current_holder()
+    theirs = _before_a_power_loss(live, machine="f" * 32)
+    lock = session.lock_path(cfg)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text(json.dumps({"holder": theirs.to_json()}))
+    before = lock.read_bytes()
+
+    with pytest.raises(CratekitError) as excinfo:
+        session.release_stale_lock(cfg)
+    assert excinfo.value.cause.reason == "session-lock-held"
+    assert lock.read_bytes() == before
 
 
 # ═══════════════════════════════════════════════════════════════════════════

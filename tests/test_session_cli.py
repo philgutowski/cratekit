@@ -662,6 +662,88 @@ def test_a_hard_killed_gated_write_blocks_cutover_until_release_abandons_it(
     tree_registry.assert_cutover_ready(installed, export=export)
 
 
+#: This machine's identity for the power loss tests, in the digest's shape.
+THIS_MACHINE = "0123456789abcdef0123456789abcdef"
+
+
+def _before_a_power_loss(monkeypatch, **changes) -> session.Holder:
+    """A holder this machine's previous boot recorded, naming a process now gone (R-647).
+
+    The machine identity is pinned, so the verb's own ``current_holder`` answers
+    with it and the test does not depend on what this platform reports. The pid
+    is a real finished process and the boot a day before this one.
+    """
+    monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
+    gone = _a_process_that_is_gone()
+    fields = {
+        **gone.to_json(),
+        "machine": THIS_MACHINE,
+        "boot": str(float(session.boot_identity()) - 86400),
+        **changes,
+    }
+    return session.Holder.from_json(fields)
+
+
+def test_a_power_loss_blocks_cutover_until_release_abandons_it(installed, tmp_path, monkeypatch):
+    """R-647's cost, then the verb that ends it, for a write cut off by a restart.
+
+    A restart cannot be staged in the suite, so the state it leaves is written
+    directly: a lock record and an open record, both naming a holder from this
+    machine's previous boot. Before this unit the release refused the lock and
+    kept the record, and the cutover precheck refused ``cutover-open-run``.
+    """
+    from cratekit.core import tree_registry
+    from cratekit.core.cause import CratekitError
+    from tests.test_intake_imported import _verified_snapshot
+
+    _verified_snapshot(installed)
+    _code, _refusal, minted = _mint_through_the_cli()
+    assert minted["data"]["summary"]["recorded"] is True
+    dead = _before_a_power_loss(monkeypatch)
+    assert session.holder_alive(dead) is False
+    _lock_recording(installed, dead)
+    session_id = _left_by(installed, dead, session.SessionState.OPEN)
+
+    export = tmp_path / "fresh-export.xml"
+    export.write_text("<DJ_PLAYLISTS/>")
+    with pytest.raises(CratekitError) as refused:
+        tree_registry.assert_cutover_ready(installed, export=export)
+    assert refused.value.cause.reason == "cutover-open-run"
+
+    code, asked, envelope = _release()
+    assert [row["session_id"] for row in asked["cause"]["detail"]["shown"]["orphans"]] == [
+        session_id
+    ]
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["released"] is True
+    assert envelope["data"]["summary"]["holder"] == dead.to_json()
+    assert envelope["data"]["summary"]["abandoned"] == [session_id]
+    assert session.read_record(session_id, installed).state is session.SessionState.ABANDONED
+    assert session.read_lock_holder(session.lock_path(installed)) is None
+    tree_registry.assert_cutover_ready(installed, export=export)
+
+
+@pytest.mark.parametrize(
+    "machine",
+    ["f" * 32, session.UNKNOWN_IDENTITY],
+    ids=["another-machine-with-this-host-name", "recorded-before-the-machine-identity"],
+)
+def test_a_record_from_another_boot_not_proven_this_machines_is_kept(
+    installed, monkeypatch, machine
+):
+    """The drive moved, or the record predates the field, and either way it stays open."""
+    theirs = _before_a_power_loss(monkeypatch, machine=machine)
+    session_id = _left_by(installed, theirs, session.SessionState.OPEN)
+    before = session.log_path(session_id, installed).read_bytes()
+
+    code, asked, envelope = _release()
+    assert asked["cause"]["detail"]["shown"]["orphans"] == []
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["abandoned"] == []
+    assert envelope["data"]["summary"]["kept"] == [session_id]
+    assert session.log_path(session_id, installed).read_bytes() == before
+
+
 def test_a_record_whose_holder_is_alive_is_kept_open(installed):
     """Ending a live run's record would release a capture it is still writing behind."""
     here = session.current_holder()
