@@ -23,7 +23,11 @@ reached a request. The fifth pattern was looked for: the only other literal
 provider hosts in `src` are the tagging searchers and the vendored Tidal
 client, neither paid per call nor regional per account.
 The built in review found one thing, a dedented call site in `intake set`, fixed.
-Battery: BATTERY_LINE
+Battery: ruff clean, **9712 passed** and 1 skipped in 60 seconds, 9713
+collected, 33 more than R-312 recorded, reconciled by file: 22 in
+`tests/test_config.py`, 8 in `tests/intake/test_workers.py`, 3 in
+`tests/intake/test_recognition.py`. Scan clean. No test of this unit's is among
+the ten slowest.
 Mutation table `docs/mutation/r301.md`, rows file beside it: **17 rows, the
 author's own, 16 killed and 1 zero.** The zero is V5, maintainer facing, the
 refusal of a host that is not a string, which the domain check covers. One row
