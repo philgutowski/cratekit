@@ -3583,7 +3583,7 @@ def _document_on_disk(path: Path) -> tuple[dict, int | None]:
 
     For code holding the write lock, so it migrates in memory and never writes
     (see ``_write_lock`` for why a ``load`` here would hang). Three shapes, the
-    same three ``crate setup`` reads before it asks anything, so a caller
+    same three the setup wizard reads before it asks anything, so a caller
     comparing its first read with this one compares like with like:
 
     * no file: an empty document and no version;
@@ -3617,7 +3617,7 @@ def update(
     THE DECISION IS MADE TWICE, AND THE SECOND TIME IS UNDER THE LOCK, which is
     the shape ``load_from_path`` documents for a migration. A caller reads the
     document and decides whatever it needs to OUTSIDE the lock, as slowly as it
-    likes: ``crate setup`` asks a person questions, ``crate profile set`` waits
+    likes: the setup wizard asks a person questions, the profile verb waits
     on a gate. ``revise`` is then the re-decision, handed the document that is
     actually there, which may hold another command's answers the first read
     never saw. Deciding once, outside, is how two wizards each reported success
@@ -3626,7 +3626,7 @@ def update(
     ``revise`` MAY NOT ASK ANYBODY ANYTHING. It runs with the lock held, and a
     lock held across a prompt blocks every other command on somebody typing.
     It computes, or it raises to refuse, in which case nothing is written:
-    ``merge_changes`` raises ``ConfigConflict``, and ``crate profile set``
+    ``merge_changes`` raises ``ConfigConflict``, and the profile verb
     raises its stale decision when the membership it showed has moved.
 
     An unmigrated document gets the same version backup a migration writes,

@@ -1771,11 +1771,14 @@ FILESYSTEM_MUTATIONS = frozenset(
 #: generous: a report calling any of them changes a file.
 QUALIFIED_MUTATIONS = frozenset(
     {
+        "config._back_up_version",
         "config._exclusive_lock",
         "config._mkdir_private",
+        "config._write_lock",
         "config.load",
         "config.load_from_path",
         "config.save",
+        "config.update",
         "naming.claim_target",
         "backup_facts.record",
         "rb_writer._candidate_app_paths",
