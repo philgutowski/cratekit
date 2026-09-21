@@ -1064,8 +1064,11 @@ def queue_playlist(
 
     ``run_id`` and ``source_id`` are what ``crate sync all`` adds: the intake run
     its sources share (R29) and the source that queued the job, which is how the
-    playlists cursor later finds the jobs it may record. A playlist queued by
-    this verb alone carries neither, exactly as before.
+    mark verb later finds the jobs of one pass. A playlist queued by this verb
+    alone carries neither, and the playlists cursor records it all the same once
+    its job succeeds (R-382), because it reconciles over every playlist intake
+    job for the library rather than only the ones a pass queued. Until then, an
+    open job queued here holds the playlist back from a pass as in flight.
     """
     payload: dict[str, Any] = {SOURCE: reference, TRACKS: dict(tracks)}
     if run_id is not None:

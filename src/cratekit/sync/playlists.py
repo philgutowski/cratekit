@@ -12,17 +12,21 @@ the intake path one layer down.
 **WHAT IS NEW, IN THE ORDER IT IS DECIDED.** A playlist is excluded when its
 name carries the swept prefix the source system applies after a sweep, when its
 identifier is in this source's cursor, when its name is a quarterly favourites
-placeholder, which is the favourites source's to sweep, when a job this source
-queued for it is still open, or when the listing says it holds no tracks.
+placeholder, which is the favourites source's to sweep, when a playlist intake
+job for it is still open, or when the listing says it holds no tracks.
 Everything else is listed track by track and queued. A playlist whose tracks
 come back empty is reported empty rather than queued, and a playlist that cannot
 be read is reported unreadable rather than skipped in silence.
 
 **THE CURSOR IS IDENTIFIERS, AND IT MOVES ON CLEAN COMPLETION ONLY.** Queueing
-is not completion. At the start of every pass :func:`reconcile` reads the jobs
-this source queued, and records the playlist of every one that SUCCEEDED, which
-is the state a job reaches only when every item is done. A failed or cancelled
-job is not recorded and its playlist is offered again. Nothing is ever filtered
+is not completion. At the start of every pass :func:`reconcile` reads every
+playlist intake job for this library, the ones this source queued AND the ones
+``crate intake playlist`` queued by hand (R-382), and records the playlist of
+every one that SUCCEEDED, which is the state a job reaches only when every item
+is done. A failed or cancelled job is not recorded and its playlist is offered
+again, and an open one, whichever verb queued it, holds its playlist back as in
+flight. The cursor still moves only here, at the top of a pass, and never on a
+job's completion. Nothing is ever filtered
 by title except the two naming conventions above, which are conventions spelled
 in the name by the systems that apply them, and neither is stored (D5).
 
@@ -73,7 +77,12 @@ from cratekit.core import config, jobs
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
-from cratekit.label.catalogue import AccountPlaylist, Catalogue
+from cratekit.label.catalogue import (
+    AccountPlaylist,
+    Catalogue,
+    PlaylistReferenceInvalid,
+)
+from cratekit.label.catalogue import playlist_id as typed_playlist_id
 from cratekit.sync import marks
 from cratekit.sync.watermarks import WatermarkStore
 
@@ -175,6 +184,11 @@ def source_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.Jo
     All three fields, because each alone names jobs this source does not own:
     the key is shared with ``crate intake playlist`` run by hand, and the queue is
     installation scoped while the cursor is per library.
+
+    NOT WHAT THE CURSOR IS RECONCILED OVER, since R-382. That is
+    :func:`playlist_jobs`, which a playlist run by hand also reaches. This set is
+    for a reader that needs a pass's own jobs, the mark verb grouping them by the
+    run they share.
     """
     return tuple(
         job
@@ -193,21 +207,67 @@ def playlist_of(job: jobs.Job) -> str:
 _playlist_of = playlist_of
 
 
+def recorded_as(job: jobs.Job) -> str:
+    """The identifier the cursor records for a playlist intake job, or ``""``.
+
+    A job THIS SOURCE queued carries the listing's own identifier, and it is
+    returned verbatim, because that is what the next listing is compared with.
+    A job ``crate intake playlist`` queued carries what a person TYPED, which may
+    be a URL or a share link, so it is read through the provider's reference
+    parser and records the identifier the listing would carry. A reference the
+    parser does not recognise is kept as typed: the job that succeeded listed
+    it, so the catalogue it ran against took it as an identifier.
+
+    THE HEARTS ARE NOT A PLAYLIST. Both verbs that list the account's hearts,
+    ``crate intake playlist favorites`` and the favourites source, queue them
+    under the reserved reference, and that is never an account playlist this
+    cursor could hold, so such a job records nothing.
+    """
+    reference = _playlist_of(job)
+    if not reference:
+        return ""
+    if (job.payload or {}).get("source_id") == SOURCE_ID:
+        return reference
+    if intake_cli.is_favorites(reference):
+        return ""
+    try:
+        return typed_playlist_id(reference)
+    except PlaylistReferenceInvalid:
+        return reference
+
+
+def playlist_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.Job, ...]:
+    """Every playlist intake job for THIS library, whichever verb queued it (R-382).
+
+    What the cursor is reconciled over and what an open job holds back. It is
+    wider than :func:`source_jobs` on purpose: a playlist a person ran through
+    ``crate intake playlist`` has been resolved exactly as a sweep would resolve
+    it, so a pass that offered it again would repeat the work. The key keeps
+    ``intake.set`` out, the library keeps another library's jobs out, and
+    :func:`recorded_as` keeps the hearts out.
+    """
+    return tuple(
+        job
+        for job in jobs.list_jobs(store)
+        if job.handler_key == handler_key
+        and job.library_id == cfg.library.volume_id
+        and recorded_as(job)
+    )
+
+
 def completed(found: Iterable[jobs.Job]) -> tuple[str, ...]:
     """The playlists whose job succeeded, oldest first, each once."""
     seen: list[str] = []
     for job in reversed(tuple(found)):
-        identity = _playlist_of(job)
+        identity = recorded_as(job)
         if job.state == jobs.JobState.SUCCEEDED and identity and identity not in seen:
             seen.append(identity)
     return tuple(seen)
 
 
 def open_playlists(found: Iterable[jobs.Job]) -> frozenset[str]:
-    """The playlists a job this source queued is still working on."""
-    return frozenset(
-        _playlist_of(job) for job in found if job.is_open() and _playlist_of(job)
-    )
+    """The playlists an open playlist intake job is still working on."""
+    return frozenset(recorded_as(job) for job in found if job.is_open() and recorded_as(job))
 
 
 def reconcile(store, cfg: config.Config, *, handler_key: str) -> tuple[str, ...]:
@@ -220,7 +280,7 @@ def reconcile(store, cfg: config.Config, *, handler_key: str) -> tuple[str, ...]
     known = set(existing.swept) if existing is not None else set()
     fresh = [
         identity
-        for identity in completed(source_jobs(store, cfg, handler_key=handler_key))
+        for identity in completed(playlist_jobs(store, cfg, handler_key=handler_key))
         if identity not in known
     ]
     cursor.record_swept(SOURCE_ID, fresh, library_id=cfg.library.volume_id)
@@ -279,7 +339,7 @@ def plan(
     recorded_now = reconcile(store, cfg, handler_key=handler_key)
     existing = WatermarkStore(cfg).read(SOURCE_ID)
     recorded = frozenset(existing.swept) if existing is not None else frozenset()
-    in_flight = open_playlists(source_jobs(store, cfg, handler_key=handler_key))
+    in_flight = open_playlists(playlist_jobs(store, cfg, handler_key=handler_key))
 
     sweep = Sweep(
         listed=_listed_or_refuse(found),
@@ -355,7 +415,7 @@ def marking_sweep(store, cfg: config.Config, found: Catalogue, *, handler_key: s
     """
     existing = WatermarkStore(cfg).read(SOURCE_ID)
     held = set(existing.swept) if existing is not None else set()
-    held.update(completed(source_jobs(store, cfg, handler_key=handler_key)))
+    held.update(completed(playlist_jobs(store, cfg, handler_key=handler_key)))
     return Sweep(listed=_listed_or_refuse(found), recorded=frozenset(held))
 
 
@@ -522,10 +582,12 @@ __all__ = [
     "marking_sweep",
     "open_playlists",
     "pending_marks",
+    "playlist_jobs",
     "playlist_of",
     "plan",
     "queue",
     "reconcile",
+    "recorded_as",
     "report",
     "said",
     "source_jobs",
