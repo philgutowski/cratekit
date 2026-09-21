@@ -358,6 +358,19 @@ def plan_for(
     ``anchor.track`` guardedly and score an absent one neutral.
     """
     resolved = anchor if isinstance(anchor, setbuilder.Anchor) else owned_anchor(anchor)
+    # AN UNOWNED LABEL THAT NAMES AN OWNED TRACK EXACTLY is not ranked against
+    # itself. The owned form drops every copy sharing the anchor's match key,
+    # inside ``build_pool``; an unowned anchor has no track to carry that key, so
+    # without this the library's own copy came back as its own best companion,
+    # at the perfect key tier, answering "should I buy this" with the track the
+    # person already has. EXACT on the match key and never fuzzy, which is the
+    # whole point of the empty index, and REPORTED rather than hidden, so the
+    # answer says the library holds it.
+    held: list[str] = []
+    if not resolved.owned:
+        label = setbuilder.match_key("", resolved.display)
+        held = sorted(t.path for t in index if label and t.match == label)
+        index = [t for t in index if not (label and t.match == label)]
     ranked = setbuilder.rank(
         setbuilder.build_pool(resolved, index),
         resolved,
@@ -397,6 +410,10 @@ def plan_for(
         "payload_version": rendered["payload_version"],
         "anchor": rendered["anchor"],
     }
+    if not resolved.owned:
+        # Only on the unowned form, where it is a question: the paths in the
+        # library whose artist and title are exactly the label's.
+        totals["held"] = held
     return {
         "digest": digest_of({"kind": "setbuild", "anchor": rendered["anchor"], "items": items}),
         "items": items,

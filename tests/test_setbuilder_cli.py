@@ -209,20 +209,57 @@ def test_an_unowned_label_that_names_an_owned_title_is_never_matched_to_it(index
     """The empty index is the guarantee, so drive a label that WOULD fuzzy match.
 
     Given the index, ``resolve_anchor`` would resolve this label to the owned
-    "Anchor Work", take its key and exclude it from the pool. Against the empty
-    index it cannot, so the owned copy comes back as a companion and the key is
-    the supplied one rather than the library's.
+    "Anchor Work (Extended Mix)" and take its key, because ``token_set_ratio``
+    scores a subset at 100. Against the empty index it cannot, so the key is the
+    supplied one and the owned extended mix is an ordinary companion, not the
+    anchor and not held.
     """
-    owned = anchor_of(index)
-    assert setbuilder.resolve_anchor(owned.display, index, key="9A").owned, (
+    extended = track("Alder", "Anchor Work (Extended Mix)", "9A", 124.0)
+    library = (extended, *index[1:])
+    label = "Alder - Anchor Work"
+    assert setbuilder.resolve_anchor(label, library, key="9A").track is extended, (
         "the label no longer fuzzy matches the owned track, so this measures nothing"
     )
-    anchor = setbuild_cli.unowned_anchor(owned.display, "9A", None)
-    plan = setbuild_cli.plan_for(anchor, index, declared=TAXONOMY)
+    anchor = setbuild_cli.unowned_anchor(label, "9A", None)
+    plan = setbuild_cli.plan_for(anchor, library, declared=TAXONOMY)
 
     assert anchor.owned is False and anchor.track is None
     assert plan["totals"]["anchor"]["key"] == "9A"
-    assert owned.path in {item["path"] for item in plan["items"]}
+    assert extended.path in {item["path"] for item in plan["items"]}
+    assert plan["totals"]["held"] == []
+
+
+def test_an_unowned_label_naming_an_owned_track_exactly_is_held_and_not_ranked(index):
+    """The review's finding, driven: the library's copy as its own companion.
+
+    Before the exact match exclusion this plan's first sequence pick was the
+    owned "Anchor Work", at the perfect key tier, recommended as the best mix
+    for the track it is.
+    """
+    owned = anchor_of(index)
+    plan = setbuild_cli.plan_for(
+        setbuild_cli.unowned_anchor(owned.display, "8A", 124.0), index, declared=TAXONOMY
+    )
+
+    assert owned.path not in {item["path"] for item in plan["items"]}
+    assert plan["totals"]["held"] == [owned.path]
+    assert plan["items"], "nothing else was ranked, so the exclusion measured nothing"
+
+
+def test_an_unowned_sequence_places_each_companion_once(index):
+    """Every companion of an unowned anchor has no energy relation to it, so most
+    are ``either``, and ``either`` filler used to be picked for BOTH sides. The
+    positions then skipped 1 and a companion was in the set twice.
+    """
+    plan = setbuild_cli.plan_for(
+        setbuild_cli.unowned_anchor("Oak", "8A", 124.0), index, declared=TAXONOMY
+    )
+    placed = [item["position"] for item in plan["items"] if item["position"] is not None]
+    paths = [item["path"] for item in plan["items"]]
+
+    assert placed == list(range(1, len(placed) + 1))
+    assert len(paths) == len(set(paths)), "a companion appears twice in the items"
+    assert plan["totals"]["sequence"] == len(placed)
 
 
 def test_an_unowned_anchor_with_no_key_refuses():
@@ -266,6 +303,22 @@ def test_a_supplied_tempo_narrows_an_unowned_anchor_to_its_band(index):
     assert "Right Key Wrong Tempo" in {item["title"] for item in keyless["items"]}
     assert "Right Key Wrong Tempo" not in {item["title"] for item in banded["items"]}
     assert banded["totals"]["anchor"]["tempo"] == 124.0
+
+
+def test_one_either_companion_of_an_owned_anchor_is_placed_once():
+    """The same defect on main, through the owned form and through ``build_set``.
+
+    One same-key companion of equal energy is ``either``. It was the before
+    side's filler and the after side's filler, so the sequence was that one
+    track twice and its only position was 2.
+    """
+    anchor = track("Alder", "Anchor Work", "8A", 124.0, energy=5)
+    other = track("Birch", "Other", "8A", 124.0, energy=5)
+    plan = setbuild_cli.plan_for(anchor, (anchor, other), declared=TAXONOMY)
+    engine = setbuilder.build_set(anchor.display, (anchor, other), taxonomy=TAXONOMY)
+
+    assert [item["position"] for item in plan["items"]] == [1]
+    assert [scored.track.path for scored in engine.sequence] == [other.path]
 
 
 def test_an_owned_and_an_unowned_anchor_in_one_key_digest_apart(index):
@@ -782,6 +835,7 @@ def test_an_unowned_anchor_is_ranked_through_the_dispatcher(configured, place):
     }
     titles = {item["title"] for item in document["data"]["items"]}
     assert titles == {"Same Key Lower", "Neighbour Up"}
+    assert document["data"]["totals"]["held"] == []
     after = {p: p.stat().st_mtime_ns for p in sorted(library.rglob("*"))}
     assert after == before, "the unowned form touched the library"
 

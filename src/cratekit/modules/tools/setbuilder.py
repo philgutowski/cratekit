@@ -821,14 +821,22 @@ def build_plan(
     ``role`` narrows the answer to one side of the anchor. ``either`` entries are
     included on whichever side is asked for, because a candidate whose role could
     not be decided is a legitimate pick for both, not for neither.
+
+    BUT IT IS PLAYED ONCE. With both sides asked for, the after side draws from
+    what the before side left, so an ``either`` filler cannot be placed on both
+    sides of the anchor. Without that, one same-key companion of equal energy
+    was the whole sequence twice, and an unowned anchor, whose companions all
+    carry an unknown energy relative to it, hit that on most runs (U98).
     """
     if role in ("before", "after"):
         pool = tuple(s for s in ranked if s.role in (role, "either"))
         sequence = _pick_side(ranked, role, count or DEFAULT_SIDE)
     else:
         pool = tuple(ranked)
-        sequence = _pick_side(ranked, "before", DEFAULT_SIDE) + _pick_side(
-            ranked, "after", DEFAULT_SIDE
+        before = _pick_side(ranked, "before", DEFAULT_SIDE)
+        taken = {id(s) for s in before}
+        sequence = before + _pick_side(
+            [s for s in ranked if id(s) not in taken], "after", DEFAULT_SIDE
         )
     return SetPlan(anchor=anchor, pool=pool[: count or DEFAULT_POOL], sequence=sequence)
 
