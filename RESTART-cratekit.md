@@ -4,7 +4,33 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-647, issue #188, `relay/188`, 2026-09-21.**
+**Last merged: R-650, issue #189,
+`unit/issue189-a-source-genre-the-taxonomy-never-heard-`, 2026-09-21.**
+A folder holding a genre the taxonomy never heard of no longer reports as
+tagged cleanly. `routing.suggest_tag`'s last tier sets `off_taxonomy`, the
+searcher and the engine carry it to the committed item report, and the sweep's
+summary counts the distinct strings in an `off_taxonomy` map beside
+`unresolved`, which stays fed by declines alone. `crate tag folder` warns with
+them, code `tag-folder-off-taxonomy`, and still succeeds. A third disposition,
+not a fourth skip reason: the file was written, so it stays in `tagged`.
+**The suppression is routing's question, not the vocabulary's.** A BUCKET's own
+display reaches that tier too and routing places it exactly, so it is the one
+string not flagged; a sub's display and a display in another case are declared
+words routing leaves in the fallback, so both are reported. The built in review
+found the first version of that rule and the warning's false claim that these
+words route to the fallback, driven down with `Psy-Trance` and
+`Hardcore / Hard Techno`, which are keyword routed to real buckets. Both fixed
+in round one. R-650 CLOSED in place. Filed R-651, the report does not say which
+words landed in the catch-all, R-652, a declared sub display lands there
+(unmeasured on the shipped template), and R-653, the Bandcamp picker skips a
+declared tag with no bucket. None on the board bar.
+Battery: ruff clean, **9883 passed** and 1 skipped in 89 seconds. Scan clean.
+Mutation tables `docs/mutation/r650-a.md` and `r650-b.md`: **24 rows, the
+author's own, 23 killed**, the one zero paired with a composite that kills, read
+in `r650-notes.md`. The learning is a new entry in `docs/solutions/workflow-issues/`.
+**Main's highest residual number is R-653.**
+
+**The session before: R-647, issue #188, `relay/188`, 2026-09-21.**
 A gated write cut off by a power loss is no longer a dead end. `Holder` records
 `machine`, a digest of the platform's machine identifier, beside the host name,
 and a holder recorded before the field reads back as unknown. `holder_alive`
@@ -23,7 +49,6 @@ Battery: ruff clean, **9869 passed** and 1 skipped in 74 seconds. Scan clean.
 Mutation table `docs/mutation/r647-a.md`: **17 rows, the author's own, all
 killed**, notes in `r647-notes.md`. The learning is a new section of the R-598
 entry in `docs/solutions/workflow-issues/`.
-**Main's highest residual number is R-649.**
 
 **The session before: R-598, issue #187, `relay/187`, 2026-09-21.**
 A gated write that is hard killed no longer leaves a dead end. The gates write

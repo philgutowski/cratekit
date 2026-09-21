@@ -148,6 +148,22 @@ A match also carries the cover URL off the same catalogue row as its genre,
 never off another row, because the artist and title gate that picks the genre
 is the only thing that says the picture belongs to this track.
 
+### Off taxonomy
+A genre that WAS written onto a file and that this template has no place of its
+own for: the catalogue's own word, passed through by the last tier of
+`suggest_tag` because no rule, alias or refusal matched it. It is a third
+disposition beside a clean tag and an `unmapped-genre` decline, not a fourth
+skip reason, since the file was tagged. `crate tag folder` counts the distinct
+strings in the sweep's report and warns with them.
+
+It is a statement about the WORD and not about where the track lands, and the
+two do not follow from each other in either direction, because tagging and
+routing read different rule lists over the one table. An off taxonomy word can
+still be keyword routed to a real bucket, and a declared word that routing does
+not recognise, a sub's display or a display in another case, lands in the
+fallback. The one string the last tier does not flag is a BUCKET's own display,
+which routing recognises exactly and places where the template says.
+
 ### Art fetch
 What `crate tag folder` did about a picture for one file, reported beside the
 genre outcome and independent of it. A file carrying any picture at all is

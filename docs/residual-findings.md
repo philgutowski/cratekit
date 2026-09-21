@@ -26212,3 +26212,134 @@ product decision about what `crate tag folder` promises.
 
 **Closes when:** a source genre that reached tier five is visible to the person
 who ran the verb, distinct from both a clean tag and an `unmapped-genre` decline.
+
+**CLOSED 2026-09-21 on `unit/issue189-a-source-genre-the-taxonomy-never-heard-`,
+issue #189.** The noticing has a mechanism. `routing.suggest_tag`'s last tier
+sets `off_taxonomy` on the suggestion, `searchers._resolved` carries it onto the
+hit, `tag.tag_one` takes it on the one branch that wrote a word, the committed
+item report records it, and `tagging.cli`'s summary counts the distinct strings
+in an `off_taxonomy` map beside `unresolved`, which stays fed by declines alone.
+`crate tag folder` also warns, code `tag-folder-off-taxonomy`, naming the count
+and the strings. A third disposition, not a fourth skip reason: the file was
+written, so it stays in `tagged` and `skipped` stays None.
+
+**Two corrections to the body above, both driven on 2026-09-21 rather than read.**
+
+The entry treats "no bucket" as what identifies an unrecognised string. It does
+not. The shipped template declares `Melodic Techno` as a `[[suggest]]` rule with
+a literal tag and no bucket, and says in a comment why, so that shape has two
+producers and only one of them is worth reporting. The tier states the fact
+instead of a caller inferring it.
+
+The entry then says routing sends the same string to the `electronica_other`
+fallback bucket. That is true of its own example and false as a rule, because
+`suggest_tag`'s last tier and `resolve_bucket`'s keyword tier read two different
+rule lists. Measured: `Psy-Trance` to `trance` and `Hardcore / Hard Techno` to
+`techno`, both by keyword, against `gqom` and `Leftfield Bass` to
+`electronica_other`. Half the driven sample. The warning therefore names the
+words and says nothing about where they went, since telling somebody their
+correctly filed tracks are misfiled is the same false-report cost one turn on.
+What survives of that second cost is R-651.
+
+One suppression rule, and the two wrong versions of it are in the mutation
+table. A bucket's OWN display reaches the last tier too, because nothing in
+`suggest_tag` recognises a display name and this tagger writes bucket names back
+onto files. Routing places that one exactly, so it is the one string the tier
+does not flag. Suppressing on the declared vocabulary instead, which the first
+build did, hides a SUB's display, and suppressing case insensitively hides a
+lowercased Bandcamp tag. Both of those are written words that land in the
+fallback, so both are the finding rather than an exception to it. Rows `A3` and
+`A4` of `docs/mutation/r650-a.md` kill on each.
+
+---
+
+## R-651. The sweep names the words it could not place and not where they landed
+
+**Found by** R-650's build, issue #189, 2026-09-21. Driven against the shipped
+taxonomy rather than read.
+
+`suggest_tag`'s last tier and `resolve_bucket`'s keyword tier read two different
+rule lists, so a word being off taxonomy says nothing about where the track
+ends up. Measured: `Psy-Trance` routes to `trance` and `Hardcore / Hard Techno`
+to `techno`, both by keyword rule, while `gqom` and `Leftfield Bass` land in
+`electronica_other`. Half of a four string sample, and all four are ordinary
+catalogue answers.
+
+The sweep's report and its warning name the strings and are deliberately silent
+about the bucket. The first draft of that warning claimed the fallback for all
+of them, which is R-650's own second cost restated as a rule, and it would have
+told a person their correctly filed tracks were sitting in Electronica / Other.
+
+**Measured cost.** A person still cannot tell from the report which of their new
+genres actually landed in the catch-all looking like every track that belongs
+there. That is the half of R-650's second cost that the report does not reach,
+and the retag pass over that bucket is still the workflow that cannot tell the
+two apart.
+
+**Why it is not fixed here.** The summary would have to resolve each word
+through `resolve_bucket`, and the brief puts routing's fallback out of scope.
+This unit's two fix rounds went to the built in review's findings.
+
+**Closes when:** the sweep says which of the off taxonomy words landed in the
+fallback bucket.
+
+**Not on the board bar.** The product no longer says anything false about the
+landing, it says nothing about it, and no workflow is blocked.
+
+---
+
+## R-652. A declared sub display is written and lands in the fallback bucket
+
+**Found by** the built in review on R-650's build, 2026-09-21, driven on
+`tests/taxonomies/second.toml`.
+
+`resolve_bucket`'s display tier reads bucket displays only, by design, since a
+sub's display answering it would place a track one level up the tree. So a
+catalogue answering with a SUB's display reaches `suggest_tag`'s last tier, is
+written onto the file verbatim, and then routes to the fallback bucket although
+the person declared that word themselves. `Birds`, `Water` and `Engines` all do.
+
+**Measured cost.** Zero on the shipped template: all ten of its sub displays are
+claimed by aliases and none reaches the last tier, measured 2026-09-21. Real on
+a template declaring a sub whose display no alias claims, where a track lands in
+the catch-all wearing the person's own word. The file IS reported off taxonomy
+now, which is the visibility half of it, so what is left is the placement.
+
+**Reachability.** The producer is a hand edited template. One was driven, the
+shipped one was driven and does not produce it, and no library on this machine
+was examined.
+
+**Closes when:** a declared sub display routes to its own bucket, or the loader
+refuses a sub whose display no alias claims.
+
+**Not on the board bar,** since no shipped configuration produces it.
+
+---
+
+## R-653. The Bandcamp picker calls a declared tag with no bucket unrecognised
+
+**Found by** R-650's build, 2026-09-21, driven.
+
+`searchers._bandcamp_tag` chooses the first tag the taxonomy RECOGNIZES out of a
+seller's free text list, and tests that with
+`suggestion.bucket_id is not None and not suggestion.declined`. That is false
+for a `[[suggest]]` rule carrying a literal tag and no bucket, which the shipped
+template has, so the picker skips a tag the taxonomy declares and falls back to
+the first candidate. Measured: `['gqom', 'melodic techno']` returns `gqom`, and
+the same two reversed return `melodic techno`.
+
+**Measured cost.** A Bandcamp track whose seller listed both gets a word nothing
+declares instead of the declared one, decided by the order of the seller's tag
+list. It is reported off taxonomy now, so the person sees it.
+
+**Why it is not fixed here.** `off_taxonomy` makes the correct condition
+expressible for the first time, `not declined and not off_taxonomy`, and
+applying it changes which genre is WRITTEN for a Bandcamp track. That is a
+different risk class from this unit's report and wants rows of its own. Logged
+as dropped row `E2` in `docs/mutation/r650-a-rows.toml`.
+
+**Closes when:** the picker's recognised test counts a declared tag with no
+bucket as recognised.
+
+**Not on the board bar.** Nothing is lost and nothing false is reported; the
+worse of two available tags is chosen and the report now names it.
