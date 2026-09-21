@@ -896,6 +896,19 @@ the verb's OWN payload surface, so what did land travels with the failure.
 the clean report over unwritten state the merge bar names, and a later run meets
 the same obstacle and answers the same way.
 
+### Playlist adoption
+In the outbound ledger, since R-229, taking over a remote playlist that was
+recorded under ANOTHER display path, because the crate now at this path is
+recognised as the one that made it. A rekordbox export gives a playlist no
+identifier, so the ledger key is the display path and a rename or a drag into a
+folder arrives under a key nothing was recorded against. `ledger.recognise`
+offers the adoption, the confirm gate shows it, and `reserve_playlist` moves the
+record under the lock. The record carries `tracks`, what the crate held at its
+last export, and `formerly`, the paths it moved from.
+
+*Avoid:* reading it as `crate adopt`. That verb family brings an existing
+LIBRARY under this product and shares nothing with this but the word.
+
 ## Review
 
 ### Review item

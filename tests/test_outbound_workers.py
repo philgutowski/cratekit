@@ -1762,3 +1762,331 @@ def test_an_age_that_cannot_be_read_is_unknown_rather_than_fresh(tmp_path):
     assert shown["written"] is None
     assert shown["age_days"] is None
     assert shown["freshness"] == "unknown"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-229. A crate rekordbox shows under a new path keeps its remote playlist
+# ═══════════════════════════════════════════════════════════════════════════
+
+_GATE = "export.playlist.confirm"
+_FOLDER = "Sets"
+_MOVED = f"{_FOLDER}/{outbound_fakes.CRATE}"
+
+
+def _reorganised(installed, **kwargs) -> Path:
+    """Write the export again as rekordbox would after a reorganisation.
+
+    THE SAME PATH ON DISK, because a person exports over the file they exported
+    last time, so the memoized parse has to be dropped as a new process would.
+    """
+    path = outbound_fakes.write_export(installed.library.root / "outbound", **kwargs)
+    source.forget_libraries()
+    return path
+
+
+def _moved_into_a_folder(installed, tracks=(1, 2, 3)) -> Path:
+    return _reorganised(
+        installed,
+        crate_name=None,
+        extra_children=outbound_fakes.nested_playlist(
+            _FOLDER, outbound_fakes.CRATE, list(tracks)
+        ),
+    )
+
+
+def _exported_once(exported, monkeypatch, *indexes: int):
+    account = outbound_fakes.FakeAccount(catalog=catalog(*(indexes or (1, 2, 3))))
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), _GATE)
+    assert _resume(job_id)[0] == int(ExitCode.OK)
+    assert account.created == [outbound_fakes.CRATE]
+    return account
+
+
+def _shown_playlist(verb: list[str]) -> dict:
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    return refused["cause"]["detail"]["shown"]["remote_playlist"]
+
+
+def _ledger_playlists(installed) -> dict:
+    import json
+
+    path = config.state_path("outbound_writes", installed)
+    return json.loads(path.read_text(encoding="utf-8"))["playlists"]
+
+
+def test_a_crate_dragged_into_a_folder_updates_its_remote_playlist(
+    installed, exported, monkeypatch
+):
+    """R-229's measured cost, driven through the verb: one crate, two playlists."""
+    account = _exported_once(exported, monkeypatch)
+    account.catalog.update(catalog(4))
+    moved = _reorganised(
+        installed,
+        crate_name=None,
+        tracks=4,
+        extra_children=outbound_fakes.nested_playlist(
+            _FOLDER, outbound_fakes.CRATE, [1, 2, 3, 4]
+        ),
+    )
+
+    _run, job_id = approve_and_queue(export_verb(moved, _MOVED), _GATE)
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    assert account.created == [outbound_fakes.CRATE]
+    assert account.playlist_tracks("pl-1") == ("tid-1", "tid-2", "tid-3", "tid-4")
+    assert resumed["data"]["progress"]["outbound"]["added"] == ["tid-4"]
+    reports = artifacts.committed(installed, job_id)
+    # ONE MOVE PER JOB, reported by the item that made it and by no other.
+    assert [report["adopted_from"] for report in reports] == [
+        outbound_fakes.CRATE,
+        "",
+        "",
+        "",
+    ]
+    assert {report["remote_id"] for report in reports} == {"pl-1"}
+    recorded = _ledger_playlists(installed)
+    assert list(recorded) == [_MOVED]
+    assert recorded[_MOVED]["formerly"] == [outbound_fakes.CRATE]
+    assert recorded[_MOVED]["tracks"] == ["1", "2", "3", "4"]
+
+
+def test_a_renamed_crate_updates_its_remote_playlist(installed, exported, monkeypatch):
+    """A rename changes the display name too, so only the tracks can say it."""
+    account = _exported_once(exported, monkeypatch)
+    renamed = _reorganised(installed, crate_name="Peak Time")
+
+    _run, job_id = approve_and_queue(export_verb(renamed, "Peak Time"), _GATE)
+    assert _resume(job_id)[0] == int(ExitCode.OK)
+
+    assert account.created == [outbound_fakes.CRATE]
+    assert list(_ledger_playlists(installed)) == ["Peak Time"]
+
+
+def test_the_gate_and_the_envelope_both_say_which_playlist_is_adopted(
+    installed, exported, monkeypatch
+):
+    """A refusal carries no warnings, so the gate has to say it as well."""
+    _exported_once(exported, monkeypatch)
+    moved = _moved_into_a_folder(installed)
+
+    shown = _shown_playlist(export_verb(moved, _MOVED))
+    assert shown["action"] == export_cli.ACTION_ADOPT
+    assert shown["remote_id"] == "pl-1"
+    assert shown["recorded_as"] == outbound_fakes.CRATE
+    assert "--new-playlist" in shown["warning"]
+    # THE EVIDENCE NAMES BOTH SIDES, the record's size and the crate's, because
+    # three of three reads very differently against a crate of three thousand.
+    assert "from 3 track(s), 3 of them among the 3 this playlist holds" in shown["warning"]
+
+    run_id, _job = approve_and_queue(export_verb(moved, _MOVED), _GATE)
+    # THE SAME RUN AGAIN, which the recorded decision still answers, so the
+    # queueing envelope can be read here rather than inside the helper.
+    code, queued = drive(["--run", run_id, *export_verb(moved, _MOVED)])
+    assert code == int(ExitCode.OK), queued
+    codes = [warning["code"] for warning in queued["warnings"]]
+    assert "outbound-playlist-adopted" in codes
+
+
+def test_the_gate_says_create_and_update_when_nothing_is_adopted(
+    installed, exported, monkeypatch
+):
+    """The block is shown every time, so its absence never means create."""
+    del installed
+    first = _shown_playlist(export_verb(exported))
+    assert first == {"action": export_cli.ACTION_CREATE, "remote_id": None}
+
+    _exported_once(exported, monkeypatch)
+    again = _shown_playlist(export_verb(exported))
+    assert again == {"action": export_cli.ACTION_UPDATE, "remote_id": "pl-1"}
+
+
+def test_a_crate_the_export_still_carries_is_never_adopted_from(
+    installed, exported, monkeypatch
+):
+    """Two crates sharing every track is an ordinary library, not a rename."""
+    account = _exported_once(exported, monkeypatch)
+    both = _reorganised(
+        installed,
+        extra_children=outbound_fakes.nested_playlist(
+            _FOLDER, outbound_fakes.CRATE, [1, 2, 3]
+        ),
+    )
+
+    assert _shown_playlist(export_verb(both, _MOVED))["action"] == export_cli.ACTION_CREATE
+    _run, job_id = approve_and_queue(export_verb(both, _MOVED), _GATE)
+    assert _resume(job_id)[0] == int(ExitCode.OK)
+
+    assert account.created == [outbound_fakes.CRATE, outbound_fakes.CRATE]
+    assert sorted(_ledger_playlists(installed)) == sorted([outbound_fakes.CRATE, _MOVED])
+
+
+def test_new_playlist_declines_the_adoption_and_creates(
+    installed, exported, monkeypatch
+):
+    """Without a way to decline, a wrong offer leaves the crate unexportable."""
+    account = _exported_once(exported, monkeypatch)
+    moved = _moved_into_a_folder(installed)
+    verb = [*export_verb(moved, _MOVED), "--new-playlist"]
+
+    assert _shown_playlist(verb) == {
+        "action": export_cli.ACTION_CREATE,
+        "remote_id": None,
+    }
+    _run, job_id = approve_and_queue(verb, _GATE)
+    assert _resume(job_id)[0] == int(ExitCode.OK)
+
+    assert account.created == [outbound_fakes.CRATE, outbound_fakes.CRATE]
+    recorded = _ledger_playlists(installed)
+    assert recorded[outbound_fakes.CRATE]["remote_id"] == "pl-1"
+    assert recorded[_MOVED]["remote_id"] == "pl-2"
+
+
+def test_a_confirmed_adoption_does_not_authorise_a_create(
+    installed, exported, monkeypatch
+):
+    """The decision and the queue are two invocations, and the offer is digested."""
+    _exported_once(exported, monkeypatch)
+    moved = _moved_into_a_folder(installed)
+    verb = export_verb(moved, _MOVED)
+
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    option = refused["cause"]["detail"]["options"][0]
+    assert drive(["run", "decide", run_id, _GATE, option, "--actor", "a-person"])[0] == 0
+
+    with jobs.open_store() as store:
+        before = len(jobs.list_jobs(store))
+    code, stale = drive(["--run", run_id, *verb, "--new-playlist"])
+    assert code != int(ExitCode.OK), stale
+    with jobs.open_store() as store:
+        assert len(jobs.list_jobs(store)) == before
+
+
+def test_an_export_that_adopts_nothing_digests_as_it_always_did():
+    """A job frozen before the key existed must still resume (``DecisionStale``)."""
+    plain = export_cli.confirm_digest("crate", "/x/collection.xml", ["1", "2"])
+    assert export_cli.confirm_digest(
+        "crate", "/x/collection.xml", ["1", "2"], adopts=""
+    ) == plain
+    assert export_cli.confirm_digest(
+        "crate", "/x/collection.xml", ["1", "2"], adopts="old"
+    ) != plain
+    assert export_cli._frozen_adoption({}) == {"adopts": ""}
+    assert export_cli._frozen_adoption({export_cli.ADOPTS: "old"}) == {"adopts": "old"}
+
+
+def test_two_orphaned_records_that_could_each_be_it_adopt_neither(
+    installed, exported, monkeypatch
+):
+    """Two candidates is reported as two, never settled by a rule nobody chose."""
+    account = _exported_once(exported, monkeypatch)
+    second = _reorganised(installed, crate_name="Second")
+    _run, job_id = approve_and_queue([*export_verb(second, "Second"), "--new-playlist"], _GATE)
+    assert _resume(job_id)[0] == int(ExitCode.OK)
+    assert account.created == [outbound_fakes.CRATE, "Second"]
+
+    third = _reorganised(installed, crate_name="Third")
+    shown = _shown_playlist(export_verb(third, "Third"))
+    assert shown["action"] == export_cli.ACTION_CREATE
+    assert outbound_fakes.CRATE in shown["warning"]
+    assert "Second" in shown["warning"]
+
+    _run, job_id = approve_and_queue(export_verb(third, "Third"), _GATE)
+    code, _resumed = _resume(job_id)
+    assert code == int(ExitCode.OK)
+    assert account.created == [outbound_fakes.CRATE, "Second", "Third"]
+    assert sorted(_ledger_playlists(installed)) == [
+        "Second",
+        "Third",
+        outbound_fakes.CRATE,
+    ]
+
+
+def test_two_crates_offered_one_orphan_do_not_both_get_it(
+    installed, exported, monkeypatch
+):
+    """Both gates said update. The second to run must not create instead."""
+    account = _exported_once(exported, monkeypatch)
+    split = _reorganised(
+        installed,
+        crate_name=None,
+        extra_children=[
+            *outbound_fakes.nested_playlist("P", "One", [1, 2, 3]),
+            *outbound_fakes.nested_playlist("Q", "Two", [1, 2, 3]),
+        ],
+    )
+    _run, first = approve_and_queue(export_verb(split, "P/One"), _GATE)
+    _run, second = approve_and_queue(export_verb(split, "Q/Two"), _GATE)
+
+    assert _resume(first)[0] == int(ExitCode.OK)
+    code, refused = _resume(second)
+
+    assert code != int(ExitCode.OK), refused
+    assert "outbound-record-moved" in str(refused)
+    assert account.created == [outbound_fakes.CRATE]
+    assert list(_ledger_playlists(installed)) == ["P/One"]
+
+
+def test_a_half_driven_job_resumed_after_its_crate_moved_creates_nothing(
+    installed, exported, monkeypatch
+):
+    """The old job froze the remote id it was confirmed to update, and finds it."""
+    account = _exported_once(exported, monkeypatch, 1, 2)
+    account.catalog.update(catalog(3))
+    _run, old_job = approve_and_queue(export_verb(exported), _GATE)
+    with jobs.open_store() as store:
+        assert jobs.get(store, old_job).payload[export_cli.REMOTE] == "pl-1"
+
+    moved = _moved_into_a_folder(installed)
+    _run, new_job = approve_and_queue(export_verb(moved, _MOVED), _GATE)
+    account.catalog.pop("3")
+    assert _resume(new_job)[0] == int(ExitCode.OK)
+    assert list(_ledger_playlists(installed)) == [_MOVED]
+
+    account.catalog.update(catalog(3))
+    # THE OLD JOB READS ITS OWN FROZEN DOCUMENT PATH, which now holds the moved
+    # crate, so put the document it was queued against back first.
+    _reorganised(installed)
+    code, resumed = _resume(old_job)
+
+    assert code == int(ExitCode.OK), resumed
+    assert account.created == [outbound_fakes.CRATE]
+    assert account.playlist_tracks("pl-1") == ("tid-1", "tid-2", "tid-3")
+    assert list(_ledger_playlists(installed)) == [_MOVED]
+
+
+def test_a_path_reused_for_a_different_crate_is_said_at_the_gate(
+    installed, exported, monkeypatch
+):
+    """The rename chain. The crate now at the old path is told whose playlist it is."""
+    _exported_once(exported, monkeypatch)
+    chained = _reorganised(
+        installed,
+        tracks=6,
+        crate=(4, 5, 6),
+        extra_children=outbound_fakes.nested_playlist(_FOLDER, "Archive", [1, 2, 3]),
+    )
+
+    reused = _shown_playlist(export_verb(chained))
+    assert reused["action"] == export_cli.ACTION_UPDATE
+    assert reused["remote_id"] == "pl-1"
+    assert f"{_FOLDER}/Archive" in reused["warning"]
+    assert "exporting that one first" in reused["warning"]
+
+    renamed_away = _shown_playlist(export_verb(chained, f"{_FOLDER}/Archive"))
+    assert renamed_away["action"] == export_cli.ACTION_ADOPT
+    assert renamed_away["recorded_as"] == outbound_fakes.CRATE
+
+
+def test_new_playlist_does_not_hide_a_record_the_crate_already_has(
+    installed, exported, monkeypatch
+):
+    """The flag declines an offer. It does not make the gate say create falsely."""
+    del installed
+    _exported_once(exported, monkeypatch)
+    shown = _shown_playlist([*export_verb(exported), "--new-playlist"])
+    assert shown == {"action": export_cli.ACTION_UPDATE, "remote_id": "pl-1"}

@@ -5029,7 +5029,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # own, registered and not in the reserved table, exactly as
     # vocal-cut-out-of-range is. Population 173 to 174, non-reserved 146 to 147,
     # reserved half UNCHANGED at 27.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (174, 147, 27)
+    #
+    # Re-pinned on the residual finding "The ledger key is a display path, so a
+    # rekordbox reorganisation forks the remote playlist", 2026-09-21. ONE slug,
+    # named rather than counted: outbound-record-moved, which the outbound
+    # ledger raises when a queued export was confirmed against a remote playlist
+    # the ledger no longer holds where the job expects it, so the item refuses
+    # rather than creating a playlist nobody confirmed. Measured from this
+    # branch's diff of `core/cause.py` against main, which adds that one key and
+    # removes none. It is the engine's own, registered and not in the reserved
+    # table, exactly as outbound-ledger-unusable is. Population 174 to 175,
+    # non-reserved 147 to 148, reserved half UNCHANGED at 27.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (175, 148, 27)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5605,7 +5616,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # future-dated are two of the four WORDS the confirm gate shows for that
     # age. The other two words, stale and unknown, are not kebab shaped and so
     # were never in this population.
-    assert (len(literals), len(literals - set(causes))) == (485, 312), (
+    # Re-pinned on the residual finding "The ledger key is a display path, so a
+    # rekordbox reorganisation forks the remote playlist", 2026-09-21: 485 to
+    # 489 distinct, non-keys 312 to 315. FOUR literals joined and NOTHING left,
+    # differenced as SETS over main's own `src/cratekit` read out of
+    # `git archive` into a scratch directory. Three are in `export/cli.py` and
+    # are not causes: outbound-playlist-adopted,
+    # outbound-playlist-adoption-ambiguous and outbound-playlist-record-mismatch
+    # are the WARNING codes a queued export carries about the remote playlist it
+    # lands on. The fourth is outbound-record-moved, a KEY, the refusal
+    # `modules/outbound/ledger.py` raises when a job's confirmed record is gone,
+    # which is why the non-key half moves by three and not four.
+    assert (len(literals), len(literals - set(causes))) == (489, 315), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

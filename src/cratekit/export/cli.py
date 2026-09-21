@@ -43,7 +43,7 @@ from typing import Any
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs
 from cratekit.core.cause import Outcome, refuse
-from cratekit.modules.outbound import account, artifacts, shell, source
+from cratekit.modules.outbound import account, artifacts, ledger, shell, source
 from cratekit.modules.outbound import export as outbound_export
 
 #: The two payload keys both outbound verbs freeze, spelled once in
@@ -57,6 +57,22 @@ EXPORT = shell.EXPORT
 #: splitting the key. Two name builders for one remote playlist is how it comes
 #: to be created under a name nobody chose.
 NAME = "name"
+
+#: The recorded ledger key this crate used to live under, frozen when the verb
+#: recognised one and a person confirmed it (R-229). Empty or absent means none,
+#: and a job frozen before this key existed carries none, which reads the same.
+ADOPTS = "adopts"
+
+#: The remote playlist the gate showed this write landing on, or none when it
+#: showed a create. It is the one stable identifier an outbound job has, and the
+#: worker finds the ledger record by it when the record has moved to the crate's
+#: new path since the job was confirmed.
+REMOTE = "remote_id"
+
+#: What the confirm gate says the write will do to the account's playlists.
+ACTION_CREATE = "create"
+ACTION_UPDATE = "update"
+ACTION_ADOPT = "adopt"
 
 
 def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
@@ -132,11 +148,24 @@ def build(parser, entry) -> None:
             "live database is never read"
         ),
     )
+    parser.add_argument(
+        "--new-playlist",
+        action="store_true",
+        default=False,
+        help=(
+            "create a new remote playlist even when a recorded one looks like "
+            "this playlist under an earlier name or folder"
+        ),
+    )
     parser.set_defaults(_handler=export_playlist)
 
 
 def confirm_digest(
-    playlist_key: str, export_path: str, tracks: list[str] | tuple[str, ...]
+    playlist_key: str,
+    export_path: str,
+    tracks: list[str] | tuple[str, ...],
+    *,
+    adopts: str = "",
 ) -> str:
     """The identity the confirm decision is recorded against.
 
@@ -145,17 +174,135 @@ def confirm_digest(
     from the frozen payload, and the whole point is that those two produce the
     same string. Two literals would be two chances to disagree, and the symptom
     would be a confirmed job that refuses its own resume for ever.
+
+    ``adopts`` IS IN THE DIGEST, BECAUSE IT CHANGES WHERE THE TRACKS GO (R-229).
+    The decision is recorded in one invocation and the queue is built in another,
+    and the ledger can change between them, so a confirmation shown "updates the
+    playlist recorded for X" must not authorise a queue that creates a new one,
+    or the reverse. IT JOINS ONLY WHEN SET, so an export that adopts nothing
+    digests exactly as it did before this key existed and a job frozen by an
+    older build still resumes.
     """
-    return digest_of(
-        {
-            "kind": "export.playlist",
-            "playlist": playlist_key,
-            "export": export_path,
-            # THE TRACK SET, not just the file it came from. A path names where
-            # the answer was read; only this names what will be written.
-            "tracks": list(tracks),
+    covered: dict[str, Any] = {
+        "kind": "export.playlist",
+        "playlist": playlist_key,
+        "export": export_path,
+        # THE TRACK SET, not just the file it came from. A path names where
+        # the answer was read; only this names what will be written.
+        "tracks": list(tracks),
+    }
+    if adopts:
+        covered["adopts"] = adopts
+    return digest_of(covered)
+
+
+def _frozen_adoption(payload) -> dict[str, str]:
+    """The digest's fourth input, read off a frozen payload for the resume."""
+    return {"adopts": str(payload.get(ADOPTS) or "")}
+
+
+def recognition_warnings(
+    resolved: source.ResolvedPlaylist, found: ledger.Recognition
+) -> tuple[dict[str, str], ...]:
+    """What a person is told about the remote playlist, when there is something.
+
+    AT MOST ONE, which :func:`shown_playlist` relies on. Adopting is said out
+    loud because it writes onto a playlist the account already holds, and the
+    way to decline it is named in the same sentence, since a wrong offer with no
+    way round it would leave this crate unexportable. Ambiguity is said because
+    the write then CREATES, which is the second playlist R-229 is about, and the
+    person is the only one who can tell which recorded playlist was this one. A
+    mismatch is said because the write lands on a playlist made from different
+    music, which is what a path reused for a new crate does.
+    """
+    if found.adopts:
+        evidence = (
+            f"which was last written from {found.recorded} track(s), "
+            f"{found.shared} of them among the {found.crate} this playlist holds"
+            if found.recorded
+            else "which was recorded under the same name before this build "
+            "recorded what a playlist holds"
+        )
+        return (
+            {
+                "code": "outbound-playlist-adopted",
+                "message": (
+                    f"{resolved.key!r} has no recorded remote playlist, and "
+                    f"{found.adopts!r} has one and is no longer in this export, "
+                    f"{evidence}. This write updates that remote playlist "
+                    f"{found.remote_id} rather than creating a second one. Pass "
+                    f"--new-playlist to create a new one instead"
+                ),
+            },
+        )
+    if found.ambiguous:
+        return (
+            {
+                "code": "outbound-playlist-adoption-ambiguous",
+                "message": (
+                    f"{resolved.key!r} has no recorded remote playlist, and "
+                    f"{len(found.candidates)} recorded playlists that are no "
+                    f"longer in this export could each be it: "
+                    f"{', '.join(found.candidates)}. None is adopted, so this "
+                    f"write creates a new remote playlist"
+                ),
+            },
+        )
+    if found.mismatched:
+        elsewhere = (
+            f" It looks like the playlist now at {', '.join(found.claimed_by)}, "
+            f"and exporting that one first moves the remote playlist to it and "
+            f"leaves this one free to get its own"
+            if found.claimed_by
+            else ""
+        )
+        return (
+            {
+                "code": "outbound-playlist-record-mismatch",
+                "message": (
+                    f"the remote playlist {found.own_remote_id} recorded for "
+                    f"{resolved.key!r} was last written from a playlist that "
+                    f"shared fewer than half its tracks with this one, so it may "
+                    f"belong to a playlist that has since been renamed. This "
+                    f"write updates it anyway.{elsewhere}"
+                ),
+            },
+        )
+    return ()
+
+
+def shown_playlist(
+    found: ledger.Recognition, warnings: tuple[dict[str, str], ...]
+) -> dict[str, Any]:
+    """What the confirm gate shows about the REMOTE playlist this write lands on.
+
+    SHOWN EVERY TIME, for the reason ``shell.shown_export`` gives: a block that
+    appeared only on an adoption would make its absence the only thing saying
+    "this creates a playlist". The warning's sentence rides here as well as on
+    the envelope because a refusal carries no warnings, and the gate's first
+    answer IS a refusal, so on the envelope alone a person would learn of the
+    adoption only after confirming it.
+
+    A PURE FUNCTION OF ONE READING OF THE LEDGER. It takes the recognition and
+    the warnings already built from it, so the gate, the envelope and the
+    frozen payload cannot describe three different ledgers.
+    """
+    if found.own_remote_id:
+        block: dict[str, Any] = {
+            "action": ACTION_UPDATE,
+            "remote_id": found.own_remote_id,
         }
-    )
+    elif found.adopts:
+        block = {
+            "action": ACTION_ADOPT,
+            "remote_id": found.remote_id,
+            "recorded_as": found.adopts,
+        }
+    else:
+        block = {"action": ACTION_CREATE, "remote_id": None}
+    for warning in warnings:
+        block["warning"] = warning["message"]
+    return {"remote_playlist": block}
 
 
 def export_argv(job) -> list[str]:
@@ -199,7 +346,12 @@ def export_playlist(ctx) -> Envelope:
     spec = ctx.entry.gates[0]
     if ctx.args.job:
         return shell.resume(
-            ctx, spec, ctx.args.job, digest=confirm_digest, summary=summary
+            ctx,
+            spec,
+            ctx.args.job,
+            digest=confirm_digest,
+            summary=summary,
+            frozen_extra=_frozen_adoption,
         )
 
     playlist = str(ctx.args.playlist or "")
@@ -213,7 +365,8 @@ def export_playlist(ctx) -> Envelope:
     # RESOLVED BEFORE THE GATE, so a person is never asked to confirm an export
     # that is about to refuse, and so the digest can name what they confirmed.
     exported = source.required_path(getattr(ctx.args, "export", None))
-    resolved = source.resolve(source.read_library(exported), playlist)
+    library = source.read_library(exported)
+    resolved = source.resolve(library, playlist)
     # THE CONFIGURATION IS LOADED BEFORE THE GATE NOW (R-227), because the age
     # the gate shows is judged against a day count the person owns. It also
     # means a configuration that cannot be read refuses before a person is asked
@@ -221,11 +374,27 @@ def export_playlist(ctx) -> Envelope:
     # resolution above already follows.
     cfg = shell.load_config("export.cli")
     age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
+    # RECOGNISED BEFORE THE GATE (R-229), so the person confirms the playlist the
+    # write lands on and not only the tracks. ``--new-playlist`` takes the offer
+    # off the reading rather than skipping the read, because the gate still has
+    # to say whether this key has a record of its own.
+    found = ledger.recognise(
+        cfg,
+        resolved.key,
+        name=resolved.name,
+        track_ids=resolved.track_ids,
+        live=source.playlist_contents(library),
+    )
+    if getattr(ctx.args, "new_playlist", False):
+        found = found.without_offer()
+    said = recognition_warnings(resolved, found)
 
     option = ctx.gate.require(
         spec,
-        digest=confirm_digest(resolved.key, str(exported), resolved.track_ids),
-        context=shell.shown_export(age),
+        digest=confirm_digest(
+            resolved.key, str(exported), resolved.track_ids, adopts=found.adopts
+        ),
+        context={**shell.shown_export(age), **shown_playlist(found, said)},
     )
     if option == "abort":
         # THE DECLARED SHAPE, and nothing about the playlist. See
@@ -242,6 +411,8 @@ def export_playlist(ctx) -> Envelope:
                 PLAYLIST: resolved.key,
                 NAME: resolved.name,
                 EXPORT: str(exported),
+                ADOPTS: found.adopts,
+                REMOTE: found.own_remote_id or found.remote_id or None,
                 shell.TRACKS: list(resolved.track_ids),
                 jobs.GATE_RUN_KEY: ctx.run.run_id,
             },
@@ -253,7 +424,10 @@ def export_playlist(ctx) -> Envelope:
         )
         return ctx.envelope(
             data=shell.reported(store, job, cfg, summary),
-            warnings=shell.queue_warnings(resolved, noun="track", age=age),
+            warnings=(
+                *shell.queue_warnings(resolved, noun="track", age=age),
+                *said,
+            ),
         )
 
 
@@ -296,6 +470,10 @@ def run_export_item(
         playlist_key=str(payload[PLAYLIST]),
         name=str(payload.get(NAME) or payload[PLAYLIST]),
         account=remote,
+        adopts=str(payload.get(ADOPTS) or ""),
+        expected=str(payload.get(REMOTE) or ""),
+        # THE WHOLE CRATE, not this item. See ``ExportPlan.contents``.
+        contents=[str(track) for track in payload.get(shell.TRACKS) or ()],
     )
     report = outbound_export.apply(cfg, remote, planned)
     return {
@@ -303,6 +481,7 @@ def run_export_item(
         "playlist_key": report.playlist_key,
         "remote_id": report.remote_id,
         "created": report.created,
+        "adopted_from": report.adopted_from,
         "added": list(report.added),
         "already": list(report.already),
         "unmatched": [
@@ -346,6 +525,8 @@ __all__ = [
     "export_argv",
     "export_playlist",
     "handle",
+    "recognition_warnings",
     "run_export_item",
+    "shown_playlist",
     "summary",
 ]

@@ -202,6 +202,7 @@ def export_document(
     extra_children: Sequence[str] = (),
     root_count: int | None = None,
     locations: Mapping[int, str] | None = None,
+    crate_name: str | None = CRATE,
 ) -> bytes:
     """A collection export carrying a crate and a favourites playlist.
 
@@ -218,6 +219,11 @@ def export_document(
     ``locations`` replaces a row's ``Location`` by index, so a test can point a
     row at a real audio file whose tag the outbound source reads (R-355). A row
     left out keeps a location naming no file, which reads as no ISRC.
+
+    ``crate_name`` renames the top level crate, and none leaves it out, which
+    with a nested one in ``extra_children`` is the crate dragged into a folder
+    (R-229). Both are what rekordbox shows after a reorganisation: the same
+    tracks under a path nothing was recorded against.
     """
     rows = [
         (
@@ -228,12 +234,14 @@ def export_document(
         )
         for index in range(1, tracks + 1)
     ]
+    crates = _playlist(crate_name, list(crate), 1) if crate_name is not None else []
     children = [
-        *_playlist(CRATE, list(crate), 1),
+        *crates,
         *_playlist(FAVORITES, list(favorites), 1),
         *extra_children,
     ]
-    counted = root_count if root_count is not None else 2 + len(extra_children)
+    fixed = 2 if crate_name is not None else 1
+    counted = root_count if root_count is not None else fixed + len(extra_children)
     return _document(
         collection=_collection(rows), root_children=children, root_count=counted
     )

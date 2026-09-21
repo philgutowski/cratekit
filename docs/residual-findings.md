@@ -12737,6 +12737,41 @@ gate this verb does not have a shape for.
 **Closes when:** the ledger records enough to recognise a renamed crate, or the
 verb offers to adopt a recorded remote playlist whose key no longer resolves.
 
+**CLOSED 2026-09-21 on `relay/165`, issue 165, and BOTH halves of the closing
+line are built and driven.** The cost was reproduced first, through the verb,
+against the unfixed source: one crate dragged into a folder and exported twice
+left `['crate-export', 'crate-export']` created on the account, and a renamed one
+left `['crate-export', 'Peak Time']`. THE ISSUE'S APPROACH WAS WRONG AND THE CARD
+WAS CORRECTED: it asked for the ledger to be keyed on the playlist's stable
+identifier from the export, and this entry had already said there is none, which
+`modules/reports/export.py` confirms, a playlist node is a path and its track ids
+and nothing else. So the key stays the display path.
+
+The ledger now records what the crate HELD at its last export, every library
+row, matched or not, replaced on every export and written once at the reserve.
+`ledger.recognise` reads a crate with no record against every recorded key the
+export no longer carries: at least half of the record's tracks still in the
+crate, and those at least a quarter of the crate. A record from before this
+build holds no contents and is recognised by display name alone, only while its
+own path is gone, which is the crate dragged into a folder. Exactly one match is
+an offer; several are named and none is taken. The offer is on the confirm gate
+and the queueing envelope, in the confirm digest only when set so an older
+frozen job still resumes, and frozen in the payload with the remote playlist id
+the gate showed. `reserve_playlist` moves the record under the ledger lock, on
+the checking path. `--new-playlist` declines. A job whose record moved after it
+was confirmed finds it BY REMOTE ID, the one stable identifier there is, and a
+confirmed adoption whose record is gone refuses the new cause
+`outbound-record-moved` rather than creating. `LEDGER_VERSION` is NOT bumped,
+because the installed copy of the product reads the same file and refuses a
+version it does not know.
+
+The built in review raised nine findings and all nine were applied. The three
+that changed the design: the recorded list was an ever growing log, so a
+rotating crate stopped being recognised; a partly backfilled record made any
+crate carrying one row a full match; and a path reused for a different crate
+blocked the right adoption. Mutation table `docs/mutation/r229.md`, 25 rows, the
+author's own, all killed. What is still open is R-630 to R-634.
+
 ---
 
 ## R-230. One ledger rewrite per track, and one remote listing per track
@@ -25268,3 +25303,122 @@ found this ends before that merge. It is owed, and RESTART says so.
 answer, which `source.export_age` and `shell.shown_export` already compute and
 would need a home below `modules/outbound` to be shared, or a collection reader
 against the live database lands and the export stops being the input.
+
+---
+
+## R-630. A path reused for a different crate still updates the old crate's remote playlist when it is exported first
+
+**Found by** the built in review of the R-229 fix, 2026-09-21. The warning half
+is DRIVEN, `test_a_path_reused_for_a_different_crate_is_said_at_the_gate`. The
+write half is main's behaviour from before R-229 and was read, not driven.
+
+Rename crate B to C, then rename crate A to B, which a yearly rotation does on
+purpose. The ledger holds a record under `B` written from the old B's music.
+Export `C` first and it adopts that record, and `B` then has none and adopts
+A's. That order is right and is driven. Export `B` FIRST and its own key has a
+record, so the write updates the old B's remote playlist with A's tracks. The
+gate now says so, `outbound-playlist-record-mismatch`, names `C` as the playlist
+the record looks like, and says exporting that one first fixes it. It warns and
+does not prevent, and `--new-playlist` does not help here, because the flag
+declines an offer and a record under the crate's own key is not an offer.
+
+**Measured cost:** add only, so nothing is lost. One remote playlist gains
+another crate's tracks and the person removes them at the provider by hand.
+
+**Why not fixed here.** Preventing it means displacing the record under `B` to a
+parking key at drive time, which needs a payload field, a digest input and a
+third branch in the reserve, for a case the gate already explains. It does not
+meet the board bar: the product says what is true and names the remedy.
+
+**Closes when:** `--new-playlist`, or a sibling flag, displaces a mismatched
+record under the crate's own key so the crate gets a playlist of its own.
+
+---
+
+## R-631. When several recorded playlists could be the crate, nothing lets a person say which
+
+**Found by** the R-229 fix, 2026-09-21. DRIVEN,
+`test_two_orphaned_records_that_could_each_be_it_adopt_neither`.
+
+Two orphaned records that both qualify are named on the gate,
+`outbound-playlist-adoption-ambiguous`, and none is adopted, so the write creates
+a new remote playlist. That is R-229's own cost, a second playlist, arrived at
+out loud rather than silently. There is no argument that takes one of the named
+keys.
+
+**Measured cost:** a second remote playlist, told to the person before they
+confirm. Below the board bar, since nothing false is said.
+
+**Closes when:** the verb takes the recorded key to adopt, validated against the
+candidates `recognise` returned, and the choice joins the confirm digest as
+`adopts` already does.
+
+---
+
+## R-632. An adopted remote playlist keeps the name it was created under
+
+**Found by** the R-229 fix, 2026-09-21. Read, NOT driven.
+
+After a rename is adopted the remote playlist is still called what the crate was
+called when it was first exported. `RemoteAccount.rename_playlist` exists and
+`sync/playlists.py` is its only caller. The export verb declares no retitle, so
+calling it here is a new class of remote write for this verb, and the entry this
+unit closed does not name it.
+
+**Measured cost:** none measured. A person sees the old name on the provider.
+
+**Closes when:** an adoption whose display name changed retitles the remote
+playlist, declared on the verb's surface and shown on the gate, or it is decided
+that the remote name is the person's to keep.
+
+---
+
+## R-633. The recognition bounds were chosen on fixtures, and no adoption has met a real account or a real reorganised library
+
+**Found by** the R-229 fix, 2026-09-21. METHOD's fourth pattern, stated rather
+than hidden.
+
+`SHARED_NUMERATOR / SHARED_DENOMINATOR`, a half of the record, and
+`GROWN_NUMERATOR / GROWN_DENOMINATOR`, a quarter of the crate, are judgment. Both
+are pinned at their boundaries by the suite and both survive a mutation of the
+coefficient, which says the numbers are enforced and nothing about whether they
+are right. No measurement was taken on the operator's library of how much a crate
+changes between two exports. The whole unit landed against `FakeAccount`: a real
+provider call is attended and was not this session's to make.
+
+Two things the fakes cannot show. Whether rekordbox keeps a track's `TrackID`
+across a relocate or a reimport, since the recorded contents are TrackIDs. And
+whether the installed copy of the product, a build older than this one, resuming
+a job this build queued with an adoption, creates instead, since it does not
+read the frozen key.
+
+**Measured cost:** none measured. Attended only, so no issue.
+
+**Closes when:** one crate is renamed and one is moved in the real library, each
+is exported to the real account, and the account shows one playlist per crate.
+
+---
+
+## R-634. Other stored decisions keyed on something a reorganisation changes, from the sweep after R-229
+
+**Found by** the R-229 fix, METHOD's fifth pattern, 2026-09-21. A read only
+sweep of `src/cratekit` by a subagent. Read, NOT driven, and the list is the
+sweep's claim rather than a measurement.
+
+The hearts half of the outbound ledger is keyed on the provider's track id and
+is not this shape. No other store is keyed on a playlist display path. The sweep
+named stores keyed on other things a person can change: the deletion tombstones
+and declines on folded artist and title, already R-53 and R-431; review items on
+a file's absolute path, already R-182; and, with no entry found by a heading
+grep, `sync/artifacts.py` keying a downloaded file on its resolved path,
+`write/routing_pass.py` keying a deferred intent on a digest of the file's
+location, and the review keys in `intake/repair.py` and `label/harvest.py`. It
+also claimed the frozen export payload is stuck by a rename between queue and
+resume. That one does NOT hold by reading: the resume reads nothing from the
+export by path, and the worker finds rows by TrackID.
+
+**Measured cost:** none measured. Maintainer facing until one is driven, so no
+issue.
+
+**Closes when:** each named site is driven with the rename or move that would
+break it, and either gets its own entry with a measured cost or is struck here.
