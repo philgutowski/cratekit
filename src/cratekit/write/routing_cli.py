@@ -70,6 +70,14 @@ from cratekit.write import metadata_cli, rbxml, rebuild, routing_pass, trees
 INBOX_WORKFLOW = "route-inbox"
 RESORT_WORKFLOW = "route-resort"
 
+#: What each driven resort left where it was, by job, from the worker to the
+#: resume that drove it (R-312). PROCESS LOCAL ON PURPOSE. The driver runs the
+#: worker inside the resume's own process, and a worker's return is the artifact
+#: channel and nothing else, so this is the one way the engine's measurement
+#: reaches the envelope without a second walk of the library. The resume drains
+#: its own job's entry, so nothing outlives the run that measured it.
+_LEFT_BEHIND: dict[str, list[rebuild.Difference]] = {}
+
 
 def _load() -> config.Config:
     try:
@@ -1402,14 +1410,21 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         # is read as it stands, not frozen with the job. A corrupt calibration
         # refuses here before any item is claimed.
         threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
-        _, warnings = ctx.run_job(store, job)
+        try:
+            _, warnings = ctx.run_job(store, job)
+        finally:
+            # DRAINED WHETHER OR NOT THE DRIVE RETURNED, so a job that raised
+            # leaves nothing behind for a later one in this process to inherit.
+            left_behind = _LEFT_BEHIND.pop(job.job_id, [])
         job = jobs.get(store, job.job_id)
         # THE SAME ENGINE AS THE REBUILD, SO THE SAME GAP (R-316). Only on the
         # branch that drove, because a job finished on entry was compared by an
-        # earlier run and this one compared nothing at all.
+        # earlier run and this one compared nothing at all. The leftovers sit
+        # on the same branch for the same reason (R-312).
         warnings = (
             *warnings,
             *rebuild.not_compared_warnings(rebuild.governed_not_compared(threshold)),
+            *rebuild.left_behind_warnings(left_behind),
         )
     jobs.raise_for_state(job)
     return ctx.envelope(data=_reported(store, job), warnings=warnings)
@@ -1456,15 +1471,21 @@ def handle_resort(job, item, cfg) -> None:
 
     WHAT IT DOES NOT DO IS TAKE THE TRACK OUT OF WHERE IT WAS. The membership
     writer is additive by construction, so after a genre change the track is in
-    its new sub AND still in its old one until somebody removes it. The engine's
-    report names those as unexpected differences, so the state is visible rather
-    than silent, and this build has no database removal path to offer.
+    its new sub AND still in its old one until somebody removes it. This build
+    has no database removal path to offer, so the verb's summary says additive
+    and the resume NAMES what was left, which is R-312.
+
+    THE ENGINE'S OWN MEASUREMENT IS WHAT GETS NAMED. ``after.unexpected`` is the
+    check the engine ran on the handle it had just written through, so keeping
+    it costs no second walk of the library and cannot refuse after a job that
+    succeeded. It is kept in :data:`_LEFT_BEHIND` rather than returned, because
+    a worker's return is the artifact channel and nothing else.
 
     ``cfg`` is the configuration this job was FROZEN against (KTD9). Nothing here
     loads one.
     """
     del job
-    rebuild.rebuild_governed_tree(
+    report = rebuild.rebuild_governed_tree(
         cfg,
         tree_id=str(item.item_id),
         workflow=RESORT_WORKFLOW,
@@ -1472,6 +1493,7 @@ def handle_resort(job, item, cfg) -> None:
         # configuration names. None on a library never calibrated (U89, D7).
         vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
     )
+    _LEFT_BEHIND.setdefault(item.job_id, []).extend(report.after.unexpected)
     return None
 
 

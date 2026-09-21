@@ -113,6 +113,15 @@ VOCAL_DIMENSION = "vocal"
 #: derived this run (R-316). One spelling, owned beside the dimension it names.
 VOCAL_NOT_COMPARED = "vocal-dimension-not-compared"
 
+#: The envelope warning code a resort carries when it left a membership where it
+#: was (R-312). The engine adds and never removes, so a track whose genre or band
+#: changed sits in its new sub and its old one until a person takes it out.
+LEFT_BEHIND = "membership-left-behind"
+
+#: How many leftovers one warning names before it counts the rest. A back
+#: catalogue can leave thousands behind, and an envelope is read by a person.
+LEFT_BEHIND_NAMED = 20
+
 
 # ---------------------------------------------------------------------------
 # What the declaration says a tree should hold
@@ -330,6 +339,47 @@ def not_compared_warnings(not_compared: Iterable[str]) -> tuple[dict[str, str], 
                 "this library's taxonomy declares a vocal sub-playlist and no vocal "
                 "calibration was read, so no track was filed into it this run and "
                 "nothing checked whether one belonged there"
+            ),
+        },
+    )
+
+
+def left_behind_warnings(
+    differences: Iterable["Difference"],
+) -> tuple[dict[str, str], ...]:
+    """The envelope warning naming every membership an additive write left behind.
+
+    NAMED SO A PERSON CAN REMOVE IT, because nothing in this build can (R-312).
+    Removing a membership row is a database delete on the one path where a wrong
+    derivation would empty somebody's playlist, so the product reports and a
+    person decides. The playlist is named by its DISPLAY and the track by its
+    FILE, which are what rekordbox shows. The stable identifiers are what the
+    convergence check prints, and this message says where to find them.
+
+    THE COUNT IS THE WHOLE SET AND THE NAMES ARE CAPPED, so a long list cannot
+    read as a short one. Sorted, so two runs over one state say one thing.
+    """
+    found = sorted(
+        (
+            f"{entry.folder}/{entry.playlist}: "
+            f"{entry.location or f'row {entry.content_id}'}"
+        )
+        for entry in differences
+    )
+    if not found:
+        return ()
+    named = found[:LEFT_BEHIND_NAMED]
+    rest = len(found) - len(named)
+    return (
+        {
+            "code": LEFT_BEHIND,
+            "message": (
+                f"this verb adds and never removes, so {len(found)} membership(s) "
+                f"the declaration no longer places are still where they were: "
+                f"{'; '.join(named)}"
+                + (f"; and {rest} more" if rest else "")
+                + ". Remove each one in rekordbox if it no longer belongs there. "
+                "The command crate converge lists every one by identifier"
             ),
         },
     )
@@ -1065,6 +1115,12 @@ def check(
     # and an additive rebuild cannot remove, so calling it a difference would
     # hold the flag shut over something nobody can act on.
     active = {content_id for ids in index.values() for content_id in ids}
+    # THE FILE EACH ACTIVE ROW RESOLVED TO, read off the one walk above. An
+    # unexpected difference is something only a person can settle, and a person
+    # finds a track by its file and not by its row identifier (R-312).
+    located_at = {
+        content_id: location for location, ids in index.items() for content_id in ids
+    }
     unexpected: list[Difference] = []
     foreign: list[str] = []
     doubled: list[str] = []
@@ -1089,6 +1145,7 @@ def check(
                     folder=destination.folder,
                     playlist=destination.playlist,
                     content_id=content_id,
+                    location=located_at.get(content_id),
                 )
             )
 
@@ -1779,6 +1836,8 @@ def governed_not_compared(vocal_threshold: float | None) -> tuple[str, ...]:
 
 __all__ = [
     "DERIVATIONS",
+    "LEFT_BEHIND",
+    "LEFT_BEHIND_NAMED",
     "REBUILD_ACTOR",
     "REBUILD_ANSWERS_KIND",
     "REBUILD_WORKFLOW",
@@ -1799,6 +1858,7 @@ __all__ = [
     "declared_membership",
     "derive_from_taxonomy",
     "governed_not_compared",
+    "left_behind_warnings",
     "library_truth",
     "not_compared_warnings",
     "not_derived",

@@ -58,6 +58,7 @@ import json
 import sqlite3
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -358,6 +359,7 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     seen: list[tuple[str, str]] = []
     cuts: list[tuple[object, object]] = []
     frozen = object()
+    measured = object()
 
     def spy(cfg, *, tree_id, workflow, vocal_threshold, **rest):
         # NO DEFAULT ON ``workflow`` OR ``vocal_threshold``. A spy that supplied
@@ -366,6 +368,8 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
         del cfg, rest
         seen.append((tree_id, workflow))
         cuts.append(vocal_threshold)
+        # The one field of the engine's report a worker reads (R-312).
+        return SimpleNamespace(after=SimpleNamespace(unexpected=(measured,)))
 
     def loader(cfg):
         # U89: the cut each worker hands the engine is the one loader's answer
@@ -378,6 +382,9 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     item = jobs.Item(job_id="j", item_id=TREE_ID, ordinal=0, state=jobs.ItemState.PENDING)
     assert rebuild_verb.handle(object(), item, frozen) is None
     assert routing_cli.handle_resort(object(), item, frozen) is None
+    # WHAT THE ENGINE MEASURED IS KEPT UNDER THE ITEM'S OWN JOB (R-312), and the
+    # rebuild worker, which has no surface that reads it, kept nothing.
+    assert routing_cli._LEFT_BEHIND.pop("j") == [measured]
 
     assert cuts == [7.5, 7.5]
     assert [tree for tree, _ in seen] == [TREE_ID, TREE_ID]
@@ -1134,6 +1141,152 @@ def test_the_warning_code_is_the_locked_spelling():
     (warning,) = rebuild.not_compared_warnings((rebuild.VOCAL_DIMENSION,))
     assert warning["code"] == "vocal-dimension-not-compared"
     assert rebuild.not_compared_warnings(()) == ()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-312: the resort is additive, and says what it left where it was
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _left_behind(envelope: dict) -> list[dict]:
+    return [w for w in envelope["warnings"] if w["code"] == rebuild.LEFT_BEHIND]
+
+
+@pytest.fixture
+def leftover(acknowledged, native) -> str:
+    """A governed playlist holding a track the declaration does not place there.
+
+    PRODUCED BY A SHIPPED VERB rather than planted: the confirmed inbox files
+    the intake track, and the declaration a resort derives walks the music
+    directory, which that file is not under. It is the state a genre change
+    leaves behind seen from the side the engine reads it from, a membership in a
+    declared destination that the declaration no longer asks for.
+    """
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert _membership(acknowledged, native) == {"2"}
+    return "2"
+
+
+def test_a_resort_names_the_membership_it_left_where_it_was(acknowledged, native, leftover):
+    """The cost R-312 records, then the answer to it.
+
+    The resort adds the declared track and leaves the other one in place, and
+    until this unit its envelope was a clean OK over a tree that held both. The
+    warning names the playlist by its display and the track by its file, which
+    are the two things a person needs to find the row in rekordbox and take it
+    out, because nothing in this build removes it for them.
+    """
+    job_id = _drive(["route", "resort"])[1]["data"]["job_id"]
+    code, done = _drive(["route", "resort", "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert _membership(acknowledged, native) == {"1", leftover}, (
+        "the resort removed a membership, which this build has no governed path for"
+    )
+    (warning,) = _left_behind(done)
+    assert "Electronica / Other/Unsorted" in warning["message"], warning
+    assert ARRIVED in warning["message"], warning
+    assert SHELVED not in warning["message"], (
+        "the track the declaration places was named as a leftover"
+    )
+    assert "1 membership" in warning["message"], warning
+    assert "adds and never removes" in warning["message"], warning
+
+
+def test_a_resort_that_left_nothing_behind_says_nothing_about_it(acknowledged, native):
+    """A converged tree carries no leftover warning, so the warning means something."""
+    job_id = _drive(["route", "resort"])[1]["data"]["job_id"]
+    code, done = _drive(["route", "resort", "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert _membership(acknowledged, native) == {"1"}
+    assert _left_behind(done) == []
+
+
+def test_a_resort_resume_that_drove_nothing_names_no_leftover(acknowledged, native, leftover):
+    """A job finished on entry was measured by the run that drove it, not this one.
+
+    The second resume holds no report, so naming a leftover there would be this
+    run answering for a comparison it never made. The queue only answer is the
+    same: nothing has been compared when a job is merely filed.
+    """
+    del acknowledged, native, leftover
+    code, queued = _drive(["route", "resort"])
+    assert _left_behind(queued) == []
+    job_id = queued["data"]["job_id"]
+    assert len(_left_behind(_drive(["route", "resort", "--job", job_id])[1])) == 1
+    code, again = _drive(["route", "resort", "--job", job_id])
+    assert code == int(ExitCode.OK), again
+    assert _left_behind(again) == []
+
+
+def test_one_jobs_leftovers_are_not_reported_under_another(acknowledged, native, leftover):
+    """The holder is keyed by job, and a drained job leaves nothing in it."""
+    from cratekit.write import routing_cli
+
+    del acknowledged, native, leftover
+    job_id = _drive(["route", "resort"])[1]["data"]["job_id"]
+    _drive(["route", "resort", "--job", job_id])
+    assert job_id not in routing_cli._LEFT_BEHIND, (
+        "a drained job left its report in the holder"
+    )
+
+
+def test_the_leftover_warning_is_capped_and_still_counts_every_one():
+    """A back catalogue can leave thousands, and the count must not be the cap."""
+    differences = [
+        rebuild.Difference(
+            direction=rebuild.Direction.UNEXPECTED,
+            bucket="b",
+            sub="s",
+            folder="Folder",
+            playlist="Playlist",
+            content_id=str(n),
+            location=f"Music/track-{n:03}.flac",
+        )
+        for n in range(rebuild.LEFT_BEHIND_NAMED + 3)
+    ]
+    (warning,) = rebuild.left_behind_warnings(differences)
+    assert f"{rebuild.LEFT_BEHIND_NAMED + 3} membership" in warning["message"]
+    assert "track-000.flac" in warning["message"]
+    assert f"track-{rebuild.LEFT_BEHIND_NAMED - 1:03}.flac" in warning["message"]
+    assert f"track-{rebuild.LEFT_BEHIND_NAMED:03}.flac" not in warning["message"]
+    assert "and 3 more" in warning["message"]
+    assert "crate converge" in warning["message"]
+
+
+def test_a_leftover_with_no_readable_file_is_named_by_its_row():
+    """The identifier is the fallback, never a blank."""
+    (warning,) = rebuild.left_behind_warnings(
+        [
+            rebuild.Difference(
+                direction=rebuild.Direction.UNEXPECTED,
+                bucket="b",
+                sub="s",
+                folder="Folder",
+                playlist="Playlist",
+                content_id="41",
+            )
+        ]
+    )
+    assert "Folder/Playlist: row 41" in warning["message"], warning
+    assert "and " not in warning["message"].split("row 41")[1].split(".")[0]
+
+
+def test_the_leftover_code_is_the_locked_spelling():
+    assert rebuild.LEFT_BEHIND == "membership-left-behind"
+    assert rebuild.left_behind_warnings(()) == ()
+
+
+def test_the_resort_summary_says_the_verb_is_additive():
+    """The registry line is what help prints, and it promised a re-place.
+
+    Named by what it must say and what it must stop saying, so a reword that
+    keeps the promise under new words still fails.
+    """
+    summary = registry.entry("route.resort").summary
+    assert "add" in summary, summary
+    assert "re-place" not in summary, summary
+    assert "old" in summary, summary
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -17,8 +17,8 @@ crate route pending
 ```
 
 The intake folder is `route inbox`. What no governed tree places is
-`route unplaced`. Re-placing tracks that are already filed, after a genre or an
-energy band changed under them, is `route resort`. Placing tracks whose
+`route unplaced`. Adding tracks that are already filed to where they now
+belong, after a genre or an energy band changed under them, is `route resort`. Placing tracks whose
 destination was decided before the library had a row to place is
 `route pending`, and it is the only one of the four that can close a run.
 
@@ -133,7 +133,7 @@ check.
 ## Resort queues rather than sweeps
 
 Changing a genre assignment or an energy band changes where already-filed
-tracks belong. Re-placing the back catalogue is long work, so this verb queues
+tracks belong. Sweeping the back catalogue is long work, so this verb queues
 a job and hands back its identifier instead of running the sweep inline. That
 is the point rather than a limitation: an inline sweep that dies halfway leaves
 no record of how far it got, and a job does.
@@ -154,6 +154,13 @@ crate route resort --job JOB_ID
 crate job list --state queued --state blocked
 crate job cancel JOB_ID
 ```
+
+The resort adds and never removes. After a genre or a band change the track is
+in its new playlist and still in its old one, because nothing in this product
+deletes a playlist membership. The finished resort carries a
+`membership-left-behind` warning naming each old playlist and the file left in
+it, so the person can take it out in rekordbox, and `crate converge` lists the
+same leftovers by identifier at any time.
 
 `--state` is repeatable and refuses a state it does not recognise instead of
 matching nothing, because a filter that silently matches nothing looks exactly

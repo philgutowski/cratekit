@@ -541,6 +541,10 @@ def test_the_check_reports_a_difference_in_both_directions(
     report = _check(cfg, db, adopted_root, declared, _placements(cfg, declared, COMPOSED))
     assert report.missing == ()
     assert [entry.content_id for entry in report.unexpected] == ["2"]
+    # NAMED BY ITS FILE AS WELL (R-312). Only a person can settle this direction,
+    # and a person finds a track by its file, never by its row identifier.
+    (leftover,) = report.unexpected
+    assert leftover.location is not None and leftover.location.endswith(PLAIN), leftover
 
     # And the first direction, from a tree the declaration outgrew: everything
     # the write placed is still there, so widening the declaration is what makes
