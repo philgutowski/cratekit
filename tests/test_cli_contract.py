@@ -353,6 +353,42 @@ def test_every_remediation_token_renders_to_something_a_user_can_act_on():
         assert rendered.strip() not in ("fix:", ""), f"{remedy} renders to nothing"
 
 
+def test_the_provider_session_remedy_names_three_acts_and_not_a_verb_that_cannot_mint_one():
+    """U97, closing R-411. The remedy used to be the single command ``crate login``.
+
+    That verb records a value somebody already holds, ``cli/verbs/login.py``
+    refuses without one, and minting is an attended act at a browser the
+    vendored downloader owns. So a first run person who followed the product's
+    own remedy reached a second refusal.
+
+    Asserted against literal text rather than against ``render.remedy_text``,
+    which is the token's own renderer: comparing a renderer to itself is X
+    equals X, and it would pass over the exact wording this closes. Each act is
+    pinned separately, because the erase is the one a reader drops and the one
+    R4's promise depends on.
+    """
+    line = render.remediation_line(
+        Cause(
+            reason="credential-missing",
+            message="no streaming provider session is stored",
+            remediation=Remediation(remedy=Remedy.AUTHENTICATE_PROVIDER),
+            scope=Scope.RUN,
+        )
+    )
+    assert line != "  fix: crate login"
+    body = line.removeprefix("  fix: ")
+    assert body.startswith("mint a provider session")
+    assert "crate login provider-session --from-file" in body
+    assert "erase the plaintext file" in body
+    assert "docs/adapters.md" in body
+
+    # A remedy that points at a document is only as good as the document, and a
+    # renamed file leaves a first run person at a dead end with no test red.
+    adapters = REPO_ROOT / "docs" / "adapters.md"
+    assert adapters.is_file(), "the remedy points at a document this repository does not ship"
+    assert "crate login provider-session --from-file" in adapters.read_text(encoding="utf-8")
+
+
 # ── S4: every refusal the guarded writer raises has a code and a remedy ──────
 
 #: The refusal conditions the guarded rekordbox writer raises, taken from U7's

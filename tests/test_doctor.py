@@ -1846,6 +1846,35 @@ def test_the_human_rendering_shows_the_checks_rather_than_only_a_status(
     assert render.remedy_text(Remedy.INSTALL_KEYCHAIN_BACKEND) in err
 
 
+def test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_verb(
+    configured, monkeypatch
+):
+    """U97, closing R-411, and driven through the DEFAULT human output on purpose.
+
+    The token was always right and the rendering was not, so a test that read
+    the JSON envelope would compare a token to itself and pass over the wording
+    a person actually reads. This one goes through the dispatcher the way the
+    process does and asserts the check table's own ``fix:`` line.
+
+    The bare verb is pinned NEGATIVELY as a whole line rather than as a
+    substring, because the procedure that replaces it contains ``crate login``
+    inside a longer command, and a substring check would forbid the fix.
+    """
+    monkeypatch.setattr(
+        doctor,
+        "Probes",
+        lambda: probes(
+            credential_recorded=lambda name: name != str(secrets.Credential.PROVIDER_SESSION)
+        ),
+    )
+    _code, _out, err = drive(["doctor"])
+
+    assert "credential.provider" in err
+    assert "fix: crate login\n" not in err
+    assert "crate login provider-session --from-file" in err
+    assert "docs/adapters.md" in err
+
+
 def test_the_cause_steps_are_not_printed_twice_beside_the_check_table():
     """The table already lists every failure with its own fix, so repeating the
     cause's steps above it prints one list twice.

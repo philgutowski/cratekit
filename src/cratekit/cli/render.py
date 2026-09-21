@@ -53,7 +53,12 @@ _COMMANDS: Mapping[Remedy, str | None] = {
     Remedy.RUN_DOCTOR: "crate doctor",
     Remedy.INSTALL_MODULE_EXTRA: None,  # generated per entry, see install_command
     Remedy.ACKNOWLEDGE_BACKUP: "crate session ack",
-    Remedy.AUTHENTICATE_PROVIDER: "crate login",
+    # Not "crate login", which this table offered until U97. That verb records a
+    # value somebody already holds and refuses without one, so a first run person
+    # who typed it reached a second refusal. Minting is an attended act at a
+    # browser that the vendored downloader owns, which makes this three acts and
+    # not a command; see the advice below.
+    Remedy.AUTHENTICATE_PROVIDER: None,
     Remedy.RETRY_LATER: None,
     Remedy.CHANGE_POLICY_OR_INPUT: "crate doctor",
     Remedy.RESUME_JOB: "crate job resume <id>",
@@ -109,6 +114,16 @@ _ADVICE: Mapping[Remedy, str] = {
     Remedy.INSTALL_KEYCHAIN_BACKEND: "install a keychain backend so credentials can be stored",
     Remedy.REPAIR_CREDENTIAL_STORE: "the credential store is unreadable; repair or recreate it",
     Remedy.REAUTHENTICATE: "the stored credential was rejected; authenticate again",
+    # THREE ACTS, IN ORDER, BECAUSE THERE IS NO COMMAND THAT DOES IT. R-411
+    # measured the cost of the single verb this used to be: it names the erase
+    # as well, since the product's promise is that no provider token sits on
+    # disk between invocations and the hop through a file is the one moment that
+    # is briefly false.
+    Remedy.AUTHENTICATE_PROVIDER: (
+        "mint a provider session with the vendored downloader's own login command, record it "
+        "with crate login provider-session --from-file, then erase the plaintext file, because "
+        "crate login on its own cannot mint one; docs/adapters.md carries the three commands"
+    ),
     Remedy.REAUTHENTICATE_PROVIDER: "the provider rejected the stored credential; log in again",
     Remedy.PAUSE_AND_CHECK_ACCOUNT: (
         "the provider is refusing this account; stop and check it before retrying, because "

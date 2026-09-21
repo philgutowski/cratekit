@@ -23,6 +23,7 @@ import tidalapi
 from tidalapi.exceptions import ObjectNotFound, TooManyRequests
 
 from cratekit.acquire import listing, match, provider_session
+from cratekit.cli import render
 from cratekit.core import config, jobs, review, secrets
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
@@ -285,6 +286,28 @@ def test_with_no_session_the_seam_still_refuses_the_credential_and_builds_no_cli
 
     assert excinfo.value.cause.reason == "credential-missing"
     assert client.logins == []
+
+
+def test_the_label_path_offers_the_same_three_act_procedure_as_doctor(cfg, monkeypatch):
+    """U97, closing R-411. Two surfaces raise this refusal and one table answers both.
+
+    ``catalogue.resolve`` and doctor's ``credential.provider`` check reach the
+    person through different code, and a private copy of the words in either
+    one is the second place a token becomes a sentence, which is what D2 exists
+    to prevent. So the seam that matters is that this path renders the SAME
+    text, asserted by rendering it here rather than by restating it.
+    """
+    use_client(monkeypatch, FakeClient())
+
+    with pytest.raises(CratekitError) as excinfo:
+        catalogue.resolve(cfg)
+
+    cause = excinfo.value.cause
+    assert cause.remediation.remedy is Remedy.AUTHENTICATE_PROVIDER
+    line = render.remediation_line(cause)
+    assert line != "  fix: crate login"
+    assert "crate login provider-session --from-file" in line
+    assert "docs/adapters.md" in line
 
 
 class Response:
