@@ -19386,6 +19386,28 @@ system's script.
 **Closes when:** an accepted proposal renames the file under R-407's collection
 guard, or the verb's summary stops implying a repair.
 
+**CLOSED 2026-09-20 on `relay/147`, U102, issue #147, and BOTH halves were
+done.** The (read) line was confirmed in plan mode before anything was built on
+it. `crate repair paths --apply` reads the path repair queue back, plans over
+the proposals a person accepted WITH the `accept` option, gates on the plan
+digest at `repair.paths.confirm`, renames, and reports. An open item, a rejected
+one, one answered `keep` and one accepted with no option are counted and left
+alone. The collection guard is U67's, asked through three public names on
+`write/naming_cli.py` rather than copied, so a referenced file is held, an
+unreadable collection refuses the whole verb in the same words, and the set is
+read again after the gate. R-172's hazard is not reproduced: a referenced file,
+a collision and an unusable item are each named with a reason and the run
+answers `rename-incomplete` on the plan surface, never ok, and it is retryable
+only when something outstanding could clear without a person. The summary half
+was done too, since the registry summary, the guide and the shipped skill all
+described a row re-pointing repair no handler ever performed. The registry
+entry now declares `files` and the confirm gate, and the database surface and
+the cloud sync decision it carried from the original design came off. What this
+entry called the source system's third mode, rewriting the locations in an
+export, is NOT built, by the brief's decision, and is R-624. Mutation tables
+`docs/mutation/u102-a.md` and `u102-b.md`, 25 rows, the author's own, all
+killed.
+
 ---
 
 ## R-422. Identification alone reports owned tracks as missing, drops the tracklist, and pays for recognition twice
@@ -25004,3 +25026,82 @@ here can raise one. Reachability is unmeasured, which is why this is a residual.
 **Closes when:** `read_index_tags` opens the file once and reports a failed
 read as a failure rather than as absent fields, so the index can decline to
 cache it.
+
+---
+
+## R-624. `repair paths` does not rewrite the locations inside an export
+
+**Found:** 2026-09-20, U102, `relay/147`. Decided in the unit's brief, recorded
+here because the brief said to. Read, not driven.
+
+The source system's `path_repair.py` has three modes: scan, apply, and a rewrite
+of the locations in a collection export from the mapping the apply wrote. U102
+built the first two. `--apply` writes no mapping of old name to new, and nothing
+rewrites an export.
+
+**Measured cost:** none was measured. The rewrite matters only for a file the
+collection already references, and `--apply` refuses every such file, so no
+rename this verb performs leaves an export pointing at a name that is gone. The
+cost appears only if somebody decides a referenced file should be renameable,
+which is a different decision from this one.
+
+**Closes when:** a decision is made that a referenced file may be renamed, and
+the rewrite is built with it, or that decision is made the other way and this
+entry is closed as not wanted.
+
+---
+
+## R-625. Nothing retires an applied path repair item, and its identity is the old path alone
+
+**Found by** the U102 code review, 2026-09-20. Two candidate producers were
+driven and neither produces the chain.
+
+An accepted item stays accepted after `--apply` renames its file, because the
+review store has a verdict and no notion of consumed. The verb is therefore
+idempotent against the WORLD: source gone is the class `missing`, worded by
+whether any file carries the proposed name. The item's identity is the resolved
+path of the file at scan time and nothing else, so a new file that later lands
+at that path inherits the verdict. If the proposed name is taken the item reads
+`collides` and every later run answers `rename-incomplete` until a person clears
+and rejects it; if it is free the new file is renamed with no fresh review.
+
+**Reachability.** The inherited rename is the rename the scan would propose
+again, since a proposal is a function of the name, the folder and the config,
+and `review.offer` would hand back this same item for that path. A CHAIN, A to
+B then B to C, needs the scan to propose a name that is not its own fixpoint.
+Two candidates were driven through `propose_name` on 2026-09-20, the stems
+`X - Y - X - Y - X` and `X - X - X`, and each reaches its fixpoint in one step.
+A config change to the byte budget between two scans was NOT driven. So: two
+candidates were driven and neither produces it.
+
+**Measured cost:** a re-acquired file arriving under the old rejected name is
+reported as a collision on every `--apply` until its item is rejected. The
+report is true, and it is permanent, which is the cost.
+
+**Closes when:** the review store can mark an item consumed, or the item's
+payload carries something that identifies the file rather than the path.
+
+---
+
+## R-626. The post gate rename loop exists twice, and `name apply`'s copy leaves the claim behind on an interrupt
+
+**Found by** the U102 code review, 2026-09-20. Read on `name apply`, driven on
+`repair paths`.
+
+`intake/repair_cli._apply` and `write/naming_cli.name_apply` each carry the
+sequence file still there, still unreferenced, claim, rename, and the two have
+already diverged. U102's copy removes the zero byte claim in a `finally`, so an
+interrupt between the claim and the rename leaves no stub, and it catches an
+`OSError` from `claim_target` and names the file. `name apply` removes the claim
+only in its `OSError` branch and lets an error from the claim escape. Driven on
+`repair paths`: with the `finally` reverted, row S1 of `docs/mutation/u102-b.md`,
+a `KeyboardInterrupt` raised from the rename leaves a zero byte file under the
+proposed audio name. The same interrupt was NOT driven against `name apply`,
+which is outside U102, so its reachability there is read and not measured.
+
+**Measured cost:** on `repair paths`, none after the fix. On `name apply`,
+unmeasured: a stub under an audio name would hold that name against the same
+rename on every later sweep and is a file rekordbox could import.
+
+**Closes when:** both verbs call one guarded rename, or `name apply` takes the
+same `finally` and the same catch.

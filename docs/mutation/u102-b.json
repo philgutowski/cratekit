@@ -1,0 +1,416 @@
+{
+  "name": "u102-b",
+  "pass_kind": "light",
+  "branch": "relay/147",
+  "head": "31815cc",
+  "when": "2026-09-21 03:13 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9542,
+  "baseline_exit": 0,
+  "pytest_runs": 15,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/repair_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/repair_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a9bd81d803b98cec",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9542,
+    "baseline_collected": 9542,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_plan_referenced",
+      "description": "_plan_for: treat no candidate as referenced, leaving only the post gate check to hold the file",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "08c0e86f5d38dbe0",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_proposal_for_a_referenced_file_refuses_and_its_sibling_is_renamed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not naming_cli.is_referenced(path, referenced)\n    ]",
+      "new": "        if True\n    ]"
+    },
+    {
+      "id": "G2_post_gate_referenced",
+      "description": "_apply: drop the referenced check made after the gate",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fdd7e00ae8754157",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_row_that_appears_after_the_gate_holds_the_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if naming_cli.is_referenced(path, referenced):\n            _owed(",
+      "new": "        if False:\n            _owed("
+    },
+    {
+      "id": "G3_post_gate_reread",
+      "description": "_apply: do not read the collection again after the gate",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0cf83a0f9cbb6680",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed",
+        "tests/intake/test_repair_apply.py::test_a_name_taken_after_the_gate_is_never_overwritten",
+        "tests/intake/test_repair_apply.py::test_a_row_that_appears_after_the_gate_holds_the_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    referenced = naming_cli.referenced_keys(cfg) if renames else frozenset()",
+      "new": "    referenced = frozenset()"
+    },
+    {
+      "id": "G4_plan_collisions",
+      "description": "_plan_for: detect no collision while the plan is built, leaving it to the claim",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "088f760c854b7a18",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_collision_refuses_that_file_and_names_it",
+        "tests/intake/test_repair_apply.py::test_two_accepted_proposals_for_one_name_rename_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    collides = naming_cli.held_collisions([(path, acc.proposed) for acc, path in free])",
+      "new": "    collides: dict[str, str] = {}"
+    },
+    {
+      "id": "G5_claim",
+      "description": "_apply: skip the atomic claim, so a name taken after the gate is overwritten by the rename",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "40fe057a11f1f696",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_name_taken_after_the_gate_is_never_overwritten",
+        "tests/intake/test_repair_apply.py::test_a_name_the_filesystem_refuses_to_claim_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            claimed = naming.claim_target(target)",
+      "new": "            claimed = True"
+    },
+    {
+      "id": "G6_abort",
+      "description": "_apply: carry on past an abort answer",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2077675af7e308c2",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_the_gate_refuses_unanswered_and_an_abort_touches_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if option == \"abort\":",
+      "new": "    if False:"
+    },
+    {
+      "id": "G7_referenced_is_owed",
+      "description": "_HELD: stop counting a referenced file as an accepted rename that did not happen, so the run answers ok over it",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2f186b3480183c3e",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_proposal_for_a_referenced_file_refuses_and_its_sibling_is_renamed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_HELD = (REFERENCED, COLLIDES, UNUSABLE)",
+      "new": "_HELD = (COLLIDES, UNUSABLE)"
+    },
+    {
+      "id": "G8_collision_is_owed",
+      "description": "_HELD: stop counting a collision as owed, which is R-172 itself, a skipped collision reported as ok",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0d2b9c34ce7a3a79",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_collision_refuses_that_file_and_names_it",
+        "tests/intake/test_repair_apply.py::test_two_accepted_proposals_for_one_name_rename_neither"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_HELD = (REFERENCED, COLLIDES, UNUSABLE)",
+      "new": "_HELD = (REFERENCED, UNUSABLE)"
+    },
+    {
+      "id": "G9_post_gate_missing",
+      "description": "_apply: drop the check that the file is still there after the gate",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "35052ece7119882b",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not path.is_file():\n            _owed(item, \"the file is no longer there\")\n            continue",
+      "new": ""
+    },
+    {
+      "id": "R1_retryable_seed",
+      "description": "_apply: call a run retryable when all it holds is a file only a person can release",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "730ddb85a9f85ecc",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_proposal_for_a_referenced_file_refuses_and_its_sibling_is_renamed",
+        "tests/intake/test_repair_apply.py::test_an_item_with_no_stored_path_is_held_and_never_guessed_at"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        item[\"action\"] in _HELD and item[\"action\"] not in _NEEDS_A_PERSON",
+      "new": "        item[\"action\"] in _HELD"
+    },
+    {
+      "id": "R2_retryable_after_gate",
+      "description": "_owed: stop marking the run retryable when a rename fails after the gate",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f168d4582346c927",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_refused_rename_is_named_and_leaves_no_stub"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        nonlocal retryable\n        retryable = True",
+      "new": "        nonlocal retryable"
+    },
+    {
+      "id": "S1_stub_removed",
+      "description": "_apply: leave the zero byte claim behind when the rename did not happen",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5b77b6bd4749a67e",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_refused_rename_is_named_and_leaves_no_stub",
+        "tests/intake/test_repair_apply.py::test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if not moved:\n                target.unlink(missing_ok=True)",
+      "new": "            if not moved:\n                pass"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "S2_claim_oserror",
+      "description": "_apply: let an OSError from the claim escape instead of naming the file",
+      "reason": "ranked below the cap: a test drives it and asserts the reason text, and the row is the removal of one except clause beside S1"
+    },
+    {
+      "id": "G10_unusable_is_owed",
+      "description": "_HELD: stop counting an unusable item as owed",
+      "reason": "ranked below the cap: same tuple as G7 and G8, which are measured, and five tests assert the exit code over an unusable item"
+    },
+    {
+      "id": "X1_gate_declared",
+      "description": "registry: drop the confirm gate from the entry",
+      "reason": "ranked below the cap: conformance 3 holds every declared gate to firing and the handler looks the gate up by name, so the removal fails at the lookup"
+    },
+    {
+      "id": "X2_digest_covers_apply",
+      "description": "_plan_for: build the apply digest without the marker that separates it from the scan's",
+      "reason": "ranked below the cap: maintainer facing, the two plans carry different item shapes so their digests already differ"
+    }
+  ]
+}

@@ -1,0 +1,433 @@
+{
+  "name": "u102-a",
+  "pass_kind": "light",
+  "branch": "relay/147",
+  "head": "31815cc",
+  "when": "2026-09-21 03:09 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9542,
+  "baseline_exit": 0,
+  "pytest_runs": 17,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/repair.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/repair.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "eb5c7cbc002ae47a",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9542,
+    "baseline_collected": 9542,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "D1_keep_is_not_accept",
+      "description": "decided(): read the accepted verdict alone, so an item answered keep is treated as a rename to apply",
+      "file": "src/cratekit/intake/repair.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "17c6484d4fe6f746",
+      "subset": [
+        "tests/intake/test_repair_apply.py",
+        "tests/intake/test_repair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_an_open_or_rejected_or_kept_proposal_is_untouched"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif item.option != ACCEPT:\n            kept += 1",
+      "new": "        elif item.option is None:\n            kept += 1"
+    },
+    {
+      "id": "D2_open_is_not_accepted",
+      "description": "decided(): drop the branch that counts an item with no accepted verdict as open",
+      "file": "src/cratekit/intake/repair.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f59eb8c78b7771ac",
+      "subset": [
+        "tests/intake/test_repair_apply.py",
+        "tests/intake/test_repair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_an_open_or_rejected_or_kept_proposal_is_untouched"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif item.verdict is not Verdict.ACCEPTED:\n            still_open += 1",
+      "new": "        elif False:\n            still_open += 1"
+    },
+    {
+      "id": "U1_no_stored_path",
+      "description": "_unusable_why: drop the refusal over an item the queue holds no path for",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ebca6692117f20f0",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_an_item_with_no_stored_path_is_held_and_never_guessed_at"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if accepted.path is None:\n        return (",
+      "new": "    if False:\n        return ("
+    },
+    {
+      "id": "U2_bare_filename",
+      "description": "_unusable_why: stop requiring the proposed name to be a bare filename, so a path with a separator is applied",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f9ea389c88858bea",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_proposed_name_that_is_not_a_same_suffix_filename_is_never_applied[../escaped.flac-not a bare filename]",
+        "tests/intake/test_repair_apply.py::test_a_proposed_name_that_is_not_a_same_suffix_filename_is_never_applied[nested/inside.flac-not a bare filename]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not proposed or proposed in {\".\", \"..\"} or Path(proposed).name != proposed:",
+      "new": "    if not proposed or proposed in {\".\", \"..\"}:"
+    },
+    {
+      "id": "U3_empty_name",
+      "description": "_unusable_why: stop refusing an empty proposed name",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "927e3f5582589b75",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_proposed_name_that_is_not_a_same_suffix_filename_is_never_applied[-not a bare filename]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not proposed or proposed in {\".\", \"..\"} or Path(proposed).name != proposed:",
+      "new": "    if proposed in {\".\", \"..\"} or Path(proposed).name != proposed:"
+    },
+    {
+      "id": "U4_same_suffix",
+      "description": "_unusable_why: drop the check that the proposed name keeps the file's extension",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2754566b22f574cc",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_proposed_name_that_is_not_a_same_suffix_filename_is_never_applied[04A - 124 - Song - Artist.txt-change the file's extension]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if Path(proposed).suffix.lower() != Path(accepted.path).suffix.lower():",
+      "new": "    if False:"
+    },
+    {
+      "id": "U5_linked_file",
+      "description": "_unusable_why: drop the check that the stored path names the file the proposal was shown for, so a link's target is renamed",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df6f3e016a8b778b",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_linked_file_is_never_renamed_through_its_link"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if accepted.recorded and Path(accepted.path).name != accepted.recorded:",
+      "new": "    if False:"
+    },
+    {
+      "id": "P1_root_boundary",
+      "description": "_under: match the root as a bare prefix, without the separator, so a sibling folder sharing the prefix is inside it",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c8f5f53329b72c5a",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_root_that_only_shares_a_prefix_is_not_the_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return held == wanted or held.startswith(wanted + \"/\")",
+      "new": "    return held == wanted or held.startswith(wanted)"
+    },
+    {
+      "id": "P2_root_casefold",
+      "description": "_key: compare the root exactly instead of casefolded",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fcab86aa5a7bcb07",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_root_typed_in_another_case_still_names_the_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return locations.norm_for_compare(path).casefold()",
+      "new": "    return locations.norm_for_compare(path)"
+    },
+    {
+      "id": "P3_root_filter",
+      "description": "_plan_for: ignore the root, so an accepted item outside it is applied",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3280ef4b6e94aaef",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_root_limits_the_apply_and_counts_what_it_left_out",
+        "tests/intake/test_repair_apply.py::test_a_root_that_only_shares_a_prefix_is_not_the_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if accepted.path is not None and not _under(accepted.path, root):",
+      "new": "        if False:"
+    },
+    {
+      "id": "P4_unchanged",
+      "description": "_plan_for: stop setting aside a proposal that names the file's own name, so it is planned as a rename",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "38bba8208c5a0d85",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_proposal_that_asked_for_no_change_is_listed_with_its_reason"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if path.name == accepted.proposed:",
+      "new": "        if False:"
+    },
+    {
+      "id": "P5_missing",
+      "description": "_plan_for: stop setting aside an accepted item whose file is gone, so the run after an apply plans it again",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7940e1db0801af4f",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_a_second_apply_converges_and_claims_only_what_it_observed",
+        "tests/intake/test_repair_apply.py::test_an_accepted_file_that_is_gone_says_no_file_carries_the_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not path.is_file():\n            # ONE CLASS",
+      "new": "        if False:\n            # ONE CLASS"
+    },
+    {
+      "id": "P6_missing_says_what_exists",
+      "description": "_plan_for: always word a missing file as a rename already carried out, whether or not any file carries the proposed name",
+      "file": "src/cratekit/intake/repair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7a64692fd453807c",
+      "subset": [
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 28,
+      "baseline_collected": 28,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_repair_apply.py::test_an_accepted_file_that_is_gone_says_no_file_carries_the_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if target.is_file():\n                why = (",
+      "new": "            if True:\n                why = ("
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D3_identity_type",
+      "description": "decided(): accept a stored path that is not text",
+      "reason": "ranked below the cap: one writer produces the identity column and it writes text, so the input has no driven producer"
+    },
+    {
+      "id": "D4_paging",
+      "description": "decided(): read one page instead of walking every page",
+      "reason": "ranked below the cap: maintainer facing, and the paging test beside it asserts a count over one page plus three"
+    }
+  ]
+}

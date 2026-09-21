@@ -1,0 +1,144 @@
+name = "u102-b"
+pass_kind = "light"
+
+# Batch B of two for issue 147, U102. Twelve rows: the collection guard on both
+# sides of the gate, the gate itself, the incomplete report, which is the R-172
+# hazard the brief names, and the claim. With batch A's thirteen this is the cap
+# of 25 exactly.
+
+[[rows]]
+id = "G1_plan_referenced"
+description = "_plan_for: treat no candidate as referenced, leaving only the post gate check to hold the file"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''        if not naming_cli.is_referenced(path, referenced)
+    ]'''
+new = '''        if True
+    ]'''
+
+[[rows]]
+id = "G2_post_gate_referenced"
+description = "_apply: drop the referenced check made after the gate"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''        if naming_cli.is_referenced(path, referenced):
+            _owed('''
+new = '''        if False:
+            _owed('''
+
+[[rows]]
+id = "G3_post_gate_reread"
+description = "_apply: do not read the collection again after the gate"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    referenced = naming_cli.referenced_keys(cfg) if renames else frozenset()'''
+new = '''    referenced = frozenset()'''
+
+[[rows]]
+id = "G4_plan_collisions"
+description = "_plan_for: detect no collision while the plan is built, leaving it to the claim"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    collides = naming_cli.held_collisions([(path, acc.proposed) for acc, path in free])'''
+new = '''    collides: dict[str, str] = {}'''
+
+[[rows]]
+id = "G5_claim"
+description = "_apply: skip the atomic claim, so a name taken after the gate is overwritten by the rename"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''            claimed = naming.claim_target(target)'''
+new = '''            claimed = True'''
+
+[[rows]]
+id = "G6_abort"
+description = "_apply: carry on past an abort answer"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''    if option == "abort":'''
+new = '''    if False:'''
+
+[[rows]]
+id = "G7_referenced_is_owed"
+description = "_HELD: stop counting a referenced file as an accepted rename that did not happen, so the run answers ok over it"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''_HELD = (REFERENCED, COLLIDES, UNUSABLE)'''
+new = '''_HELD = (COLLIDES, UNUSABLE)'''
+
+[[rows]]
+id = "G8_collision_is_owed"
+description = "_HELD: stop counting a collision as owed, which is R-172 itself, a skipped collision reported as ok"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''_HELD = (REFERENCED, COLLIDES, UNUSABLE)'''
+new = '''_HELD = (REFERENCED, UNUSABLE)'''
+
+[[rows]]
+id = "G9_post_gate_missing"
+description = "_apply: drop the check that the file is still there after the gate"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''        if not path.is_file():
+            _owed(item, "the file is no longer there")
+            continue'''
+new = ""
+
+[[rows]]
+id = "R1_retryable_seed"
+description = "_apply: call a run retryable when all it holds is a file only a person can release"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''        item["action"] in _HELD and item["action"] not in _NEEDS_A_PERSON'''
+new = '''        item["action"] in _HELD'''
+
+[[rows]]
+id = "R2_retryable_after_gate"
+description = "_owed: stop marking the run retryable when a rename fails after the gate"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''        nonlocal retryable
+        retryable = True'''
+new = '''        nonlocal retryable'''
+
+[[rows]]
+id = "S1_stub_removed"
+description = "_apply: leave the zero byte claim behind when the rename did not happen"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''            if not moved:
+                target.unlink(missing_ok=True)'''
+new = '''            if not moved:
+                pass'''
+
+[[dropped]]
+id = "S2_claim_oserror"
+description = "_apply: let an OSError from the claim escape instead of naming the file"
+reason = "ranked below the cap: a test drives it and asserts the reason text, and the row is the removal of one except clause beside S1"
+
+[[dropped]]
+id = "G10_unusable_is_owed"
+description = "_HELD: stop counting an unusable item as owed"
+reason = "ranked below the cap: same tuple as G7 and G8, which are measured, and five tests assert the exit code over an unusable item"
+
+[[dropped]]
+id = "X1_gate_declared"
+description = "registry: drop the confirm gate from the entry"
+reason = "ranked below the cap: conformance 3 holds every declared gate to firing and the handler looks the gate up by name, so the removal fails at the lookup"
+
+[[dropped]]
+id = "X2_digest_covers_apply"
+description = "_plan_for: build the apply digest without the marker that separates it from the scan's"
+reason = "ranked below the cap: maintainer facing, the two plans carry different item shapes so their digests already differ"
