@@ -4,7 +4,31 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-382, issue #96, `relay/96`, 2026-09-21.**
+**Last merged: R-381, issue #97, `relay/97`, 2026-09-21.**
+A favourite label's slug now transliterates before it folds, which CLOSES R-381.
+`registry.slug` maps `ä ö ü ß` and their capitals to `ae oe ue ss`, drops
+combining marks after NFKD, then folds, so `Sueño` is `sueno` and `Voll Schön`
+is `voll-schoen`. `RegistryStore.load` re-keys an entry whose identifier is
+exactly the old fold of its name when the new slug is free, through `update`
+under the lock, and records each move in a top level `renamed` map in the same
+document. `REGISTRY_VERSION` stays 1, and a registry nothing moved keeps its old
+shape. **THE WATERMARKS ARE LIBRARY SCOPED AND THE REGISTRY HAS NO
+CONFIGURATION**, so `label.marks` follows `Registry.live_renames` on its next
+read or advance, and never overwrites a year already held under the new
+identifier. A taken slug leaves the old identifier. `by_id` follows a move so a
+sweep item frozen on the old identifier still finds its label, and a move whose
+old identifier a new label holds again is dropped. `add` keys on an entry held
+under the old fold with the same name, so a collided label is not doubled.
+The built in review raised two findings, both fixed in round one: the frozen
+item refused, and a reused old identifier handing its year to the moved label.
+Battery: ruff clean, **9793 passed** and 1 skipped in 75 seconds. Scan clean. No
+test of this unit's is among the slowest.
+Mutation table `docs/mutation/r381.md`, re-measured in `r381-b.md`, read in
+`r381-notes.md`: **17 rows, the author's own, all killed** after two zeros were
+pinned. Filed R-642, three leftovers, none on the board bar.
+**Main's highest residual number is R-642.**
+
+**The session before: R-382, issue #96, `relay/96`, 2026-09-21.**
 A playlist run to done by `crate intake playlist` is now recorded in the
 playlists cursor on the next `crate sync all`, which CLOSES R-382. The cursor
 is reconciled over `playlists.playlist_jobs`, every `intake.playlist` job for
@@ -23,7 +47,6 @@ Mutation table `docs/mutation/r382.md`, read in `r382-notes.md`: **16 rows, the
 author's own, 15 killed.** The zero, M10, is an equivalent mutant.
 Nothing filed. R-116 and R-247 merged after R-318 without rewriting this file,
 and their entries are not backfilled here.
-**Main's highest residual number is R-641.**
 
 **The session before: R-318, issue #169, `relay/169`, 2026-09-21.**
 A confirmed `crate route inbox` now names every intake file it could not file
