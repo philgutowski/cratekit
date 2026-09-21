@@ -733,6 +733,25 @@ omission two ways.
 today. They are a statement about the moment the job was queued, which is the
 only moment the item list is a statement about either.
 
+### Library wide walk
+The one walk `analyze calibrate` treats as the library's own distribution: the
+library root, or the music folder under it, walked recursively, with no folder
+declined and none unreadable. Introduced by U94. Anything else is a PARTIAL
+walk: one genre folder, the root read one level deep, a recursive walk of a
+subtree, or a root walk that had to leave out a linked or unlistable folder.
+A partial walk fails the `calibrate.sample` check with nothing measured, unless
+`--accept-partial` is given, and then the check reads skipped, the envelope
+carries `calibration-partial-sample`, and the file's own note says what was
+left out.
+
+It exists because a calibration fitted over part of a library is not wrong in a
+way anyone can see. The file loads, every restamp succeeds, and the whole
+library is rated on that part's scale.
+
+*Avoid:* reading "library wide" as "measured every track". The energy half
+measures a stride sample of the walk, 500 by default. Library wide is a
+statement about what the sample was drawn FROM.
+
 ### Rename intent
 The record a worker writes, before it renames the file its item identifies, of
 the name the file is about to take. It lives in the item's staging directory,

@@ -2,8 +2,8 @@
   "name": "u94-b",
   "pass_kind": "light",
   "branch": "relay/139",
-  "head": "98414f4",
-  "when": "2026-09-21 00:02 UTC",
+  "head": "d2ca45a",
+  "when": "2026-09-21 00:19 UTC",
   "valid": true,
   "invalid_reason": "",
   "baseline_collected": 9416,
@@ -42,7 +42,7 @@
       "kind": "mutation",
       "surface": "user",
       "pairs_with": null,
-      "fingerprint": "449cd293d228fcd0",
+      "fingerprint": "e99e24c06d78e9d1",
       "subset": [
         "tests/test_analysis_workers.py",
         "tests/test_vocals_cli.py"
@@ -63,8 +63,8 @@
       "note": "",
       "runs": 1,
       "head_verified": true,
-      "old": "        if partial is not None and not accepted:\n            return _calibrate_refusal(ctx, _refused(partial), summary, omitted)",
-      "new": "        if False:\n            return _calibrate_refusal(ctx, _refused(partial), summary, omitted)"
+      "old": "        if partial is not None and not accepted:\n            return _calibrate_refusal(ctx, _partial_refused(partial), summary, omitted)",
+      "new": "        if False:\n            return _calibrate_refusal(ctx, _partial_refused(partial), summary, omitted)"
     },
     {
       "id": "W2_unreadable_not_counted",
@@ -98,7 +98,7 @@
     },
     {
       "id": "W3_accepted_reads_ok",
-      "description": "_accepted: report an accepted partial as ok, so it reads as the library wide fit on the check row",
+      "description": "_partial_accepted: report an accepted partial as ok, so it reads as the library wide fit on the check row",
       "file": "src/cratekit/analysis/cli.py",
       "kind": "mutation",
       "surface": "user",
