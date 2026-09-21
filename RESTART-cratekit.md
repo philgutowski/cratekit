@@ -40,7 +40,8 @@ round and two were recorded.** The sharpest: the queue addresses an item by
 `path.resolve()` while the proposal was made for the name the scan saw, so a
 symlinked file was renamed through its link, outside the library. It is now
 held as `unusable`.
-Battery: ruff clean, **BATTERY_LINE**, scan clean. 28 tests joined, in the new
+Battery: ruff clean, **9541 passed** and 1 skipped in 78 seconds, 9542
+collected, scan clean. 28 tests joined, in the new
 `tests/intake/test_repair_apply.py`, every one through the real dispatcher and
 the guard tests against a disposable database. No slug joined, so neither
 population pin moved.
