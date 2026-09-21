@@ -1,0 +1,29 @@
+name = "r318-b"
+pass_kind = "light"
+
+[[rows]]
+id = "C7_trees_not_deduplicated"
+description = "_skipped_files: a tree the writer skipped a file in twice is listed twice"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                "trees": sorted(set(tree_ids)),'''
+new = '''                "trees": sorted(tree_ids),'''
+
+[[rows]]
+id = "W2_cap_halved"
+description = "Halve the cap on how many skipped files a warning names, 10 to 5"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''SKIPPED_NAMED = 10'''
+new = '''SKIPPED_NAMED = 5'''
+
+[[rows]]
+id = "N1_no_native_key_dropped"
+description = "apply_inbox: the no-native-tree answer carries no skipped_files key, so the payload shape differs by branch"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+old = '''            "skipped": 0,
+            "skipped_files": [],
+        }'''
+new = '''            "skipped": 0,
+        }'''
