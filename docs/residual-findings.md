@@ -13476,6 +13476,42 @@ instruction for a write.
 
 **Found by** U56, 2026-09-03, driven through `crate tag folder`.
 
+**Corrected 2026-09-21 on `groom/board-2026-09-21`**, after the #170 build drove
+this entry's own premise and disproved it. Read the correction before the body
+below, which is left intact because it is what U56 recorded and the difference is
+the lesson.
+
+The body says a genre the taxonomy cannot resolve makes the searcher decline. That
+is true of fourteen strings and false of every other. `routing.suggest_tag` has
+five tiers and the fifth passes the source's own string through unchanged, which
+its docstring states as a deliberate choice: "this is how a genuinely new genre
+survives long enough for someone to notice it." Driven against the shipped
+taxonomy on 2026-09-21:
+
+```
+'gqom'       -> tag='gqom'       declined=False
+'hardgroove' -> tag='hardgroove' declined=False
+'Techno'     -> tag=None         declined=True
+'Electronic' -> tag=None         declined=True
+```
+
+What declines is two exact `decline = ask` rules covering five strings, plus the
+four `fallback.too_coarse_as_source` strings the resulting tag is checked
+against. All of them are catch-all buckets from a source taxonomy, and refusing
+them is the blanket-genre bug `suggest_tag` exists to prevent. **So the verb this
+entry asks for cannot be built for them.** An alias that made `Techno` or
+`Electronic` resolve would reinstate exactly the defect the exact rules were
+written to stop, and the load-time check already refuses a tag alias that collides
+with the eleven routing aliases pointing at the fallback bucket.
+
+The measured cost below is wrong for the same reason. An unknown genre does not
+leave the file untagged and does not re-pay a lookup. It is written, and counted
+under `tagged`.
+
+**Superseded by R-650.** What survives this correction is not the missing alias
+verb, it is that tier five's "someone notices it" has no mechanism behind it.
+Nothing here is still owed under this number.
+
 When a catalogue answers with a genre the declared taxonomy cannot resolve, the
 searcher declines and `tag_one` reports `unmapped-genre` with the raw string.
 R24 puts the distinct strings and their counts in the verb's report, so a person
@@ -26139,3 +26175,40 @@ the board bar: reachability is unmeasured and no candidate was driven.
 
 **Closes when:** the identity is one a clone cannot copy on each platform that
 reports one, or a clone is detectable and reads as unknown.
+
+---
+
+## R-650. A source genre the taxonomy never heard of is written raw and counted as a success
+
+**Found:** grooming the board 2026-09-21, from the #170 build that disproved
+R-247's premise. Driven against the shipped taxonomy, not read.
+
+`routing.suggest_tag`'s fifth tier passes an unrecognised source string through
+unchanged, and its docstring gives the reason: "this is how a genuinely new genre
+survives long enough for someone to notice it." Nothing implements the noticing.
+`tag_one` writes the string as the file's genre, and `tagging.cli`'s report counts
+that write under `tagged` while `unresolved` is filled only from
+`UNMAPPED_GENRE`, which that path never sets. A person's own report tells them the
+folder tagged cleanly.
+
+```
+suggest_tag(default_taxonomy(), 'gqom')       -> tag='gqom'       declined=False
+suggest_tag(default_taxonomy(), 'hardgroove') -> tag='hardgroove' declined=False
+```
+
+**Measured cost.** Two, and the second is the one that bites. The tag written to
+the file is outside the declared vocabulary, so what is on disk is no longer what
+the template says the library uses. Then `routing` sends that same string to the
+`electronica_other` fallback bucket, because `fallback.routing_uses_fallback` is
+true, so the track lands in Electronica / Other and looks like every other track
+that genuinely belongs there. The retag pass over that bucket is the workflow
+that exists to undo this, and it cannot tell the two apart.
+
+**Why it is not fixed here.** Tier five is deliberate and the alternative, making
+it decline, is the blanket-genre bug in reverse: a new genre would stop being
+written at all. The repair is a report line, not a routing change, and deciding
+whether an unrecognised write is a warning on an otherwise successful verb is a
+product decision about what `crate tag folder` promises.
+
+**Closes when:** a source genre that reached tier five is visible to the person
+who ran the verb, distinct from both a clean tag and an `unmapped-genre` decline.
