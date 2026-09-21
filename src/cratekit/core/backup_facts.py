@@ -379,11 +379,88 @@ def record(
 PORTIONS: MappingProxyType = MappingProxyType({p.value: p for p in Portion})
 
 
+# ---------------------------------------------------------------------------
+# What a queued backup item ran (R-349)
+# ---------------------------------------------------------------------------
+
+#: The inventory key of the per item outcome directory.
+OUTCOMES_KEY = "backup_outcomes"
+
+#: The ``progress`` field both ``job show`` and ``backup run --job`` carry the
+#: outcomes under. ``job_state/1`` closes its top level, so it rides inside.
+OUTCOMES_FIELD = "outcomes"
+
+#: The key :func:`read_outcomes` reports under when a job's directory exists and
+#: cannot be listed. Not a portion name, so it cannot be read as one item.
+UNLISTABLE = "(unlistable)"
+
+
+def outcome_path(job_id: str, item_id: str) -> Path:
+    """Where one queued item's outcome lives, keyed by job and item.
+
+    HERE AND NOT IN THE BACKUP MODULE, for the reason the module docstring gives
+    for the age: ``job show`` reads this, and ``job show`` is core CLI that must
+    not import a toggleable feature module (KTD23, KTD26). One path function
+    serves the writer and the reader, so the two cannot name different files.
+    """
+    return config.state_path(OUTCOMES_KEY) / job_id / f"{item_id}.json"
+
+
+def write_outcome(job_id: str, item_id: str, payload: dict) -> Path:
+    """Write one item's outcome now, atomically, owner only (P1).
+
+    The FAILURE channel. A successful item's outcome is staged and handed to the
+    job engine's commit instead, because that commit is what completes the item.
+    """
+    path = outcome_path(job_id, item_id)
+    config.atomic_write_bytes(encode_outcome(payload), path)
+    return path
+
+
+def encode_outcome(payload: dict) -> bytes:
+    """The bytes both channels write, so a staged success and a direct failure
+    are the same format."""
+    return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def read_outcomes(job_id: str) -> dict[str, dict] | None:
+    """Every recorded item outcome for one job, keyed by item, or None.
+
+    NONE MEANS NO ITEM OF THIS JOB EVER RECORDED ONE, which is every job that is
+    not a backup and every backup whose items have not run. The caller omits the
+    field on None rather than printing an empty mapping, so a job of another verb
+    does not grow a backup field.
+
+    A FILE THAT CANNOT BE READ IS REPORTED AS UNREADABLE, NOT SKIPPED. Skipping
+    it would print the other item's commands alone, and a reader would take the
+    missing item for one that never ran. Staged files are not outcomes and are
+    ignored: a staged file is one the engine had not yet committed.
+    """
+    directory = config.state_path(OUTCOMES_KEY) / job_id
+    if not directory.is_dir():
+        return None
+    try:
+        files = sorted(directory.glob("*.json"))
+    except OSError as exc:
+        # A directory that exists and cannot be listed is not "nothing ran".
+        return {UNLISTABLE: {"unreadable": f"{directory}: {exc}"}}
+    found: dict[str, dict] = {}
+    for path in files:
+        try:
+            found[path.stem] = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            found[path.stem] = {"unreadable": f"{path}: {exc}"}
+    return found or None
+
+
 __all__ = [
     "FUTURE_TOLERANCE",
+    "OUTCOMES_FIELD",
+    "OUTCOMES_KEY",
     "PORTIONS",
     "SCHEMA_VERSION",
     "STATE_KEY",
+    "UNLISTABLE",
     "AgeState",
     "BackupFact",
     "BackupFactsUnreadable",
@@ -391,8 +468,12 @@ __all__ = [
     "PortionAge",
     "Remedy",
     "ages",
+    "encode_outcome",
     "oldest_usable_age",
+    "outcome_path",
     "path_for",
     "read_facts",
+    "read_outcomes",
     "record",
+    "write_outcome",
 ]

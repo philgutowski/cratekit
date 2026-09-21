@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any, Sequence
 
 from cratekit.cli import handlers, registry
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs
+from cratekit.core import backup_facts, config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -154,6 +154,14 @@ def show(ctx: "Context") -> Envelope:
         job = jobs.reconcile(store, ctx.args.job_id)
         summary = _summary(store, job)
         drifted = _drift_warning(job)
+    # R-349. What each backup item actually ran, read from the installation
+    # state rather than from the job, which keeps its frozen payload (KTD9).
+    # Read whatever the items' states are, because the record a FAILED item left
+    # is the one a person most needs. Absent for every job that recorded none,
+    # so a job of another verb gains no field.
+    outcomes = backup_facts.read_outcomes(job.job_id)
+    if outcomes is not None:
+        summary[backup_facts.OUTCOMES_FIELD] = outcomes
     return ctx.envelope(
         data={
             "job_id": job.job_id,

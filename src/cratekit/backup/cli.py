@@ -119,6 +119,10 @@ ALREADY_QUEUED = "backup-already-queued"
 #: nothing went wrong, and the person asked for exactly this.
 REHEARSAL = "backup-rehearsal"
 
+#: The ``progress`` key carrying each item's recorded outcome (R-349). Named in
+#: core because ``job show`` renders the same key without importing this module.
+OUTCOMES = backup_facts.OUTCOMES_FIELD
+
 
 def _load() -> config.Config:
     try:
@@ -318,6 +322,11 @@ def _reported(store, job) -> dict:
     """
     progress = dict(jobs.progress(store, job.job_id))
     progress[DRY_RUN] = _is_rehearsal(job)
+    # R-349, under ``progress`` for the reason above. Read from the same files
+    # ``job show`` reads, so the two surfaces cannot disagree about one item.
+    outcomes = backup_facts.read_outcomes(job.job_id)
+    if outcomes is not None:
+        progress[OUTCOMES] = outcomes
     return {
         "job_id": job.job_id,
         "state": str(job.state),
@@ -858,6 +867,7 @@ def perform_backup(
     now: datetime | None = None,
     process_lister=None,
     read_back: bool = True,
+    outcome_to: tuple[str, str] | None = None,
 ) -> dict:
     """Do the backup one queued job asks for, and report what actually happened.
 
@@ -913,6 +923,14 @@ def perform_backup(
     destination the queued run never targeted.
 
     :func:`handle` PASSES IT, and the fallback is what the unqueued callers take.
+
+    ``outcome_to`` IS THE FAILURE CHANNEL OF R-349, a job and item identifier
+    pair. When the finished run earns a refusal, the rendered outcome is written
+    under that pair BEFORE the refusal is raised, so ``job show`` can name the
+    rclone command that failed. It is written here and not returned, because a
+    refusal is the only thing that leaves the item FAILED, and FAILED is the only
+    state ``jobs.retry`` re-arms. The success channel is :func:`handle`'s
+    ``Produced``.
     """
     cfg = _load() if cfg is None else cfg
     dry_run = bool(payload.get(DRY_RUN))
@@ -994,12 +1012,9 @@ def perform_backup(
     # renders it under ``warnings``, so the condition arrives in the engine's own
     # vocabulary rather than through a second reading of ``results`` here.
     #
-    # WHAT CHANGED IS WHO SEES IT. :func:`handle` discards this report, and since
-    # the binding the queued path is the only one that runs a real backup, so a
-    # rotation that stopped now reaches nobody unless the work body was called
-    # directly. That is R-221 and it is recorded rather than fixed here: giving
-    # the report a route out of a claimed item needs a channel the job engine does
-    # not have.
+    # AND IT LEAVES A CLAIMED ITEM NOW (R-349). :func:`handle` commits this
+    # report as the item's artifact on success, and ``outcome_to`` writes it on a
+    # refusal, so ``job show`` and the ``--job`` envelope read it back per item.
     # ``refusal_for`` IS APPLIED UNCHANGED AND UNQUALIFIED OVER A NARROWED RUN,
     # and the temptation this comment exists to refuse is to add a condition on
     # top of it. Its three branches already answer the question a single portion
@@ -1021,6 +1036,8 @@ def perform_backup(
     # two a resume can finish.
     refusal = refusal_for(outcome)
     if refusal is not None:
+        if outcome_to is not None:
+            raise _with_outcome_recorded(refusal, outcome, outcome_to)
         raise refusal
     # THE FLAG COMES OFF THE OUTCOME NOW and is not written on here. It was
     # written on here, by the one caller that thought of it, which made it a
@@ -1037,6 +1054,50 @@ def perform_backup(
     return report
 
 
+def _with_outcome_recorded(
+    refusal: CratekitError, outcome: backup.BackupOutcome, outcome_to: tuple[str, str]
+) -> CratekitError:
+    """Write a failed run's outcome, and return the refusal to raise (R-349).
+
+    THE REFUSAL IS RETURNED UNCHANGED when the write succeeds, object for object,
+    so the item's cause is exactly what it was before this channel existed.
+
+    WHEN THE WRITE FAILS, THE REFUSAL STILL WINS. The transfer failure is what the
+    person has to act on; a record of it that could not be written is secondary,
+    and letting the ``OSError`` escape would replace ``backup-transfer-failed``
+    with ``internal-error`` and ``report-defect``. It is not chained with
+    ``from`` either, because ``cause.classified`` walks the chain and a
+    permission error under it would reclassify the refusal. The loss is said as
+    a step instead, so ``job show`` printing no commands for this item is not
+    read as an item that ran none.
+    """
+    job_id, item_id = outcome_to
+    try:
+        backup_facts.write_outcome(job_id, item_id, backup.outcome_payload(outcome))
+    except OSError as exc:
+        cause = refusal.cause
+        return rebuilt(
+            refusal,
+            replace(
+                cause,
+                remediation=replace(
+                    cause.remediation,
+                    steps=(
+                        *cause.remediation.steps,
+                        f"the record of which commands this run ran could not be "
+                        f"written, so job show will not list them: {exc}",
+                    ),
+                ),
+            ),
+        )
+    return refusal
+
+
+def _staged(final):
+    """The staging path beside ``final``, so the engine's rename is atomic."""
+    return final.with_name(final.name + ".staged")
+
+
 def handle(job, item, cfg) -> "jobs.Produced | None":
     """Back up one portion. The per-item worker behind ``handler_key`` backup.run.
 
@@ -1046,13 +1107,18 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
     rehearsal flag and the item carries the half of the library this claim is for,
     so reading the payload could not select a portion at all.
 
-    IT RETURNS NOTHING TO COMMIT, and the absence is the decision. ``master``
-    stages its encode beside the destination and hands back a ``Produced`` so the
-    engine owns the flush-then-rename, because it writes a local file. rclone
-    writes to the remote and leaves nothing local, so there is no staged path and
-    no final path, and inventing one would be a commit ordering applied to a file
-    that does not exist. ``jobs.drive`` handles a handler that produces nothing and
-    completes the item with no artifact.
+    IT RETURNS THE OUTCOME AS ITS ARTIFACT (R-349). rclone writes to the remote
+    and leaves nothing local, so until R-349 this returned nothing and the
+    report of which commands ran reached nobody. The rendered outcome is now the
+    local file: staged beside its final path and handed back as a ``Produced``,
+    so the engine owns the flush-then-rename exactly as it does for ``master``'s
+    encode, and the item flips to done only once the record is durable.
+
+    ONLY A SUCCESS TAKES THIS CHANNEL. A run that earned a refusal raises out of
+    :func:`perform_backup`, which writes the same record directly first. Routing
+    a failure through ``Produced`` would commit it and COMPLETE the item, and a
+    done item is never re-armed: the person quits rekordbox, resumes, and gets a
+    SUCCEEDED job over half a backup.
 
     ``cfg`` IS THE CONFIGURATION THIS JOB WAS FROZEN AGAINST (KTD9) and it is
     passed straight through. Nothing in this function loads one, and the guard in
@@ -1085,7 +1151,7 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
             origin=("backup", "cli"),
             detail={"item_id": named, "portions": list(declared)},
         ) from None
-    perform_backup(
+    report = perform_backup(
         dict(job.payload or {}),
         portion=portion,
         cfg=cfg,
@@ -1094,13 +1160,21 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
         # this module is imported and cannot be reached any other way.
         runner=backup.subprocess_runner,
         read_back=False,
+        outcome_to=(job.job_id, named),
     )
-    return None
+    final = backup_facts.outcome_path(job.job_id, named)
+    staged = _staged(final)
+    # ``atomic_write_bytes`` creates the directory owner only (P1) and the file
+    # at 0600; the engine's ``commit_artifact`` then renames it over any record a
+    # failed attempt of this item left, so the file always describes the latest.
+    config.atomic_write_bytes(backup_facts.encode_outcome(report), staged)
+    return jobs.Produced(staged=staged, final=final)
 
 
 __all__ = [
     "ALREADY_QUEUED",
     "DRY_RUN",
+    "OUTCOMES",
     "REHEARSAL",
     "backup_argv",
     "backup_items",
