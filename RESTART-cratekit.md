@@ -17,6 +17,8 @@ parser moved from `label/tidal_catalogue.py` to `label/catalogue.py`, which the
 adapter re-exports, because core cannot import the adapter's client library.
 `source_jobs` is unchanged and is still what `crate sync mark` groups a pass by.
 The built in review found no defect.
+Battery: ruff clean, **9765 passed** and 1 skipped in 65 seconds, 9766
+collected. Scan clean. No test of this unit's is among the ten slowest.
 Mutation table `docs/mutation/r382.md`, read in `r382-notes.md`: **16 rows, the
 author's own, 15 killed.** The zero, M10, is an equivalent mutant.
 Nothing filed. R-116 and R-247 merged after R-318 without rewriting this file,
