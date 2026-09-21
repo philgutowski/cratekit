@@ -386,7 +386,7 @@ def export_playlist(ctx) -> Envelope:
         live=source.playlist_contents(library),
     )
     if getattr(ctx.args, "new_playlist", False):
-        found = found.declined()
+        found = found.without_offer()
     said = recognition_warnings(resolved, found)
 
     option = ctx.gate.require(

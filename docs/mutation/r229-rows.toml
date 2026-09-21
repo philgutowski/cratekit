@@ -177,7 +177,7 @@ id = "C2_the_flag_declines_nothing"
 description = "The new playlist flag is read and ignored, so a wrong offer cannot be declined"
 file = "src/cratekit/export/cli.py"
 surface = "user"
-old = '''        found = found.declined()'''
+old = '''        found = found.without_offer()'''
 new = '''        pass'''
 
 [[rows]]

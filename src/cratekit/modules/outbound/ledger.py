@@ -152,8 +152,13 @@ class Recognition:
     def ambiguous(self) -> bool:
         return len(self.candidates) > 1
 
-    def declined(self) -> "Recognition":
-        """The same reading with the offer taken off, for a person who said no."""
+    def without_offer(self) -> "Recognition":
+        """The same reading with the offer taken off, for a person who said no.
+
+        NOT CALLED ``declined``. ``shell.declined`` is the payload for a confirm
+        somebody answered with abort, and the export shell calls both, so one
+        word for two things in one file is the defect METHOD says to hunt.
+        """
         return Recognition(
             own_remote_id=self.own_remote_id,
             crate=self.crate,

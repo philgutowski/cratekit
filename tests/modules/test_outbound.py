@@ -399,11 +399,11 @@ def test_declining_keeps_everything_but_the_offer(cfg):
     _write_ledger(cfg, {"Old": {"remote_id": "pl-9", "tracks": list(_CRATE)}})
     found = _recognise(cfg)
     assert found.adopts == "Old"
-    assert found.declined() == _nothing()
+    assert found.without_offer() == _nothing()
     mismatched = ledger.Recognition(
         own_remote_id="pl-1", crate=4, mismatched=True, claimed_by=("C",)
     )
-    assert mismatched.declined() == mismatched
+    assert mismatched.without_offer() == mismatched
 
 
 def test_a_stub_under_the_crates_own_key_does_not_hide_the_orphan(cfg):
