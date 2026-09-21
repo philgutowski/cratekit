@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import rb_writer, review, tags, taxonomy
+from cratekit.core import rb_writer, review, routing, tags, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.tagging import retag
 from cratekit.tagging.tag import SearchHit
@@ -369,6 +369,29 @@ def test_the_offered_candidates_are_the_declared_buckets_and_never_a_catch_all()
     offered = [o.summary for o in options]
     assert not [name for name in offered if TAXONOMY.is_too_coarse_as_source(name)]
     assert TAXONOMY.fallback.bucket not in {o.option_id for o in options}
+
+
+def test_the_correction_verb_cannot_write_a_genre_off_the_declared_taxonomy():
+    """R-650's shape looked for one verb over, which is METHOD's fifth pattern.
+
+    ``tag folder`` writes a word the catalogue chose, so it can put a genre on a
+    file that the declared table has never heard of, and that is the defect R-650
+    reports. This verb cannot: every candidate it offers is a declared bucket's
+    own display, and ``review.resolve`` refuses an answer the item did not offer,
+    so the word always comes from the table rather than from outside it.
+
+    DRIVEN THROUGH THE RESOLVER rather than argued from the offer's source. Each
+    offered genre is put back through ``suggest_tag``, which is the function that
+    decides the question, and none of them reaches the last tier. A future
+    template that declared a bucket whose display nothing resolves would fail
+    here, which is the case worth catching.
+    """
+    offered = [
+        (option.detail or {}).get("genre") or option.summary
+        for option in retag.options_for(TAXONOMY)
+    ]
+    assert offered, "the shipped taxonomy declares no buckets, so this is vacuous"
+    assert not [name for name in offered if routing.suggest_tag(TAXONOMY, name).off_taxonomy]
 
 
 def test_an_accepted_answer_that_is_itself_a_catch_all_is_still_refused(
