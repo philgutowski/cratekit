@@ -18074,6 +18074,12 @@ stay, so the envelope still classifies the failure.
 **Closes when:** a test asserts a distinctive phrase of the listing refusal
 message, and a reword of that phrase kills it.
 
+**Closed 2026-09-21 on `relay/100`.** The named snapshot listings, the root
+listing and the analysis share listing each have a test asserting `could not
+be listed` in the detail. Rewording the phrase to `could not be read` kills
+each of the four: M2, M4, M6 and M8 in `docs/mutation/r388-a.md` and
+`r388-b.md`, one kill apiece, promoted nowhere because each died on its subset.
+
 ---
 
 ## R-388. A snapshot whose listing fails tells the person to take a backup
@@ -18098,6 +18104,20 @@ with a runner that exits 1, not with a person reading the reserved steps.
 **Closes when:** a failed listing of a named snapshot has its own slug whose
 steps say to check the remote, or the existing reservation's steps name both
 acts.
+
+**Closed 2026-09-21 on `relay/100`.** `backup.Refusal.SNAPSHOT_LISTING_FAILED`,
+slug `snapshot-listing-failed`, reserved at 30 in `cli/exit_codes.py` and
+registered in `core/cause.py` in the same commit. Its steps are to check the
+remote is reachable, check its credential, and check `backup.db_dest_root`,
+and none says to take a backup. Every listing on the restore path that exits
+non zero raises it: the identity marker and database folder listings of a
+named snapshot, which the brief named, and the snapshot root and analysis
+share listings, the same shape one function over. The built in review found
+that rclone's directory not found exit, 3, would then send a mistyped or pruned
+stamp to the remote, so exit 3 reads as absence on all three restore listings
+and keeps `no-snapshot-available`, whose reservation gained a first step for a
+typed stamp. What this leaves is R-643. Tables `docs/mutation/r388-a.md`
+through `r388-d.md`, read in `r388-notes.md`.
 
 ---
 
@@ -25724,3 +25744,26 @@ None meets the board bar.
 and a move stays in force until each library has followed it, or both are
 recorded as accepted.
 
+---
+
+## R-643. A missing stamp on a remote whose directory not found exit is not 3 is told to check the remote
+
+**Found:** building R-388 on `relay/100`, 2026-09-21, from the built in review's
+finding and its fix.
+
+The restore listings read exit 3 as an absent folder, so a mistyped or pruned
+stamp refuses `no-snapshot-available` with a step to check the stamp. That exit
+was measured on the local backend only, per `RCLONE_DIRECTORY_NOT_FOUND`'s own
+comment. A remote backend that answers a missing folder with another non zero
+exit reaches `snapshot-listing-failed`, whose steps send the person to the
+remote, the credential and `backup.db_dest_root`, and never to the stamp they
+typed. The third step names the root, which is the nearest act, and it is not
+the right one.
+
+**Measured cost:** unmeasured. No remote was driven, which is an attended act.
+Not on the board bar: the refusal is still a refusal, nothing is written, and
+the wording is the cost.
+
+**Closes when:** rclone's exit for a missing folder is measured on the backend
+the backups are written to, and either it is 3 or the listings read the one it
+is.
