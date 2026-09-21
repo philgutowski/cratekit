@@ -373,8 +373,9 @@ def release_lock(ctx) -> Envelope:
         )
     # THE LOCK FIRST, so a holder still running refuses before any record is
     # ended behind it. The records are judged again, since the answer may come
-    # long after the question, and only among those listed, so an answer cannot
-    # end a record that was never on the list it answered.
+    # long after the question, and only among those this invocation listed. The
+    # answer is not bound to what the ASKING invocation listed, for orphans as
+    # for the holder above, and that is R-648.
     cleared = session.release_stale_lock(cfg)
     abandoned = [
         record.session_id

@@ -2222,7 +2222,7 @@ def test_abandon_orphaned_sessions_ends_only_the_orphans(cfg):
 
 
 def test_the_sweep_ends_only_the_orphans_it_was_shown(cfg):
-    """An answer given over one list cannot end a record that was not on it."""
+    """The sweep ends what it was handed and nothing else, at the engine."""
     shown = session.open_session(cfg, workflow="w", holder=_gone_holder())
     unshown = session.open_session(cfg, workflow="w", holder=_gone_holder())
 

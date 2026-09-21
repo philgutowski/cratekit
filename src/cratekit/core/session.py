@@ -931,8 +931,9 @@ def abandon_orphaned_sessions(
     library drive moved between two machines with one host name would otherwise
     let one clear the other's claim. Such a record stays open.
 
-    ``only`` limits the sweep to records a person was shown, so an answer given
-    over one list cannot end a record that was not on it.
+    ``only`` limits the sweep to the records a caller listed. The release verb
+    lists what its own invocation showed; the question and the answer are two
+    invocations, and binding the answer to the first one's list is R-648.
 
     ABANDONING IS THE UNGATED CLOSE, which is what keeps it reachable whatever
     state the library is in. A record that recorded a commit still says so after
