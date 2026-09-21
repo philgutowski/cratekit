@@ -5589,7 +5589,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # differenced as SETS over main's own `src/cratekit` read out of
     # `git archive`. Named: setbuild-anchor-ambiguous, in `setbuilder/cli.py`, a
     # holder already, and a KEY, which is why the non-key half does not move.
-    assert (len(literals), len(literals - set(causes))) == (479, 307), (
+    # Re-pinned on U105, 2026-09-20: 479 to 481 distinct, non-keys 307 to 308.
+    # TWO literals joined and NOTHING left. Named: target-lufs-out-of-range, a
+    # KEY, and join-order, the warning code the mastering verb says a split
+    # recording's order back under, which is not a cause and is why the non-key
+    # half moves by one. Both in `master/cli.py`.
+    assert (len(literals), len(literals - set(causes))) == (481, 308), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
