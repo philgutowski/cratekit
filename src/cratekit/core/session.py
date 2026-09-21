@@ -914,24 +914,36 @@ def orphaned(record: SessionRecord, *, here: Holder | None = None) -> bool:
 
 
 def abandon_orphaned_sessions(
-    cfg: config.Config, *, now: datetime | None = None
+    cfg: config.Config,
+    *,
+    only: Iterable[str] | None = None,
+    now: datetime | None = None,
 ) -> tuple[SessionRecord, ...]:
     """End every open record whose owner is provably gone, and return them.
 
-    A HARD KILL RUNS NO EXIT CODE, so a gated write that was SIGKILLed, lost
-    power or lost its volume leaves its record ``open``. That record keeps its
-    capture from retention for ever and refuses every cutover, and before this
-    the only way out was editing a file in the log by hand.
+    A HARD KILL RUNS NO EXIT CODE, so a gated write that was SIGKILLed leaves its
+    record ``open``. That record keeps its capture from retention for ever and
+    refuses every cutover, and before this the only way out was editing a file
+    in the log by hand.
+
+    NOT A POWER LOSS, AND THAT IS A KNOWN GAP (R-647). After a restart the holder
+    is from another boot, and :func:`holder_alive` judges that alive, because a
+    library drive moved between two machines with one host name would otherwise
+    let one clear the other's claim. Such a record stays open.
+
+    ``only`` limits the sweep to records a person was shown, so an answer given
+    over one list cannot end a record that was not on it.
 
     ABANDONING IS THE UNGATED CLOSE, which is what keeps it reachable whatever
     state the library is in. A record that recorded a commit still says so after
     this, so a restore still reads it as work it would discard.
     """
     here = current_holder()
+    shown = None if only is None else frozenset(only)
     return tuple(
         close_session(record, cfg, state=SessionState.ABANDONED, now=now)
         for record in records(cfg)
-        if orphaned(record, here=here)
+        if (shown is None or record.session_id in shown) and orphaned(record, here=here)
     )
 
 

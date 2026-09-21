@@ -372,10 +372,16 @@ def release_lock(ctx) -> Envelope:
             outcome=Outcome.NO_OP,
         )
     # THE LOCK FIRST, so a holder still running refuses before any record is
-    # ended behind it. The records are judged again rather than taken from the
-    # list shown: the answer may come long after the question.
+    # ended behind it. The records are judged again, since the answer may come
+    # long after the question, and only among those listed, so an answer cannot
+    # end a record that was never on the list it answered.
     cleared = session.release_stale_lock(cfg)
-    abandoned = [record.session_id for record in session.abandon_orphaned_sessions(cfg)]
+    abandoned = [
+        record.session_id
+        for record in session.abandon_orphaned_sessions(
+            cfg, only=[record.session_id for record in orphans]
+        )
+    ]
     kept = [record.session_id for record in session.records(cfg) if not record.terminal]
     # ``key``, for the reason the acknowledgment's rows give: it is the field the
     # check table renders and ``name`` prints as a question mark.

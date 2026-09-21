@@ -2221,6 +2221,17 @@ def test_abandon_orphaned_sessions_ends_only_the_orphans(cfg):
     assert session.abandon_orphaned_sessions(cfg) == ()
 
 
+def test_the_sweep_ends_only_the_orphans_it_was_shown(cfg):
+    """An answer given over one list cannot end a record that was not on it."""
+    shown = session.open_session(cfg, workflow="w", holder=_gone_holder())
+    unshown = session.open_session(cfg, workflow="w", holder=_gone_holder())
+
+    (ended,) = session.abandon_orphaned_sessions(cfg, only=[shown.session_id])
+
+    assert ended.session_id == shown.session_id
+    assert session.read_record(unshown.session_id, cfg).state is session.SessionState.OPEN
+
+
 def test_a_refused_gate_keeps_no_record(cfg):
     """No acknowledgment is minted, so the gates refuse, and a refusal writes nothing."""
     with pytest.raises(CratekitError):
