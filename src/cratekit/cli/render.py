@@ -25,6 +25,7 @@ from cratekit.cli.output import Envelope
 from cratekit.core import cause as cause_module
 from cratekit.core.cause import Cause
 from cratekit.core.exit_codes import ExitCode, Remedy, meaning_of
+from cratekit.modules import extras
 
 #: The provider session procedure, worded once. TWO tokens need it, a session
 #: that was never minted and a session the provider rejected, and they differ
@@ -166,18 +167,14 @@ _ADVICE: Mapping[Remedy, str] = {
 def install_command(entry: registry.Entry) -> str:
     """The exact command that installs a verb's missing extras group.
 
-    Generated from the entry and the distribution name, never written per
-    module, so renaming an extras group cannot leave a stale instruction behind
-    in twelve places.
+    Generated from the entry, never written per module, so renaming an extras
+    group cannot leave a stale instruction behind in twelve places. The command
+    itself is ``modules.extras``, the one source the analysis workers' refusals
+    read too, and it depends on whether this process runs under pipx (R-395).
     """
     if entry.extras is None:
         raise ValueError(f"{entry.name} declares no extras group")
-    # Single-quoted because several shells treat square brackets as a glob.
-    # The extras name is validated against the declared modules, so it can
-    # only ever be an identifier; no general-purpose quoting is warranted, and
-    # reaching for one here would put a second caller of the URL-quoting family
-    # in the tree, which the one-decoder guard exists to keep at zero.
-    return f"pip install '{registry.DISTRIBUTION}[{entry.extras}]'"
+    return extras.install_command(entry.extras)
 
 
 def remedy_text(remedy: Remedy) -> str | None:

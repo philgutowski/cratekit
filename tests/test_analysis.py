@@ -13,6 +13,7 @@ from cratekit import cli
 from cratekit.cli import registry
 from cratekit.core import profiles
 from cratekit.core.exit_codes import ExitCode
+from cratekit.modules import extras
 
 
 def _touch_audio(folder: Path, name: str) -> Path:
@@ -65,7 +66,7 @@ def test_a_missing_analysis_extra_names_the_install_command():
     assert args._stub is not None
     cause = cli._stub_cause(args._entry, args._stub)
     assert cause.code is ExitCode.MODULE_UNAVAILABLE
-    assert cause.detail["install"] == "pip install 'cratekit[analysis]'"
+    assert cause.detail["install"] == extras.install_command("analysis")
 
 
 def test_vocal_model_load_failure_leaves_key_and_energy_intact(tmp_path):
