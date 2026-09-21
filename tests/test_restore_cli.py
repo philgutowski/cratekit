@@ -2706,6 +2706,24 @@ def test_a_failed_rehearsal_says_nothing_was_written(cfg, tmp_path):
     assert not any("remove" in step for step in excinfo.value.cause.remediation.steps)
 
 
+def test_a_rehearsal_whose_database_half_failed_sends_nobody_to_remove_anything(
+    cfg, tmp_path
+):
+    """The removal step is for a half that may have landed files. A rehearsal landed none."""
+    target = _replacement(tmp_path)
+    remote = _Remote(cfg, failing={backup.RESTORE_DATABASE})
+
+    with pytest.raises(CratekitError) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg, target=target, accepted=True, dry_run=True, runner=remote, **_gone(cfg)
+        )
+
+    assert excinfo.value.cause.detail["half"] == restore_cli.DATABASE_HALF
+    assert "nothing was written" in excinfo.value.cause.message
+    assert not any("remove" in step for step in excinfo.value.cause.remediation.steps)
+    assert list(target.iterdir()) == []
+
+
 #: What an interrupted run leaves beside the music: the state directory the
 #: mirror carries, holding the review queue and a capture, both database files.
 CARRIED = (MIRRORED, ".cratekit/queue.db", ".cratekit/snapshots/one/master.db")
