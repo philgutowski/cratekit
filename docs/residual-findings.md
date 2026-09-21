@@ -15064,6 +15064,21 @@ system measured at 565 calls before anyone noticed.
 **Closes when:** a config section carries the host and the monthly bound, the
 budget is built from the frozen configuration, and the two constants are gone.
 
+**Closed 2026-09-21 on `relay/168`, issue 168.** `[recognition]` carries `host`
+and `monthly_calls` on `config.RecognitionConfig`, appended to `Config`, built
+in `from_dict` and validated with the key named: the host must be a bare
+lowercase name under `acrcloud.com`, the bound a positive whole number with no
+off value. `acrcloud.HOST` is gone; `identify` takes `budget` and `host` with no
+default, `ChunkPlan` and `request_for` take `host`, and `bound_identifier` builds
+both from the section it is handed through `Budget.from_config`. The seam
+refuses the paid path with no section, and both intake verbs hand over
+`cfg.recognition`, the section `intake set` freezes with its job. The month
+defaults to 1000 calls rather than to no bound, so an unconfigured machine is
+bounded; the monthly refusal names `recognition.monthly_calls`. Driven through
+the real dispatcher on both verbs in `tests/intake/test_workers.py`, failing
+first on the tree before the fix. Mutation table `docs/mutation/r301.md`, 16 of
+17 rows killed. What stays open is R-640.
+
 ---
 
 ## R-302. The intake worker resolves and offers; it does not acquire, and the registry says it writes
@@ -25575,3 +25590,35 @@ what a person types, and the body under it now says additive.
 **Measured cost:** none. No issue.
 
 **Closes when:** each is confirmed or struck at a sitting.
+
+---
+
+## R-640. The recognition section's two defaults are this session's choices, and a queued job reads the new section as drift
+
+**Found:** on `relay/168`, 2026-09-21, closing R-301.
+
+1. **`recognition.monthly_calls` defaults to 1000.** Unattended, so the
+   conservative call was made: a bound rather than none, because spend cannot
+   be taken back and a refusal names the one line that raises it. The number
+   is about three two hour sets and was not taken from any plan's real quota.
+   The options were no default bound (the source system's shape, and the 565
+   call batch), 1000, or a smaller trial sized number. Phillip's to confirm or
+   move.
+2. **`recognition.host` must sit under `acrcloud.com`.** The access key and a
+   signature over it travel to the host, so a typo naming another domain is
+   refused. Whether the service runs any region under a different domain was
+   not checked against its documentation. Unmeasured: if one exists, a person
+   there cannot configure it.
+3. **A job queued before this build names `recognition.host` and
+   `recognition.monthly_calls` as drift** on its next run, because the section
+   is new in the serialized configuration. It names and never refuses, the
+   same as every appended section before it.
+4. **The one zero row of `docs/mutation/r301.md`, V5,** is the refusal of a
+   host that is not a string. Without it the value is stringified and the
+   domain check refuses it anyway, so the guard is covered by another one. One
+   line, maintainer facing.
+
+**Measured cost:** none driven. No issue.
+
+**Closes when:** the default bound is confirmed or moved at a sitting, and the
+service's regional domains are checked against the host rule.
