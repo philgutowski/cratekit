@@ -579,7 +579,9 @@ def test_a_restore_puts_an_outside_share_back_beside_the_database(
 
 def test_the_share_is_listed_before_anything_is_cleared(outside, rclone_on_path, tmp_path):
     """The ledger's third option: planned from a listing, never found out by a failed copy."""
-    remote = _Remote(share="", share_exit=backup.RCLONE_DIRECTORY_NOT_FOUND)
+    # THE LITERAL, measured with ``rclone lsf`` over a missing directory on
+    # 2026-09-20, and not the module's constant, which would make this X equals X.
+    remote = _Remote(share="", share_exit=3)
     target = tmp_path / "recovered"
     target.mkdir()
     log = target / "master.db-wal"

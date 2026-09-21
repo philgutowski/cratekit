@@ -1,0 +1,79 @@
+name = "r338-a"
+pass_kind = "light"
+
+# R-338, batch A of three: the capture. The share rides the database portion.
+
+[[rows]]
+id = "B1_share_never_carried"
+description = "_plan_database: never plan the share's sync, which is R-338 itself: an outside share is in no backup"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    if share is not None and share.is_dir():
+        kept = share_destination('''
+new = '''    if False:
+        kept = share_destination('''
+
+[[rows]]
+id = "B2_absent_share_synced"
+description = "_plan_database: plan the sync for a share that is not a directory, so rclone is aimed at a missing source and the portion fails on every run of an unanalysed library"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    if share is not None and share.is_dir():
+        kept = share_destination('''
+new = '''    if share is not None:
+        kept = share_destination('''
+
+[[rows]]
+id = "B3_capture_is_a_copy"
+description = "_plan_database: capture the share with copy and not sync, so a grid rekordbox deleted stays in the mirror for ever and the mirror stops being the share"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''                    rclone, "sync", str(share), f"{kept}/current",'''
+new = '''                    rclone, "copy", str(share), f"{kept}/current",'''
+
+[[rows]]
+id = "B4_no_undo_archive"
+description = "_plan_database: drop the backup-dir, so a share emptied by a reinstall empties its only copy with nothing to undo it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''                    "--backup-dir", f"{kept}/archive/{stamp}",
+'''
+new = '''
+'''
+
+[[rows]]
+id = "B5_one_mirror_for_every_library"
+description = "share_destination: key every library's share under the one unrecorded folder, so two libraries under one snapshot root archive each other's grids"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    key = SHARE_UNRECORDED if marker is None else marker[len(IDENTITY_MARKER_PREFIX):]'''
+new = '''    key = SHARE_UNRECORDED'''
+
+[[rows]]
+id = "B6_identity_interpolated_raw"
+description = "share_destination: interpolate the configured identity as typed and unvalidated, so a value with a separator writes the share somewhere else on the remote"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    key = SHARE_UNRECORDED if marker is None else marker[len(IDENTITY_MARKER_PREFIX):]'''
+new = '''    key = SHARE_UNRECORDED if identity is None else identity'''
+
+[[rows]]
+id = "B7_rehearsal_transfers_the_share"
+description = "TRANSFERRING_LABELS: leave the share's capture out, so a dry run really syncs gigabytes"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''        SNAPSHOT_SHARE,
+        RESTORE_MIRROR,'''
+new = '''        RESTORE_MIRROR,'''
+
+[[rows]]
+id = "B8_contained_share_copied_twice"
+description = "_outside_share: read every layout as the outside one, so a share the mirror already carries is synced a second time"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    if analysis_store.watch_roots(cfg) == (Path(cfg.library.root),):
+        return None
+    return analysis_store.share_root(cfg)'''
+new = '''    if False:
+        return None
+    return analysis_store.share_root(cfg)'''
