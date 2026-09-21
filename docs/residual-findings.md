@@ -11013,6 +11013,23 @@ Whichever way it goes, the entry should name `master_set.sh` as its
 `source_scripts` and the fixture should list it, so the next gap of this shape
 is visible.
 
+**CLOSED 2026-09-20 on `relay/150`, by U105, the first of the two.** The join
+went into this verb rather than a verb of its own, by the brief's decision.
+`crate master` takes every part of a split recording as its positional, joins
+them in ARGUMENT order and never sorts, and the queue response says that order
+back as a `join-order` warning before any audio is read. `concatenate` has its
+first caller, `mastering.master_parts`, which refuses a missing part, a part
+named twice, parts in different containers, an existing joined master, and
+parts that differ in sample rate, sample format, channel count or codec, all
+before the first write. Every part is archived beside itself, the join lands in
+a private directory and is removed, a joined WAV is written with `-rf64 auto`,
+and the master is `<first>_set_mastered.flac`, the source script's name. One
+recording freezes, resumes and masters exactly as before. The entry now names
+`master_set.sh` as its `source_scripts` and the fixture lists it. Driven with a
+real ffmpeg join of two tones, whose master is their summed length within one
+FLAC frame. One real split recording off the player is owed to an attended
+sitting. What stayed open is `R-627`.
+
 ---
 
 ## R-194. The loudness target is not exposed, so a person who needs a different one edits source
@@ -11039,6 +11056,18 @@ four knobs at their defaults. That is a decision rather than a fix.
 **Closes when:** the flag ships with its payload key and argv round trip driven
 by the resume contract, or the decision is recorded that one target is the
 product's position.
+
+**CLOSED 2026-09-20 on `relay/150`, by U105, the first of the two.** The flag
+is `--lufs N`, the brief's name, rather than the `--target-lufs` recommended
+above. It is frozen as `target_lufs` only when given, carried in `master_argv`
+as one `--lufs=N` token so a negative value parses whatever the parser grows,
+threaded through the staged payload to every loudnorm filter, and round tripped
+through the parser by a test. **The brief said the engine already validated a
+range. It did not:** `Settings` checked the drift window and the peak ceiling
+and nothing about the target. It now checks loudnorm's accepted range, minus
+seventy to minus five inclusive, NaN and infinity refused, and the shell turns
+that into the new reason `target-lufs-out-of-range` at queue time, so no job is
+parked whose only outcome is ffmpeg rejecting its filter.
 
 ## R-195. The adapter never tells the downloader where ffmpeg is, so a lossless run lands lossy with doctor reporting green
 
@@ -25105,3 +25134,28 @@ rename on every later sweep and is a file rekordbox could import.
 
 **Closes when:** both verbs call one guarded rename, or `name apply` takes the
 same `finally` and the same catch.
+
+---
+
+## R-627. A joined AIFF past 4 GiB still wraps its header, and nothing compares the joined length with the parts
+
+**Found by** the U105 code review, 2026-09-20, and narrowed by that unit's fix
+round rather than closed.
+
+A plain WAV or AIFF header holds its length in 32 bits, and a split recording
+is split because it is long. U105 writes a joined WAV, and the drift
+intermediate, with `-rf64 auto`, so the WAV case is covered. AIFF has no such
+extension, so two AIFF parts whose sum passes 4 GiB would be joined into a file
+whose header claims a wrapped length, and the next stage reads only that much.
+Nothing downstream compares the joined duration with the sum of the parts,
+which would catch this and every other short join.
+
+**Measured cost:** unmeasured. No AIFF recording over 4 GiB was produced, and
+the XDJ-RX3 the brief names records WAV, so the producer of this input is not
+known to exist. If it does, a master of part of the set is reported as the
+whole.
+
+**Closes when:** the join refuses AIFF parts whose summed size passes the
+limit, or `master_parts` probes the joined duration against the parts' sum and
+refuses a shortfall.
+

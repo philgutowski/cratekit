@@ -54,5 +54,6 @@ dj-desktop
 # not to put them on a user's PATH, not a reason for them to have no verb.
 
 backup.sh
+master_set.sh
 energy_restamp
 energy_rerate

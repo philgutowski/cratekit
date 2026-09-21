@@ -44,6 +44,7 @@ Layer: modules.
 from __future__ import annotations
 
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,15 @@ from cratekit.modules.tools import mastering
 SOURCE = "source"
 OUTPUT_DIR = "output_dir"
 OVERWRITE = "overwrite"
+#: U105. Present only when the recording arrived in more than one file, and then
+#: it holds every part in the order the person named them, the first of which is
+#: also ``SOURCE``. Absent for one file, so a single recording freezes exactly the
+#: payload it froze before a join existed.
+PARTS = "parts"
+#: U105. Present only when ``--lufs`` was given. Absent means the engine's
+#: default target, which is what every job queued before this key existed asked
+#: for, so an old payload resumes as the run it was.
+TARGET_LUFS = "target_lufs"
 
 
 def _load() -> config.Config:
@@ -90,7 +100,12 @@ def build(parser, entry) -> None:
     del entry
     parser.add_argument(
         "recording",
-        help="the set recording to master, as a path to a wav, aiff or flac file",
+        nargs="+",
+        help=(
+            "the set recording to master, as a path to a wav, aiff or flac file. "
+            "A recording the player split into several files is named as every "
+            "part, in order; they are joined in the order given and never sorted"
+        ),
     )
     parser.add_argument(
         "--job",
@@ -115,11 +130,33 @@ def build(parser, entry) -> None:
             "not archived and a failed encode leaves nothing to fall back on"
         ),
     )
+    parser.add_argument(
+        "--lufs",
+        type=float,
+        default=None,
+        metavar="N",
+        help=(
+            f"the integrated loudness target, between {mastering.LUFS_RANGE[0]:g} "
+            f"and {mastering.LUFS_RANGE[1]:g}; "
+            f"{mastering.DEFAULT_SETTINGS.target_lufs:g} by default"
+        ),
+    )
     parser.set_defaults(_handler=master_recording)
 
 
-def frozen_payload(recording: str, output_dir: str | None, overwrite: bool) -> dict[str, Any]:
+def frozen_payload(
+    recording: str | Sequence[str],
+    output_dir: str | None,
+    overwrite: bool,
+    *,
+    lufs: float | None = None,
+) -> dict[str, Any]:
     """What the queued job carries, and the only thing the resume is rebuilt from.
+
+    ``recording`` is one path or every part of a split recording, in order. One
+    part, whichever way it is passed, freezes exactly the payload a single
+    recording always froze, and so does an absent ``lufs``. A key is added only
+    when the run asks for something a payload without it cannot say.
 
     AN EMPTY ``--output-dir`` IS NORMALIZED TO ABSENT HERE, which is the whole
     reason this is a function rather than a dict literal in the handler. An empty
@@ -143,10 +180,63 @@ def frozen_payload(recording: str, output_dir: str | None, overwrite: bool) -> d
     nothing, so it leaves the deliberate decision below not to read the file at
     queue time exactly as it was.
     """
-    return {
-        SOURCE: str(Path(recording).absolute()) if recording else recording,
+    parts = [recording] if isinstance(recording, str) else list(recording)
+    frozen = [str(Path(p).absolute()) if p else p for p in parts]
+    payload: dict[str, Any] = {
+        SOURCE: frozen[0] if frozen else "",
         OUTPUT_DIR: str(Path(output_dir).absolute()) if output_dir else None,
         OVERWRITE: bool(overwrite),
+    }
+    if len(frozen) > 1:
+        payload[PARTS] = frozen
+    if lufs is not None:
+        payload[TARGET_LUFS] = float(lufs)
+    return payload
+
+
+def frozen_parts(payload: dict[str, Any]) -> list[str]:
+    """Every part a payload names, in the order frozen. One element for one file."""
+    parts = payload.get(PARTS)
+    if parts:
+        return [str(p) for p in parts]
+    return [str(payload.get(SOURCE) or "")]
+
+
+def settings_for(lufs: float | None) -> mastering.Settings:
+    """The engine's settings for one target, or its default when none was given.
+
+    THE ENGINE OWNS THE RANGE. ``Settings`` validates the target at construction,
+    and this translates its refusal into a declared reason rather than holding a
+    second copy of the bounds that could drift from the one ffmpeg is checked
+    against.
+    """
+    if lufs is None:
+        return mastering.DEFAULT_SETTINGS
+    try:
+        return mastering.Settings(target_lufs=float(lufs))
+    except ValueError as exc:
+        raise refuse(
+            "target-lufs-out-of-range",
+            str(exc),
+            steps=(
+                f"pass --lufs between {mastering.LUFS_RANGE[0]:g} and "
+                f"{mastering.LUFS_RANGE[1]:g}, or leave it out for the default; "
+                f"nothing was queued, read or written",
+            ),
+            origin=("master", "cli"),
+            detail={"lufs": str(lufs)},
+        ) from exc
+
+
+def join_order_warning(parts: Sequence[str]) -> dict[str, str]:
+    """The order a split recording will be joined in, said back before it runs."""
+    listed = "; ".join(f"{n}. {p}" for n, p in enumerate(parts, start=1))
+    return {
+        "code": "join-order",
+        "message": (
+            f"these {len(parts)} parts will be joined in the order given, not "
+            f"sorted: {listed}. Nothing has been read or written yet."
+        ),
     }
 
 
@@ -173,19 +263,27 @@ def master_argv(job) -> list[str]:
     invisible.
     """
     payload = job.payload or {}
-    argv = ["master", str(payload.get(SOURCE) or "")]
+    argv = ["master", *frozen_parts(payload)]
     output_dir = payload.get(OUTPUT_DIR)
     if output_dir:
         argv += ["--output-dir", str(output_dir)]
     if payload.get(OVERWRITE):
         argv.append("--overwrite")
+    lufs = payload.get(TARGET_LUFS)
+    if lufs is not None:
+        # ONE TOKEN, WITH ``=``. A target is negative, and ``--lufs -16`` as two
+        # tokens parses only while no option of this parser looks like a
+        # negative number. The joined spelling parses whatever the parser grows.
+        argv.append(f"--lufs={lufs}")
     return [*argv, "--job", job.job_id]
 
 
 def master_recording(ctx) -> Envelope:
     """Freeze the recording and queue the work, or report the job already queued."""
-    recording = str(ctx.args.recording or "")
-    if not recording:
+    given = ctx.args.recording
+    parts = [given] if isinstance(given, str) else list(given or [])
+    parts = [str(p or "") for p in parts] or [""]
+    if not all(parts):
         # ``source-missing`` rather than a slug of its own. Its reserved
         # remediation is "name a recording that exists; nothing was read and
         # nothing was written", which is the right sentence for an empty
@@ -197,6 +295,10 @@ def master_recording(ctx) -> Envelope:
             steps=("pass the path to the recording after the verb",),
             origin=("master", "cli"),
         )
+    # REFUSED BEFORE ANYTHING IS QUEUED. A target the engine would refuse is
+    # known now, and queueing it would park a job whose only possible outcome is
+    # that refusal, discovered by whoever resumes it.
+    settings_for(ctx.args.lufs)
     cfg = _load()
     with jobs.open_store() as store:
         if ctx.args.job:
@@ -227,18 +329,26 @@ def master_recording(ctx) -> Envelope:
         # is that a mistyped path is reported as queued rather than refused; the
         # handler is where it is discovered, and it arrives there as the engine's
         # own ``source-missing`` on the item's row.
-        payload = frozen_payload(recording, ctx.args.output_dir, ctx.args.overwrite)
+        payload = frozen_payload(
+            parts, ctx.args.output_dir, ctx.args.overwrite, lufs=ctx.args.lufs
+        )
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
             payload=payload,
             # ONE RECORDING IS ONE ITEM. Without it the queue holds a job with
             # nothing to claim, and the driver reports an empty success over work
-            # it never did.
+            # it never did. A SPLIT RECORDING IS STILL ONE ITEM: its parts make
+            # one master, and the item is named for the first part while the
+            # payload carries the rest.
             item_ids=(str(payload[SOURCE]),),
             cfg=cfg,
         )
-        return ctx.envelope(data=_reported(store, job))
+        # THE ORDER IS SAID BACK HERE, which is before anything is read or
+        # written: queueing opens no audio file. A warning rather than a data
+        # key, because ``job_state/1`` declares its fields and refuses an extra.
+        notices = (join_order_warning(frozen_parts(payload)),) if PARTS in payload else ()
+        return ctx.envelope(data=_reported(store, job), warnings=notices)
 
 
 def run_master(payload: dict[str, Any], *, runner=mastering.subprocess_runner) -> dict:
@@ -258,11 +368,13 @@ def run_master(payload: dict[str, Any], *, runner=mastering.subprocess_runner) -
     against this program. Every member of ``Refusal`` is a declared reason with a
     reserved code, so the slug travels through unchanged.
     """
-    source = str(payload.get(SOURCE) or "")
+    parts = frozen_parts(payload)
     output_dir = payload.get(OUTPUT_DIR)
+    settings = settings_for(payload.get(TARGET_LUFS))
     try:
-        report = mastering.master(
-            source,
+        report = mastering.master_parts(
+            parts,
+            settings=settings,
             output_dir=Path(output_dir) if output_dir else None,
             overwrite=bool(payload.get(OVERWRITE)),
             runner=runner,
@@ -337,12 +449,22 @@ def handle(job, item, cfg) -> jobs.Produced:
     # then fails ``output-exists`` against the first one's output. Measured that
     # way once, on the four-item job in ``tests/test_job_seam.py``. The item is
     # what ``drive`` claims and the item is the unit of work.
-    source = Path(str(item.item_id or payload.get(SOURCE) or ""))
-    output_dir = payload.get(OUTPUT_DIR)
-    final = mastering.output_path(
-        source, output_dir=Path(str(output_dir)) if output_dir else None
+    #
+    # A SPLIT RECORDING'S PARTS COME FROM THE PAYLOAD, which is the exception to
+    # the rule above and is safe for the reason the rule exists: this shell
+    # enqueues a split recording as ONE item, so there is no second item for the
+    # payload to make master the same file.
+    parts = (
+        [Path(p) for p in frozen_parts(payload)]
+        if payload.get(PARTS)
+        else [Path(str(item.item_id or payload.get(SOURCE) or ""))]
     )
-    if source.is_file() and final.exists() and not payload.get(OVERWRITE):
+    present = all(p.is_file() for p in parts)
+    output_dir = payload.get(OUTPUT_DIR)
+    final = mastering.planned_output(
+        parts, output_dir=Path(str(output_dir)) if output_dir else None
+    )
+    if present and final.exists() and not payload.get(OVERWRITE):
         raise refuse(
             str(mastering.Refusal.OUTPUT_EXISTS),
             f"{final} already exists. Replacing it silently would discard a "
@@ -363,16 +485,29 @@ def handle(job, item, cfg) -> jobs.Produced:
     # refusal itself.
     staged_into = (
         staging_dir(final, job.job_id, item.ordinal)
-        if source.is_file()
+        if present
         else final.parent
     )
+    staged: dict[str, Any] = {
+        SOURCE: str(parts[0]),
+        OUTPUT_DIR: str(staged_into),
+        OVERWRITE: False,
+    }
+    if len(parts) > 1:
+        staged[PARTS] = [str(p) for p in parts]
+    if payload.get(TARGET_LUFS) is not None:
+        staged[TARGET_LUFS] = payload[TARGET_LUFS]
     reported = run_master(
         # OVERWRITE STAYS FALSE IN STAGING, and the clearing above is what makes
         # that safe. Passing True here instead also works and is worse: it is a
         # second mechanism covering the same leftover, so removing the clear
         # changed nothing a test could see. A guard covered by another guard is a
         # guard nothing covers, measured as a zero row on 2026-09-01.
-        {SOURCE: str(source), OUTPUT_DIR: str(staged_into), OVERWRITE: False},
+        #
+        # EVERY OTHER FROZEN KEY TRAVELS, the parts and the target with it. A
+        # staged payload rebuilt from the three keys alone masters the first
+        # part at the default target and commits that as the whole set.
+        staged,
         # Resolved at CALL time, not bound at definition time, so a test can put a
         # stand-in encoder in front of it. ``run_master``'s own default is bound
         # when this module is imported and cannot be reached any other way.
@@ -398,10 +533,13 @@ def handle(job, item, cfg) -> jobs.Produced:
 __all__ = [
     "MASTER_STAGING_DIRNAME",
     "build",
+    "frozen_parts",
     "frozen_payload",
     "handle",
+    "join_order_warning",
     "master_argv",
     "master_recording",
     "run_master",
+    "settings_for",
     "staging_dir",
 ]

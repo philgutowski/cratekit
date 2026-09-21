@@ -138,10 +138,13 @@ def test_the_parser_accepts_the_whole_declared_argument_shape():
     args = parser.parse_args(
         ["master", "/tmp/REC001.wav", "--output-dir", "/tmp/out", "--overwrite"]
     )
-    assert args.recording == "/tmp/REC001.wav"
+    # A LIST SINCE U105, which widened the positional to take every part of a
+    # split recording. One path is a list of one.
+    assert args.recording == ["/tmp/REC001.wav"]
     assert args.output_dir == "/tmp/out"
     assert args.overwrite is True
     assert args.job is None
+    assert args.lufs is None
 
 
 def test_the_verb_is_absent_from_a_slim_profile(configured):
@@ -926,3 +929,417 @@ def test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resum
     codes = [warning["code"] for warning in envelope.get("warnings", [])]
     assert "config-drift" in codes, envelope.get("warnings")
     assert _items(job_id)[0].state == jobs.ItemState.DONE
+
+
+# ---------------------------------------------------------------------------
+# U105: a recording the player split into several files, and a loudness target
+# ---------------------------------------------------------------------------
+
+
+def _tone(directory: Path, name: str, *, seconds: int, rate: int = 44100) -> Path:
+    """A real sine recording. Silence measures as negative infinity and a real
+    encode then refuses for the missing measurement, so the joined-duration proof
+    needs a signal."""
+    require_ffmpeg()
+    out = directory / name
+    proc = subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", f"sine=frequency=220:r={rate}",
+         "-t", str(seconds), "-c:a", "pcm_s16le", str(out)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0 and out.exists(), proc.stderr[-400:]
+    return out
+
+
+def _duration(path: Path) -> float:
+    proc = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr[-400:]
+    return float(proc.stdout.strip())
+
+
+#: What the stand-in probe reports for a part it has no override for: the whole
+#: layout ``probe_source`` reads, so a part differing in one field differs in
+#: that field alone.
+PROBED = {"sample_rate": "44100", "sample_fmt": "s16", "channels": "2", "codec_name": "pcm_s16le"}
+
+
+def _recorder(layouts: dict[str, dict[str, str]] | None = None):
+    """The stand-in encoder, recording every command, with a per-part probe.
+
+    ``layouts`` maps a file NAME to the probe fields that differ from
+    ``PROBED`` for it, which is how a split recording at mixed rates, channel
+    counts or codecs is produced without encoding one.
+    """
+    seen: list[mastering.Command] = []
+    inner = _encoder()
+
+    def run(command: mastering.Command) -> mastering.CommandResult:
+        seen.append(command)
+        argv = list(command.argv)
+        if argv[0].endswith("ffprobe"):
+            fields = {**PROBED, **(layouts or {}).get(Path(argv[-1]).name, {})}
+            return mastering.CommandResult(
+                returncode=0, stdout="".join(f"{k}={v}\n" for k, v in fields.items())
+            )
+        return inner(command)
+
+    return run, seen
+
+
+#: One FLAC frame at 44.1 kHz, the tolerance the brief's "within a frame" names.
+#: FLAC encodes in blocks of 4096 samples at compression level 8, so a length
+#: that differs by less than one block is the same length for this purpose.
+ONE_FRAME_SECONDS = 4096 / 44100
+
+
+def test_two_parts_produce_one_master_whose_duration_is_their_sum(tmp_path):
+    """The brief's first scenario, over a REAL encode rather than a stand-in.
+
+    A stand-in cannot prove a duration, and the failure this exists for is a join
+    that drops or repeats a part, which only the audio shows.
+    """
+    first = _tone(tmp_path, "REC001.wav", seconds=2)
+    second = _tone(tmp_path, "REC002.wav", seconds=3)
+    digests = [mastering.digest(first), mastering.digest(second)]
+
+    reported = master_cli.run_master(
+        master_cli.frozen_payload([str(first), str(second)], None, False)
+    )
+
+    output = Path(reported["output"])
+    assert output == tmp_path / "REC001_set_mastered.flac"
+    assert _duration(output) == pytest.approx(
+        _duration(first) + _duration(second), abs=ONE_FRAME_SECONDS
+    )
+    # The parts are untouched and each has its own verified archive copy.
+    assert [mastering.digest(first), mastering.digest(second)] == digests
+    assert reported["parts"] == [str(first), str(second)]
+    assert [mastering.digest(Path(a)) for a in reported["archives"]] == digests
+    # The joined intermediate is this module's and does not survive the run.
+    assert not list(tmp_path.glob(".cratekit-join-*"))
+    assert not (tmp_path / "REC001_set.wav").exists()
+
+
+def test_the_parts_are_joined_in_the_order_given_and_never_sorted(tmp_path):
+    """The brief's second scenario, measured at the join itself.
+
+    Named so a sort would reverse them: the second part is given first.
+    """
+    later = _recording(tmp_path, "REC002.wav")
+    earlier = _recording(tmp_path, "REC001.wav")
+    run, _ = _recorder()
+    listed: list[str] = []
+
+    def capture(command):
+        if "concat" in command.argv:
+            listing = Path(command.argv[command.argv.index("-i") + 1])
+            listed.extend(listing.read_text().splitlines())
+        return run(command)
+
+    reported = master_cli.run_master(
+        master_cli.frozen_payload([str(later), str(earlier)], None, False),
+        runner=capture,
+    )
+
+    assert [line.split("/")[-1].rstrip("'") for line in listed] == [
+        "REC002.wav", "REC001.wav"
+    ]
+    assert reported["parts"] == [str(later), str(earlier)]
+    assert Path(reported["output"]).name == "REC002_set_mastered.flac"
+
+
+def test_the_order_printed_is_the_order_given(configured):
+    """The plan says the order back before anything is read or written."""
+    root = configured.library.root
+    parts = [root / "REC003.wav", root / "REC001.wav", root / "REC002.wav"]
+    code, envelope = _drive(["master", *map(str, parts)])
+
+    assert code == int(ExitCode.OK), envelope
+    warning = next(w for w in envelope["warnings"] if w["code"] == "join-order")
+    positions = [warning["message"].index(str(p)) for p in parts]
+    assert positions == sorted(positions), warning["message"]
+    assert "1. " + str(parts[0]) in warning["message"]
+    # And the order printed is the order frozen, which is the one the run uses.
+    with jobs.open_store() as store:
+        job = jobs.get(store, envelope["data"]["job_id"])
+    assert job.payload[master_cli.PARTS] == [str(p) for p in parts]
+    assert [i.item_id for i in _items(job.job_id)] == [str(parts[0])]
+
+
+def test_one_input_freezes_queues_and_resumes_exactly_as_before(configured):
+    """The brief's third scenario. No new key, no new flag, no notice."""
+    source = configured.library.root / "REC001.wav"
+    assert master_cli.frozen_payload([str(source)], None, False) == {
+        "source": str(source),
+        "output_dir": None,
+        "overwrite": False,
+    }
+    assert master_cli.frozen_payload([str(source)], None, False) == (
+        master_cli.frozen_payload(str(source), None, False)
+    )
+    assert master_cli.master_argv(
+        _Job(master_cli.frozen_payload([str(source)], None, False))
+    ) == ["master", str(source), "--job", "job-1"]
+
+    code, envelope = _drive(["master", str(source)])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["warnings"] == []
+
+
+def test_one_input_masters_through_the_unchanged_engine_path(tmp_path):
+    """A single recording's report carries no join keys and its own archive."""
+    source = _recording(tmp_path)
+    run, seen = _recorder()
+    reported = master_cli.run_master(
+        master_cli.frozen_payload([str(source)], None, False), runner=run
+    )
+    assert "parts" not in reported and "archives" not in reported
+    assert Path(reported["output"]).name == "REC001_mastered.flac"
+    assert not any("concat" in c.argv for c in seen)
+
+
+@pytest.mark.parametrize("value", [-4.0, -70.5, float("nan"), float("inf")])
+def test_an_out_of_range_target_is_refused_by_the_engine(value):
+    with pytest.raises(ValueError, match="target_lufs"):
+        mastering.Settings(target_lufs=value)
+
+
+@pytest.mark.parametrize("value", [-70.0, -5.0, -14.0])
+def test_the_range_bounds_are_inclusive(value):
+    assert mastering.Settings(target_lufs=value).target_lufs == value
+
+
+@pytest.mark.parametrize("value", ["-4", "-71", "nan"])
+def test_an_out_of_range_target_refuses_and_queues_nothing(configured, value):
+    """The brief's fourth scenario, through the verb."""
+    code, envelope = _drive(
+        ["master", str(configured.library.root / "REC001.wav"), f"--lufs={value}"]
+    )
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "target-lufs-out-of-range"
+    with jobs.open_store() as store:
+        assert len(jobs.list_jobs(store)) == 0
+
+
+def test_the_target_reaches_every_loudnorm_filter(tmp_path):
+    """A frozen target that the engine never sees is a flag that does nothing."""
+    source = _recording(tmp_path)
+    run, seen = _recorder()
+    master_cli.run_master(
+        master_cli.frozen_payload([str(source)], None, False, lufs=-9.0), runner=run
+    )
+    filters = [
+        c.argv[c.argv.index("-af") + 1] for c in seen if "loudnorm" in " ".join(c.argv)
+    ]
+    assert len(filters) == 3, filters
+    assert all("I=-9.0:" in f for f in filters), filters
+
+
+def test_a_split_recording_and_its_target_survive_the_resume_argv(configured):
+    """R10 for the two new keys: the argv rebuilds the payload it came from."""
+    root = configured.library.root
+    frozen = master_cli.frozen_payload(
+        [str(root / "B.wav"), str(root / "A.wav")], str(root / "out"), True, lufs=-16.0
+    )
+    argv = master_cli.master_argv(_Job(frozen))
+    args = cli.build_parser([_entry()]).parse_args(argv)
+    assert master_cli.frozen_payload(
+        args.recording, args.output_dir, args.overwrite, lufs=args.lufs
+    ) == frozen
+    assert args.job == "job-1"
+
+
+def test_a_negative_target_parses_as_two_tokens_as_well():
+    args = cli.build_parser([_entry()]).parse_args(["master", "/tmp/a.wav", "--lufs", "-16"])
+    assert args.lufs == -16.0 and args.recording == ["/tmp/a.wav"]
+
+
+def test_parts_at_different_sample_rates_refuse_before_anything_is_written(tmp_path):
+    """The brief's hazard. A stream copy would not fail, it would lie."""
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.wav")
+    run, seen = _recorder({"REC002.wav": {"sample_rate": "48000"}})
+
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+        )
+
+    assert excinfo.value.cause.reason == "source-unsupported"
+    assert "48000" in excinfo.value.cause.message
+    assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
+    assert not any("concat" in c.argv for c in seen)
+    assert set(tmp_path.iterdir()) == {first, second}
+
+
+def test_a_part_named_twice_refuses(tmp_path):
+    part = _recording(tmp_path)
+    run, seen = _recorder()
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload([str(part), str(part)], None, False), runner=run
+        )
+    assert excinfo.value.cause.reason == "source-unsupported"
+    assert seen == []
+
+
+def test_parts_in_different_containers_refuse(tmp_path):
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.flac")
+    run, seen = _recorder()
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+        )
+    assert excinfo.value.cause.reason == "source-unsupported"
+    assert seen == []
+
+
+def test_a_missing_part_refuses_as_missing(tmp_path):
+    first = _recording(tmp_path, "REC001.wav")
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload([str(first), str(tmp_path / "REC002.wav")], None, False),
+            runner=_encoder(),
+        )
+    assert excinfo.value.cause.reason == "source-missing"
+
+
+def test_a_queued_split_recording_lands_as_one_master_through_the_resume(
+    configured, monkeypatch
+):
+    """The whole path a person travels: queue two parts, resume, one master."""
+    root = configured.library.root
+    first = _recording(root, "REC001.wav")
+    second = _recording(root, "REC002.wav")
+    run, seen = _recorder()
+    monkeypatch.setattr(mastering, "subprocess_runner", run)
+
+    job_id = _queued(first, str(second), "--lufs", "-12")
+    code, envelope = _drive(["master", str(first), str(second), "--lufs=-12", "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert (root / "REC001_set_mastered.flac").is_file()
+    assert not (root / "REC001_mastered.flac").exists()
+    assert (root / mastering.ARCHIVE_DIRNAME / "REC002.wav").is_file()
+    assert any("concat" in c.argv for c in seen)
+    assert all(
+        "I=-12.0:" in c.argv[c.argv.index("-af") + 1]
+        for c in seen
+        if "loudnorm" in " ".join(c.argv)
+    )
+
+
+def test_an_existing_joined_master_is_refused_on_the_real_destination(
+    configured, monkeypatch
+):
+    """The pre-check before staging names the JOINED master, not part one's."""
+    root = configured.library.root
+    first = _recording(root, "REC001.wav")
+    second = _recording(root, "REC002.wav")
+    kept = root / "REC001_set_mastered.flac"
+    kept.write_bytes(b"a master somebody kept")
+    run, seen = _recorder()
+    monkeypatch.setattr(mastering, "subprocess_runner", run)
+
+    job_id = _queued(first, str(second))
+    code, envelope = _drive(["master", str(first), str(second), "--job", job_id])
+
+    assert code != int(ExitCode.OK)
+    assert _items(job_id)[0].cause.reason == "output-exists"
+    assert kept.read_bytes() == b"a master somebody kept"
+    assert seen == []
+
+
+@pytest.mark.parametrize(
+    "differs",
+    [
+        {"channels": "1"},
+        {"codec_name": "pcm_s32le", "sample_fmt": "s32"},
+        {"sample_fmt": "s32"},
+    ],
+    ids=["mono-beside-stereo", "codec", "sample-format"],
+)
+def test_parts_differing_in_any_copied_field_refuse(tmp_path, differs):
+    """Found by this unit's review: rate alone admitted a mono part and a 24 bit
+    part beside a 32 bit one, both copied across unconverted."""
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.wav")
+    run, seen = _recorder({"REC002.wav": differs})
+
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+        )
+
+    assert excinfo.value.cause.reason == "source-unsupported"
+    assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
+    assert not any("concat" in c.argv for c in seen)
+
+
+def test_a_24_bit_and_a_32_bit_part_are_told_apart_by_codec_alone(tmp_path):
+    """Both are ``s32`` as a sample format, so the codec is the only field that
+    separates them. Pinned alone so the codec comparison cannot hide behind the
+    sample format one."""
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.wav")
+    same_fmt = {"sample_fmt": "s32"}
+    run, _ = _recorder(
+        {"REC001.wav": {**same_fmt, "codec_name": "pcm_s24le"},
+         "REC002.wav": {**same_fmt, "codec_name": "pcm_s32le"}}
+    )
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+        )
+    assert "pcm_s32le" in excinfo.value.cause.message
+
+
+def test_a_joined_wav_is_written_as_rf64_when_it_needs_to_be(tmp_path):
+    """Found by this unit's review. A plain WAV header's length wraps at 4 GiB,
+    and a split recording is split because it is long."""
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.wav")
+    run, seen = _recorder()
+    master_cli.run_master(
+        master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+    )
+    join = next(c for c in seen if "concat" in c.argv)
+    assert join.argv[join.argv.index("-rf64") + 1] == "auto"
+    drift = next(c for c in seen if "pcm_s24le" in c.argv)
+    assert drift.argv[drift.argv.index("-rf64") + 1] == "auto"
+
+
+def test_a_joined_flac_carries_no_wav_muxer_option(tmp_path):
+    first = tmp_path / "REC001.flac"
+    second = tmp_path / "REC002.flac"
+    first.write_bytes(b"one")
+    second.write_bytes(b"two")
+    run, seen = _recorder()
+    master_cli.run_master(
+        master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+    )
+    join = next(c for c in seen if "concat" in c.argv)
+    assert "-rf64" not in join.argv
+
+
+def test_the_engine_refuses_an_existing_joined_master_before_archiving(tmp_path):
+    """The engine's own check, not the handler's pre-check. ``master`` would
+    also refuse the same destination, but only after every part was archived
+    and the whole set joined, which is minutes of writes for a refusal that was
+    decidable by reading."""
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.wav")
+    (tmp_path / "REC001_set_mastered.flac").write_bytes(b"kept")
+    run, seen = _recorder()
+
+    with pytest.raises(mastering.MasteringRefused) as excinfo:
+        mastering.master_parts([first, second], runner=run)
+
+    assert excinfo.value.refusal is mastering.Refusal.OUTPUT_EXISTS
+    assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
+    assert seen == []

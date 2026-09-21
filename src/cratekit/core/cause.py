@@ -1606,6 +1606,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the answer for ever. PRECONDITION because the library read cleanly and
         # the thing to correct is a file on disk.
         "rename-incomplete": ExitCode.PRECONDITION,
+        # ── U105's refusal, appended for the reason U19's block gives ────────
+        #
+        # ``crate master --lufs`` was given a target outside the range loudnorm
+        # accepts, or one that is not a finite number. Refused at queue time so
+        # no job is parked whose only outcome is ffmpeg rejecting its filter.
+        # PRECONDITION rather than USAGE for the reason ``vocal-cut-out-of-range``
+        # gives: the parser accepted a number.
+        "target-lufs-out-of-range": ExitCode.PRECONDITION,
     }
 )
 

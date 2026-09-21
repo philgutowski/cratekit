@@ -1,0 +1,136 @@
+name = "u105-a"
+pass_kind = "light"
+
+[[rows]]
+id = "E1_lufs_range_removed"
+description = "Delete the target_lufs range check in Settings.__post_init__"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''        if not low_lufs <= self.target_lufs <= high_lufs:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "E2_lufs_high_bound"
+description = "Move the loud bound one LU louder, -5 to -4, a realistic nearby value"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''LUFS_RANGE = (-70.0, -5.0)'''
+new = '''LUFS_RANGE = (-70.0, -4.0)'''
+
+[[rows]]
+id = "E3_lufs_nan"
+description = "Rewrite the range check as two positive comparisons, which admit NaN"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''        if not low_lufs <= self.target_lufs <= high_lufs:'''
+new = '''        if self.target_lufs < low_lufs or self.target_lufs > high_lufs:'''
+
+[[rows]]
+id = "E4_duplicate_part"
+description = "Delete the part-named-twice refusal in master_parts"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''        if key in seen:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "E5_mixed_containers"
+description = "Delete the mixed-container refusal in master_parts"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    if len(containers) > 1:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E6_joined_output_exists"
+description = "Delete master_parts' own output-exists check, leaving master's later one"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    target = planned_output(paths, output_dir=output_dir)
+    if target.exists() and not overwrite:'''
+new = '''    target = planned_output(paths, output_dir=output_dir)
+    if False:'''
+
+[[rows]]
+id = "E7_layout_rate"
+description = "Drop sample rate from the layout the parts must share, the brief's named hazard"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    shapes = {(p.sample_rate, p.sample_fmt, p.channels, p.codec) for p in probes}'''
+new = '''    shapes = {(p.sample_fmt, p.channels, p.codec) for p in probes}'''
+
+[[rows]]
+id = "E8_layout_channels"
+description = "Drop channel count from the layout the parts must share"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    shapes = {(p.sample_rate, p.sample_fmt, p.channels, p.codec) for p in probes}'''
+new = '''    shapes = {(p.sample_rate, p.sample_fmt, p.codec) for p in probes}'''
+
+[[rows]]
+id = "E9_layout_codec"
+description = "Drop codec from the layout the parts must share"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    shapes = {(p.sample_rate, p.sample_fmt, p.channels, p.codec) for p in probes}'''
+new = '''    shapes = {(p.sample_rate, p.sample_fmt, p.channels) for p in probes}'''
+
+[[rows]]
+id = "E10_parts_archived"
+description = "Stop archiving the parts, reporting each part as its own archive"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    archives = tuple(archive_source(p, p.parent / ARCHIVE_DIRNAME) for p in paths)'''
+new = '''    archives = tuple(paths)'''
+
+[[rows]]
+id = "E11_join_dir_removed"
+description = "Leave the private join directory, and the joined set inside it, behind"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''        shutil.rmtree(join_dir, ignore_errors=True)'''
+new = '''        pass'''
+
+[[rows]]
+id = "E12_join_rf64"
+description = "Write a joined WAV without -rf64 auto"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    container = ("-rf64", "auto") if destination.suffix.lower() == ".wav" else ()'''
+new = '''    container = ()'''
+
+[[rows]]
+id = "E13_joined_suffix"
+description = "Name the joined set after the first part alone, colliding with part one's own master"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''JOINED_SUFFIX = "_set"'''
+new = '''JOINED_SUFFIX = ""'''
+
+[[rows]]
+id = "E14_single_part_name"
+description = "Name a single recording's master as if it were joined"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    paths = [Path(p) for p in parts]
+    if len(paths) == 1:
+        return output_path(paths[0], output_dir=output_dir)'''
+new = '''    paths = [Path(p) for p in parts]'''
+
+[[rows]]
+id = "E15_payload_parts_conditional"
+description = "Emit parts and archives in every report payload, single recordings included"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "maintainer"
+old = '''    if report.parts:'''
+new = '''    if True:'''
+
+[[dropped]]
+id = "E16_drift_rf64"
+description = "Write the drift intermediate without -rf64 auto"
+reason = "ranked below the cap: same guard family as E12, and the one test that pins it is the same test"
+
+[[dropped]]
+id = "E17_report_parts"
+description = "Drop parts=tuple(paths) from the replaced report"
+reason = "ranked below the cap: maintainer facing payload field, and E15 measures the same key's emission"

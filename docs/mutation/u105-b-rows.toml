@@ -1,0 +1,87 @@
+name = "u105-b"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_parts_only_when_several"
+description = "Freeze the parts key for a single recording too"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    if len(frozen) > 1:'''
+new = '''    if frozen:'''
+
+[[rows]]
+id = "S2_lufs_frozen"
+description = "Do not freeze --lufs into the payload"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''        payload[TARGET_LUFS] = float(lufs)'''
+new = '''        pass'''
+
+[[rows]]
+id = "S3_lufs_in_argv"
+description = "Drop --lufs from the resume command line"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''        argv.append(f"--lufs={lufs}")'''
+new = '''        pass'''
+
+[[rows]]
+id = "S4_parts_in_argv"
+description = "Rebuild the resume command line from the first part alone"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    argv = ["master", *frozen_parts(payload)]'''
+new = '''    argv = ["master", str(payload.get(SOURCE) or "")]'''
+
+[[rows]]
+id = "S5_queue_time_refusal"
+description = "Stop validating --lufs at queue time"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    settings_for(ctx.args.lufs)'''
+new = '''    pass'''
+
+[[rows]]
+id = "S6_join_order_notice"
+description = "Queue a split recording without saying its order back"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''        notices = (join_order_warning(frozen_parts(payload)),) if PARTS in payload else ()'''
+new = '''        notices = ()'''
+
+[[rows]]
+id = "S7_staged_parts"
+description = "Stage a split recording's run without its parts, mastering part one alone"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''        staged[PARTS] = [str(p) for p in parts]'''
+new = '''        pass'''
+
+[[rows]]
+id = "S8_staged_target"
+description = "Stage the run without the frozen target, mastering at the default"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''        staged[TARGET_LUFS] = payload[TARGET_LUFS]'''
+new = '''        pass'''
+
+[[rows]]
+id = "S9_precheck_name"
+description = "Pre-check the destination with part one's master name instead of the joined one"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''    final = mastering.planned_output(
+        parts, output_dir=Path(str(output_dir)) if output_dir else None
+    )'''
+new = '''    final = mastering.output_path(
+        parts[0], output_dir=Path(str(output_dir)) if output_dir else None
+    )'''
+
+[[rows]]
+id = "S10_settings_to_engine"
+description = "Call the engine without the settings built from the frozen target"
+file = "src/cratekit/master/cli.py"
+surface = "user"
+old = '''            settings=settings,
+            output_dir=Path(output_dir) if output_dir else None,'''
+new = '''            output_dir=Path(output_dir) if output_dir else None,'''

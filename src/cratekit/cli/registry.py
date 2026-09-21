@@ -1799,6 +1799,11 @@ ENTRIES: tuple[Entry, ...] = (
         handler_key="master",
         feature_rows=(30,),
         module_id="mastering",
+        # U105. The source system's ``master_set.sh`` is this verb's
+        # predecessor, and until it was named here no test could notice that
+        # the predecessor joined split recordings and took a target this verb
+        # did not (R-193).
+        source_scripts=("master_set.sh",),
         argv_builder="master_argv",
         long_running=True,
         emits=frozenset({"job_state"}),
