@@ -292,6 +292,29 @@ def _is_referenced(path: Path, referenced: frozenset[str]) -> bool:
     return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced
 
 
+def referenced_keys(cfg: config.Config) -> frozenset[str]:
+    """The referenced set, read fresh, for a second verb that renames files.
+
+    ``repair paths --apply`` (U102) holds a file back by the same rule this verb
+    does, and it asks HERE rather than copying the read, because two copies of
+    this guard are two places for the next correction to miss. Every refusal
+    ``_recorded`` and ``_referenced`` raise therefore reaches that verb too, in
+    the same words. The lookup of ``_recorded`` is late, through the module, so
+    a test that stubs the collection stubs it for both verbs.
+    """
+    return _referenced(_recorded(cfg), cfg=cfg)
+
+
+def is_referenced(path: Path, referenced: frozenset[str]) -> bool:
+    """``_is_referenced``, for the verb ``referenced_keys`` names."""
+    return _is_referenced(path, referenced)
+
+
+def held_collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
+    """``_collisions``, for the verb ``referenced_keys`` names."""
+    return _collisions(movers)
+
+
 def _collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
     """Each mover that must not be renamed, mapped to why, keyed by path.
 

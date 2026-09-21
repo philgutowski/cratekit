@@ -444,7 +444,9 @@ after a genre or energy change, and `converge` to check that each tree matches
 the database. Reports and audits are read only. `repair paths` proposes a new location for each
 row whose file has moved, and you accept or reject each one with
 `crate review resolve`. A wrong repair points a row at somebody else's file, so
-nothing is inferred. `converge` reports and never repairs. If a tree has fallen
+nothing is inferred. `crate repair paths --apply` then renames the files whose
+proposal you accepted, behind a confirm gate, and never one the rekordbox
+collection references. `converge` reports and never repairs. If a tree has fallen
 out of step, `crate rebuild --tree TREE_ID --actor YOUR_NAME` is the only way to
 clear it.
 

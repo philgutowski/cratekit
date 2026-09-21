@@ -1642,7 +1642,14 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # tests/test_backup_cli.py, on the work path where a person meets them.
         "backup.run": [],
         "name.apply": [],
-        "repair.paths": [],
+        # U102. Driven with the flag, because that is the path the confirm gate
+        # is on and conformance 3 holds the verb to reaching every gate it
+        # declares. The review queue is empty here, so the gate is asked against
+        # the digest of a plan with nothing in it, which is still a plan a person
+        # can abort, and the collection is never read. Without the flag the verb
+        # scans and offers and asks nothing, which tests/intake/test_repair.py
+        # and tests/intake/test_repair_apply.py drive.
+        "repair.paths": ["--apply"],
         # U25. Folder verbs take a path under the configured library. Calibrate
         # and validate accept no folder, which is the state with no labelled
         # set yet. Run and restamp queue, so they must still emit a job_state
