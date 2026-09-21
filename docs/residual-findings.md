@@ -18829,6 +18829,34 @@ built and is out of U94's scope by the brief. What that leaves is R-602.
 
 ## R-410. `crate setbuild` cannot anchor on a track the library does not own
 
+**CLOSED 2026-09-21, by U98 on `relay/143`.** The closing condition is met: an
+anchor outside the library is accepted with a supplied key.
+`crate setbuild --unowned LABEL --key 8A [--bpm N]` resolves the label through
+the engine's `resolve_anchor` against an EMPTY index, so no fuzzy owned match
+can happen, and the envelope's anchor carries `owned` false and
+`key_needs_confirming` true. The key is required and parsed at the parser, so a
+code off the wheel is a status 2 and a missing one refuses as
+`setbuild-unowned-key-missing`. `--bpm` is a ranking input only and nothing is
+written. A key or tempo beside a path anchor refuses as
+`setbuild-supplied-needs-unowned` rather than being ignored. No web lookup.
+
+**Two things were found closing it that the finding above does not say.**
+
+1. With an unowned anchor, a label naming an owned track exactly came back with
+   the library's own copy as its best companion, at the perfect key tier. The
+   owned form drops a copy by match key inside `build_pool`, and an unowned
+   anchor has no track to carry that key. `plan_for` now drops exact match key
+   copies and reports their paths as `totals.held`. Only exact, R-621 is what
+   that leaves.
+2. `build_plan` placed an `either` companion on BOTH sides of the anchor, so one
+   same-key companion of equal energy was the whole sequence twice, its only
+   position 2. That was on main for owned anchors; an unowned anchor, whose
+   companions are nearly all `either`, hit it on most runs. The after side now
+   draws from what the before side left, pinned through `plan_for` and
+   `build_set`.
+
+**Original finding, kept as written:**
+
 **Found:** 2026-09-18, parity audit.
 
 The source system took a provider identifier or URL as the anchor and accepted a
@@ -24833,3 +24861,30 @@ once and not one file at a time.
 
 **Closes when:** that assertion names the text it expects, or a sweep over the
 suite's remedy assertions replaces them all.
+
+---
+
+## R-621. An unowned setbuild label naming an owned track only up to a suffix is not reported as held
+
+**Found:** 2026-09-21, U98's review round on `relay/143`.
+
+`setbuilder/cli.py`, `plan_for`, drops and reports as `totals.held` the library
+tracks whose match key equals the unowned label's. EXACTLY, and on purpose: the
+empty index exists so the fuzzy lookup R-187 describes cannot turn a label into
+a different owned version. The cost is the other direction. A person who owns
+"Alder - Anchor Work (Original Mix)" and types `--unowned "Alder - Anchor Work"`
+gets `held: []` and their own copy ranked as a companion, and `held: []` can be
+read as "you do not own it".
+
+**Measured cost:** driven in `test_an_unowned_label_that_names_an_owned_title_is_never_matched_to_it`,
+where the extended mix comes back as an ordinary companion and `held` is empty.
+That is the intended answer for a different version and the wrong impression
+for the same recording under a longer title.
+
+**Why not fixed here.** Telling a version suffix from a different recording is
+R-187's question, and answering it here by a second matcher would be the
+duplicate the empty index was chosen to avoid.
+
+**Closes when:** R-187 gives the engine a way to tell a title from that title
+plus a version suffix, and `held` reports the near matches it finds, separately
+from the exact ones.

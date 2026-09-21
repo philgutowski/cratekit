@@ -227,7 +227,10 @@ def anchor_path(anchor: str, root: Path) -> Path:
         raise refuse(
             "setbuild-anchor-unknown",
             "setbuild needs the track to build the set around",
-            steps=("pass the path of an analyzed track in your library",),
+            steps=(
+                "pass the path of an analyzed track in your library",
+                "or name a track you do not own with --unowned LABEL --key CODE",
+            ),
             origin=("setbuilder", "cli"),
         )
     given = Path(anchor)

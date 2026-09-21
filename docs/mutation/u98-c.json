@@ -1,0 +1,71 @@
+{
+  "name": "u98-c",
+  "pass_kind": "light",
+  "branch": "relay/143",
+  "head": "3bb856c",
+  "when": "2026-09-21 02:12 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9474,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/modules/tools/setbuilder.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/modules/tools/setbuilder.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "4064bc7a3df09a69",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9474,
+    "baseline_collected": 9474,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "P1_either_twice_rerun",
+      "description": "P1 again after the unowned sequence test was narrowed to one wheel number: the after side draws from the whole ranked list, so either filler is placed on both sides",
+      "file": "src/cratekit/modules/tools/setbuilder.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "360967d111d644af",
+      "subset": [
+        "tests/modules/test_tools.py",
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.tools.setbuilder",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 248,
+      "baseline_collected": 248,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_an_unowned_sequence_places_each_companion_once",
+        "tests/test_setbuilder_cli.py::test_one_either_companion_of_an_owned_anchor_is_placed_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            [s for s in ranked if id(s) not in taken], \"after\", DEFAULT_SIDE",
+      "new": "            ranked, \"after\", DEFAULT_SIDE"
+    }
+  ],
+  "dropped": []
+}
