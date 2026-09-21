@@ -35,12 +35,19 @@ class SourceSpec:
     needs no consent, so ``crate sync all`` queues it whatever the confirmation's
     answer. It is a field of the source rather than a source of its own, because
     it is switched by the same module and ``PLANNERS`` is pinned to ``SPECS``.
+
+    ``no_cursor`` is why nothing records this source's watermark, and None when
+    something does (R-263). A missing record then means two different facts:
+    "never completed cleanly" for a source that records one, and "records none"
+    for a source that does not. ``watermarks.status_rows`` reports the second
+    as its own state rather than telling a person a clean sweep never ran.
     """
 
     source_id: str
     module_id: str | None = None
     handler_key: str | None = None
     inbound_key: str | None = None
+    no_cursor: str | None = None
 
 
 SPECS: tuple[SourceSpec, ...] = (
@@ -51,8 +58,23 @@ SPECS: tuple[SourceSpec, ...] = (
         # THE HEARTS LISTING (U74), queued as ``crate intake playlist favorites``
         # queues it, so the intake worker resolves each heart.
         inbound_key="intake.playlist",
+        # NEITHER WORKER RECORDS A CURSOR, measured by grep 2026-09-20: the
+        # only writers of this document are ``run.increment``, which no
+        # favorites path calls, and the playlists sweep. A missing record is
+        # therefore no evidence about whether a favorites sync ran.
+        no_cursor="no favorites worker records a cursor, so a completed sync "
+        "leaves nothing to report here",
     ),
-    SourceSpec("labels", module_id="labels", handler_key="sync.labels"),
+    SourceSpec(
+        "labels",
+        module_id="labels",
+        handler_key="sync.labels",
+        # BY DESIGN (R-140): the sweep OFFERS releases and ``run.increment``
+        # records nothing for a source whose ``acquires`` is False.
+        no_cursor="a labels sweep offers releases to the review queue rather "
+        "than acquiring them, so it records no cursor; the review queue is "
+        "where a completed sweep shows",
+    ),
     # NO WORKER OF ITS OWN (U64). Each new account playlist is queued as the
     # job ``crate intake playlist`` queues, so the intake worker runs it.
     SourceSpec("playlists", handler_key="intake.playlist"),

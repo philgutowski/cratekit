@@ -243,9 +243,15 @@ def status_rows(cfg: config.Config) -> tuple[dict[str, str], ...]:
 
     Derived from ``sources.DECLARED`` union the document, so a later source
     added in one place cannot go unreported (P3).
+
+    A declared source whose spec carries ``no_cursor`` is ``unrecorded``, never
+    ``never`` (R-263): nothing writes its record, so the absence says nothing
+    about whether it ran. A record an earlier build left for it is reported as
+    stale rather than as its last completion, since that record no longer moves.
     """
     store = WatermarkStore(cfg)
     records = store.all()
+    no_cursor = {spec.source_id: spec.no_cursor for spec in sources.SPECS if spec.no_cursor}
     ids = list(sources.DECLARED)
     for extra in records:
         if extra not in ids:
@@ -253,7 +259,16 @@ def status_rows(cfg: config.Config) -> tuple[dict[str, str], ...]:
     rows: list[dict[str, str]] = []
     for source_id in ids:
         mark = records.get(source_id)
-        if mark is None:
+        reason = no_cursor.get(source_id)
+        if reason is not None:
+            detail = reason
+            if mark is not None:
+                detail += (
+                    f"; a cursor an earlier build recorded {mark.recorded} "
+                    f"no longer moves"
+                )
+            rows.append({"source_id": source_id, "state": "unrecorded", "detail": detail})
+        elif mark is None:
             rows.append(
                 {
                     "source_id": source_id,
