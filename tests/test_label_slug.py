@@ -235,3 +235,36 @@ def test_an_old_identifier_reused_by_a_new_label_stops_following(cfg):
     assert marks.read(cfg, "sue-o") == "2026"
     assert marks.read(cfg, "sueno") is None
     assert stored_marks(cfg) == {"sue-o": "2026"}
+
+
+def test_a_renamed_entry_under_the_old_fold_is_not_taken_by_its_old_name(cfg):
+    """``sue-o`` renamed to ``Sueño Recordings`` is not what ``add Sueño`` means.
+
+    The name decides, the way every other verb resolves one, so re-adding the
+    old spelling files it under its own slug rather than renaming the entry a
+    person already renamed.
+    """
+    del cfg
+    store_registry({"sue-o": "Sueño Recordings"})
+
+    label_id = labels.RegistryStore().add("Sueño")
+
+    assert label_id == "sueno"
+    held = labels.RegistryStore().load()
+    assert {key: entry.name for key, entry in held.labels.items()} == {
+        "sue-o": "Sueño Recordings",
+        "sueno": "Sueño",
+    }
+
+
+def test_a_stored_move_whose_old_identifier_is_held_is_not_followed(cfg):
+    """The reader filters too, not only the writer, for a document it did not write."""
+    store_registry({"sue-o": "Sue O", "sueno": "Sueño"})
+    raw = stored_registry()
+    raw["renamed"] = {"sue-o": "sueno"}
+    config.state_path("label_intent").write_text(json.dumps(raw), encoding="utf-8")
+    store_marks(cfg, {"sue-o": "2026"})
+
+    assert marks.read(cfg, "sueno") is None
+    assert marks.read(cfg, "sue-o") == "2026"
+    assert labels.RegistryStore().load().by_id("sue-o").name == "Sue O"
