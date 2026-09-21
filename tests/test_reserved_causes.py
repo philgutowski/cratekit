@@ -5533,7 +5533,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # fitted over something other than the library root walked recursively
     # because the person said to. The refusal it replaces is a failed check row
     # and not a raised cause, so the cause population does not move.
-    assert (len(literals), len(literals - set(causes))) == (472, 303), (
+    # Re-pinned on the residual finding "An analysis share outside the library
+    # root is in no backup, and no restore puts it back", 2026-09-20: 472 to 476
+    # distinct, 303 to 307 non-keys. FIVE literals joined and ONE left,
+    # differenced as SETS over main's own `src/cratekit` extracted with
+    # `git archive` into a scratch directory. All six are in
+    # `modules/tools/backup.py` and none is a cause. The one that left is
+    # analysis-share-not-carried, the warning whose last producer this removes.
+    # The five that joined are snapshot-share, restore-share and list-share, the
+    # command LABELS of the share's capture, its restore and the listing the
+    # restore is planned from, the same kind of literal as snapshot-database and
+    # list-snapshot-contents; analysis-share, the FOLDER the share is mirrored
+    # under on the remote; and analysis-share-absent, the WARNING code a backup
+    # carries when an outside share is not a directory, a warning and not a
+    # cause because the database portion still runs. The one refusal the new
+    # listing raises is no-snapshot-available, already reserved.
+    assert (len(literals), len(literals - set(causes))) == (476, 307), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

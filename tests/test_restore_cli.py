@@ -1131,6 +1131,56 @@ def test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar(cfg, t
     assert payload["totals"]["absent_sidecars"] == ["-wal"]
 
 
+@pytest.mark.parametrize(
+    ("listing", "pulled", "absent"),
+    [
+        ("PIONEER/\n", (backup.RESTORE_DATABASE, backup.RESTORE_SHARE), False),
+        ("", (backup.RESTORE_DATABASE,), True),
+    ],
+)
+def test_a_restore_in_the_outside_layout_says_whether_the_share_came_back(
+    cfg, tmp_path, listing, pulled, absent
+):
+    """R-338 at the report a person reads: the grids arrived, or it says they did not.
+
+    A backup taken before the share was carried holds no mirror of it. Rows
+    restored from one look fine and have no analysis, so the totals name it.
+    """
+    home = tmp_path / "home" / "rekordbox"
+    home.mkdir(parents=True)
+    (home / "master.db").write_bytes(b"live")
+    outside = replace(
+        cfg,
+        library=replace(
+            cfg.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-20",
+        ),
+    )
+    acknowledge(outside)
+    (tmp_path / "recovered").mkdir()
+
+    def runner(command):
+        answers = {backup.LIST_SNAPSHOT_CONTENTS: "master.db\n", backup.LIST_SHARE: listing}
+        return backup.CommandResult(returncode=0, stdout=answers.get(command.label, ""))
+
+    report = restore_cli.restore_under_one_session(
+        outside,
+        session_id=None,
+        from_backup=True,
+        snapshot="2026-08-01T000000Z",
+        target=tmp_path / "recovered",
+        runner=runner,
+        process_lister=lambda: (),
+        **gate_seams(outside),
+    )
+
+    assert report.pulled == pulled
+    assert report.share_absent is absent
+    totals = restore_cli._performed(report, {"digest": "d"})["totals"]
+    assert totals["analysis_share_absent"] is absent
+
+
 def test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect(installed):
     """BLOCKING finding 2, with its producer DRIVEN rather than hand mutated.
 
@@ -2258,6 +2308,10 @@ class _Remote:
             )
         if command.label == backup.LIST_SNAPSHOT_CONTENTS:
             return backup.CommandResult(0, "".join(f"{name}\n" for name in self.holds))
+        if command.label == backup.LIST_SHARE:
+            # A MIRRORED SHARE IS ALWAYS HELD, so an outside layout plans the
+            # share's transfer and a test that sees none is seeing a decision.
+            return backup.CommandResult(0, "PIONEER/\n")
         if command.label in self.failing:
             return backup.CommandResult(3)
         if "--dry-run" in command.argv:
@@ -2275,7 +2329,8 @@ class _Remote:
 
     @property
     def transfers(self) -> list[backup.Command]:
-        return [c for c in self.calls if c.label in (backup.RESTORE_MIRROR, backup.RESTORE_DATABASE)]
+        moving = (backup.RESTORE_MIRROR, backup.RESTORE_DATABASE, backup.RESTORE_SHARE)
+        return [c for c in self.calls if c.label in moving]
 
 
 def _everything_on_disk(*roots: Path) -> dict[str, bytes | None]:
@@ -2677,6 +2732,13 @@ def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_
 
     assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
     assert not (target / "master.db").exists()
+    # THE SHARE RIDES THE DATABASE HALF (R-338). It was beside the database, so
+    # it was never on the lost volume either, and the remote holding a mirror of
+    # it is not a reason to pour gigabytes of it onto the replacement.
+    assert [c.label for c in remote.calls if c.label == backup.LIST_SHARE], (
+        "the share was never planned, so its absence from the transfers pins nothing"
+    )
+    assert not (target / "share").exists()
     assert (home / "master.db").read_bytes() == b"alive, and never on the lost volume"
     assert report.database == ()
     assert report.absent == ()

@@ -1278,18 +1278,12 @@ def test_queueing_still_needs_nothing_from_the_machine(cfg, no_rclone, monkeypat
 
 def _share_warnings(envelope: dict) -> list[dict]:
     return [
-        w for w in envelope.get("warnings", []) if w["code"] == backup.ANALYSIS_SHARE_NOT_CARRIED
+        w for w in envelope.get("warnings", []) if w["code"] == backup.ANALYSIS_SHARE_ABSENT
     ]
 
 
-def test_an_outside_analysis_share_is_warned_at_queue_and_at_resume(cfg, rclone, tmp_path):
-    """R-14, through the dispatcher, because the item's own report reaches nobody.
-
-    The work body's report does not leave a claimed item (R-221), so a warning
-    carried only on the plan and the outcome would be true and unseen. The
-    acknowledged layout puts the database, and the analysis share beside it, off
-    the library volume, where neither the mirror nor the snapshot reaches.
-    """
+def _outside(cfg, tmp_path) -> Path:
+    """Save the acknowledged layout, the database off the library volume. Returns its home."""
     home = tmp_path / "home" / "rekordbox"
     home.mkdir(parents=True)
     outside = replace(
@@ -1303,6 +1297,46 @@ def test_an_outside_analysis_share_is_warned_at_queue_and_at_resume(cfg, rclone,
     config.save(outside)
     config.reset_cache()
     (home / "master.db").write_bytes(b"database, generation one")
+    return home
+
+
+def test_an_outside_analysis_share_is_carried_through_the_verb(cfg, rclone, tmp_path):
+    """R-338, through the dispatcher: the share reaches the one program that copies.
+
+    The acknowledged layout puts the database, and the analysis share beside it,
+    off the library volume, where the mirror never reaches. The database item
+    mirrors it, and an envelope that carried it warns about nothing.
+    """
+    home = _outside(cfg, tmp_path)
+    grid = home / "share" / "PIONEER" / "USBANLZ" / "8d2" / "key" / "ANLZ0000.DAT"
+    grid.parent.mkdir(parents=True)
+    grid.write_bytes(b"PMAI")
+
+    code, queued = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), queued
+    assert _share_warnings(queued) == [], queued
+
+    code, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), resumed
+    assert _share_warnings(resumed) == [], resumed
+    synced = [
+        line for line in rclone.read_text().splitlines()
+        if line.startswith(f"sync {home / 'share'} ")
+    ]
+    assert len(synced) == 1, rclone.read_text()
+    assert "/analysis-share/" in synced[0]
+    assert grid.read_bytes() == b"PMAI"
+
+
+def test_an_outside_analysis_share_that_is_absent_is_warned_at_queue_and_at_resume(
+    cfg, rclone, tmp_path
+):
+    """Through the dispatcher, because the item's own report reaches nobody.
+
+    The work body's report does not leave a claimed item (R-221), so a warning
+    carried only on the plan and the outcome would be true and unseen.
+    """
+    home = _outside(cfg, tmp_path)
 
     code, queued = _drive(["backup", "run"])
     assert code == int(ExitCode.OK), queued
@@ -1313,6 +1347,7 @@ def test_an_outside_analysis_share_is_warned_at_queue_and_at_resume(cfg, rclone,
     said = _share_warnings(resumed)
     assert len(said) == 1, resumed
     assert str(home / "share") in said[0]["message"], said
+    assert " sync " + str(home / "share") not in rclone.read_text()
 
 
 def test_a_contained_analysis_share_draws_no_warning_from_the_verb(cfg, rclone):

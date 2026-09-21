@@ -790,6 +790,11 @@ class RestoreReport:
     #: rather than off the offer, so the report names what arrived.
     snapshot: str | None = None
     recorded_volume: str | None = None
+    #: The analysis share sits outside the library root and the remote holds no
+    #: mirror of it, so the rows came back without their beat grids (R-338).
+    #: Said for the reason ``absent`` is: a restore that pulled nothing for the
+    #: share must not read as one that pulled it.
+    share_absent: bool = False
 
 
 def restore_under_one_session(
@@ -926,6 +931,7 @@ def restore_under_one_session(
             arrived = {
                 "snapshot": pulled.snapshot,
                 "recorded_volume": pulled.recorded_volume,
+                "share_absent": pulled.share_absent,
             }
         if session_id is None:
             return RestoreReport(
@@ -1010,6 +1016,9 @@ def _performed(report: RestoreReport, offered: dict[str, Any]) -> dict[str, Any]
     if report.pulled:
         totals["snapshot"] = report.snapshot
         totals["recorded_volume"] = report.recorded_volume
+        # A BOOLEAN, for the reason the bare metal totals give: a slug shaped
+        # value here joins the reserved cause population.
+        totals["analysis_share_absent"] = report.share_absent
     if outcome is not None:
         totals["converged"] = outcome.converged
         totals["outstanding"] = len(outcome.outstanding)

@@ -658,7 +658,7 @@ def backup_library(ctx) -> Envelope:
             # done and true ages, and nothing says it copied nothing.
             warnings = (
                 *warnings,
-                *map(dict, backup.uncovered_analysis_share(jobs.frozen_config(job))),
+                *map(dict, backup.absent_analysis_share(jobs.frozen_config(job))),
                 *map(dict, backup.snapshot_identity_warning(jobs.frozen_config(job))),
                 *_rehearsal(job),
             )
@@ -685,7 +685,7 @@ def backup_library(ctx) -> Envelope:
                 data=_reported(store, twin),
                 warnings=(
                     _already_queued(twin, frozen),
-                    *map(dict, backup.uncovered_analysis_share(described)),
+                    *map(dict, backup.absent_analysis_share(described)),
                     *map(dict, backup.snapshot_identity_warning(described)),
                     # THE TWIN'S OWN, not this ask's. A rehearsal and a real run
                     # are never twins, so the two always agree here, and reading
@@ -713,7 +713,7 @@ def backup_library(ctx) -> Envelope:
         return ctx.envelope(
             data=_reported(store, job),
             warnings=(
-                *map(dict, backup.uncovered_analysis_share(cfg)),
+                *map(dict, backup.absent_analysis_share(cfg)),
                 *map(dict, backup.snapshot_identity_warning(cfg)),
                 *_rehearsal(job),
             ),
