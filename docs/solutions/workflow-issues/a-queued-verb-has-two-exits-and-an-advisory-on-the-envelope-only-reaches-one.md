@@ -12,6 +12,7 @@ applies_when:
   - "A verb writes part of a folder and something outside the product has to be reconciled afterwards"
   - "A resume path calls shell.advance, adopt.shell.resume, or modules.outbound.shell.resume"
   - "A residual is closed by telling a person what to do rather than by doing it"
+  - "A gated verb is given a warning that bears on the decision the gate asks for"
 symptoms:
   - "The advisory is asserted green in a test that drives a fully successful sweep and never appears on a run that failed part way"
   - "The exact scenario a residual describes, an interrupted run, is the one scenario the fix does not cover"
@@ -136,3 +137,31 @@ The first version of that assertion checked only that the trail's first and last
 elements differed, which a rebuilt two-element origin satisfies. It measured
 zero on the mutation row that rebuilt the cause, which is how the weakness was
 found rather than argued.
+
+## The same trap one exit earlier, found 2026-09-21
+
+The two exits above are the two ends of a resume. A gated verb has a third one
+before either, **the refusal that asks the question**, and it is an exit for the
+same reason: `DecisionRequired` is a structured cause and carries no warnings.
+
+R-227 made the two outbound verbs warn when the export they read is old, with
+advice to export the collection again. The first pass put that sentence on the
+queueing envelope, through `shell.queue_warnings`, and put only the bare facts on
+the gate. Every test passed, and the built in review found that the advice
+reached a person only AFTER they had confirmed and the write was queued, which is
+the one moment it is no use. A warning that bears on a decision belongs where the
+decision is asked.
+
+The channel is `ctx.gate.require(spec, digest=..., context={...})`. It arrives as
+`shown` on the refusal, in json and through `render_gate`, and it is a display
+value that never enters the confirm digest. So for an advisory about a gated
+write there are three moments to decide on before writing any of them: the gate,
+the queueing envelope, and the resume's two ends. R-227 chose the first two and
+recorded in its ledger entry why the resume says nothing.
+
+Two things that made it cheap to get wrong. `tests.cli_drive.approve_and_queue`
+walks all three acts and hands back only the last envelope, so an assertion
+written against it never looks at the refusal. And a composing verb is a second
+gate: `crate sync all` builds the favourites plan itself and asks its own
+question, so a context given to `sync favorites` alone is absent on the pass most
+people run.

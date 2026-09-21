@@ -1,0 +1,207 @@
+name = "r227"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_floored_days"
+description = "Staleness is judged on floored whole days, so seven days and one second is not past seven"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''        return age is not None and age.total_seconds() > self.limit_days * _SECONDS_PER_DAY'''
+new = '''        return age is not None and age.days > self.limit_days'''
+
+[[rows]]
+id = "A2_never_stale"
+description = "No export is ever stale, which is the tree before this unit"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''        return age is not None and age.total_seconds() > self.limit_days * _SECONDS_PER_DAY'''
+new = '''        return False'''
+
+[[rows]]
+id = "A3_future_clamped"
+description = "A date far in the future is never future dated, so it clamps to an age of nothing and reads as recent"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''        return self.written - self.judged_at > FUTURE_TOLERANCE'''
+new = '''        return False'''
+
+[[rows]]
+id = "A4_no_tolerance"
+description = "No tolerance at all, so a volume whose clock runs a few hours ahead is future dated"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''FUTURE_TOLERANCE = timedelta(days=1)'''
+new = '''FUTURE_TOLERANCE = timedelta(0)'''
+
+[[rows]]
+id = "A5_half_a_pair"
+description = "The constructor accepts a date with no instant to judge it at"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "maintainer"
+old = '''        if (self.written is None) != (self.judged_at is None):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A6_conversion_unguarded"
+description = "Only the stat is guarded, so a modification time no date can hold escapes as a traceback"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''    except (OSError, OverflowError, ValueError):'''
+new = '''    except FileNotFoundError:'''
+
+[[rows]]
+id = "A7_unreadable_reads_as_now"
+description = "A file that cannot be asked its date is reported as written this instant"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+old = '''        return ExportAge(path=located, limit_days=limit_days)
+'''
+new = '''        return ExportAge(path=located, limit_days=limit_days, written=datetime.now(timezone.utc), judged_at=datetime.now(timezone.utc))
+'''
+
+[[rows]]
+id = "S1_unknown_is_within_limit"
+description = "An age that could not be read is called within the limit"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''    if not age.known:
+        return AGE_UNKNOWN'''
+new = '''    if not age.known:
+        return AGE_WITHIN_LIMIT'''
+
+[[rows]]
+id = "S2_no_sentence_at_the_gate"
+description = "The shown block carries no warning sentence, so the advice arrives only after the answer"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''        export["warning"] = warning["message"]'''
+new = '''        pass'''
+
+[[rows]]
+id = "S3_utc_date_in_the_sentence"
+description = "The warning names the UTC date rather than the person's own"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''    return moment.astimezone().date().isoformat()'''
+new = '''    return moment.date().isoformat()'''
+
+[[rows]]
+id = "S4_utc_instant_in_the_block"
+description = "The shown block spells the instant in UTC rather than in the machine's zone"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''            age.written.astimezone().replace(microsecond=0).isoformat()'''
+new = '''            age.written.replace(microsecond=0).isoformat()'''
+
+[[rows]]
+id = "S5_envelope_drops_the_age"
+description = "queue_warnings takes the age and says nothing about it"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''    warnings: list[dict[str, str]] = [*age_warnings(age)]'''
+new = '''    warnings: list[dict[str, str]] = []'''
+
+[[rows]]
+id = "S6_no_stale_sentence"
+description = "A stale export produces no warning at all"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''    if age.stale:
+        return ('''
+new = '''    if False:
+        return ('''
+
+[[rows]]
+id = "S7_floored_age_in_the_sentence"
+description = "The age is spelled in whole days only, so the sentence says seven is past seven"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+old = '''    return f"{elapsed.days} days {hours} hours"'''
+new = '''    return f"{elapsed.days} days"'''
+
+[[rows]]
+id = "C1_export_gate_shows_nothing"
+description = "export playlist asks its question with no context, which is R-227 as it stood"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''        context=shell.shown_export(age),'''
+new = '''        context=None,'''
+
+[[rows]]
+id = "C2_favorites_gate_shows_nothing"
+description = "sync favorites asks its question with no context"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+old = '''        spec, digest=sweep_digest(exported, resolved), context=shell.shown_export(age)'''
+new = '''        spec, digest=sweep_digest(exported, resolved)'''
+
+[[rows]]
+id = "C3_composed_gate_drops_the_export"
+description = "sync all shows its own awaiting block and nothing about the export"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''            context={**_awaiting(plans), **shell.shown_export(age)},'''
+new = '''            context=_awaiting(plans),'''
+
+[[rows]]
+id = "C4_export_limit_spelled"
+description = "export playlist judges against a seven spelled in the shell, not the configured limit"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+old = '''    age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)'''
+new = '''    age = source.export_age(exported, limit_days=7)'''
+
+[[rows]]
+id = "C5_favorites_limit_spelled"
+description = "sync favorites judges against a seven spelled in the shell"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+old = '''    age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)'''
+new = '''    age = source.export_age(exported, limit_days=7)'''
+
+[[rows]]
+id = "C6_composed_limit_spelled"
+description = "sync all judges against a seven spelled in the shell"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)'''
+new = '''    age = source.export_age(exported, limit_days=7)'''
+
+[[rows]]
+id = "V1_validator_not_called"
+description = "validate never asks about outbound.export_stale_days"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/modules/test_reports.py"]
+old = '''    problems += _validate_export_staleness(data)
+'''
+new = ''''''
+
+[[rows]]
+id = "V2_no_ceiling"
+description = "The key has no ceiling, so ten billion days validates and overflows later"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/modules/test_reports.py"]
+old = '''        maximum=MAX_EXPORT_STALE_DAYS,'''
+new = '''        maximum=None,'''
+
+[[rows]]
+id = "V3_bool_is_a_day_count"
+description = "The shared day count rule accepts a boolean, for the intake ages as well"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/modules/test_reports.py"]
+old = '''    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        return ('''
+new = '''    if not isinstance(value, int) or value < 1:
+        return ('''
+
+[[rows]]
+id = "V4_section_not_built"
+description = "The outbound section is never read from the file, so every install gets the default"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_outbound_workers.py", "tests/test_sync_all.py"]
+old = '''        outbound=_build(OutboundConfig, data.get("outbound") or {}),'''
+new = '''        outbound=OutboundConfig(),'''
