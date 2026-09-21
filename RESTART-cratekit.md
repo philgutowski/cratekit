@@ -4,7 +4,62 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: U98, issue #143, `relay/143`, 2026-09-21.**
+**Last merged: R-187 with R-188, issue #175, `relay/175`, 2026-09-20.**
+`crate setbuild --named "Artist - Title"` names the anchor by track, which
+CLOSES R-187, and the verb now fills its declared index cache, which CLOSES
+R-188. "What plays after X" no longer needs a file path.
+**AN EXACT HIT ON THE COMPARISON KEY WINS BEFORE ANY FUZZY SCORE,** in the
+engine's new `match_in_index`, because `token_set_ratio` scores a subset at 100
+and no threshold separates two candidates at the ceiling. After that a hit
+counts only when it holds EVERY typed word, `WORD_THRESHOLD` 80 per word. One
+such hit resolves. Several refuse as `setbuild-anchor-ambiguous`, the one new
+slug, listing each candidate with its path in an order that does not follow the
+walk, capped at `CANDIDATE_LIMIT` 10. Hits that all lack part of the name come
+back `partial` and refuse under the same slug as a different version. A name
+nothing answers to reuses `setbuild-anchor-not-indexed`, and a name of
+punctuation alone is `setbuild-anchor-unknown` before any scan. `--named` sits
+in the exclusive group with the path and `--unowned`, and `--key` or `--bpm`
+beside it refuses as it does beside a path. `find_in_index` is rebuilt on the
+verdict. `resolve_anchor` answers unresolved on an ambiguous name rather than
+"not in your library", and lets a partial reach WITH a supplied key through to
+the unowned answer.
+**R-188'S DECISION HAD ALREADY BEEN MADE, in the registry, on 2026-09-08:**
+`analyze.calibrate` writes library scoped state files with no write surface,
+since `writes` names the library's own material. `setbuild` follows it, passes
+`config.state_path("setbuilder_index_cache", cfg)`, declares nothing and stays
+out of the destructive gates. No `state` member was added to `WRITE_SURFACES`.
+**The built in code review raised ten findings. Nine were applied in one fix
+round and one was recorded.** Two were in the matcher as first built: a name
+LONGER than the owned title resolved to it, and one differing word in a long
+title still scored over 90. Six were dormant on main in `build_index`'s cache
+path and became reachable the moment a verb passed one: the cache is now
+stamped with the name template, keyed on size and nanosecond time, never caches
+a wholly empty read, survives an entry of the wrong shape or types, is written
+through `config.atomic_write_bytes`, and is not written after an empty walk.
+`CACHE_VERSION` is 3.
+Battery: ruff clean, **9513 passed** and 1 skipped in 67 seconds, 9514
+collected, scan clean. 40 tests joined, in `tests/test_setbuilder_cli.py` and
+`tests/modules/test_tools.py`. The new slug moved the cause population pin 172
+to 173 and the kebab literal pin 478 to 479, the second differenced as sets
+against main.
+Mutation tables, `docs/mutation/r187-a.md` and `r187-b.md`, rows files beside
+them, notes in `r187-notes.md`: **25 rows, the author's own, all killed.** The
+cap was reached and six rows were dropped, logged at the head of the batch A
+rows file.
+Filed: **R-622**, two files sharing a comparison key are one index entry, so
+the second cannot be an anchor by path or by name, read and not driven, and
+**R-623**, a tag read that fails for some fields is cached as the file's
+answer, reachability unmeasured. Neither was driven, so neither meets the board
+bar and no issue was opened. **R-621 is NARROWED**: the engine primitive it
+waited on exists, and `plan_for` does not call it yet.
+Learning filed:
+`docs/solutions/workflow-issues/a-residual-waiting-on-a-decision-may-have-been-decided-elsewhere.md`.
+**OWED TO AN ATTENDED SITTING:** the seconds the cache saves on a real library,
+which R-188 never measured and this unit could not, since the live library is
+off limits. Measured here as reads, none on a second run.
+**Main's highest residual number is R-623.**
+
+**The session before: U98, issue #143, `relay/143`, 2026-09-21.**
 `crate setbuild --unowned LABEL --key 8A [--bpm N]` ranks the library against a
 track it does not hold, which CLOSES R-410. The "should I buy this" workflow.
 **THE LABEL IS RESOLVED AGAINST AN EMPTY INDEX,** `unowned_anchor` in
@@ -40,7 +95,7 @@ suffix is not reported as held, which waits on R-187. It does not meet the board
 bar, so no issue was opened.
 No learning filed.
 **OWED TO AN ATTENDED SITTING:** none.
-**Main's highest residual number is R-621.**
+**Main's highest residual number was R-621 at that merge.**
 
 **The session before: U97, issue #142, `relay/142`, 2026-09-21.**
 The remedy for a provider session names the procedure instead of a verb that
