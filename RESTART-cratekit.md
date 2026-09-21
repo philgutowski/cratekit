@@ -64,10 +64,15 @@ run is 500 tracks synchronous with no progress and no resume, per track cost
 unmeasured, and it carries what is OWED TO AN ATTENDED SITTING, a real
 calibration over the real library; **R-603**, two reworded remedies have no
 test and the three new flags are ignored without a word beside `--vocal-cut`.
+**R-604**, `test_restore.py::test_round2_repeating_a_failing_restore_does_not_accumulate_latches`
+FAILED ONCE in a full parallel run on a tree that does not touch it, then
+passed alone three times and in the next two full runs, about one red battery
+in ten. Its failure text was not captured and no cause is offered. If the gate
+goes red on that one test, run the battery again before blaming the unit.
 None meets the board bar, each closes or is sized only at an attended sitting
 or is maintainer facing. No follow up issue was opened.
 No learning filed, an ordinary run. `CONCEPTS.md` gains "Library wide walk".
-**Main's highest residual number is R-603.**
+**Main's highest residual number is R-604.**
 
 **The session before: R-375 with R-12, issue #173, `relay/173`, 2026-09-20.**
 A gated database write now leaves a session record, so the capture it takes is

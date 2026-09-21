@@ -24408,3 +24408,33 @@ sets the cut and says nothing about the three flags it did not read.
 
 **Closes when:** a test reads both remedies, and the hand cut either refuses the
 flags or names them as unread.
+
+---
+
+## R-604. A restore test failed once under the parallel suite on a tree that does not touch it, and passed every other time
+
+**Found:** 2026-09-20 on `relay/139`, U94, at the last battery before the record.
+
+`tests/test_restore.py::test_round2_repeating_a_failing_restore_does_not_accumulate_latches`
+failed once in a full `-n auto` run. The branch changes no file under
+`session`, `backup` or `write`, and no file that test imports. On the identical
+committed tree it then passed three times alone with `-n 0`, once with its whole
+file, and in both of the next two full parallel runs. The five mutation
+baselines taken earlier in the session, full parallel runs of nearly the same
+tree, were green as well. So roughly one failure in ten full runs, and none in
+isolation.
+
+**THE FAILURE TEXT WAS NOT CAPTURED.** The run that failed was piped through a
+two line tail, and the failure did not come back to be read. No mechanism is
+offered, because none was measured. What is known is only where to look: the
+test opens `restore.recovery_session` three times in a row, and that function
+was rewritten one merge earlier, on `relay/173`, to ask the gates for its
+record.
+
+**Measured cost:** one red battery in about ten, which under Relay is a gate
+that refuses a merge for a unit that did nothing wrong. Maintainer facing.
+
+**Closes when:** the failure is reproduced with its text, `pytest -n auto -p
+no:randomly --count` or a loop over the full suite with `--tb=long` kept whole,
+and is either fixed or shown to be machine load.
+
