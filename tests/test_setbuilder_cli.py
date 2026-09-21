@@ -509,17 +509,68 @@ def test_a_name_longer_than_the_owned_title_is_refused_and_not_shortened():
     index = (original, track("Gum", "Wrong Key", "3B"))
 
     assert setbuilder.match_in_index("Alder - Anchor Work (Extended Mix)", index) == (
-        setbuilder.AnchorMatch(candidates=(original,))
+        setbuilder.AnchorMatch(candidates=(original,), partial=True)
     )
     with pytest.raises(CratekitError) as caught:
         setbuild_cli.named_anchor("Alder - Anchor Work (Extended Mix)", index)
     cause = caught.value.cause
     assert cause.reason == "setbuild-anchor-ambiguous"
-    assert cause.detail["reached"] == 1
+    assert cause.detail["reached"] == 1 and cause.detail["partial"] is True
     assert cause.detail["candidates"] == [
         {"display": "Alder - Anchor Work", "path": "/library/orig.flac"}
     ]
     assert "different version" in cause.message
+    assert "--unowned" in cause.remediation.steps[-1]
+
+
+def test_one_differing_word_in_a_long_title_is_a_different_version():
+    """Found by the built in review, and the set score CANNOT see it.
+
+    On a long title the shared words dominate, so "Extended Mix" against an
+    owned "Original Mix" scores above the threshold with neither side a subset
+    of the other. The lone hit resolved, and the set was built around a version
+    nobody named. Asserted on the score as well, so the day the scorer stops
+    rating this pair as a match the test says its premise moved.
+    """
+    owned = track(
+        "Some Long Artist Name", "A Very Long Track Title Indeed (Original Mix)", "8A"
+    )
+    named = "Some Long Artist Name - A Very Long Track Title Indeed (Extended Mix)"
+    from rapidfuzz import fuzz
+
+    assert fuzz.token_set_ratio(
+        setbuilder.match_key("", named), owned.match
+    ) >= setbuilder.MATCH_THRESHOLD, "the pair no longer scores as a match"
+    assert setbuilder.match_in_index(named, (owned,)) == setbuilder.AnchorMatch(
+        candidates=(owned,), partial=True
+    )
+    dub = track("Alder", "A Rather Long Anchor Work Title (Dub Mix)", "8A")
+    matched = setbuilder.match_in_index("Alder - A Rather Long Anchor Work Title (Club Mix)", (dub,))
+    assert matched.track is None
+
+
+def test_the_one_title_holding_every_typed_word_wins_over_titles_holding_fewer():
+    """Both titles score 100 on "anchor work", and only one holds "extended"."""
+    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
+    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
+    for index in ((extended, original), (original, extended)):
+        assert setbuild_cli.named_anchor("anchor work extended", index) is extended
+
+
+def test_a_file_with_no_artist_tag_is_reachable_by_the_name_the_refusal_lists():
+    """Found by the built in review: the remedy has to be one that works.
+
+    The file's comparison key is its title alone, so typing the artist a person
+    knows it by names more than it holds and is refused. The refusal used to say
+    "name it exactly, artist and full title", which is what they had just done.
+    It now says to type it AS LISTED, and that is driven here rather than read.
+    """
+    bare = track("", "Anchor Work", "8A", path="/library/bare.flac")
+    with pytest.raises(CratekitError) as caught:
+        setbuild_cli.named_anchor("Alder - Anchor Work", (bare,))
+    listed = caught.value.cause.detail["candidates"][0]["display"]
+    assert listed in caught.value.cause.remediation.steps[1]
+    assert setbuild_cli.named_anchor(listed, (bare,)) is bare
 
 
 def test_a_name_typed_short_resolves_when_only_one_track_answers_to_it(index):
@@ -584,11 +635,35 @@ def test_the_engine_says_ambiguous_and_never_not_in_your_library():
     for supplied in (None, "8A"):
         anchor = setbuilder.resolve_anchor("Anchor Work", index, key=supplied)
         assert anchor.key is None and anchor.owned is False and anchor.track is None
-        assert "more than one owned track" in anchor.unresolved
+        assert "names 2 owned tracks" in anchor.unresolved
         assert "Alder - Anchor Work (Extended Mix)" in anchor.unresolved
         assert "not in your library" not in anchor.unresolved
     plan = setbuilder.build_set("Anchor Work", index, taxonomy=TAXONOMY, key="8A")
     assert plan.pool == () and plan.sequence == ()
+
+
+def test_a_remix_the_library_lacks_is_unowned_once_its_key_is_supplied():
+    """Found by the built in review. The supplied key must not be thrown away.
+
+    The library holds the original. Naming somebody's remix of it reaches that
+    original and holds more than it does, which is a PARTIAL reach. With no key
+    that is unresolved and says why without claiming several tracks were hit.
+    With one it is the unowned question, answered with the supplied key, and the
+    owned original is an ordinary companion rather than the anchor.
+    """
+    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
+    index = (original, track("Birch", "Same Key Lower", "8A"))
+    remix = "Alder - Anchor Work (Someone Remix)"
+
+    bare = setbuilder.resolve_anchor(remix, index)
+    assert bare.key is None and "may be a version you do not own" in bare.unresolved
+    assert "owned tracks" not in bare.unresolved
+
+    keyed = setbuilder.resolve_anchor(remix, index, key="8A")
+    assert (keyed.key, keyed.owned, keyed.track, keyed.display) == ("8A", False, None, remix)
+    assert keyed.key_needs_confirming is True and keyed.unresolved == ""
+    plan = setbuilder.build_set(remix, index, taxonomy=TAXONOMY, key="8A")
+    assert original in [scored.track for scored in plan.pool]
 
 
 def test_an_anchor_spelled_through_a_symlink_still_resolves(tmp_path):

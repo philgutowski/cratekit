@@ -12,8 +12,9 @@ explicit rather than a positional that guesses whether it was given a path or a
 title, because a verb that guesses which question was asked answers the wrong
 one some of the time and says nothing about it. The name resolves through
 :func:`~cratekit.modules.tools.setbuilder.match_in_index`: an exact hit on the
-comparison key wins, one fuzzy hit resolves, and a name that reaches several
-owned tracks REFUSES AND LISTS THEM with their paths. ``token_set_ratio`` scores
+comparison key wins, then the one title holding every typed word, and a name
+that reaches several owned tracks, or names more than any of them holds,
+REFUSES AND LISTS THEM with their paths. ``token_set_ratio`` scores
 a subset at 100, so "Alder - Anchor Work" and "Alder - Anchor Work (Extended
 Mix)" are indistinguishable to a fuzzy score, and before the exact comparison
 the first one the walk met won. Building a set around the WRONG anchor is the
@@ -324,9 +325,10 @@ def named_anchor(text: str, index: Sequence[setbuilder.Track]) -> setbuilder.Tra
     around the wrong version looks exactly as right as one built around the
     right one.
 
-    A lone candidate is listed too. That is the longer-version case: the person
-    named more than the library's copy holds, "(Extended Mix)" against an owned
-    original, and whether the original will do is theirs to say.
+    Candidates that all LACK part of the name are listed too, and said to be
+    that. It is the different-version case: the person named more than the
+    library's copies hold, "(Extended Mix)" against an owned original, and
+    whether the original will do is theirs to say.
     """
     if not names_something(text):
         raise refuse(
@@ -353,29 +355,37 @@ def named_anchor(text: str, index: Sequence[setbuilder.Track]) -> setbuilder.Tra
             detail={"named": text, "indexed": len(index)},
         )
     shown = matched.candidates[: setbuilder.CANDIDATE_LIMIT]
-    if len(matched.candidates) == 1:
+    listed = "; ".join(t.display for t in shown)
+    if matched.partial:
         message = (
-            f"{text} names more than the library's {shown[0].display} does, so it "
-            f"may be a different version, and a set built around the wrong "
+            f"{text} names more than the library's nearest copies hold ({listed}), "
+            f"so it may be a different version, and a set built around the wrong "
             f"version looks exactly as right as one built around the right one"
         )
+        last = "or, if you do not own the one you named, pass --unowned LABEL --key CODE"
     else:
         message = (
             f"{text} reaches {len(matched.candidates)} tracks in the library, "
             f"and a set built around the wrong one looks exactly as right as "
             f"one built around the right one, so none was picked"
         )
+        last = None
+    steps = [
+        "pass the path of the one you mean: " + "; ".join(t.path for t in shown),
+        # AS LISTED, not "artist and full title": a file with no artist tag is
+        # listed by its title alone, and typing the artist a person knows it by
+        # is what reached this refusal in the first place.
+        f"or name it with --named exactly as it is listed here: {listed}",
+    ]
     raise refuse(
         "setbuild-anchor-ambiguous",
         message,
-        steps=(
-            "pass the path of the one you mean: " + "; ".join(t.path for t in shown),
-            "or name it exactly with --named, artist and full title",
-        ),
+        steps=tuple(steps + ([last] if last else [])),
         origin=("setbuilder", "cli"),
         detail={
             "named": text,
             "reached": len(matched.candidates),
+            "partial": matched.partial,
             "candidates": [{"display": t.display, "path": t.path} for t in shown],
         },
     )
