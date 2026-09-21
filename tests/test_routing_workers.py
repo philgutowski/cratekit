@@ -1390,7 +1390,9 @@ def _difference(n: int, **fields) -> dict:
 
 def test_the_leftover_warning_is_capped_and_still_counts_every_one():
     """A back catalogue can leave thousands, and the count must not be the cap."""
-    records = [_difference(n) for n in range(rebuild.LEFT_BEHIND_NAMED + 3)]
+    # HANDED OVER BACKWARDS, so the names that survive the cap are the first in
+    # order and not the first to arrive, which is what makes two runs agree.
+    records = [_difference(n) for n in reversed(range(rebuild.LEFT_BEHIND_NAMED + 3))]
     (warning,) = rebuild.left_behind_warnings(records, listed_in="/queue/reports")
     assert f"{rebuild.LEFT_BEHIND_NAMED + 3} membership" in warning["message"]
     assert "track-000.flac" in warning["message"]
@@ -1428,6 +1430,8 @@ def test_the_record_a_worker_writes_is_the_one_the_message_reads():
 
 def test_the_leftover_code_is_the_locked_spelling():
     assert rebuild.LEFT_BEHIND == "membership-left-behind"
+    # The shipped skill says "the first twenty" in words, so the number is pinned.
+    assert rebuild.LEFT_BEHIND_NAMED == 20
     assert rebuild.left_behind_warnings((), listed_in="/queue/reports") == ()
 
 
