@@ -497,11 +497,16 @@ track.
 ```bash
 crate setbuild /path/under/the/library/anchor-track.aiff --count 8 --role after
 crate master /path/to/recording.wav --output-dir /path/to/out
+crate master /path/to/REC001.wav /path/to/REC002.wav --lufs -16
 ```
 
 `setbuild` ranks tracks you own that are compatible in key and energy with the
 anchor, and needs no network. `master` levels a set recording and encodes it to
-lossless, and never touches the source.
+lossless, and never touches the source. A recording the player split into
+several files is named as every part, in order; the parts are joined in the
+order you give, never sorted, the order is printed back when the job is queued,
+and the master is named after the first part with `_set` added. `--lufs` sets
+the loudness target, minus fourteen by default.
 
 ### Back up and restore
 
