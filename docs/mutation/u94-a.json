@@ -2,8 +2,8 @@
   "name": "u94-a",
   "pass_kind": "light",
   "branch": "relay/139",
-  "head": "cd4f049",
-  "when": "2026-09-20 23:57 UTC",
+  "head": "53724ca",
+  "when": "2026-09-21 00:14 UTC",
   "valid": true,
   "invalid_reason": "",
   "baseline_collected": 9416,
@@ -105,7 +105,7 @@
       "kind": "mutation",
       "surface": "user",
       "pairs_with": null,
-      "fingerprint": "fc490d96c1eb6ca6",
+      "fingerprint": "9be08066c4257534",
       "subset": [
         "tests/test_analysis_workers.py",
         "tests/test_vocals_cli.py"
@@ -130,8 +130,8 @@
       "note": "",
       "runs": 1,
       "head_verified": true,
-      "old": "    if partial is not None and not accepted:\n        return _calibrate_refusal(ctx, _refused(partial), summary)\n",
-      "new": "    if False:\n        return _calibrate_refusal(ctx, _refused(partial), summary)\n"
+      "old": "    if partial is not None and not accepted:\n        return _calibrate_refusal(ctx, _partial_refused(partial), summary)\n",
+      "new": "    if False:\n        return _calibrate_refusal(ctx, _partial_refused(partial), summary)\n"
     },
     {
       "id": "S4_accept_flag_dead",
