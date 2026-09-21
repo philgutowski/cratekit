@@ -91,9 +91,9 @@ so this command takes no `--python`, and pipx ignores one with a warning. The
 quotes matter, since zsh reads square brackets as a pattern and refuses the
 command without them. Turning on a module without its extra is not a crash. The
 CLI attaches a stub that prints an install command and exits non-zero, so
-`crate --help` keeps working on a slim machine. That printed command starts with
-`pip`, which is written for a plain virtual environment and installs into the
-wrong place for a pipx install. Use the pipx command above instead.
+`crate --help` keeps working on a slim machine. The printed command is the pipx
+one above, pointed at the folder you installed from and keeping the extras you
+already chose. Outside pipx it is `pip`, run by the Python `crate` itself runs on.
 
 To update, pull and reinstall from inside the cratekit folder. Pulling alone
 changes nothing, since pipx holds its own copy. A reinstall keeps the extras you

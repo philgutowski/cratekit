@@ -53,6 +53,7 @@ from cratekit.core import config, discovery, jobs, naming, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import MarkerRule, NameBudget, NameSpec, NameTemplate
+from cratekit.modules import extras
 
 _ORIGIN = ("analysis", "cli")
 _T = TypeVar("_T")
@@ -488,7 +489,7 @@ def _require_heavy(seam_bound: bool, what: str) -> None:
         f"process running this job",
         remedy=Remedy.INSTALL_MODULE_EXTRA,
         origin=_ORIGIN,
-        detail={"extras": "analysis", "install": "pip install 'cratekit[analysis]'"},
+        detail={"extras": "analysis", "install": extras.install_command("analysis")},
     )
 
 

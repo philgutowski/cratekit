@@ -42,11 +42,16 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from cratekit.core import pool
+from cratekit.modules import extras
 
 VOCAL_WORKER_BYTES = 1024 ** 3
 VOCAL_CEILING = 2
 
-INSTALL = "pip install 'cratekit[vocals]'"
+
+def install() -> str:
+    """The command that installs this extra where this process runs (R-395)."""
+    return extras.install_command("vocals")
+
 
 #: The frame level checkpoint the source system scored the library with. It is
 #: named here, rather than left to the library's default, because the library
@@ -149,9 +154,9 @@ def missing_requirement() -> str | None:
     try:
         import torch  # noqa: F401
     except Exception as exc:  # noqa: BLE001 - a torch that will not load is the case
-        return f"the 'vocals' extra is not usable here ({type(exc).__name__}: {exc}); {INSTALL}"
+        return f"the 'vocals' extra is not usable here ({type(exc).__name__}: {exc}); {install()}"
     if not _installed("panns_inference"):
-        return f"the 'vocals' extra is not installed here; {INSTALL}"
+        return f"the 'vocals' extra is not installed here; {install()}"
     if not labels_ready():
         return (
             f"the vocal model's label table is not at {LABELS}; place "
@@ -166,7 +171,7 @@ def missing_requirement() -> str | None:
     try:
         import panns_inference  # noqa: F401
     except Exception as exc:  # noqa: BLE001 - the import does file work
-        return f"the 'vocals' extra will not import ({type(exc).__name__}: {exc}); {INSTALL}"
+        return f"the 'vocals' extra will not import ({type(exc).__name__}: {exc}); {install()}"
     return None
 
 
@@ -192,7 +197,7 @@ def unscored_warning(summary: Mapping[str, Any], *, verb: str) -> dict[str, str]
         "code": REASON_MODEL_UNAVAILABLE,
         "message": (
             f"{count} track(s) were {verb} with no vocal model loaded and carry "
-            f"no voxlevel; the model needs the 'vocals' extra, {INSTALL}, and "
+            f"no voxlevel; the model needs the 'vocals' extra, {install()}, and "
             f"its files under {CHECKPOINT.parent}. {why}"
         ),
     }

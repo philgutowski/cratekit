@@ -15,6 +15,7 @@ from cratekit.analysis import artifacts, vocals
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, profiles, tags
 from cratekit.core.exit_codes import ExitCode
+from cratekit.modules import extras
 from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_analysis import _FakeModel
@@ -179,7 +180,7 @@ def test_a_missing_vocals_extra_names_the_install_command():
     assert args._stub is not None
     cause = cli._stub_cause(args._entry, args._stub)
     assert cause.code is ExitCode.MODULE_UNAVAILABLE
-    assert cause.detail["install"] == "pip install 'cratekit[vocals]'"
+    assert cause.detail["install"] == extras.install_command("vocals")
 
 
 def test_help_still_lists_other_verbs_when_the_vocals_extra_is_blocked(
@@ -225,7 +226,7 @@ def test_a_slim_worker_refuses_at_the_queue_rather_than_reporting_done(
     code, refused = drive(["analyze", "vocals", str(folder)])
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "module-extras-missing"
-    assert refused["cause"]["detail"]["install"] == "pip install 'cratekit[vocals]'"
+    assert refused["cause"]["detail"]["install"] == extras.install_command("vocals")
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
 

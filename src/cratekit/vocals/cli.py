@@ -38,7 +38,6 @@ from cratekit.core.exit_codes import Remedy
 
 _ORIGIN = ("vocals", "cli")
 
-INSTALL = scoring.INSTALL
 
 
 def _load() -> config.Config:
@@ -110,7 +109,7 @@ def _require_extra() -> None:
         f"scoring vocals cannot start in the process running this job: {missing}",
         remedy=Remedy.INSTALL_MODULE_EXTRA,
         origin=_ORIGIN,
-        detail={"extras": "vocals", "install": INSTALL, "missing": missing},
+        detail={"extras": "vocals", "install": scoring.install(), "missing": missing},
     )
 
 

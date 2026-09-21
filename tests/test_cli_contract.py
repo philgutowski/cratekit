@@ -55,6 +55,7 @@ from cratekit.core.exit_codes import (
     band_of,
     meaning_of,
 )
+from cratekit.modules import extras
 from tests import _import_probe, outbound_fakes
 from tests import doctor_machines as machines
 from tests._source_guards import constructs_a_csv_writer
@@ -1163,7 +1164,7 @@ def test_a_module_with_missing_extras_becomes_a_stub_that_names_the_install_comm
     assert args._stub is not None
     cause = cli._stub_cause(args._entry, args._stub)
     assert cause.code is ExitCode.MODULE_UNAVAILABLE
-    assert cause.detail["install"] == "pip install 'cratekit[analysis]'"
+    assert cause.detail["install"] == extras.install_command("analysis")
 
 
 def test_a_defect_in_our_own_module_does_not_masquerade_as_a_missing_extra():

@@ -35,6 +35,7 @@ from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, routing, tags, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
+from cratekit.modules import extras
 from cratekit.write import metadata_cli
 from tests._containers import synth_container
 from tests.cli_drive import drive
@@ -321,7 +322,7 @@ def test_the_missing_extra_refuses_the_item_rather_than_skipping_it_as_keyless(
     inner = resumed["cause"]["inner"]
     assert inner["reason"] == "module-extras-missing"
     assert inner["code"] == int(ExitCode.MODULE_UNAVAILABLE)
-    assert inner["detail"]["install"] == "pip install 'cratekit[analysis]'"
+    assert inner["detail"]["install"] == extras.install_command("analysis")
     # The same remedy token the parser stub renders for this slug, so the one
     # absence is not a bug in the worker and an installation gap at the parser.
     assert inner["remediation"]["remedy"] == "install-module-extra"

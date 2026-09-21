@@ -35,11 +35,12 @@ from types import MappingProxyType
 from typing import Mapping
 
 from cratekit.core import profiles
+from cratekit.modules import extras as _extras
 
 #: The distribution name, used to render the install command for a missing
-#: extra. Held here so the command is GENERATED from the registry rather than
-#: written per module, which is what stops a rename desynchronizing it.
-DISTRIBUTION = "cratekit"
+#: extra. Spelled once in ``modules.extras``, which the workers can reach and
+#: the CLI cannot be imported by, so a rename cannot desynchronize the two.
+DISTRIBUTION = _extras.DISTRIBUTION
 
 
 @dataclass(frozen=True, slots=True)
