@@ -2691,11 +2691,7 @@ def assert_recovery_target(
     # clears the companions and overwrites the database at exactly these paths. A
     # target holding somebody else's library whose database sits here is refused
     # still, including the subdirectory layout the containment rule produces.
-    existing = [
-        entry
-        for entry in recovered_database_fileset(cfg, where)
-        if entry.is_symlink() or entry.exists()
-    ]
+    existing = [entry for entry in recovered_database_fileset(cfg, where) if entry.exists()]
     if existing and not replacing_existing:
         raise _refuse_target(
             f"{where} already holds {existing[0].name}; a recovery that replaced "
