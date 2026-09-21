@@ -33,7 +33,13 @@ in a correctly filled vocal playlist arrives as unexpected, and the warning woul
 have told a person to consider emptying it. `rebuild.left_behind` leaves out a
 sub the run did not derive. Two findings are recorded and not fixed, R-635 and
 R-637.
-Battery: BATTERY_LINE
+Battery: ruff clean, **9679 passed** and 1 skipped in 65 seconds, 9680
+collected, 15 more than R-229 recorded, reconciled by file against main: 14 in
+`tests/test_routing_workers.py`, 1 in `tests/test_rebuild.py`. Scan clean. No
+test of this unit's is among the ten slowest. Two pins in
+`tests/test_reserved_causes.py` moved, the kebab literal census by three joined,
+the warning code and the two report directory names, and the holders that also
+hold an in range integer by one, the twenty of the cap. Each is named there.
 Mutation table `docs/mutation/r312.md`, rows file beside it: **24 rows, the
 author's own, 23 killed and 1 zero.** The zero is W9, maintainer facing, the
 tolerance for a report with no `left_behind` key, which no producer writes. W7
