@@ -471,6 +471,56 @@ def test_a_custom_taxonomy_splits_on_tempo_where_it_declares_one(second):
     assert unknown.bucket_id == "slow_burn" and unknown.needs_review is True
 
 
+def test_a_templates_own_display_names_are_never_reported_off_taxonomy(default, second):
+    """R-650. The library's own vocabulary is not a gap in the library.
+
+    ``suggest_tag`` has NO tier that recognises a display name, deliberately:
+    recognising one is routing's job, and tagging must not invent a bucket. So a
+    catalogue answering with a bucket's own name, which happens constantly
+    because this tagger writes bucket names back onto files, reaches the last
+    tier and passes through as itself. The TAG is right. Reporting it as a word
+    nobody has heard of would put the person's own template in front of them as
+    something to go and fix.
+
+    BOTH TEMPLATES, because the shipped one exercises only the bucket half.
+    Measured 2026-09-21: two shipped bucket displays reach that tier and no sub
+    display does, while the second template reaches it with three of each, which
+    is the only place the sub half of the index is driven at all.
+    """
+    for declared in (default, second):
+        displays = [bucket.display for bucket in declared.buckets] + [
+            sub.display for bucket in declared.buckets for sub in bucket.subs
+        ]
+        assert displays
+        assert [d for d in displays if routing.suggest_tag(declared, d).off_taxonomy] == []
+
+    # NOT VACUOUS, which is the half a passing assertion above cannot show. Each
+    # of these is declared, is claimed by no alias, and comes back out of the
+    # resolver as itself with no bucket, which is the last tier's own shape.
+    for declared, display in ((default, "NonElectronic"), (second, "Birds")):
+        assert declared.declares_display(display)
+        assert declared.tagging_alias(display.lower()) is None
+        answer = routing.suggest_tag(declared, display)
+        assert (answer.tag, answer.bucket_id, answer.declined) == (display, None, False)
+
+
+def test_a_sub_display_is_declared_vocabulary_and_is_still_not_a_bucket(second):
+    """The two display lookups answer two questions and must not be one.
+
+    ``bucket_for_display`` places a name in the tree and must answer for buckets
+    only, since a sub's display resolving to its parent puts a track one level
+    up. ``declares_display`` asks whether the template uses the word at all, so a
+    sub's display is a yes. One index answering both would have to pick, and
+    either answer is wrong for the other caller.
+    """
+    assert second.declares_display("Birds")
+    assert second.bucket_for_display("Birds") is None
+    assert second.declares_display("Floor Filler")
+    assert second.bucket_for_display("Floor Filler") == "floor_filler"
+    assert not second.declares_display("gqom")
+    assert not second.declares_display("")
+
+
 def test_two_taxonomies_coexist_in_one_process(default, second):
     """The reason nothing here reads configuration (seam decision S3).
 

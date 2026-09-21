@@ -361,6 +361,11 @@ class Taxonomy:
     # never disagree with the declaration they came from.
     _by_id: Mapping[str, Bucket] = field(repr=False, default_factory=dict)
     _by_display: Mapping[str, str] = field(repr=False, default_factory=dict)
+    # Every display name this template declares, buckets and subs together. A
+    # SECOND index rather than a widening of the one above, because that one
+    # answers "which bucket is this", which a sub's display must not, and this
+    # one answers "is this word part of the declared vocabulary at all".
+    _declared_displays: frozenset[str] = field(repr=False, default_factory=frozenset)
     _routing_alias: Mapping[str, str] = field(repr=False, default_factory=dict)
     _tagging_alias: Mapping[str, tuple[str, str | None]] = field(
         repr=False, default_factory=dict
@@ -402,6 +407,24 @@ class Taxonomy:
         constantly has to recognise one.
         """
         return self._by_display.get(display)
+
+    def declares_display(self, value: str) -> bool:
+        """Whether this template uses ``value`` as a display name anywhere.
+
+        A WIDER QUESTION THAN :meth:`bucket_for_display` AND A DIFFERENT ONE. That
+        one asks which bucket a name belongs to and must answer for buckets only,
+        since a sub's display naming its parent would put a track one level up.
+        This one asks whether the word is part of the declared vocabulary at all,
+        which a sub's display plainly is.
+
+        It exists because ``suggest_tag`` has no tier that recognises a display
+        name: the tagger writes bucket names back onto files, so a catalogue
+        answering with one reaches the last tier and passes through as itself.
+        That is the right TAG and it is not a word nobody has heard of, and the
+        two shipped bucket displays with no alias of their own, measured on
+        2026-09-21, are what made the difference visible (R-650).
+        """
+        return value in self._declared_displays
 
     def tagging_alias(self, lowered_source_genre: str) -> tuple[str, str | None] | None:
         """The (bucket id, sub id) a source string is declared to tag as.
@@ -659,6 +682,9 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         long_tracks=long_tracks,
         _by_id=by_id,
         _by_display={b.display: b.id for b in buckets},
+        _declared_displays=frozenset(
+            {b.display for b in buckets} | {sub.display for b in buckets for sub in b.subs}
+        ),
         _routing_alias=routing_alias,
         _tagging_alias=tagging_alias,
     )

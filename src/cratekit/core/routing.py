@@ -87,6 +87,18 @@ class Suggestion:
     ``needs_review`` is not a decline. It means the answer stands but a human
     should confirm it, which is how the one tempo-dependent rule reports that it
     had no tempo to split on.
+
+    ``off_taxonomy`` means this taxonomy has never heard of the word above. It
+    can only be true on the LAST tier, where nothing in the table matched and the
+    tag is the source's own string, and it is not true of every answer that tier
+    gives: a display name this template declares reaches it too, and is part of
+    the vocabulary rather than outside it.
+
+    It is stated here rather than inferred by a caller because ``bucket_id is
+    None`` does not mean it, twice over. A declared rule carrying a literal tag
+    and no bucket produces exactly that shape on purpose, and so does a bucket
+    display with no alias of its own. A caller that wants to know whether this
+    taxonomy RECOGNIZED the string asks ``not declined and not off_taxonomy``.
     """
 
     bucket_id: str | None = None
@@ -94,6 +106,7 @@ class Suggestion:
     tag: str | None = None
     decline: Decline | None = None
     needs_review: bool = False
+    off_taxonomy: bool = False
 
     @property
     def declined(self) -> bool:
@@ -164,7 +177,9 @@ def suggest_tag(
     4. the ordered substring corrections, which fix a source taxonomy's combined
        buckets;
     5. otherwise the source's own string passes through unchanged, which is how a
-       genuinely new genre survives long enough for someone to notice it.
+       genuinely new genre survives long enough for someone to notice it. That
+       tier, and only that tier, sets ``off_taxonomy``, so the noticing has a
+       mechanism behind it rather than a hope (R-650).
 
     There is no tier that invents a bucket. That is the difference from routing,
     and it is enforced: a template declaring otherwise is refused at load.
@@ -192,7 +207,15 @@ def suggest_tag(
         if _rule_matches(rule, lowered):
             return _apply_suggest_rule(taxonomy, rule, lowered, bpm)
 
-    return Suggestion(tag=value)
+    # THE LAST TIER, AND THE FLAG IS ABOUT THE WORD RATHER THAN ABOUT THE BUCKET.
+    # Nothing here claimed the string, so there is no bucket to return either
+    # way. But a string that IS one of this template's own display names is a
+    # word the taxonomy uses, and reporting it as one nobody has heard of would
+    # put the library's own vocabulary in front of a person as a gap. This
+    # happens for real: there is no tier that recognises a display name, the
+    # tagger writes bucket names back onto files, and two shipped buckets have
+    # no alias carrying their own name.
+    return Suggestion(tag=value, off_taxonomy=not taxonomy.declares_display(value))
 
 
 def _rule_matches(rule, lowered: str) -> bool:
@@ -241,6 +264,11 @@ def _apply_suggest_rule(taxonomy, rule, lowered: str, bpm: float | None) -> Sugg
     # A rule with a literal tag and no bucket: the source taxonomy names
     # something this taxonomy has no folder for. Declared on purpose so the gap
     # is visible instead of being silently collapsed into a neighbour.
+    #
+    # NOT off taxonomy, and the difference is the whole point of that field. The
+    # template author wrote this tag down and said in a comment why there is no
+    # bucket for it, so nobody needs telling about it. The last tier's string is
+    # one nobody has declared anywhere, which is the one worth reporting.
     return Suggestion(tag=rule.tag)
 
 

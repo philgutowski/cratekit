@@ -450,6 +450,51 @@ def test_tagging_never_falls_back_to_a_bucket():
     assert suggestion.bucket_id is None
     assert suggestion.tag == "Hyperpop Gabber Waltz"
     assert not suggestion.declined
+    # The noticing, which until R-650 was a hope in a docstring.
+    assert suggestion.off_taxonomy is True
+
+
+def test_a_declared_tag_with_no_bucket_is_not_off_taxonomy():
+    """The pair that proves ``off_taxonomy`` is not ``bucket_id is None``.
+
+    Both of these answer with a tag and no bucket, and they are not the same
+    thing. ``Melodic Techno`` is a rule in the shipped template with a comment
+    saying why it has no folder, so the author already knows. The other is a word
+    nobody has declared anywhere, and the report exists to name it. Reading the
+    first as the second would report the template's own deliberate gap on every
+    sweep that meets it, which is how a warning becomes noise nobody reads.
+    """
+    declared = routing.suggest_tag(TAXONOMY, "melodic techno")
+    assert declared.tag == "Melodic Techno"
+    assert declared.bucket_id is None
+    assert declared.declined is False
+    assert declared.off_taxonomy is False
+
+    undeclared = routing.suggest_tag(TAXONOMY, "gqom")
+    assert undeclared.bucket_id is None
+    assert undeclared.off_taxonomy is True
+
+
+def test_only_the_last_tier_is_off_taxonomy():
+    """Every other tier of the shipped table leaves the flag alone.
+
+    One string per tier, driven rather than argued: an exact refusal, an alias,
+    a bucket rule, the tempo split on both sides and with no tempo, the literal
+    tag rule, and nothing at all.
+    """
+    for value, bpm in (
+        ("Techno", None),
+        ("Electronic", None),
+        ("Deep House", None),
+        ("Downtempo", None),
+        ("Organic House / Downtempo", None),
+        ("Organic House / Downtempo", 100.0),
+        ("Organic House / Downtempo", 130.0),
+        ("melodic techno", None),
+        ("", None),
+        (None, None),
+    ):
+        assert routing.suggest_tag(TAXONOMY, value, bpm=bpm).off_taxonomy is False, value
 
 
 def test_the_tempo_split_is_unchanged_for_the_combined_source_bucket():
