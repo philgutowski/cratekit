@@ -4,7 +4,24 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-395, issue #109, `relay/109`, 2026-09-21.**
+**Last merged: U106, issue #151, `relay/151`, 2026-09-21.**
+Ledger hygiene, docs only, append only. Each candidate was verified against
+`src` before it was marked. CLOSED in place, each naming the file and line:
+R-13, R-128, R-142, R-183, R-186, R-191, R-204 and R-211. R-186 and R-211 close
+on their substance, not their literal first clause, and each paragraph says so.
+NARROWED: R-213, still open on its second clause because no test lands a lossy
+file through the alternative adapter. R-144 gains a pointer to its closing
+paragraph, which was filed under R-147. R-147 STAYS OPEN, because no AST check
+of `requires` keys exists. R-53, R-54 and R-55 note that the "nothing has
+shipped" premise expired with the pipx install, and stay open. R-130 already
+pointed at R-403, so the brief's candidate 4 was stale. R-13 and R-183 were
+driven, the rest read. The built in review found nothing.
+Battery: ruff clean, **9820 passed** and 1 skipped in 81 seconds. Scan clean.
+Mutation record `docs/mutation/u106.md`: **zero rows, since no guard was
+added.** Nothing filed.
+**Main's highest residual number is R-646.**
+
+**The session before: R-395, issue #109, `relay/109`, 2026-09-21.**
 A missing extra now prints an install command for the environment `crate` runs
 in, which CLOSES R-395. **ONE SOURCE, IN THE MODULES LAYER**, `modules/extras.py`,
 because the analysis workers may not import the CLI and nothing below modules
@@ -18,7 +35,6 @@ Battery: ruff clean, **9820 passed** and 1 skipped in 94 seconds. Scan clean.
 Mutation table `docs/mutation/r395.md`, read in `r395-notes.md`: **11 rows, the
 author's own, all killed.** Filed R-646, the `.` fallback must be run from inside
 the clone and does not say so, not on the board bar.
-**Main's highest residual number is R-646.**
 
 **The session before: R-349, issue #102, `relay/102`, 2026-09-21.**
 A queued backup item's commands now reach the job record, which CLOSES R-349.
