@@ -5605,7 +5605,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # future-dated are two of the four WORDS the confirm gate shows for that
     # age. The other two words, stale and unknown, are not kebab shaped and so
     # were never in this population.
-    assert (len(literals), len(literals - set(causes))) == (485, 312), (
+    # Re-pinned on the residual finding "The ledger key is a display path, so a
+    # rekordbox reorganisation forks the remote playlist", 2026-09-21: 485 to
+    # 487 distinct, non-keys 312 to 314. TWO literals joined and NOTHING left,
+    # differenced as SETS over main's own `src/cratekit` read out of
+    # `git archive` into a scratch directory. Both are in `export/cli.py` and
+    # neither is a cause, because the unit refuses nothing:
+    # outbound-playlist-adopted and outbound-playlist-adoption-ambiguous are the
+    # WARNING codes a queued export carries when a crate with no record is, or
+    # could be, a recorded one under a new path.
+    assert (len(literals), len(literals - set(causes))) == (487, 314), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
