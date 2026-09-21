@@ -529,6 +529,7 @@ def test_a_confirmed_inbox_on_a_library_with_no_native_tree_says_so(stocked):
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["reason"] == "no-native-tree"
     assert envelope["data"]["totals"]["applied"] is False
+    assert envelope["data"]["totals"]["skipped_files"] == []
     assert not Path(stocked.library.db_path).exists(), (
         "the apply opened a database on a library that has flipped no tree"
     )
@@ -695,19 +696,37 @@ def test_every_placement_a_skip_can_carry_has_its_own_next_act():
 
 
 def test_the_skip_warning_counts_every_file_and_caps_the_names():
-    """A long list cannot read as a short one."""
+    """A long list cannot read as a short one.
+
+    Literal numbers throughout. Reading the cap back from the module made this
+    test follow the constant wherever it went, so halving it stayed green.
+    """
     many = [
         {"path": f"/in/{index:03d}.flac", "reason": "not-imported", "trees": [], "content_ids": []}
-        for index in range(routing_cli.SKIPPED_NAMED + 5)
+        for index in range(15)
     ]
     (warning,) = routing_cli.skipped_warnings(many)
     message = warning["message"]
     assert warning["code"] == routing_cli.SKIPPED_WARNING
-    assert str(len(many)) in message
+    assert message.startswith("15 file(s)")
     assert "000.flac" in message
-    assert f"{routing_cli.SKIPPED_NAMED - 1:03d}.flac" in message
-    assert f"{routing_cli.SKIPPED_NAMED:03d}.flac" not in message
+    assert "009.flac" in message
+    assert "010.flac" not in message
     assert "and 5 more" in message
+
+
+def test_a_file_skipped_twice_in_one_tree_names_that_tree_once():
+    """An additive sub-class declares one file into two playlists of one tree,
+    and the writer skips it once per playlist."""
+    cfg = SimpleNamespace(
+        library=SimpleNamespace(root="/library"), resolved_prefix_map=lambda: ()
+    )
+    absent = trees.RowMatch("/library/INBOX/a.flac", trees.MatchOutcome.ABSENT)
+    (record,) = routing_cli._skipped_files(
+        cfg, [], {absent.requested: (absent, ["one", "two", "one"])}
+    )
+    assert record["trees"] == ["one", "two"]
+    assert record["reason"] == str(routing_pass.Placement.NOT_IMPORTED)
 
 
 def test_the_skip_warnings_are_one_per_reason_in_a_stable_order():
