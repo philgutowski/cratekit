@@ -702,8 +702,8 @@ def intake_set(ctx) -> Envelope:
         job = None
         with _recording(cfg, source, local) as held:
             result = pipeline.identify_only(
-            held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
-        )
+                held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
+            )
             warnings = _coverage_or_refuse(result, held) + _cache_notes(result)
             tracks = frozen_rows(result.rows)
             if tracks:
