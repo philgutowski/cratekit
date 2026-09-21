@@ -961,11 +961,18 @@ def _duration(path: Path) -> float:
     return float(proc.stdout.strip())
 
 
-def _recorder(rates: dict[str, int] | None = None):
+#: What the stand-in probe reports for a part it has no override for: the whole
+#: layout ``probe_source`` reads, so a part differing in one field differs in
+#: that field alone.
+PROBED = {"sample_rate": "44100", "sample_fmt": "s16", "channels": "2", "codec_name": "pcm_s16le"}
+
+
+def _recorder(layouts: dict[str, dict[str, str]] | None = None):
     """The stand-in encoder, recording every command, with a per-part probe.
 
-    ``rates`` maps a file NAME to the sample rate the probe reports for it, which
-    is how a split recording at mixed rates is produced without encoding one.
+    ``layouts`` maps a file NAME to the probe fields that differ from
+    ``PROBED`` for it, which is how a split recording at mixed rates, channel
+    counts or codecs is produced without encoding one.
     """
     seen: list[mastering.Command] = []
     inner = _encoder()
@@ -973,10 +980,10 @@ def _recorder(rates: dict[str, int] | None = None):
     def run(command: mastering.Command) -> mastering.CommandResult:
         seen.append(command)
         argv = list(command.argv)
-        if argv[0].endswith("ffprobe") and rates:
-            rate = rates.get(Path(argv[-1]).name, 44100)
+        if argv[0].endswith("ffprobe"):
+            fields = {**PROBED, **(layouts or {}).get(Path(argv[-1]).name, {})}
             return mastering.CommandResult(
-                returncode=0, stdout=f"sample_rate={rate}\nsample_fmt=s16\n"
+                returncode=0, stdout="".join(f"{k}={v}\n" for k, v in fields.items())
             )
         return inner(command)
 
@@ -1155,7 +1162,7 @@ def test_parts_at_different_sample_rates_refuse_before_anything_is_written(tmp_p
     """The brief's hazard. A stream copy would not fail, it would lie."""
     first = _recording(tmp_path, "REC001.wav")
     second = _recording(tmp_path, "REC002.wav")
-    run, seen = _recorder({"REC001.wav": 44100, "REC002.wav": 48000})
+    run, seen = _recorder({"REC002.wav": {"sample_rate": "48000"}})
 
     with pytest.raises(CratekitError) as excinfo:
         master_cli.run_master(
@@ -1246,3 +1253,75 @@ def test_an_existing_joined_master_is_refused_on_the_real_destination(
     assert _items(job_id)[0].cause.reason == "output-exists"
     assert kept.read_bytes() == b"a master somebody kept"
     assert seen == []
+
+
+@pytest.mark.parametrize(
+    "differs",
+    [
+        {"channels": "1"},
+        {"codec_name": "pcm_s32le", "sample_fmt": "s32"},
+        {"sample_fmt": "s32"},
+    ],
+    ids=["mono-beside-stereo", "codec", "sample-format"],
+)
+def test_parts_differing_in_any_copied_field_refuse(tmp_path, differs):
+    """Found by this unit's review: rate alone admitted a mono part and a 24 bit
+    part beside a 32 bit one, both copied across unconverted."""
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.wav")
+    run, seen = _recorder({"REC002.wav": differs})
+
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+        )
+
+    assert excinfo.value.cause.reason == "source-unsupported"
+    assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
+    assert not any("concat" in c.argv for c in seen)
+
+
+def test_a_24_bit_and_a_32_bit_part_are_told_apart_by_codec_alone(tmp_path):
+    """Both are ``s32`` as a sample format, so the codec is the only field that
+    separates them. Pinned alone so the codec comparison cannot hide behind the
+    sample format one."""
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.wav")
+    same_fmt = {"sample_fmt": "s32"}
+    run, _ = _recorder(
+        {"REC001.wav": {**same_fmt, "codec_name": "pcm_s24le"},
+         "REC002.wav": {**same_fmt, "codec_name": "pcm_s32le"}}
+    )
+    with pytest.raises(CratekitError) as excinfo:
+        master_cli.run_master(
+            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+        )
+    assert "pcm_s32le" in excinfo.value.cause.message
+
+
+def test_a_joined_wav_is_written_as_rf64_when_it_needs_to_be(tmp_path):
+    """Found by this unit's review. A plain WAV header's length wraps at 4 GiB,
+    and a split recording is split because it is long."""
+    first = _recording(tmp_path, "REC001.wav")
+    second = _recording(tmp_path, "REC002.wav")
+    run, seen = _recorder()
+    master_cli.run_master(
+        master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+    )
+    join = next(c for c in seen if "concat" in c.argv)
+    assert join.argv[join.argv.index("-rf64") + 1] == "auto"
+    drift = next(c for c in seen if "pcm_s24le" in c.argv)
+    assert drift.argv[drift.argv.index("-rf64") + 1] == "auto"
+
+
+def test_a_joined_flac_carries_no_wav_muxer_option(tmp_path):
+    first = tmp_path / "REC001.flac"
+    second = tmp_path / "REC002.flac"
+    first.write_bytes(b"one")
+    second.write_bytes(b"two")
+    run, seen = _recorder()
+    master_cli.run_master(
+        master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
+    )
+    join = next(c for c in seen if "concat" in c.argv)
+    assert "-rf64" not in join.argv

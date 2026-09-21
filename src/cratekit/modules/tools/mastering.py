@@ -199,6 +199,12 @@ class SourceProbe:
     sample_rate: int
     sample_fmt: str
     size_bytes: int
+    #: Read for the join, which stream copies and therefore needs every part to
+    #: carry the same audio layout. A mono part joined to a stereo one, or a
+    #: 24-bit PCM part to a 32-bit one (both ``s32`` as a sample format), is
+    #: copied across unconverted and plays as noise or at the wrong speed.
+    channels: int | None = None
+    codec: str = ""
 
     @property
     def is_16_bit(self) -> bool:
@@ -523,7 +529,7 @@ def probe_source(source: Path, *, runner: Runner, ffprobe: str) -> SourceProbe:
         label="probe",
         argv=(
             ffprobe, "-v", "error", "-select_streams", "a:0",
-            "-show_entries", "stream=sample_rate,sample_fmt",
+            "-show_entries", "stream=sample_rate,sample_fmt,channels,codec_name",
             "-of", "default=noprint_wrappers=1:nokey=0", str(source),
         ),
     )
@@ -549,10 +555,16 @@ def probe_source(source: Path, *, runner: Runner, ffprobe: str) -> SourceProbe:
             f"preserve it",
             path=source,
         ) from exc
+    try:
+        channels: int | None = int(values["channels"])
+    except (KeyError, ValueError):
+        channels = None
     return SourceProbe(
         sample_rate=rate,
         sample_fmt=values.get("sample_fmt", ""),
         size_bytes=source.stat().st_size,
+        channels=channels,
+        codec=values.get("codec_name", ""),
     )
 
 
@@ -629,7 +641,10 @@ def master(
                 argv=(
                     ffmpeg, "-v", "error", "-y", "-i", str(source),
                     "-af", drift_filter(settings),
-                    "-c:a", "pcm_s24le", str(intermediate),
+                    # RF64 when needed, for the reason ``concatenate`` gives. A
+                    # 24-bit intermediate of a four hour set at 48 kHz passes
+                    # 4 GiB, and a wrapped header truncates the master silently.
+                    "-c:a", "pcm_s24le", "-rf64", "auto", str(intermediate),
                 ),
             ),
         )
@@ -768,6 +783,13 @@ def concatenate(
         ffmpeg = binaries.resolve("ffmpeg")
     except binaries.BinaryNotFound as exc:
         raise MasteringRefused(Refusal.ENCODER_MISSING, str(exc)) from exc
+    # A JOINED WAV IS WRITTEN AS RF64 WHEN IT NEEDS TO BE. A plain WAV header
+    # holds its length in 32 bits, and a split recording is split precisely
+    # because it is long, so the join is the file most likely to pass 4 GiB.
+    # Without this ffmpeg writes a header whose length has wrapped, and the next
+    # stage reads only that many bytes: a master of part of the set, reported as
+    # the whole of it. Found by this unit's review, 2026-09-20.
+    container = ("-rf64", "auto") if destination.suffix.lower() == ".wav" else ()
     try:
         _run_or_refuse(
             runner,
@@ -775,7 +797,7 @@ def concatenate(
                 label="join",
                 argv=(
                     ffmpeg, "-v", "error", "-y", "-f", "concat", "-safe", "0",
-                    "-i", str(listing), "-c", "copy", str(destination),
+                    "-i", str(listing), "-c", "copy", *container, str(destination),
                 ),
             ),
         )
@@ -893,15 +915,21 @@ def master_parts(
         raise MasteringRefused(Refusal.ENCODER_MISSING, str(exc), path=paths[0]) from exc
 
     probes = [probe_source(p, runner=runner, ffprobe=ffprobe) for p in paths]
-    shapes = {(p.sample_rate, p.sample_fmt) for p in probes}
+    # EVERY FIELD THE STREAM COPY DEPENDS ON, not only the rate. The review of
+    # this unit found the first version compared rate and sample format alone,
+    # which admits a mono part beside a stereo one and a 24-bit part beside a
+    # 32-bit one, both copied across unconverted.
+    shapes = {(p.sample_rate, p.sample_fmt, p.channels, p.codec) for p in probes}
     if len(shapes) > 1:
         described = "; ".join(
-            f"{path.name} is {probe.sample_rate} Hz {probe.sample_fmt or 'unknown format'}"
+            f"{path.name} is {probe.sample_rate} Hz "
+            f"{probe.codec or probe.sample_fmt or 'unknown format'}, "
+            f"{probe.channels if probe.channels is not None else 'unknown'} channels"
             for path, probe in zip(paths, probes, strict=True)
         )
         raise MasteringRefused(
             Refusal.SOURCE_UNSUPPORTED,
-            f"the parts do not share one sample rate and sample format ({described}). "
+            f"the parts do not share one audio layout ({described}). "
             f"A stream copy across them would play part of the set at the wrong "
             f"speed, and nothing is resampled without being asked; nothing was "
             f"archived and nothing was written.",
