@@ -32,7 +32,8 @@ round.** The layout check compared rate and format alone, which admits a mono
 part beside a stereo one and 24 bit beside 32 bit PCM, both `s32`, so the probe
 now reads channels and codec. And a joined WAV past 4 GiB wraps its header, so
 the join and the drift intermediate are written with `-rf64 auto`.
-Battery: ruff clean, **BATTERY_LINE**, scan clean. Tests joined in
+Battery: ruff clean, **9572 passed** and 1 skipped in 69 seconds, 9573
+collected, 31 more than U102 recorded, scan clean. Tests joined in
 `tests/test_master_cli.py`, one a real ffmpeg join of two tones whose master is
 their summed length within one FLAC frame. One slug and one warning code
 joined, so both population pins in `tests/test_reserved_causes.py` moved.
