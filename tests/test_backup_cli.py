@@ -2916,3 +2916,12 @@ def test_a_record_that_cannot_be_staged_does_not_fail_a_completed_backup(
     monkeypatch.setattr(config, "atomic_write_bytes", cannot_stage)
     job, item = _claimed("J12", "files")
     assert backup_cli.handle(job, item, cfg) is None
+
+
+def test_a_record_that_cannot_be_parsed_is_reported_rather_than_skipped(cfg):
+    """Skipping it would show the other item alone, as though this one never ran."""
+    backup_facts.write_outcome("J13", "files", {"portions": []})
+    backup_facts.outcome_path("J13", "database").write_text("{ not json")
+    found = backup_facts.read_outcomes("J13")
+    assert found is not None and set(found) == {"files", "database"}, found
+    assert "unreadable" in found["database"], found
