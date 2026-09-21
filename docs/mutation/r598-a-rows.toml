@@ -1,0 +1,80 @@
+name = "r598-a"
+pass_kind = "light"
+
+# R-598, relay/187. The orphan judgment in core.session and the holder the gates
+# write into the record. A1 to A7 are this unit's own guards in the engine.
+
+[[rows]]
+id = "A1_state_check_widened_to_non_terminal"
+description = "orphaned: accept any non terminal record rather than only open, so awaiting-import and committed-unverified records with a dead holder are abandoned and their own remedies hidden"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    if record.state is not SessionState.OPEN:
+        return False
+    recorded = record.detail.get(HOLDER_KEY)'''
+new = '''    if record.terminal:
+        return False
+    recorded = record.detail.get(HOLDER_KEY)'''
+
+[[rows]]
+id = "A2_no_holder_read_as_gone"
+description = "orphaned: read a record with no recorded holder as orphaned, so every intake landing left open for a deferred placement is abandoned"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    if not isinstance(recorded, Mapping):
+        return False'''
+new = '''    if not isinstance(recorded, Mapping):
+        return True'''
+
+[[rows]]
+id = "A3_liveness_not_consulted"
+description = "orphaned: skip holder_alive and judge every open record with a holder orphaned, so a running write's record is ended behind it"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    return not holder_alive(holder, here=here)'''
+new = '''    return True'''
+
+[[rows]]
+id = "A4_unreadable_holder_read_as_gone"
+description = "orphaned: judge a holder this build cannot parse as gone rather than alive"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''    except (TypeError, ValueError):
+        return False
+    return not holder_alive(holder, here=here)'''
+new = '''    except (TypeError, ValueError):
+        return True
+    return not holder_alive(holder, here=here)'''
+
+[[rows]]
+id = "A5_holder_never_recorded"
+description = "open_session: drop the holder instead of recording it, so no record is ever provably orphaned and a hard kill is a dead end again"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''        detail={HOLDER_KEY: holder.to_json()} if holder is not None else {},'''
+new = '''        detail={},'''
+
+[[rows]]
+id = "A6_record_holder_is_a_second_lookup"
+description = "assert_gates: record current_holder() in the record rather than the claimant the lock took, so a supplied holder splits the two copies"
+file = "src/cratekit/core/session.py"
+surface = "maintainer"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py"]
+old = '''                holder=claimant,
+                intent=intent,'''
+new = '''                holder=current_holder(),
+                intent=intent,'''
+
+[[rows]]
+id = "A7_sweep_ignores_the_shown_list"
+description = "abandon_orphaned_sessions: end every orphan rather than only those shown, so one answer ends records the question never listed"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py"]
+old = '''        if (shown is None or record.session_id in shown) and orphaned(record, here=here)'''
+new = '''        if orphaned(record, here=here)'''
