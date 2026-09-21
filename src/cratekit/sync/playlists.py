@@ -26,9 +26,9 @@ every one that SUCCEEDED, which is the state a job reaches only when every item
 is done. A failed or cancelled job is not recorded and its playlist is offered
 again, and an open one, whichever verb queued it, holds its playlist back as in
 flight. The cursor still moves only here, at the top of a pass, and never on a
-job's completion. Nothing is ever filtered
-by title except the two naming conventions above, which are conventions spelled
-in the name by the systems that apply them, and neither is stored (D5).
+job's completion. Nothing is ever filtered by title except the two naming
+conventions above, which are conventions spelled in the name by the systems
+that apply them, and neither is stored (D5).
 
 **SWEPT MEANS RESOLVED, NOT ACQUIRED, AND THE PASS SAYS SO (R-359).** The job a
 sweep composes resolves every track to owned, offered or missing and acquires
@@ -243,15 +243,14 @@ def playlist_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.
     wider than :func:`source_jobs` on purpose: a playlist a person ran through
     ``crate intake playlist`` has been resolved exactly as a sweep would resolve
     it, so a pass that offered it again would repeat the work. The key keeps
-    ``intake.set`` out, the library keeps another library's jobs out, and
-    :func:`recorded_as` keeps the hearts out.
+    ``intake.set`` out and the library keeps another library's jobs out. The
+    hearts are kept out by the readers, which ask :func:`recorded_as` and skip
+    a job it records nothing for.
     """
     return tuple(
         job
         for job in jobs.list_jobs(store)
-        if job.handler_key == handler_key
-        and job.library_id == cfg.library.volume_id
-        and recorded_as(job)
+        if job.handler_key == handler_key and job.library_id == cfg.library.volume_id
     )
 
 

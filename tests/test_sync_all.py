@@ -699,6 +699,48 @@ def test_a_playlist_typed_as_a_url_by_hand_records_its_identifier(slim, monkeypa
     assert _swept(cfg) == (PLAYLIST_UUID,)
 
 
+def test_a_playlist_typed_as_a_url_and_still_open_is_in_flight(slim, monkeypatch):
+    cfg = slim
+    bind_playlists(monkeypatch, (_playlist(PLAYLIST_UUID, "Warmup"), _tracks("101")))
+    with jobs.open_store() as store:
+        _by_hand(store, cfg, f"https://tidal.com/playlist/{PLAYLIST_UUID}")
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    block = passed["data"]["summary"]["playlists"]
+    assert block["queued"] == []
+    assert block["excluded"][PLAYLIST_UUID]["reason"] == "in-flight"
+
+
+def test_a_pass_queued_job_records_the_listing_identifier_verbatim(slim, monkeypatch):
+    """The parser lowercases what a person typed. A pass's own job carries the
+    listing's identifier, and that is what the next listing is compared with, so
+    it is recorded exactly as listed."""
+    cfg = slim
+    listed = PLAYLIST_UUID.upper()
+    bind_playlists(monkeypatch, (_playlist(listed, "Warmup"), _tracks("101")))
+    drive(["sync", "all"])
+    (job,) = _playlist_jobs()
+    with jobs.open_store() as store:
+        jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["data"]["summary"]["playlists"]["excluded"][listed]["reason"] == "recorded"
+    assert _swept(cfg) == (listed,)
+
+
+def test_a_mark_reads_a_playlist_ingested_by_hand_as_recorded(slim, monkeypatch):
+    """``marking_sweep`` reads the policy :func:`playlists.reconcile` uses, so a
+    playlist the next pass would record is recorded to a mark taken before it."""
+    cfg = slim
+    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    with jobs.open_store() as store:
+        job = _by_hand(store, cfg, "pl-a")
+        jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+        sweep = playlists.marking_sweep(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
+    assert sweep.recorded == frozenset({"pl-a"})
+    assert _swept(cfg) is None, "a mark moved the cursor"
+
+
 def test_a_hearts_intake_is_not_recorded_as_a_playlist(slim, monkeypatch):
     """Both producers of a hearts job: the verb's reserved reference, and the
     favourites source's, which also carries its source id."""
