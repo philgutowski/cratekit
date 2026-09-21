@@ -4,7 +4,57 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-227, issue #164, `relay/164`, 2026-09-21.**
+**Last merged: R-229, issue #165, `relay/165`, 2026-09-21.**
+A crate renamed or dragged into a folder in rekordbox no longer gets a second
+remote playlist on its next export, which CLOSES R-229.
+**THE ISSUE'S APPROACH WAS WRONG AND THE CARD WAS CORRECTED.** It asked for the
+ledger to be keyed on the playlist's stable identifier from the export, and a
+rekordbox export gives a playlist none, so the key stays the display path and
+the crate is RECOGNISED instead. The ledger records what the crate held at its
+last export, whole and replaced each time. `ledger.recognise` reads a crate with
+no record against the recorded keys the export no longer carries: half of the
+record still in the crate, and that at least a quarter of the crate. A record
+from before this build has no contents and is recognised by display name alone,
+which is the drag into a folder. One match is an offer, shown on the confirm
+gate and the queueing envelope and in the confirm digest only when set, so an
+older frozen job still resumes. Several are named and none is taken.
+`reserve_playlist` moves the record under the ledger lock. `--new-playlist`
+declines.
+**A JOB NOW FREEZES THE REMOTE PLAYLIST ID THE GATE SHOWED,** the one stable
+identifier an outbound job has. A half driven job whose record moved finds it by
+that id. A confirmed update or adoption whose record is gone refuses the new
+cause `outbound-record-moved` and never creates.
+**`LEDGER_VERSION` IS NOT BUMPED,** because the pipx copy reads the same file and
+refuses a version it does not know. The new fields are additive.
+The built in review raised nine findings and all nine were applied, three of
+which changed the design: the recorded list was an ever growing log, a partly
+backfilled record made one row a full match, and a path reused for a different
+crate blocked the right adoption. That last one is now said at the gate,
+`outbound-playlist-record-mismatch`, and is R-630 for the half it does not
+prevent.
+Battery: ruff clean, **9664 passed** and 1 skipped in 62 seconds, 9665
+collected, 54 more than R-227 recorded, reconciled by file against main: 41 in
+`tests/modules/test_outbound.py`, 13 in `tests/test_outbound_workers.py`. Scan
+clean. Two pins in `tests/test_reserved_causes.py` moved, the kebab literal
+census by four joined and the cause population by one, each named. One run of
+the suite failed `test_delete_review_refuses_an_inline_answer_and_does_not_record_it`
+with "no run recorded", it passed alone and in every full run after, and it
+is recorded here as a flake seen once and not diagnosed.
+Mutation table `docs/mutation/r229.md`, rows file beside it: **25 rows, the
+author's own, all killed.** Dropped below the cap and said so: the two refusal
+branches of the reserve, the stub merge in the move, `formerly`, and the gate
+block's presence.
+Filed: **R-630** a reused path still updates the old playlist when exported
+first, **R-631** no way to choose among several candidates, **R-632** an adopted
+playlist keeps its old name, **R-633** the two bounds are judgment and nothing
+met a real account, **R-634** the sweep's other candidates, read and not driven.
+None meets the board bar, so none has an issue. Learning filed under
+`docs/solutions/workflow-issues/`, on evidence as a snapshot and not a log.
+`CONCEPTS.md` gains Playlist adoption. **R-629's issue is STILL OWED** from the
+session before.
+**Main's highest residual number is R-634.**
+
+**The session before: R-227, issue #164, `relay/164`, 2026-09-21.**
 An outbound write now shows the date of the export it was read from, in the plan
 the confirm gate asks over, which NARROWS R-227 to its manual step.
 `source.export_age` reads the file's modification time against
@@ -36,9 +86,9 @@ Filed: **R-629**, six more verbs read a hand made export and none names its
 date, read and not driven. **IT ARGUABLY MEETS BOARD BAR (b) AND ITS ISSUE IS
 OWED.** None was created, because METHOD creates the issue after the merge that
 carries the entry and the session that found it ended before that merge.
-**Main's highest residual number is R-629.**
+**Main's highest residual number was R-629 at that merge.**
 
-**The session before: R-263, issue #163, `relay/163`, 2026-09-20.**
+**Two sessions before: R-263, issue #163, `relay/163`, 2026-09-20.**
 `crate doctor` no longer tells a person a labels sweep that succeeded never ran,
 which CLOSES R-263. `sources.SourceSpec` gains `no_cursor`, the reason nothing
 records a source's watermark, and `watermarks.status_rows` reports such a
@@ -54,7 +104,7 @@ Mutation table `docs/mutation/r263.md`, rows file beside it: **6 rows, the
 author's own, all killed.**
 Filed: **R-628**, maintainer facing, no issue.
 
-**Two sessions before: U105, issue #150, `relay/150`, 2026-09-20.**
+**The session before: U105, issue #150, `relay/150`, 2026-09-20.**
 `crate master` joins a recording the player split into several files and takes
 a loudness target, which CLOSES R-193 and R-194. A set that arrived as three
 files no longer needs the source system's script.
