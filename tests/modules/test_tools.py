@@ -2475,7 +2475,7 @@ def test_a_snapshot_that_cannot_be_listed_refuses_before_clearing(
         backup.plan_restore(
             cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
             runner=recorder, process_lister=no_processes, gates=open_gates)
-    assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LISTING_FAILED
     assert wal.exists() and wal.read_bytes() == b"live log"
     assert backup.RESTORE_DATABASE not in recorder.labels()
 
@@ -2785,8 +2785,53 @@ def test_an_identity_listing_that_fails_is_not_read_as_an_unmarked_snapshot(
         backup.plan_restore(
             cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
             runner=recorder, process_lister=no_processes, gates=open_gates)
-    assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LISTING_FAILED
     assert not any(c.label in backup.TRANSFERRING_LABELS for c in recorder.commands)
+
+
+@pytest.mark.parametrize(
+    "failing", [backup.LIST_SNAPSHOT_IDENTITY, backup.LIST_SNAPSHOT_CONTENTS]
+)
+def test_a_named_snapshot_whose_listing_fails_sends_the_person_to_the_remote(
+    cfg, tmp_path, rclone_on_path, failing
+):
+    """The snapshot exists; the remote or its credential is what failed.
+
+    The refusal used to be no-snapshot-available, whose reserved step is to take
+    a backup, so a person following it took one they already had. The slug is
+    read back through the reservation table by its string, which is how the
+    restore verb reaches the steps a person is shown.
+    """
+    from cratekit.cli import exit_codes
+
+    recorder = Recorder(fail_labels={failing})
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
+            runner=recorder, process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LISTING_FAILED
+    assert str(excinfo.value.refusal) == "snapshot-listing-failed"
+    assert f"the snapshot {STAMP}" in excinfo.value.detail
+    assert "could not be listed" in excinfo.value.detail
+    steps = exit_codes.remediation_for(str(excinfo.value.refusal)).steps
+    assert steps, "the listing refusal reserves no steps for a person to follow"
+    assert "remote" in steps[0] and "reachable" in steps[0]
+    assert any("credential" in step for step in steps)
+    assert not any("take a backup" in step for step in steps)
+
+
+def test_no_snapshot_at_all_still_says_to_take_a_backup(cfg, tmp_path, rclone_on_path):
+    """Absence keeps its own slug, and its step is still the right act."""
+    from cratekit.cli import exit_codes
+
+    with pytest.raises(backup.BackupRefused) as excinfo:
+        backup.plan_restore(
+            cfg, target=tmp_path, confirmed=True, runner=Recorder(),
+            process_lister=no_processes, gates=open_gates)
+    assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert "no dated database snapshot was found" in excinfo.value.detail
+    steps = exit_codes.remediation_for(str(excinfo.value.refusal)).steps
+    assert any("take a backup" in step for step in steps)
 
 
 def test_an_unmarked_snapshot_is_pulled_only_when_a_person_named_it(
@@ -3128,7 +3173,7 @@ def test_a_snapshot_root_that_cannot_be_listed_is_not_reported_as_empty(
         backup.plan_restore(
             cfg, target=tmp_path, confirmed=True, runner=remote,
             process_lister=no_processes, gates=open_gates)
-    assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LISTING_FAILED
     assert "could not be listed" in excinfo.value.detail
 
 

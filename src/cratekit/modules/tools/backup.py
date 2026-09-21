@@ -239,6 +239,12 @@ class Refusal(StrEnum):
     RESTORE_NOT_CONFIRMED = "restore-not-confirmed"
     RESTORE_TARGET_ABSENT = "restore-target-absent"
     NO_SNAPSHOT_AVAILABLE = "no-snapshot-available"
+    # R-388. A listing on the remote that exited non zero. Its own member rather
+    # than the one above, because the acts differ: no snapshot is fixed by taking
+    # a backup, and a listing that failed is fixed by checking the remote, its
+    # credential and the configured root. A person told to take a backup here
+    # takes one they already have and leaves the real fault where it was.
+    SNAPSHOT_LISTING_FAILED = "snapshot-listing-failed"
     # U27. A transfer this module ran came back non zero. Its own member rather
     # than one of the conditions above, because every one of those is decided
     # BEFORE anything is attempted and this one is the attempt failing: the
@@ -1425,7 +1431,7 @@ def snapshot_identities(
     )
     if result.returncode != 0:
         raise BackupRefused(
-            Refusal.NO_SNAPSHOT_AVAILABLE,
+            Refusal.SNAPSHOT_LISTING_FAILED,
             f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
             f"be listed, so which library it was taken from is unknown; a restore "
             f"is not planned against a snapshot this account cannot see",
@@ -1518,7 +1524,7 @@ def resolve_snapshot(
     names = _snapshot_names(cfg, runner=runner)
     if names is None:
         raise BackupRefused(
-            Refusal.NO_SNAPSHOT_AVAILABLE,
+            Refusal.SNAPSHOT_LISTING_FAILED,
             f"the dated database snapshots under {root} could not be listed, so "
             f"whether one exists is unknown; a restore is not planned against a "
             f"remote that did not answer",
@@ -1634,7 +1640,7 @@ def snapshot_filenames(
     )
     if result.returncode != 0:
         raise BackupRefused(
-            Refusal.NO_SNAPSHOT_AVAILABLE,
+            Refusal.SNAPSHOT_LISTING_FAILED,
             f"the snapshot {snapshot} under {cfg.backup.db_dest_root} could not "
             f"be listed; a restore cannot be planned against a snapshot this "
             f"account cannot see",
@@ -1666,7 +1672,7 @@ def share_is_held(cfg: config.Config, *, identity: str | None, runner: Runner) -
         return False
     if result.returncode != 0:
         raise BackupRefused(
-            Refusal.NO_SNAPSHOT_AVAILABLE,
+            Refusal.SNAPSHOT_LISTING_FAILED,
             f"the analysis share mirror under {cfg.backup.db_dest_root} could not "
             f"be listed (exit {result.returncode}), so whether this library's beat "
             f"grids are in the backup is unknown; a restore is not planned against "

@@ -380,6 +380,24 @@ RESERVATIONS: tuple[Reservation, ...] = (
             "that are not there. A sentence beats a plausible wrong command"
         ),
     ),
+    Reservation(
+        cause="snapshot-listing-failed",
+        code=ExitCode.PRECONDITION,
+        steps=(
+            "check the backup remote is reachable from this machine; the snapshot "
+            "is not known to be missing, a listing of it failed",
+            "check the remote's credential has not expired or been revoked, and "
+            "reconnect it in rclone if it has",
+            "check backup.db_dest_root names the folder the backups were written "
+            "to, then retry the restore; nothing was pulled or cleared",
+        ),
+        note=(
+            "its own slug rather than no-snapshot-available, whose step is "
+            "to take a backup: a person who followed that here would take a new "
+            "snapshot beside the one they already have and leave the remote, the "
+            "credential or the path that actually failed untouched"
+        ),
+    ),
     # ── Snapshot provenance: a pulled snapshot is a stamp, and this library's ─
     Reservation(
         cause="snapshot-name-invalid",

@@ -616,8 +616,9 @@ def test_a_share_mirror_that_could_not_be_listed_refuses_before_the_sidecars_go(
     with pytest.raises(backup.BackupRefused) as refused:
         _planned(outside, target, remote)
 
-    assert refused.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
+    assert refused.value.refusal is backup.Refusal.SNAPSHOT_LISTING_FAILED
     assert "analysis share" in refused.value.detail
+    assert "could not be listed" in refused.value.detail
     assert log.exists()
     assert remote.labelled(backup.RESTORE_DATABASE) == []
 

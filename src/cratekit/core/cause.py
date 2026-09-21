@@ -1272,6 +1272,9 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "restore-not-confirmed": ExitCode.DECISION_REQUIRED,
         "restore-target-absent": ExitCode.LIBRARY_UNAVAILABLE,
         "no-snapshot-available": ExitCode.PRECONDITION,
+        # R-388. A listing on the remote failed, which is not the absence the
+        # slug above names, so it carries its own reserved steps.
+        "snapshot-listing-failed": ExitCode.PRECONDITION,
         # ── R-368's two, the rehearsal target the restore verb now takes ───────
         #
         # PRECONDITION rather than USAGE for the reason every block above gives:
