@@ -85,6 +85,7 @@ starting over.
 from __future__ import annotations
 
 import argparse
+import copy
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
@@ -1033,6 +1034,10 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
 
 def setup(ctx: "Context") -> Envelope:
     document, provenance = existing_document()
+    # The document AS IT WAS READ, kept apart from the one the answers go into.
+    # The difference between the two is what this run actually answered, and that
+    # difference is all the write below is entitled to put on disk (R-116).
+    as_read = copy.deepcopy(document)
     wizard = _Wizard(document, prompt.Prompter())
     args = ctx.args
     # ONE description of this machine for the whole run. The wizard reads the
@@ -1122,9 +1127,19 @@ def setup(ctx: "Context") -> Envelope:
     # written back through the same document, so the file is saved once. Saving
     # twice would leave a window in which a config exists with the pin missing
     # and a reader could act on it.
-    if _propose_pin(wizard, document, cfg):
-        cfg = config.from_dict(document)
-    written = config.save(cfg)
+    _propose_pin(wizard, document, cfg)
+    # READ, ASK, WRITE, AND THE WRITE RE-DECIDES UNDER THE LOCK. Everything above
+    # ran unlocked, because a lock held across a question blocks every other
+    # command on somebody typing. So another command may have written since the
+    # read at the top, and writing ``document`` whole would erase its answers
+    # while this run reported success. ``merge_changes`` lays only what this run
+    # changed over what is on disk now, and refuses, writing nothing, when both
+    # changed one value. ``cfg`` is rebound to what was WRITTEN, because the
+    # taxonomy, the credentials and doctor below must describe the file that
+    # exists rather than the one this run had in mind.
+    cfg, written = config.update(
+        lambda current: config.merge_changes(as_read, document, current)
+    )
     wizard.note(
         "setup.config",
         "configuration",

@@ -319,16 +319,44 @@ class ConfigInvalid(ConfigError):
 
 
 class ConfigLockUnavailable(ConfigError):
-    """A config migration could not take the exclusive lock, so it refused.
+    """A config write could not take the exclusive lock, so it refused.
 
     Advisory ledgers in the source system tolerate a failed ``flock`` and carry
     on. A config MIGRATION must not: the job engine re-invokes the CLI as
     subprocesses (KTD26), so two processes can reach an unmigrated file in the
     same second, and two unsynchronized migrations of one file is how a config
-    ends up half-upgraded.
+    ends up half-upgraded. ``save`` and ``update`` take the same lock for the
+    same reason, since an unsynchronized write loses a whole set of answers
+    while reporting success (R-116).
     """
 
     remedy = Remedy.RETRY_WHEN_UNLOCKED
+
+
+class ConfigConflict(ConfigError):
+    """Two writers changed the same value while one of them was deciding.
+
+    Raised by ``merge_changes`` and only when NOTHING was written. A writer that
+    read the document, took its time, and came back to find another writer's
+    answers on disk keeps both sets when they touch different values. When they
+    touch the same value differently there is no honest merge: picking either
+    one erases an answer somebody gave, which is the loss the lock exists to
+    end. So it refuses and names the keys.
+
+    The remedy is ``RUN_SETUP`` because running the wizard again reads the
+    document that is on disk now and completes THAT, so the person answers the
+    conflicting keys once, against the values they are actually replacing.
+    """
+
+    remedy = Remedy.RUN_SETUP
+
+    def __init__(self, keys: Sequence[str]) -> None:
+        self.keys = tuple(keys)
+        super().__init__(
+            f"the configuration was changed by another command while this "
+            f"one was deciding, and both changed {', '.join(self.keys)}. Nothing "
+            f"was written, so neither set of answers was lost."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -3429,7 +3457,7 @@ def load_from_path(
     if not write_back or found == current:
         return config
 
-    with _exclusive_lock(path.with_name(path.name + ".migrate.lock")):
+    with _write_lock(path):
         # Re-read and re-decide. Everything above ran without the lock, so the
         # file may have been migrated by another process while this one waited.
         current_raw = _read_raw(path)
@@ -3446,10 +3474,32 @@ def load_from_path(
         # the lock, so it can no longer hold a version other than the one its name
         # claims. Overwriting an older backup of the same version is correct for
         # the same reason: what a user needs back is what was just replaced.
-        backup = path.with_name(f"{path.name}.v{found_now}.bak")
-        atomic_write_bytes(path.read_bytes(), backup)
+        _back_up_version(path, found_now)
         atomic_write_bytes(tomli_w.dumps(migrated).encode("utf-8"), path)
     return config
+
+
+def _write_lock(path: Path) -> _exclusive_lock:
+    """The ONE lock every writer of the configuration document takes.
+
+    It is the lock the migration has always taken, under the name it has always
+    had, because a migration IS a writer: a wizard's write landing between a
+    migration's re-read and its replace would be erased by it, exactly as one
+    wizard erased another in R-116. One lock for all of them is what makes
+    "re-read under the lock" mean the bytes cannot move before the write.
+
+    NEVER CALL ``load`` OR ``load_from_path`` WHILE HOLDING IT. ``flock`` locks
+    belong to the open file description, so a second open of the lock file from
+    the same process blocks on the first for ever, and a load of an unmigrated
+    file takes this lock to write back. Code under the lock reads through
+    ``_document_on_disk``, which migrates in memory and writes nothing.
+    """
+    return _exclusive_lock(path.with_name(path.name + ".migrate.lock"))
+
+
+def _back_up_version(path: Path, found: int) -> None:
+    """Copy the bytes about to be replaced to the backup named for their version."""
+    atomic_write_bytes(path.read_bytes(), path.with_name(f"{path.name}.v{found}.bak"))
 
 
 _MEMO: dict[tuple, Config] = {}
@@ -3507,15 +3557,159 @@ def save(config: Config, path: Path | None = None) -> Path:
     and all three go through ``_mkdir_private`` so no state directory's
     permissions depend on the user's umask. Each creates immediately before a
     write, never at import (Rule 1).
+
+    THIS IS A WHOLE-DOCUMENT WRITE, FOR A CALLER WITH NO PRIOR READ. It takes
+    the write lock, so it cannot land inside another writer's cycle, and it
+    replaces whatever is there. A caller that READ the document, decided
+    something, and is now writing the result back must go through ``update``
+    instead, because between that read and this write another command may have
+    written answers this call would erase while reporting success (R-116).
+    Nothing under ``src/`` outside this module calls ``save``, and a guard in
+    ``tests/test_config_update.py`` keeps it that way.
     """
     target = config_path() if path is None else path
     problems = validate(config.to_toml_dict())
     if problems:
         raise ConfigInvalid(problems, path=target)
     _mkdir_private(target.parent)
-    atomic_write_bytes(config.to_toml_bytes(), target)
+    with _write_lock(target):
+        atomic_write_bytes(config.to_toml_bytes(), target)
     reset_cache()
     return target
+
+
+def _document_on_disk(path: Path) -> tuple[dict, int | None]:
+    """The document as it is NOW, and the schema version its bytes carry.
+
+    For code holding the write lock, so it migrates in memory and never writes
+    (see ``_write_lock`` for why a ``load`` here would hang). Three shapes, the
+    same three the setup wizard reads before it asks anything, so a caller
+    comparing its first read with this one compares like with like:
+
+    * no file: an empty document and no version;
+    * a file that loads: its EFFECTIVE form, migrated, overrides applied,
+      defaults filled, which is what ``load().to_toml_dict()`` returns;
+    * a file that parses and is merely incomplete: the migrated raw document.
+
+    A corrupt file or one from a newer build raises, so nothing is written over
+    a document a person has to look at.
+    """
+    try:
+        raw = _read_raw(path)
+    except ConfigMissing:
+        return {}, None
+    migrated = migrate(raw)
+    try:
+        return from_dict(migrated, path=path).to_toml_dict(), raw["schema_version"]
+    except ConfigInvalid:
+        return migrated, raw["schema_version"]
+
+
+def update(
+    revise: Callable[[dict], Mapping], path: Path | None = None
+) -> tuple[Config, Path]:
+    """The configuration read-modify-write, as ONE locked cycle every writer uses.
+
+    Take the lock, read what is on disk, hand it to ``revise``, validate what
+    comes back, write it, release. Returns the configuration that was written and
+    where it went.
+
+    THE DECISION IS MADE TWICE, AND THE SECOND TIME IS UNDER THE LOCK, which is
+    the shape ``load_from_path`` documents for a migration. A caller reads the
+    document and decides whatever it needs to OUTSIDE the lock, as slowly as it
+    likes: the setup wizard asks a person questions, the profile verb waits
+    on a gate. ``revise`` is then the re-decision, handed the document that is
+    actually there, which may hold another command's answers the first read
+    never saw. Deciding once, outside, is how two wizards each reported success
+    and the second erased the first.
+
+    ``revise`` MAY NOT ASK ANYBODY ANYTHING. It runs with the lock held, and a
+    lock held across a prompt blocks every other command on somebody typing.
+    It computes, or it raises to refuse, in which case nothing is written:
+    ``merge_changes`` raises ``ConfigConflict``, and the profile verb
+    raises its stale decision when the membership it showed has moved.
+
+    An unmigrated document gets the same version backup a migration writes,
+    because this write replaces those bytes just as finally.
+    """
+    target = config_path() if path is None else path
+    with _write_lock(target):
+        current, found = _document_on_disk(target)
+        config = from_dict(revise(current), path=target)
+        # The serialized form is what the next load reads, so it is what gets
+        # judged. See ``save`` for the defect that made this a rule.
+        problems = validate(config.to_toml_dict())
+        if problems:
+            raise ConfigInvalid(problems, path=target)
+        if found is not None and found != CURRENT_SCHEMA_VERSION:
+            _back_up_version(target, found)
+        atomic_write_bytes(config.to_toml_bytes(), target)
+    reset_cache()
+    return config, target
+
+
+#: What a leaf holds when the key is not in the document at all. TOML has no
+#: null, so "absent" cannot be spelled as a value and needs a marker of its own.
+_ABSENT = object()
+
+
+def _leaves(document: Mapping, prefix: tuple[str, ...] = ()) -> dict[tuple[str, ...], object]:
+    """Every value in a document that is not itself a table, by its full path.
+
+    A list is a leaf, including a list of tables: ``library.location_prefix_map``
+    is ordered and its entries have no identity to merge by, so it is one answer.
+    """
+    found: dict[tuple[str, ...], object] = {}
+    for key, value in document.items():
+        if isinstance(value, Mapping):
+            found.update(_leaves(value, (*prefix, key)))
+        else:
+            found[(*prefix, key)] = value
+    return found
+
+
+def merge_changes(base: Mapping, desired: Mapping, current: Mapping) -> dict:
+    """``current`` with the changes between ``base`` and ``desired`` laid over it.
+
+    The re-decision for a writer that holds answers rather than a rule. ``base``
+    is the document as the caller first read it, ``desired`` is what it would
+    have written, and ``current`` is what ``update`` found under the lock. Only
+    the leaves the caller actually CHANGED are applied, so a value it merely
+    carried through from its first read cannot overwrite what another writer
+    has put there since. That distinction is the whole repair: a wizard that
+    kept the recorded ``profile.name`` without asking has no answer about it to
+    lose, and the one that changed it does.
+
+    A leaf both sides changed, to different values, raises ``ConfigConflict``
+    naming every such key, and the caller writes nothing. Both arriving at the
+    same value is agreement and is not a conflict.
+    """
+    if current == base:
+        return copy.deepcopy(dict(desired))
+    before, after, now = _leaves(base), _leaves(desired), _leaves(current)
+    merged = copy.deepcopy(dict(current))
+    conflicts: list[str] = []
+    for key in sorted({*before, *after}):
+        was, wanted = before.get(key, _ABSENT), after.get(key, _ABSENT)
+        if wanted == was:
+            continue
+        theirs = now.get(key, _ABSENT)
+        if theirs != was and theirs != wanted:
+            conflicts.append(".".join(key))
+            continue
+        node = merged
+        for part in key[:-1]:
+            child = node.get(part)
+            if not isinstance(child, dict):
+                child = node[part] = {}
+            node = child
+        if wanted is _ABSENT:
+            node.pop(key[-1], None)
+        else:
+            node[key[-1]] = copy.deepcopy(wanted)
+    if conflicts:
+        raise ConfigConflict(conflicts)
+    return merged
 
 
 #: The mode every state file this package writes lands at, on every machine.
@@ -3671,9 +3865,9 @@ class _exclusive_lock:
                 self.handle = None
             raise ConfigLockUnavailable(
                 f"could not take an exclusive lock on {self.path} ({exc}). A "
-                f"config migration refuses rather than running unsynchronized, "
-                f"because two processes migrating one file leaves it "
-                f"half-upgraded."
+                f"config write refuses rather than running unsynchronized, "
+                f"because two processes writing one file leaves it half-upgraded "
+                f"or erases one set of answers while reporting success."
             ) from exc
         return self
 
@@ -3702,6 +3896,7 @@ __all__ = [
     "AnalysisConfig",
     "BackupConfig",
     "Config",
+    "ConfigConflict",
     "ConfigCorrupt",
     "ConfigError",
     "ConfigInvalid",
@@ -3737,6 +3932,7 @@ __all__ = [
     "library_state_dir",
     "load",
     "load_from_path",
+    "merge_changes",
     "migrate",
     "out_of_band_effects",
     "rekey_records",
@@ -3748,5 +3944,6 @@ __all__ = [
     "state_files_for",
     "state_path",
     "template_name_is_usable",
+    "update",
     "validate",
 ]

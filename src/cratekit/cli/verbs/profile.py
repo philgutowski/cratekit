@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
-from cratekit.cli import output, registry
+from cratekit.cli import gates, output, registry
 from cratekit.cli.output import Envelope
 from cratekit.core import config, profiles
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
@@ -108,20 +108,24 @@ def build_set(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     parser.set_defaults(_handler=apply_profile)
 
 
-def apply_profile(ctx: "Context") -> Envelope:
-    cfg = _load()
-    before = _membership(cfg)
-    after = profiles.resolve(ctx.args.name, dict(cfg.modules.explicit))
+def _offer(cfg: config.Config, name: str) -> dict:
+    """What adopting ``name`` would change, from ``cfg``, and the identity of that.
 
+    The digest identifies WHAT THE USER WAS SHOWN, not how it was worded: the two
+    profiles and the exact membership delta. A module toggled by hand between the
+    offer and the answer moves it, which is precisely when the answer stops
+    applying to the question that was asked.
+
+    One function because it is computed TWICE, once to show a person and once
+    under the write lock from the document that is actually there, and the two
+    must be the same calculation or the comparison between them means nothing.
+    """
+    before = _membership(cfg)
+    after = profiles.resolve(name, dict(cfg.modules.explicit))
     turning_on = sorted(after.modules - before.modules)
     turning_off = sorted(before.modules - after.modules)
     items = [{"module": m, "change": "on"} for m in turning_on]
     items += [{"module": m, "change": "off"} for m in turning_off]
-
-    # The digest identifies WHAT THE USER WAS SHOWN, not how it was worded: the
-    # two profiles and the exact membership delta. A module toggled by hand
-    # between the offer and the answer moves it, which is precisely when the
-    # answer stops applying to the question that was asked.
     digest = output.digest_of(
         {
             "from": before.profile,
@@ -130,28 +134,47 @@ def apply_profile(ctx: "Context") -> Envelope:
             "off": turning_off,
         }
     )
-    plan = {
+    return {
         "digest": digest,
         "items": items,
         "totals": {"enabling": len(turning_on), "disabling": len(turning_off)},
         "chunk": None,
     }
 
+
+def apply_profile(ctx: "Context") -> Envelope:
+    plan = _offer(_load(), ctx.args.name)
+
     spec = ctx.entry.gates[0]
-    if not items:
+    if not plan["items"]:
         # Nothing to decide. A gate that asks about an empty change trains people
         # to answer without reading, which is how a real change gets waved
         # through later.
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
 
-    option = ctx.gate.require(spec, digest=digest)
+    option = ctx.gate.require(spec, digest=plan["digest"])
     if option == "abort":
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
 
-    # ``profiles.apply`` works on the serialized document rather than on the
-    # typed object, so the write carries every other key through untouched. That
-    # is D6's "changing a profile touches module membership and nothing else"
-    # made structural instead of asserted.
-    updated = profiles.apply(cfg.to_toml_dict(), ctx.args.name)
-    config.save(config.from_dict(updated))
+    def revise(document: dict) -> dict:
+        """The re-decision, under the write lock, from what is on disk NOW.
+
+        The gate compared digests when it was asked, and the write is later than
+        that. A module switched by another command in between changes what this
+        write does, so the delta is recomputed from the fresh document and an
+        answer given to a different delta is refused as stale, which is the
+        refusal the gate itself would have made a moment earlier (R-116).
+
+        ``profiles.apply`` works on the serialized document rather than on the
+        typed object, so the write carries every other key through untouched,
+        including whatever that other command wrote. That is D6's "changing a
+        profile touches module membership and nothing else" made structural
+        instead of asserted.
+        """
+        fresh = _offer(config.from_dict(document), ctx.args.name)
+        if fresh["digest"] != plan["digest"]:
+            raise gates.DecisionStale(spec, ctx.run.run_id, plan["digest"], fresh["digest"])
+        return profiles.apply(document, ctx.args.name)
+
+    config.update(revise)
     return ctx.envelope(data=plan, outcome=Outcome.OK)
