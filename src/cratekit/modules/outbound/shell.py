@@ -36,7 +36,7 @@ from cratekit.core import config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.outbound import account
-from cratekit.modules.outbound.source import ResolvedPlaylist
+from cratekit.modules.outbound.source import ExportAge, ResolvedPlaylist
 
 #: The two payload keys both verbs freeze, spelled once. A key one shell reads
 #: and the other spells differently is a resume that quietly does different work
@@ -118,10 +118,92 @@ def reported(
     }
 
 
+#: The three things :func:`shown` can say about an export's date, spelled once.
+#: WORDS RATHER THAN A BOOLEAN, because there are three states and the human
+#: renderer prints a missing boolean as "none", which reads as "not stale".
+STALE = "stale"
+WITHIN_LIMIT = "within-limit"
+UNKNOWN = "unknown"
+
+
+def freshness(age: ExportAge) -> str:
+    """Which of the three an age is. Unknown is asked FIRST, never defaulted to."""
+    if not age.known:
+        return UNKNOWN
+    return STALE if age.stale else WITHIN_LIMIT
+
+
+def shown(age: ExportAge) -> dict[str, Any]:
+    """What the confirm gate shows about the document the write is read from.
+
+    SHOWN EVERY TIME, fresh or not (R-227). A plan that named the date only when
+    it was old would make a missing line mean "recent", and the person deciding
+    is the only one who knows whether their library moved since that date.
+
+    IT IS A DISPLAY VALUE AND IS NOT IN THE CONFIRM DIGEST, deliberately. The
+    digest covers the track set, which is what the write is. An age in the
+    digest would stale every recorded decision at midnight.
+    """
+    return {
+        "export": {
+            "file": age.path.name,
+            "written": (
+                age.written.replace(microsecond=0).isoformat()
+                if age.written is not None
+                else None
+            ),
+            "age_days": age.age_days,
+            "stale_after_days": age.limit_days,
+            "freshness": freshness(age),
+        }
+    }
+
+
+def age_warnings(age: ExportAge) -> tuple[dict[str, str], ...]:
+    """The sentence a person reads when the export is old, or its age unreadable.
+
+    A WARNING AND NEVER A REFUSAL. Somebody who has not touched their library in
+    a month has a month old export that is exactly right, and only they know
+    that. The date is called "last written" rather than "exported" because it is
+    the file's modification time, which is all a rekordbox export offers.
+    """
+    written = age.written
+    if written is None:
+        return (
+            {
+                "code": "outbound-export-age-unknown",
+                "message": (
+                    f"the date {age.path.name} was last written could not be "
+                    f"read, so nothing here can say whether it still describes "
+                    f"the library"
+                ),
+            },
+        )
+    if age.stale:
+        return (
+            {
+                "code": "outbound-export-stale",
+                "message": (
+                    f"{age.path.name} was last written on "
+                    f"{written.date().isoformat()}, {age.age_days} day(s) "
+                    f"ago, which is past the {age.limit_days} day(s) "
+                    f"outbound.export_stale_days allows. Anything the library "
+                    f"gained or lost since then is not in this write. Export "
+                    f"the collection again if it has moved"
+                ),
+            },
+        )
+    return ()
+
+
 def queue_warnings(
-    resolved: ResolvedPlaylist, *, noun: str
+    resolved: ResolvedPlaylist, *, noun: str, age: ExportAge
 ) -> tuple[dict[str, str], ...]:
     """What the person should know at the moment they are asked to confirm.
+
+    ``age`` IS REQUIRED, never defaulted. Three shells queue an outbound write,
+    and a default would let the next one leave the export's age out with nothing
+    failing, which is R-227 coming back through a new caller.
 
     THE UNBOUND PROVIDER WARNING IS HERE RATHER THAN AT THE REFUSAL, and that is
     the honest half of deferring the refusal to the worker. Deferring is right
@@ -134,7 +216,7 @@ def queue_warnings(
     reason ``source.resolve`` collects them: somebody whose export is short a
     track needs to know which one, and a count alone is not something to act on.
     """
-    warnings: list[dict[str, str]] = []
+    warnings: list[dict[str, str]] = [*age_warnings(age)]
     if not account.bound():
         warnings.append(
             {
@@ -284,8 +366,11 @@ __all__ = [
     "EXPORT",
     "PLAYLIST",
     "TRACKS",
+    "age_warnings",
+    "freshness",
     "load_config",
     "queue_warnings",
     "reported",
     "resume",
+    "shown",
 ]

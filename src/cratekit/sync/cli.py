@@ -274,7 +274,7 @@ def _plan_inbound(spec: sources.SourceSpec, cfg: config.Config) -> _Inbound:
 def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
     """Plan the read only half, resolve the sweep, and leave its queueing to the question."""
     from cratekit.favorites import cli as favorites_cli
-    from cratekit.modules.outbound import shell
+    from cratekit.modules.outbound import shell, source
 
     plan = _Plan(spec=spec)
     if spec.inbound_key is not None:
@@ -283,6 +283,9 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
         exported, resolved = favorites_cli.resolve_sweep(
             getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
         )
+        # INSIDE THE TRY, so a configuration that cannot be read is this half's
+        # refusal like any other and the read half above is kept.
+        stale_days = _load().outbound.export_stale_days
     except CratekitError as exc:
         # THE WRITE HALF'S OWN PRECONDITION, recorded here rather than raised to
         # ``_plan``, which would build a fresh plan and drop the read half with
@@ -295,8 +298,13 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
     # queueing branch would be absent here, which is the pass most people run.
     # ``_envelope`` below extends only the plans that filed, so a declined or
     # refused favourites source says nothing about a write it never reached.
+    #
+    # THE EXPORT'S AGE TRAVELS THE SAME WAY AND FOR THE SAME REASON (R-227). It
+    # is read once here and goes to both places a person reads: the question
+    # below, and the warnings of the pass that queued.
+    age = source.export_age(exported, limit_days=stale_days)
     plan.warnings = (
-        *shell.queue_warnings(resolved, noun="favourite"),
+        *shell.queue_warnings(resolved, noun="favourite", age=age),
         *favorites_cli.local_write_warning(),
     )
 
@@ -305,7 +313,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
         option = ctx.gate.require(
             gate,
             digest=favorites_cli.sweep_digest(exported, resolved),
-            context=_awaiting(plans),
+            context={**_awaiting(plans), **shell.shown(age)},
         )
         if option == "abort":
             plan.not_queued = DECLINED

@@ -8,8 +8,10 @@ collection export the operator produced, through
 :func:`cratekit.modules.reports.export.read_export_file`, which is the one reader
 ``cli/reports.py`` already uses. A second reader would be a second answer to
 "what does this library contain", and two answers is how they come to disagree.
-The operator cost of reading a document somebody has to make by hand, and the
-fact that nothing warns when it is stale, are R-227.
+The operator cost of reading a document somebody has to make by hand is R-227.
+That a stale one used to resolve, queue and write with nothing said is the half
+of R-227 :func:`export_age` answers: the file's date is read here and shown in
+the plan a person confirms, and nothing is refused over it.
 
 **WHY THIS MODULE EXISTS RATHER THAN TWO COPIES.** ``export.playlist`` and
 ``sync.favorites`` ask the same question, "which library rows is this write made
@@ -34,6 +36,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Mapping
 
@@ -87,6 +90,75 @@ class ResolvedPlaylist:
     track_ids: tuple[str, ...]
     dangling: tuple[str, ...] = ()
     repeated: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ExportAge:
+    """When the export document was last written, against a declared limit.
+
+    ``written`` IS THE FILE'S MODIFICATION TIME, because a rekordbox collection
+    export carries no date of its own: its header names the product and the
+    version and nothing else. That makes it a proxy with a known weakness, which
+    is stated rather than hidden. A copy made without preserving times, or a sync
+    client that rewrites the file, gives an old export a new date, so a recent
+    date is weaker evidence than an old one. It is why this is shown to a person
+    and never decided on.
+
+    ``written`` IS NONE WHEN THE FILE COULD NOT BE ASKED, and that is a third
+    state rather than a fresh one. "I could not read a date" folded into "the
+    date is recent" is the first of the recurring defect patterns in
+    ``docs/METHOD.md``.
+    """
+
+    path: Path
+    limit_days: int
+    written: datetime | None = None
+    age: timedelta | None = None
+
+    @property
+    def known(self) -> bool:
+        return self.written is not None
+
+    @property
+    def age_days(self) -> int | None:
+        """Whole days, floored. For display; :attr:`stale` compares durations."""
+        return None if self.age is None else self.age.days
+
+    @property
+    def stale(self) -> bool:
+        """PAST the limit, as a duration. Seven days exactly is not past seven.
+
+        Not ``age_days > limit_days``: floored days read seven days and twenty
+        three hours as seven, which is fresh for a day longer than the key says.
+        """
+        return self.age is not None and self.age > timedelta(days=self.limit_days)
+
+
+def export_age(path: Path, *, limit_days: int, now: datetime | None = None) -> ExportAge:
+    """How old the export at ``path`` is. Never raises and never refuses.
+
+    A STAT RATHER THAN A FIELD ON :class:`Library`, because the parsed document
+    is memoized for the life of the process and the age is a question about the
+    file as it is now. ``limit_days`` is required for the reason ``cfg`` is on
+    :func:`local_tracks`: a default would let a caller that forgot the
+    configuration warn on somebody else's number.
+
+    A date in the future is a clock that moved rather than an old export, so the
+    age floors at nothing instead of going negative.
+    """
+    located = Path(path)
+    try:
+        modified = located.stat().st_mtime
+    except OSError:
+        return ExportAge(path=located, limit_days=limit_days)
+    written = datetime.fromtimestamp(modified, tz=timezone.utc)
+    moment = now or datetime.now(timezone.utc)
+    return ExportAge(
+        path=located,
+        limit_days=limit_days,
+        written=written,
+        age=max(moment - written, timedelta(0)),
+    )
 
 
 #: Parsed exports, keyed on the resolved absolute path.
@@ -454,8 +526,10 @@ def _rows(
 
 __all__ = [
     "DEFAULT_FAVORITES_PLAYLIST",
+    "ExportAge",
     "Library",
     "ResolvedPlaylist",
+    "export_age",
     "forget_libraries",
     "heart_candidates",
     "isrc_for",
