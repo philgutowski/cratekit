@@ -26,6 +26,25 @@ from cratekit.core import cause as cause_module
 from cratekit.core.cause import Cause
 from cratekit.core.exit_codes import ExitCode, Remedy, meaning_of
 
+#: The provider session procedure, worded once. TWO tokens need it, a session
+#: that was never minted and a session the provider rejected, and they differ
+#: only in why the person is reading it. Written as one string because two
+#: copies of a three act procedure is how they come to name two different second
+#: steps, which is the failure this whole file exists to make impossible.
+#:
+#: IT NAMES THE ERASE, which a reader drops and which the product's promise
+#: needs: no provider token sits on disk between invocations, and the hop
+#: through a file is the one moment that is briefly false.
+#:
+#: The document is named as the project's rather than as a local file. ``docs/``
+#: is in no wheel, measured by building one, so an installed person told to open
+#: a path would find nothing.
+_PROVIDER_SESSION_PROCEDURE = (
+    "mint it with the vendored downloader's own login command, record it with "
+    "crate login provider-session --from-file, then erase the plaintext file, which "
+    "docs/adapters.md in the project's repository sets out step by step"
+)
+
 #: One command line per remediation token, or None when the fix is not a command
 #: at all. A token whose answer is "quit an application" or "plug the drive in"
 #: has no command, and inventing one would be worse than saying so.
@@ -115,16 +134,18 @@ _ADVICE: Mapping[Remedy, str] = {
     Remedy.REPAIR_CREDENTIAL_STORE: "the credential store is unreadable; repair or recreate it",
     Remedy.REAUTHENTICATE: "the stored credential was rejected; authenticate again",
     # THREE ACTS, IN ORDER, BECAUSE THERE IS NO COMMAND THAT DOES IT. R-411
-    # measured the cost of the single verb this used to be: it names the erase
-    # as well, since the product's promise is that no provider token sits on
-    # disk between invocations and the hop through a file is the one moment that
-    # is briefly false.
+    # measured the cost of the single verb the first of these used to be, and
+    # the second said "log in again", which is the same dead end reached from
+    # the other direction and is the likelier one: every session minted before
+    # 2026-09-01 is a device flow session the adapter now refuses.
     Remedy.AUTHENTICATE_PROVIDER: (
-        "mint a provider session with the vendored downloader's own login command, record it "
-        "with crate login provider-session --from-file, then erase the plaintext file, because "
-        "crate login on its own cannot mint one; docs/adapters.md carries the three commands"
+        "no provider session is stored and crate login cannot mint one, it only records "
+        "one; " + _PROVIDER_SESSION_PROCEDURE
     ),
-    Remedy.REAUTHENTICATE_PROVIDER: "the provider rejected the stored credential; log in again",
+    Remedy.REAUTHENTICATE_PROVIDER: (
+        "the provider rejected the stored session and crate login cannot mint another, it "
+        "only records one; " + _PROVIDER_SESSION_PROCEDURE
+    ),
     Remedy.PAUSE_AND_CHECK_ACCOUNT: (
         "the provider is refusing this account; stop and check it before retrying, because "
         "retrying into a block is how an account gets suspended"

@@ -288,14 +288,20 @@ def test_with_no_session_the_seam_still_refuses_the_credential_and_builds_no_cli
     assert client.logins == []
 
 
-def test_the_label_path_offers_the_same_three_act_procedure_as_doctor(cfg, monkeypatch):
-    """U97, closing R-411. Two surfaces raise this refusal and one table answers both.
+def test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure(cfg, monkeypatch):
+    """U97, closing R-411, and deliberately narrow about what it proves.
 
-    ``catalogue.resolve`` and doctor's ``credential.provider`` check reach the
-    person through different code, and a private copy of the words in either
-    one is the second place a token becomes a sentence, which is what D2 exists
-    to prevent. So the seam that matters is that this path renders the SAME
-    text, asserted by rendering it here rather than by restating it.
+    It does NOT prove that two surfaces agree; doctor is never invoked here and
+    a test that claimed otherwise would be spending a name it had not earned.
+    What it holds is this path's half of the agreement: the refusal leaves
+    ``catalogue.resolve`` carrying ``AUTHENTICATE_PROVIDER`` and nothing else,
+    so the words it reaches a person with are the ones ``cli/render`` holds for
+    every surface. The words themselves are pinned once, in
+    ``tests/test_cli_contract.py``.
+
+    The token is asserted first and the rendering second, because a producer
+    that switched to another token would still render something sensible and
+    would still be the defect.
     """
     use_client(monkeypatch, FakeClient())
 

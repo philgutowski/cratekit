@@ -1872,6 +1872,7 @@ def test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_ve
     assert "credential.provider" in err
     assert "fix: crate login\n" not in err
     assert "crate login provider-session --from-file" in err
+    assert "erase the plaintext file" in err
     assert "docs/adapters.md" in err
 
 

@@ -353,37 +353,60 @@ def test_every_remediation_token_renders_to_something_a_user_can_act_on():
         assert rendered.strip() not in ("fix:", ""), f"{remedy} renders to nothing"
 
 
-def test_the_provider_session_remedy_names_three_acts_and_not_a_verb_that_cannot_mint_one():
-    """U97, closing R-411. The remedy used to be the single command ``crate login``.
+@pytest.mark.parametrize(
+    "remedy, forbidden",
+    [
+        (Remedy.AUTHENTICATE_PROVIDER, "  fix: crate login"),
+        (
+            Remedy.REAUTHENTICATE_PROVIDER,
+            "  fix: the provider rejected the stored credential; log in again",
+        ),
+    ],
+)
+def test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs(
+    remedy, forbidden
+):
+    """U97, closing R-411, over BOTH tokens that send a person to get a session.
 
-    That verb records a value somebody already holds, ``cli/verbs/login.py``
-    refuses without one, and minting is an attended act at a browser the
-    vendored downloader owns. So a first run person who followed the product's
-    own remedy reached a second refusal.
+    ``AUTHENTICATE_PROVIDER`` was the single command ``crate login``, which
+    records a value somebody already holds and refuses without one, so a first
+    run person who followed the product's own remedy reached a second refusal.
+    ``REAUTHENTICATE_PROVIDER`` said "log in again", the same dead end reached
+    from the other direction and the likelier one, since every session minted
+    before 2026-09-01 is a device flow session the adapter now refuses.
 
     Asserted against literal text rather than against ``render.remedy_text``,
     which is the token's own renderer: comparing a renderer to itself is X
-    equals X, and it would pass over the exact wording this closes. Each act is
+    equals X and would pass over the exact wording this closes. Each act is
     pinned separately, because the erase is the one a reader drops and the one
     R4's promise depends on.
     """
     line = render.remediation_line(
         Cause(
             reason="credential-missing",
-            message="no streaming provider session is stored",
-            remediation=Remediation(remedy=Remedy.AUTHENTICATE_PROVIDER),
+            message="no streaming provider session is usable",
+            remediation=Remediation(remedy=remedy),
             scope=Scope.RUN,
         )
     )
-    assert line != "  fix: crate login"
+    assert line != forbidden
     body = line.removeprefix("  fix: ")
-    assert body.startswith("mint a provider session")
+    assert "crate login cannot mint" in body
+    assert "vendored downloader's own login command" in body
     assert "crate login provider-session --from-file" in body
     assert "erase the plaintext file" in body
     assert "docs/adapters.md" in body
 
-    # A remedy that points at a document is only as good as the document, and a
-    # renamed file leaves a first run person at a dead end with no test red.
+
+def test_the_document_the_provider_session_remedy_names_ships_and_carries_the_command():
+    """A remedy that points at a document is only as good as the document.
+
+    A renamed file, or a section that stops carrying the recording command,
+    leaves a first run person at a dead end with nothing red. The pointer is
+    worded as the PROJECT'S document and not as a local path on purpose:
+    ``docs/`` is in no wheel, measured by building one, so an installed person
+    told to open a path would find nothing there.
+    """
     adapters = REPO_ROOT / "docs" / "adapters.md"
     assert adapters.is_file(), "the remedy points at a document this repository does not ship"
     assert "crate login provider-session --from-file" in adapters.read_text(encoding="utf-8")
