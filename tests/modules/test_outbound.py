@@ -325,6 +325,12 @@ def test_a_crate_the_record_is_a_sliver_of_is_not_that_crate(cfg, size, adopted)
     assert (_recognise(cfg, tracks=crate).adopts == "Old") is adopted
 
 
+def test_a_record_that_holds_nothing_is_carried_by_nothing():
+    """Half of nothing is nothing, and nothing must not read as a match."""
+    assert ledger._still_carries(frozenset(), frozenset({"1"})) is False
+    assert ledger._still_carries(frozenset(), frozenset()) is False
+
+
 def test_a_key_the_export_still_carries_is_not_a_candidate(cfg):
     _write_ledger(cfg, {"Old": {"remote_id": "pl-9", "tracks": list(_CRATE)}})
     assert _recognise(cfg, live={"New": _CRATE, "Old": _CRATE}) == _nothing()
@@ -357,12 +363,26 @@ def test_a_crate_with_its_own_record_recognises_nothing(cfg):
 
 def test_a_record_under_the_crates_own_path_written_from_other_music_is_said(cfg):
     """The other half of the rename chain: this path now holds a different crate."""
-    _write_ledger(cfg, {"B": {"remote_id": "pl-2", "tracks": ["7", "8", "9"]}})
+    _write_ledger(
+        cfg,
+        {
+            "B": {"remote_id": "pl-2", "tracks": ["7", "8", "9"]},
+            # F CARRIES THE SAME MUSIC AND HAS ITS OWN REMOTE PLAYLIST, so it is
+            # not a crate waiting to claim this one.
+            "F": {"remote_id": "pl-3", "tracks": ["7", "8", "9"]},
+        },
+    )
     found = _recognise(
         cfg,
         "B",
         name="B",
-        live={"B": _CRATE, "C": ("7", "8", "9"), "D": ("7",), "E": ("1", "2")},
+        live={
+            "B": _CRATE,
+            "C": ("7", "8", "9"),
+            "D": ("7",),
+            "E": ("1", "2"),
+            "F": ("7", "8", "9"),
+        },
     )
     assert found.own_remote_id == "pl-2"
     assert found.mismatched is True
@@ -412,6 +432,9 @@ def test_a_record_with_no_remote_playlist_is_never_offered(cfg):
         ("2024/Big Crate", "Crate", False),
         ("2024/A/B", "A/B", True),
         ("Crate", "", False),
+        # A PLAYLIST WITH NO NAME under a folder joins to a key ending in the
+        # separator, which an empty name would match by suffix.
+        ("2024/", "", False),
     ],
 )
 def test_a_record_written_before_tracks_were_kept_is_recognised_by_name(
