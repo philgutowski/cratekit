@@ -1192,6 +1192,7 @@ def evidence_or_raise(
     succeeded: int,
     failed_cause: Cause | None = None,
     retryable: bool = True,
+    permanent_reasons: Sequence[str] = (),
 ) -> None:
     """Refuse to report an empty success when everything actually failed.
 
@@ -1218,15 +1219,29 @@ def evidence_or_raise(
         extra["steps"] = (
             "the failed items cannot succeed on resume; inspect each item's cause",
         )
-    raise refuse(
-        "no-evidence",
+    message = (
         f"all {attempted} items failed, so there is no evidence of success; an "
         f"empty result from a total failure is indistinguishable from having found "
-        f"nothing, and only one of those may advance anything downstream",
+        f"nothing, and only one of those may advance anything downstream"
+    )
+    detail: dict[str, Any] = {"attempted": attempted}
+    if len(permanent_reasons) > 1:
+        # THE ITEM STAYS NESTED AS ``inner``, its own detail is what a person
+        # acts on, and the mixed reasons ride beside it (R-391): nesting the
+        # job's verdict instead would push that detail one layer deeper than
+        # every shell reads it.
+        message += (
+            f"; the failures carry {len(permanent_reasons)} distinct permanent "
+            f"reasons: {', '.join(permanent_reasons)}"
+        )
+        detail[PERMANENT_REASONS] = tuple(permanent_reasons)
+    raise refuse(
+        "no-evidence",
+        message,
         scope=Scope.SOURCE,
         retryable=retryable,
         origin=("jobs",),
-        detail={"attempted": attempted},
+        detail=detail,
         inner=failed_cause,
         **extra,
     )
@@ -1556,15 +1571,19 @@ def drive(
                     job_id, result, last_cause, failed_causes
                 ),
             )
-            # THE RECORDED JOB CAUSE IS WHAT IS NESTED, not the last item's. The
-            # job cause carries the counts and, over mixed permanent failures,
-            # every distinct reason (R-391); the last item alone is the order
-            # dependence that finding named, one layer up from the row.
+            # The last item stays nested, and the reasons the recorded verdict
+            # named ride on the envelope's own detail (R-391), so the foreground
+            # is not left with only the item the driver claimed last.
             evidence_or_raise(
                 attempted=attempted,
                 succeeded=0,
-                failed_cause=result.job.cause,
+                failed_cause=last_cause,
                 retryable=items_retryable,
+                permanent_reasons=_permanent_reasons_of(result.job.cause).get(
+                    PERMANENT_REASONS, ()
+                )
+                if result.job.cause is not None
+                else (),
             )
         if result.failed:
             result.job = transition(

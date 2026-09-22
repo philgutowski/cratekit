@@ -661,16 +661,20 @@ def test_two_distinct_permanent_reasons_name_both_whichever_failed_last(queue, c
         )
         with pytest.raises(CratekitError) as excinfo:
             jobs.drive(store, job.job_id, mixed_permanent, root=root)
-        # The all failed envelope nests the JOB's verdict, not the last item's,
-        # so the reasons reach the foreground too and not only the row.
+        # The all failed envelope still nests the last item, whose own detail
+        # is what a person acts on, and names every reason on its own detail
+        # and in its message, so the foreground is not left with only the item
+        # the driver claimed last.
         raised = excinfo.value.cause
         assert raised.reason == "no-evidence"
         assert raised.inner is not None
-        assert raised.inner.reason == "mixed-permanent-failures"
-        assert tuple(raised.inner.detail["permanent_reasons"]) == (
+        assert raised.inner.reason in ("internal-error", "sync-source-lookups-failed")
+        assert tuple(raised.detail["permanent_reasons"]) == (
             "internal-error",
             "sync-source-lookups-failed",
         )
+        assert "internal-error" in raised.message
+        assert "sync-source-lookups-failed" in raised.message
         recorded = jobs.get(store, job.job_id)
         assert recorded.cause is not None
         causes.append(recorded.cause)
