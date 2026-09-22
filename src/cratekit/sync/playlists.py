@@ -11,12 +11,31 @@ the intake path one layer down.
 
 **WHAT IS NEW, IN THE ORDER IT IS DECIDED.** A playlist is excluded when its
 name carries the swept prefix the source system applies after a sweep, when its
-identifier is in this source's cursor, when its name is a quarterly favourites
-placeholder, which is the favourites source's to sweep, when a playlist intake
-job for it is still open, or when the listing says it holds no tracks.
-Everything else is listed track by track and queued. A playlist whose tracks
-come back empty is reported empty rather than queued, and a playlist that cannot
-be read is reported unreadable rather than skipped in silence.
+name ends with the suffix the source system's label batch leaves on its run
+debris (R-361), when its identifier is in this source's cursor, when its name
+is a quarterly favourites placeholder, which is the favourites source's to
+sweep, when a playlist intake job for it is still open, or when the listing
+says it holds no tracks. Everything else is listed track by track and queued. A
+playlist whose tracks come back empty is reported empty rather than queued, and
+a playlist that cannot be read is reported unreadable rather than skipped in
+silence.
+
+**THE DEBRIS RULE IS THE SOURCE SYSTEM'S, SUFFIX AND CASE (R-361).** Its label
+batch builds one `<label> LIBRARY` playlist per run and leaves it on the
+account, and its own sweep drops any name ending ` LIBRARY`, leading space,
+case sensitive. The fourth attended sitting found eleven of them among the
+eighteen playlists a pass queued, about 1600 tracks of label catalogue offered
+as ordinary intake. The name rule is copied rather than narrowed: a playlist a
+person named `My Night LIBRARY` is excluded too, which is the collision the
+source system already accepts, and every debris name the sitting listed was a
+label run. The source system's sweep ALSO drops every playlist id its run
+manifests registered as run created, and that half has no counterpart here,
+because Cratekit reads no manifest of the source system's: a run playlist
+whose name lost the suffix is still offered. Jobs already queued for debris
+are not cancelled by this rule; it decides what a later pass offers, and
+:func:`pending_marks` keeps the same names out of the mark, so a debris job
+that succeeds, one queued before the rule or by hand, never has the source
+system's throwaway renamed under it.
 
 **THE CURSOR IS IDENTIFIERS, AND IT MOVES ON CLEAN COMPLETION ONLY.** Queueing
 is not completion. At the start of every pass :func:`reconcile` reads every
@@ -26,9 +45,9 @@ every one that SUCCEEDED, which is the state a job reaches only when every item
 is done. A failed or cancelled job is not recorded and its playlist is offered
 again, and an open one, whichever verb queued it, holds its playlist back as in
 flight. The cursor still moves only here, at the top of a pass, and never on a
-job's completion. Nothing is ever filtered by title except the two naming
+job's completion. Nothing is ever filtered by title except the three naming
 conventions above, which are conventions spelled in the name by the systems
-that apply them, and neither is stored (D5).
+that apply them, and none is stored (D5).
 
 **SWEPT MEANS RESOLVED, NOT ACQUIRED, AND THE PASS SAYS SO (R-359).** The job a
 sweep composes resolves every track to owned, offered or missing and acquires
@@ -101,6 +120,13 @@ SOURCE_ID = "playlists"
 #: reinvented, because the live account already carries it.
 SWEPT_PREFIX = "DOWNLOADED "
 
+#: The suffix the source system's label batch leaves on the throwaway playlist
+#: each run builds, `<label> LIBRARY`. Its own sweep drops any name ending with
+#: it, leading space and upper case exactly, and this is that rule kept rather
+#: than reinvented (R-361). Case sensitive on purpose: `Colorize Library` is a
+#: name a person could give a playlist, and the batch never writes it.
+LIBRARY_PLAYLIST_SUFFIX = " LIBRARY"
+
 #: What a recorded playlist means in this build, on the block a machine reads.
 #: The cursor records a playlist whose intake job SUCCEEDED, which is every track
 #: resolved and none acquired (R-359).
@@ -141,6 +167,7 @@ class Excluded(StrEnum):
     """Why a listed playlist was not queued."""
 
     SWEPT = "already-swept"
+    LABEL_DEBRIS = "label-debris"
     RECORDED = "recorded"
     PLACEHOLDER = "favorites-placeholder"
     IN_FLIGHT = "in-flight"
@@ -151,6 +178,11 @@ class Excluded(StrEnum):
 def is_swept_name(name: str) -> bool:
     """Whether the name carries the swept prefix."""
     return str(name or "").startswith(SWEPT_PREFIX)
+
+
+def is_library_debris(name: str) -> bool:
+    """Whether the name ends with the label batch's debris suffix, case exactly."""
+    return str(name or "").endswith(LIBRARY_PLAYLIST_SUFFIX)
 
 
 def exclusion(
@@ -167,6 +199,8 @@ def exclusion(
     """
     if is_swept_name(playlist.name):
         return Excluded.SWEPT
+    if is_library_debris(playlist.name):
+        return Excluded.LABEL_DEBRIS
     if playlist.playlist_id in recorded:
         return Excluded.RECORDED
     if placeholders.is_placeholder(playlist.name):
@@ -447,6 +481,15 @@ def pending_marks(
 
     A recorded playlist the account no longer lists has no name to prefix and is
     not pending. Nothing is owed to a playlist that is gone.
+
+    **THE LABEL BATCH'S DEBRIS IS NEVER MARKED (R-361).** A pass no longer
+    queues a ` LIBRARY` name, and a job for one can still reach the cursor: the
+    eleven the fourth sitting left queued, resumed, or one a person ran through
+    ``crate intake playlist``, which R-382 records. Its name is the source
+    system's throwaway and the source system's own sweep never prefixes it, so
+    neither does this one. Asked here and not only in :func:`exclusion`, because
+    the exclusion decides what is OFFERED and this decides what is RENAMED, and
+    a rule on the offering path leaves the renaming path open.
     """
     listed = sweep.names()
     return tuple(
@@ -454,6 +497,7 @@ def pending_marks(
         for identity in sorted(sweep.recorded)
         if listed.get(identity)
         and not is_swept_name(listed[identity])
+        and not is_library_debris(listed[identity])
         and (only is None or identity in only)
     )
 
@@ -564,6 +608,7 @@ def said(block: Mapping[str, Any]) -> str | None:
 
 
 __all__ = [
+    "LIBRARY_PLAYLIST_SUFFIX",
     "MARK_APPLIED",
     "MARK_KIND",
     "MARK_UNBOUND",
@@ -576,6 +621,7 @@ __all__ = [
     "Sweep",
     "completed",
     "exclusion",
+    "is_library_debris",
     "is_swept_name",
     "mark_swept",
     "marking_sweep",

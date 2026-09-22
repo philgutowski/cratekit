@@ -127,9 +127,9 @@ class AccountPlaylist:
     """One playlist the account itself created, reduced to what a sweep decides on.
 
     ``playlist_id`` is the identity every record keys on (D5). ``name`` is read
-    only for the swept prefix and the favourites placeholder pattern, which are
-    conventions spelled in the name by the systems that apply them, and is never
-    stored. ``tracks`` is the count the listing reported, or ``None`` when it
+    only for the swept prefix, the label batch's ` LIBRARY` debris suffix and
+    the favourites placeholder pattern, which are conventions spelled in the
+    name by the systems that apply them, and is never stored. ``tracks`` is the count the listing reported, or ``None`` when it
     reported none, which is unknown rather than empty.
     """
 

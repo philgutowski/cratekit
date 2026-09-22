@@ -358,6 +358,40 @@ def test_an_already_prefixed_playlist_is_skipped(slim, monkeypatch):
     assert (skipped["action"], skipped["reason"]) == ("skip", "already-marked")
 
 
+def test_the_label_batch_debris_is_said_and_never_renamed(slim, monkeypatch):
+    """R-361, the renaming path. A pass no longer queues a ` LIBRARY` name, so
+    the job here is queued the way the fourth sitting's eleven were, before the
+    rule existed, by lifting the rule for the pass alone. Its job succeeds and
+    its tracks land, and the mark still leaves the source system's throwaway
+    alone, with the reason spelled the way the pass spells it."""
+    with pytest.MonkeyPatch.context() as before_the_rule:
+        before_the_rule.setattr(playlists, "is_library_debris", lambda name: False)
+        fake, name = _swept_pass(
+            monkeypatch,
+            (_playlist("pl-a", "Sol Selectas LIBRARY"), _tracks("101", "102")),
+            (_playlist("pl-b", "Peak"), _tracks("201")),
+        )
+    assert playlists.is_library_debris("Sol Selectas LIBRARY"), "the rule did not come back"
+    assert {playlists.playlist_of(job) for job in _playlist_jobs()} == {"pl-a", "pl-b"}
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+
+    code, shown = _mark(xml)
+    assert code == int(ExitCode.DECISION_REQUIRED), shown
+    context = shown["cause"]["detail"]["shown"]
+    assert context["renamed on the account"] == ["Peak -> DOWNLOADED Peak"]
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    debris = _by_id(done)["pl-a"]
+    assert (debris["action"], debris["reason"]) == ("skip", "label-debris")
+    assert "label run debris" in debris["why"]
+    assert "pl-a" not in [mark.target_id for mark in playlists.pending_marks(
+        playlists.Sweep(listed=tuple(fake.account), recorded=frozenset({"pl-a", "pl-b"}))
+    )]
+
+
 def test_a_playlist_the_account_no_longer_lists_is_said_and_not_planned(slim, monkeypatch):
     """Nothing could rename it, so a plan that showed it as a rename would be a
     declared write the run never performs."""
