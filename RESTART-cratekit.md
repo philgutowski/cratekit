@@ -4,7 +4,31 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-650, issue #189,
+**Last merged: R-361, issue #95, `relay/95`, 2026-09-22.**
+The source system's label run debris is no longer swept as ordinary playlists.
+`sync.playlists.exclusion` asks `is_library_debris`, any name ending
+`LIBRARY_PLAYLIST_SUFFIX`, ` LIBRARY` with its leading space, case sensitive,
+after the swept prefix and before the cursor, and reports
+`Excluded.LABEL_DEBRIS`, `label-debris`. The rule is the source system's name
+rule copied and not narrowed, so a person's playlist ending the same way is
+excluded too, the collision both systems accept. **The built in review found the
+rule on the offering path alone**: a debris job that reaches the cursor, the
+fourth sitting's eleven once resumed or one queued by hand, would have had the
+source system's throwaway renamed under it by `crate sync mark`. `pending_marks`
+now skips the suffix beside the prefix and the mark verb's plan says
+`label-debris`, read through the enum so the kebab population did not move
+twice. Fixed in round one. Not copied: the source system's manifest registered
+run ids, which Cratekit cannot read; zero of the sitting's eleven needed them.
+R-361 CLOSED in place, code half. Cancelling or resuming the nineteen live jobs
+stays attended. No new residual; R-22 gains an observation, one job id collision
+in four serial runs of two test files, unreproduced.
+Battery: ruff clean, **9888 passed** and 1 skipped in 59 seconds. Scan clean.
+Mutation table `docs/mutation/r361-a.md`: **15 rows, the author's own, all
+killed**, read in `r361-notes.md`. No learning filed; the seam is in the
+docstrings.
+**Main's highest residual number is R-653.**
+
+**The session before: R-650, issue #189,
 `unit/issue189-a-source-genre-the-taxonomy-never-heard-`, 2026-09-21.**
 A folder holding a genre the taxonomy never heard of no longer reports as
 tagged cleanly. `routing.suggest_tag`'s last tier sets `off_taxonomy`, the
@@ -28,7 +52,6 @@ Battery: ruff clean, **9883 passed** and 1 skipped in 89 seconds. Scan clean.
 Mutation tables `docs/mutation/r650-a.md` and `r650-b.md`: **24 rows, the
 author's own, 23 killed**, the one zero paired with a composite that kills, read
 in `r650-notes.md`. The learning is a new entry in `docs/solutions/workflow-issues/`.
-**Main's highest residual number is R-653.**
 
 **The session before: R-647, issue #188, `relay/188`, 2026-09-21.**
 A gated write cut off by a power loss is no longer a dead end. `Holder` records

@@ -1588,6 +1588,20 @@ and it is recorded here rather than fixed inside a restore unit because a fix
 round reaching into a CLI module it was not reviewing is how the next round
 inherits an unreviewed change.
 
+**Observed once, 2026-09-22, during R-361 on `relay/95`.** A serial run of
+`tests/test_incremental_sync.py` and `tests/test_sync_all.py` under `-n 0`
+failed `test_a_finished_hearts_job_does_not_hold_the_next_pass` with
+`IntegrityError: UNIQUE constraint failed: jobs.job_id`, which is two `sync all`
+drives in one second handed the same identifier by `enqueue`, since a job's id
+is `new_run_id()` when none is passed. The test passed alone and passed on
+three further serial runs of the same two files, so the rate measured here is
+one in four, against the one in 65536 per colliding pair the tail's width
+predicts. Those two numbers do not agree, and nothing here says why: either the
+run was the rare event, or something else in that path shares the identifier
+space, and neither was driven. Not this unit's to fix, per the owner line above,
+and recorded so the next flake of this shape is read as a second measurement
+rather than a first.
+
 **What must NOT close it.** Narrowing the capture stamp to 16 bits for symmetry.
 The stamp's width is load bearing for a reason written down beside it, and
 symmetry achieved by taking the argued side down to the unargued one is the wrong
@@ -17419,6 +17433,40 @@ Sit On The Furniture LIBRARY`, five playlists all named `Sol Selectas LIBRARY` a
 four all named `Colorize LIBRARY`, about 1600 tracks between them. The duplicates
 are the source system having left one per run. Nothing was written: the jobs were
 left queued and unresumed.
+
+**CLOSED 2026-09-22 on `relay/95`, issue #95, the code half.** The rule is the
+source system's name rule, copied and not narrowed: `exclusion` asks
+`is_library_debris`, any name ending `LIBRARY_PLAYLIST_SUFFIX`, ` LIBRARY` with
+its leading space, case sensitive, after the swept prefix and before the cursor,
+and reports `Excluded.LABEL_DEBRIS`, `label-debris`. A person's playlist that
+ends the same way is excluded too, the collision the source system's sweep
+already accepts, and the unit test names it as such. Driven at the seam with the
+brief's five shapes plus the space that makes a suffix a suffix, and through
+`crate sync all` with the sitting's own names: none listed track by track, none
+queued, the report block and the check's tally saying why.
+
+**The built in review found the rule on the offering path alone.** A debris job
+can still reach the cursor, the eleven left queued once resumed, or one a person
+runs through `crate intake playlist` (R-382), and on success `pending_marks`
+would have offered the source system's throwaway to the mark and `crate sync
+mark` would have renamed it `DOWNLOADED Sol Selectas LIBRARY`, which the source
+system's own sweep never does. `pending_marks` now skips the suffix beside the
+prefix and the mark verb's plan says `label-debris`, read through the enum.
+Driven through the verb with the rule lifted for the pass alone, so the job
+exists the way the sitting's eleven do.
+
+**What the source system's rule has that this one does not.** Its
+`filter_account_playlists` also drops every playlist id a run manifest
+registered as run created, the fallback for debris whose name lost the suffix.
+Cratekit reads no manifest of the source system's, so that half has no
+counterpart, and the module docstring says so. Measured on the live account at
+the fourth sitting: all eleven debris playlists carried the suffix, none was
+caught by the registry alone, so the cost of the missing half is zero on the
+account as it was read.
+
+**Still attended.** Cancelling or resuming the nineteen live jobs, and any
+rename on the account. Mutation table `docs/mutation/r361-a.md`, fifteen rows,
+all killed.
 
 ---
 
