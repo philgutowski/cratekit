@@ -267,7 +267,16 @@ def _survey(cfg: config.Config, db: Any) -> _Survey:
         if row.deleted:
             continue
         active += 1
-        _, outcome = trees.located(row.recorded, root=root, prefix_map=prefix_map)
+        try:
+            _, outcome = trees.located(row.recorded, root=root, prefix_map=prefix_map)
+        except locations.LocationDecodeError:
+            # A location naming another host, or one that will not decode, is
+            # a row this machine cannot read a file for and counts as such. It
+            # is not the prefix map's failure, so it is not unmapped, and it is
+            # not a defect in this walk, so it does not take the plan or the
+            # doctor check down with it.
+            unresolved += 1
+            continue
         if outcome.resolution is locations.Resolution.UNMAPPED:
             unmapped += 1
             prefixes[outcome.prefix or "?"] += 1
@@ -474,14 +483,17 @@ def mytags_vocals(ctx) -> Envelope:
         # refusal names the prefixes the walk grouped. The plan's totals carry
         # the counts alone, which is all the payload surface declares.
         survey = _survey(cfg, db)
-        plan = _plan_from(cfg, survey)
         # A MAJORITY UNMAPPED REFUSES BEFORE THE APPLY FLAG IS READ (R-372). The
         # first real plan reported ok over 9937 rows it had skipped, and an apply
         # on it would have written nothing and reported success. Plan and apply
         # refuse alike, under one slug, with the totals still in the payload; the
         # apply flag is still required for a write, and it does not reach one.
+        # The refused plan carries the totals and no items, so a run that is
+        # about to be refused does not read the tags off every resolved file.
         if survey.totals.majority_unmapped:
-            return _refused_plan(ctx, plan, majority_unmapped_cause(cfg, survey.totals))
+            empty = _plan_from(cfg, _Survey(survey.totals, ()))
+            return _refused_plan(ctx, empty, majority_unmapped_cause(cfg, survey.totals))
+        plan = _plan_from(cfg, survey)
         if not writing:
             return ctx.envelope(data=plan, outcome=Outcome.OK)
         with session.assert_gates(

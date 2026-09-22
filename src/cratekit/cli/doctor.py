@@ -461,12 +461,8 @@ def _survey_paths(cfg: config.Config) -> metadata_cli.ResolutionTotals | None:
     source = rb_writer.live_db_path(cfg)
     if not source.is_file():
         return None
-    with rb_writer.disposable_copy(source) as copied:
-        db = rb_writer.open_db(copied, check_app_version=False, cfg=cfg)
-        try:
-            return metadata_cli.resolution_totals(cfg, db)
-        finally:
-            rb_writer.close_db(db)
+    with rb_writer.read_only_copy(source, cfg=cfg) as db:
+        return metadata_cli.resolution_totals(cfg, db)
 
 
 def _probe_trash(path: Path) -> trash.TrashStatus:
@@ -528,7 +524,9 @@ class Probes:
     #: there is no database file to read. A seam so a test describes a library
     #: whose rows record a renamed drive without building one, and so the two
     #: synthetic machines can answer it opposite ways. The default copies the
-    #: database and opens the copy, and never the live path.
+    #: database and opens the copy, and never the live path. It is asked only
+    #: once the check has established that rekordbox is closed, through the
+    #: process seam above, so the copy it takes is whole.
     path_survey: Callable[[config.Config], metadata_cli.ResolutionTotals | None] = (
         _survey_paths
     )
@@ -1334,20 +1332,58 @@ def _check_paths_resolved(inputs: _Inputs) -> Finding:
     copy of the database, so a person is told before the plan rather than by
     reading a zero.
 
-    THREE ANSWERS, AND "COULD NOT LOOK" IS NOT ONE OF THE GOOD ONES. No file at
-    the configured path is INFO, because the volume is reported by its own
-    checks and a fresh library has nothing to resolve yet. A copy that would not
-    open is FAIL carrying the open's own cause and remedy, since an unanswered
-    question is not a pass. A majority of rows under no rule is FAIL under the
-    same slug the plan refuses with, so doctor exits under that code and the
-    two surfaces cannot disagree. A minority is INFO with the count, which is
-    the state the sitting was left in after the rule was typed by hand, 167 of
-    9937, and a person should see the number rather than an unqualified green.
+    THE ORDER OF THE QUESTIONS IS WHAT KEEPS THE COPY HONEST. Whether rekordbox
+    is running is asked FIRST, through the same seam ``rekordbox.closed``
+    answers with, because a copy taken under the live application is torn the
+    way a backup taken under it is: it opens, and is missing whatever was mid
+    write, and a torn copy's open failure would then be forwarded as a refusal
+    naming a snapshot restore against a library that is fine. Whether the
+    volume is there is asked SECOND, before anything at the configured path is
+    read, for the reason
+    the taxonomy check asks it: a leftover mount point holding a stale database
+    is the first of the three states ``core/preflight`` exists to tell apart,
+    and a survey over it is a report on a disk nobody is using. It is not gated
+    on ``required`` the way the trash check is, and the gate was written and
+    removed: the routing passes, the rebuild and the convergence report resolve
+    recorded paths and are core verbs on every profile, so the question is
+    required everywhere and a branch for "nobody asks it" was a branch nothing
+    could reach.
+
+    THEN THE ANSWERS, AND "COULD NOT LOOK" IS NOT ONE OF THE GOOD ONES. No file
+    at the configured path is INFO, because a fresh library has nothing to
+    resolve yet. A copy that would not open is FAIL carrying the open's own
+    cause and remedy, since an unanswered question is not a pass. A majority of
+    rows under no rule is FAIL under the same slug the plan refuses with, so
+    doctor exits under that code and the two surfaces cannot disagree. A
+    minority is INFO with the count, which is the state the sitting was left in
+    after the rule was typed by hand, 167 of 9937, and a person should see the
+    number rather than an unqualified green.
     """
     key, title = "library.paths_resolved", "recorded paths resolve on this machine"
     if inputs.cfg is None:
         return _unchecked(key, title)
     cfg = inputs.cfg
+    running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
+    if running:
+        # FAIL and not INFO, with the act that unblocks it. The condition is
+        # reported by rekordbox.closed as well, and this is not that report
+        # repeated: it says this question is unanswered until that one is
+        # fixed, which is a different sentence from "the application is open".
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"whether the collection's rows resolve could not be established: "
+                f"{', '.join(running)} running, and a copy of the database taken "
+                f"under a live application is incomplete, so none was taken. The "
+                f"answer is unknown rather than good"
+            ),
+            remedy=Remedy.QUIT_REKORDBOX,
+        )
+    unreadable = _library_state_unreadable(inputs, "the database")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
     try:
         totals = inputs.probes.path_survey(cfg)
     except CratekitError as exc:
@@ -1359,19 +1395,18 @@ def _check_paths_resolved(inputs: _Inputs) -> Finding:
             detail=(
                 f"whether the collection's rows resolve could not be established: "
                 f"a copy of the database could not be opened, {cause.message}. The "
-                f"answer is unknown rather than good"
+                f"answer is unknown rather than good, and the live file was not "
+                f"touched"
             ),
             remedy=cause.remediation.remedy,
             cause=cause,
         )
     if totals is None:
-        unreadable = _library_state_unreadable(inputs, "the database")
         return Finding(
             key=key,
             title=title,
             status=Status.INFO,
-            detail=unreadable
-            or (
+            detail=(
                 f"no database file at {cfg.library.db_path}, so no row was read and "
                 f"nothing was asserted about how the collection resolves"
             ),

@@ -1790,12 +1790,16 @@ QUALIFIED_MUTATIONS = frozenset(
         "rb_writer.assert_binding_version",
         "rb_writer.assert_schema_version",
         "rb_writer.default_protected_snapshot_paths",
-        # R-372's disposable copy of the database: it creates a private
-        # temporary directory, copies the file and its sidecars into it, and
-        # removes the directory afterwards. A report has no business making
-        # one, and a report that opened the copy would be reading through a
-        # writer, so it is named here rather than admitted.
+        # The disposable copy of the database from the residual finding "Setup
+        # wrote no location prefix rule for rekordbox's renamed drive, and the
+        # My Tags plan read clean over 9770 rows it could not resolve": it
+        # creates a private temporary directory, copies the file set into it,
+        # and removes the directory afterwards, and the read only handle over
+        # it opens that copy. A report has no business making one, and a
+        # report that read through the copy would be reading through a
+        # writer, so both are named here rather than admitted.
         "rb_writer.disposable_copy",
+        "rb_writer.read_only_copy",
         "rb_writer.integrity_ok",
         "rb_writer.live_db_path",
         "rb_writer.open_db",

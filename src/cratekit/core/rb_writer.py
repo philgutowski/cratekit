@@ -1225,7 +1225,18 @@ def snapshot_db(
     # inside a world-writable directory can be unlinked and replaced by any local
     # account whatever its own mode says (P1).
     config._mkdir_private(destination)
+    return _copy_file_set(source, destination)
 
+
+def _copy_file_set(source: Path, destination: Path) -> Path:
+    """Copy a database and everything it is incomplete without into ``destination``.
+
+    ONE LOOP FOR THE SNAPSHOT AND THE DISPOSABLE COPY. The sidecars are derived
+    from the state schema rather than listed (P4), and the playlist file rides
+    along because the binding saves it beside the database. A second copy of
+    this loop is where the next sidecar gets added to one and not the other,
+    and the copy that misses the log opens cleanly and is silently behind.
+    """
     copied = destination / source.name
     shutil.copy2(source, copied)
     for suffix in db_sidecar_suffixes():
@@ -1246,27 +1257,49 @@ def disposable_copy(source: Path | str) -> Iterator[Path]:
     file is protected by standing constraint, so doctor and the wizard, which
     only want to count rows and read two registry entries, copy the file first
     and open the copy. Nothing here opens ``source``: it is read as bytes by the
-    copy and never handed to the binding. The sidecars travel with it for the
-    reason ``snapshot_db`` copies them, a database in write ahead mode is
-    incomplete without its log, and a copy missing the log opens cleanly and is
-    silently behind.
+    copy and never handed to the binding. The file set travels whole, through
+    the same loop the snapshot uses, for the reason that loop gives.
 
     ``mkdtemp`` creates the directory at 0700 (P1). The directory is removed on
     the way out whether the body raised or returned, so a diagnostic that ran a
     hundred times leaves nothing behind.
+
+    THE CALLER ESTABLISHES THAT REKORDBOX IS CLOSED. A copy taken under the live
+    application is torn the way a backup taken under it is: it opens, and is
+    missing whatever was mid write. This function copies bytes and cannot know
+    who else holds them; ``read_only_copy`` below asks before it copies.
     """
     origin = Path(source)
     directory = Path(tempfile.mkdtemp(prefix="cratekit-copy-"))
     try:
-        copied = directory / origin.name
-        shutil.copy2(origin, copied)
-        for suffix in db_sidecar_suffixes():
-            sidecar = origin.with_name(origin.name + suffix)
-            if sidecar.exists():
-                shutil.copy2(sidecar, directory / sidecar.name)
-        yield copied
+        yield _copy_file_set(origin, directory)
     finally:
         shutil.rmtree(directory, ignore_errors=True)
+
+
+@contextmanager
+def read_only_copy(source: Path | str, *, cfg: config.Config | None = None) -> Iterator[Any]:
+    """An OPEN handle on a disposable copy of ``source``, closed and removed after.
+
+    The one call site of "copy, open the copy, close it, remove it", so the
+    guarantee that the live path is never handed to the binding lives here and
+    not in each diagnostic that wants a read. ``check_app_version=False`` for
+    the reason ``integrity_ok`` gives: a copy is a file, and whether an
+    application is installed says nothing about what its rows say. The binding
+    pin and the schema pin still apply on the way in.
+
+    REFUSES WHILE REKORDBOX OR ITS AGENT IS RUNNING, under the slug the writers
+    refuse with, because a copy taken under a live application is incomplete
+    and a reading off it is a reading of a database that does not exist. The
+    backup feature holds the same rule for the same reason.
+    """
+    assert_rekordbox_closed("copying the database for a read only look")
+    with disposable_copy(source) as copied:
+        db = open_db(copied, check_app_version=False, cfg=cfg)
+        try:
+            yield db
+        finally:
+            close_db(db)
 
 
 def recorded_db_drives(db: Any) -> tuple[str | None, str | None]:
