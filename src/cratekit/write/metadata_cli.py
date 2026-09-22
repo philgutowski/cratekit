@@ -23,9 +23,13 @@ from __future__ import annotations
 
 import json
 import math
+from collections import Counter
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from cratekit.cli import output
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import (
     analysis_store,
@@ -43,6 +47,16 @@ from cratekit.write import routing_pass, trees
 _ORIGIN = ("write", "metadata_cli")
 
 WORKFLOW = "mytags-vocals"
+
+#: The refusal the plan, the apply and doctor's ``library.paths_resolved`` share
+#: when most of the collection records a path no prefix rule maps (R-372).
+#: Registered in ``core.cause.REASONS``; the spelling here is the one every
+#: surface raises and every consumer branches on.
+PATHS_MAJORITY_UNRESOLVED = "library-paths-majority-unresolved"
+
+#: How many recorded prefixes the refusal names, so a person is shown "these
+#: 8554 rows record this prefix" rather than a wall of paths.
+_NAMED_PREFIXES = 3
 
 #: What this verb's write is filed under in a session record's change summary.
 #: The summary's key is a tree identifier everywhere else, and a My Tag category
@@ -180,18 +194,167 @@ def _prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:
     ]
 
 
-def _file_for(
-    row: trees.ContentRow, *, root: Path, prefix_map: list[locations.PrefixRule]
-) -> Path | None:
-    resolved = locations.resolve_recorded_path(
-        locations.location_to_path(row.recorded),
-        root=root,
-        prefix_map=prefix_map,
+@dataclass(frozen=True, slots=True)
+class ResolutionTotals:
+    """How the collection's active rows resolve on this machine (R-372).
+
+    ``unresolved`` is every row the plan could not read a file for, for any of
+    three reasons: no recorded path at all, which is a streaming row; a path
+    under no rule; or a mapped path whose file is gone. ``unmapped`` is the
+    middle one alone, the rows whose recorded path matched neither the library
+    root nor any ``library.location_prefix_map`` rule, and it is the count the
+    majority rule reads. THE OTHER TWO ARE NOT A PREFIX RULE'S TO FIX: a
+    streaming row has nothing a rule could rewrite, and a missing file is the
+    deletion pass's question. Reading the whole ``unresolved`` total as the
+    prefix map's failure would refuse a library of streaming rows with a step
+    that cannot help, and would refuse every fixture in this suite whose rows
+    carry no path. The sitting that found R-372 measured 9937 unmapped of 9937
+    unresolved, so on the library that paid for this the two readings agree.
+
+    ``prefixes`` groups the unmapped rows by their leading components, which is
+    what ``locations.leading_prefix`` exists for, so the refusal can name the
+    drive rather than the rows.
+    """
+
+    active: int
+    unresolved: int
+    unmapped: int
+    prefixes: Mapping[str, int] = field(default_factory=dict)
+
+    @property
+    def majority_unmapped(self) -> bool:
+        """More than half of the active rows record a path under no rule.
+
+        Strictly more than half, and never over an empty collection: zero rows
+        is a library with nothing to resolve, not a library that resolves
+        nothing.
+        """
+        return self.active > 0 and self.unmapped * 2 > self.active
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "active": self.active,
+            "unresolved": self.unresolved,
+            "unmapped": self.unmapped,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class _Survey:
+    """One walk of the collection: the totals and the rows that resolved to a file."""
+
+    totals: ResolutionTotals
+    resolved: tuple[tuple[trees.ContentRow, Path], ...]
+
+
+def _survey(cfg: config.Config, db: Any) -> _Survey:
+    """THE ONE WALK. The plan and doctor both read the collection through here.
+
+    Decoded and resolved by ``trees.located``, the one decode-then-resolve step,
+    rather than by a second pairing of the two calls; and counted once, in one
+    place, so the plan's totals and the doctor check's verdict cannot come from
+    two different readings of what a row is. A path is a file for the plan's
+    purposes only when it exists as one, which is the rule the plan always had.
+    """
+    root = Path(cfg.library.root)
+    prefix_map = _prefix_rules(cfg)
+    active = 0
+    unresolved = 0
+    unmapped = 0
+    prefixes: Counter[str] = Counter()
+    resolved: list[tuple[trees.ContentRow, Path]] = []
+    for row in routing_pass.content_rows(db):
+        if row.deleted:
+            continue
+        active += 1
+        _, outcome = trees.located(row.recorded, root=root, prefix_map=prefix_map)
+        if outcome.resolution is locations.Resolution.UNMAPPED:
+            unmapped += 1
+            prefixes[outcome.prefix or "?"] += 1
+        path = Path(outcome.path) if outcome.path is not None else None
+        if path is None or not path.is_file():
+            unresolved += 1
+            continue
+        resolved.append((row, path))
+    return _Survey(
+        ResolutionTotals(
+            active=active,
+            unresolved=unresolved,
+            unmapped=unmapped,
+            prefixes=dict(prefixes.most_common()),
+        ),
+        tuple(resolved),
     )
-    if resolved.path is None:
-        return None
-    path = Path(resolved.path)
-    return path if path.is_file() else None
+
+
+def resolution_totals(cfg: config.Config, db: Any) -> ResolutionTotals:
+    """How the collection resolves, for doctor's ``library.paths_resolved``."""
+    return _survey(cfg, db).totals
+
+
+def majority_unmapped_cause(cfg: config.Config, totals: ResolutionTotals) -> Cause:
+    """The refusal every surface raises when most rows record an unmapped path.
+
+    Built through ``refuse`` so the slug is checked against the registry and the
+    remedy is the reserved one. ``RUN_SETUP`` rather than ``RUN_DOCTOR``: doctor
+    now says the same thing, and sending a person from the plan to a check that
+    sends them back is a loop. Setup, run again with the database present, reads
+    rekordbox's own recorded drive names and offers the rule.
+    """
+    named = list(totals.prefixes.items())[:_NAMED_PREFIXES]
+    listed = ", ".join(f"{count} under {prefix}" for prefix, count in named)
+    more = len(totals.prefixes) - len(named)
+    if more > 0:
+        listed += f", and {more} other prefix{'es' if more > 1 else ''}"
+    current = [
+        {"from": source, "to": target} for source, target in cfg.resolved_prefix_map()
+    ]
+    return refuse(
+        PATHS_MAJORITY_UNRESOLVED,
+        (
+            f"{totals.unmapped} of {totals.active} active rows record a path "
+            f"under no library.location_prefix_map rule ({listed}), so this "
+            f"library cannot be read from here and nothing about its vocals can "
+            f"be reported or written until the rule exists"
+        ),
+        remedy=Remedy.RUN_SETUP,
+        steps=(
+            "run setup again with the database present; it reads the drive "
+            "rekordbox recorded the library under and where it is mounted today, "
+            "and offers the rule",
+            "or add library.location_prefix_map = [{ from = \"<recorded prefix>\", "
+            "to = \"<where it is mounted>\" }] to the configuration by hand, with "
+            "from equal to to when the folder is exactly where the rows say",
+        ),
+        origin=_ORIGIN,
+        detail={
+            **totals.as_dict(),
+            "prefixes": dict(totals.prefixes),
+            "prefix_map": current,
+        },
+    ).cause
+
+
+def _refused_plan(ctx, plan: dict[str, Any], cause: Cause) -> Envelope:
+    """The plan, whole, under a failed outcome that names why it may not be acted on.
+
+    The totals stay in ``data`` because they are the evidence: a person reading
+    the refusal should see the 9937 beside the 0 rather than an empty payload.
+    Built through ``output.build`` because the context's envelope helper takes no
+    cause, and a non success outcome without one is the envelope the validator
+    rejects. No warning is attached: a warning rides a success and this is not
+    one.
+    """
+    return output.build(
+        verb=ctx.entry.name,
+        run_id=ctx.run.run_id,
+        schema=ctx.entry.output_schema or output.current_schema("plan"),
+        started=ctx.started,
+        outcome=Outcome.FAILED,
+        code=cause.code,
+        data=plan,
+        cause=cause,
+    )
 
 
 def _open(cfg: config.Config, *, writing: bool) -> Any:
@@ -212,20 +375,14 @@ def _rollback_quietly(db: Any) -> None:
 
 def plan_mytags(cfg: config.Config, db: Any) -> dict[str, Any]:
     """The plan this verb shows: which existing rows would receive which values."""
+    return _plan_from(cfg, _survey(cfg, db))
+
+
+def _plan_from(cfg: config.Config, survey: _Survey) -> dict[str, Any]:
+    """The plan over one walk, so the verb can keep the walk's grouping beside it."""
     cut = vocal_cut(cfg)
-    root = Path(cfg.library.root)
-    prefix_map = _prefix_rules(cfg)
     items: list[dict[str, Any]] = []
-    active = 0
-    unresolved = 0
-    for row in routing_pass.content_rows(db):
-        if row.deleted:
-            continue
-        active += 1
-        path = _file_for(row, root=root, prefix_map=prefix_map)
-        if path is None:
-            unresolved += 1
-            continue
+    for row, path in survey.resolved:
         values = vocal_tag_values(
             tags.read_vox_from_file(path),
             tags.read_voxgender_from_file(path),
@@ -250,8 +407,7 @@ def plan_mytags(cfg: config.Config, db: Any) -> dict[str, Any]:
         "items": items,
         "totals": {
             "count": len(items),
-            "active": active,
-            "unresolved": unresolved,
+            **survey.totals.as_dict(),
             "cut": cut,
             "written": 0,
             "already": 0,
@@ -314,7 +470,18 @@ def mytags_vocals(ctx) -> Envelope:
     writing = bool(getattr(ctx.args, "apply", False))
     db = _open(cfg, writing=writing)
     try:
-        plan = plan_mytags(cfg, db)
+        # ONE WALK, kept beside the plan rather than read back out of it, so the
+        # refusal names the prefixes the walk grouped. The plan's totals carry
+        # the counts alone, which is all the payload surface declares.
+        survey = _survey(cfg, db)
+        plan = _plan_from(cfg, survey)
+        # A MAJORITY UNMAPPED REFUSES BEFORE THE APPLY FLAG IS READ (R-372). The
+        # first real plan reported ok over 9937 rows it had skipped, and an apply
+        # on it would have written nothing and reported success. Plan and apply
+        # refuse alike, under one slug, with the totals still in the payload; the
+        # apply flag is still required for a write, and it does not reach one.
+        if survey.totals.majority_unmapped:
+            return _refused_plan(ctx, plan, majority_unmapped_cause(cfg, survey.totals))
         if not writing:
             return ctx.envelope(data=plan, outcome=Outcome.OK)
         with session.assert_gates(

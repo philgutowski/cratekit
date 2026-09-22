@@ -61,6 +61,7 @@ import logging
 import os
 import shutil
 import sys
+import tempfile
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from enum import StrEnum
@@ -1235,6 +1236,70 @@ def snapshot_db(
     if playlist_xml.exists():
         shutil.copy2(playlist_xml, destination / MASTER_PLAYLIST_XML)
     return copied
+
+
+@contextmanager
+def disposable_copy(source: Path | str) -> Iterator[Path]:
+    """A throwaway copy of a database in a private temporary directory, then gone.
+
+    THE ONE WAY A READ ONLY DIAGNOSTIC MAY REACH THE DATABASE (R-372). The live
+    file is protected by standing constraint, so doctor and the wizard, which
+    only want to count rows and read two registry entries, copy the file first
+    and open the copy. Nothing here opens ``source``: it is read as bytes by the
+    copy and never handed to the binding. The sidecars travel with it for the
+    reason ``snapshot_db`` copies them, a database in write ahead mode is
+    incomplete without its log, and a copy missing the log opens cleanly and is
+    silently behind.
+
+    ``mkdtemp`` creates the directory at 0700 (P1). The directory is removed on
+    the way out whether the body raised or returned, so a diagnostic that ran a
+    hundred times leaves nothing behind.
+    """
+    origin = Path(source)
+    directory = Path(tempfile.mkdtemp(prefix="cratekit-copy-"))
+    try:
+        copied = directory / origin.name
+        shutil.copy2(origin, copied)
+        for suffix in db_sidecar_suffixes():
+            sidecar = origin.with_name(origin.name + suffix)
+            if sidecar.exists():
+                shutil.copy2(sidecar, directory / sidecar.name)
+        yield copied
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+def recorded_db_drives(db: Any) -> tuple[str | None, str | None]:
+    """rekordbox's own record of where this database was made and where it is now.
+
+    ``BaseDBDrive`` and ``CurrentDBDrive`` are two COLUMNS of the one row in
+    ``djmdProperty``, and they are rekordbox's renamed drive mechanism: nearly
+    every collection row keeps the path it was imported under, and the
+    application remaps the base drive to the current one at runtime. The source
+    system verified that on 2026-08-01 and carried the old name as a constant;
+    this product's answer is a ``library.location_prefix_map`` rule, and these
+    two names are what setup offers it from (R-372).
+
+    Blank and None come back as None so a caller has one absence to test. The
+    trailing separator rekordbox stores is stripped, because a prefix rule is
+    matched on a whole path component and ``/Volumes/NAME/`` would never match
+    ``/Volumes/NAME/Music/a.flac`` under that rule.
+    """
+    from sqlalchemy import text
+
+    row = db.session.execute(
+        text("SELECT BaseDBDrive, CurrentDBDrive FROM djmdProperty LIMIT 1")
+    ).first()
+    if row is None:
+        return None, None
+
+    def _clean(value: Any) -> str | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        stripped = value.strip().rstrip("/\\")
+        return stripped or value.strip()
+
+    return _clean(row[0]), _clean(row[1])
 
 
 def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = None) -> bool:

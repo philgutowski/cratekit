@@ -5049,7 +5049,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refusal enum, so like the three provenance slugs above it IS in the
     # reserved table, and the reserved half moves. Population 175 to 176,
     # non-reserved UNCHANGED at 148, reserved half 27 to 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (176, 148, 28)
+    #
+    # Re-pinned on the residual finding "Setup wrote no location prefix rule
+    # for rekordbox's renamed drive, and the My Tags plan read clean over 9770
+    # rows it could not resolve", 2026-09-22. ONE slug, named rather than
+    # counted: library-paths-majority-unresolved, which the My Tags plan, its apply and
+    # doctor's library.paths_resolved all refuse with when more than half of
+    # the collection's active rows record a path under no prefix rule, so a
+    # plan over a renamed drive is never reported ok with every row skipped.
+    # It is the verb's own, exactly as vocal-calibration-unreadable is, and not
+    # in the reserved table. Population 176 to 177, non-reserved 148 to 149,
+    # reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (177, 149, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5679,7 +5690,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # ` LIBRARY` suffix, and the reason `sync mark` leaves such a playlist out
     # of its plan, read through the enum and not respelled. Not a cause, since
     # nothing refuses with it, which is why both halves move by one.
-    assert (len(literals), len(literals - set(causes))) == (495, 320), (
+    # Re-pinned on the residual finding "Setup wrote no location prefix rule
+    # for rekordbox's renamed drive, and the My Tags plan read clean over 9770
+    # rows it could not resolve", 2026-09-22: 495 to 496 distinct, non-keys
+    # UNCHANGED at 320. The one that joined is
+    # library-paths-majority-unresolved, a KEY, named at the population pin
+    # above, spelled once in `write/metadata_cli.py` and read from there by the
+    # verb and by doctor. The doctor check key library.paths_resolved carries an
+    # underscore and a dot and does not enter this population.
+    assert (len(literals), len(literals - set(causes))) == (496, 320), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5765,7 +5784,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # favorites-placeholder and in-flight are the reasons a playlist was not
     # queued, declared in the file that uses them. It holds no in-range integer
     # and names no cause declared elsewhere, so THE WITHOUT-OWN HALF IS STILL 9.
-    assert (len(without), len(with_own), len(both)) == (9, 23, 13), (
+    #
+    # Re-pinned on the residual finding "Setup wrote no location prefix rule
+    # for rekordbox's renamed drive, and the My Tags plan read clean over 9770
+    # rows it could not resolve", 2026-09-22: without-own 9 to 10, with-own 23
+    # to 24, the integer half unchanged at 13. Named from this derivation's own
+    # output: `write/metadata_cli.py` joined, and it joined the without-own half
+    # for the searcher's reason above, the opposite of the shape this half
+    # watches for. It names its one slug once, as `PATHS_MAJORITY_UNRESOLVED`,
+    # resolving to the cause `cause.py` declares, and raises through
+    # `cause.refuse` with an explicit remedy, so the plan, the apply and the
+    # doctor check spell the slug from one place. It holds no in-range integer.
+    assert (len(without), len(with_own), len(both)) == (10, 24, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
