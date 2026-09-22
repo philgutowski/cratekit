@@ -4,7 +4,48 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-390 and R-391, issue #99, `relay/99`, 2026-09-22.**
+**Last merged: R-345, issue #103, `relay/103`, 2026-09-22.**
+A backup destination must name an rclone remote. `config.validate` refuses
+each of `backup.dest`, `backup.archive_root` and `backup.db_dest_root` that is
+set unless it is `remote:path` under rclone's own name rule since 1.61,
+letters and digits in any script, underscore, dot, plus, at sign, hyphen and
+space, not starting with a hyphen or a space and not ending with one. A single
+character before the colon is refused as a Windows drive letter whichever way
+the slash leans, an empty name is an on the fly backend and refused, and a
+value with no colon is the local path R-345 was written about. The three must
+name one remote, a spelled `backup.remote` must name it too, and `from_dict`
+derives `remote` from the destinations when the file does not spell it, one
+public rule, `config.derived_backup_remote`, that the wizard calls as well. An
+unset destination stays allowed whether the module is on or off, because the
+full preset turns backup on for everybody and doctor already reports the unset
+remote as INFO. **The wizard asks.** Three flags, `--backup-dest`,
+`--backup-archive-root` and `--backup-db-dest-root`, recorded first whatever
+the profile says; then, with the backup module on and a destination neither
+recorded nor given, the missing set is offered as one yes or no the way the
+pin is, so a scripted run on the full preset still asks nothing, and a yes
+asks each through `resolve`. The remote is derived into the document, never
+asked. Every answer goes through the same `validate` call, so a bare folder
+name typed at the prompt or given as a flag is refused under `config-unusable`
+with the key named and never reaches the file, driven both ways through the
+dispatcher. The modules table is filtered to known names before membership is
+read off the document, so a hand edit such as `bakcup = true` stays validate's
+named problem rather than an internal error; the built in review found that
+one and six more, all seven fixed in one round. Doctor's unset remote INFO
+names setup and the flags, and its FAIL no longer sends a person to a key the
+file may not carry. The end to end prefix map test answers the backup offer
+first. R-345 CLOSED in place. Filed R-657: no environment override reaches a
+backup destination, so the brief's P2 scenario is driven at the override seam
+rather than through a product override. Not on the board bar.
+Battery: ruff clean, **9972 passed** and 1 skipped in about 70 seconds. Scan
+clean. No test of this unit's is among the slowest ten.
+Mutation table `docs/mutation/r345.md`: **17 rows, the author's own, all
+killed**, no zero and no composite owed; two rows were refused on the first
+pass over a double escaped regex in the rows file and re-run with `--resume`.
+No `docs/solutions/` entry: the work taught nothing a future session would
+get wrong without it.
+**Main's highest residual number is R-657.**
+
+**The session before: R-390 and R-391, issue #99, `relay/99`, 2026-09-22.**
 `crate job resume` no longer re-arms work the job has already said cannot
 succeed. `jobs.retry` refuses a closed job whose cause carries `retryable`
 false, with the reserved `job-not-retryable` on PRECONDITION, steps rather
