@@ -5060,7 +5060,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # It is the verb's own, exactly as vocal-calibration-unreadable is, and not
     # in the reserved table. Population 176 to 177, non-reserved 148 to 149,
     # reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (177, 149, 28)
+    # Re-pinned on the unit that made the resume verb read retryable,
+    # 2026-09-22. TWO slugs, named rather than counted: job-not-retryable,
+    # which ``jobs.retry`` refuses with over a closed job whose cause says its
+    # failures are permanent, and mixed-permanent-failures, the job cause over
+    # permanent item failures that do not share one reason. Both are the
+    # engine's own, in cause.REASONS and not in the reserved table, as
+    # job-unknown and no-evidence beside them are. Population 177 to 179,
+    # non-reserved 149 to 151, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (179, 151, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5698,7 +5706,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # above, spelled once in `write/metadata_cli.py` and read from there by the
     # verb and by doctor. The doctor check key library.paths_resolved carries an
     # underscore and a dot and does not enter this population.
-    assert (len(literals), len(literals - set(causes))) == (496, 320), (
+    # Re-pinned on the unit that made the resume verb read retryable,
+    # 2026-09-22: 496 to 498 distinct, non-keys UNCHANGED at 320. The two that
+    # joined are both KEYS, named at the population pin above:
+    # job-not-retryable, spelled once at the refusal in `core/jobs.py`'s
+    # retry, and mixed-permanent-failures, spelled once in the same module's
+    # failure verdict. Neither is respelled anywhere else in `src/cratekit`.
+    assert (len(literals), len(literals - set(causes))) == (498, 320), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

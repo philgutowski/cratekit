@@ -685,6 +685,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "path-read-only": ExitCode.PRECONDITION,
         "path-locked": ExitCode.PRECONDITION,
         "no-evidence": ExitCode.INTERNAL,
+        # R-391. A failed job whose permanent item failures do not share one
+        # reason. Beside ``no-evidence`` because it is the same kind of thing, a
+        # job level verdict over items that each carry their own cause and their
+        # own code, and there is no honest single band for two of them. The
+        # cause names every reason and carries the sorted set in its detail, so
+        # the item causes are where a person reads the specific codes.
+        "mixed-permanent-failures": ExitCode.INTERNAL,
         "snapshot-integrity-failed": ExitCode.INTERNAL,
         "smoke-test-failed": ExitCode.INTERNAL,
         # ── Gates ───────────────────────────────────────────────────────────
@@ -805,6 +812,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # to one would be worse than saying the sentence.
         "job-unknown": ExitCode.PRECONDITION,
         "job-schema-mismatch": ExitCode.PRECONDITION,
+        # R-390. A resume of a job whose recorded cause says its failures are
+        # permanent. The same band and the same steps shape as its two
+        # neighbours: the queue's state is what refuses, and the fix is not a
+        # command this product can name, it is reading each item's cause and
+        # queueing the work again once the reason is addressed. Deliberately NOT
+        # ``job-unknown``, which means the job or the state is not one the queue
+        # knows, and this job is known exactly.
+        "job-not-retryable": ExitCode.PRECONDITION,
         # U11, the review queue. Six slugs on one code, and the code is right for
         # all six: none of them is the library refusing, none is upstream, and
         # none is a command line the parser could have rejected. What differs is

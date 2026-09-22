@@ -548,10 +548,159 @@ def test_a_partial_failure_whose_failures_are_permanent_is_not_resumable(queue, 
     states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
     assert states == {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.FAILED}
 
+    # R-390. ``retry`` used to re-arm the failed item anyway, and R-380 had only
+    # stopped the job from SAYING resume. The verdict now holds on the one path
+    # that could still perform one.
+    with pytest.raises(CratekitError) as excinfo:
+        jobs.retry(store, job.job_id)
+    refusal = excinfo.value.cause
+    assert refusal.reason == "job-not-retryable"
+    assert refusal.code is ExitCode.PRECONDITION
+    assert refusal.inner is not None
+    assert refusal.inner.reason == "sync-source-lookups-failed"
+    assert refusal.detail["reason"] == "sync-source-lookups-failed"
+    untouched = jobs.get(store, job.job_id)
+    assert untouched.state is jobs.JobState.FAILED
+    assert untouched.cause is not None
+    assert untouched.cause.reason == "sync-source-lookups-failed"
+    after = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
+    assert after == {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.FAILED}
+
+
+def test_a_failed_job_with_no_recorded_cause_still_re_arms(queue, cfg):
+    """R-390's edge: a missing verdict is not a permanent one.
+
+    A build before R-380 recorded FAILED with no cause on some paths, and a
+    person holding such a queue is owed the re-arm the verb always performed.
+    The refusal reads the flag off the cause and a job with none falls through.
+    """
+    store, _root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b"]
+    )
+    jobs.fail_item(
+        store,
+        job.job_id,
+        "a",
+        cause=Cause(
+            reason="internal-error",
+            message="this one broke",
+            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+            origin=("test",),
+        ),
+    )
+    jobs.transition(store, job.job_id, jobs.JobState.FAILED)
+    recorded = jobs.get(store, job.job_id)
+    assert recorded.state is jobs.JobState.FAILED
+    assert recorded.cause is None
+
     retried = jobs.retry(store, job.job_id)
     assert retried.state is jobs.JobState.QUEUED
     after = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
-    assert after == {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.PENDING}
+    assert after["a"] is jobs.ItemState.PENDING
+
+
+def test_resuming_a_job_of_permanent_failures_through_the_verb_refuses(
+    cfg, default_queue
+):
+    """R-390 at the shell. The verb relies on the engine's refusal, nothing else.
+
+    The refusal reaches the person in the foreground, before any child is
+    spawned, with the item's own reason nested inside it, and the items are left
+    exactly as the failure left them.
+    """
+    root = jobs.store_dir()
+    job = jobs.enqueue(
+        default_queue,
+        handler_key="job.resume",
+        payload={},
+        cfg=cfg,
+        item_ids=["good", "bad"],
+        job_id="job-permanent",
+    )
+
+    def sometimes(_job, item):
+        if item.item_id == "bad":
+            raise _permanent_lookup()
+        return None
+
+    jobs.drive(default_queue, job.job_id, sometimes, root=root)
+
+    code, envelope = _drive_cli(["job", "resume", "job-permanent"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "job-not-retryable"
+    assert envelope["cause"]["inner"]["reason"] == "sync-source-lookups-failed"
+    assert envelope["cause"]["remediation"]["remedy"] is None
+    assert envelope["cause"]["remediation"]["steps"]
+    states = {
+        item.item_id: item.state for item in jobs.items(default_queue, job.job_id)
+    }
+    assert states == {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.FAILED}
+    assert jobs.get(default_queue, job.job_id).state is jobs.JobState.FAILED
+
+
+def test_two_distinct_permanent_reasons_name_both_whichever_failed_last(queue, cfg):
+    """R-391. The job cause used to take ``failed[-1].reason`` over a mixed job.
+
+    A job that failed as both internal-error and sync-source-lookups-failed
+    named whichever the driver claimed last, so the other was invisible outside
+    the item rows. Driven in both item orders so the verdict is shown to depend
+    on the set of reasons and not on the sequence.
+    """
+    store, root = queue
+
+    def mixed_permanent(_job, item):
+        if item.item_id == "lookup":
+            raise _permanent_lookup()
+        raise RuntimeError("this one is broken")
+
+    causes = []
+    for order in (["lookup", "broken"], ["broken", "lookup"]):
+        job = jobs.enqueue(
+            store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=order
+        )
+        with pytest.raises(CratekitError):
+            jobs.drive(store, job.job_id, mixed_permanent, root=root)
+        recorded = jobs.get(store, job.job_id)
+        assert recorded.cause is not None
+        causes.append(recorded.cause)
+
+    for cause in causes:
+        assert cause.reason == "mixed-permanent-failures"
+        assert cause.retryable is False
+        assert cause.remediation.remedy is not Remedy.RESUME_JOB
+        assert "internal-error" in cause.message
+        assert "sync-source-lookups-failed" in cause.message
+        assert "2 permanent" in cause.message
+        # Built as the sorted tuple and read back off the row through JSON,
+        # which holds a sequence and not a tuple, so the shape is compared as
+        # a sequence and the ORDER is what is pinned.
+        assert tuple(cause.detail["permanent_reasons"]) == (
+            "internal-error",
+            "sync-source-lookups-failed",
+        )
+    assert causes[0].reason == causes[1].reason
+    assert causes[0].detail["permanent_reasons"] == causes[1].detail["permanent_reasons"]
+
+
+def test_one_shared_permanent_reason_is_still_the_jobs_reason(queue, cfg):
+    """R-391 does not move R-380's case: three items, one reason, that reason."""
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b", "c"]
+    )
+
+    def always_permanent(_job, _item):
+        raise _permanent_lookup()
+
+    with pytest.raises(CratekitError):
+        jobs.drive(store, job.job_id, always_permanent, root=root)
+    cause = jobs.get(store, job.job_id).cause
+    assert cause is not None
+    assert cause.reason == "sync-source-lookups-failed"
+    assert cause.retryable is False
+    assert "permanent_reasons" not in cause.detail
+    assert "mixed" not in cause.message
 
 
 def test_a_job_whose_failures_include_a_retryable_cause_stays_retryable(queue, cfg):
@@ -662,10 +811,18 @@ def test_the_signal_handler_is_restored_afterwards(queue):
 
 
 def test_a_cancelled_job_can_be_resumed_and_a_succeeded_one_cannot(queue, cfg):
-    """Cancelled is terminal AND retryable; succeeded is terminal and finished."""
+    """Cancelled is terminal AND retryable; succeeded is terminal and finished.
+
+    The cancelled half is also R-390's boundary: the refusal reads the cause's
+    ``retryable`` flag, and ``cancel`` writes a retryable cause, so a job a
+    person stopped with a signal still re-arms.
+    """
     store, root = queue
     job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"])
     jobs.cancel(store, job.job_id)
+    cancelled = jobs.get(store, job.job_id)
+    assert cancelled.cause is not None
+    assert cancelled.cause.retryable is True
     assert jobs.retry(store, job.job_id).state is jobs.JobState.QUEUED
 
     jobs.drive(store, job.job_id, lambda _j, _i: None, root=root)
