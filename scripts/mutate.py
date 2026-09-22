@@ -771,6 +771,12 @@ def installation_state_roots() -> tuple[Path, ...]:
 
     macOS answers both platformdirs calls with one directory, so the result is
     deduplicated and is not always two entries long.
+
+    These two are what the guard WATCHES. The sandbox in ``SANDBOXED_ENV`` points
+    a child away from more than these, HOME and the data root among them, and a
+    child reaching one of those, the real trash directory say, is not seen here.
+    The table says so in as many words rather than claiming the whole home was
+    guarded.
     """
     config_override = os.environ.get("CRATEKIT_CONFIG_DIR")
     state_override = os.environ.get("CRATEKIT_STATE_DIR")
@@ -782,30 +788,40 @@ def installation_state_roots() -> tuple[Path, ...]:
         if state_override
         else Path(platformdirs.user_state_dir(APP_NAME)),
     )
-    deduplicated: dict[Path, None] = {}
-    for root in roots:
-        deduplicated.setdefault(root, None)
-    return tuple(deduplicated)
+    return tuple(dict.fromkeys(roots))
+
+
+#: Files at or under this size are hashed by content as well as by stat. A
+#: configuration is a few hundred bytes and is the file whose overwrite this
+#: guard exists to catch, and a stat alone misses a same-size rewrite inside one
+#: timestamp tick on a filesystem with coarse timestamps. A job queue is
+#: megabytes and is left to its stat, because hashing it once per child to learn
+#: a fact ``st_mtime_ns`` already answers on this machine is time spent for
+#: nothing.
+SMALL_FILE_BYTES = 64 * 1024
 
 
 def state_fingerprint(root: Path) -> tuple[str, int]:
-    """Digest every file under ``root`` by path, size and mtime. Returns (digest, count).
+    """Digest everything under ``root``. Returns (digest, entry count).
 
-    Contents are never read. A write always moves ``st_mtime_ns``, and hashing a
-    multi-megabyte job queue once per child to learn the same fact is machine
-    time spent for nothing.
+    Every directory and file is an entry, by relative path. A file carries its
+    size, inode, mtime and ctime, and a small one carries a content hash too,
+    see ``SMALL_FILE_BYTES``. A directory is an entry in its own right, so a
+    child that creates an empty one inside the real root has reached the real
+    path and is seen, even on the pass where it writes no file into it.
 
     ``lstat``, not ``stat``: a symlink is fingerprinted as itself, so repointing
     one at a different target is a change rather than an invisible one.
 
-    Whether the root EXISTS is part of the digest. A child that creates the real
-    directory has reached the real path, which is the thing being guarded against,
-    even on the pass where it writes nothing into it.
+    Whether the root itself EXISTS is part of the digest, for the same reason a
+    directory inside it is.
     """
     entries: list[str] = [f"exists={root.is_dir()}"]
     for current, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames.sort()
         here = Path(current)
+        for name in dirnames:
+            entries.append(f"{(here / name).relative_to(root).as_posix()}\tdir")
         for name in sorted(filenames):
             path = here / name
             relative = path.relative_to(root).as_posix()
@@ -816,9 +832,18 @@ def state_fingerprint(root: Path) -> tuple[str, int]:
                 # would let a file that cannot be stat'd hide a change.
                 entries.append(f"{relative}\tunreadable")
                 continue
-            entries.append(f"{relative}\t{info.st_size}\t{info.st_mtime_ns}")
+            line = (
+                f"{relative}\t{info.st_size}\t{info.st_ino}"
+                f"\t{info.st_mtime_ns}\t{info.st_ctime_ns}"
+            )
+            if info.st_size <= SMALL_FILE_BYTES and not os.path.islink(path):
+                try:
+                    line += "\t" + hashlib.sha256(path.read_bytes()).hexdigest()
+                except OSError:
+                    line += "\tunreadable-content"
+            entries.append(line)
     digest = hashlib.sha256("\n".join(entries).encode("utf-8")).hexdigest()
-    # The existence marker is not a file, so it does not count as one.
+    # The existence marker is not an entry in the tree, so it is not counted.
     return digest, len(entries) - 1
 
 
@@ -832,7 +857,7 @@ class StateGuard:
 
     def describe(self) -> str:
         return "; ".join(
-            f"{root} ({count} file(s))"
+            f"{root} ({count} entries)"
             for root, count in zip(self.roots, self.counts, strict=True)
         )
 
@@ -849,18 +874,28 @@ def take_state_guard(roots: tuple[Path, ...] | None = None) -> StateGuard:
 
 
 def check_state_guard(guard: StateGuard, *, label: str) -> None:
-    """Raise ``StateLeak`` if the real installation state moved under a child."""
+    """Raise ``StateLeak`` if the real installation state moved under a child.
+
+    The comparison is against the batch's starting fingerprint, and the driver
+    cannot tell a child's write from a concurrent one: a ``crate`` run in another
+    terminal writes a run record into the same directory and trips this exactly
+    as a leak would. The batch still stops, because either way the machine is
+    no longer the one the batch started on, but the message says which of the
+    two it could not tell rather than accusing the row outright.
+    """
     for root, before, counted in zip(guard.roots, guard.digests, guard.counts, strict=True):
         now, count_now = state_fingerprint(root)
         if now == before:
             continue
         raise StateLeak(
             f"the real installation state changed while running {label}. "
-            f"{root} held {counted} file(s) before this child and holds "
-            f"{count_now} now. A child of this driver reached the real machine, "
-            "which is R-343. The batch is stopped and nothing after this point "
-            "was measured. Read that directory before rerunning: on 2026-09-20 "
-            "this shape overwrote a real configuration with a fixture one."
+            f"{root} held {counted} entries before this child and holds "
+            f"{count_now} now. Either a child of this driver reached the real "
+            "machine, which is R-343 and on 2026-09-20 overwrote a real "
+            "configuration with a fixture one, or something else wrote there "
+            "while the child ran, and the driver cannot tell which. The batch is "
+            "stopped and nothing after this point was measured. Read that "
+            "directory before rerunning, and rerun with nothing else using it."
         )
 
 
@@ -914,20 +949,27 @@ def run_pytest(
         ]
         command += paths or []
 
-        done = subprocess.run(
-            command,
-            cwd=repo_root,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout,
-        )
-        # Before anything is read off this run. A leak outranks a missing report:
-        # the report says what was measured, and this says whether the machine
-        # the measurement ran on is still the one it started on.
-        if guard is not None:
-            check_state_guard(guard, label=label)
+        try:
+            done = subprocess.run(
+                command,
+                cwd=repo_root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout,
+            )
+        finally:
+            # In a finally, so a child that leaks and then hangs past the
+            # timeout is still checked: TimeoutExpired would otherwise leave
+            # here first, the row loop would file it as an ordinary error row,
+            # and the NEXT row's child would be the one blamed. A leak raised
+            # from here outranks the timeout it interrupts, on purpose. It also
+            # outranks a missing report: the report says what was measured, and
+            # this says whether the machine it was measured on is still the one
+            # the batch started on.
+            if guard is not None:
+                check_state_guard(guard, label=label)
         if not report_path.is_file():
             raise MeasurementFailure(
                 "pytest produced no report file, so nothing was measured. "
@@ -1109,6 +1151,7 @@ class Batch:
     dropped: list[Dropped]
     pytest_runs: int
     state_guarded: str = ""
+    reused_rows: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -1123,6 +1166,7 @@ class Batch:
             "baseline_exit": self.baseline_exit,
             "pytest_runs": self.pytest_runs,
             "state_guarded": self.state_guarded,
+            "reused_rows": self.reused_rows,
             "control": self.control.to_dict() if self.control else None,
             "rows": [one.to_dict() for one in self.results],
             "dropped": [one.__dict__ for one in self.dropped],
@@ -1280,6 +1324,7 @@ def measure_batch(
         cached = reused.get(row.fingerprint())
         if cached is not None and cached.get("id") == row.id:
             results.append(RowResult(**cached))
+            header["reused_rows"] = header.get("reused_rows", 0) + 1
             continue
         baseline = subset_baselines[tuple(subset)] if subset is not None else full_baseline
         try:
@@ -1411,13 +1456,21 @@ def render_markdown(batch: Batch) -> str:
     )
     add("")
     if batch.state_guarded:
+        reused = (
+            f" {batch.reused_rows} row(s) were reused from a prior sidecar and were "
+            "measured by an earlier process, whose children this run did not watch."
+            if batch.reused_rows
+            else ""
+        )
         add(
-            "Installation state: guarded and unchanged. Fingerprinted before the "
-            f"first child and after every one of them: {batch.state_guarded}. A "
-            "change would have stopped the batch at the row that caused it. Every "
-            "child ran with its own throwaway installation state, so a test that "
-            "undoes the suite's isolation lands there rather than on this machine "
-            "(R-343)."
+            "Installation state: the watched roots are unchanged. Fingerprinted "
+            "before the first child this run started and after every one of "
+            f"them: {batch.state_guarded}. A change would have stopped the batch "
+            "at the child that was running. Every child ran with its own throwaway "
+            "installation state, so a test that undoes the suite's isolation "
+            "lands there rather than on this machine (R-343). Only those roots "
+            "are watched; the sandbox also redirects HOME and the data root, and "
+            f"a child reaching one of those is not seen by this guard.{reused}"
         )
         add("")
 
