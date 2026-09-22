@@ -833,11 +833,22 @@ def test_unplaced_declares_no_write_and_needs_only_what_a_read_needs():
 
     U91 added ``xml`` and nothing else: ``--export`` writes a new file beside an
     export, and no database surface is written on either path.
+
+    The prefix map check joined for the residual finding "Setup wrote no
+    location prefix rule for rekordbox's renamed drive, and the My Tags plan
+    read clean over 9770 rows it could not resolve": the report resolves every
+    recorded path through the map, and a report over a library most of whose
+    rows it cannot resolve is the clean report over unread state that finding
+    names. Still nothing about closing rekordbox.
     """
     entry = registry.entry("route.unplaced")
     assert entry.writes == frozenset({"xml"}), entry.writes
     assert entry.destructive is False
-    assert entry.doctor_checks == ("library.mounted", "rekordbox.pins"), entry.doctor_checks
+    assert entry.doctor_checks == (
+        "library.mounted",
+        "rekordbox.pins",
+        "library.paths_resolved",
+    ), entry.doctor_checks
     assert entry.gates == (), [spec.name for spec in entry.gates]
 
 

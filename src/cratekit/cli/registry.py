@@ -799,7 +799,10 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(12,),
         emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        doctor_checks=("library.mounted",),
+        doctor_checks=(
+            "library.mounted",
+            "library.paths_resolved",
+        ),
     ),
     Entry(
         name="rebuild",
@@ -814,7 +817,12 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="job_state/1",
         writes=frozenset({"db_tree"}),
         destructive=True,
-        doctor_checks=("library.mounted", "library.identity", "rekordbox.closed"),
+        doctor_checks=(
+            "library.mounted",
+            "library.identity",
+            "rekordbox.closed",
+            "library.paths_resolved",
+        ),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
     ),
     # ── Jobs ────────────────────────────────────────────────────────────────
@@ -1126,7 +1134,11 @@ ENTRIES: tuple[Entry, ...] = (
         #: ``write/metadata.plan_title_padding``, which no verb calls (R-165).
         writes=frozenset({"files"}),
         destructive=True,
-        doctor_checks=("library.mounted", "rekordbox.pins"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="name.apply.confirm",
@@ -1242,7 +1254,12 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"db_tree", "xml"}),
         destructive=True,
         taxonomy_terms=("inbox", "genre_energy"),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="route.inbox.apply",
@@ -1278,7 +1295,11 @@ ENTRIES: tuple[Entry, ...] = (
         # included, so a drifted binding refuses the report as well.
         writes=frozenset({"xml"}),
         taxonomy_terms=("genre_energy",),
-        doctor_checks=("library.mounted", "rekordbox.pins"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
     ),
     Entry(
         name="route.resort",
@@ -1296,7 +1317,12 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"db_tree"}),
         destructive=True,
         taxonomy_terms=("genre_energy", "low", "med", "high"),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
     ),
     Entry(
@@ -1453,7 +1479,15 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"db_metadata"}),
         destructive=True,
         taxonomy_terms=("with_vox",),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            # R-372: a plan over a collection most of whose rows record a path
+            # no prefix rule maps would tag nothing and report ok. The check
+            # reads the same ratio the verb refuses on.
+            "library.paths_resolved",
+        ),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         #: This verb writes My Tags rather than content columns, so U21's per-field
         #: policy does not govern it at all. It is the vocal module's own surface
@@ -1646,7 +1680,10 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
         taxonomy_terms=("genre_energy",),
-        doctor_checks=("library.mounted",),
+        doctor_checks=(
+            "library.mounted",
+            "library.paths_resolved",
+        ),
     ),
     Entry(
         name="adopt.apply",
@@ -1662,7 +1699,12 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="job_state/1",
         writes=frozenset({"db_tree", "db_metadata"}),
         destructive=True,
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="adopt.apply.approve",
@@ -1726,6 +1768,7 @@ ENTRIES: tuple[Entry, ...] = (
             "library.identity",
             "library.trash",
             "rekordbox.closed",
+            "library.paths_resolved",
         ),
         gates=(
             GateSpec(
@@ -1938,7 +1981,12 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="plan/1",
         writes=frozenset({"db_tree"}),
         destructive=True,
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
     ),
     # ── Landing (U72) ───────────────────────────────────────────────────────

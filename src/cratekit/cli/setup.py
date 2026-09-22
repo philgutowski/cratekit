@@ -915,6 +915,197 @@ def _propose_pin(wizard: _Wizard, document: dict[str, Any], cfg: config.Config) 
     return True
 
 
+def _propose_prefix_map(wizard: _Wizard, document: dict[str, Any], cfg: config.Config) -> bool:
+    """Read rekordbox's recorded drive names off a COPY and OFFER the rule (R-372).
+
+    ``LibraryConfig.location_prefix_map`` has always said "populated at setup
+    from what the database actually contains", and setup wrote it empty. The
+    consequence was measured on the first real My Tags plan: 9937 active rows,
+    9937 skipped, outcome ok. rekordbox keeps nearly every row under the drive
+    name it was imported with and remaps it at runtime through two columns of
+    its ``djmdProperty`` row, ``BaseDBDrive`` and ``CurrentDBDrive``, so those
+    two names are the rule, and this reads them.
+
+    THE LIVE DATABASE IS NEVER OPENED, not even read only. The file is copied
+    into a private temporary directory and the copy is opened, then discarded.
+
+    WHAT THE RULE IS, READ AGAINST THE CONFIGURED ROOT AND NOT ONLY AGAINST THE
+    OTHER COLUMN. ``from`` is the base drive, the spelling the rows carry.
+    ``to`` is the current drive when rekordbox has recorded a different one, and
+    the library root otherwise, which is the machine where the drive was
+    renamed and rekordbox has not been opened since, so both columns still say
+    the old name while the person has configured the new one. A root that
+    already sits under the base drive needs no rule at all, whatever the other
+    column says, because the rows are under the root the product reads. And a
+    ``to`` that is the root itself is written as the ``{library.root}`` token
+    the configuration layer defines for exactly this, so the rule survives a
+    remount or a relocation without a rewrite.
+
+    FIVE WAYS TO OFFER NOTHING, each its own note. A map already recorded is
+    kept, because a re-run changes nothing it was not asked to change. No file
+    at the configured path skips the offer, since there is nothing to read and
+    doctor reports whether rows resolve once there is. rekordbox running skips
+    it too, because a copy taken under the live application is incomplete, and
+    doctor reports the application at the end of this verb. A copy that will
+    not open, or a file that could not be copied, is a note and not a refusal,
+    for the reason ``_seed_taxonomy`` gives: this runs before the save and a
+    person can still finish setup, and the same open is reported by doctor at
+    the end of this verb under its own cause. A root already under the recorded
+    drive needs no rule, and saying so is what stops a person from adding one
+    by hand.
+
+    OFFERED, NEVER ADOPTED, exactly as the pin above is: the answer is a
+    deliberate yes. The rule carries no volume identity, which is correct when
+    the target is the library volume, and the case this was found on.
+    """
+    recorded = _get(document, "library.location_prefix_map")
+    if isinstance(recorded, list) and recorded:
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            f"library.location_prefix_map already records {len(recorded)} rule"
+            f"{'s' if len(recorded) != 1 else ''}; left alone",
+        )
+        return False
+    source = Path(cfg.library.db_path)
+    try:
+        present = source.is_file()
+    except OSError as exc:
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            (
+                f"{source} could not be examined ({exc}), so no drive rule was "
+                f"read from it and none was offered; doctor reports whether the "
+                f"collection's rows resolve"
+            ),
+            error=exc,
+        )
+        return False
+    if not present:
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            (
+                f"no database file at {source}, so no drive rule was read and none "
+                f"was offered; run setup again once the database is there, and "
+                f"doctor reports whether the collection's rows resolve"
+            ),
+        )
+        return False
+    running = rb_writer.rekordbox_processes_running()
+    if running:
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            (
+                f"{running} running, and a copy of the database taken under a live "
+                f"application is incomplete, so none was taken and no drive rule "
+                f"was offered; quit it and run setup again"
+            ),
+        )
+        return False
+    try:
+        with rb_writer.read_only_copy(source, cfg=cfg) as db:
+            base, current = rb_writer.recorded_db_drives(db)
+    except CratekitError as exc:
+        cause = exc.cause
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            (
+                f"the database could not be read from a copy, {cause.message}, so "
+                f"no drive rule was read and none was offered; doctor reports the "
+                f"condition under its own cause and whether the collection's rows "
+                f"resolve"
+            ),
+            error=exc,
+        )
+        return False
+    except OSError as exc:
+        # THE COPY ITSELF, not the open. A file this account can stat and not
+        # read, or a temporary directory with no room, raises here rather than
+        # through the binding, and it must not abort a verb whose answers are
+        # not yet on disk. Same act as the neighbouring notes: say what was
+        # not read, and leave the verdict to doctor.
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            (
+                f"{source} could not be copied for a read only look ({exc}), so no "
+                f"drive rule was read and none was offered; doctor reports whether "
+                f"the collection's rows resolve."
+            )
+            + _act(exc, "Nothing was written and the live database was not opened"),
+            error=exc,
+        )
+        return False
+    root = str(cfg.library.root).rstrip("/") or str(cfg.library.root)
+    if base is None:
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            (
+                f"the database records no drive it was made on (current drive "
+                f"{current or 'not recorded'}), so no rule can be read from it"
+            ),
+        )
+        return False
+    if root == base or root.startswith(base + "/"):
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            (
+                f"the database records its rows under {base} and the configured "
+                f"library root {root} sits under it, so no prefix rule is needed"
+            ),
+        )
+        return False
+    # The target: what rekordbox says the drive is today when it says something
+    # different from the base, and the configured root otherwise, which is the
+    # renamed drive rekordbox has not yet been opened on. Spelled as the token
+    # when it IS the root, so the rule follows the root wherever it goes.
+    target = current if current is not None and current != base else root
+    spelled = config.LIBRARY_ROOT_TOKEN if target == root else target
+    if not wizard.optional(
+        f"rekordbox records this library's paths under {base}, and the library is "
+        f"at {target} today. Record the rule mapping {base} to {spelled} in "
+        f"library.location_prefix_map?"
+    ):
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            (
+                f"the rule mapping {base} to {spelled} was offered and NOT recorded. "
+                f"Every row rekordbox recorded under {base} stays unresolved until "
+                f"it is, and the My Tags plan and doctor refuse over a majority of "
+                f"them"
+            ),
+        )
+        return False
+    _put(document, "library.location_prefix_map", [{"from": base, "to": spelled}])
+    wizard.asked.append("library.location_prefix_map (answered)")
+    wizard.note(
+        "setup.prefix_map",
+        "location prefix map",
+        doctor.Status.OK,
+        (
+            f"rule recorded by an explicit answer: paths under {base} resolve under "
+            f"{spelled}, read from the database's own BaseDBDrive and CurrentDBDrive"
+        ),
+    )
+    return True
+
+
 def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
     """Offer to record each credential this profile's verbs will spend.
 
@@ -1128,6 +1319,9 @@ def setup(ctx: "Context") -> Envelope:
     # twice would leave a window in which a config exists with the pin missing
     # and a reader could act on it.
     _propose_pin(wizard, document, cfg)
+    # The drive rule is offered through the same document for the same reason,
+    # so the file is still saved once (R-372).
+    _propose_prefix_map(wizard, document, cfg)
     # READ, ASK, WRITE, AND THE WRITE RE-DECIDES UNDER THE LOCK. Everything above
     # ran unlocked, because a lock held across a question blocks every other
     # command on somebody typing. So another command may have written since the

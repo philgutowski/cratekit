@@ -1,0 +1,462 @@
+{
+  "name": "r372-b",
+  "pass_kind": "light",
+  "branch": "relay/98",
+  "head": "14c6385",
+  "when": "2026-09-22 17:06 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9924,
+  "baseline_exit": 0,
+  "pytest_runs": 17,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/cli/doctor.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/cli/doctor.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "01abc9569d9d9fbf",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9924,
+    "baseline_collected": 9924,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_doctor_majority_is_info",
+      "description": "_check_paths_resolved: a majority is a note, so doctor stays green over it",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "98ba3d3dcb940c29",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_doctor_fails_paths_resolved_over_a_majority_off_a_copy",
+        "tests/test_paths_resolved.py::test_the_two_synthetic_machines_answer_the_check_opposite_ways"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if totals.majority_unmapped:\n        cause = metadata_cli.majority_unmapped_cause(cfg, totals)\n        return Finding(\n            key=key,\n            title=title,\n            status=Status.FAIL,",
+      "new": "    if totals.majority_unmapped:\n        cause = metadata_cli.majority_unmapped_cause(cfg, totals)\n        return Finding(\n            key=key,\n            title=title,\n            status=Status.INFO,"
+    },
+    {
+      "id": "B2_doctor_minority_fails",
+      "description": "_check_paths_resolved: a minority refuses, the sitting's own state after the hand edit",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f304fbf9ffaa6cb3",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_doctor_reports_a_minority_as_a_note_and_a_clean_collection_as_ok"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if totals.unmapped:\n        return Finding(\n            key=key,\n            title=title,\n            status=Status.INFO,",
+      "new": "    if totals.unmapped:\n        return Finding(\n            key=key,\n            title=title,\n            status=Status.FAIL,"
+    },
+    {
+      "id": "B3_doctor_copies_under_a_running_application",
+      "description": "_check_paths_resolved: skip the process question and copy anyway",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "92c44a2cb8e1175f",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_doctor_takes_no_copy_while_rekordbox_is_running",
+        "tests/test_paths_resolved.py::test_the_two_synthetic_machines_answer_the_check_opposite_ways"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)\n    if running:",
+      "new": "    running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)\n    if False:"
+    },
+    {
+      "id": "B4_doctor_reads_before_the_volume_checks",
+      "description": "_check_paths_resolved: survey a database on a volume the mount checks could not recognise",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3965270afaf26cc6",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_doctor_defers_to_the_volume_checks_before_reading_anything"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    unreadable = _library_state_unreadable(inputs, \"the database\")\n    if unreadable is not None:",
+      "new": "    unreadable = _library_state_unreadable(inputs, \"the database\")\n    if False:"
+    },
+    {
+      "id": "B5_doctor_opens_the_live_path",
+      "description": "_survey_paths: open the configured database itself rather than a copy",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b75ac3cccb1d2e92",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_doctor_fails_paths_resolved_over_a_majority_off_a_copy",
+        "tests/test_paths_resolved.py::test_doctor_reports_a_copy_it_could_not_open_as_unknown_rather_than_good",
+        "tests/test_paths_resolved.py::test_doctor_reports_a_minority_as_a_note_and_a_clean_collection_as_ok",
+        "tests/test_paths_resolved.py::test_setup_end_to_end_writes_the_rule_and_ends_on_a_doctor_that_reads_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    with rb_writer.read_only_copy(source, cfg=cfg) as db:\n        return metadata_cli.resolution_totals(cfg, db)",
+      "new": "    db = rb_writer.open_db(source, check_app_version=False, cfg=cfg)\n    try:\n        return metadata_cli.resolution_totals(cfg, db)\n    finally:\n        rb_writer.close_db(db)"
+    },
+    {
+      "id": "B6_setup_overwrites_a_recorded_map",
+      "description": "_propose_prefix_map: offer over a map already recorded, so a re-run replaces it",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ea95f3e79a2a7b0c",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_setup_leaves_a_recorded_map_alone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if isinstance(recorded, list) and recorded:",
+      "new": "    if False:"
+    },
+    {
+      "id": "B7_setup_copies_under_a_running_application",
+      "description": "_propose_prefix_map: skip the process question, leaving the copy's own guard to refuse",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "07dbc05dc0dcec1a",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_setup_skips_the_offer_while_rekordbox_is_running"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    running = rb_writer.rekordbox_processes_running()\n    if running:",
+      "new": "    running = rb_writer.rekordbox_processes_running()\n    if False:"
+    },
+    {
+      "id": "B8_setup_aborts_on_a_copy_it_could_not_make",
+      "description": "_propose_prefix_map: let an OSError from the copy escape the verb before the save",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "afeed5e840f26881",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_setup_notes_a_file_it_could_not_copy_rather_than_aborting"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except OSError as exc:\n        # THE COPY ITSELF, not the open.",
+      "new": "    except ZeroDivisionError as exc:\n        # THE COPY ITSELF, not the open."
+    },
+    {
+      "id": "B9_setup_offers_a_rule_the_root_does_not_need",
+      "description": "_propose_prefix_map: offer a rule for a root already under the recorded drive",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "79472ac0fb70af31",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_setup_offers_nothing_when_the_root_sits_under_the_recorded_drive",
+        "tests/test_paths_resolved.py::test_setup_offers_nothing_when_the_two_drive_names_agree"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if root == base or root.startswith(base + \"/\"):",
+      "new": "    if False:"
+    },
+    {
+      "id": "B10_setup_records_a_literal_root",
+      "description": "_propose_prefix_map: write the root as a literal path rather than the token",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "42ff37427dc5dc1b",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_setup_end_to_end_writes_the_rule_and_ends_on_a_doctor_that_reads_it",
+        "tests/test_paths_resolved.py::test_setup_offers_the_root_when_rekordbox_still_records_the_old_name_twice",
+        "tests/test_paths_resolved.py::test_setup_offers_the_rule_from_the_databases_own_drive_names_off_a_copy"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    spelled = config.LIBRARY_ROOT_TOKEN if target == root else target",
+      "new": "    spelled = target"
+    },
+    {
+      "id": "B11_setup_records_without_asking",
+      "description": "_propose_prefix_map: adopt the rule, the pin's S2 failure one key over",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a7a03ace68935234",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_setup_records_nothing_when_the_offer_goes_unanswered"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not wizard.optional(\n        f\"rekordbox records this library's paths under {base}, and the library is \"",
+      "new": "    if False and not wizard.optional(\n        f\"rekordbox records this library's paths under {base}, and the library is \""
+    },
+    {
+      "id": "B12_verb_does_not_declare_the_check",
+      "description": "registry: the My Tags verb stops declaring library.paths_resolved",
+      "file": "src/cratekit/cli/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "39f3f45e4d764024",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 970,
+      "baseline_collected": 970,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_the_verb_declares_the_check_and_the_slug_is_registered"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            # reads the same ratio the verb refuses on.\n            \"library.paths_resolved\",",
+      "new": "            # reads the same ratio the verb refuses on."
+    },
+    {
+      "id": "B13_setup_copies_with_both_layers_gone",
+      "description": "composite for B7: the wizard skips the process question AND the copy drops its own assertion",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e3924396592c8ea0",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 364,
+      "baseline_collected": 364,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_setup_skips_the_offer_while_rekordbox_is_running"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    running = rb_writer.rekordbox_processes_running()\n    if running:",
+      "new": "    running = rb_writer.rekordbox_processes_running()\n    rb_writer.assert_rekordbox_closed = lambda what: None\n    if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B14_message_wording",
+      "description": "majority_unmapped_cause: reword the sentence",
+      "reason": "no test asserts the sentence beyond the counts and prefixes A7 and the plan test already pin"
+    },
+    {
+      "id": "B15_other_declarations",
+      "description": "registry: drop the check from one of the ten other entries that declare it",
+      "reason": "one declaration is measured in B12 and the unplaced report's is pinned by its own test; the rest are the same guard family"
+    }
+  ]
+}

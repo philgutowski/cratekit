@@ -1538,6 +1538,17 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # files everything, so neither is written. PRECONDITION rather than
         # USAGE, because the parser accepted a number.
         "vocal-cut-out-of-range": ExitCode.PRECONDITION,
+        # R-372. More than half of the collection's active rows record a path
+        # that matches neither the library root nor any rule in
+        # library.location_prefix_map, which is the shape rekordbox leaves
+        # after a drive is renamed and setup wrote no rule. The My Tags plan
+        # used to report ok over such a library with every row skipped, and an
+        # apply would have written nothing and reported success. The plan, the
+        # apply and doctor's library.paths_resolved all refuse under this one
+        # slug. PRECONDITION because the remedy is a configuration act, running
+        # setup again with the database present, which offers the rule from
+        # rekordbox's own recorded drive names.
+        "library-paths-majority-unresolved": ExitCode.PRECONDITION,
         # An analysed track could not be finalized: its tag write returned
         # false or its rename could not claim the target. The item FAILS rather
         # than reporting done, because an analysis whose values never reached

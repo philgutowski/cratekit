@@ -1,0 +1,123 @@
+name = "r372-a"
+pass_kind = "light"
+
+# The rule and its refusal, in write/metadata_cli.py and core/cause.py. Subset
+# per row: the unit's own file, the My Tags suite, and the doctor suite.
+
+[[rows]]
+id = "A1_majority_boundary"
+description = "majority_unmapped: half is a majority, so 5 of 10 refuses"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        return self.active > 0 and self.unmapped * 2 > self.active'''
+new = '''        return self.active > 0 and self.unmapped * 2 >= self.active'''
+
+[[rows]]
+id = "A2_majority_coefficient"
+description = "majority_unmapped: two thirds rather than half, so 6 of 10 is not a majority"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        return self.active > 0 and self.unmapped * 2 > self.active'''
+new = '''        return self.active > 0 and self.unmapped * 3 > self.active'''
+
+[[rows]]
+id = "A3_pathless_rows_count_as_unmapped"
+description = "_survey: count every row that did not resolve as unmapped, streaming rows included"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        if outcome.resolution is locations.Resolution.UNMAPPED:'''
+new = '''        if outcome.path is None:'''
+
+[[rows]]
+id = "A4_verb_never_refuses"
+description = "mytags_vocals: drop the majority refusal, so the plan reports ok over a majority"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        if survey.totals.majority_unmapped:
+            empty = _plan_from(cfg, _Survey(survey.totals, ()))'''
+new = '''        if False:
+            empty = _plan_from(cfg, _Survey(survey.totals, ()))'''
+
+[[rows]]
+id = "A5_apply_proceeds"
+description = "mytags_vocals: refuse the plan alone and let the apply through"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        if survey.totals.majority_unmapped:
+            empty = _plan_from(cfg, _Survey(survey.totals, ()))'''
+new = '''        if survey.totals.majority_unmapped and not writing:
+            empty = _plan_from(cfg, _Survey(survey.totals, ()))'''
+
+[[rows]]
+id = "A6_decode_error_escapes"
+description = "_survey: let a location that will not decode raise through the plan and the check"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        except locations.LocationDecodeError:'''
+new = '''        except ZeroDivisionError:'''
+
+[[rows]]
+id = "A7_remedy_run_doctor"
+description = "majority_unmapped_cause: send the person to doctor, which sends them back"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        remedy=Remedy.RUN_SETUP,
+        steps=('''
+new = '''        remedy=Remedy.RUN_DOCTOR,
+        steps=('''
+
+[[rows]]
+id = "A8_refused_plan_reports_ok"
+description = "_refused_plan: outcome ok beside a cause, the envelope the validator rejects"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        outcome=Outcome.FAILED,
+        code=cause.code,
+        data=plan,'''
+new = '''        outcome=Outcome.OK,
+        code=cause.code,
+        data=plan,'''
+
+[[rows]]
+id = "A9_slug_code"
+description = "REASONS: the slug exits under library-unreadable rather than precondition"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        "library-paths-majority-unresolved": ExitCode.PRECONDITION,'''
+new = '''        "library-paths-majority-unresolved": ExitCode.LIBRARY_UNREADABLE,'''
+
+[[rows]]
+id = "A10_copy_left_behind"
+description = "disposable_copy: leave the temporary directory and the copy in it"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        shutil.rmtree(directory, ignore_errors=True)'''
+new = '''        pass'''
+
+[[rows]]
+id = "A11_copy_under_a_running_application"
+description = "read_only_copy: drop its own closed assertion, the layer beneath doctor and setup"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    assert_rekordbox_closed("copying the database for a read only look")'''
+new = '''    pass'''
+
+[[rows]]
+id = "A12_separator_kept"
+description = "recorded_db_drives: keep the trailing separator rekordbox stores, so the rule never matches"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''        stripped = value.strip().rstrip("/\\")'''
+new = '''        stripped = value.strip()'''

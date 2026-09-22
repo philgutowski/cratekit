@@ -211,6 +211,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "taxonomy.active",
         "rekordbox.closed",
         "rekordbox.pins",
+        "library.paths_resolved",
         "keychain.reachable",
         "credential.provider",
         "credential.recognition",
