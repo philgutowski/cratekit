@@ -1,0 +1,179 @@
+name = "r361-a"
+pass_kind = "light"
+
+# R-361: the source system's label run debris is swept as ordinary playlists.
+# A read only filter over the account listing plus the same rule on the mark
+# set, so the table is scoped to the unit's new guards, group A, with a fixed
+# sample of the exclusion's existing guards, group D. The brief's one required
+# row is A1, the suffix check dropped.
+
+# ── A. The new guards ─────────────────────────────────────────────────────
+
+[[rows]]
+id = "A1_drop_the_suffix_check"
+description = "The brief's row: exclusion no longer asks is_library_debris, so a LIBRARY name is queued"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    if is_library_debris(playlist.name):
+        return Excluded.LABEL_DEBRIS
+    if playlist.playlist_id in recorded:'''
+new = '''    if playlist.playlist_id in recorded:'''
+
+[[rows]]
+id = "A2_case_insensitive"
+description = "The rule widens to any case, so a person's Colorize Library is excluded too"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    return str(name or "").endswith(LIBRARY_PLAYLIST_SUFFIX)'''
+new = '''    return str(name or "").upper().endswith(LIBRARY_PLAYLIST_SUFFIX)'''
+
+[[rows]]
+id = "A3_no_leading_space"
+description = "The suffix loses its leading space, so ColorizeLIBRARY is debris"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''LIBRARY_PLAYLIST_SUFFIX = " LIBRARY"'''
+new = '''LIBRARY_PLAYLIST_SUFFIX = "LIBRARY"'''
+
+[[rows]]
+id = "A4_substring_not_suffix"
+description = "endswith becomes in, so LIBRARY Colorize and Colorize LIBRARY 2 are debris"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    return str(name or "").endswith(LIBRARY_PLAYLIST_SUFFIX)'''
+new = '''    return LIBRARY_PLAYLIST_SUFFIX in str(name or "")'''
+
+[[rows]]
+id = "A5_debris_before_the_prefix"
+description = "The order flips, so DOWNLOADED Colorize LIBRARY is told label-debris and not already-swept"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    if is_swept_name(playlist.name):
+        return Excluded.SWEPT
+    if is_library_debris(playlist.name):
+        return Excluded.LABEL_DEBRIS'''
+new = '''    if is_library_debris(playlist.name):
+        return Excluded.LABEL_DEBRIS
+    if is_swept_name(playlist.name):
+        return Excluded.SWEPT'''
+
+[[rows]]
+id = "A6_pending_marks_forgets_debris"
+description = "The mark set no longer skips the suffix, so a recorded debris playlist is offered to the mark"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        and not is_swept_name(listed[identity])
+        and not is_library_debris(listed[identity])
+        and (only is None or identity in only)'''
+new = '''        and not is_swept_name(listed[identity])
+        and (only is None or identity in only)'''
+
+[[rows]]
+id = "A7_mark_verb_forgets_debris"
+description = "The mark verb's plan no longer decides label-debris, so the playlist falls through to the reports"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''        elif playlists.is_library_debris(entry.name):
+            entry.reason = LABEL_DEBRIS
+        elif job.state is not jobs.JobState.SUCCEEDED:'''
+new = '''        elif job.state is not jobs.JobState.SUCCEEDED:'''
+
+[[rows]]
+id = "A8_mark_verb_respells_the_word"
+description = "The mark verb spells its own word for the reason instead of reading the enum"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''LABEL_DEBRIS = str(playlists.Excluded.LABEL_DEBRIS)'''
+new = '''LABEL_DEBRIS = "label-library"'''
+
+[[rows]]
+id = "A9_reword_the_why"
+description = "The why sentence is reworded, never appended to, since the suite asserts with in"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''        "its name is the source system's label run debris, which a sync never "
+        "offers and never renames"'''
+new = '''        "its name is a throwaway the other system left, which a sync never "
+        "offers and never renames"'''
+
+[[rows]]
+id = "A10_enum_value_respelled"
+description = "The enum member's kebab value changes, so the report and the check say another word"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    LABEL_DEBRIS = "label-debris"'''
+new = '''    LABEL_DEBRIS = "label-library"'''
+
+[[rows]]
+id = "A11_debris_is_empty_too"
+description = "A debris name with a count of zero is told empty, so the order after the prefix is not pinned by the count"
+file = "src/cratekit/sync/playlists.py"
+surface = "maintainer"
+old = '''    if is_library_debris(playlist.name):
+        return Excluded.LABEL_DEBRIS
+    if playlist.playlist_id in recorded:
+        return Excluded.RECORDED'''
+new = '''    if playlist.tracks == 0:
+        return Excluded.EMPTY
+    if is_library_debris(playlist.name):
+        return Excluded.LABEL_DEBRIS
+    if playlist.playlist_id in recorded:
+        return Excluded.RECORDED'''
+
+# ── D. A fixed sample of the exclusion's existing guards ──────────────────
+
+[[rows]]
+id = "D1_drop_the_swept_prefix"
+description = "Existing: exclusion no longer asks is_swept_name, so a DOWNLOADED name is queued"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    if is_swept_name(playlist.name):
+        return Excluded.SWEPT
+    if is_library_debris(playlist.name):'''
+new = '''    if is_library_debris(playlist.name):'''
+
+[[rows]]
+id = "D2_drop_the_placeholder"
+description = "Existing: the favourites placeholder is queued by the playlists source"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    if placeholders.is_placeholder(playlist.name):
+        return Excluded.PLACEHOLDER
+'''
+new = ''''''
+
+[[rows]]
+id = "D3_drop_in_flight"
+description = "Existing: an open job no longer holds its playlist back, so it is queued twice"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    if playlist.playlist_id in in_flight:
+        return Excluded.IN_FLIGHT
+'''
+new = ''''''
+
+[[rows]]
+id = "D4_pending_marks_forgets_the_prefix"
+description = "Existing: the mark set no longer skips a prefixed name, so DOWNLOADED DOWNLOADED Warmup is built"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''        and not is_swept_name(listed[identity])
+        and not is_library_debris(listed[identity])'''
+new = '''        and not is_library_debris(listed[identity])'''
+
+# ── Considered and not run ────────────────────────────────────────────────
+
+[[dropped]]
+id = "A12_str_of_none"
+description = "is_library_debris(None) reads str(None) instead of str(name or '')"
+reason = "would not die by construction: 'None' does not end with the suffix, so the guard against a missing name is defence over a shape the type forbids. Named rather than run so the zero is not read as a gap."
+
+[[dropped]]
+id = "A13_mark_verb_debris_after_the_job_state"
+description = "The mark verb asks the job's state before the suffix, so a failed debris job is told job-unfinished"
+reason = "the verb test drives a succeeded debris job only; the order between two skip reasons on one playlist is the report's wording, not a rename, and ranked below the cap."
+
+[[dropped]]
+id = "D5_drop_recorded"
+description = "Existing: the cursor no longer excludes, so a recorded playlist is queued again"
+reason = "the cursor guard is the subject of u64 and r359's tables already, and this unit did not touch it; ranked below the four sampled."
