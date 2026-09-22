@@ -1223,6 +1223,153 @@ def test_no_backup_destination_ships_with_a_default(cfg):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Backup destinations name an rclone remote (R-345)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+REMOTE_DESTINATIONS = {
+    "dest": "gdrive:bucket/path",
+    "archive_root": "gdrive:bucket/archive",
+    "db_dest_root": "gdrive:bucket/db",
+}
+
+
+def test_a_backup_destination_naming_an_rclone_remote_is_accepted(library):
+    """The brief's first scenario: ``gdrive:bucket/path`` loads, and the remote
+    is derived from it rather than typed a second time."""
+    data = valid_data(library, backup=dict(REMOTE_DESTINATIONS))
+    assert config.validate(data) == []
+    cfg = config.from_dict(data)
+    assert cfg.backup.dest == "gdrive:bucket/path"
+    assert cfg.backup.remote == "gdrive"
+
+
+@pytest.mark.parametrize("key", ["dest", "archive_root", "db_dest_root"])
+@pytest.mark.parametrize(
+    "typed",
+    [
+        # A bare folder name: rclone reads it as a path beside the worker's cwd.
+        "MusicBackup",
+        # An on the fly backend with no configured remote before the colon.
+        ":local:/tmp/backups",
+        # A Windows drive, which rclone special cases back to a local path.
+        "C:\\Backups",
+        # A name rclone's own configuration cannot hold.
+        "-gdrive:bucket",
+    ],
+)
+def test_a_backup_destination_naming_no_remote_is_refused(library, key, typed):
+    """The brief's second scenario, and the producer of R-345 driven end to end.
+
+    The dry run of the attended sitting succeeded in four seconds against a bare
+    folder name because listing a folder that does not exist is instant. A real
+    run would have copied the library beside the detached worker's working
+    directory and published a backup age for the copy. The refusal names the
+    key and the value, so a hand edited file says which line to fix.
+    """
+    backup = dict(REMOTE_DESTINATIONS)
+    backup[key] = typed
+    data = valid_data(library, backup=backup)
+    problems = config.validate(data)
+    assert len(problems) == 1, problems
+    assert f"backup.{key}" in problems[0]
+    assert repr(typed) in problems[0]
+    assert "rclone remote" in problems[0]
+    with pytest.raises(config.ConfigInvalid) as excinfo:
+        config.from_dict(data)
+    assert excinfo.value.problems == tuple(problems)
+
+
+def test_the_backup_destination_check_reads_the_effective_mapping(library, monkeypatch):
+    """The brief's third scenario, P2: what the check sees is what rclone gets.
+
+    No environment override relocates a backup destination today, so the
+    scenario is driven at the seam every override passes through. An override
+    step that rewrites the bare name into ``remote:path`` is what the check
+    judges, and the same file without that step is refused. A check that read
+    the raw file would refuse both.
+    """
+    backup = dict(REMOTE_DESTINATIONS)
+    backup["dest"] = "MusicBackup"
+    data = valid_data(library, backup=backup)
+    assert any("backup.dest" in p for p in config.validate(data))
+
+    real = config._apply_env_overrides
+
+    def relocating(mapping):
+        effective = real(mapping)
+        effective["backup"]["dest"] = "gdrive:" + effective["backup"]["dest"]
+        return effective
+
+    monkeypatch.setattr(config, "_apply_env_overrides", relocating)
+    assert config.validate(data) == []
+    assert config.from_dict(data).backup.dest == "gdrive:MusicBackup"
+
+
+def test_the_backup_destinations_must_name_one_remote(library):
+    """The mirror, the archive and the snapshots are read back together."""
+    backup = dict(REMOTE_DESTINATIONS)
+    backup["db_dest_root"] = "other:bucket/db"
+    problems = config.validate(valid_data(library, backup=backup))
+    assert len(problems) == 1, problems
+    assert "one rclone remote" in problems[0]
+    assert "'gdrive'" in problems[0] and "'other'" in problems[0]
+
+
+@pytest.mark.parametrize("spelled", ["gdrive", "gdrive:", "gdrive:bucket"])
+def test_a_spelled_backup_remote_that_matches_the_destinations_is_kept(library, spelled):
+    """``remote`` may be spelled bare or with a path; the NAME is what must agree,
+    and a file that spells it keeps its own spelling."""
+    backup = dict(REMOTE_DESTINATIONS, remote=spelled)
+    data = valid_data(library, backup=backup)
+    assert config.validate(data) == []
+    assert config.from_dict(data).backup.remote == spelled
+
+
+def test_a_spelled_backup_remote_that_names_another_remote_is_refused(library):
+    """Doctor checks the remote it is told; the transfers use the destinations.
+
+    The two must be one remote or doctor reports on a remote nothing writes to.
+    """
+    backup = dict(REMOTE_DESTINATIONS, remote="elsewhere")
+    problems = config.validate(valid_data(library, backup=backup))
+    assert len(problems) == 1, problems
+    assert "backup.remote" in problems[0]
+    assert "'elsewhere'" in problems[0] and "'gdrive'" in problems[0]
+
+
+@pytest.mark.parametrize("profile", ["slim", "full"])
+def test_an_unset_backup_destination_stays_allowed(library, profile):
+    """Absence is not the defect, whether the module is on or off.
+
+    The full preset turns backup on for everybody, so refusing an unset
+    destination at load would lock every fresh full install out of its own
+    configuration (P7). The backup verb refuses on its own missing destination
+    and doctor reports the unset remote, which is where absence belongs.
+    """
+    data = valid_data(library, profile={"name": profile})
+    assert config.validate(data) == []
+    cfg = config.from_dict(data)
+    assert cfg.backup.remote is None
+    assert cfg.backup.dest is None
+    partial = valid_data(library, profile={"name": profile}, backup={"dest": "gdrive:m"})
+    assert config.validate(partial) == []
+    assert config.from_dict(partial).backup.remote == "gdrive"
+
+
+def test_the_destination_keys_are_published_for_the_wizard_and_the_verb():
+    """The validator, the wizard and the backup verb name the same three keys."""
+    assert config.BACKUP_DESTINATION_KEYS == (
+        "backup.dest",
+        "backup.archive_root",
+        "backup.db_dest_root",
+    )
+    assert config.backup_remote_name("gdrive:bucket/path") == "gdrive"
+    assert config.backup_remote_name("MusicBackup") is None
+    assert config.backup_remote_name(None) is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # The fingerprint (KTD9)
 # ═══════════════════════════════════════════════════════════════════════════
 
