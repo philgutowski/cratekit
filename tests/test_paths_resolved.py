@@ -760,3 +760,13 @@ def test_a_refusal_built_from_the_totals_names_the_prefixes_and_the_current_map(
     assert cause.detail["unmapped"] == 90
     with pytest.raises(CratekitError):
         raise CratekitError(cause)
+
+
+def test_the_read_only_copy_refuses_under_a_running_application_on_its_own(bench, monkeypatch):
+    """The copy's own guard, alone: doctor and setup ask first, and this is the layer
+    beneath them that a new caller inherits without asking."""
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
+    with pytest.raises(CratekitError) as caught:
+        with rb_writer.read_only_copy(bench.db_path, cfg=bench.cfg):
+            pass
+    assert caught.value.cause.reason == "rekordbox-running"
