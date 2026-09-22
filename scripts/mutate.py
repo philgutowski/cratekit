@@ -184,6 +184,15 @@ The tests run against a throwaway fixture package with its own tiny suite and
 its own git repository, never against Cratekit's suite. A driver tested only
 against the suite it was written for is a driver whose measurements have never
 been checked against a known answer.
+
+Exit codes
+----------
+    0  every row measured
+    2  a refusal, decided before any row ran
+    3  a restore did not match git show HEAD
+    4  the batch is invalid, the null control killed something
+    5  pytest produced nothing readable
+    6  a child reached the real installation state (R-343)
 """
 
 from __future__ import annotations
@@ -202,6 +211,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+import platformdirs
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -235,11 +246,40 @@ SCRUBBED_ENV = {
     "PYTEST_XDIST_TESTRUNUID": "the same inherited worker identity, scrubbed with it",
 }
 
+#: The installation-scoped directories every child is pointed AWAY from, into a
+#: throwaway sandbox inside the run's own workspace. R-343 is why.
+#:
+#: On 2026-09-20 a child of this driver overwrote the real configuration with a
+#: test fixture one, destroying what four attended sittings had established. The
+#: conftest already redirects all of these, but it does so with ``monkeypatch``,
+#: and ``monkeypatch.undo()`` inside a test rolls the autouse isolation back with
+#: everything else it undoes. What ``undo()`` restores is the value the PROCESS
+#: started with, so the fix is to make the process start in a sandbox: after
+#: that, an undo lands in the sandbox rather than on the real machine.
+#:
+#: The app name is duplicated from ``cratekit.core.config`` on purpose. Importing
+#: that module here would make the guard depend on a mutation target, and a guard
+#: that imports what it guards can be mutated out from under itself.
+APP_NAME = "cratekit"
+SANDBOXED_ENV = {
+    "HOME": "home",
+    "USERPROFILE": "home",
+    "XDG_CONFIG_HOME": "config",
+    "XDG_STATE_HOME": "state",
+    "XDG_DATA_HOME": "data",
+    "XDG_CACHE_HOME": "cache",
+    "CRATEKIT_CONFIG_DIR": f"config/{APP_NAME}",
+    "CRATEKIT_STATE_DIR": f"state/{APP_NAME}",
+}
+
 #: Added on top of the inherited environment, never as a fresh dict.
 ADDED_ENV = (
     "PYTHONDONTWRITEBYTECODE=1",
     "PYTHONPATH (the plugin's temp directory, prepended)",
     "MUTATE_REPORT_PATH (the plugin's output file)",
+    "the installation state sandbox: "
+    + ", ".join(sorted(SANDBOXED_ENV))
+    + " (all pointed inside the run's workspace, R-343)",
 )
 
 #: The in-subprocess plugin. It exists so death counts come off report OBJECTS.
@@ -315,6 +355,22 @@ class MeasurementFailure(RuntimeError):
     before it ran and the tree is untouched. This means the run happened and
     produced nothing readable, which has to be recorded as an error rather than
     quietly filed beside the rows that were legitimately refused.
+    """
+
+
+class StateLeak(RuntimeError):
+    """A child wrote to the REAL installation state. The batch stops here.
+
+    Deliberately NOT a ``DriverRefusal`` and not a ``MeasurementFailure``.
+    ``measure_row`` catches ``DriverRefusal`` and turns it into a refused row, so
+    a leak filed under that class would be recorded as one unremarkable row and
+    the driver would carry on running more children against a machine it had
+    just damaged. This class is caught nowhere but the row loop, which names the
+    row, and ``main``, which stops.
+
+    It aborts the whole batch rather than failing one row because the damage is
+    already done by the time it is observed. The question after a leak is not
+    which of the remaining rows still measures, it is what was overwritten.
     """
 
 
@@ -700,7 +756,122 @@ def pytest_addopts(repo_root: Path) -> str:
     return " ".join(token for token in tokens if token not in {"-q", "-qq", "--quiet"})
 
 
-def run_pytest(repo_root: Path, paths: list[str] | None, *, timeout: int = 3600) -> RunResult:
+def installation_state_roots() -> tuple[Path, ...]:
+    """The REAL installation-scoped directories, resolved as the product resolves them.
+
+    Read from THIS process's environment, which no mutation touches, and resolved
+    once before any child runs.
+
+    The two Cratekit overrides win over platformdirs, exactly as the product's
+    config module reads them, and that is what makes this guard safe to exercise
+    from the test suite: under pytest the conftest has already pointed both at
+    that test's own temporary roots, so the driver guards a temp directory and
+    never the machine's own. Run for real, this process carries neither variable
+    and the true platformdirs path is resolved.
+
+    macOS answers both platformdirs calls with one directory, so the result is
+    deduplicated and is not always two entries long.
+    """
+    config_override = os.environ.get("CRATEKIT_CONFIG_DIR")
+    state_override = os.environ.get("CRATEKIT_STATE_DIR")
+    roots = (
+        Path(config_override)
+        if config_override
+        else Path(platformdirs.user_config_dir(APP_NAME)),
+        Path(state_override)
+        if state_override
+        else Path(platformdirs.user_state_dir(APP_NAME)),
+    )
+    deduplicated: dict[Path, None] = {}
+    for root in roots:
+        deduplicated.setdefault(root, None)
+    return tuple(deduplicated)
+
+
+def state_fingerprint(root: Path) -> tuple[str, int]:
+    """Digest every file under ``root`` by path, size and mtime. Returns (digest, count).
+
+    Contents are never read. A write always moves ``st_mtime_ns``, and hashing a
+    multi-megabyte job queue once per child to learn the same fact is machine
+    time spent for nothing.
+
+    ``lstat``, not ``stat``: a symlink is fingerprinted as itself, so repointing
+    one at a different target is a change rather than an invisible one.
+
+    Whether the root EXISTS is part of the digest. A child that creates the real
+    directory has reached the real path, which is the thing being guarded against,
+    even on the pass where it writes nothing into it.
+    """
+    entries: list[str] = [f"exists={root.is_dir()}"]
+    for current, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames.sort()
+        here = Path(current)
+        for name in sorted(filenames):
+            path = here / name
+            relative = path.relative_to(root).as_posix()
+            try:
+                info = path.lstat()
+            except OSError:
+                # Unreadable is still a fact about the tree, and swallowing it
+                # would let a file that cannot be stat'd hide a change.
+                entries.append(f"{relative}\tunreadable")
+                continue
+            entries.append(f"{relative}\t{info.st_size}\t{info.st_mtime_ns}")
+    digest = hashlib.sha256("\n".join(entries).encode("utf-8")).hexdigest()
+    # The existence marker is not a file, so it does not count as one.
+    return digest, len(entries) - 1
+
+
+@dataclass(frozen=True)
+class StateGuard:
+    """The real installation state as it stood before any child of this batch ran."""
+
+    roots: tuple[Path, ...]
+    digests: tuple[str, ...]
+    counts: tuple[int, ...]
+
+    def describe(self) -> str:
+        return "; ".join(
+            f"{root} ({count} file(s))"
+            for root, count in zip(self.roots, self.counts, strict=True)
+        )
+
+
+def take_state_guard(roots: tuple[Path, ...] | None = None) -> StateGuard:
+    """Fingerprint the real installation state before the batch touches anything."""
+    resolved = installation_state_roots() if roots is None else tuple(roots)
+    taken = [state_fingerprint(root) for root in resolved]
+    return StateGuard(
+        roots=resolved,
+        digests=tuple(digest for digest, _ in taken),
+        counts=tuple(count for _, count in taken),
+    )
+
+
+def check_state_guard(guard: StateGuard, *, label: str) -> None:
+    """Raise ``StateLeak`` if the real installation state moved under a child."""
+    for root, before, counted in zip(guard.roots, guard.digests, guard.counts, strict=True):
+        now, count_now = state_fingerprint(root)
+        if now == before:
+            continue
+        raise StateLeak(
+            f"the real installation state changed while running {label}. "
+            f"{root} held {counted} file(s) before this child and holds "
+            f"{count_now} now. A child of this driver reached the real machine, "
+            "which is R-343. The batch is stopped and nothing after this point "
+            "was measured. Read that directory before rerunning: on 2026-09-20 "
+            "this shape overwrote a real configuration with a fixture one."
+        )
+
+
+def run_pytest(
+    repo_root: Path,
+    paths: list[str] | None,
+    *,
+    timeout: int = 3600,
+    guard: StateGuard | None = None,
+    label: str = "a child run",
+) -> RunResult:
     """Run pytest once, synchronously, and read the result off report objects."""
     with tempfile.TemporaryDirectory(prefix="mutate-run-") as tmp:
         workspace = Path(tmp)
@@ -718,6 +889,14 @@ def run_pytest(repo_root: Path, paths: list[str] | None, *, timeout: int = 3600)
         env["PYTHONPATH"] = os.pathsep.join(
             [str(workspace), env.get("PYTHONPATH", "")]
         ).rstrip(os.pathsep)
+        # The child starts life in a throwaway installation state, so that a test
+        # which undoes the conftest's isolation lands here rather than on the real
+        # machine. R-343, and see SANDBOXED_ENV.
+        sandbox = workspace / "installation-state"
+        for name, relative in SANDBOXED_ENV.items():
+            path = sandbox / relative
+            path.mkdir(parents=True, exist_ok=True)
+            env[name] = str(path)
         for name in SCRUBBED_ENV:
             env.pop(name, None)
 
@@ -744,6 +923,11 @@ def run_pytest(repo_root: Path, paths: list[str] | None, *, timeout: int = 3600)
             check=False,
             timeout=timeout,
         )
+        # Before anything is read off this run. A leak outranks a missing report:
+        # the report says what was measured, and this says whether the machine
+        # the measurement ran on is still the one it started on.
+        if guard is not None:
+            check_state_guard(guard, label=label)
         if not report_path.is_file():
             raise MeasurementFailure(
                 "pytest produced no report file, so nothing was measured. "
@@ -818,6 +1002,7 @@ def measure_row(
     *,
     timeout: int = 3600,
     head_verify: bool = True,
+    guard: StateGuard | None = None,
 ) -> RowResult:
     """Apply one row, measure it, restore it, and describe what happened."""
     common = dict(
@@ -844,7 +1029,9 @@ def measure_row(
             allow_append=row.kind == "null-control",
             head_verify=head_verify,
         ):
-            result = run_pytest(repo_root, subset, timeout=timeout)
+            result = run_pytest(
+                repo_root, subset, timeout=timeout, guard=guard, label=f"row {row.id}"
+            )
             promoted = False
             final = result
             if (
@@ -854,7 +1041,13 @@ def measure_row(
                 and result.collected == subset_baseline.collected
             ):
                 # A zero on a subset is not yet a zero.
-                final = run_pytest(repo_root, None, timeout=timeout)
+                final = run_pytest(
+                    repo_root,
+                    None,
+                    timeout=timeout,
+                    guard=guard,
+                    label=f"row {row.id}, promoted to the full suite",
+                )
                 promoted = True
     except DriverRefusal as refusal:
         return RowResult(
@@ -915,6 +1108,7 @@ class Batch:
     results: list[RowResult]
     dropped: list[Dropped]
     pytest_runs: int
+    state_guarded: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -928,6 +1122,7 @@ class Batch:
             "baseline_collected": self.baseline_collected,
             "baseline_exit": self.baseline_exit,
             "pytest_runs": self.pytest_runs,
+            "state_guarded": self.state_guarded,
             "control": self.control.to_dict() if self.control else None,
             "rows": [one.to_dict() for one in self.results],
             "dropped": [one.__dict__ for one in self.dropped],
@@ -945,6 +1140,7 @@ def measure_batch(
     timeout: int = 3600,
     prior: dict | None = None,
     progress_path: Path | None = None,
+    guard: StateGuard | None = None,
 ) -> Batch:
     """Run a whole batch: preflight, baselines, the control, then the rows.
 
@@ -982,8 +1178,16 @@ def measure_batch(
             f"accept that the restore check is measuring against HEAD."
         )
 
+    # Taken AFTER preflight and before the first child, so the fingerprint
+    # describes the machine as the batch found it. R-343.
+    if guard is None:
+        guard = take_state_guard()
+    header["state_guarded"] = guard.describe()
+
     # ---- baselines ------------------------------------------------------
-    full_baseline = run_pytest(repo_root, None, timeout=timeout)
+    full_baseline = run_pytest(
+        repo_root, None, timeout=timeout, guard=guard, label="the full baseline"
+    )
     runs += 1
     if not full_baseline.is_green:
         detail = ", ".join(full_baseline.failure_ids()[:10]) or ", ".join(
@@ -1017,7 +1221,13 @@ def measure_batch(
             continue
         key = tuple(subset)
         if key not in subset_baselines:
-            measured = run_pytest(repo_root, list(subset), timeout=timeout)
+            measured = run_pytest(
+                repo_root,
+                list(subset),
+                timeout=timeout,
+                guard=guard,
+                label=f"the subset baseline for {', '.join(subset)}",
+            )
             runs += 1
             if not measured.is_green:
                 raise DriverRefusal(
@@ -1037,6 +1247,7 @@ def measure_batch(
         full_baseline,
         timeout=timeout,
         head_verify=control.file not in set(dirty),
+        guard=guard,
     )
     runs += control_result.runs
     if control_result.deaths or control_result.status != "zero":
@@ -1082,9 +1293,15 @@ def measure_batch(
                     full_baseline,
                     timeout=timeout,
                     head_verify=row.file not in set(dirty),
+                    guard=guard,
                 )
             )
         except RestoreVerificationError:
+            raise
+        except StateLeak:
+            # Must outrank the blanket handler below. Recorded as an error row,
+            # a leak would read as one unremarkable row and the loop would keep
+            # spending children against a machine it had just damaged.
             raise
         except KeyboardInterrupt:
             raise
@@ -1193,6 +1410,16 @@ def render_markdown(batch: Batch) -> str:
         "missing binary reddens a baseline and every row after it."
     )
     add("")
+    if batch.state_guarded:
+        add(
+            "Installation state: guarded and unchanged. Fingerprinted before the "
+            f"first child and after every one of them: {batch.state_guarded}. A "
+            "change would have stopped the batch at the row that caused it. Every "
+            "child ran with its own throwaway installation state, so a test that "
+            "undoes the suite's isolation lands there rather than on this machine "
+            "(R-343)."
+        )
+        add("")
 
     if not batch.valid:
         add("## THIS BATCH IS INVALID")
@@ -1360,6 +1587,9 @@ def main(argv: list[str]) -> int:
     except RestoreVerificationError as broken:
         print(f"RESTORE FAILED: {broken}", file=sys.stderr)
         return 3
+    except StateLeak as leak:
+        print(f"STATE LEAK: {leak}", file=sys.stderr)
+        return 6
     except MeasurementFailure as broken:
         print(f"NOTHING MEASURED: {broken}", file=sys.stderr)
         return 5
