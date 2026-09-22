@@ -847,6 +847,15 @@ def state_fingerprint(root: Path) -> tuple[str, int]:
     return digest, len(entries) - 1
 
 
+def portable(path: Path) -> str:
+    """``path`` with the home directory folded to ``~``, for anything written into the tree."""
+    home = Path.home()
+    try:
+        return "~/" + path.relative_to(home).as_posix()
+    except ValueError:
+        return str(path)
+
+
 @dataclass(frozen=True)
 class StateGuard:
     """The real installation state as it stood before any child of this batch ran."""
@@ -856,8 +865,16 @@ class StateGuard:
     counts: tuple[int, ...]
 
     def describe(self) -> str:
+        """The roots with the home directory folded to ``~``.
+
+        This string is written into the table and the sidecar under
+        ``docs/mutation/``, and the repository scan refuses an absolute home
+        directory path there, by account name. Written raw, every promoted
+        row's full suite run failed the cleanliness test on this driver's own
+        sidecar and reported a death that was not one.
+        """
         return "; ".join(
-            f"{root} ({count} entries)"
+            f"{portable(root)} ({count} entries)"
             for root, count in zip(self.roots, self.counts, strict=True)
         )
 
@@ -889,7 +906,7 @@ def check_state_guard(guard: StateGuard, *, label: str) -> None:
             continue
         raise StateLeak(
             f"the real installation state changed while running {label}. "
-            f"{root} held {counted} entries before this child and holds "
+            f"{portable(root)} held {counted} entries before this child and holds "
             f"{count_now} now. Either a child of this driver reached the real "
             "machine, which is R-343 and on 2026-09-20 overwrote a real "
             "configuration with a fixture one, or something else wrote there "

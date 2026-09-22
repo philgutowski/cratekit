@@ -850,6 +850,34 @@ def test_the_guard_is_reported_in_the_table_when_nothing_moved(repo, tmp_path):
     assert batch.to_dict()["reused_rows"] == 0
 
 
+def test_the_guarded_root_is_written_into_the_table_without_the_home_directory(
+    repo, tmp_path, monkeypatch
+):
+    """The table and sidecar land in docs/mutation, which the repository scan reads.
+
+    Written raw, the account name in the home path failed the cleanliness test
+    on every promoted row's full suite run, and four rows of this unit's own
+    table reported a death that was that test alone.
+    """
+    home = tmp_path / "home"
+    guarded = home / "Library" / "Application Support" / "cratekit"
+    guarded.mkdir(parents=True)
+    monkeypatch.setattr(mutate.Path, "home", classmethod(lambda cls: home))
+
+    batch = mutate.measure_batch(
+        repo,
+        "portable",
+        [_row("K1", "if value > limit:", "if value > 1:")],
+        guard=mutate.take_state_guard((guarded,)),
+    )
+    markdown = mutate.render_markdown(batch)
+
+    assert str(home) not in markdown
+    assert str(home) not in json.dumps(batch.to_dict())
+    assert "~/Library/Application Support/cratekit" in markdown
+    assert mutate.portable(tmp_path / "elsewhere") == str(tmp_path / "elsewhere")
+
+
 def test_rows_reused_on_resume_are_named_as_unwatched_in_the_table(repo, tmp_path):
     """A resumed row was measured by an earlier process whose children this run never saw."""
     guarded = tmp_path / "guarded"
