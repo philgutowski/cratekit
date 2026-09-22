@@ -558,7 +558,7 @@ def test_a_partial_failure_whose_failures_are_permanent_is_not_resumable(queue, 
     assert refusal.code is ExitCode.PRECONDITION
     assert refusal.inner is not None
     assert refusal.inner.reason == "sync-source-lookups-failed"
-    assert refusal.detail["reason"] == "sync-source-lookups-failed"
+    assert "permanent_reasons" not in refusal.detail
     untouched = jobs.get(store, job.job_id)
     assert untouched.state is jobs.JobState.FAILED
     assert untouched.cause is not None
@@ -659,8 +659,18 @@ def test_two_distinct_permanent_reasons_name_both_whichever_failed_last(queue, c
         job = jobs.enqueue(
             store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=order
         )
-        with pytest.raises(CratekitError):
+        with pytest.raises(CratekitError) as excinfo:
             jobs.drive(store, job.job_id, mixed_permanent, root=root)
+        # The all failed envelope nests the JOB's verdict, not the last item's,
+        # so the reasons reach the foreground too and not only the row.
+        raised = excinfo.value.cause
+        assert raised.reason == "no-evidence"
+        assert raised.inner is not None
+        assert raised.inner.reason == "mixed-permanent-failures"
+        assert tuple(raised.inner.detail["permanent_reasons"]) == (
+            "internal-error",
+            "sync-source-lookups-failed",
+        )
         recorded = jobs.get(store, job.job_id)
         assert recorded.cause is not None
         causes.append(recorded.cause)
@@ -681,6 +691,17 @@ def test_two_distinct_permanent_reasons_name_both_whichever_failed_last(queue, c
         )
     assert causes[0].reason == causes[1].reason
     assert causes[0].detail["permanent_reasons"] == causes[1].detail["permanent_reasons"]
+
+    # The resume refusal names the same reasons at its own top level (R-390
+    # over R-391), so a person is not sent into the nested cause to learn them.
+    with pytest.raises(CratekitError) as excinfo:
+        jobs.retry(store, job.job_id)
+    refusal = excinfo.value.cause
+    assert refusal.reason == "job-not-retryable"
+    assert tuple(refusal.detail["permanent_reasons"]) == (
+        "internal-error",
+        "sync-source-lookups-failed",
+    )
 
 
 def test_one_shared_permanent_reason_is_still_the_jobs_reason(queue, cfg):

@@ -672,7 +672,7 @@ def test_a_missing_recording_reports_the_engines_own_cause_on_the_item(configure
         assert jobs.get(store, job_id).state is jobs.JobState.FAILED
 
 
-def test_a_failed_job_stays_resumable_and_the_second_attempt_redoes_that_item(
+def test_a_job_that_failed_on_a_missing_source_is_not_reopened_and_a_fresh_job_masters_it(
     configured, monkeypatch
 ):
     """Reopening is ``job resume``'s act, and driving is this verb's.
@@ -701,8 +701,8 @@ def test_a_failed_job_stays_resumable_and_the_second_attempt_redoes_that_item(
     # which the mastering module records as permanent, and ``jobs.retry`` reads
     # that flag before it re-arms anything. The recording arriving later is a
     # repair the person made, and the path for that is a fresh job, which is
-    # what the refusal's steps say. The residual over whether a missing source
-    # is honestly permanent is filed beside R-390 in the ledger.
+    # what the refusal's steps say. Whether a repairable failure should stay
+    # permanent is the residual the R-390 unit filed in the ledger.
     _recording(configured.library.root)
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
     with jobs.open_store() as store:

@@ -774,7 +774,9 @@ def retry(store: JobStore, job_id: str) -> Job:
             detail={
                 "job_id": job_id,
                 "state": str(current.state),
-                "reason": current.cause.reason,
+                # Named on the refusal as the job cause names them (R-391), so
+                # a person is not sent into the nested cause to learn which.
+                **_permanent_reasons_of(current.cause),
             },
             inner=current.cause,
         )
@@ -791,6 +793,16 @@ def retry(store: JobStore, job_id: str) -> Job:
         )
         _touch(conn, job_id, state=str(JobState.QUEUED), cause=None, pid=None)
     return get(store, job_id)
+
+
+#: The detail key a mixed permanent job cause carries its sorted reasons under.
+PERMANENT_REASONS = "permanent_reasons"
+
+
+def _permanent_reasons_of(cause: Cause) -> dict[str, Any]:
+    """The mixed job cause's reasons as one detail entry, or nothing."""
+    reasons = cause.detail.get(PERMANENT_REASONS)
+    return {PERMANENT_REASONS: tuple(reasons)} if reasons else {}
 
 
 def block(store: JobStore, job_id: str, cause: Cause) -> Job:
@@ -1298,8 +1310,8 @@ class DriveResult:
 
 def _failure_verdict(
     failed: Sequence[Cause],
-) -> tuple[str, bool, Remediation]:
-    """Reason, retryable, and remediation for a job whose items failed.
+) -> tuple[str, bool, Remediation, tuple[str, ...]]:
+    """Reason, retryable, remediation and the permanent reasons for a failed job.
 
     The item rows already carry the honest causes. The job cause a person is
     told to act on has to read them: a wrapper that always says the failure is
@@ -1311,15 +1323,17 @@ def _failure_verdict(
     because taking the last item's reason, which this did, made every other
     reason invisible outside the item rows (R-391). The set is SORTED so the
     verdict depends on which reasons occurred and not on the order the driver
-    claimed the items.
+    claimed the items. The tuple is returned beside the slug so the caller names
+    the same set the slug was chosen from, rather than deriving it a second time.
     """
     if not failed or any(cause.retryable for cause in failed):
         return (
             "unavailable-transient",
             True,
             Remediation(remedy=Remedy.RESUME_JOB),
+            (),
         )
-    reasons = sorted({cause.reason for cause in failed})
+    reasons = tuple(sorted({cause.reason for cause in failed}))
     reason = reasons[0] if len(reasons) == 1 else "mixed-permanent-failures"
     return (
         reason,
@@ -1329,12 +1343,8 @@ def _failure_verdict(
                 "the failed items cannot succeed on resume; inspect each item's cause",
             )
         ),
+        reasons,
     )
-
-
-def _permanent_reasons(failed: Sequence[Cause]) -> tuple[str, ...]:
-    """Every distinct reason among the permanent failures, sorted."""
-    return tuple(sorted({cause.reason for cause in failed if not cause.retryable}))
 
 
 def _partial_failure_cause(
@@ -1343,7 +1353,7 @@ def _partial_failure_cause(
     inner: Cause | None,
     failed: Sequence[Cause],
 ) -> Cause:
-    reason, retryable, remediation = _failure_verdict(failed)
+    reason, retryable, remediation, reasons = _failure_verdict(failed)
     transient = sum(1 for cause in failed if cause.retryable)
     permanent = sum(1 for cause in failed if not cause.retryable)
     message = (
@@ -1360,7 +1370,6 @@ def _partial_failure_cause(
     }
     if not retryable:
         message += "; every failure is permanent so resuming this job cannot succeed"
-        reasons = _permanent_reasons(failed)
         if len(reasons) > 1:
             # R-391. The reason slug says the failures are mixed; the message and
             # the detail say WHICH, since the slug alone would hide them exactly
@@ -1369,7 +1378,7 @@ def _partial_failure_cause(
                 f"; the {permanent} permanent failures carry {len(reasons)} "
                 f"distinct reasons: {', '.join(reasons)}"
             )
-            detail["permanent_reasons"] = reasons
+            detail[PERMANENT_REASONS] = reasons
     elif transient and permanent:
         message += f" ({transient} retryable, {permanent} permanent)"
     return Cause(
@@ -1547,10 +1556,14 @@ def drive(
                     job_id, result, last_cause, failed_causes
                 ),
             )
+            # THE RECORDED JOB CAUSE IS WHAT IS NESTED, not the last item's. The
+            # job cause carries the counts and, over mixed permanent failures,
+            # every distinct reason (R-391); the last item alone is the order
+            # dependence that finding named, one layer up from the row.
             evidence_or_raise(
                 attempted=attempted,
                 succeeded=0,
-                failed_cause=last_cause,
+                failed_cause=result.job.cause,
                 retryable=items_retryable,
             )
         if result.failed:
