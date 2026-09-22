@@ -34,7 +34,8 @@ not decode, and the tags read before the refusal; the one about cost is R-654.
 R-372 CLOSED in place. Filed R-654, each diagnostic copies the whole file set
 and setup twice, and R-655, an offered rule with a literal target carries no
 volume identity. Neither on the board bar.
-Battery: ruff clean, **9924 passed** and 1 skipped in 62 seconds. Scan clean.
+Battery: ruff clean, **9923 passed** and 1 skipped in 63 seconds. Scan clean.
+No test of this unit's is among the slowest ten.
 Mutation tables `docs/mutation/r372-a.md` and `r372-b.md`: **25 rows, the
 author's own, all killed**, at the cap, one zero pinned and paired with a
 composite, read in `r372-notes.md`. The learning is a new entry in
