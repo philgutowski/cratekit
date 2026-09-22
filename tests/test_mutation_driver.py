@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import platformdirs
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -154,7 +157,85 @@ def test_tool_is_available_three():
 '''
 
 
-def _build_fixture(root: Path, *, red: bool = False, env_dependent: bool = False) -> Path:
+TEST_SANDBOX = '''"""The child must start life in a throwaway installation state. R-343.
+
+Two properties, both asserted from inside the child because the sandbox is
+deleted the moment the driver's run returns and the parent cannot look into it
+afterwards.
+"""
+
+import os
+from pathlib import Path
+
+import platformdirs
+
+#: The CALLER's own value for each sandboxed variable, handed across under a
+#: name the sandbox does not touch. Comparing against these, and not against a
+#: sentinel made for the test, is what makes an absent sandbox fail: with no
+#: redirect the child simply inherits these very values.
+CALLER_PREFIX = "MUTATE_FIXTURE_CALLER_"
+
+
+def _callers(name: str) -> Path:
+    return Path(os.environ[CALLER_PREFIX + name])
+
+
+def test_the_child_is_not_pointed_at_the_callers_installation_state():
+    for name in ("HOME", "CRATEKIT_CONFIG_DIR", "CRATEKIT_STATE_DIR"):
+        value = os.environ.get(name)
+        assert value, f"{name} is unset in the child"
+        resolved = Path(value)
+        callers = _callers(name)
+        assert resolved != callers, f"{name} is the caller's own"
+        assert callers not in resolved.parents, f"{name} is under the caller's own"
+
+
+def test_a_write_to_the_resolved_config_directory_lands_in_the_sandbox():
+    """The exact 2026-09-20 shape, written by hand.
+
+    A test that has undone the suite's isolation resolves this path and writes a
+    configuration to it. What ``monkeypatch.undo()`` restores is the value the
+    PROCESS started with, so this asserts the process started in a sandbox.
+    platformdirs reads HOME on macOS, so this covers the HOME redirect
+    specifically rather than the Cratekit overrides beside it.
+    """
+    resolved = Path(platformdirs.user_config_dir("cratekit"))
+    resolved.mkdir(parents=True, exist_ok=True)
+    (resolved / "config.toml").write_text("a fixture configuration", encoding="utf-8")
+
+    callers_home = _callers("HOME")
+    assert resolved != callers_home
+    assert callers_home not in resolved.parents
+'''
+
+TEST_LEAK = '''"""A test that writes where it must not, so the guard has something to catch.
+
+It writes ONLY on a mutated tree, which is what lets one fixture drive both the
+leak named for a row and the clean baseline that has to precede it.
+"""
+
+import os
+from pathlib import Path
+
+from fixtpkg.guards import clamp
+
+
+def test_writes_into_the_guarded_directory_only_when_the_guard_is_gone():
+    if clamp(50) != 10:
+        target = Path(os.environ["MUTATE_FIXTURE_LEAK_TARGET"])
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "leaked.toml").write_text("a fixture configuration", encoding="utf-8")
+'''
+
+
+def _build_fixture(
+    root: Path,
+    *,
+    red: bool = False,
+    env_dependent: bool = False,
+    sandbox: bool = False,
+    leaky: bool = False,
+) -> Path:
     """A committed git repository holding a four test package."""
     (root / "src" / "fixtpkg").mkdir(parents=True)
     (root / "tests").mkdir()
@@ -170,6 +251,10 @@ def _build_fixture(root: Path, *, red: bool = False, env_dependent: bool = False
         )
     if env_dependent:
         (root / "tests" / "test_environment.py").write_text(TEST_ENVIRONMENT, encoding="utf-8")
+    if sandbox:
+        (root / "tests" / "test_sandbox.py").write_text(TEST_SANDBOX, encoding="utf-8")
+    if leaky:
+        (root / "tests" / "test_leak.py").write_text(TEST_LEAK, encoding="utf-8")
     _git(root, "init", "-q", "-b", "main")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "fixture")
@@ -210,6 +295,30 @@ def env_template(tmp_path_factory) -> Path:
 def env_repo(env_template, tmp_path) -> Path:
     target = tmp_path / "env-repo"
     shutil.copytree(env_template, target)
+    return target
+
+
+@pytest.fixture(scope="session")
+def sandbox_template(tmp_path_factory) -> Path:
+    return _build_fixture(tmp_path_factory.mktemp("sandbox-template"), sandbox=True)
+
+
+@pytest.fixture
+def sandbox_repo(sandbox_template, tmp_path) -> Path:
+    target = tmp_path / "sandbox-repo"
+    shutil.copytree(sandbox_template, target)
+    return target
+
+
+@pytest.fixture(scope="session")
+def leak_template(tmp_path_factory) -> Path:
+    return _build_fixture(tmp_path_factory.mktemp("leak-template"), leaky=True)
+
+
+@pytest.fixture
+def leak_repo(leak_template, tmp_path) -> Path:
+    target = tmp_path / "leak-repo"
+    shutil.copytree(leak_template, target)
     return target
 
 
@@ -606,6 +715,293 @@ def test_the_scrubbed_variables_are_named_in_the_table(repo):
     assert "PYTHONDONTWRITEBYTECODE=1" in markdown
     for name in mutate.SCRUBBED_ENV:
         assert name in markdown
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The installation state the child must not reach. R-343.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _hand_the_callers_values_across(monkeypatch) -> None:
+    """Give the fixture this process's own sandboxed values, under untouched names."""
+    for name in ("HOME", "CRATEKIT_CONFIG_DIR", "CRATEKIT_STATE_DIR"):
+        monkeypatch.setenv("MUTATE_FIXTURE_CALLER_" + name, os.environ[name])
+
+
+def test_the_child_starts_in_a_sandboxed_installation_state(sandbox_repo, monkeypatch):
+    """Every sandboxed variable points somewhere other than the caller's own.
+
+    The assertions are inside the fixture's own suite, because the sandbox is
+    deleted when the driver's run returns. A red run here IS the failure. The
+    comparison is against this process's real values, because with no sandbox
+    the child inherits exactly those, and a sentinel made for the test would
+    still differ from them.
+    """
+    _hand_the_callers_values_across(monkeypatch)
+
+    result = mutate.run_pytest(sandbox_repo, None)
+
+    assert result.is_green, result.failure_ids()
+    assert result.collected == 7
+
+
+def test_a_child_writing_a_config_does_not_reach_the_callers_own(sandbox_repo, monkeypatch):
+    """The regression test for 2026-09-20, asserted from the caller's side.
+
+    The fixture resolves the platformdirs config directory and writes a
+    configuration to it, which is exactly what destroyed the real one. Nothing
+    may appear in this process's equivalent. Under the suite that equivalent is
+    the conftest's temporary home, never the machine's own.
+    """
+    _hand_the_callers_values_across(monkeypatch)
+
+    callers = Path(platformdirs.user_config_dir("cratekit"))
+    before = sorted(p.name for p in callers.iterdir()) if callers.is_dir() else []
+
+    result = mutate.run_pytest(sandbox_repo, None)
+
+    assert result.is_green, result.failure_ids()
+    after = sorted(p.name for p in callers.iterdir()) if callers.is_dir() else []
+    assert after == before, "the child wrote into the caller's own installation state"
+
+
+def test_a_leak_during_the_baseline_names_the_phase(leak_repo, monkeypatch, tmp_path):
+    """A leak before any row has run cannot be blamed on a row."""
+    guarded = tmp_path / "guarded"
+    guarded.mkdir()
+    monkeypatch.setenv("MUTATE_FIXTURE_LEAK_TARGET", str(guarded))
+    # Reaching the baseline's child needs the write to happen on the clean tree,
+    # which the fixture does only when the guard is already gone. Mutating the
+    # file on disk before the batch starts is how the baseline sees it.
+    target = leak_repo / GUARDS_FILE
+    target.write_text(
+        target.read_text(encoding="utf-8").replace("        return limit", "        return value"),
+        encoding="utf-8",
+    )
+
+    guard = mutate.take_state_guard((guarded,))
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.measure_batch(
+            leak_repo,
+            "leak-baseline",
+            [_row("K1", "if value < lowest:", "if value < 1:")],
+            allow_dirty=True,
+            guard=guard,
+        )
+
+    message = str(caught.value)
+    assert "the full baseline" in message
+    assert str(guarded) in message
+    assert "R-343" in message
+
+
+def test_a_leak_under_a_row_names_that_row_and_stops_the_batch(
+    leak_repo, monkeypatch, tmp_path
+):
+    """The row is named, the batch stops, and the tree is left clean.
+
+    The fixture writes only on a mutated tree, so the baseline and the null
+    control pass through untouched and the first child that leaks is the row's.
+    """
+    guarded = tmp_path / "guarded"
+    guarded.mkdir()
+    (guarded / "config.toml").write_text("the real configuration", encoding="utf-8")
+    monkeypatch.setenv("MUTATE_FIXTURE_LEAK_TARGET", str(guarded))
+
+    guard = mutate.take_state_guard((guarded,))
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.measure_batch(
+            leak_repo,
+            "leak-row",
+            [_row("LEAKY", "        return limit", "        return value")],
+            guard=guard,
+        )
+
+    message = str(caught.value)
+    assert "row LEAKY" in message
+    assert "the full baseline" not in message
+
+    # The abort must not also leave a mutant, which is the failure mode that
+    # made a driver exit clean over a contaminated tree once before.
+    assert (leak_repo / GUARDS_FILE).read_text(encoding="utf-8") == GUARDS
+    assert mutate.dirty_targets(leak_repo, [GUARDS_FILE]) == []
+
+
+def test_the_guard_is_reported_in_the_table_when_nothing_moved(repo, tmp_path):
+    """A guard that passes silently is the same defect one layer up."""
+    guarded = tmp_path / "guarded"
+    guarded.mkdir()
+    (guarded / "config.toml").write_text("the real configuration", encoding="utf-8")
+
+    batch = mutate.measure_batch(
+        repo,
+        "guardnote",
+        [_row("K1", "if value > limit:", "if value > 1:")],
+        guard=mutate.take_state_guard((guarded,)),
+    )
+    markdown = mutate.render_markdown(batch)
+
+    assert "the watched roots are unchanged" in markdown
+    assert str(guarded) in markdown
+    assert "1 entries" in markdown
+    assert "not seen by this guard" in markdown, "the claim must say what it does not cover"
+    assert "reused from a prior sidecar" not in markdown
+    assert batch.to_dict()["state_guarded"]
+    assert batch.to_dict()["reused_rows"] == 0
+
+
+def test_the_guarded_root_is_written_into_the_table_without_the_home_directory(
+    repo, tmp_path, monkeypatch
+):
+    """The table and sidecar land in docs/mutation, which the repository scan reads.
+
+    Written raw, the account name in the home path failed the cleanliness test
+    on every promoted row's full suite run, and four rows of this unit's own
+    table reported a death that was that test alone.
+    """
+    home = tmp_path / "home"
+    guarded = home / "Library" / "Application Support" / "cratekit"
+    guarded.mkdir(parents=True)
+    monkeypatch.setattr(mutate.Path, "home", classmethod(lambda cls: home))
+
+    batch = mutate.measure_batch(
+        repo,
+        "portable",
+        [_row("K1", "if value > limit:", "if value > 1:")],
+        guard=mutate.take_state_guard((guarded,)),
+    )
+    markdown = mutate.render_markdown(batch)
+
+    assert str(home) not in markdown
+    assert str(home) not in json.dumps(batch.to_dict())
+    assert "~/Library/Application Support/cratekit" in markdown
+    assert mutate.portable(tmp_path / "elsewhere") == str(tmp_path / "elsewhere")
+
+
+def test_rows_reused_on_resume_are_named_as_unwatched_in_the_table(repo, tmp_path):
+    """A resumed row was measured by an earlier process whose children this run never saw."""
+    guarded = tmp_path / "guarded"
+    guarded.mkdir()
+    rows = [_row("K1", "if value > limit:", "if value > 1:")]
+    first = mutate.measure_batch(repo, "resume", rows, guard=mutate.take_state_guard((guarded,)))
+
+    resumed = mutate.measure_batch(
+        repo, "resume", rows, prior=first.to_dict(), guard=mutate.take_state_guard((guarded,))
+    )
+    markdown = mutate.render_markdown(resumed)
+
+    assert resumed.reused_rows == 1
+    assert "1 row(s) were reused from a prior sidecar" in markdown
+    assert "did not watch" in markdown
+
+
+def test_a_directory_created_inside_the_real_root_is_a_leak(tmp_path):
+    """The jobs directory is made before the first job is written into it."""
+    root = tmp_path / "real"
+    root.mkdir()
+    (root / "config.toml").write_text("the real configuration", encoding="utf-8")
+    guard = mutate.take_state_guard((root,))
+
+    (root / "jobs").mkdir()
+    with pytest.raises(mutate.StateLeak):
+        mutate.check_state_guard(guard, label="a child that made a directory")
+
+
+def test_a_same_size_rewrite_of_a_small_file_is_a_leak(tmp_path):
+    """The 2026-09-20 overwrite kept the path and could have kept the size.
+
+    Content is hashed for small files precisely so this does not depend on the
+    filesystem's timestamp granularity, so the timestamps are pinned back to
+    their old values here to prove the hash alone carries it.
+    """
+    root = tmp_path / "real"
+    root.mkdir()
+    config = root / "config.toml"
+    config.write_text("pin = 1", encoding="utf-8")
+    before = config.stat()
+    guard = mutate.take_state_guard((root,))
+
+    config.write_text("pin = 2", encoding="utf-8")
+    os.utime(config, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert config.stat().st_size == before.st_size
+
+    with pytest.raises(mutate.StateLeak):
+        mutate.check_state_guard(guard, label="a same size rewrite")
+
+
+def test_a_child_that_leaks_and_then_hangs_is_still_caught(tmp_path, monkeypatch):
+    """TimeoutExpired must not leave run_pytest before the guard has looked.
+
+    Otherwise the row loop files the timeout as an ordinary error row, the next
+    row's child runs on the damaged machine, and that row is the one blamed.
+    """
+    root = tmp_path / "real"
+    root.mkdir()
+    guard = mutate.take_state_guard((root,))
+
+    def leak_then_hang(command, **kwargs):
+        (root / "config.toml").write_text("a fixture configuration", encoding="utf-8")
+        raise subprocess.TimeoutExpired(command, kwargs.get("timeout", 0))
+
+    monkeypatch.setattr(mutate.subprocess, "run", leak_then_hang)
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.run_pytest(tmp_path, None, timeout=1, guard=guard, label="row HANG")
+    assert "row HANG" in str(caught.value)
+
+
+def test_the_sandbox_covers_every_variable_the_conftest_isolates():
+    """SANDBOXED_ENV is a hand copy of the conftest's table, so pin the two together.
+
+    A variable added to the conftest's isolation and not here would be exactly
+    the R-343 mechanism reopened for that one root: undone in a test, restored
+    to the real machine, unwatched.
+    """
+    source = (Path(__file__).parent / "conftest.py").read_text(encoding="utf-8")
+    start = source.index("def _isolate_state_roots(")
+    end = source.index("def _isolate_keychain(", start)
+    body = source[start:end]
+    isolated = set(re.findall(r'monkeypatch\.setenv\(\s*"([A-Z_]+)"', body))
+    isolated |= set(re.findall(r'\(\s*"([A-Z_]+)",\s*"[a-z]+"\s*\)', body))
+
+    assert isolated, "the conftest's isolation table was not found"
+    assert isolated <= set(mutate.SANDBOXED_ENV), sorted(isolated - set(mutate.SANDBOXED_ENV))
+
+
+def test_the_sandboxed_variables_are_named_in_the_table(repo):
+    """The same rule the scrub note lives by, applied to what is ADDED."""
+    batch = mutate.measure_batch(
+        repo, "addednote", [_row("K1", "if value > limit:", "if value > 1:")]
+    )
+    markdown = mutate.render_markdown(batch)
+    for name in mutate.SANDBOXED_ENV:
+        assert name in markdown, name
+
+
+def test_an_absent_installation_state_that_a_child_creates_is_a_leak(tmp_path):
+    """Reaching the real path at all is the thing being guarded against.
+
+    A machine with no configuration yet is the state every machine starts in,
+    and a child that creates the directory there has still reached it.
+    """
+    absent = tmp_path / "not-yet"
+    guard = mutate.take_state_guard((absent,))
+    mutate.check_state_guard(guard, label="a clean child")
+
+    absent.mkdir()
+    with pytest.raises(mutate.StateLeak):
+        mutate.check_state_guard(guard, label="a child that created it")
+
+
+def test_the_guarded_roots_follow_the_overrides_this_process_carries(monkeypatch, tmp_path):
+    """Which is what keeps this suite off the real machine's own directory."""
+    monkeypatch.setenv("CRATEKIT_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("CRATEKIT_STATE_DIR", str(tmp_path / "state"))
+    assert mutate.installation_state_roots() == (tmp_path / "cfg", tmp_path / "state")
+
+    # macOS answers both platformdirs calls with one directory, so a resolved
+    # pair that agrees must collapse to a single root rather than be walked twice.
+    monkeypatch.setenv("CRATEKIT_STATE_DIR", str(tmp_path / "cfg"))
+    assert mutate.installation_state_roots() == (tmp_path / "cfg",)
 
 
 def test_a_red_subset_baseline_is_refused_even_when_the_full_suite_is_green(repo):

@@ -16857,6 +16857,57 @@ directory, which is a session's work and not a sitting's.
 real state directory is writable by the child, or the redirect is proven to
 hold under every row in the committed tables, whichever is cheapest.
 
+**Recurred 2026-09-20 16:55, and it was the predicted worst case.** The live
+configuration was overwritten with a test fixture configuration: `volume_id`
+`F1E2-D3C4`, which appears as a fixture literal in five test files, the three
+`remote:` backup destinations, which appear in two more, a library root under a
+pytest temporary directory that no longer existed, and no rekordbox
+application pin. Everything the first four attended sittings established went
+with it. Only `config.toml` and `recovery.lock` carry that timestamp, so it was
+one event, not a rolling leak. Sitting 4's job queue and the label offers were
+untouched.
+
+**Measured on 2026-09-22 before the fix.** The real state directory was
+fingerprinted across a full suite run on the clean tree: 9971 passed, 562
+files, identical digest before and after. So the clean tree is innocent, which
+reproduces this entry's own 2026-09-16 measurement, and the producer needs a
+mutated tree. The mutation driver is the only thing that runs one.
+
+**The mechanism, which this entry did not have.** The conftest sets every
+isolation variable through `monkeypatch`, and
+`docs/solutions/workflow-issues/monkeypatch-undo-inside-a-test-rolls-back-the-autouse-fixtures-too.md`
+already records that an `undo()` inside a test rolls the autouse isolation back
+with it. Eleven live `monkeypatch.undo()` calls sit in the suite across six
+files. What `undo()` restores is the value the process started with, which was
+the real machine. The temp directory name the leaked configuration carried,
+`test_drive_r5870`, appears nowhere in this repository's history and nowhere on
+disk, so which mutant paired with which undo was not established and is not
+worth 262 tables of machine time to establish: the guard below makes the next
+one name itself.
+
+**CLOSED 2026-09-22 on `unit/issue190`, issue #190, taking the SECOND
+condition.** `scripts/mutate.py` now hands every child a throwaway
+installation state at process start, HOME, its Windows equivalent, the four XDG
+variables and both Cratekit overrides, all inside the run's own workspace, so an
+undone test lands there. Beside it, a fingerprint of the real installation
+state, taken after preflight and compared in a `finally` around every child,
+including the baselines, the null control and every promotion: directories as
+entries, files by size, inode, mtime and ctime, and files at or under 64 KiB by
+content. A change raises `StateLeak`, deliberately not a `DriverRefusal` so the
+row loop cannot file it as a row, and the batch stops with exit 6 naming the
+child that was running. Measured: the full suite under the sandbox environment
+is 9971 passed and 1 skipped, so nothing in the suite depended on the real
+home. The unit's table, `docs/mutation/r343.md`, ran the guard against this
+machine's real directory across three driver runs, and the hand fingerprint
+before and after each agrees. Its three user facing zeros carry composites in
+`docs/mutation/r343-composites.md`: timestamps removed together kill nothing
+because the content hash carries a same size rewrite, and timestamps and hash
+removed together, or everything but the path, are killed by the in place
+rewrite test, so each layer alone is redundant on this filesystem and the set
+is not. The first condition, naming the mutant, is not taken. The third,
+proving the redirect under every committed table, is made unnecessary by the
+sandbox. Filed from this unit: R-658 to R-661.
+
 ---
 
 ## R-344. The volume identity is compared case sensitively and the wizard accepts diskutil's spelling
@@ -26591,3 +26642,118 @@ brief's wording is read as satisfied by the seam test and this entry is closed
 in place.
 
 **Not on the board bar.** Maintainer facing, nothing lost, nothing false.
+
+---
+
+## R-658. Eleven `monkeypatch.undo()` calls restore the real machine mid test, and nothing guards a plain battery run
+
+**Found:** by R-343's session, 2026-09-22, reading the mechanism behind the
+2026-09-20 overwrite.
+
+`tests/conftest.py` isolates HOME, the XDG variables, both Cratekit overrides,
+the keychain and the library root with `monkeypatch`, which is one
+function scoped instance shared by the autouse fixtures and the test body. An
+`undo()` in the body reverts all of it, and from that line the test runs on the
+real machine. Eleven calls: `tests/test_adoption.py` five,
+`tests/test_reserved_causes.py` two, `tests/test_uncredited_tombstone.py`,
+`tests/test_outbound_workers.py`, `tests/test_restore.py` and
+`tests/intake/test_repair_apply.py` one each. The trap is already in
+`docs/solutions/` and has no guard.
+
+**Measured cost.** On the clean tree, none: a full suite run left the real state
+directory byte for byte unchanged, 9971 tests. On a mutated tree, one real
+configuration on 2026-09-20. The mutation driver's children are now sandboxed
+by R-343's fix. A plain `pytest` run is not: its process starts with the real
+values, and an `undo()` in it restores them.
+
+**Why not fixed here.** Scope was held to the driver on 2026-09-22, Phillip's
+call, because the driver is the only thing that runs a mutated tree. Each of
+the eleven needs its own reasoning about what it meant to undo, and a
+session scoped tripwire in the conftest was considered and declined.
+
+**Closes when:** every `monkeypatch.undo()` in `tests/` is replaced by a scoped
+patch, or the conftest fingerprints the real installation state at session
+start and fails the session if it changed, and a test drives an undo followed
+by a write and shows it land in the temp root.
+
+**On the board bar under (a).** Files were damaged, and demonstrably. Issue filed after the merge that carries this entry.
+
+---
+
+## R-659. The driver's guard watches two roots while its sandbox redirects eight variables
+
+**Found:** by the built in review of R-343's fix, 2026-09-22.
+
+`installation_state_roots` fingerprints the configuration and state
+directories. `SANDBOXED_ENV` also points HOME, USERPROFILE and the data and
+cache roots away. A child that reaches the real trash directory, which
+`deletion/trash.py` resolves from `XDG_DATA_HOME` or the home directory, is
+sandboxed but not watched, and the table says only that the watched roots are
+unchanged.
+
+**Measured cost:** none observed. Not driven.
+
+**Why not fixed here.** Walking the whole real home after every child is the
+alternative, and it is minutes of stat per row on a home this size. The claim
+was narrowed instead.
+
+**Closes when:** the guard fingerprints the platformdirs data and cache roots
+as well, or a producer is driven that reaches one of them.
+
+---
+
+## R-660. The guard cannot tell a child's write from a concurrent one
+
+**Found:** by the built in review of R-343's fix, 2026-09-22.
+
+The comparison is against the batch's starting fingerprint. A `crate` run in
+another terminal writes a run record into the same directory and stops the
+batch exactly as a leak would, and the row that was running is named.
+
+**Measured cost:** none observed; the message says which of the two it could
+not tell. A stopped batch is a rerun, and the rerun is minutes.
+
+**Why not fixed here.** Distinguishing them means the child reporting what it
+wrote, which is the plugin's job and a larger change than a message.
+
+**Closes when:** a concurrent writer is driven mid batch and the report names
+it as concurrent rather than as the row, or the rule that nothing else uses the
+directory during a batch is enforced by a lock the driver takes.
+
+---
+
+## R-661. A promoted row's full suite death can be the repository scan reading the driver's own sidecar
+
+**Found:** by R-343's own first table, 2026-09-22. Four rows killed zero on
+`tests/test_mutation_driver.py`, were promoted to the full suite, and were each
+reported killed by exactly one test,
+`tests/test_portability.py::test_the_repository_itself_is_clean`.
+
+That test runs `scan.scan_tree` over the repository with identity checking on.
+The driver writes its progress sidecar into `docs/mutation/` after the first
+row, and anything in that sidecar the scan refuses fails the test on every full
+suite run that follows. R-343's sidecar carried the guarded root under the home
+directory, so it named the account. The null control did not die because it
+runs before the sidecar exists, which is what let the artifact pass for a
+measurement.
+
+**Measured cost.** Read across every committed `docs/mutation/*.json`: 37
+promoted rows report a death, and 11 of them are killed by the cleanliness test
+alone, four in R-343's first table and seven in earlier ones, `u28-skills-independent`
+among them. Each of those eleven is a zero row that the table records as
+killed, which is the opposite of what a mutation table is for. R-343's four
+were re-measured after the sidecar was made portable, see `docs/mutation/r343.md`;
+the seven earlier ones were not re-run here.
+
+**Why not fixed here.** Both fix rounds were spent, the second on making
+R-343's own sidecar portable, which removes this unit's instance and not the
+class. The class is that the driver's artifact is inside the tree the suite
+scans.
+
+**Closes when:** the driver classifies a promoted row whose only killer is the
+cleanliness test as a zero and says so, or the sidecar is written outside the
+tree during the run and moved into `docs/mutation/` at the end, and the seven
+earlier rows are re-measured or their tables annotated.
+
+**Not on the board bar.** Maintainer facing: nothing a person using the
+shipped verbs pays for.
