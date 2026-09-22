@@ -1,0 +1,108 @@
+# R-390 and R-391, author's table, first batch: the resume refusal.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r390-a-rows.toml
+
+name = "r390-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_retry_re_arms_unconditionally"
+description = "the original defect: retry re-arms every failed item whatever the job cause says"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_master_cli.py", "tests/test_acquire_workers.py"]
+old = '''    if current.cause is not None and not current.cause.retryable:
+        raise refuse(
+            "job-not-retryable",
+            f"job {job_id} {current.state} with a cause that is not retryable, "
+            f"so resuming it cannot succeed and its items were left as they are",
+            steps=(
+                "inspect each failed item's cause on the job's own record",
+                "queue the work again the way it was queued the first time, "
+                "once the reason is addressed",
+            ),
+            origin=("jobs",),
+            detail={
+                "job_id": job_id,
+                "state": str(current.state),
+                # Named on the refusal as the job cause names them (R-391), so
+                # a person is not sent into the nested cause to learn which.
+                **_permanent_reasons_of(current.cause),
+            },
+            inner=current.cause,
+        )
+'''
+new = ""
+
+[[rows]]
+id = "A2_retry_refuses_any_closed_job_with_a_cause"
+description = "the flag is not read: a cancelled job and a retryable failure are refused too"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_backup_cli.py", "tests/test_outbound_workers.py"]
+old = '''    if current.cause is not None and not current.cause.retryable:
+        raise refuse(
+            "job-not-retryable",'''
+new = '''    if current.cause is not None:
+        raise refuse(
+            "job-not-retryable",'''
+
+[[rows]]
+id = "A3_a_failed_job_with_no_cause_is_refused"
+description = "a missing verdict is read as a permanent one"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    if current.cause is not None and not current.cause.retryable:
+        raise refuse(
+            "job-not-retryable",'''
+new = '''    if current.cause is None or not current.cause.retryable:
+        raise refuse(
+            "job-not-retryable",'''
+
+[[rows]]
+id = "A4_refusal_drops_the_permanent_reasons"
+description = "the resume refusal no longer names the mixed reasons at its own top level"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''                "state": str(current.state),
+                # Named on the refusal as the job cause names them (R-391), so
+                # a person is not sent into the nested cause to learn which.
+                **_permanent_reasons_of(current.cause),
+            },
+            inner=current.cause,'''
+new = '''                "state": str(current.state),
+            },
+            inner=current.cause,'''
+
+[[rows]]
+id = "A5_refusal_drops_the_inner_cause"
+description = "the refusal no longer nests the job's own cause, so the item's reason is unreachable"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_master_cli.py", "tests/test_acquire_workers.py"]
+old = '''                **_permanent_reasons_of(current.cause),
+            },
+            inner=current.cause,
+        )'''
+new = '''                **_permanent_reasons_of(current.cause),
+            },
+        )'''
+
+[[rows]]
+id = "A6_backup_transfer_exit_is_permanent"
+description = "the flag the review round added: a transfer exit recorded with no retryable flag"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''            retryable=True,
+            origin=("backup", "cli"),
+            detail={"portions": [entry.portion.value for entry in failed]},'''
+new = '''            origin=("backup", "cli"),
+            detail={"portions": [entry.portion.value for entry in failed]},'''
+
+[[dropped]]
+id = "A7_items_re_armed_before_the_refusal"
+description = "move the UPDATE that re-arms items above the refusal so a refused resume still re-arms"
+reason = "the refusal is a raise ahead of the write block and A1 already restores the write; a second row over the same write is the same guard family"

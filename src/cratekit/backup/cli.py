@@ -817,6 +817,13 @@ def refusal_for(outcome: backup.BackupOutcome) -> CratekitError | None:
         entry for entry in outcome.portions if not entry.ran and entry.refusal is None
     )
     if failed:
+        # RETRYABLE, and the flag is load bearing. A transfer that exited non
+        # zero is a remote that answered the plan and then did not, a dropped
+        # connection or a remote that went away mid copy, and the portion runs
+        # again exactly as it did. The job cause reads this flag (R-380) and so
+        # does ``jobs.retry`` before it re-arms the portion (R-390): left at
+        # the default, every failed backup transfer was recorded as permanent
+        # and the resume the per portion ledger exists for was refused.
         return refuse(
             "backup-transfer-failed",
             "a transfer this backup ran came back non zero and the run did not "
@@ -824,6 +831,7 @@ def refusal_for(outcome: backup.BackupOutcome) -> CratekitError | None:
             + "; ".join(f"{entry.portion.value}: {entry.detail}" for entry in failed)
             + ". No backup age was published for that portion, so a destructive "
             "session still sees whatever the last successful run left",
+            retryable=True,
             origin=("backup", "cli"),
             detail={"portions": [entry.portion.value for entry in failed]},
         )
@@ -929,8 +937,9 @@ def perform_backup(
     under that pair BEFORE the refusal is raised, so ``job show`` can name the
     rclone command that failed. It is written here and not returned, because a
     refusal is the only thing that leaves the item FAILED, and FAILED is the only
-    state ``jobs.retry`` re-arms. The success channel is :func:`handle`'s
-    ``Produced``.
+    state ``jobs.retry`` re-arms, and since R-390 it re-arms it only over a
+    cause that is retryable, which :func:`refusal_for` marks a transfer exit
+    as. The success channel is :func:`handle`'s ``Produced``.
     """
     cfg = _load() if cfg is None else cfg
     dry_run = bool(payload.get(DRY_RUN))

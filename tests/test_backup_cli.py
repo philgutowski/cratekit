@@ -795,6 +795,11 @@ def test_a_failed_portion_decides_the_run_even_when_the_other_completed():
     assert refusal is not None
     assert refusal.cause.reason == "backup-transfer-failed"
     assert refusal.cause.detail["portions"] == ["database"]
+    # RETRYABLE, because the flag is what decides whether the portion can be
+    # resumed at all: the job cause reads it (R-380) and ``jobs.retry`` refuses
+    # a job whose cause says otherwise (R-390). A remote that answered the plan
+    # and then dropped the transfer is not a permanent fact about the library.
+    assert refusal.cause.retryable is True
 
 
 def test_an_outcome_with_no_portions_refuses_rather_than_raising():
@@ -2436,7 +2441,14 @@ def test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal(cfg, monkeypat
     )
     steps = refused["cause"]["remediation"]["steps"]
     assert any("copies nothing" in step for step in steps), refused
-    assert refused["cause"]["reason"] == "backup-transfer-failed", refused
+    # A transfer exit is RETRYABLE, so the job cause is the engine's transient
+    # verdict with the portion's own refusal nested inside it (R-380). Until the
+    # R-390 unit marked it so, the flag was left at its default and this pinned
+    # the portion's slug on the job, which was the job saying the failure was
+    # permanent.
+    assert refused["cause"]["reason"] == "unavailable-transient", refused
+    assert refused["cause"]["retryable"] is True, refused
+    assert refused["cause"]["inner"]["reason"] == "backup-transfer-failed", refused
     _assert_extended_not_rebuilt(refused["cause"], control["cause"])
 
 

@@ -4,7 +4,41 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-372, issue #98, `relay/98`, 2026-09-22.**
+**Last merged: R-390 and R-391, issue #99, `relay/99`, 2026-09-22.**
+`crate job resume` no longer re-arms work the job has already said cannot
+succeed. `jobs.retry` refuses a closed job whose cause carries `retryable`
+false, with the reserved `job-not-retryable` on PRECONDITION, steps rather
+than a token, the job's own cause nested, and the mixed reasons at its own
+top level when the job cause has them. Items stay as the failure left them,
+DONE stays DONE. A cancelled job carries a retryable cause and re-arms; a
+FAILED job with no cause re-arms, because a missing verdict is not a permanent
+one. The resume verb relies on the engine and adds no check. Several distinct
+permanent reasons use the reserved `mixed-permanent-failures` on INTERNAL
+beside `no-evidence`, the message names every reason, and
+`detail["permanent_reasons"]` is the sorted tuple, driven in both item orders;
+one shared reason is still that reason. The all failed envelope keeps the last
+item nested and carries the same sorted reasons beside it. **What the refusal
+exposed: `retryable` defaults to false, so a raise site that never set it was
+read as having proven its failure permanent.** Eleven tests in six suites
+re-armed after a fake failure; six fakes modelled a transient failure and
+changed, three were the backup shell's own transfer exit, which is retryable
+now, so a dropped connection mid mirror resumes and the per portion ledger is
+usable again. The built in review raised eight findings, that one held
+hardest and was fixed in round one; nesting the job verdict in the all failed
+envelope, which it also asked for, moved the item's detail one layer deeper
+than five worker suites read it and was corrected to reasons beside the item.
+R-390 and R-391 CLOSED in place. Filed R-656, mastering's missing source and
+acquisition's defect stay permanent by their modules' own choice, so a repair
+needs a fresh job. Not on the board bar.
+Battery: ruff clean, **9927 passed** and 1 skipped in 75 seconds. Scan clean.
+No test of this unit's is among the slowest ten.
+Mutation tables `docs/mutation/r390-a.md` and `r390-b.md`: **13 rows, the
+author's own, all killed**, no zero and no composite owed, one collect error
+re-run, read in `r390-notes.md`. The learning is a new entry in
+`docs/solutions/workflow-issues/`.
+**Main's highest residual number is R-656.**
+
+**The session before: R-372, issue #98, `relay/98`, 2026-09-22.**
 The My Tags plan no longer reads ok over a collection it cannot resolve, doctor
 reads the prefix map, and setup offers the drive rule. One walk in
 `write/metadata_cli._survey` returns `ResolutionTotals`, and the plan's totals

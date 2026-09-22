@@ -23,6 +23,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
+from cratekit.core.cause import refuse
+from cratekit.core.exit_codes import Remedy
 from tests.modules.test_reports import _close, _collection, _document, _folder, _playlist
 
 #: Every method the ``RemoteAccount`` protocol declares. Derived once here rather
@@ -58,6 +60,7 @@ class FakeAccount:
         fail_after: int | None = None,
         fail_on: frozenset[str] | set[str] | None = None,
         hearts: set[str] | None = None,
+        transient: bool = False,
     ) -> None:
         self.catalog = dict(catalog or {})
         self.hearts: set[str] = set(hearts or ())
@@ -73,6 +76,13 @@ class FakeAccount:
         self.titles: dict[str, str] = {}
         self.fail_after = fail_after
         self.fail_on = frozenset(fail_on or ())
+        #: How a failed write fails. ``False`` raises ``RuntimeError``, which
+        #: the item boundary records as ``internal-error`` and NOT retryable, the
+        #: shape a defect takes. ``True`` raises the provider's own transient
+        #: refusal, retryable, the shape a dropped connection takes. A test that
+        #: re-arms the job afterwards needs the second, because ``jobs.retry``
+        #: refuses a job whose recorded failures are permanent (R-390).
+        self.transient = transient
         self._writes = 0
         #: Every match asked, as the keyword arguments it was asked with, so a
         #: test can say what an engine handed the account to choose by.
@@ -129,9 +139,20 @@ class FakeAccount:
     def _bump(self, subject: str = "") -> None:
         self._writes += 1
         if subject and subject in self.fail_on:
-            raise RuntimeError(f"interrupted outbound write for {subject}")
+            self._fail(f"interrupted outbound write for {subject}")
         if self.fail_after is not None and self._writes > self.fail_after:
-            raise RuntimeError("interrupted outbound write")
+            self._fail("interrupted outbound write")
+
+    def _fail(self, message: str) -> None:
+        if self.transient:
+            raise refuse(
+                "unavailable-transient",
+                message,
+                remedy=Remedy.RETRY_LATER,
+                retryable=True,
+                origin=("test", "outbound_fakes"),
+            )
+        raise RuntimeError(message)
 
 
 class StrictAccount(FakeAccount):

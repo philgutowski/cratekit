@@ -387,10 +387,15 @@ def test_the_envelope_names_the_tracks_the_provider_could_not_match(
 def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(
     installed, exported, monkeypatch
 ):
-    """The engine's resume guarantee, through the binding rather than beside it."""
+    """The engine's resume guarantee, through the binding rather than beside it.
+
+    The failed write is TRANSIENT, a dropped connection and not a defect, because
+    a resume is only offered, and since R-390 only performed, over a failure the
+    item itself recorded as retryable.
+    """
     del installed
     account = outbound_fakes.FakeAccount(
-        catalog=catalog(1, 2, 3), fail_on={"tid-2"}
+        catalog=catalog(1, 2, 3), fail_on={"tid-2"}, transient=True
     )
     bind(monkeypatch, account)
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
@@ -1377,9 +1382,15 @@ def test_job_show_reports_the_bound_worker_for_a_queued_sweep(
 def test_a_failed_favourite_leaves_the_sweep_resumable(
     installed, exported, monkeypatch
 ):
-    """The plan named it for both verbs and only the export verb had it."""
+    """The plan named it for both verbs and only the export verb had it.
+
+    A transient failure, as the export test's is, since R-390 re-arms nothing
+    the item recorded as permanent.
+    """
     del installed
-    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2), fail_on={"tid-2"})
+    account = outbound_fakes.FakeAccount(
+        catalog=catalog(1, 2), fail_on={"tid-2"}, transient=True
+    )
     bind(monkeypatch, account)
     _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
     assert _resume(job_id)[0] != int(ExitCode.OK)

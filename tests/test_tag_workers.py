@@ -548,7 +548,10 @@ def raising_on(searcher, title: str):
 
     ``catalogue-unreachable`` rather than an invented exception, because what is
     under test is the path a real sweep takes when a network drops out part way
-    through a folder, and the shipped searcher raises exactly this.
+    through a folder, and the shipped searcher raises exactly this. RETRYABLE,
+    as the shipped raise is: the flag is what ``jobs.retry`` reads before it
+    re-arms the item (R-390), and a fake that dropped it modelled a network
+    drop as a permanent failure nothing could resume.
     """
 
     def wrapped(artist: str, name: str):
@@ -558,6 +561,7 @@ def raising_on(searcher, title: str):
                 searchers.UNREACHABLE_REASON,
                 f"no catalogue could be read, so nothing is known about {name!r}",
                 remedy=Remedy.RETRY_LATER,
+                retryable=True,
                 origin=("tagging", "searchers"),
             )
         return searcher(artist, name)

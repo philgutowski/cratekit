@@ -287,6 +287,11 @@ def resume(ctx: "Context") -> Envelope:
         # and writes it into a log nobody is watching.
         jobs.assert_free(job.job_id)
         if not job.is_open():
+            # ``retry`` REFUSES a closed job whose cause is not retryable (R-390),
+            # and that refusal is the engine's rather than this verb's on
+            # purpose: the verb is the engine's only shipped caller today, and a
+            # check written here alone would leave the next caller re-arming
+            # work the job has already said cannot succeed.
             job = jobs.retry(store, job.job_id)
         pid = jobs.spawn(store, job, argv_for(job))
         summary = _summary(store, job)

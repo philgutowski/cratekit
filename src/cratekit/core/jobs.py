@@ -740,6 +740,14 @@ def retry(store: JobStore, job_id: str) -> Job:
     Items that are DONE stay done. That is the whole promise of a resume: R22 says
     completed work is not repeated, and "completed" means the item's artifact is
     durable, never that the job as a whole ended tidily.
+
+    A closed job whose cause says ``retryable`` is False is REFUSED, and nothing
+    is re-armed (R-390). The cause is the engine's own verdict over the item
+    failures (R-380), so a job every one of whose failures is permanent has
+    already said a resume cannot succeed, and this is the one path that could
+    still perform one. A cancelled job carries a retryable cause and re-arms; a
+    FAILED job with no cause at all, one an older build recorded, re-arms too,
+    because a missing verdict is not a permanent one.
     """
     current = get(store, job_id)
     if current.state is JobState.SUCCEEDED:
@@ -752,6 +760,26 @@ def retry(store: JobStore, job_id: str) -> Job:
         )
     if current.is_open():
         return current
+    if current.cause is not None and not current.cause.retryable:
+        raise refuse(
+            "job-not-retryable",
+            f"job {job_id} {current.state} with a cause that is not retryable, "
+            f"so resuming it cannot succeed and its items were left as they are",
+            steps=(
+                "inspect each failed item's cause on the job's own record",
+                "queue the work again the way it was queued the first time, "
+                "once the reason is addressed",
+            ),
+            origin=("jobs",),
+            detail={
+                "job_id": job_id,
+                "state": str(current.state),
+                # Named on the refusal as the job cause names them (R-391), so
+                # a person is not sent into the nested cause to learn which.
+                **_permanent_reasons_of(current.cause),
+            },
+            inner=current.cause,
+        )
     with store.immediate() as conn:
         conn.execute(
             "UPDATE job_items SET state = ?, cause = NULL, claimed_by = NULL "
@@ -765,6 +793,16 @@ def retry(store: JobStore, job_id: str) -> Job:
         )
         _touch(conn, job_id, state=str(JobState.QUEUED), cause=None, pid=None)
     return get(store, job_id)
+
+
+#: The detail key a mixed permanent job cause carries its sorted reasons under.
+PERMANENT_REASONS = "permanent_reasons"
+
+
+def _permanent_reasons_of(cause: Cause) -> dict[str, Any]:
+    """The mixed job cause's reasons as one detail entry, or nothing."""
+    reasons = cause.detail.get(PERMANENT_REASONS)
+    return {PERMANENT_REASONS: tuple(reasons)} if reasons else {}
 
 
 def block(store: JobStore, job_id: str, cause: Cause) -> Job:
@@ -1154,6 +1192,7 @@ def evidence_or_raise(
     succeeded: int,
     failed_cause: Cause | None = None,
     retryable: bool = True,
+    permanent_reasons: Sequence[str] = (),
 ) -> None:
     """Refuse to report an empty success when everything actually failed.
 
@@ -1180,15 +1219,29 @@ def evidence_or_raise(
         extra["steps"] = (
             "the failed items cannot succeed on resume; inspect each item's cause",
         )
-    raise refuse(
-        "no-evidence",
+    message = (
         f"all {attempted} items failed, so there is no evidence of success; an "
         f"empty result from a total failure is indistinguishable from having found "
-        f"nothing, and only one of those may advance anything downstream",
+        f"nothing, and only one of those may advance anything downstream"
+    )
+    detail: dict[str, Any] = {"attempted": attempted}
+    if len(permanent_reasons) > 1:
+        # THE ITEM STAYS NESTED AS ``inner``, its own detail is what a person
+        # acts on, and the mixed reasons ride beside it (R-391): nesting the
+        # job's verdict instead would push that detail one layer deeper than
+        # every shell reads it.
+        message += (
+            f"; the failures carry {len(permanent_reasons)} distinct permanent "
+            f"reasons: {', '.join(permanent_reasons)}"
+        )
+        detail[PERMANENT_REASONS] = tuple(permanent_reasons)
+    raise refuse(
+        "no-evidence",
+        message,
         scope=Scope.SOURCE,
         retryable=retryable,
         origin=("jobs",),
-        detail={"attempted": attempted},
+        detail=detail,
         inner=failed_cause,
         **extra,
     )
@@ -1272,21 +1325,31 @@ class DriveResult:
 
 def _failure_verdict(
     failed: Sequence[Cause],
-) -> tuple[str, bool, Remediation]:
-    """Reason, retryable, and remediation for a job whose items failed.
+) -> tuple[str, bool, Remediation, tuple[str, ...]]:
+    """Reason, retryable, remediation and the permanent reasons for a failed job.
 
     The item rows already carry the honest causes. The job cause a person is
     told to act on has to read them: a wrapper that always says the failure is
     transient tells someone to resume work that cannot succeed (R-380).
+
+    When every failure is permanent and the items share one reason, that reason
+    is the job's. When they do not, the job's reason is the reserved
+    ``mixed-permanent-failures`` and the caller names every distinct reason,
+    because taking the last item's reason, which this did, made every other
+    reason invisible outside the item rows (R-391). The set is SORTED so the
+    verdict depends on which reasons occurred and not on the order the driver
+    claimed the items. The tuple is returned beside the slug so the caller names
+    the same set the slug was chosen from, rather than deriving it a second time.
     """
     if not failed or any(cause.retryable for cause in failed):
         return (
             "unavailable-transient",
             True,
             Remediation(remedy=Remedy.RESUME_JOB),
+            (),
         )
-    reasons = {cause.reason for cause in failed}
-    reason = failed[0].reason if len(reasons) == 1 else failed[-1].reason
+    reasons = tuple(sorted({cause.reason for cause in failed}))
+    reason = reasons[0] if len(reasons) == 1 else "mixed-permanent-failures"
     return (
         reason,
         False,
@@ -1295,6 +1358,7 @@ def _failure_verdict(
                 "the failed items cannot succeed on resume; inspect each item's cause",
             )
         ),
+        reasons,
     )
 
 
@@ -1304,7 +1368,7 @@ def _partial_failure_cause(
     inner: Cause | None,
     failed: Sequence[Cause],
 ) -> Cause:
-    reason, retryable, remediation = _failure_verdict(failed)
+    reason, retryable, remediation, reasons = _failure_verdict(failed)
     transient = sum(1 for cause in failed if cause.retryable)
     permanent = sum(1 for cause in failed if not cause.retryable)
     message = (
@@ -1312,8 +1376,24 @@ def _partial_failure_cause(
         f"{result.failed}; the failures keep the job from succeeding and the "
         f"successes are already durable"
     )
+    detail: dict[str, Any] = {
+        "job_id": job_id,
+        "processed": result.processed,
+        "failed": result.failed,
+        "retryable_failed": transient,
+        "permanent_failed": permanent,
+    }
     if not retryable:
         message += "; every failure is permanent so resuming this job cannot succeed"
+        if len(reasons) > 1:
+            # R-391. The reason slug says the failures are mixed; the message and
+            # the detail say WHICH, since the slug alone would hide them exactly
+            # as the last item's reason did.
+            message += (
+                f"; the {permanent} permanent failures carry {len(reasons)} "
+                f"distinct reasons: {', '.join(reasons)}"
+            )
+            detail[PERMANENT_REASONS] = reasons
     elif transient and permanent:
         message += f" ({transient} retryable, {permanent} permanent)"
     return Cause(
@@ -1323,13 +1403,7 @@ def _partial_failure_cause(
         scope=Scope.SOURCE,
         retryable=retryable,
         origin=("jobs",),
-        detail={
-            "job_id": job_id,
-            "processed": result.processed,
-            "failed": result.failed,
-            "retryable_failed": transient,
-            "permanent_failed": permanent,
-        },
+        detail=detail,
         inner=inner,
     )
 
@@ -1497,11 +1571,19 @@ def drive(
                     job_id, result, last_cause, failed_causes
                 ),
             )
+            # The last item stays nested, and the reasons the recorded verdict
+            # named ride on the envelope's own detail (R-391), so the foreground
+            # is not left with only the item the driver claimed last.
             evidence_or_raise(
                 attempted=attempted,
                 succeeded=0,
                 failed_cause=last_cause,
                 retryable=items_retryable,
+                permanent_reasons=_permanent_reasons_of(result.job.cause).get(
+                    PERMANENT_REASONS, ()
+                )
+                if result.job.cause is not None
+                else (),
             )
         if result.failed:
             result.job = transition(
