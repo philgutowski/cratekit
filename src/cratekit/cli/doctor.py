@@ -122,6 +122,7 @@ from cratekit.core.cause import (
 )
 from cratekit.core.exit_codes import Remedy
 from cratekit.deletion import trash
+from cratekit.write import metadata_cli
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
@@ -441,6 +442,33 @@ def _git_dir(root: Path) -> tuple[Path | None, str | None, Remedy | None]:
     return pointed, None, None
 
 
+def _survey_paths(cfg: config.Config) -> metadata_cli.ResolutionTotals | None:
+    """How the collection's rows resolve here, read off a COPY of the database.
+
+    THE LIVE PATH IS NEVER OPENED, not even read only (R-372). The file is
+    copied into a private temporary directory by ``rb_writer.disposable_copy``
+    and the copy is what the binding opens; the directory is gone before this
+    returns. None when there is no database file at the configured path, which
+    is a different answer from a database that could not be opened: the second
+    raises the open's own refusal and the check reports it as such.
+
+    ``check_app_version=False`` for the reason ``integrity_ok`` gives: a copy is
+    a file, and whether an application is installed says nothing about whether
+    its rows resolve. The binding pin and the schema pin still apply on the way
+    in, because a copy opened by a binding the pin refuses is a reading nobody
+    can trust.
+    """
+    source = rb_writer.live_db_path(cfg)
+    if not source.is_file():
+        return None
+    with rb_writer.disposable_copy(source) as copied:
+        db = rb_writer.open_db(copied, check_app_version=False, cfg=cfg)
+        try:
+            return metadata_cli.resolution_totals(cfg, db)
+        finally:
+            rb_writer.close_db(db)
+
+
 def _probe_trash(path: Path) -> trash.TrashStatus:
     """Whether a file at ``path`` could be trashed, WITHOUT making it possible.
 
@@ -496,6 +524,14 @@ class Probes:
     #: missing, unwritable, or on another filesystem without needing three real
     #: volumes to describe them on.
     trash_probe: Callable[[Path], trash.TrashStatus] = _probe_trash
+    #: How the collection's active rows resolve on this machine, or None when
+    #: there is no database file to read. A seam so a test describes a library
+    #: whose rows record a renamed drive without building one, and so the two
+    #: synthetic machines can answer it opposite ways. The default copies the
+    #: database and opens the copy, and never the live path.
+    path_survey: Callable[[config.Config], metadata_cli.ResolutionTotals | None] = (
+        _survey_paths
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1284,6 +1320,99 @@ def _check_rekordbox_pins(inputs: _Inputs) -> Finding:
         title=title,
         status=Status.OK,
         detail=f"pinned at {pinned}, matching, confirmed against a write on {validated}",
+    )
+
+
+def _check_paths_resolved(inputs: _Inputs) -> Finding:
+    """Whether the collection's recorded paths can be read from this machine.
+
+    THE CHECK R-372 ASKED FOR, AND THE FIRST ONE TO READ THE PREFIX MAP. The
+    first real My Tags plan reported ok with count 0 over 9937 active rows it
+    had skipped, because rekordbox records nearly every row under the drive's
+    old name and setup had written no rule, and this report was green beside
+    it. Doctor now reads the same ratio the plan refuses on, off a disposable
+    copy of the database, so a person is told before the plan rather than by
+    reading a zero.
+
+    THREE ANSWERS, AND "COULD NOT LOOK" IS NOT ONE OF THE GOOD ONES. No file at
+    the configured path is INFO, because the volume is reported by its own
+    checks and a fresh library has nothing to resolve yet. A copy that would not
+    open is FAIL carrying the open's own cause and remedy, since an unanswered
+    question is not a pass. A majority of rows under no rule is FAIL under the
+    same slug the plan refuses with, so doctor exits under that code and the
+    two surfaces cannot disagree. A minority is INFO with the count, which is
+    the state the sitting was left in after the rule was typed by hand, 167 of
+    9937, and a person should see the number rather than an unqualified green.
+    """
+    key, title = "library.paths_resolved", "recorded paths resolve on this machine"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    cfg = inputs.cfg
+    try:
+        totals = inputs.probes.path_survey(cfg)
+    except CratekitError as exc:
+        cause = exc.cause
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"whether the collection's rows resolve could not be established: "
+                f"a copy of the database could not be opened, {cause.message}. The "
+                f"answer is unknown rather than good"
+            ),
+            remedy=cause.remediation.remedy,
+            cause=cause,
+        )
+    if totals is None:
+        unreadable = _library_state_unreadable(inputs, "the database")
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=unreadable
+            or (
+                f"no database file at {cfg.library.db_path}, so no row was read and "
+                f"nothing was asserted about how the collection resolves"
+            ),
+        )
+    rules = len(cfg.library.location_prefix_map)
+    if totals.majority_unmapped:
+        cause = metadata_cli.majority_unmapped_cause(cfg, totals)
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{cause.message}. The My Tags plan reads ok over such a library "
+                f"with every one of those rows skipped, and an apply writes nothing"
+            ),
+            remedy=cause.remediation.remedy,
+            cause=cause,
+        )
+    if totals.unmapped:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"{totals.unmapped} of {totals.active} active rows record a path "
+                f"under no library.location_prefix_map rule, a minority, with "
+                f"{rules} rule{'s' if rules != 1 else ''} recorded; those rows are "
+                f"skipped by every pass that resolves paths, and {totals.unresolved} "
+                f"rows in all resolve to no file here"
+            ),
+        )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.OK,
+        detail=(
+            f"every one of {totals.active} active rows records a path under the "
+            f"library root or a recorded rule ({rules} rule"
+            f"{'s' if rules != 1 else ''}), read off a disposable copy of the "
+            f"database; {totals.unresolved} resolve to no file here"
+        ),
     )
 
 
@@ -2413,6 +2542,10 @@ CHECKS: tuple[Check, ...] = (
     Check("taxonomy.active", _check_taxonomy),
     Check("rekordbox.closed", _check_rekordbox_closed),
     Check("rekordbox.pins", _check_rekordbox_pins),
+    # After the pins rather than beside the other library checks, because its
+    # answer comes off an open the binding pin governs: a reader meets the pin
+    # refusal first and this check's "could not be opened" second.
+    Check("library.paths_resolved", _check_paths_resolved),
     Check("keychain.reachable", _check_keychain),
     *(_bound(key, _check_credential) for key in sorted(CREDENTIALS_BY_CHECK)),
     *(_bound(f"binary.{name}", _check_binary) for name in BINARY_NAMES),

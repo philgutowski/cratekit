@@ -31,6 +31,7 @@ from pathlib import Path
 
 from cratekit.cli.doctor import Probes as _Probes
 from cratekit.deletion.trash import TrashLayout, TrashStatus
+from cratekit.write.metadata_cli import ResolutionTotals
 
 #: A synthetic volume identity. Shaped like a real one and belonging to nobody,
 #: because R1 forbids a shipped artifact from carrying a real library string.
@@ -105,6 +106,10 @@ def green(**overrides) -> _Probes:
         rclone_remotes=lambda _rclone: {},
         checkout_root=lambda: None,
         trash_probe=_usable_trash,
+        # A collection whose every row resolves, described rather than built:
+        # the real seam copies and opens a database and no green machine here
+        # has one.
+        path_survey=lambda _cfg: ResolutionTotals(active=10, unresolved=0, unmapped=0),
     )
     defaults.update(overrides)
     return _Probes(**defaults)
@@ -137,6 +142,12 @@ def hostile(**overrides) -> _Probes:
         rclone_remotes=lambda _rclone: None,
         checkout_root=lambda: None,
         trash_probe=_no_trash,
+        # The library R-372 was found on: every row recorded under a drive name
+        # no rule maps, which is what a renamed drive and an empty prefix map
+        # look like from here.
+        path_survey=lambda _cfg: ResolutionTotals(
+            active=10, unresolved=10, unmapped=10, prefixes={"/renamed/DRIVE": 10}
+        ),
     )
     defaults.update(overrides)
     return green(**defaults)

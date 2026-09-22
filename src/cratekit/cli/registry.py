@@ -1453,7 +1453,15 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"db_metadata"}),
         destructive=True,
         taxonomy_terms=("with_vox",),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            # R-372: a plan over a collection most of whose rows record a path
+            # no prefix rule maps would tag nothing and report ok. The check
+            # reads the same ratio the verb refuses on.
+            "library.paths_resolved",
+        ),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
         #: This verb writes My Tags rather than content columns, so U21's per-field
         #: policy does not govern it at all. It is the vocal module's own surface
