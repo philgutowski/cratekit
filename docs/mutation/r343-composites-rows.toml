@@ -1,0 +1,44 @@
+name = "r343-composites"
+pass_kind = "light"
+
+# The composites owed to the three user facing zeros in r343.md. G2, G3 and G8
+# each removed one layer of the file fingerprint alone and killed nothing,
+# because size, mtime, ctime and the content hash cover one another on this
+# filesystem and ctime cannot be pinned back by a test. These remove layers
+# together to show what they hold as a set.
+
+[[rows]]
+id = "C1_no_timestamps"
+description = "composite for G2 in r343.md: drop mtime and ctime together; the content hash is what is left to carry a same size rewrite"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''                f"\t{info.st_mtime_ns}\t{info.st_ctime_ns}"'''
+new = '''                ""'''
+
+[[rows]]
+id = "C2_no_timestamps_no_hash"
+description = "composite for G8 in r343.md: drop mtime, ctime and the content hash together, leaving path, size and inode; a same size rewrite must now pass unseen, so the test that rewrites in place is the death"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''                f"\t{info.st_mtime_ns}\t{info.st_ctime_ns}"
+            )
+            if info.st_size <= SMALL_FILE_BYTES and not os.path.islink(path):'''
+new = '''                ""
+            )
+            if False:'''
+
+[[rows]]
+id = "C3_path_only"
+description = "composite for G3 in r343.md: drop size, inode, timestamps and the hash, leaving the path alone; only a new or removed entry is seen"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''                f"{relative}\t{info.st_size}\t{info.st_ino}"
+                f"\t{info.st_mtime_ns}\t{info.st_ctime_ns}"
+            )
+            if info.st_size <= SMALL_FILE_BYTES and not os.path.islink(path):'''
+new = '''                f"{relative}"
+            )
+            if False:'''
