@@ -1252,10 +1252,14 @@ def test_a_backup_destination_naming_an_rclone_remote_is_accepted(library):
         "MusicBackup",
         # An on the fly backend with no configured remote before the colon.
         ":local:/tmp/backups",
-        # A Windows drive, which rclone special cases back to a local path.
+        # A Windows drive, which rclone special cases back to a local path,
+        # whichever way the slash leans.
         "C:\\Backups",
-        # A name rclone's own configuration cannot hold.
+        "C:/Backups",
+        # Names rclone's own configuration cannot hold: a leading hyphen, and
+        # a trailing space before the colon.
         "-gdrive:bucket",
+        "gdrive :bucket",
     ],
 )
 def test_a_backup_destination_naming_no_remote_is_refused(library, key, typed):
@@ -1357,6 +1361,21 @@ def test_an_unset_backup_destination_stays_allowed(library, profile):
     assert config.from_dict(partial).backup.remote == "gdrive"
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["me@gdrive", "work+home", "my drive", "gdrive-2.old", "Sicherung_ü", "b2"],
+)
+def test_every_name_rclone_can_store_is_accepted_as_a_remote(library, name):
+    """rclone's own rule since 1.61: letters and digits in any script, and
+    ``_ . + @ - space``, not starting with a hyphen or a space and not ending
+    with a space. A stricter rule here locks a correctly configured install
+    out of its own file, which is a guard firing on a correct setup (P7)."""
+    backup = {key.split(".")[1]: f"{name}:library/{key}" for key in config.BACKUP_DESTINATION_KEYS}
+    data = valid_data(library, backup=backup)
+    assert config.validate(data) == []
+    assert config.from_dict(data).backup.remote == name
+
+
 def test_the_destination_keys_are_published_for_the_wizard_and_the_verb():
     """The validator, the wizard and the backup verb name the same three keys."""
     assert config.BACKUP_DESTINATION_KEYS == (
@@ -1367,6 +1386,8 @@ def test_the_destination_keys_are_published_for_the_wizard_and_the_verb():
     assert config.backup_remote_name("gdrive:bucket/path") == "gdrive"
     assert config.backup_remote_name("MusicBackup") is None
     assert config.backup_remote_name(None) is None
+    assert config.derived_backup_remote({"backup": {"dest": "gdrive:m"}}) == "gdrive"
+    assert config.derived_backup_remote({"backup": {"remote": "x", "dest": "gdrive:m"}}) is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════

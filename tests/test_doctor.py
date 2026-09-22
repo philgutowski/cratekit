@@ -1578,6 +1578,81 @@ def test_the_wizard_asks_nothing_about_backup_when_the_module_is_off(configured)
     assert "off in this profile" in note.detail
 
 
+def test_backup_flags_are_recorded_even_when_the_module_is_off(configured):
+    """A flag is an answer whatever the profile says. Refusing it would send a
+    person to switch the module on and come back, and validation judges the
+    shape either way."""
+    from types import SimpleNamespace
+
+    document = dict(configured.to_toml_dict())
+    document["profile"] = {"name": "slim"}
+    wizard = setup_verb._Wizard(document, silent())
+    setup_verb._resolve_backup(
+        wizard,
+        document,
+        SimpleNamespace(
+            backup_dest="gdrive:mirror",
+            backup_archive_root="gdrive:archive",
+            backup_db_dest_root="gdrive:db",
+        ),
+    )
+    assert document["backup"] == {
+        "dest": "gdrive:mirror",
+        "archive_root": "gdrive:archive",
+        "db_dest_root": "gdrive:db",
+        "remote": "gdrive",
+    }
+    assert len([line for line in wizard.asked if "command line" in line]) == 3
+    assert any("off in this profile" in n.detail for n in wizard.notes if n.key == "setup.backup")
+
+
+def test_a_declined_offer_still_records_the_flags_that_were_given(configured):
+    """Partial flags on a full profile: the two given land, the offer is about
+    the one still missing, a no leaves that one unset, and the remote is
+    derived from what did land."""
+    from types import SimpleNamespace
+
+    document = dict(configured.to_toml_dict())
+    wizard = setup_verb._Wizard(document, Scripted(["no"]))
+    setup_verb._resolve_backup(
+        wizard,
+        document,
+        SimpleNamespace(
+            backup_dest="gdrive:mirror", backup_archive_root="gdrive:archive", backup_db_dest_root=None
+        ),
+    )
+    assert document["backup"] == {
+        "dest": "gdrive:mirror",
+        "archive_root": "gdrive:archive",
+        "remote": "gdrive",
+    }
+    note = next(n for n in wizard.notes if n.key == "setup.backup")
+    assert "backup.db_dest_root not recorded" in note.detail
+    assert "backup.dest" not in note.detail.split(" not recorded")[0]
+
+
+def test_a_mistyped_module_name_is_still_a_named_problem_not_a_traceback(
+    configured, monkeypatch
+):
+    """The wizard reads membership off the document before validate runs, and
+    ``profiles.resolve`` raises on a module it does not know. A hand edit such
+    as ``bakcup = true`` has to stay validate's to report as a named problem
+    under config-unusable, the way it was before the wizard asked about backup,
+    rather than escape as an internal error the dispatcher files as a defect."""
+    seed_taxonomy(configured)
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+    path = config.config_path()
+    path.write_text(path.read_text() + "\n[modules]\nbakcup = true\n")
+    config.reset_cache()
+
+    code, out, err = drive(["--output", "json", "setup"])
+
+    envelope = json.loads(out)
+    assert envelope["cause"]["reason"] == "config-unusable", envelope["cause"]
+    problems = envelope["cause"]["detail"]["problems"]
+    assert any("modules.bakcup is not a known module" in p for p in problems), problems
+
+
 def test_the_wizard_keeps_recorded_backup_destinations_without_asking(configured):
     """A re-run changes nothing it was not asked to change: three recorded
     destinations and a spelled remote reach no prompt and are left as spelled."""

@@ -2442,31 +2442,35 @@ BACKUP_DESTINATION_KEYS: tuple[str, ...] = (
     "backup.db_dest_root",
 )
 
-#: An rclone remote name: letters, digits, underscore, dot, hyphen and space,
-#: not starting with a hyphen or a space. This is rclone's own rule for the
-#: names it will store in its configuration, so a value that fails it cannot be
-#: a configured remote whatever else it is.
-_RCLONE_REMOTE_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_. -]*$")
+#: An rclone remote name, as rclone's own configuration rule has it since
+#: 1.61: letters and digits in any script, underscore, dot, plus, at sign,
+#: hyphen and space, not starting with a hyphen or a space, not ending with a
+#: space. A value that fails it cannot be a configured remote whatever else it
+#: is. ``\w`` is Unicode aware here, which is what admits a letter rclone
+#: admits and a hand list of ASCII ranges would refuse.
+_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*(?<! )$")
 
 
 def backup_remote_name(value: object) -> str | None:
     """The rclone remote a destination names, or None when it names none.
 
     ``remote:path`` is rclone's spelling and the part before the FIRST colon is
-    the remote. Three shapes answer None and each is a value rclone would read
+    the remote. Four shapes answer None and each is a value rclone would read
     as something other than a configured remote: no colon at all is a local
     relative path; an empty name before the colon is an on the fly backend
-    (``:local:/x`` is the local disk again); and ``C:\\x`` is a Windows drive,
-    which rclone special cases back to a local path on that platform. Public
-    because the wizard derives ``backup.remote`` through the same rule the
-    validator judges by, and the doctor's lookup splits on the same colon.
+    (``:local:/x`` is the local disk again); a single character before the
+    colon is a Windows drive letter, ``C:\\x`` and ``C:/x`` alike, which rclone
+    reads as a local path on that platform; and a name rclone's configuration
+    cannot hold, which therefore names nothing rclone has. Public because the
+    wizard derives ``backup.remote`` through the same rule the validator judges
+    by, and the doctor's lookup splits on the same colon.
     """
     if not isinstance(value, str):
         return None
     name, colon, _rest = value.partition(":")
-    if not colon or not name:
+    if not colon or len(name) < 2:
         return None
-    if ":\\" in value or not _RCLONE_REMOTE_NAME.match(name):
+    if not _RCLONE_REMOTE_NAME.match(name):
         return None
     return name
 
@@ -3379,7 +3383,7 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         backup=_build(
             BackupConfig,
             data.get("backup") or {},
-            overrides={"remote": _derived_backup_remote(data)},
+            overrides={"remote": derived_backup_remote(data)},
         ),
         reports=_build(ReportsConfig, data.get("reports") or {}),
         outbound=_build(OutboundConfig, data.get("outbound") or {}),
@@ -3387,13 +3391,18 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
     )
 
 
-def _derived_backup_remote(data: Mapping) -> str | None:
+def derived_backup_remote(data: Mapping) -> str | None:
     """The remote name the destinations carry, when the file spells none.
 
     None when ``backup.remote`` is already set, so the file's own value wins
     (the two were checked to agree), and None when no destination is set, so a
     configuration with no backup at all keeps ``remote`` unset and the backup
     verb's own refusal still names it.
+
+    Public because the wizard writes the same derivation INTO the document it
+    saves, so the file carries the name doctor looks up. One rule in one place:
+    a second copy in the wizard is how the file and the load come to derive two
+    different names.
     """
     remote = _dig(data, "backup.remote")
     if isinstance(remote, str) and remote.strip():
@@ -4074,6 +4083,7 @@ __all__ = [
     "TaxonomyConfig",
     "atomic_write_bytes",
     "backup_remote_name",
+    "derived_backup_remote",
     "config_dir",
     "config_path",
     "coupled_state_files",

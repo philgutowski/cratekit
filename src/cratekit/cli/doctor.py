@@ -1887,8 +1887,10 @@ def _check_backup_remote(inputs: _Inputs) -> Finding:
             title=title,
             status=Status.INFO,
             detail=(
-                "the backup module is on and backup.remote names no destination, "
-                "so the backup verb has nowhere to write until one is configured"
+                "the backup module is on and no backup destination is recorded, "
+                "so the backup verb has nowhere to write. Run setup and take the "
+                "offer, or pass --backup-dest, --backup-archive-root and "
+                "--backup-db-dest-root, each an rclone remote:path"
             ),
         )
     rclone = inputs.probes.find_binary("rclone")
@@ -1923,8 +1925,13 @@ def _check_backup_remote(inputs: _Inputs) -> Finding:
             key=key,
             title=title,
             status=Status.FAIL,
+            # "The backup remote" rather than "backup.remote names", because
+            # the value may be derived from the destinations and absent from
+            # the file, and a person sent to a key they cannot find stops
+            # looking.
             detail=(
-                f"backup.remote names {remote!r} and rclone has no remote called "
+                f"the backup remote is {remote!r}, from backup.remote or derived "
+                f"from the destinations, and rclone has no remote called "
                 f"{named!r}; it knows {', '.join(sorted(remotes)) or 'none'}"
             ),
             # NOT run-setup. The wizard asks for the three destinations and
