@@ -17800,6 +17800,38 @@ directories.
 offers the rule, or the plan and the doctor warn when unresolved rows are
 the majority of active rows rather than reporting ok.
 
+**CLOSED 2026-09-22 on `relay/98`, issue #98, both halves.** One walk of the
+collection in `write/metadata_cli._survey` returns `ResolutionTotals`, and the
+plan's totals now carry `unmapped` beside `unresolved`. When unmapped rows are
+strictly more than half of the active ones, the plan and the apply alike return
+a failed envelope under `library-paths-majority-unresolved`, registered at
+PRECONDITION with `run-setup`, the totals still in the payload, no items read
+and nothing written. Doctor's `library.paths_resolved` reads the same ratio off
+a disposable copy of the database, after asking through its process seam that
+rekordbox is closed and after the volume checks, and fails under the same slug;
+every entry that resolves recorded paths through the map declares it. Setup
+copies the database, reads `BaseDBDrive` and `CurrentDBDrive` off the
+`djmdProperty` row, and offers the rule on a deliberate yes, with the target
+spelled as `{library.root}` when it is the root. The live path is never opened:
+every test that reaches the binding asserts it.
+
+**The ratio reads UNMAPPED rows, not the whole unresolved total, and that is a
+decision this entry's own numbers hide.** `unresolved` folds three shapes: no
+recorded path, which is a streaming row; a path under no rule; and a mapped
+path whose file is gone. Only the middle one is a prefix rule's to fix, and a
+refusal telling a person to add a rule over a library of streaming rows or of
+deleted files would be wrong. On this library the two readings agree, 9937 of
+9937, so nothing measured here moved. The shared two row fixture, whose rows
+carry no path, would have refused every existing drive under the literal
+formula, which is the fixture saying what the rule would ask of every user.
+
+**Not copied, recorded.** Doctor and setup each copy the whole file set for a
+read, and setup does it twice in one run, R-654. The offered rule carries no
+volume identity when its target is a literal current drive, R-655. Doctor
+reports two failures while rekordbox is running, `rekordbox.closed` and this
+check saying it could not look, and that is the shape the module's own rule
+asks for rather than a green over an unanswered question.
+
 ---
 
 ## R-373. Forty three Vocals associations the source system wrote sit on files that carry no voxlevel today
@@ -26391,3 +26423,59 @@ bucket as recognised.
 
 **Not on the board bar.** Nothing is lost and nothing false is reported; the
 worse of two available tags is chosen and the report now names it.
+
+---
+
+## R-654. Doctor and setup copy the whole database file set for a read, and setup does it twice
+
+**Found by** the built in review of R-372's build, 2026-09-22, read and not
+driven on a real library.
+
+`doctor._survey_paths` and `setup._propose_prefix_map` each take a
+`rb_writer.read_only_copy`, the database with its write ahead log and shared
+memory index copied into a private temporary directory on the boot disk, and
+`crate setup` takes one for the offer and a second for the closing doctor run.
+A read of two columns and a count of rows pays for a full copy each time.
+
+**Measured cost.** Unmeasured live. On the sitting's library the file is in the
+hundreds of megabytes on a USB volume, so a doctor run that used to be a set of
+probes now copies that once, and setup copies it twice. Nothing false is
+reported and nothing is lost; the cost is time and boot disk space per run.
+
+**Why it is not fixed here.** The copy is the standing constraint's price: the
+live path is never opened, not even read only, and a read through the binding
+is a read of a file the binding holds. A survey handed from the wizard into the
+closing doctor, or one open answering both the drive names and the totals,
+removes the second copy and wants a seam doctor does not have today.
+
+**Closes when:** setup's closing doctor reuses the survey the offer took, or a
+cheaper read of the two columns and the row count exists that opens no copy.
+
+**Not on the board bar.** A cost, not a false report or a lost row.
+
+---
+
+## R-655. The rule setup offers carries no volume identity when its target is a literal drive
+
+**Found by** R-372's build, 2026-09-22, read off `config.PrefixMapping`.
+
+When `CurrentDBDrive` names a drive that is not the library root, the offered
+rule is written as `{ from = "<base>", to = "<current>" }` with no `volume_id`.
+`PrefixMapping.volume_id` says a target outside the library root with nothing
+recorded refuses a destructive pass rather than being trusted because its
+directory exists, so a deletion following that rule refuses until the identity
+is typed in by hand. When the target is the root the rule is spelled as the
+token and the library's own identity answers for it, which is the sitting's
+case and the common one.
+
+**Measured cost.** Unmeasured live. A person whose library is a folder on the
+current drive gets the rule they need for every read and for the My Tags
+write, and a refusal naming the missing identity on the first destructive pass.
+The refusal says what to record.
+
+**Closes when:** the offer reads the target volume's identity through the same
+provider setup already uses for the root and records it beside the rule, or the
+note beside the offer says the identity is still owed.
+
+**Not on the board bar.** The pass refuses with the act named; nothing is lost
+and nothing false is reported.

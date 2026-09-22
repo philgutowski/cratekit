@@ -4,7 +4,44 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-361, issue #95, `relay/95`, 2026-09-22.**
+**Last merged: R-372, issue #98, `relay/98`, 2026-09-22.**
+The My Tags plan no longer reads ok over a collection it cannot resolve, doctor
+reads the prefix map, and setup offers the drive rule. One walk in
+`write/metadata_cli._survey` returns `ResolutionTotals`, and the plan's totals
+carry `unmapped` beside `unresolved`. **The majority rule reads UNMAPPED rows,
+not the whole unresolved total**: that total folds streaming rows and deleted
+files with the renamed drive, only the drive is a prefix rule's to fix, and the
+literal formula refused every drive over the shared two row fixture. Strictly
+more than half unmapped returns a failed envelope under
+`library-paths-majority-unresolved`, PRECONDITION with `run-setup`, on the plan
+and the apply alike, totals in the payload, no items read, nothing written.
+Doctor's `library.paths_resolved` reads the same ratio off
+`rb_writer.read_only_copy`, a private temporary copy of the file set that
+asserts rekordbox closed before it copies; the check asks the process seam
+first, the volume checks second, and answers FAIL under the same slug. Every
+entry that resolves recorded paths through the map declares it, ten besides
+the verb. Setup reads `BaseDBDrive` and `CurrentDBDrive` off the copied
+`djmdProperty` row and offers the rule on a deliberate yes, against the
+configured root: a root under the base drive needs nothing, the old name
+recorded twice offers the root, and a target that is the root is written as
+`{library.root}`. The live path is never opened, and every test that reaches
+the binding asserts it. **The built in review raised ten findings, all driven
+in round one**: the copy under a running application, the OSError from the
+copy escaping the wizard before its save, the literal root, the two columns
+agreeing while differing from the root, the survey before the volume checks,
+the declaration on one verb by name, the two copy loops, a location that will
+not decode, and the tags read before the refusal; the one about cost is R-654.
+R-372 CLOSED in place. Filed R-654, each diagnostic copies the whole file set
+and setup twice, and R-655, an offered rule with a literal target carries no
+volume identity. Neither on the board bar.
+Battery: ruff clean, **9924 passed** and 1 skipped in 62 seconds. Scan clean.
+Mutation tables `docs/mutation/r372-a.md` and `r372-b.md`: **25 rows, the
+author's own, all killed**, at the cap, one zero pinned and paired with a
+composite, read in `r372-notes.md`. The learning is a new entry in
+`docs/solutions/integration-issues/`.
+**Main's highest residual number is R-655.**
+
+**The session before: R-361, issue #95, `relay/95`, 2026-09-22.**
 The source system's label run debris is no longer swept as ordinary playlists.
 `sync.playlists.exclusion` asks `is_library_debris`, any name ending
 `LIBRARY_PLAYLIST_SUFFIX`, ` LIBRARY` with its leading space, case sensitive,
@@ -26,7 +63,6 @@ Battery: ruff clean, **9888 passed** and 1 skipped in 59 seconds. Scan clean.
 Mutation table `docs/mutation/r361-a.md`: **15 rows, the author's own, all
 killed**, read in `r361-notes.md`. No learning filed; the seam is in the
 docstrings.
-**Main's highest residual number is R-653.**
 
 **The session before: R-650, issue #189,
 `unit/issue189-a-source-genre-the-taxonomy-never-heard-`, 2026-09-21.**
