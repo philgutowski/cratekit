@@ -1927,11 +1927,12 @@ def _check_backup_remote(inputs: _Inputs) -> Finding:
                 f"backup.remote names {remote!r} and rclone has no remote called "
                 f"{named!r}; it knows {', '.join(sorted(remotes)) or 'none'}"
             ),
-            # NOT run-setup. The wizard has no question, no flag and no code path
-            # for backup.remote at all, so sending a user there is sending them to
-            # a verb that cannot change the value. The remote is named in the
-            # configuration file and created in rclone's own configuration, and
-            # this token is the one that says so.
+            # NOT run-setup. The wizard asks for the three destinations and
+            # derives the remote from them (R-345), and it keeps every value it
+            # finds recorded, so a re-run would hand this same name back
+            # unchanged. The remote is named in the configuration file and
+            # created in rclone's own configuration, and this token is the one
+            # that says so.
             remedy=Remedy.FIX_CONFIG_VALUES,
         )
     kind = str(settings.get("type", ""))

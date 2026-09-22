@@ -144,6 +144,21 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
         choices=taxonomy.shipped_template_names() or None,
         help="which shipped taxonomy template to adopt",
     )
+    # The three rclone targets, as flags for the same reason every other answer
+    # is one. Spelled remote:path; a bare folder name is refused by validation
+    # rather than handed to rclone as a local path (R-345).
+    parser.add_argument(
+        "--backup-dest",
+        help="where the library mirror goes, as an rclone remote:path",
+    )
+    parser.add_argument(
+        "--backup-archive-root",
+        help="where dated archives of changed files go, as an rclone remote:path",
+    )
+    parser.add_argument(
+        "--backup-db-dest-root",
+        help="where database snapshots go, as an rclone remote:path",
+    )
     parser.set_defaults(_handler=setup)
 
 
@@ -648,6 +663,138 @@ def _resolve_volume_id(
             "(a UUID or serial, never a mount path)"
         ),
     )
+
+
+#: The question each destination is asked with, keyed the way the validator
+#: keys them, so the wizard cannot ask for a key the validator does not judge.
+_BACKUP_QUESTIONS: Mapping[str, str] = {
+    "backup.dest": "Where should the library mirror go (rclone remote:path)",
+    "backup.archive_root": (
+        "Where should dated archives of changed files go (rclone remote:path)"
+    ),
+    "backup.db_dest_root": "Where should database snapshots go (rclone remote:path)",
+}
+
+
+def _backup_flags(args: argparse.Namespace) -> dict[str, str | None]:
+    """The three destination flags, keyed like the configuration keys."""
+    return {
+        "backup.dest": args.backup_dest,
+        "backup.archive_root": args.backup_archive_root,
+        "backup.db_dest_root": args.backup_db_dest_root,
+    }
+
+
+def _resolve_backup(wizard: _Wizard, document: dict[str, Any], args: argparse.Namespace) -> None:
+    """Ask for the three rclone destinations when the backup module is on (R-345).
+
+    ``BackupConfig`` said every field was wizard supplied and the wizard never
+    asked for any of them, so the four values were typed into the TOML by hand,
+    and the first backup dry run of the attended sitting ran against bare folder
+    names. The questions live here now, beside the others, and the answers go
+    through the same ``validate`` call as every other answer, so a colon-less
+    reply is refused with the key named rather than handed to rclone.
+
+    OFFERED, THE WAY THE PIN IS OFFERED, rather than demanded. The full preset
+    turns the backup module on for everybody, so a required question here would
+    turn every scripted run of setup on a full profile into a refusal, and a
+    re-run that recorded nothing new would stop being a re-run that asks
+    nothing. So: a flag or a recorded value is taken without a question, and
+    only when at least one destination is neither is the set offered as one
+    yes or no. A no, or a silent machine, records nothing and says so, and
+    doctor reports the unset remote at the end of this verb. A yes asks each
+    missing destination through ``resolve``, which refuses in a pipe rather
+    than guessing.
+
+    ``backup.remote`` IS DERIVED, NEVER ASKED. It is the name before the colon
+    in each destination, so a fourth question whose answer must equal a piece
+    of the other three is a question that can only introduce a contradiction.
+    It is written into the document when the destinations are complete and the
+    file does not spell it, so the file that lands says what doctor looks up.
+    A spelled remote is left alone, and validation checks that it agrees.
+
+    Membership is read off the DOCUMENT rather than off a ``Config``, because
+    this runs before the answers have been validated into one. ``profile.name``
+    was resolved against the closed set two answers up, and the modules table
+    is passed as the file spells it, so an unknown module raises here exactly
+    as it would in ``from_dict`` one step later, with the same words.
+    """
+    modules = document.get("modules") or {}
+    membership = profiles.resolve(
+        str(_get(document, "profile.name")),
+        {k: bool(v) for k, v in modules.items()} if isinstance(modules, Mapping) else {},
+    )
+    flags = _backup_flags(args)
+    if "backup" not in membership.modules:
+        supplied = [key for key, flag in flags.items() if flag]
+        if supplied:
+            # A flag is an answer, whatever the profile says: recording it is
+            # cheap, refusing it would send a person to switch the module on
+            # and come back, and validation judges the shape either way.
+            for key in supplied:
+                _put(document, key, wizard.resolve(key, flag=flags[key], question=""))
+        else:
+            wizard.note(
+                "setup.backup",
+                "backup destinations",
+                doctor.Status.INFO,
+                "the backup module is off in this profile, so no destination was asked for",
+            )
+        _derive_backup_remote(document)
+        return
+
+    def recorded(key: str) -> bool:
+        value = _get(document, key)
+        return isinstance(value, str) and bool(value.strip())
+
+    missing = [key for key in config.BACKUP_DESTINATION_KEYS if not flags[key] and not recorded(key)]
+    offered = not missing or wizard.optional(
+        f"The backup module is on and {len(missing)} destination"
+        f"{'s are' if len(missing) != 1 else ' is'} not recorded "
+        f"({', '.join(missing)}). Record {'them' if len(missing) != 1 else 'it'} now?"
+    )
+    if not offered:
+        wizard.note(
+            "setup.backup",
+            "backup destinations",
+            doctor.Status.INFO,
+            (
+                f"{', '.join(missing)} not recorded and not entered; the backup verb "
+                f"refuses until every destination names an rclone remote as "
+                f"remote:path, and doctor reports the unset remote. Re-run setup, "
+                f"or supply --backup-dest, --backup-archive-root and "
+                f"--backup-db-dest-root"
+            ),
+        )
+        for key in config.BACKUP_DESTINATION_KEYS:
+            if flags[key]:
+                _put(document, key, wizard.resolve(key, flag=flags[key], question=""))
+        _derive_backup_remote(document)
+        return
+    for key in config.BACKUP_DESTINATION_KEYS:
+        _put(
+            document,
+            key,
+            wizard.resolve(key, flag=flags[key], question=_BACKUP_QUESTIONS[key]),
+        )
+    _derive_backup_remote(document)
+
+
+def _derive_backup_remote(document: dict[str, Any]) -> None:
+    """Write ``backup.remote`` from the destinations when the file spells none.
+
+    The same rule ``config.from_dict`` applies on load, applied here so the
+    FILE carries the name doctor looks up rather than only the loaded value. A
+    remote the file already spells is left alone; validation checks it.
+    """
+    spelled = _get(document, "backup.remote")
+    if isinstance(spelled, str) and spelled.strip():
+        return
+    for key in config.BACKUP_DESTINATION_KEYS:
+        name = config.backup_remote_name(_get(document, key))
+        if name is not None:
+            _put(document, "backup.remote", name)
+            return
 
 
 def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) -> None:
@@ -1299,6 +1446,7 @@ def setup(ctx: "Context") -> Envelope:
             choices=shipped or None,
         ),
     )
+    _resolve_backup(wizard, document, args)
 
     problems = config.validate(document)
     if problems:
