@@ -546,6 +546,49 @@ def test_the_playlist_exclusions_in_the_order_a_person_is_told():
     assert decide("DOWNLOADEDWarmup") is None
 
 
+def test_the_label_batch_debris_is_excluded_by_the_source_systems_own_rule():
+    """R-361. `<label> LIBRARY` is what the source system's label batch leaves
+    on the account, one per run, and its own sweep drops any name ending
+    ` LIBRARY`, leading space, case sensitive. The five shapes the brief names,
+    plus the space, which is the difference between a suffix and a substring."""
+    from cratekit.label.catalogue import AccountPlaylist
+    from cratekit.sync import playlists
+
+    def decide(name, playlist_id="pl-1", tracks=3, recorded=(), in_flight=()):
+        return playlists.exclusion(
+            AccountPlaylist(playlist_id, name, tracks),
+            recorded=frozenset(recorded),
+            in_flight=frozenset(in_flight),
+        )
+
+    E = playlists.Excluded
+    assert playlists.LIBRARY_PLAYLIST_SUFFIX == " LIBRARY"
+    assert str(E.LABEL_DEBRIS) == "label-debris"
+    assert decide("Colorize LIBRARY") is E.LABEL_DEBRIS
+    # Case exactly, because the batch never writes any other case and a person
+    # might.
+    assert decide("Colorize Library") is None
+    assert decide("Colorize library") is None
+    # The swept prefix is decided first, so a debris playlist the source system
+    # already swept is told the reason it was told before.
+    assert decide(playlists.SWEPT_PREFIX + "Colorize LIBRARY") is E.SWEPT
+    # THE ACCEPTED COLLISION. A playlist a person named this way is excluded
+    # too, exactly as the source system's sweep excludes it. Every debris name
+    # the fourth sitting listed was a label run, and the rule is copied rather
+    # than narrowed so the two systems keep agreeing about the same account.
+    assert decide("My Night LIBRARY") is E.LABEL_DEBRIS
+    assert decide("Colorize 2026") is None
+    # A suffix, not a substring: the leading space is part of the rule.
+    assert decide("ColorizeLIBRARY") is None
+    assert decide("LIBRARY Colorize") is None
+    assert decide("Colorize LIBRARY 2") is None
+    # Ahead of the cursor and the open jobs, in the order a person is told.
+    assert decide("Colorize LIBRARY", recorded={"pl-1"}, in_flight={"pl-1"}) is E.LABEL_DEBRIS
+    assert decide("Colorize LIBRARY", tracks=0) is E.LABEL_DEBRIS
+    assert playlists.is_library_debris("") is False
+    assert playlists.is_library_debris(None) is False
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # R-263: a source that records no cursor is not a source that never ran
 # ═══════════════════════════════════════════════════════════════════════════

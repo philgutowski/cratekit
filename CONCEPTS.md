@@ -871,6 +871,20 @@ not that any was acquired (R-359). `crate sync all` says so, as `swept_means`,
 
 *Avoid:* reading swept as downloaded, or deciding it from a title.
 
+### Label debris
+An account playlist the source system's label batch built for one run and left
+behind, named `<label> LIBRARY`. The playlists source excludes any name ending
+` LIBRARY`, leading space, case sensitive, which is the source system's own
+sweep rule copied rather than narrowed (R-361), and reports it as
+`label-debris`. A person's playlist that happens to end the same way is excluded
+too, the collision both systems accept. Decided from the title, by design: the
+name is the only mark the batch leaves, and it is one of the three naming
+conventions the sync is allowed to filter by (D5), beside the swept prefix and
+the favourites placeholder.
+
+*Avoid:* widening it to `Library` in any other case, or to the word anywhere but
+the end.
+
 ### Owned dedup
 The sync scope rule: take the newest N items the source listed, then drop any
 identity the library already holds. That is how a second run processes only what

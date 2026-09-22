@@ -519,6 +519,60 @@ def test_the_favourites_placeholders_are_left_to_the_favourites_source(slim, mon
     assert {excluded[k]["reason"] for k in ("pl-q", "pl-backlog")} == {"favorites-placeholder"}
 
 
+def test_the_label_batch_debris_is_not_queued_as_intake(slim, monkeypatch):
+    """R-361, driven through the verb with the fourth sitting's shapes: two
+    playlists both named for one label, the way the source system leaves one per
+    run, and a person's playlist that happens to end the same way. None is
+    listed track by track, none is queued, and the report says why."""
+    del slim
+    fake = bind_playlists(
+        monkeypatch,
+        (_playlist("pl-sol-1", "Sol Selectas LIBRARY"), _tracks("101", "102")),
+        (_playlist("pl-sol-2", "Sol Selectas LIBRARY"), _tracks("103")),
+        (_playlist("pl-night", "My Night LIBRARY"), _tracks("201")),
+        (_playlist("pl-swept", playlists.SWEPT_PREFIX + "Colorize LIBRARY"), _tracks("301")),
+        (_playlist("pl-2026", "Colorize 2026"), _tracks("401")),
+        (_playlist("pl-title", "Colorize Library"), _tracks("501")),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert {job.payload[intake_cli.SOURCE] for job in _playlist_jobs()} == {"pl-2026", "pl-title"}
+    assert set(fake.playlists_asked_for) == {"pl-2026", "pl-title"}, (
+        "a debris playlist was listed track by track anyway"
+    )
+    block = passed["data"]["summary"]["playlists"]
+    assert block["excluded"] == {
+        "pl-sol-1": {"reason": "label-debris", "name": "Sol Selectas LIBRARY"},
+        "pl-sol-2": {"reason": "label-debris", "name": "Sol Selectas LIBRARY"},
+        "pl-night": {"reason": "label-debris", "name": "My Night LIBRARY"},
+        "pl-swept": {
+            "reason": "already-swept",
+            "name": playlists.SWEPT_PREFIX + "Colorize LIBRARY",
+        },
+    }
+    assert _swept(config.load()) is None, "excluding debris recorded a clean completion"
+
+
+def test_a_pass_that_finds_only_debris_says_so_on_the_check(slim, monkeypatch):
+    """The nothing-new tally on the check names the reason, so a person reading
+    the pass sees the label batch's leavings counted and not a silent skip."""
+    del slim
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Rebellion LIBRARY"), _tracks("101")),
+        (_playlist("pl-b", "Do Not Sit On The Furniture LIBRARY"), _tracks("102")),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["outcome"] == "no_op"
+    assert _jobs() == []
+    summary = passed["data"]["summary"]
+    assert summary["not_queued"] == {"playlists": sync_cli.NOTHING_NEW}
+    (check,) = passed["data"]["checks"]
+    assert check["status"] == "info"
+    assert "2 label-debris" in check["detail"], check["detail"]
+
+
 def test_the_cursor_records_ids_only_once_a_job_succeeds(slim, monkeypatch):
     """Queued is not swept, an open job is not queued twice, and a succeeded job
     records its playlist's identifier and never its title."""

@@ -5667,7 +5667,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # correct and the silence about it was not. The field carrying the same fact
     # up the chain is off_taxonomy, which is not kebab shaped and does not enter
     # this population.
-    assert (len(literals), len(literals - set(causes))) == (494, 319), (
+    # Re-pinned on the residual finding "The source system's label run debris
+    # is swept as ordinary playlists", 2026-09-22: 494 to 495 distinct, non-keys
+    # 319 to 320. ONE literal joined and NOTHING left, read off the unit's own
+    # diff of `src/cratekit`, which adds the one kebab shaped string
+    # label-debris, in `sync/playlists.py`, a fifth member of the `Excluded`
+    # enum beside already-swept, favorites-placeholder and in-flight: the reason
+    # `sync all` reports for an account playlist whose name ends with the
+    # source system's ` LIBRARY` suffix. Not a cause, since nothing refuses with
+    # it, which is why both halves move by one.
+    assert (len(literals), len(literals - set(causes))) == (495, 320), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
