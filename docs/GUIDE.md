@@ -520,10 +520,16 @@ crate restore run --from-backup --target /path/to/empty/dir
 
 Backup copies the library to the rclone remote named under `[backup]` in the
 config, keeps a dated archive of changed files, and snapshots the database. The
-database portion refuses while rekordbox or its agent is running, so a backup
-taken with the app open covers the music and not the database. Doctor reports each
-portion's age separately for that reason. Use `--dry-run` first, since it walks
-the whole plan and copies nothing.
+three destinations, `dest`, `archive_root` and `db_dest_root`, are each written
+as an rclone `remote:path`, and setup asks for them when the backup module is
+on, or takes them from `--backup-dest`, `--backup-archive-root` and
+`--backup-db-dest-root`. A value with no remote before the colon is refused at
+load rather than handed to rclone, which would read it as a folder beside the
+process running the backup. The `remote` key is derived from the destinations
+when you leave it out. The database portion refuses while rekordbox or its
+agent is running, so a backup taken with the app open covers the music and not
+the database. Doctor reports each portion's age separately for that reason. Use
+`--dry-run` first, since it walks the whole plan and copies nothing.
 
 A restore puts the database and the state coupled to it back to a recorded write
 session. It does not put back values written into audio files, so genre tags
