@@ -119,5 +119,5 @@ description = "recorded_db_drives: keep the trailing separator rekordbox stores,
 file = "src/cratekit/core/rb_writer.py"
 surface = "user"
 tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
-old = '''        stripped = value.strip().rstrip("/\\\\")'''
+old = '''        stripped = value.strip().rstrip("/\\")'''
 new = '''        stripped = value.strip()'''
