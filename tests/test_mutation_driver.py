@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -167,20 +169,25 @@ from pathlib import Path
 
 import platformdirs
 
+#: The CALLER's own value for each sandboxed variable, handed across under a
+#: name the sandbox does not touch. Comparing against these, and not against a
+#: sentinel made for the test, is what makes an absent sandbox fail: with no
+#: redirect the child simply inherits these very values.
+CALLER_PREFIX = "MUTATE_FIXTURE_CALLER_"
 
-def _sentinel() -> Path:
-    """Where the CALLER keeps its installation state. The child must not be here."""
-    return Path(os.environ["MUTATE_FIXTURE_SENTINEL"])
+
+def _callers(name: str) -> Path:
+    return Path(os.environ[CALLER_PREFIX + name])
 
 
 def test_the_child_is_not_pointed_at_the_callers_installation_state():
-    sentinel = _sentinel()
     for name in ("HOME", "CRATEKIT_CONFIG_DIR", "CRATEKIT_STATE_DIR"):
         value = os.environ.get(name)
         assert value, f"{name} is unset in the child"
         resolved = Path(value)
-        assert resolved != sentinel
-        assert sentinel not in resolved.parents
+        callers = _callers(name)
+        assert resolved != callers, f"{name} is the caller's own"
+        assert callers not in resolved.parents, f"{name} is under the caller's own"
 
 
 def test_a_write_to_the_resolved_config_directory_lands_in_the_sandbox():
@@ -196,9 +203,9 @@ def test_a_write_to_the_resolved_config_directory_lands_in_the_sandbox():
     resolved.mkdir(parents=True, exist_ok=True)
     (resolved / "config.toml").write_text("a fixture configuration", encoding="utf-8")
 
-    sentinel = _sentinel()
-    assert resolved != sentinel
-    assert sentinel not in resolved.parents
+    callers_home = _callers("HOME")
+    assert resolved != callers_home
+    assert callers_home not in resolved.parents
 '''
 
 TEST_LEAK = '''"""A test that writes where it must not, so the guard has something to catch.
@@ -715,15 +722,22 @@ def test_the_scrubbed_variables_are_named_in_the_table(repo):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_the_child_starts_in_a_sandboxed_installation_state(sandbox_repo, monkeypatch, tmp_path):
-    """Every sandboxed variable points inside the run's own workspace.
+def _hand_the_callers_values_across(monkeypatch) -> None:
+    """Give the fixture this process's own sandboxed values, under untouched names."""
+    for name in ("HOME", "CRATEKIT_CONFIG_DIR", "CRATEKIT_STATE_DIR"):
+        monkeypatch.setenv("MUTATE_FIXTURE_CALLER_" + name, os.environ[name])
+
+
+def test_the_child_starts_in_a_sandboxed_installation_state(sandbox_repo, monkeypatch):
+    """Every sandboxed variable points somewhere other than the caller's own.
 
     The assertions are inside the fixture's own suite, because the sandbox is
-    deleted when the driver's run returns. A red run here IS the failure.
+    deleted when the driver's run returns. A red run here IS the failure. The
+    comparison is against this process's real values, because with no sandbox
+    the child inherits exactly those, and a sentinel made for the test would
+    still differ from them.
     """
-    sentinel = tmp_path / "callers-state"
-    sentinel.mkdir()
-    monkeypatch.setenv("MUTATE_FIXTURE_SENTINEL", str(sentinel))
+    _hand_the_callers_values_across(monkeypatch)
 
     result = mutate.run_pytest(sandbox_repo, None)
 
@@ -731,9 +745,7 @@ def test_the_child_starts_in_a_sandboxed_installation_state(sandbox_repo, monkey
     assert result.collected == 7
 
 
-def test_a_child_writing_a_config_does_not_reach_the_callers_own(
-    sandbox_repo, monkeypatch, tmp_path
-):
+def test_a_child_writing_a_config_does_not_reach_the_callers_own(sandbox_repo, monkeypatch):
     """The regression test for 2026-09-20, asserted from the caller's side.
 
     The fixture resolves the platformdirs config directory and writes a
@@ -741,9 +753,7 @@ def test_a_child_writing_a_config_does_not_reach_the_callers_own(
     may appear in this process's equivalent. Under the suite that equivalent is
     the conftest's temporary home, never the machine's own.
     """
-    sentinel = tmp_path / "callers-state"
-    sentinel.mkdir()
-    monkeypatch.setenv("MUTATE_FIXTURE_SENTINEL", str(sentinel))
+    _hand_the_callers_values_across(monkeypatch)
 
     callers = Path(platformdirs.user_config_dir("cratekit"))
     before = sorted(p.name for p in callers.iterdir()) if callers.is_dir() else []
@@ -831,10 +841,102 @@ def test_the_guard_is_reported_in_the_table_when_nothing_moved(repo, tmp_path):
     )
     markdown = mutate.render_markdown(batch)
 
-    assert "guarded and unchanged" in markdown
+    assert "the watched roots are unchanged" in markdown
     assert str(guarded) in markdown
-    assert "1 file(s)" in markdown
+    assert "1 entries" in markdown
+    assert "not seen by this guard" in markdown, "the claim must say what it does not cover"
+    assert "reused from a prior sidecar" not in markdown
     assert batch.to_dict()["state_guarded"]
+    assert batch.to_dict()["reused_rows"] == 0
+
+
+def test_rows_reused_on_resume_are_named_as_unwatched_in_the_table(repo, tmp_path):
+    """A resumed row was measured by an earlier process whose children this run never saw."""
+    guarded = tmp_path / "guarded"
+    guarded.mkdir()
+    rows = [_row("K1", "if value > limit:", "if value > 1:")]
+    first = mutate.measure_batch(repo, "resume", rows, guard=mutate.take_state_guard((guarded,)))
+
+    resumed = mutate.measure_batch(
+        repo, "resume", rows, prior=first.to_dict(), guard=mutate.take_state_guard((guarded,))
+    )
+    markdown = mutate.render_markdown(resumed)
+
+    assert resumed.reused_rows == 1
+    assert "1 row(s) were reused from a prior sidecar" in markdown
+    assert "did not watch" in markdown
+
+
+def test_a_directory_created_inside_the_real_root_is_a_leak(tmp_path):
+    """The jobs directory is made before the first job is written into it."""
+    root = tmp_path / "real"
+    root.mkdir()
+    (root / "config.toml").write_text("the real configuration", encoding="utf-8")
+    guard = mutate.take_state_guard((root,))
+
+    (root / "jobs").mkdir()
+    with pytest.raises(mutate.StateLeak):
+        mutate.check_state_guard(guard, label="a child that made a directory")
+
+
+def test_a_same_size_rewrite_of_a_small_file_is_a_leak(tmp_path):
+    """The 2026-09-20 overwrite kept the path and could have kept the size.
+
+    Content is hashed for small files precisely so this does not depend on the
+    filesystem's timestamp granularity, so the timestamps are pinned back to
+    their old values here to prove the hash alone carries it.
+    """
+    root = tmp_path / "real"
+    root.mkdir()
+    config = root / "config.toml"
+    config.write_text("pin = 1", encoding="utf-8")
+    before = config.stat()
+    guard = mutate.take_state_guard((root,))
+
+    config.write_text("pin = 2", encoding="utf-8")
+    os.utime(config, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert config.stat().st_size == before.st_size
+
+    with pytest.raises(mutate.StateLeak):
+        mutate.check_state_guard(guard, label="a same size rewrite")
+
+
+def test_a_child_that_leaks_and_then_hangs_is_still_caught(tmp_path, monkeypatch):
+    """TimeoutExpired must not leave run_pytest before the guard has looked.
+
+    Otherwise the row loop files the timeout as an ordinary error row, the next
+    row's child runs on the damaged machine, and that row is the one blamed.
+    """
+    root = tmp_path / "real"
+    root.mkdir()
+    guard = mutate.take_state_guard((root,))
+
+    def leak_then_hang(command, **kwargs):
+        (root / "config.toml").write_text("a fixture configuration", encoding="utf-8")
+        raise subprocess.TimeoutExpired(command, kwargs.get("timeout", 0))
+
+    monkeypatch.setattr(mutate.subprocess, "run", leak_then_hang)
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.run_pytest(tmp_path, None, timeout=1, guard=guard, label="row HANG")
+    assert "row HANG" in str(caught.value)
+
+
+def test_the_sandbox_covers_every_variable_the_conftest_isolates():
+    """SANDBOXED_ENV is a hand copy of the conftest's table, so pin the two together.
+
+    A variable added to the conftest's isolation and not here would be exactly
+    the R-343 mechanism reopened for that one root: undone in a test, restored
+    to the real machine, unwatched.
+    """
+    source = (Path(__file__).parent / "conftest.py").read_text(encoding="utf-8")
+    start = source.index("def _isolate_state_roots(")
+    end = source.index("def _isolate_keychain(", start)
+    body = source[start:end]
+    isolated = set(re.findall(r'monkeypatch\.setenv\(\s*"([A-Z_]+)"', body))
+    isolated |= set(re.findall(r'\(\s*"([A-Z_]+)",\s*"[a-z]+"\s*\)', body))
+
+    assert isolated, "the conftest's isolation table was not found"
+    assert isolated <= set(mutate.SANDBOXED_ENV), sorted(isolated - set(mutate.SANDBOXED_ENV))
 
 
 def test_the_sandboxed_variables_are_named_in_the_table(repo):

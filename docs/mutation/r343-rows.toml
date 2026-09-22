@@ -1,0 +1,176 @@
+name = "r343"
+pass_kind = "light"
+
+# R-343: the driver's children start in a sandboxed installation state, and a
+# fingerprint of the real one is checked after every child. Every row reverts
+# one guard alone. The subset is the driver's own test file, which loads
+# scripts/mutate.py by path in a fresh interpreter, so the mutation reaches the
+# copy under test and never the driver doing the measuring.
+
+[[rows]]
+id = "S1_no_home_redirect"
+description = "the child keeps the caller's HOME, so platformdirs resolves the real config directory"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    "HOME": "home",'''
+new = '''    "HOME_UNSET": "home",'''
+
+[[rows]]
+id = "S2_no_config_dir_override"
+description = "the child keeps the caller's CRATEKIT_CONFIG_DIR"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    "CRATEKIT_CONFIG_DIR": f"config/{APP_NAME}",'''
+new = '''    "CRATEKIT_CONFIG_DIR_UNSET": f"config/{APP_NAME}",'''
+
+[[rows]]
+id = "S3_no_state_dir_override"
+description = "the child keeps the caller's CRATEKIT_STATE_DIR"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    "CRATEKIT_STATE_DIR": f"state/{APP_NAME}",'''
+new = '''    "CRATEKIT_STATE_DIR_UNSET": f"state/{APP_NAME}",'''
+
+[[rows]]
+id = "S4_no_xdg_config_redirect"
+description = "the child keeps the caller's XDG_CONFIG_HOME; platformdirs ignores XDG on macOS, so this row measures the Linux half of the redirect from a Mac"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    "XDG_CONFIG_HOME": "config",'''
+new = '''    "XDG_CONFIG_HOME_UNSET": "config",'''
+
+[[rows]]
+id = "S5_sandbox_directories_not_created"
+description = "the variables point into the sandbox but nothing creates the directories"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            path.mkdir(parents=True, exist_ok=True)
+            env[name] = str(path)'''
+new = '''            env[name] = str(path)'''
+
+[[rows]]
+id = "G1_guard_never_fires"
+description = "check_state_guard treats every digest as unchanged"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        if now == before:
+            continue'''
+new = '''        if True:
+            continue'''
+
+[[rows]]
+id = "G2_fingerprint_ignores_mtime"
+description = "an in place rewrite that keeps the size is invisible, which is the shape of the 2026-09-20 overwrite"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''                f"\t{info.st_mtime_ns}\t{info.st_ctime_ns}"'''
+new = '''                f"\t{info.st_ctime_ns}"'''
+
+[[rows]]
+id = "G3_fingerprint_ignores_size"
+description = "only path and mtime are fingerprinted"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''                f"{relative}\t{info.st_size}\t{info.st_ino}"'''
+new = '''                f"{relative}\t{info.st_ino}"'''
+
+[[rows]]
+id = "G4_existence_not_fingerprinted"
+description = "a child that creates the real directory is not a change"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    entries: list[str] = [f"exists={root.is_dir()}"]'''
+new = '''    entries: list[str] = ["exists=True"]'''
+
+[[rows]]
+id = "G5_row_loop_swallows_the_leak"
+description = "the row loop's StateLeak handler stops re-raising, so the blanket handler files it as an error row and the batch continues"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            # spending children against a machine it had just damaged.
+            raise'''
+new = '''            # spending children against a machine it had just damaged.
+            pass'''
+
+[[rows]]
+id = "G6_run_pytest_skips_the_check"
+description = "run_pytest never calls check_state_guard"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            if guard is not None:
+                check_state_guard(guard, label=label)'''
+new = '''            if False:
+                check_state_guard(guard, label=label)'''
+
+[[rows]]
+id = "G7_label_not_carried"
+description = "every leak is reported as a generic child run rather than the row or phase that caused it"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            check_state_guard(guard, label=label)'''
+new = '''            check_state_guard(guard, label="a child run")'''
+
+[[rows]]
+id = "R1_config_override_ignored"
+description = "installation_state_roots resolves through platformdirs even when CRATEKIT_CONFIG_DIR is set, so the suite would guard the real machine's directory"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        if config_override
+        else Path(platformdirs.user_config_dir(APP_NAME)),'''
+new = '''        if False
+        else Path(platformdirs.user_config_dir(APP_NAME)),'''
+
+[[rows]]
+id = "R2_roots_not_deduplicated"
+description = "a config and state directory that agree are walked twice"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    return tuple(dict.fromkeys(roots))'''
+new = '''    return tuple(roots)'''
+
+[[rows]]
+id = "G8_small_files_not_hashed"
+description = "no file is hashed by content, so a same size rewrite inside one timestamp tick is invisible"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''SMALL_FILE_BYTES = 64 * 1024'''
+new = '''SMALL_FILE_BYTES = -1'''
+
+[[rows]]
+id = "G9_directories_not_fingerprinted"
+description = "a directory created inside the real root is not an entry"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        for name in dirnames:
+            entries.append(f"{(here / name).relative_to(root).as_posix()}\tdir")'''
+new = '''        for name in ():
+            entries.append(f"{(here / name).relative_to(root).as_posix()}\tdir")'''
+
+[[rows]]
+id = "G10_guard_not_checked_on_timeout"
+description = "the check leaves the finally, so a child that leaks and then hangs is filed as a timeout"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        finally:
+            # In a finally, so a child that leaks and then hangs past the'''
+new = '''        except subprocess.TimeoutExpired:
+            raise
+        else:
+            # In a finally, so a child that leaks and then hangs past the'''
