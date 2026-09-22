@@ -652,7 +652,9 @@ def test_setup_skips_the_offer_while_rekordbox_is_running(bench, opened, monkeyp
 
     assert opened == []
     assert document["library"].get("location_prefix_map", []) == []
-    assert "running" in _note(wizard).detail
+    # The wizard's OWN sentence, not the copy's refusal repeated through the
+    # "could not be read" note: the wizard asked before it copied.
+    assert "none was taken and no drive rule was offered" in _note(wizard).detail
 
 
 def test_setup_notes_a_file_it_could_not_copy_rather_than_aborting(bench, opened, monkeypatch):

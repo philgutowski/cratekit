@@ -57,10 +57,10 @@ description = "_check_paths_resolved: survey a database on a volume the mount ch
 file = "src/cratekit/cli/doctor.py"
 surface = "user"
 tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
-old = '''    if unreadable is not None:
-        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)'''
-new = '''    if False:
-        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)'''
+old = '''    unreadable = _library_state_unreadable(inputs, "the database")
+    if unreadable is not None:'''
+new = '''    unreadable = _library_state_unreadable(inputs, "the database")
+    if False:'''
 
 [[rows]]
 id = "B5_doctor_opens_the_live_path"
@@ -146,12 +146,24 @@ old = '''            # reads the same ratio the verb refuses on.
             "library.paths_resolved",'''
 new = '''            # reads the same ratio the verb refuses on.'''
 
+[[rows]]
+id = "B13_setup_copies_with_both_layers_gone"
+description = "composite for B7: the wizard skips the process question AND the copy drops its own assertion"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    running = rb_writer.rekordbox_processes_running()
+    if running:'''
+new = '''    running = rb_writer.rekordbox_processes_running()
+    rb_writer.assert_rekordbox_closed = lambda what: None
+    if False:'''
+
 [[dropped]]
-id = "B13_message_wording"
+id = "B14_message_wording"
 description = "majority_unmapped_cause: reword the sentence"
 reason = "no test asserts the sentence beyond the counts and prefixes A7 and the plan test already pin"
 
 [[dropped]]
-id = "B14_other_declarations"
+id = "B15_other_declarations"
 description = "registry: drop the check from one of the ten other entries that declare it"
 reason = "one declaration is measured in B12 and the unplaced report's is pinned by its own test; the rest are the same guard family"
