@@ -555,7 +555,10 @@ def test_setup_end_to_end_writes_the_rule_and_ends_on_a_doctor_that_reads_it(
     """Through the real dispatcher: the offer is taken, saved once, and the closing
     doctor resolves every row through the rule it just wrote."""
     bench.add_rows(old=10, silence=silence)
-    monkeypatch.setattr(prompt, "Prompter", lambda: _scripted(["yes"]))
+    # Two answers: the backup destinations are offered first, since R-345, on
+    # a full profile with none recorded, and declined here; the second answer
+    # is the prefix map offer this test is about.
+    monkeypatch.setattr(prompt, "Prompter", lambda: _scripted(["no", "yes"]))
     monkeypatch.setattr(
         doctor,
         "Probes",
@@ -569,6 +572,7 @@ def test_setup_end_to_end_writes_the_rule_and_ends_on_a_doctor_that_reads_it(
 
     assert code == int(ExitCode.OK), envelope
     written = config.load()
+    assert written.backup.dest is None
     assert written.library.location_prefix_map == (
         config.PrefixMapping(from_prefix=str(bench.old_drive), to_prefix=config.LIBRARY_ROOT_TOKEN),
     )

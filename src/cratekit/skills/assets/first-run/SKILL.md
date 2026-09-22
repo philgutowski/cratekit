@@ -40,6 +40,14 @@ crate setup --taxonomy default --db-path /path/to/database
 crate setup --volume-id RECORDED-VOLUME-IDENTIFIER --staging /path/to/staging
 ```
 
+When the backup module is on, the wizard offers to record the three rclone
+destinations and derives the remote name from them. Each is `remote:path`; a
+bare folder name is refused, because rclone would read it as a local folder.
+
+```bash
+crate setup --backup-dest gdrive:library --backup-archive-root gdrive:library-archive --backup-db-dest-root gdrive:library-db
+```
+
 ## Reading what the health check says
 
 The check answers in three states, and the middle one is the one people

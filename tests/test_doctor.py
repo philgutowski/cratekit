@@ -29,6 +29,7 @@ import errno
 import json
 import os
 import sys
+import tomllib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -1510,6 +1511,240 @@ def test_the_wizard_proposes_the_installed_pin_and_records_it_only_on_a_yes(
     # Never written here: it means "confirmed against a real write", and this verb
     # has not made one.
     assert "validated_on" not in document["rekordbox"]
+
+
+def _no_backup_flags():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(backup_dest=None, backup_archive_root=None, backup_db_dest_root=None)
+
+
+def test_the_wizard_asks_for_the_backup_destinations_when_the_module_is_on(configured):
+    """The brief's fourth scenario (R-345). ``BackupConfig`` said every field was
+    wizard supplied and the wizard never asked, so the values were typed by hand
+    and the first dry run ran against bare folder names. On a full profile with
+    nothing recorded the set is offered, a yes asks all three, and the remote is
+    derived from the answers rather than asked a fourth time.
+    """
+    document = dict(configured.to_toml_dict())
+    assert "backup" not in document
+    wizard = setup_verb._Wizard(
+        document, Scripted(["yes", "gdrive:mirror", "gdrive:archive", "gdrive:db"])
+    )
+    setup_verb._resolve_backup(wizard, document, _no_backup_flags())
+    assert document["backup"] == {
+        "dest": "gdrive:mirror",
+        "archive_root": "gdrive:archive",
+        "db_dest_root": "gdrive:db",
+        "remote": "gdrive",
+    }
+    assert [line for line in wizard.asked if line.startswith("backup.")] == [
+        "backup.dest (answered)",
+        "backup.archive_root (answered)",
+        "backup.db_dest_root (answered)",
+    ]
+    assert config.validate(document) == []
+
+
+def test_the_wizard_records_nothing_for_backup_when_the_offer_goes_unanswered(configured):
+    """Offered the way the pin is offered, so a scripted run on a full profile
+    stays a run that asks nothing and refuses nothing. The note says what was
+    not recorded and names the flags, and doctor reports the unset remote.
+    """
+    document = dict(configured.to_toml_dict())
+    wizard = setup_verb._Wizard(document, silent())
+    setup_verb._resolve_backup(wizard, document, _no_backup_flags())
+    assert "backup" not in document
+    assert wizard.asked == []
+    note = next(n for n in wizard.notes if n.key == "setup.backup")
+    assert note.status is doctor.Status.INFO
+    assert "backup.dest" in note.detail and "not recorded" in note.detail
+    assert "--backup-dest" in note.detail
+
+
+def test_the_wizard_asks_nothing_about_backup_when_the_module_is_off(configured):
+    """Slim has no backup module, so there is no destination to ask for."""
+    document = dict(configured.to_toml_dict())
+    document["profile"] = {"name": "slim"}
+    written: list[str] = []
+    wizard = setup_verb._Wizard(
+        document,
+        prompt.Prompter(read_line=lambda: "yes\n", read_secret=lambda _q: "", write=written.append),
+    )
+    setup_verb._resolve_backup(wizard, document, _no_backup_flags())
+    assert written == []
+    assert "backup" not in document
+    note = next(n for n in wizard.notes if n.key == "setup.backup")
+    assert "off in this profile" in note.detail
+
+
+def test_backup_flags_are_recorded_even_when_the_module_is_off(configured):
+    """A flag is an answer whatever the profile says. Refusing it would send a
+    person to switch the module on and come back, and validation judges the
+    shape either way."""
+    from types import SimpleNamespace
+
+    document = dict(configured.to_toml_dict())
+    document["profile"] = {"name": "slim"}
+    wizard = setup_verb._Wizard(document, silent())
+    setup_verb._resolve_backup(
+        wizard,
+        document,
+        SimpleNamespace(
+            backup_dest="gdrive:mirror",
+            backup_archive_root="gdrive:archive",
+            backup_db_dest_root="gdrive:db",
+        ),
+    )
+    assert document["backup"] == {
+        "dest": "gdrive:mirror",
+        "archive_root": "gdrive:archive",
+        "db_dest_root": "gdrive:db",
+        "remote": "gdrive",
+    }
+    assert len([line for line in wizard.asked if "command line" in line]) == 3
+    assert any("off in this profile" in n.detail for n in wizard.notes if n.key == "setup.backup")
+
+
+def test_a_declined_offer_still_records_the_flags_that_were_given(configured):
+    """Partial flags on a full profile: the two given land, the offer is about
+    the one still missing, a no leaves that one unset, and the remote is
+    derived from what did land."""
+    from types import SimpleNamespace
+
+    document = dict(configured.to_toml_dict())
+    wizard = setup_verb._Wizard(document, Scripted(["no"]))
+    setup_verb._resolve_backup(
+        wizard,
+        document,
+        SimpleNamespace(
+            backup_dest="gdrive:mirror", backup_archive_root="gdrive:archive", backup_db_dest_root=None
+        ),
+    )
+    assert document["backup"] == {
+        "dest": "gdrive:mirror",
+        "archive_root": "gdrive:archive",
+        "remote": "gdrive",
+    }
+    note = next(n for n in wizard.notes if n.key == "setup.backup")
+    assert "backup.db_dest_root not recorded" in note.detail
+    assert "backup.dest" not in note.detail.split(" not recorded")[0]
+
+
+def test_a_mistyped_module_name_is_still_a_named_problem_not_a_traceback(
+    configured, monkeypatch
+):
+    """The wizard reads membership off the document before validate runs, and
+    ``profiles.resolve`` raises on a module it does not know. A hand edit such
+    as ``bakcup = true`` has to stay validate's to report as a named problem
+    under config-unusable, the way it was before the wizard asked about backup,
+    rather than escape as an internal error the dispatcher files as a defect."""
+    seed_taxonomy(configured)
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+    path = config.config_path()
+    path.write_text(path.read_text() + "\n[modules]\nbakcup = true\n")
+    config.reset_cache()
+
+    code, out, err = drive(["--output", "json", "setup"])
+
+    envelope = json.loads(out)
+    assert envelope["cause"]["reason"] == "config-unusable", envelope["cause"]
+    problems = envelope["cause"]["detail"]["problems"]
+    assert any("modules.bakcup is not a known module" in p for p in problems), problems
+
+
+def test_the_wizard_keeps_recorded_backup_destinations_without_asking(configured):
+    """A re-run changes nothing it was not asked to change: three recorded
+    destinations and a spelled remote reach no prompt and are left as spelled."""
+    document = dict(configured.to_toml_dict())
+    document["backup"] = {
+        "remote": "gdrive:",
+        "dest": "gdrive:mirror",
+        "archive_root": "gdrive:archive",
+        "db_dest_root": "gdrive:db",
+    }
+    before = json.loads(json.dumps(document))
+    written: list[str] = []
+    wizard = setup_verb._Wizard(
+        document,
+        prompt.Prompter(read_line=lambda: "yes\n", read_secret=lambda _q: "", write=written.append),
+    )
+    setup_verb._resolve_backup(wizard, document, _no_backup_flags())
+    assert written == []
+    assert wizard.asked == []
+    assert document == before
+
+
+def test_the_backup_flags_are_recorded_without_a_question(configured, monkeypatch):
+    """Every answer is also a flag, through the real dispatcher: the three
+    destinations land in the file, the remote is derived into it, and nothing
+    was prompted."""
+    seed_taxonomy(configured)
+    # The closing doctor looks the derived remote up in rclone's configuration,
+    # so the green machine knows one by that name.
+    monkeypatch.setattr(
+        doctor,
+        "Probes",
+        lambda: probes(rclone_remotes=lambda _rclone: {"gdrive": {"type": "sftp"}}),
+    )
+
+    code, out, err = drive(
+        [
+            "--output", "json", "setup",
+            "--backup-dest", "gdrive:mirror",
+            "--backup-archive-root", "gdrive:archive",
+            "--backup-db-dest-root", "gdrive:db",
+        ]
+    )
+    assert code == int(ExitCode.OK), err
+    envelope = json.loads(out)
+    assert envelope["data"]["summary"]["answered"] == [
+        "backup.dest (from the command line)",
+        "backup.archive_root (from the command line)",
+        "backup.db_dest_root (from the command line)",
+    ]
+    config.reset_cache()
+    written = config.load()
+    assert written.backup.dest == "gdrive:mirror"
+    assert written.backup.archive_root == "gdrive:archive"
+    assert written.backup.db_dest_root == "gdrive:db"
+    assert written.backup.remote == "gdrive"
+    raw = tomllib.loads(config.config_path().read_text())
+    assert raw["backup"]["remote"] == "gdrive"
+
+
+@pytest.mark.parametrize("how", ["flag", "prompt"])
+def test_a_bare_folder_name_is_refused_by_the_wizard_however_it_arrives(
+    configured, monkeypatch, how
+):
+    """The producer of R-345 through the wizard, both ways in. The answer goes
+    through the same ``validate`` call as every other answer, so a bare folder
+    name is refused with the key named rather than written and handed to rclone
+    as a local path on the next backup."""
+    seed_taxonomy(configured)
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+    argv = ["--output", "json", "setup"]
+    if how == "flag":
+        argv += [
+            "--backup-dest", "MusicBackup",
+            "--backup-archive-root", "gdrive:archive",
+            "--backup-db-dest-root", "gdrive:db",
+        ]
+    else:
+        # Built BEFORE the patch, because ``Scripted`` constructs the real class.
+        scripted = Scripted(["yes", "MusicBackup", "gdrive:archive", "gdrive:db"])
+        monkeypatch.setattr(prompt, "Prompter", lambda: scripted)
+
+    code, out, err = drive(argv)
+
+    assert code != int(ExitCode.OK), out
+    envelope = json.loads(out)
+    assert envelope["cause"]["reason"] == "config-unusable", envelope["cause"]
+    problems = envelope["cause"]["detail"]["problems"]
+    assert len(problems) == 1, problems
+    assert "backup.dest" in problems[0] and "'MusicBackup'" in problems[0]
+    config.reset_cache()
+    assert config.load().backup.dest is None, "the refused answer reached the file"
 
 
 def test_the_wizard_refuses_a_required_answer_it_cannot_obtain(tmp_path, monkeypatch):

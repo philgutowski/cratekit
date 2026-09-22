@@ -2413,12 +2413,120 @@ class BackupConfig:
 
     Every one of these is a hardcoded literal in the source system's backup
     script, naming one person's remote and one person's bucket names.
+
+    EACH DESTINATION NAMES AN RCLONE REMOTE, ``remote:path``, AND ``validate``
+    REFUSES ONE THAT DOES NOT (R-345). The three are handed to rclone exactly as
+    typed, and rclone reads a value with no colon as a LOCAL path relative to
+    the working directory of whatever process runs it. Typed as bare folder
+    names, a dry run succeeded in four seconds because listing a folder that
+    does not exist is instant, and a real run would have copied the library
+    beside the detached worker's working directory and published a backup age
+    for that copy. ``remote`` is the name before the colon, derived from the
+    destinations when the file does not spell it and checked against them when
+    it does, so the name doctor looks up in rclone's configuration is the name
+    the transfers actually use.
     """
 
     remote: str | None = None
     dest: str | None = None
     archive_root: str | None = None
     db_dest_root: str | None = None
+
+
+#: The three configuration keys rclone is handed as targets, in the order the
+#: wizard asks for them. Named once so the validator, the wizard and the backup
+#: verb's own refusal cannot disagree about which keys are destinations.
+BACKUP_DESTINATION_KEYS: tuple[str, ...] = (
+    "backup.dest",
+    "backup.archive_root",
+    "backup.db_dest_root",
+)
+
+#: An rclone remote name, as rclone's own configuration rule has it since
+#: 1.61: letters and digits in any script, underscore, dot, plus, at sign,
+#: hyphen and space, not starting with a hyphen or a space, not ending with a
+#: space. A value that fails it cannot be a configured remote whatever else it
+#: is. ``\w`` is Unicode aware here, which is what admits a letter rclone
+#: admits and a hand list of ASCII ranges would refuse.
+_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*(?<! )$")
+
+
+def backup_remote_name(value: object) -> str | None:
+    """The rclone remote a destination names, or None when it names none.
+
+    ``remote:path`` is rclone's spelling and the part before the FIRST colon is
+    the remote. Four shapes answer None and each is a value rclone would read
+    as something other than a configured remote: no colon at all is a local
+    relative path; an empty name before the colon is an on the fly backend
+    (``:local:/x`` is the local disk again); a single character before the
+    colon is a Windows drive letter, ``C:\\x`` and ``C:/x`` alike, which rclone
+    reads as a local path on that platform; and a name rclone's configuration
+    cannot hold, which therefore names nothing rclone has. Public because the
+    wizard derives ``backup.remote`` through the same rule the validator judges
+    by, and the doctor's lookup splits on the same colon.
+    """
+    if not isinstance(value, str):
+        return None
+    name, colon, _rest = value.partition(":")
+    if not colon or len(name) < 2:
+        return None
+    if not _RCLONE_REMOTE_NAME.match(name):
+        return None
+    return name
+
+
+def _validate_backup_destinations(data: Mapping) -> list[str]:
+    """Every backup destination names one rclone remote, and ``remote`` agrees.
+
+    Decided against the EFFECTIVE mapping, since ``validate`` applies the
+    environment overrides before this runs (P2). An UNSET destination is not a
+    problem here whether the backup module is on or off: the full preset turns
+    the module on for everybody, doctor already reports an unset remote as
+    INFO for that reason, and the backup verb refuses on its own missing
+    destination. What is refused is a value that IS set and would send rclone
+    somewhere other than a configured remote.
+    """
+    problems: list[str] = []
+    named: dict[str, str] = {}
+    for key in BACKUP_DESTINATION_KEYS:
+        value = _dig(data, key)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        name = backup_remote_name(value)
+        if name is None:
+            problems.append(
+                f"{key} must name a configured rclone remote as remote:path, "
+                f"found {value!r}. rclone reads a value with no remote before "
+                f"the colon as a local path relative to the working directory "
+                f"of the process running the backup, so a real run would copy "
+                f"the library beside that process and report a backup age for "
+                f"the copy (R-345)."
+            )
+            continue
+        named[key] = name
+    if len(set(named.values())) > 1:
+        spelled = ", ".join(f"{key} names {name!r}" for key, name in named.items())
+        problems.append(
+            f"the backup destinations must name one rclone remote and they "
+            f"name several: {spelled}. The mirror, the dated archive and the "
+            f"database snapshots are read back together, so they live under "
+            f"one remote."
+        )
+    remote = _dig(data, "backup.remote")
+    if isinstance(remote, str) and remote.strip() and len(set(named.values())) == 1:
+        expected = next(iter(named.values()))
+        # ``remote`` may be spelled bare, ``gdrive``, or as ``gdrive:`` or
+        # ``gdrive:path``; the name is what is compared, which is also what
+        # doctor looks up in rclone's configuration.
+        if remote.split(":", 1)[0] != expected:
+            problems.append(
+                f"backup.remote names {remote!r} and the backup destinations "
+                f"name {expected!r}. Doctor checks the remote it is told against "
+                f"rclone's configuration, and the transfers use the one in the "
+                f"destinations, so the two must agree or the check reports on a "
+                f"remote nothing writes to."
+            )
+    return problems
 
 
 #: The intake ages the source system wrote into its own module as constants.
@@ -2855,6 +2963,7 @@ def validate(data: Mapping) -> list[str]:
 
     problems += _validate_db_containment(data)
     problems += _validate_prefix_map(_dig(data, "library.location_prefix_map"))
+    problems += _validate_backup_destinations(data)
 
     for key in ("naming.path_budget_bytes", "naming.filename_max_bytes"):
         budget = _dig(data, key)
@@ -3266,11 +3375,43 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         acquisition=_build(AcquisitionConfig, data.get("acquisition") or {}),
         analysis=_build(AnalysisConfig, data.get("analysis") or {}),
         rekordbox=_build(RekordboxConfig, data.get("rekordbox") or {}),
-        backup=_build(BackupConfig, data.get("backup") or {}),
+        # ``remote`` DERIVED from the destinations when the file does not spell
+        # it. Validation above has already established that every set
+        # destination names one remote, so the first one's name is the name.
+        # A file that spells the remote keeps its own spelling, which validation
+        # has checked against the same destinations.
+        backup=_build(
+            BackupConfig,
+            data.get("backup") or {},
+            overrides={"remote": derived_backup_remote(data)},
+        ),
         reports=_build(ReportsConfig, data.get("reports") or {}),
         outbound=_build(OutboundConfig, data.get("outbound") or {}),
         recognition=_build(RecognitionConfig, data.get("recognition") or {}),
     )
+
+
+def derived_backup_remote(data: Mapping) -> str | None:
+    """The remote name the destinations carry, when the file spells none.
+
+    None when ``backup.remote`` is already set, so the file's own value wins
+    (the two were checked to agree), and None when no destination is set, so a
+    configuration with no backup at all keeps ``remote`` unset and the backup
+    verb's own refusal still names it.
+
+    Public because the wizard writes the same derivation INTO the document it
+    saves, so the file carries the name doctor looks up. One rule in one place:
+    a second copy in the wizard is how the file and the load come to derive two
+    different names.
+    """
+    remote = _dig(data, "backup.remote")
+    if isinstance(remote, str) and remote.strip():
+        return None
+    for key in BACKUP_DESTINATION_KEYS:
+        name = backup_remote_name(_dig(data, key))
+        if name is not None:
+            return name
+    return None
 
 
 def _build(cls, raw: Mapping, *, overrides: Mapping[str, object] | None = None):
@@ -3898,6 +4039,7 @@ class _exclusive_lock:
 
 __all__ = [
     "ACKNOWLEDGMENT_KEY",
+    "BACKUP_DESTINATION_KEYS",
     "CONFIG_FILENAME",
     "CURRENT_SCHEMA_VERSION",
     "LIBRARY_ROOT_TOKEN",
@@ -3940,6 +4082,8 @@ __all__ = [
     "StateRoot",
     "TaxonomyConfig",
     "atomic_write_bytes",
+    "backup_remote_name",
+    "derived_backup_remote",
     "config_dir",
     "config_path",
     "coupled_state_files",

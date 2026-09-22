@@ -16915,6 +16915,24 @@ session's work.
 rclone remote with a colon, `remote` is derived from them or checked against
 them, and the wizard asks for the four values when the backup module is on.
 
+**Closed 2026-09-22 on `relay/103`.** `config.validate` refuses each of the
+three destinations unless it is `remote:path` under rclone's own name rule, a
+single character before the colon is refused as a drive letter, the three must
+name one remote, and a spelled `backup.remote` must name it too. `from_dict`
+derives `remote` when the file does not spell it. The wizard offers the three
+when the backup module is on and a destination is neither recorded nor given
+as a flag, takes `--backup-dest`, `--backup-archive-root` and
+`--backup-db-dest-root`, and writes the derived remote into the file; a bare
+folder name typed at the prompt or given as a flag is refused by the same
+`validate` call and never reaches the file. An unset destination stays allowed
+whether the module is on or off, because the full preset turns it on for
+everybody. The producer, a config whose `backup.dest` is `MusicBackup`, is
+refused at load and through the wizard both ways in (`docs/mutation/r345.md`,
+A1 and B7). The fourth value, `remote`, is derived rather than asked, which is
+the one departure from the closing condition above, since a question whose
+answer must equal a piece of the other three can only introduce a
+contradiction.
+
 ---
 
 ## R-346. The prompter never flushes, so a real terminal shows no question
@@ -26541,3 +26559,35 @@ verdict, or the two are left permanent with the reason written beside them.
 
 **Not on the board bar.** The refusal names the act, the work can be queued
 again, and nothing is lost or reported falsely.
+
+---
+
+## R-657. No environment override reaches a backup destination, so the P2 scenario for R-345 is driven at the seam rather than through one
+
+**Found by** R-345's build, 2026-09-22, writing the brief's third test
+scenario, "env override that adds a colon is what the check sees".
+
+The four relocation overrides, `CRATEKIT_CONFIG_DIR`, `CRATEKIT_STATE_DIR`,
+`CRATEKIT_LIBRARY_ROOT` and `CRATEKIT_DOWNLOAD_STAGING`, relocate the
+directories a machine differs on and none of them touches `[backup]`. The
+destination check sits inside `validate` after `_apply_env_overrides`, so it
+judges the effective mapping by construction, and
+`tests/test_config.py::test_the_backup_destination_check_reads_the_effective_mapping`
+proves it by replacing the override step with one that rewrites a bare name
+into `remote:path` and asserting the check accepts what the step returns. That
+is a test of the structure rather than of a product override, which is what
+the brief's wording implies exists.
+
+**Measured cost.** None to a person using the shipped verbs. A test relocating
+a backup to a scratch remote has to edit the configuration file rather than
+set a variable. Adding a fifth override was ranked a product surface, with a
+documentation entry and a place in the override docstring's "exactly N"
+argument, that the brief did not ask for and the conservative call left out.
+
+**Closes when:** a unit that needs a relocated backup destination adds the
+override beside the four, applies it in `_apply_env_overrides` under the
+relocate never supply rule, and rewrites the scenario test through it, or the
+brief's wording is read as satisfied by the seam test and this entry is closed
+in place.
+
+**Not on the board bar.** Maintainer facing, nothing lost, nothing false.

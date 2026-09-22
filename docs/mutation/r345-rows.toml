@@ -1,0 +1,187 @@
+name = "r345"
+pass_kind = "light"
+
+# Config: the validator and the derivation. Explicit subsets, because config
+# is imported by nearly every test file and a derived subset would be the
+# whole suite per row.
+
+[[rows]]
+id = "A1_colon_required"
+description = "backup_remote_name: accept a value with no colon, so a bare folder name names a remote (the brief's row)"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''    if not colon or len(name) < 2:
+        return None'''
+new = '''    if len(name) < 2:
+        return None'''
+
+[[rows]]
+id = "A2_single_letter"
+description = "backup_remote_name: accept a single character before the colon, so C:/x names a remote called C"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''    if not colon or len(name) < 2:
+        return None'''
+new = '''    if not colon or len(name) < 1:
+        return None'''
+
+[[rows]]
+id = "A3_name_shape"
+description = "backup_remote_name: drop the rclone name rule, so -gdrive and a trailing space name a remote"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''    if not _RCLONE_REMOTE_NAME.match(name):
+        return None'''
+new = '''    if False:
+        return None'''
+
+[[rows]]
+id = "A4_leading_hyphen"
+description = "the name rule admits a leading hyphen"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*(?<! )$")'''
+new = '''_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@-][\w.+@ -]*(?<! )$")'''
+
+[[rows]]
+id = "A5_trailing_space"
+description = "the name rule admits a trailing space"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*(?<! )$")'''
+new = '''_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*$")'''
+
+[[rows]]
+id = "A6_one_remote"
+description = "_validate_backup_destinations: let the three destinations name several remotes"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''    if len(set(named.values())) > 1:'''
+new = '''    if len(set(named.values())) > 3:'''
+
+[[rows]]
+id = "A7_remote_agrees"
+description = "_validate_backup_destinations: let a spelled backup.remote name a remote the destinations do not"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''        if remote.split(":", 1)[0] != expected:'''
+new = '''        if remote.split(":", 1)[0] != expected and False:'''
+
+[[rows]]
+id = "A8_validate_wiring"
+description = "validate: do not call the backup destination check at all"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''    problems += _validate_backup_destinations(data)
+'''
+new = ""
+
+[[rows]]
+id = "A9_derive_on_load"
+description = "from_dict: do not derive backup.remote from the destinations"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''            overrides={"remote": derived_backup_remote(data)},'''
+new = '''            overrides=None,'''
+
+[[rows]]
+id = "A10_spelled_remote_wins"
+description = "derived_backup_remote: derive even when the file spells a remote, so the file's own spelling is overwritten"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''    if isinstance(remote, str) and remote.strip():
+        return None
+    for key in BACKUP_DESTINATION_KEYS:'''
+new = '''    if False:
+        return None
+    for key in BACKUP_DESTINATION_KEYS:'''
+
+# The wizard.
+
+[[rows]]
+id = "B1_flags_recorded"
+description = "_resolve_backup: never record a flag, so --backup-dest is accepted and written nowhere"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_paths_resolved.py", "tests/test_cli_contract.py"]
+old = '''        if flag:
+            _put(document, key, wizard.resolve(key, flag=flag, question=""))'''
+new = '''        if False:
+            _put(document, key, wizard.resolve(key, flag=flag, question=""))'''
+
+[[rows]]
+id = "B2_module_off"
+description = "_resolve_backup: offer the destinations whatever the profile says, so slim is asked about a module it does not have"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_paths_resolved.py", "tests/test_cli_contract.py"]
+old = '''    if "backup" not in membership.modules:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B3_recorded_kept"
+description = "_resolve_backup: treat every destination as missing, so a re-run asks for values already recorded"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_paths_resolved.py", "tests/test_cli_contract.py"]
+old = '''    missing = [key for key in config.BACKUP_DESTINATION_KEYS if not recorded(key)]'''
+new = '''    missing = list(config.BACKUP_DESTINATION_KEYS)'''
+
+[[rows]]
+id = "B4_offer_not_demand"
+description = "_resolve_backup: skip the offer and ask outright, so a silent full profile run refuses"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_paths_resolved.py", "tests/test_cli_contract.py"]
+old = '''    elif missing and not wizard.optional('''
+new = '''    elif False and not wizard.optional('''
+
+[[rows]]
+id = "B5_remote_into_document"
+description = "_resolve_backup: do not write the derived remote into the document, so the file carries no remote"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_paths_resolved.py", "tests/test_cli_contract.py"]
+old = '''    if derived is not None:
+        _put(document, "backup.remote", derived)'''
+new = '''    if False:
+        _put(document, "backup.remote", derived)'''
+
+[[rows]]
+id = "B6_unknown_module_filter"
+description = "_resolve_backup: hand the raw modules table to profiles.resolve, so a mistyped module raises before validate"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_paths_resolved.py", "tests/test_cli_contract.py"]
+old = '''        {k: bool(v) for k, v in modules.items() if k in profiles.MODULES}'''
+new = '''        {k: bool(v) for k, v in modules.items()}'''
+
+[[rows]]
+id = "B7_call_site"
+description = "setup: never call _resolve_backup"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_paths_resolved.py", "tests/test_cli_contract.py"]
+old = '''    _resolve_backup(wizard, document, args)
+'''
+new = ""
+
+[[dropped]]
+id = "A11_empty_string_is_set"
+description = "_validate_backup_destinations: judge an empty string destination instead of skipping it"
+reason = "an empty string is unset to the backup verb and to doctor alike, so the outcome of the row is a wording choice rather than a guard; ranked below the cap"
+
+[[dropped]]
+id = "C1_doctor_info_wording"
+description = "doctor: the unset remote INFO no longer names setup and the flags"
+reason = "a message with no refusal behind it; no test pins the wording and one that did would be a tautology"
