@@ -697,14 +697,27 @@ def test_a_failed_job_stays_resumable_and_the_second_attempt_redoes_that_item(
     assert reported["outcome"] == "failed", reported
     assert _items(job_id)[0].state == jobs.ItemState.FAILED
 
+    # THE REOPENING IS REFUSED (R-390). The item failed as ``source-missing``,
+    # which the mastering module records as permanent, and ``jobs.retry`` reads
+    # that flag before it re-arms anything. The recording arriving later is a
+    # repair the person made, and the path for that is a fresh job, which is
+    # what the refusal's steps say. The residual over whether a missing source
+    # is honestly permanent is filed beside R-390 in the ledger.
     _recording(configured.library.root)
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
     with jobs.open_store() as store:
-        jobs.retry(store, job_id)
-    code, envelope = _drive(["master", str(source), "--job", job_id])
+        with pytest.raises(CratekitError) as excinfo:
+            jobs.retry(store, job_id)
+    assert excinfo.value.cause.reason == "job-not-retryable"
+    assert excinfo.value.cause.inner is not None
+    assert excinfo.value.cause.inner.reason == "source-missing"
+    assert _items(job_id)[0].state == jobs.ItemState.FAILED
 
+    fresh = _queued(source)
+    assert fresh != job_id
+    code, envelope = _drive(["master", str(source), "--job", fresh])
     assert code == int(ExitCode.OK), envelope
-    assert _items(job_id)[0].state == jobs.ItemState.DONE
+    assert _items(fresh)[0].state == jobs.ItemState.DONE
 
 
 def test_an_existing_master_is_refused_before_the_engine_runs(configured, monkeypatch):

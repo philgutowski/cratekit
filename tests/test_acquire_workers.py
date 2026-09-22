@@ -482,10 +482,15 @@ def test_the_sweep_does_not_report_a_directory_it_could_not_remove(cfg, script, 
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_mid_batch_refusal_fails_that_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(
+def test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetches_nothing(
     cfg, script, library
 ):
-    """The brief's scenario. The item's cause is asserted, not the exit code."""
+    """The brief's scenario. The item's cause is asserted, not the exit code.
+
+    Named for a resumable job until R-390: a defect is permanent (R-348) and a
+    permanent failure is no longer re-armed, so the second half now measures
+    what the refusal leaves alone.
+    """
     script.landings = landings("1", "2", "3")
     script.landings["2"].fetch_raises = AdapterBroken(
         "the tool crashed mid transfer", remedy=acquire.Remedy.SWITCH_ADAPTER
@@ -512,16 +517,30 @@ def test_a_mid_batch_refusal_fails_that_item_leaves_the_job_resumable_and_the_re
     assert failed.cause.remediation.remedy == Remedy.SWITCH_ADAPTER
     assert job_of(job_id).state is jobs.JobState.FAILED
 
-    # The resume: retry re-arms the failed item, and only it is redone.
+    # THE RESUME IS REFUSED (R-390). ``adapter-broken`` is a defect in the
+    # acquisition code and is recorded as permanent on purpose, R-348: a job
+    # retrying it would have retried it for ever. ``jobs.retry`` reads that flag
+    # before it re-arms anything, so the two landed tracks stay done, the broken
+    # one stays failed, and a second ask fetches nothing. The person's path
+    # after switching adapters is a fresh job, which the refusal's steps say.
     script.landings["2"].fetch_raises = None
     fetched_before = len(script.fetched)
     with jobs.open_store() as store:
-        jobs.retry(store, job_id)
+        with pytest.raises(CratekitError) as excinfo:
+            jobs.retry(store, job_id)
+    assert excinfo.value.cause.reason == "job-not-retryable"
+    assert excinfo.value.cause.inner is not None
+    assert excinfo.value.cause.inner.reason == "adapter-broken"
     code, envelope = drive(resume_argv(job_id))
 
-    assert code == int(ExitCode.OK), envelope
-    assert set(states(job_id).values()) == {jobs.ItemState.DONE}
-    assert [r.key for r in script.fetched[fetched_before:]] == ["2"]
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "adapter-broken"
+    assert states(job_id) == {
+        "1": jobs.ItemState.DONE,
+        "2": jobs.ItemState.FAILED,
+        "3": jobs.ItemState.DONE,
+    }
+    assert script.fetched[fetched_before:] == []
 
 
 def test_an_authentication_failure_parks_the_run_and_names_the_replacement_path(

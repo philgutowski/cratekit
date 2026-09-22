@@ -75,7 +75,7 @@ from cratekit.core import (
     tree_registry,
 )
 from cratekit.core.cause import Outcome, refuse
-from cratekit.core.exit_codes import ExitCode
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import rebuild, routing_cli, routing_pass, trees
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import (
@@ -1551,6 +1551,23 @@ def test_a_resort_that_failed_with_nothing_left_behind_adds_no_step(
     assert list(refused["cause"]["remediation"]["steps"]) == list(stored.remediation.steps)
 
 
+def _not_there_yet() -> Exception:
+    """A tree rebuild that fails and will not fail the next time, recorded as such.
+
+    ``jobs.retry`` re-arms only a job whose recorded failures are retryable
+    (R-390). A ``RuntimeError`` reaches the item boundary as ``internal-error``,
+    which is a defect and permanent, so a test that re-arms the job afterwards
+    has to fail the item the way a transient failure fails it.
+    """
+    return refuse(
+        "unavailable-transient",
+        "this tree is not there yet",
+        remedy=Remedy.RETRY_LATER,
+        retryable=True,
+        origin=("test",),
+    )
+
+
 def test_a_second_process_names_what_the_first_ones_tree_left(
     acknowledged, native, leftover, monkeypatch
 ):
@@ -1578,7 +1595,10 @@ def test_a_second_process_names_what_the_first_ones_tree_left(
         calls.append(tree_id)
         if tree_id != TREE_ID:
             if calls.count(tree_id) == 1:
-                raise RuntimeError("this tree is not there")
+                # A failure that clears on its own, and recorded as one: the
+                # re-arm below reads the item's retryable flag (R-390), and a
+                # bare RuntimeError is recorded as a permanent internal-error.
+                raise _not_there_yet()
             return SimpleNamespace(after=rebuild.ConvergenceReport(tree_id, "root", derived=1))
         return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
 
@@ -1619,7 +1639,7 @@ def test_a_refusal_raised_before_the_drive_carries_no_leftover_step(
 
     def one_of_two(cfg, *, tree_id, workflow, **rest):
         if tree_id != TREE_ID:
-            raise RuntimeError("this tree is not there")
+            raise _not_there_yet()
         return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
 
     monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)

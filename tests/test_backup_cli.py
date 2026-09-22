@@ -1460,7 +1460,7 @@ def test_the_age_a_driven_run_publishes_is_the_engine_s_and_reaches_the_envelope
         assert reported[str(portion)]["state"] == str(backup_facts.AgeState.KNOWN)
 
 
-def test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion(
+def test_a_failed_portion_is_recorded_permanent_and_the_resume_that_would_redo_it_is_refused(
     cfg, rclone, monkeypatch
 ):
     """R11, and THE ROUTE IS THE PART THAT IS EASY TO GET WRONG.
@@ -1469,13 +1469,14 @@ def test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion(
     ``--job`` branch nor ``jobs.drive`` will touch it again: ``job.is_open()`` is
     false and the engine refuses to re-drive a recorded answer. ``jobs.retry`` is
     the only thing that re-arms a failed item, and the shipped verb that calls it
-    is ``crate job resume``, which then spawns a detached child. So the retry is
-    driven here directly and the resume branch runs it, which is the same seam the
-    child would take.
+    is ``crate job resume``.
 
-    The second pass is counted rather than assumed. That the mirror is NOT redone
-    is the whole reason the portions are the items, and a test that only checked
-    the database succeeded would pass just as well if both had run again.
+    Until R-390 this drove the retry and counted the second pass. A backup
+    transfer that exits non zero is recorded by the backup shell as PERMANENT,
+    with no retryable flag, so the retry now refuses and the second ask runs
+    nothing: the mirror that completed stays done, the database portion stays
+    failed, and no command is issued. Whether a transfer exit is honestly
+    permanent is the residual filed beside R-390.
     """
     def only_the_database_fails(command):
         if command.label == backup.SNAPSHOT_DATABASE:
@@ -1500,14 +1501,19 @@ def test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion(
 
     monkeypatch.setattr(backup, "subprocess_runner", everything_works)
     with jobs.open_store() as store:
-        jobs.retry(store, job_id)
+        with pytest.raises(CratekitError) as excinfo:
+            jobs.retry(store, job_id)
+    assert excinfo.value.cause.reason == "job-not-retryable"
+    assert excinfo.value.cause.inner is not None
+    assert excinfo.value.cause.inner.retryable is False
+    assert _item_states(job_id) == {"files": "done", "database": "failed"}
 
     code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
-    assert _item_states(job_id) == {"files": "done", "database": "done"}
-    assert backup.MIRROR not in seen, (
-        f"the retry ran {seen}, so it redid the mirror that had already completed "
-        f"and the per portion item ledger bought nothing"
+    assert code != int(ExitCode.OK), resumed
+    assert _item_states(job_id) == {"files": "done", "database": "failed"}
+    assert seen == [], (
+        f"the second ask ran {seen} over a job the engine had recorded as failed, "
+        f"so a terminal job was re-driven"
     )
 
 
@@ -1895,15 +1901,18 @@ def _stepped_clock(monkeypatch, start: datetime) -> None:
     monkeypatch.setattr(backup, "datetime", Clock)
 
 
-def test_a_retried_portion_keeps_the_archive_its_failed_attempt_wrote(
+def test_a_failed_attempt_keeps_the_archive_it_wrote_and_the_retry_is_refused(
     cfg, rclone, monkeypatch
 ):
-    """R-222 by the route a person takes: queue, fail, ``jobs.retry``, resume.
+    """R-222 by the route a person takes: queue, fail, ask to resume.
 
-    The record of a completed mirror and the folder older than it are what make
-    this discriminate in both directions. The failed attempt's folder has to
-    survive the retry, and the settled one has to go, so neither "purge
-    everything but the newest" nor "purge nothing" passes.
+    Until R-390 the route continued through ``jobs.retry`` and a second run, and
+    the settled folder going while the failed attempt's stayed was what made it
+    discriminate. A failed transfer is recorded permanent by the backup shell,
+    so the retry now refuses, and what is measured is the half that is still
+    reachable: the failed attempt's folder is on the remote after the failure
+    and still there after the refusal, and the rotation, which runs only after
+    a completed mirror, has not touched the settled folder either.
     """
     _stepped_clock(monkeypatch, MOMENT)
     backup_facts.record(
@@ -1925,20 +1934,20 @@ def test_a_retried_portion_keeps_the_archive_its_failed_attempt_wrote(
 
     remote.fail_mirror = False
     with jobs.open_store() as store:
-        jobs.retry(store, job_id)
+        with pytest.raises(CratekitError) as excinfo:
+            jobs.retry(store, job_id)
+    assert excinfo.value.cause.reason == "job-not-retryable"
     code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    assert code != int(ExitCode.OK), resumed
 
     assert first_attempt <= remote.folders, (
-        f"the retry left {sorted(remote.folders)}, so it purged the failed "
-        f"attempt's archive and the only copies of what that attempt overwrote"
+        f"the refused retry left {sorted(remote.folders)}, so something purged the "
+        f"failed attempt's archive and the only copies of what that attempt overwrote"
     )
-    assert len(remote.folders) == 2, (
-        f"the retry left {sorted(remote.folders)}: two attempts in one folder means "
-        f"the clock did not step, and the settled folder still present means the "
-        f"rotation stopped"
+    assert "2026-08-01T000000Z" in remote.folders, (
+        f"the remote holds {sorted(remote.folders)}: the settled folder is gone, so "
+        f"a rotation ran over a job whose mirror never completed"
     )
-    assert "2026-08-01T000000Z" not in remote.folders
 
 
 # ---------------------------------------------------------------------------
@@ -2745,25 +2754,28 @@ def test_a_failed_backup_item_is_re_armed_and_its_record_replaced(
 ):
     """R-349's fifth scenario: the failure channel never completes the item.
 
-    ``jobs.retry`` re-arms FAILED and claimed items and leaves DONE ones alone,
-    so the item being re-armed is the proof the failure did not take the
-    ``Produced`` route. The record is then replaced by the successful attempt's.
+    The item's row is the proof the failure did not take the ``Produced`` route:
+    it reads FAILED, not DONE, and the outcome record it left carries the
+    failing command. Until R-390 the proof was the re-arm, ``jobs.retry``
+    flipping the row to pending, and the record was then replaced by a second
+    attempt's. A failed transfer is recorded permanent, so the retry refuses
+    and the row and the record are measured as the failure left them.
     """
     monkeypatch.setattr(backup, "subprocess_runner", _failing_on(backup.SNAPSHOT_DATABASE))
     _, queued = _drive(["backup", "run"])
     job_id = queued["data"]["job_id"]
     _drive(["backup", "run", "--job", job_id])
+    assert _item_states(job_id)["database"] == "failed", _item_states(job_id)
 
     with jobs.open_store() as store:
-        jobs.retry(store, job_id)
-    assert _item_states(job_id)["database"] == "pending", _item_states(job_id)
+        with pytest.raises(CratekitError) as excinfo:
+            jobs.retry(store, job_id)
+    assert excinfo.value.cause.reason == "job-not-retryable"
+    assert _item_states(job_id)["database"] == "failed", _item_states(job_id)
 
-    monkeypatch.setattr(backup, "subprocess_runner", _answering(0))
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
     shown = _shown_outcomes(job_id)
-    assert all(
-        command["returncode"] == 0
+    assert any(
+        command["returncode"] != 0
         for portion in shown["database"]["portions"]
         for command in portion["commands"]
     ), shown["database"]
