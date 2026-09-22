@@ -1,0 +1,95 @@
+# R-390 and R-391, author's table, second batch: the mixed permanent verdict.
+#
+#     ./.venv/bin/python scripts/mutate.py docs/mutation/r390-b-rows.toml
+
+name = "r390-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_last_reason_restored"
+description = "the original defect: several permanent reasons take the last item's reason"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    reason = reasons[0] if len(reasons) == 1 else "mixed-permanent-failures"'''
+new = '''    reason = failed[-1].reason'''
+
+[[rows]]
+id = "B2_reasons_in_reverse_order"
+description = "the sorted set is pinned in one order: reverse it"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    reasons = tuple(sorted({cause.reason for cause in failed}))'''
+new = '''    reasons = tuple(sorted({cause.reason for cause in failed}, reverse=True))'''
+
+[[rows]]
+id = "B3_message_does_not_name_the_reasons"
+description = "the job cause message keeps the counts and drops the list of reasons"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''            message += (
+                f"; the {permanent} permanent failures carry {len(reasons)} "
+                f"distinct reasons: {', '.join(reasons)}"
+            )
+            detail[PERMANENT_REASONS] = reasons'''
+new = '''            detail[PERMANENT_REASONS] = reasons'''
+
+[[rows]]
+id = "B4_detail_drops_permanent_reasons"
+description = "the job cause names the reasons in prose and drops them from detail"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''            message += (
+                f"; the {permanent} permanent failures carry {len(reasons)} "
+                f"distinct reasons: {', '.join(reasons)}"
+            )
+            detail[PERMANENT_REASONS] = reasons'''
+new = '''            message += (
+                f"; the {permanent} permanent failures carry {len(reasons)} "
+                f"distinct reasons: {', '.join(reasons)}"
+            )'''
+
+[[rows]]
+id = "B5_one_shared_reason_is_also_mixed"
+description = "the threshold moves so a single shared reason is reported as mixed too"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''        if len(reasons) > 1:
+            # R-391.'''
+new = '''        if len(reasons) > 0:
+            # R-391.'''
+
+[[rows]]
+id = "B6_envelope_drops_the_reasons"
+description = "the all failed envelope keeps the item nested and drops the reasons beside it"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''        message += (
+            f"; the failures carry {len(permanent_reasons)} distinct permanent "
+            f"reasons: {', '.join(permanent_reasons)}"
+        )
+        detail[PERMANENT_REASONS] = tuple(permanent_reasons)'''
+new = ""
+
+[[rows]]
+id = "B7_drive_passes_no_reasons_to_the_envelope"
+description = "the envelope can carry the reasons and the driver hands it none"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''                permanent_reasons=_permanent_reasons_of(result.job.cause).get(
+                    PERMANENT_REASONS, ()
+                )
+                if result.job.cause is not None
+                else (),'''
+new = '''                permanent_reasons=(),'''
+
+[[dropped]]
+id = "B8_sorting_removed_entirely"
+description = "drop sorted() so the set's own iteration order is used"
+reason = "a two string set iterates in an order fixed by the per process hash seed, so the row would die on half of its runs and report a pass rate rather than a count; B2 measures that the order is pinned"
