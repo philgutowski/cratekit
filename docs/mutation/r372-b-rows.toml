@@ -1,0 +1,157 @@
+name = "r372-b"
+pass_kind = "light"
+
+# The doctor check, the wizard's offer and the declarations. Same subset per
+# row as r372-a, plus the contract suite for the declaration row.
+
+[[rows]]
+id = "B1_doctor_majority_is_info"
+description = "_check_paths_resolved: a majority is a note, so doctor stays green over it"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    if totals.majority_unmapped:
+        cause = metadata_cli.majority_unmapped_cause(cfg, totals)
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,'''
+new = '''    if totals.majority_unmapped:
+        cause = metadata_cli.majority_unmapped_cause(cfg, totals)
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,'''
+
+[[rows]]
+id = "B2_doctor_minority_fails"
+description = "_check_paths_resolved: a minority refuses, the sitting's own state after the hand edit"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    if totals.unmapped:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,'''
+new = '''    if totals.unmapped:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,'''
+
+[[rows]]
+id = "B3_doctor_copies_under_a_running_application"
+description = "_check_paths_resolved: skip the process question and copy anyway"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
+    if running:'''
+new = '''    running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
+    if False:'''
+
+[[rows]]
+id = "B4_doctor_reads_before_the_volume_checks"
+description = "_check_paths_resolved: survey a database on a volume the mount checks could not recognise"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)'''
+new = '''    if False:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)'''
+
+[[rows]]
+id = "B5_doctor_opens_the_live_path"
+description = "_survey_paths: open the configured database itself rather than a copy"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    with rb_writer.read_only_copy(source, cfg=cfg) as db:
+        return metadata_cli.resolution_totals(cfg, db)'''
+new = '''    db = rb_writer.open_db(source, check_app_version=False, cfg=cfg)
+    try:
+        return metadata_cli.resolution_totals(cfg, db)
+    finally:
+        rb_writer.close_db(db)'''
+
+[[rows]]
+id = "B6_setup_overwrites_a_recorded_map"
+description = "_propose_prefix_map: offer over a map already recorded, so a re-run replaces it"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    if isinstance(recorded, list) and recorded:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B7_setup_copies_under_a_running_application"
+description = "_propose_prefix_map: skip the process question, leaving the copy's own guard to refuse"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    running = rb_writer.rekordbox_processes_running()
+    if running:'''
+new = '''    running = rb_writer.rekordbox_processes_running()
+    if False:'''
+
+[[rows]]
+id = "B8_setup_aborts_on_a_copy_it_could_not_make"
+description = "_propose_prefix_map: let an OSError from the copy escape the verb before the save"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    except OSError as exc:
+        # THE COPY ITSELF, not the open.'''
+new = '''    except ZeroDivisionError as exc:
+        # THE COPY ITSELF, not the open.'''
+
+[[rows]]
+id = "B9_setup_offers_a_rule_the_root_does_not_need"
+description = "_propose_prefix_map: offer a rule for a root already under the recorded drive"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    if root == base or root.startswith(base + "/"):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B10_setup_records_a_literal_root"
+description = "_propose_prefix_map: write the root as a literal path rather than the token"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    spelled = config.LIBRARY_ROOT_TOKEN if target == root else target'''
+new = '''    spelled = target'''
+
+[[rows]]
+id = "B11_setup_records_without_asking"
+description = "_propose_prefix_map: adopt the rule, the pin's S2 failure one key over"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''    if not wizard.optional(
+        f"rekordbox records this library's paths under {base}, and the library is "'''
+new = '''    if False and not wizard.optional(
+        f"rekordbox records this library's paths under {base}, and the library is "'''
+
+[[rows]]
+id = "B12_verb_does_not_declare_the_check"
+description = "registry: the My Tags verb stops declaring library.paths_resolved"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''            # reads the same ratio the verb refuses on.
+            "library.paths_resolved",'''
+new = '''            # reads the same ratio the verb refuses on.'''
+
+[[dropped]]
+id = "B13_message_wording"
+description = "majority_unmapped_cause: reword the sentence"
+reason = "no test asserts the sentence beyond the counts and prefixes A7 and the plan test already pin"
+
+[[dropped]]
+id = "B14_other_declarations"
+description = "registry: drop the check from one of the ten other entries that declare it"
+reason = "one declaration is measured in B12 and the unplaced report's is pinned by its own test; the rest are the same guard family"
