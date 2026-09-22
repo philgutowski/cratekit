@@ -5671,11 +5671,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # is swept as ordinary playlists", 2026-09-22: 494 to 495 distinct, non-keys
     # 319 to 320. ONE literal joined and NOTHING left, read off the unit's own
     # diff of `src/cratekit`, which adds the one kebab shaped string
-    # label-debris, in `sync/playlists.py`, a fifth member of the `Excluded`
-    # enum beside already-swept, favorites-placeholder and in-flight: the reason
-    # `sync all` reports for an account playlist whose name ends with the
-    # source system's ` LIBRARY` suffix. Not a cause, since nothing refuses with
-    # it, which is why both halves move by one.
+    # label-debris, in `sync/playlists.py`, the fourth kebab shaped member of
+    # the seven member `Excluded` enum, beside already-swept,
+    # favorites-placeholder and in-flight (recorded, empty and unreadable are
+    # one word each and never entered this population): the reason `sync all`
+    # reports for an account playlist whose name ends with the source system's
+    # ` LIBRARY` suffix, and the reason `sync mark` leaves such a playlist out
+    # of its plan, read through the enum and not respelled. Not a cause, since
+    # nothing refuses with it, which is why both halves move by one.
     assert (len(literals), len(literals - set(causes))) == (495, 320), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"

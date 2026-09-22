@@ -1032,6 +1032,26 @@ def test_a_recorded_playlist_the_pass_never_listed_is_not_pending_at_all(
     assert playlists.pending_marks(later) == ()
 
 
+def test_a_recorded_debris_playlist_is_not_pending_at_all():
+    """R-361 on the mark set, asserted on ``pending_marks`` for the reason the
+    test above gives. A ` LIBRARY` name in the cursor, from a job queued before
+    the rule or by hand, is the source system's throwaway and is never
+    prefixed, exactly as its own sweep never prefixes it. The prefix is decided
+    first, so a debris name already carrying it is skipped for that reason."""
+    sweep = playlists.Sweep(
+        listed=(
+            _playlist("pl-sol", "Sol Selectas LIBRARY"),
+            _playlist("pl-swept", playlists.SWEPT_PREFIX + "Colorize LIBRARY"),
+            _playlist("pl-title", "Colorize Library"),
+            _playlist("pl-2026", "Colorize 2026"),
+        ),
+        recorded=frozenset({"pl-sol", "pl-swept", "pl-title", "pl-2026"}),
+    )
+    assert [mark.target_id for mark in playlists.pending_marks(sweep)] == ["pl-2026", "pl-title"]
+    # ``only`` narrows and never widens: naming the debris does not mark it.
+    assert playlists.pending_marks(sweep, only=frozenset({"pl-sol"})) == ()
+
+
 def test_a_playlist_the_source_system_already_prefixed_is_not_prefixed_twice(
     slim, monkeypatch, tmp_path
 ):

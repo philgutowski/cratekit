@@ -25,11 +25,17 @@ batch builds one `<label> LIBRARY` playlist per run and leaves it on the
 account, and its own sweep drops any name ending ` LIBRARY`, leading space,
 case sensitive. The fourth attended sitting found eleven of them among the
 eighteen playlists a pass queued, about 1600 tracks of label catalogue offered
-as ordinary intake. The rule is copied rather than narrowed: a playlist a person
-named `My Night LIBRARY` is excluded too, which is the collision the source
-system already accepts, and every debris name the sitting listed was a label
-run. Jobs already queued for such playlists are not cancelled by this rule; it
-decides what a later pass offers.
+as ordinary intake. The name rule is copied rather than narrowed: a playlist a
+person named `My Night LIBRARY` is excluded too, which is the collision the
+source system already accepts, and every debris name the sitting listed was a
+label run. The source system's sweep ALSO drops every playlist id its run
+manifests registered as run created, and that half has no counterpart here,
+because Cratekit reads no manifest of the source system's: a run playlist
+whose name lost the suffix is still offered. Jobs already queued for debris
+are not cancelled by this rule; it decides what a later pass offers, and
+:func:`pending_marks` keeps the same names out of the mark, so a debris job
+that succeeds, one queued before the rule or by hand, never has the source
+system's throwaway renamed under it.
 
 **THE CURSOR IS IDENTIFIERS, AND IT MOVES ON CLEAN COMPLETION ONLY.** Queueing
 is not completion. At the start of every pass :func:`reconcile` reads every
@@ -475,6 +481,15 @@ def pending_marks(
 
     A recorded playlist the account no longer lists has no name to prefix and is
     not pending. Nothing is owed to a playlist that is gone.
+
+    **THE LABEL BATCH'S DEBRIS IS NEVER MARKED (R-361).** A pass no longer
+    queues a ` LIBRARY` name, and a job for one can still reach the cursor: the
+    eleven the fourth sitting left queued, resumed, or one a person ran through
+    ``crate intake playlist``, which R-382 records. Its name is the source
+    system's throwaway and the source system's own sweep never prefixes it, so
+    neither does this one. Asked here and not only in :func:`exclusion`, because
+    the exclusion decides what is OFFERED and this decides what is RENAMED, and
+    a rule on the offering path leaves the renaming path open.
     """
     listed = sweep.names()
     return tuple(
@@ -482,6 +497,7 @@ def pending_marks(
         for identity in sorted(sweep.recorded)
         if listed.get(identity)
         and not is_swept_name(listed[identity])
+        and not is_library_debris(listed[identity])
         and (only is None or identity in only)
     )
 

@@ -82,6 +82,11 @@ SKIP = "skip"
 ALREADY_MARKED = "already-marked"
 NOT_LISTED = "not-listed"
 JOB_UNFINISHED = "job-unfinished"
+#: The pass's own word for the label batch's ` LIBRARY` debris, read through
+#: the enum so the two verbs cannot spell it two ways (R-361). A job for one
+#: reaches the pass only from before the rule or by hand, and the source
+#: system's throwaway is never renamed under it.
+LABEL_DEBRIS = str(playlists.Excluded.LABEL_DEBRIS)
 REPORTS_UNREADABLE = "reports-unreadable"
 ROWS_OUTSTANDING = "rows-outstanding"
 #: Why a planned playlist was not renamed after all: the engine's recheck.
@@ -224,6 +229,10 @@ def _spelled(wanted: match.Wanted) -> str:
 _WHY = {
     NOT_LISTED: "the account no longer lists it, so there is no name to prefix",
     ALREADY_MARKED: "its name already carries the prefix",
+    LABEL_DEBRIS: (
+        "its name is the source system's label run debris, which a sync never "
+        "offers and never renames"
+    ),
     JOB_UNFINISHED: "its intake job did not succeed, so its tracks were never all resolved",
 }
 
@@ -245,6 +254,8 @@ def _decided(store, sweep: playlists.Sweep, found: list[jobs.Job]) -> list[_Play
             entry.reason = NOT_LISTED
         elif playlists.is_swept_name(entry.name):
             entry.reason = ALREADY_MARKED
+        elif playlists.is_library_debris(entry.name):
+            entry.reason = LABEL_DEBRIS
         elif job.state is not jobs.JobState.SUCCEEDED:
             entry.reason = JOB_UNFINISHED
         if entry.reason is not None:
