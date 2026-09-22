@@ -36,7 +36,7 @@ file may not carry. The end to end prefix map test answers the backup offer
 first. R-345 CLOSED in place. Filed R-657: no environment override reaches a
 backup destination, so the brief's P2 scenario is driven at the override seam
 rather than through a product override. Not on the board bar.
-Battery: ruff clean, **9972 passed** and 1 skipped in about 70 seconds. Scan
+Battery: ruff clean, **9971 passed** and 1 skipped in 60 seconds. Scan
 clean. No test of this unit's is among the slowest ten.
 Mutation table `docs/mutation/r345.md`: **17 rows, the author's own, all
 killed**, no zero and no composite owed; two rows were refused on the first
