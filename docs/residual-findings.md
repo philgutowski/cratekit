@@ -18418,6 +18418,26 @@ resume verb is that function's only shipped caller.
 rather than re-arming those items, or the verb's help says it will retry them
 regardless.
 
+**Closed 2026-09-22 on `relay/99`.** `jobs.retry` refuses a closed job whose
+cause carries `retryable` false, with the reserved `job-not-retryable` on
+PRECONDITION, steps rather than a token, the job's own cause nested inside,
+and the mixed reasons at its own top level when the job cause has them. Items
+stay as the failure left them. A cancelled job carries a retryable cause and
+re-arms; a FAILED job with no cause re-arms, because a missing verdict is not
+a permanent one. The resume verb relies on the engine and adds no check.
+
+**What the refusal exposed.** `retryable` defaults to false on every cause, so
+a shell that never set the flag was read as having proven its failure
+permanent. Eleven tests in six suites re-armed through `jobs.retry` after a
+fake failure. Six modelled a transient failure with a fake that recorded it as
+permanent, and the fakes changed. Three were backup transfer exits, where the
+shell itself never set the flag: a dropped connection mid mirror was recorded
+permanent, the job said resume could not succeed since R-380, and this unit's
+refusal made the verb agree, so the per portion ledger the backup job exists
+for could never be used. `backup-transfer-failed` now carries `retryable`
+true and those three tests make the claims they made before. The two that
+remain over a module's own permanent verdict are R-656.
+
 ---
 
 ## R-391. Permanent failures that do not share a reason take the last item's reason
@@ -18434,6 +18454,15 @@ the driver claimed last.
 
 **Closes when:** the job cause names every distinct permanent reason, or a
 driven mixed permanent job shows that one reason is enough.
+
+**Closed 2026-09-22 on `relay/99`.** One shared permanent reason is still the
+job's reason. Several distinct reasons use the reserved
+`mixed-permanent-failures` on INTERNAL beside `no-evidence`, the message
+names every reason, and `detail["permanent_reasons"]` is the sorted tuple, so
+the verdict depends on the set and not on the claim order. Driven in both item
+orders. The all failed envelope keeps the last item nested, since its own
+detail is what every shell reads, and carries the same sorted reasons on its
+own detail and in its message.
 
 ---
 
@@ -26479,3 +26508,36 @@ note beside the offer says the identity is still owed.
 
 **Not on the board bar.** The pass refuses with the act named; nothing is lost
 and nothing false is reported.
+
+---
+
+## R-656. A failure a person can repair is recorded permanent, so since R-390 it needs a fresh job
+
+**Found by** R-390's build, 2026-09-22, driving the eleven tests that re-armed
+through `jobs.retry` after a fake failure.
+
+`Cause.retryable` defaults to false, and `jobs.retry` now refuses a closed job
+whose cause carries false. Two workers record a failure a person can put right
+as permanent by that default. Mastering records `source-missing` and
+`encoder-missing` with the flag unset, so a recording placed after the failure,
+or an encoder installed after it, does not reopen the job. Acquisition records
+`adapter-broken` permanent on purpose, R-348, because a defect retried for ever
+is worse, and the engine's item boundary records any bare exception as
+`internal-error`, permanent, on the same judgement. Backup's transfer exit was
+the third and is fixed in the same unit: a dropped connection mid mirror is
+retryable now.
+
+**Measured cost.** Two tests, `tests/test_master_cli.py` and
+`tests/test_acquire_workers.py`, model the repair then resume path and now
+assert the refusal. A person who repairs the cause queues the work again the
+way it was queued the first time, which the refusal's steps say; the items
+that succeeded are durable and the mastering test shows the fresh job
+completing. Unmeasured live.
+
+**Closes when:** a failure the person can repair without changing the program
+is marked retryable at its raise site, mastering's two are the candidates, or
+the resume verb gains an explicit re-arm the person asks for over a permanent
+verdict, or the two are left permanent with the reason written beside them.
+
+**Not on the board bar.** The refusal names the act, the work can be queued
+again, and nothing is lost or reported falsely.

@@ -1,0 +1,250 @@
+{
+  "name": "r390-b",
+  "pass_kind": "light",
+  "branch": "relay/99",
+  "head": "e7f5753",
+  "when": "2026-09-22 17:53 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9928,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/jobs.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/jobs.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "96373c40e6137ffc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9928,
+    "baseline_collected": 9928,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_last_reason_restored",
+      "description": "the original defect: several permanent reasons take the last item's reason",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aac23df5a8782c9a",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_two_distinct_permanent_reasons_name_both_whichever_failed_last"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    reason = reasons[0] if len(reasons) == 1 else \"mixed-permanent-failures\"",
+      "new": "    reason = failed[-1].reason"
+    },
+    {
+      "id": "B2_reasons_in_reverse_order",
+      "description": "the sorted set is pinned in one order: reverse it",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3b9a80289807f6cc",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_two_distinct_permanent_reasons_name_both_whichever_failed_last"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    reasons = tuple(sorted({cause.reason for cause in failed}))",
+      "new": "    reasons = tuple(sorted({cause.reason for cause in failed}, reverse=True))"
+    },
+    {
+      "id": "B3_message_does_not_name_the_reasons",
+      "description": "the job cause message keeps the counts and drops the list of reasons",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2496a3926546ec8c",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_two_distinct_permanent_reasons_name_both_whichever_failed_last"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            message += (\n                f\"; the {permanent} permanent failures carry {len(reasons)} \"\n                f\"distinct reasons: {', '.join(reasons)}\"\n            )\n            detail[PERMANENT_REASONS] = reasons",
+      "new": "            detail[PERMANENT_REASONS] = reasons"
+    },
+    {
+      "id": "B4_detail_drops_permanent_reasons",
+      "description": "the job cause names the reasons in prose and drops them from detail",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "94d8ab96a9e5be79",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_two_distinct_permanent_reasons_name_both_whichever_failed_last"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            message += (\n                f\"; the {permanent} permanent failures carry {len(reasons)} \"\n                f\"distinct reasons: {', '.join(reasons)}\"\n            )\n            detail[PERMANENT_REASONS] = reasons",
+      "new": "            message += (\n                f\"; the {permanent} permanent failures carry {len(reasons)} \"\n                f\"distinct reasons: {', '.join(reasons)}\"\n            )"
+    },
+    {
+      "id": "B5_one_shared_reason_is_also_mixed",
+      "description": "the threshold moves so a single shared reason is reported as mixed too",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "84327e3a339d4c02",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_partial_failure_whose_failures_are_permanent_is_not_resumable",
+        "tests/test_jobs.py::test_one_shared_permanent_reason_is_still_the_jobs_reason"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if len(reasons) > 1:\n            # R-391.",
+      "new": "        if len(reasons) > 0:\n            # R-391."
+    },
+    {
+      "id": "B6_envelope_drops_the_reasons",
+      "description": "the all failed envelope keeps the item nested and drops the reasons beside it",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f226e0092568541e",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_two_distinct_permanent_reasons_name_both_whichever_failed_last"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        message += (\n            f\"; the failures carry {len(permanent_reasons)} distinct permanent \"\n            f\"reasons: {', '.join(permanent_reasons)}\"\n        )\n        detail[PERMANENT_REASONS] = tuple(permanent_reasons)",
+      "new": "        pass"
+    },
+    {
+      "id": "B7_drive_passes_no_reasons_to_the_envelope",
+      "description": "the envelope can carry the reasons and the driver hands it none",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "78d2c8dfe3eae519",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_two_distinct_permanent_reasons_name_both_whichever_failed_last"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                permanent_reasons=_permanent_reasons_of(result.job.cause).get(\n                    PERMANENT_REASONS, ()\n                )\n                if result.job.cause is not None\n                else (),",
+      "new": "                permanent_reasons=(),"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B8_sorting_removed_entirely",
+      "description": "drop sorted() so the set's own iteration order is used",
+      "reason": "a two string set iterates in an order fixed by the per process hash seed, so the row would die on half of its runs and report a pass rate rather than a count; B2 measures that the order is pinned"
+    }
+  ]
+}

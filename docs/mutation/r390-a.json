@@ -1,0 +1,242 @@
+{
+  "name": "r390-a",
+  "pass_kind": "light",
+  "branch": "relay/99",
+  "head": "e7f5753",
+  "when": "2026-09-22 17:46 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 9928,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/jobs.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/jobs.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "96373c40e6137ffc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 9928,
+    "baseline_collected": 9928,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_retry_re_arms_unconditionally",
+      "description": "the original defect: retry re-arms every failed item whatever the job cause says",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "48e28d270db48c7b",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_master_cli.py",
+        "tests/test_acquire_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 176,
+      "baseline_collected": 176,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_workers.py::test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetches_nothing",
+        "tests/test_jobs.py::test_a_partial_failure_whose_failures_are_permanent_is_not_resumable",
+        "tests/test_jobs.py::test_resuming_a_job_of_permanent_failures_through_the_verb_refuses",
+        "tests/test_jobs.py::test_two_distinct_permanent_reasons_name_both_whichever_failed_last",
+        "tests/test_master_cli.py::test_a_job_that_failed_on_a_missing_source_is_not_reopened_and_a_fresh_job_masters_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current.cause is not None and not current.cause.retryable:\n        raise refuse(\n            \"job-not-retryable\",\n            f\"job {job_id} {current.state} with a cause that is not retryable, \"\n            f\"so resuming it cannot succeed and its items were left as they are\",\n            steps=(\n                \"inspect each failed item's cause on the job's own record\",\n                \"queue the work again the way it was queued the first time, \"\n                \"once the reason is addressed\",\n            ),\n            origin=(\"jobs\",),\n            detail={\n                \"job_id\": job_id,\n                \"state\": str(current.state),\n                # Named on the refusal as the job cause names them (R-391), so\n                # a person is not sent into the nested cause to learn which.\n                **_permanent_reasons_of(current.cause),\n            },\n            inner=current.cause,\n        )\n",
+      "new": ""
+    },
+    {
+      "id": "A2_retry_refuses_any_closed_job_with_a_cause",
+      "description": "the flag is not read: a cancelled job and a retryable failure are refused too",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f40ff8c2f01a2fe6",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_backup_cli.py",
+        "tests/test_outbound_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 252,
+      "baseline_collected": 252,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_failed_backup_item_is_re_armed_and_its_record_replaced",
+        "tests/test_backup_cli.py::test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion",
+        "tests/test_backup_cli.py::test_a_retried_portion_keeps_the_archive_its_failed_attempt_wrote",
+        "tests/test_jobs.py::test_a_cancelled_job_can_be_resumed_and_a_succeeded_one_cannot",
+        "tests/test_outbound_workers.py::test_a_failed_favourite_leaves_the_sweep_resumable",
+        "tests/test_outbound_workers.py::test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current.cause is not None and not current.cause.retryable:\n        raise refuse(\n            \"job-not-retryable\",",
+      "new": "    if current.cause is not None:\n        raise refuse(\n            \"job-not-retryable\","
+    },
+    {
+      "id": "A3_a_failed_job_with_no_cause_is_refused",
+      "description": "a missing verdict is read as a permanent one",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "30b2894f2ab4a8ad",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_failed_job_with_no_recorded_cause_still_re_arms"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current.cause is not None and not current.cause.retryable:\n        raise refuse(\n            \"job-not-retryable\",",
+      "new": "    if current.cause is None or not current.cause.retryable:\n        raise refuse(\n            \"job-not-retryable\","
+    },
+    {
+      "id": "A4_refusal_drops_the_permanent_reasons",
+      "description": "the resume refusal no longer names the mixed reasons at its own top level",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ef6b1c66674a6f95",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_two_distinct_permanent_reasons_name_both_whichever_failed_last"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"state\": str(current.state),\n                # Named on the refusal as the job cause names them (R-391), so\n                # a person is not sent into the nested cause to learn which.\n                **_permanent_reasons_of(current.cause),\n            },\n            inner=current.cause,",
+      "new": "                \"state\": str(current.state),\n            },\n            inner=current.cause,"
+    },
+    {
+      "id": "A5_refusal_drops_the_inner_cause",
+      "description": "the refusal no longer nests the job's own cause, so the item's reason is unreachable",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4c26606618c86fd5",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_master_cli.py",
+        "tests/test_acquire_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 176,
+      "baseline_collected": 176,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_workers.py::test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetches_nothing",
+        "tests/test_jobs.py::test_a_partial_failure_whose_failures_are_permanent_is_not_resumable",
+        "tests/test_jobs.py::test_resuming_a_job_of_permanent_failures_through_the_verb_refuses",
+        "tests/test_master_cli.py::test_a_job_that_failed_on_a_missing_source_is_not_reopened_and_a_fresh_job_masters_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                **_permanent_reasons_of(current.cause),\n            },\n            inner=current.cause,\n        )",
+      "new": "                **_permanent_reasons_of(current.cause),\n            },\n        )"
+    },
+    {
+      "id": "A6_backup_transfer_exit_is_permanent",
+      "description": "the flag the review round added: a transfer exit recorded with no retryable flag",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "204f158951dd1381",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_a_failed_backup_item_is_re_armed_and_its_record_replaced",
+        "tests/test_backup_cli.py::test_a_failed_portion_decides_the_run_even_when_the_other_completed",
+        "tests/test_backup_cli.py::test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion",
+        "tests/test_backup_cli.py::test_a_half_failed_rehearsal_says_it_too_on_the_other_refusal",
+        "tests/test_backup_cli.py::test_a_retried_portion_keeps_the_archive_its_failed_attempt_wrote"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            retryable=True,\n            origin=(\"backup\", \"cli\"),\n            detail={\"portions\": [entry.portion.value for entry in failed]},",
+      "new": "            origin=(\"backup\", \"cli\"),\n            detail={\"portions\": [entry.portion.value for entry in failed]},"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "A7_items_re_armed_before_the_refusal",
+      "description": "move the UPDATE that re-arms items above the refusal so a refused resume still re-arms",
+      "reason": "the refusal is a raise ahead of the write block and A1 already restores the write; a second row over the same write is the same guard family"
+    }
+  ]
+}

@@ -75,5 +75,8 @@ A test that forbids `internal-error` on a job cause is pinning the wrapper, not
 the worker. Pin the item's reason, or pin `retryable`, not the absence of a
 slug the wrapper used to hide.
 
-`crate job resume` still re-arms failed items without reading `retryable`.
-That remaining hole is R-390.
+`crate job resume` still re-armed failed items without reading `retryable`.
+That remaining hole was R-390, closed 2026-09-22: `jobs.retry` refuses a
+closed job whose cause is not retryable, and what that exposed about the
+flag's default is its own entry, "A guard that reads a flag defaulting to
+false treats every raise site that never set it as having proven it".

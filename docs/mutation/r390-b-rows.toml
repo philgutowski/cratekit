@@ -74,7 +74,7 @@ old = '''        message += (
             f"reasons: {', '.join(permanent_reasons)}"
         )
         detail[PERMANENT_REASONS] = tuple(permanent_reasons)'''
-new = ""
+new = '''        pass'''
 
 [[rows]]
 id = "B7_drive_passes_no_reasons_to_the_envelope"
