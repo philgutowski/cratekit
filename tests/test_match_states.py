@@ -1721,6 +1721,20 @@ def test_a_plain_title_tag_is_untouched_by_the_head_strip(music, tmp_path):
     assert [(row.title, row.version) for row in held] == [("Sun Path", "Radio Edit")]
 
 
+def test_a_head_written_as_a_suffix_inside_the_tag_comes_off_as_it_does_from_the_stem(
+    music, tmp_path
+):
+    """Some catalogue and scraper paths write the key and tempo at the END of a
+    name, and the stem stripper removes that shape. The tag strips under the
+    same rule, both ends, so the two surfaces cannot disagree about one file."""
+    headed_tag(
+        music, tmp_path, "Aurora Bloom - Sun Path - 08A - 124",
+        artist="Aurora Bloom", title="Sun Path - 08A - 124",
+    )
+    held = index_of(music).versions(match.recording_token("Aurora Bloom", "Sun Path"))
+    assert [row.title for row in held] == ["Sun Path"]
+
+
 def test_a_head_found_only_in_the_tag_is_not_read_for_the_key(music, tmp_path):
     """The key's precedence is unchanged by this unit, on purpose.
 
