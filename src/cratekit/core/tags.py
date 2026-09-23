@@ -499,26 +499,63 @@ def read_tag(path: Path, field: str) -> str | None:
     and a sweep across a directory that happens to contain one stray file should
     report no tags rather than abort. Writing into an unknown container can
     damage something, so that one refuses.
+
+    ONE FIELD OF :func:`read_tags`, so there is one reader and not two opinions
+    about what a stored value reads as.
     """
-    spec = FIELDS.get(field)
-    if spec is None:
-        raise ValueError(f"unknown tag field: {field!r}; known fields are {sorted(FIELDS)}")
+    return read_tags(path, (field,))[field]
+
+
+def read_tags(path: Path, fields: Sequence[str]) -> dict[str, str | None]:
+    """Read several logical fields from ``path`` through ONE container open.
+
+    Each field answers exactly what :func:`read_tag` answers for it, absent
+    fields included, because the two are one reader. The library index reads
+    four fields per file over the whole music folder, and four opens per file
+    over ten thousand files on an external volume is the cost this exists to
+    remove. The finding is the residual titled "The index reader opens every
+    container three times, and the walk is the library".
+
+    An unknown field is refused before anything is opened, the way
+    :func:`read_tag` refuses it, so a misspelled field name in a four field
+    read cannot be answered as absent.
+    """
+    specs: dict[str, TagSpec] = {}
+    for field in fields:
+        spec = FIELDS.get(field)
+        if spec is None:
+            raise ValueError(
+                f"unknown tag field: {field!r}; known fields are {sorted(FIELDS)}"
+            )
+        specs[field] = spec
+    absent: dict[str, str | None] = dict.fromkeys(specs)
 
     try:
         dialect = dialect_of(path.suffix.lower())
     except UnsupportedContainer:
-        return None
-    key = spec.key_for(dialect)
+        return absent
     try:
         import mutagen
 
         handle = mutagen.File(path)
         if handle is None or handle.tags is None:
-            return None
+            return absent
         tags = handle.tags
-        if key not in tags:
+    except Exception as exc:  # noqa: BLE001, see the note above read_tag
+        log.debug("tag read failed for %s: %s", path, exc)
+        return absent
+    return {
+        field: _one_text(tags, spec.key_for(dialect), dialect, path)
+        for field, spec in specs.items()
+    }
+
+
+def _one_text(tags: object, key: str, dialect: Dialect, path: Path) -> str | None:
+    """One stored field as stripped text, or None when absent or unreadable."""
+    try:
+        if key not in tags:  # type: ignore[operator]
             return None
-        raw = tags[key]
+        raw = tags[key]  # type: ignore[index]
         if dialect is Dialect.ID3:
             # A text frame stringifies to its joined text; TXXX likewise.
             return str(raw).strip() or None
@@ -527,8 +564,8 @@ def read_tag(path: Path, field: str) -> str | None:
             # An MP4 freeform atom carries bytes, not text.
             return bytes(value).decode("utf-8").strip() or None
         return str(value).strip() or None
-    except Exception as exc:  # noqa: BLE001 - see the note above this function
-        log.debug("tag read failed for %s: %s", path, exc)
+    except Exception as exc:  # noqa: BLE001, see the note above read_tag
+        log.debug("tag read failed for %s %s: %s", path, key, exc)
         return None
 
 

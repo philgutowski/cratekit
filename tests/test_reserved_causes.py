@@ -5712,7 +5712,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # job-not-retryable, spelled once at the refusal in `core/jobs.py`'s
     # retry, and mixed-permanent-failures, spelled once in the same module's
     # failure verdict. Neither is respelled anywhere else in `src/cratekit`.
-    assert (len(literals), len(literals - set(causes))) == (498, 320), (
+    # Re-pinned on the unit that made the index consult the ISRC and the
+    # credited list, 2026-09-23: 498 to 500 distinct, non-keys 320 to 322. The
+    # two that joined are isrc-exact and credited-exact, match reasons and NOT
+    # keys, the slugs `Why.ISRC_EXACT` and `Why.CREDITED_EXACT` in
+    # `acquire/match.py`, spelled once there and read through the enum
+    # everywhere else. Nothing left: the tree was differenced against main with
+    # the vendored directory excluded on both sides.
+    assert (len(literals), len(literals - set(causes))) == (500, 322), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

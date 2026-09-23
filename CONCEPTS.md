@@ -296,6 +296,24 @@ companion. Recording a credited deletion writes both records in one write and
 lifting the tombstone lifts both in one write, and a companion two deletions
 share stays until the last of them is lifted.
 
+### Credited list rule
+The second of the two rules `LibraryIndex.held` applies when it is asked what
+the library holds of a row. The first is the recording token, the folded artist
+joined to the folded title, exact text. The second holds a file whose folded
+title is the row's and whose comma separated artist tag credits the row's
+primary artist as one whole member, because on this volume a processed file's
+artist tag lists every credited artist, `Malive, Tito Azevedo, MRQZ`, where the
+provider row names the primary one, `Malive`, so the token can never agree. The
+comma is the only joiner, by measurement, and a match under this rule carries
+the reason `credited-exact` rather than `exact`. It is asked after the ISRC,
+which is the identity both sides carry, and which settles a row only when the
+folded title agrees too.
+
+*Avoid:* reading the split as identity. `_first_named` refuses to split a
+provider row's artist on a comma because a comma is legal inside a name; this
+rule splits a file's tag for membership only, and a member has to be a whole
+name with the same title beside it.
+
 ## Backup and restore
 
 ### Snapshot marker

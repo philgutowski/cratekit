@@ -81,6 +81,9 @@ RESIDUALS: tuple[str, ...] = (
     "about the same line",
     "One vocabulary lives in two files until the domain module merges",
     "A deleted track the tombstone consult cannot reach is listed for download",
+    "The match engine never consults the ISRC, and a processed file's artist tag "
+    "lists every credited artist, so a quarter of the hearts the library holds "
+    "read missing or offered",
 )
 
 
@@ -1799,6 +1802,350 @@ def test_a_headed_tag_with_a_lossy_marker_strips_under_the_librarys_template(
     aware = match.index_library(music, template=match_cli.library_template(cfg))
     held = aware.versions(match.recording_token("Aurora Bloom", "Sun Path"))
     assert [row.title for row in held] == ["Sun Path"]
+
+
+# ---------------------------------------------------------------------------
+# The ISRC and the credited list: a held file resolves owned by the identity
+# both sides carry, and by the primary artist's membership in the file's list
+# ---------------------------------------------------------------------------
+
+
+ISRC_RESIDUAL = (
+    "The match engine never consults the ISRC, and a processed file's artist tag "
+    "lists every credited artist, so a quarter of the hearts the library holds "
+    "read missing or offered"
+)
+
+
+def credited(
+    music: Path, tmp_path: Path, name: str, *, artist: str, title: str, isrc: str | None
+) -> Path:
+    """A real container the way the live library holds a processed file.
+
+    The artist tag lists every credited artist, the title tag carries the head,
+    and the ISRC is there when the provider delivered one. 1691 of 9868 files
+    on the volume carry no ISRC tag, so ``isrc=None`` is a real population and
+    not an edge. The finding is the residual titled in :data:`ISRC_RESIDUAL`,
+    cited by title for the reason ``split_title`` gives.
+    """
+    fields = {"artist": artist, "title": title}
+    if isrc is not None:
+        fields["isrc"] = isrc
+    return tagged_container(tmp_path, music / f"{name}.flac", **fields)
+
+
+def burning(music: Path, tmp_path: Path, *, isrc: str | None = "USNRS2644532") -> Path:
+    """The brief's file: ``Malive, Tito Azevedo, MRQZ`` against a row naming ``Malive``."""
+    return credited(
+        music, tmp_path, "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Extended Mix)",
+        artist="Malive, Tito Azevedo, MRQZ", title="04A - 126 - Burning (Extended Mix)",
+        isrc=isrc,
+    )
+
+
+def row(*, artist: str, title: str, isrc: str | None, key=None) -> match.Wanted:
+    """A provider row through the REAL reader, so the title is split the way a
+    listing's is and the row carries what a provider row carries."""
+    shaped = {"id": "301", "artist": {"name": artist}, "title": title, "isrc": isrc, "key": key}
+    return match.read_row(shaped, origin=match.TIDAL, position=1)
+
+
+def test_a_file_held_under_the_rows_isrc_is_owned_whatever_its_artist_tag_says(
+    music, tmp_path
+):
+    """The first scenario. The credited list makes the recording token
+    ``malive tito azevedo mrqz / burning`` against a wanted ``malive / burning``,
+    so no text comparison can match, and both sides carry the ISRC."""
+    burning(music, tmp_path)
+
+    index = index_of(music)
+    assert [held.isrc for held in index.held_by_isrc("USNRS2644532")] == ["USNRS2644532"]
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")], index
+    )
+    (one_match,) = found.matches
+    assert one_match.state is match.MatchState.MATCHED
+    assert one_match.why is match.Why.ISRC_EXACT
+    assert [Path(p).name for p in one_match.paths] == [
+        "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Extended Mix).flac"
+    ]
+
+
+def test_a_file_with_no_isrc_tag_is_owned_when_the_primary_artist_is_a_credited_member(
+    music, tmp_path
+):
+    """The second scenario. The same container with its ISRC removed is one of
+    the 1691 files the ISRC rule cannot reach, and the credited list rule holds
+    it: ``Malive`` is a member of ``Malive, Tito Azevedo, MRQZ`` and the folded
+    title is the same."""
+    burning(music, tmp_path, isrc=None)
+
+    index = index_of(music)
+    assert index.held_by_isrc("USNRS2644532") == ()
+    # THE UNTAGGED FILE IS NOT INDEXED UNDER AN EMPTY KEY, or a row with no
+    # ISRC would be held by every file with no tag.
+    assert "" not in index.by_isrc
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")], index
+    )
+    (one_match,) = found.matches
+    assert one_match.state is match.MatchState.MATCHED
+    assert one_match.why is match.Why.CREDITED_EXACT
+    assert len(one_match.paths) == 1
+
+
+def test_the_primary_artist_need_not_be_first_in_the_credited_list(music, tmp_path):
+    """The third scenario, ``Traumer, antraum, Anton :: Hyaku`` against a row
+    naming ``antraum``, measured on the live library among the 26 held rows the
+    product listed for download."""
+    credited(
+        music, tmp_path, "07A - 128 - Traumer, antraum, Anton - Hyaku",
+        artist="Traumer, antraum, Anton", title="07A - 128 - Hyaku", isrc=None,
+    )
+    found = resolve([row(artist="antraum", title="Hyaku", isrc=None)], index_of(music))
+    assert found.matches[0].state is match.MatchState.MATCHED
+
+
+def test_a_different_recording_sharing_the_title_under_another_isrc_is_not_owned(
+    music, tmp_path
+):
+    """The fourth scenario. Neither rule reaches it: the ISRC differs, and the
+    row's artist is not a member of the file's list."""
+    credited(
+        music, tmp_path, "09A - 124 - Nova Reef - Burning (Extended Mix)",
+        artist="Nova Reef", title="09A - 124 - Burning (Extended Mix)", isrc="GBAYE0000001",
+    )
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")],
+        index_of(music),
+    )
+    (one_match,) = found.matches
+    assert one_match.state is not match.MatchState.MATCHED
+    assert one_match.paths == ()
+
+
+def test_an_isrc_hit_still_asks_about_the_key(music, tmp_path):
+    """The ISRC settles the recording and the version. It says nothing about the
+    key, which is the library's own statement, so a row at the relative minor of
+    the file's key is still a KEY_RELATIVE question and not a silent match."""
+    burning(music, tmp_path)
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key="04B")],
+        index_of(music),
+    )
+    (one_match,) = found.matches
+    assert one_match.state is match.MatchState.NEEDS_REVIEW
+    assert one_match.why is match.Why.KEY_RELATIVE
+    assert [c.difference for c in one_match.candidates] == [match.Why.KEY_RELATIVE]
+
+
+def test_a_rows_isrc_is_folded_before_it_is_asked(music, tmp_path):
+    """A hyphenated, lower case ISRC on the row is the same identity. The tag
+    reader and the missing verb already fold this way, and a third spelling of
+    the fold would be a third place for the two sides to disagree."""
+    burning(music, tmp_path)
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="us-nrs-26-44532")],
+        index_of(music),
+    )
+    assert found.matches[0].why is match.Why.ISRC_EXACT
+
+
+def test_an_isrc_hit_whose_artist_tag_credits_nobody_the_row_names_still_asks_about_the_key_alone(
+    music, tmp_path
+):
+    """The ISRC clause of the candidate labeller on its own. A compilation
+    copy tagged ``Various Artists`` carries the row's ISRC and the row's title,
+    and names no member the row names, so only the ISRC says it is the
+    recording. The match asks about the key, and the candidate has to say the
+    same rather than call the file a scored resemblance."""
+    credited(
+        music, tmp_path, "07B - 126 - Various Artists - Burning (Extended Mix)",
+        artist="Various Artists", title="07B - 126 - Burning (Extended Mix)", isrc="USNRS2644532",
+    )
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key="07A")],
+        index_of(music),
+    )
+    (one_match,) = found.matches
+    assert one_match.state is match.MatchState.NEEDS_REVIEW
+    assert one_match.why is match.Why.KEY_RELATIVE
+    assert [c.difference for c in one_match.candidates] == [match.Why.KEY_RELATIVE]
+
+
+def test_a_files_isrc_tag_is_folded_before_it_is_indexed(music, tmp_path):
+    """The file side of the fold. A tag another tagger wrote hyphenated and
+    lower case is the same identity as the provider's bare upper case one, and
+    the index has to key it that way or the row never finds it."""
+    credited(
+        music, tmp_path, "04A - 126 - Malive - Burning (Extended Mix)",
+        artist="Malive, Tito Azevedo, MRQZ", title="04A - 126 - Burning (Extended Mix)",
+        isrc="us-nrs-26-44532",
+    )
+    index = index_of(music)
+    assert list(index.by_isrc) == ["USNRS2644532"]
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")], index
+    )
+    assert found.matches[0].why is match.Why.ISRC_EXACT
+
+
+def test_a_malformed_isrc_tag_is_not_an_identity(music, tmp_path):
+    """A catalogue number in the ISRC tag is a value that is not a recording's
+    identity, and it is dropped the way ``source.isrc_for`` drops it, so a row
+    carrying the same junk string does not match a file through it."""
+    credited(
+        music, tmp_path, "09A - 124 - Nova Reef - Tide",
+        artist="Nova Reef", title="09A - 124 - Tide", isrc="CAT-001",
+    )
+    index = index_of(music)
+    assert index.held_by_isrc(match.isrc_token("CAT-001")) == ()
+    assert match.isrc_token("CAT-001") == ""
+    # NOT IN THE MAP UNDER ANY SPELLING. A junk key nothing asks for is still a
+    # key the next reader of this map would trust.
+    assert index.by_isrc == {}
+    found = resolve([row(artist="Someone Else", title="Tide", isrc="CAT-001")], index)
+    assert found.matches[0].state is not match.MatchState.MATCHED
+
+
+def test_a_credited_hit_at_another_version_is_a_version_question_not_an_approximate_one(
+    music, tmp_path
+):
+    """The credited list rule finds the RECORDING. A file held at a different
+    version is then the version question R11 asks, and its candidate says so,
+    rather than the discovery class a scored hit would have been reported under."""
+    credited(
+        music, tmp_path, "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Radio Edit)",
+        artist="Malive, Tito Azevedo, MRQZ", title="04A - 126 - Burning (Radio Edit)", isrc=None,
+    )
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")],
+        index_of(music),
+    )
+    (one_match,) = found.matches
+    assert one_match.state is match.MatchState.NEEDS_REVIEW
+    assert one_match.why is match.Why.VERSION_DIFFERS
+    assert [c.difference for c in one_match.candidates] == [match.Why.VERSION_DIFFERS]
+
+
+def test_membership_is_whole_names_not_substrings(music, tmp_path):
+    """``Tito`` is not a member of ``Malive, Tito Azevedo, MRQZ``. A rule that
+    matched on a substring would hand a solo artist every collaboration whose
+    list contains their first name."""
+    burning(music, tmp_path, isrc=None)
+    found = resolve(
+        [row(artist="Tito", title="Burning (Extended Mix)", isrc=None)], index_of(music)
+    )
+    assert found.matches[0].state is not match.MatchState.MATCHED
+
+
+def test_a_single_artist_file_is_indexed_once_and_the_rule_moves_nothing(music, tmp_path):
+    """A file whose artist tag names one artist has a list of one, so the
+    credited rule and the recording token agree, and the index counts one file."""
+    credited(
+        music, tmp_path, "08A - 124 - Aurora Bloom - Sun Path",
+        artist="Aurora Bloom", title="08A - 124 - Sun Path", isrc="ZZ0000000001",
+    )
+    index = index_of(music)
+    assert len(index) == 1
+    (held,) = index.versions(match.recording_token("Aurora Bloom", "Sun Path"))
+    assert match.credited_members(held.artist) == ("Aurora Bloom",)
+    assert held.members == frozenset({"aurora bloom"})
+    assert held.isrc == "ZZ0000000001"
+    assert index.held("Aurora Bloom", "Sun Path") == (held,)
+
+
+def test_an_isrc_hit_whose_title_disagrees_is_a_question_not_a_match(music, tmp_path):
+    """The review's shape, driven on a fixture and not seen on the live volume:
+    a bootleg ingested with the original's tags, or one ISRC written across a
+    release, carries the row's ISRC under another title. Called owned it would
+    point the paths at the wrong recording and the heart would never be
+    acquired, so it is asked about instead, with the file named."""
+    credited(
+        music, tmp_path, "09A - 124 - Nova Reef - Tide",
+        artist="Nova Reef", title="09A - 124 - Tide", isrc="USNRS2644532",
+    )
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")],
+        index_of(music),
+    )
+    (one_match,) = found.matches
+    assert one_match.state is match.MatchState.NEEDS_REVIEW
+    assert one_match.why is match.Why.TITLE_APPROXIMATE
+    assert [Path(p).name for c in one_match.candidates for p in c.paths] == [
+        "09A - 124 - Nova Reef - Tide.flac"
+    ]
+    assert [c.difference for c in one_match.candidates] == [match.Why.TITLE_APPROXIMATE]
+
+
+def test_an_isrc_hit_at_another_version_spelling_asks_about_the_key_alone(music, tmp_path):
+    """The ISRC settles the version however the file spells it, so the one
+    question left is the key, and the candidate says the same thing the match
+    says rather than a version question the engine already settled."""
+    credited(
+        music, tmp_path, "04A - 126 - Malive - Burning (Original Mix)",
+        artist="Malive", title="04A - 126 - Burning (Original Mix)", isrc="USNRS2644532",
+    )
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key="04B")],
+        index_of(music),
+    )
+    (one_match,) = found.matches
+    assert one_match.state is match.MatchState.NEEDS_REVIEW
+    assert one_match.why is match.Why.KEY_RELATIVE
+    assert [c.difference for c in one_match.candidates] == [match.Why.KEY_RELATIVE]
+
+
+def test_an_isrc_settled_row_lists_the_files_carrying_the_isrc_and_no_other(music, tmp_path):
+    """Two copies, one tagged with the ISRC and one untagged that the recording
+    token matches. The reason says the identity was carried, so the paths are
+    the files that carry it, and the untagged copy's key does not join the
+    disagreement over a row the ISRC settled."""
+    burning(music, tmp_path)
+    credited(
+        music, tmp_path, "archive/07B - 126 - Malive - Burning (Extended Mix)",
+        artist="Malive", title="07B - 126 - Burning (Extended Mix)", isrc=None,
+    )
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key="04A")],
+        index_of(music),
+    )
+    (one_match,) = found.matches
+    assert one_match.state is match.MatchState.MATCHED
+    assert one_match.why is match.Why.ISRC_EXACT
+    assert [Path(p).name for p in one_match.paths] == [
+        "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Extended Mix).flac"
+    ]
+
+
+def test_an_empty_isrc_token_asks_the_index_nothing(music):
+    """A hand built index carrying an empty key, which the walk never writes,
+    still answers nothing to an empty token: the guard on the lookup side
+    stands on its own and not only on the guard at the walk."""
+    held = match.Owned(path=music / "x.flac", artist="A", title="T", version="", key=None)
+    index = match.LibraryIndex(by_recording={}, by_isrc={"": (held,)})
+    assert index.held_by_isrc("") == ()
+    assert index.held_by_isrc(match.isrc_token(None)) == ()
+
+
+def test_the_reader_opens_the_container_once_for_all_four_fields(music, tmp_path, monkeypatch):
+    """The shape of the residual titled "The index reader opens every container
+    three times, and the walk is the library". Four fields read through four
+    opens is four parses per file over 9868 files on an external volume, and
+    the ISRC read must not be a fourth one."""
+    burning(music, tmp_path)
+    import mutagen
+
+    opened: list[Path] = []
+    real = mutagen.File
+
+    def counting(path, *args, **kwargs):
+        opened.append(Path(path))
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(mutagen, "File", counting)
+    index_of(music)
+    assert len(opened) == 1
 
 
 def test_a_file_the_containers_table_does_not_name_is_not_in_the_library(music):

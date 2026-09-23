@@ -55,6 +55,7 @@ from cratekit.core.tags import (
     read_energy_from_file,
     read_genre_from_file,
     read_tag,
+    read_tags,
     read_vox_from_file,
     read_voxgender_from_file,
     write_genre,
@@ -378,6 +379,37 @@ def test_reading_a_file_that_is_not_there_returns_none(tmp_path):
     which is why this answer is only acceptable downstream of the volume check.
     """
     assert read_genre_from_file(tmp_path / "gone.flac") is None
+
+
+@pytest.mark.parametrize("suffix", CONTAINERS)
+def test_one_open_reads_every_field_the_way_the_one_field_reader_does(tmp_path, suffix):
+    """The one open reader. The index reads four fields per file, and four opens over
+    9868 files is the cost the one open reader removes. It has to answer exactly
+    what ``read_tag`` answers, field by field, absent fields included, or the
+    index would read a different file than every other caller does."""
+    path = _synth(tmp_path, suffix)
+    assert write_tags(path, {"artist": "Probe Artist", "title": "01A - 124 - Probe Title",
+                             "isrc": "ZZ0000000001"})
+    fields = ("artist", "title", "initialkey", "isrc")
+
+    # AGAINST THE VALUES WRITTEN, not against read_tag, which is now one field
+    # of the reader under test and would make the comparison X equals X.
+    assert read_tags(path, fields) == {
+        "artist": "Probe Artist",
+        "title": "01A - 124 - Probe Title",
+        "initialkey": None,
+        "isrc": "ZZ0000000001",
+    }
+    assert read_tag(path, "isrc") == "ZZ0000000001"
+
+
+def test_one_open_over_an_unknown_field_raises_rather_than_answering_none():
+    with pytest.raises(ValueError, match="unknown tag field"):
+        read_tags(Path("probe.flac"), ("artist", "tempo"))
+
+
+def test_one_open_over_a_missing_file_answers_every_field_absent(tmp_path):
+    assert read_tags(tmp_path / "gone.flac", ("artist", "isrc")) == {"artist": None, "isrc": None}
 
 
 @pytest.mark.parametrize("suffix", [".aiff", ".mp3"])

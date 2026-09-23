@@ -1,0 +1,23 @@
+name = "r667-b"
+pass_kind = "light"
+
+# The two zero rows of r667.md, re-run after the second fix round gave each
+# clause a test that reaches it alone. Same subset as the first table.
+
+[[rows]]
+id = "B1_same_recording_no_isrc"
+description = "_same_recording: the ISRC clause removed, r667's G11 after its direct test"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    return fold(wanted.artist) in held.members or _carries(held, token)'''
+new = '''    return fold(wanted.artist) in held.members'''
+
+[[rows]]
+id = "B2_reader_isrc_unfolded"
+description = "_read_from_disk: the ISRC tag carried verbatim, r667's G18 after its direct tests"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''        isrc=isrc_token(read["isrc"]),'''
+new = '''        isrc=str(read["isrc"] or ""),'''

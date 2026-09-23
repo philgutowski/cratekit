@@ -1,0 +1,267 @@
+name = "r667"
+pass_kind = "light"
+
+# The unit's own diff first, in acquire/match.py and core/tags.py, then a fixed
+# sample of the index's existing guards. Subset: the four suites that import
+# the mutated modules and drive the index end to end.
+
+[[rows]]
+id = "G1_isrc_not_validated"
+description = "isrc_token: drop the fullmatch, so a catalogue number folds to a key"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    return folded if _ISRC.fullmatch(folded) else ""'''
+new = '''    return folded'''
+
+[[rows]]
+id = "G2_isrc_not_folded"
+description = "isrc_token: keep the hyphens and the case, so a hyphenated row ISRC is another identity"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    return re.sub(r"[\s-]", "", str(value or "")).upper()'''
+new = '''    return str(value or "")'''
+
+[[rows]]
+id = "G3_members_not_split"
+description = "credited_members: a comma separated tag is one name, so nobody is a member"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    return tuple(part for part in (piece.strip() for piece in str(artist).split(",")) if part)'''
+new = '''    return (str(artist).strip(),) if str(artist).strip() else ()'''
+
+[[rows]]
+id = "G4_members_not_folded"
+description = "Owned.members: the credited names unfolded, so case and marks decide membership"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''            self, "members", frozenset(fold(name) for name in credited_members(self.artist))'''
+new = '''            self, "members", frozenset(credited_members(self.artist))'''
+
+[[rows]]
+id = "G5_empty_isrc_asks"
+description = "held_by_isrc: an empty token asks the map instead of answering nothing"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''        return self.by_isrc.get(isrc, ()) if isrc else ()'''
+new = '''        return self.by_isrc.get(isrc, ())'''
+
+[[rows]]
+id = "G6_untagged_isrc_indexed"
+description = "index_library: a file with no ISRC is indexed under the empty key"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''            if held.isrc:
+                by_isrc.setdefault(held.isrc, []).append(held)'''
+new = '''            by_isrc.setdefault(held.isrc, []).append(held)'''
+
+[[rows]]
+id = "G7_any_title_is_a_member"
+description = "held: drop the membership test, so any file sharing the title is the recording"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''            if member in one.members and one.path not in counted'''
+new = '''            if one.path not in counted'''
+
+[[rows]]
+id = "G8_no_credited_rule"
+description = "held: the recording token alone, the rule every caller had before this unit"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''        return exact + credited'''
+new = '''        return exact'''
+
+[[rows]]
+id = "G9_credited_duplicates_exact"
+description = "held: a token hit is listed again as a credited hit, so one file is two paths"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''            if member in one.members and one.path not in counted'''
+new = '''            if member in one.members'''
+
+[[rows]]
+id = "G10_substring_membership"
+description = "held: membership by substring, so Tito is a member of Tito Azevedo"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''            if member in one.members and one.path not in counted'''
+new = '''            if any(member in name for name in one.members) and one.path not in counted'''
+
+[[rows]]
+id = "G11_same_recording_no_isrc"
+description = "_same_recording: an ISRC hit whose text differs is a scored resemblance on the candidate"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    return fold(wanted.artist) in held.members or _carries(held, token)'''
+new = '''    return fold(wanted.artist) in held.members'''
+
+[[rows]]
+id = "G12_same_recording_no_credit"
+description = "_same_recording: a credited hit at another version is title-approximate, not version-differs"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    return fold(wanted.artist) in held.members or _carries(held, token)'''
+new = '''    return _carries(held, token)'''
+
+[[rows]]
+id = "G13_isrc_not_consulted"
+description = "resolve_one: never ask the index by ISRC, the engine before this unit"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    carrying = index.held_by_isrc(isrc_token(wanted.isrc))'''
+new = '''    carrying = ()'''
+
+[[rows]]
+id = "G14_isrc_without_title"
+description = "resolve_one: an ISRC hit is settled whatever its title says, the fix round's title cross check removed"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    settled = [held for held in carrying if fold(held.title) == title]
+    doubtful = [held for held in carrying if fold(held.title) != title]'''
+new = '''    settled = list(carrying)
+    doubtful = []'''
+
+[[rows]]
+id = "G15_isrc_hit_skips_key"
+description = "resolve_one: an ISRC hit is matched before the key check runs"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''        disagreements = {key_disagreement(wanted.key, held.key) for held in exact}
+        if disagreements == {None}:'''
+new = '''        disagreements = {key_disagreement(wanted.key, held.key) for held in exact}
+        if disagreements == {None} or settled:'''
+
+[[rows]]
+id = "G16_isrc_reason_is_exact"
+description = "resolve_one: an ISRC hit reports the text reason, so the report claims an agreement that did not happen"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''        exact, agreed = settled, Why.ISRC_EXACT'''
+new = '''        exact, agreed = settled, Why.EXACT'''
+
+[[rows]]
+id = "G17_reader_drops_isrc"
+description = "_read_from_disk: the ISRC tag is read and not carried, so the index has nothing to be asked by"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''        isrc=isrc_token(read["isrc"]),'''
+new = '''        isrc="",'''
+
+[[rows]]
+id = "G18_reader_isrc_unfolded"
+description = "_read_from_disk: the ISRC tag is carried verbatim, so a malformed tag is a key"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''        isrc=isrc_token(read["isrc"]),'''
+new = '''        isrc=str(read["isrc"] or ""),'''
+
+[[rows]]
+id = "G19_by_title_not_built"
+description = "index_library: the title map is never filled, so the credited rule reads an empty index"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''            by_title.setdefault(fold(held.title), []).append(held)
+'''
+new = ''''''
+
+[[rows]]
+id = "E1_title_head_kept"
+description = "Existing: _read_from_disk takes the title tag verbatim, the R-664 defect"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    tagged_title = naming.strip_heads(spelled_tag, template=template)'''
+new = '''    tagged_title = spelled_tag'''
+
+[[rows]]
+id = "F1_credited_reason_is_exact"
+description = "resolve_one: a credited list hit reports exact, so the report claims a token agreement that did not happen"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''            else Why.CREDITED_EXACT'''
+new = '''            else Why.EXACT'''
+
+[[rows]]
+id = "F2_isrc_version_not_settled"
+description = "_candidates_for: an ISRC hit at another version spelling is a version question on the candidate beside a key question on the match"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''        elif version_key != wanted.version_key and not _carries(first, token):'''
+new = '''        elif version_key != wanted.version_key:'''
+
+[[rows]]
+id = "F3_doubtful_not_offered"
+description = "resolve_one: an ISRC hit whose title disagrees is not offered, so it falls through to missing or a scored hit"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    if doubtful:
+        # The ISRC agrees and the title does not, see above. Asked, not assumed.'''
+new = '''    if False:
+        # The ISRC agrees and the title does not, see above. Asked, not assumed.'''
+
+[[rows]]
+id = "F4_text_copy_joins_isrc_paths"
+description = "resolve_one: a text matched copy at the wanted version joins an ISRC settled row's paths and key check"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''    if settled:
+        exact, agreed = settled, Why.ISRC_EXACT'''
+new = '''    if settled:
+        exact = settled + [held for held in owned if held.version_key == wanted.version_key and held.path not in {one.path for one in settled}]
+        agreed = Why.ISRC_EXACT'''
+
+[[rows]]
+id = "E2_first_copy_only"
+description = "Existing: resolve_one reads the key off the first held copy only"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
+old = '''        disagreements = {key_disagreement(wanted.key, held.key) for held in exact}'''
+new = '''        disagreements = {key_disagreement(wanted.key, exact[0].key)}'''
+
+[[dropped]]
+id = "G20_reader_four_opens"
+description = "_read_from_disk: the ISRC through a fourth open of the container"
+reason = "ranked below the cap: maintainer facing, and test_the_reader_opens_the_container_once_for_all_four_fields counts the opens directly"
+
+[[dropped]]
+id = "G21_unknown_field_answered_absent"
+description = "read_tags: an unknown field answered None rather than refused"
+reason = "ranked below the cap: maintainer facing, and test_one_open_over_an_unknown_field_raises names it directly"
+
+[[dropped]]
+id = "G22_unsupported_container_empty_dict"
+description = "read_tags: an unsupported container answers an empty mapping"
+reason = "ranked below the cap: read_tag would raise KeyError on every unsupported file and the tag suite's unknown container test names it directly"
+
+[[dropped]]
+id = "G23_strip_removed"
+description = "_one_text: stored values not stripped"
+reason = "ranked below the cap: fold collapses whitespace on every comparison the index makes, so the cost is unreachable through the index and the tag suite's fixtures carry no padding"
+
+[[dropped]]
+id = "G24_slug_aliases_exact"
+description = "Why.ISRC_EXACT respelled as exact, which makes it an enum alias"
+reason = "ranked below the cap: the pinned population fails on any respelling, measured at the re-pin, so the row would count the pin and not the engine"

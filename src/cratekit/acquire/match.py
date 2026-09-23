@@ -151,7 +151,7 @@ import hashlib
 import re
 import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -202,6 +202,16 @@ class Why(StrEnum):
 
     #: The library holds this exact version.
     EXACT = "exact"
+    #: The library holds a file carrying this row's ISRC. Identity by the one
+    #: field both sides carry, and a slug of its own because "exact" would claim
+    #: a text agreement that did not happen: the file's artist tag may list
+    #: every credited artist where the row names one.
+    ISRC_EXACT = "isrc-exact"
+    #: The library holds this version under the credited list rule: the file's
+    #: artist tag lists every credited artist and the row's primary artist is
+    #: one of them. The same rationale as the slug above, applied the same way:
+    #: the recording token never agreed, and "exact" would say it did.
+    CREDITED_EXACT = "credited-exact"
     #: A person already said one of the owned versions is this record.
     VERDICT_ACCEPTED = "verdict-accepted"
     #: A person already said none of them is.
@@ -749,6 +759,44 @@ def key_token(key: str | None) -> str:
     """
     parsed = naming.parse_camelot(str(key)) if key else None
     return "" if parsed is None else f"{parsed[0]:02d}{parsed[1]}"
+
+
+_ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
+
+
+def fold_isrc(value: object) -> str:
+    """An ISRC spelling with its whitespace and hyphens dropped, upper cased.
+
+    THE ONE FOLD, called by the outbound source, the missing verb and the index,
+    so a hyphenated spelling on one side and a bare one on the other are one
+    string. Not validated: a verb that has to say a value was malformed rather
+    than absent reads this and then asks :func:`isrc_token`.
+    """
+    return re.sub(r"[\s-]", "", str(value or "")).upper()
+
+
+def isrc_token(value: object) -> str:
+    """The folded ISRC as an identity, or ``""`` when the value is not one.
+
+    A value that does not read as an ISRC once folded, a catalogue number or a
+    stray label, is NOT an identity and folds to empty rather than to a key
+    nothing else could share by accident.
+    """
+    folded = fold_isrc(value)
+    return folded if _ISRC.fullmatch(folded) else ""
+
+
+def credited_members(artist: str) -> tuple[str, ...]:
+    """The names a comma separated artist tag credits, each stripped, in order.
+
+    A bare name with no comma is a list of one. THIS IS THE ONE PLACE A COMMA
+    SPLITS AN ARTIST, and it is safe here for a reason :func:`_first_named`
+    cannot claim: the split is used for MEMBERSHIP, never for identity. A row
+    is held under this rule only when its primary artist is one whole member of
+    the list AND the folded title agrees, so a comma inside a single artist's
+    own name can lose a match and cannot invent one on its own.
+    """
+    return tuple(part for part in (piece.strip() for piece in str(artist).split(",")) if part)
 
 
 def listed_title(title: str, version: str) -> str:
@@ -1648,6 +1696,20 @@ class Owned:
     title: str
     version: str
     key: str | None
+    #: THE FILE'S ISRC, FOLDED, or empty when the tag is absent or malformed.
+    #: 1691 of 9868 files on the live volume carry none, and those are held by
+    #: the credited list rule or by the recording token alone.
+    isrc: str = ""
+    #: THE FOLDED NAMES THE ARTIST TAG CREDITS, for the credited list rule.
+    #: Computed once when the file is read, not on every lookup, because the
+    #: index answers one membership question per row over every file under a
+    #: title and the inputs never change between rows.
+    members: frozenset[str] = field(init=False, default=frozenset())
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "members", frozenset(fold(name) for name in credited_members(self.artist))
+        )
 
     @property
     def recording(self) -> str:
@@ -1673,6 +1735,14 @@ class LibraryIndex:
     """
 
     by_recording: Mapping[str, tuple[Owned, ...]]
+    #: Every file under the folded ISRC it carries. A file with no ISRC tag is
+    #: in :attr:`by_recording` and not here.
+    by_isrc: Mapping[str, tuple[Owned, ...]] = field(default_factory=dict)
+    #: Every file under its folded title alone, the lookup the credited list
+    #: rule reads. Membership is decided at the lookup, not here, so one file
+    #: is indexed once however many artists its tag credits and ``__len__``
+    #: still counts files.
+    by_title: Mapping[str, tuple[Owned, ...]] = field(default_factory=dict)
 
     @property
     def recordings(self) -> tuple[str, ...]:
@@ -1680,6 +1750,48 @@ class LibraryIndex:
 
     def versions(self, recording: str) -> tuple[Owned, ...]:
         return self.by_recording.get(recording, ())
+
+    def held_by_isrc(self, isrc: str) -> tuple[Owned, ...]:
+        """Every file carrying this folded ISRC. Empty for an empty token, so a
+        row with no ISRC, or a malformed one, asks nothing here."""
+        return self.by_isrc.get(isrc, ()) if isrc else ()
+
+    def held(self, artist: str, title: str) -> tuple[Owned, ...]:
+        """Every file that IS this recording, under two rules in order.
+
+        The recording token first, the exact text rule every caller had. Then
+        THE CREDITED LIST RULE: a file whose folded title is this title and
+        whose artist tag credits this artist as one whole member. In this
+        library the artist tag of a processed file lists every credited
+        artist, ``Malive, Tito Azevedo, MRQZ``, where the provider row names
+        the primary one, ``Malive``, so the token can never agree and the
+        approximate pass either offered the file or scored it under the floor.
+        The finding is the residual titled "The match engine never consults the
+        ISRC, and a processed file's artist tag lists every credited artist, so
+        a quarter of the hearts the library holds read missing or offered",
+        cited by title for the reason given under :func:`split_title`.
+
+        Whole names, never substrings: ``Tito`` is not a member of that list.
+        The two rules are unioned, token hits first, because a file tagged with
+        the one artist and a file tagged with the list are both copies the
+        library holds.
+
+        A COMMA IS THE ONLY JOINER, and that is a measured limit rather than an
+        oversight. Walked on the live volume on 2026-09-23, 3041 of 9868 artist
+        tags carry a comma, and of the tags with no comma 105 carry an
+        ampersand, 25 a feat or ft, and 12 an x or an and. The ampersand is a
+        band's own name far more often than a join, ``Above & Beyond``, so
+        splitting on it would invent members, and the other two are a
+        population of 37 a person can answer from the review queue.
+        """
+        exact = self.versions(recording_token(artist, title))
+        member = fold(artist)
+        counted = {one.path for one in exact}
+        credited = tuple(
+            one for one in self.by_title.get(fold(title), ())
+            if member in one.members and one.path not in counted
+        )
+        return exact + credited
 
     def __len__(self) -> int:
         return sum(len(held) for held in self.by_recording.values())
@@ -1735,8 +1847,12 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
     if not separator:
         artist_part, title_part = "", body
 
-    tagged_artist = str(tags.read_tag(path, "artist") or "").strip()
-    spelled_tag = tags.read_tag(path, "title") or ""
+    # ONE CONTAINER OPEN FOR THE FOUR FIELDS. Three opens per file was the shape
+    # the residual titled "The index reader opens every container three times,
+    # and the walk is the library" recorded, and the ISRC is not a fourth.
+    read = tags.read_tags(path, ("artist", "title", "initialkey", "isrc"))
+    tagged_artist = str(read["artist"] or "").strip()
+    spelled_tag = read["title"] or ""
     tagged_title = naming.strip_heads(spelled_tag, template=template)
     named_artist, named_title = artist_part.strip(), str(title_part).strip()
     if tagged_artist and tagged_title:
@@ -1749,13 +1865,14 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
 
     tag_head = naming.parse_head(spelled_tag, template=template) or {}
     written_key = head.get("key") or tag_head.get("key")
-    key = written_key or tags.read_tag(path, "initialkey")
+    key = written_key or read["initialkey"]
     return Owned(
         path=path,
         artist=artist,
         title=title,
         version=version,
         key=str(key).strip() if key else None,
+        isrc=isrc_token(read["isrc"]),
     )
 
 
@@ -1776,13 +1893,22 @@ def index_library(
     shape = template or naming.NameTemplate()
     suffixes = {suffix.lower() for suffix in naming.AUDIO_EXTS}
     grouped: dict[str, list[Owned]] = {}
+    by_isrc: dict[str, list[Owned]] = {}
+    by_title: dict[str, list[Owned]] = {}
     if root.is_dir():
         for path in sorted(root.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in suffixes:
                 continue
             held = reader(path, shape)
             grouped.setdefault(held.recording, []).append(held)
-    return LibraryIndex(by_recording={key: tuple(rows) for key, rows in grouped.items()})
+            by_title.setdefault(fold(held.title), []).append(held)
+            if held.isrc:
+                by_isrc.setdefault(held.isrc, []).append(held)
+    return LibraryIndex(
+        by_recording={key: tuple(rows) for key, rows in grouped.items()},
+        by_isrc={key: tuple(rows) for key, rows in by_isrc.items()},
+        by_title={key: tuple(rows) for key, rows in by_title.items()},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2094,6 +2220,7 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     for held in owned:
         grouped.setdefault((held.recording, held.version_key, held.key_key), []).append(held)
     built: list[Candidate] = []
+    token = isrc_token(wanted.isrc)
     # INSERTION ORDER, NOT SORTED. Sorting looked harmless and threw away the one
     # ordering that carries information: the approximate pass hands its rows over
     # best score first, and re-sorting them alphabetically then truncating to the
@@ -2105,9 +2232,14 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     for recording, version_key, key in grouped:
         rows = grouped[(recording, version_key, key)]
         first = rows[0]
-        if recording != wanted.recording:
+        if not _same_recording(wanted, first, token):
             difference = Why.TITLE_APPROXIMATE
-        elif version_key != wanted.version_key:
+        elif version_key != wanted.version_key and not _carries(first, token):
+            # AN ISRC SETTLES THE VERSION TOO. A file carrying the row's ISRC
+            # under another version spelling is that version however it is
+            # spelled, so the only question left about it is the key, and a
+            # candidate that said "version" beside a match that said "key"
+            # would ask a person a question the engine had already settled.
             difference = Why.VERSION_DIFFERS
         else:
             difference = key_disagreement(wanted.key, key) or Why.EXACT
@@ -2125,6 +2257,25 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
             )
         )
     return tuple(built)
+
+
+def _carries(held: Owned, token: str) -> bool:
+    """Whether ``held`` carries this ISRC. Empty carries nothing."""
+    return bool(token) and held.isrc == token
+
+
+def _same_recording(wanted: Wanted, held: Owned, token: str) -> bool:
+    """Whether ``held`` is the recording ``wanted`` names, under any rule
+    :func:`resolve_one` applies, so a credited hit or an ISRC hit at another
+    version is reported as the version question it is and not as a scored
+    resemblance. ``token`` is the row's folded ISRC, computed once by the
+    caller. An ISRC agrees only WITH the folded title, see :func:`resolve_one`.
+    """
+    if held.recording == wanted.recording:
+        return True
+    if fold(held.title) != fold(wanted.title):
+        return False
+    return fold(wanted.artist) in held.members or _carries(held, token)
 
 
 def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
@@ -2206,7 +2357,7 @@ def _held_exactly(wanted: Wanted, index: LibraryIndex) -> bool:
     """
     return any(
         held.version_key == wanted.version_key
-        for held in index.versions(wanted.recording)
+        for held in index.held(wanted.artist, wanted.title)
     )
 
 
@@ -2276,8 +2427,39 @@ def resolve_one(
     reading is offered as a QUESTION, below, once nothing the list actually said
     has matched. See :func:`_other_reading_the_library_holds`.
     """
-    owned = index.versions(wanted.recording)
-    exact = [held for held in owned if held.version_key == wanted.version_key]
+    # THE ISRC FIRST, because it is the one identity both sides carry and it
+    # is exact and cheap. A hit settles the recording and the version, whatever
+    # the artist tag says, and it says nothing about the key, which is the
+    # library's own statement and is still checked below. The text rules come
+    # second, for the rows with no ISRC and the 1691 files with no tag.
+    #
+    # AN ISRC AGREES ONLY WITH THE FOLDED TITLE. A file carrying the row's ISRC
+    # under a different title is not called owned on the strength of one tag:
+    # a bootleg ingested with the original's tags, or a tagger that wrote one
+    # ISRC across a release, would otherwise mark the heart owned, point its
+    # paths at the wrong recording, and the row would never be acquired and
+    # nothing would say so. Such a file is offered as a question instead, below,
+    # under the discovery reason, with its paths, and the review drove the
+    # shape rather than the live volume, whose 49 held rows agreed on the title.
+    #
+    # WHEN THE ISRC SETTLES A ROW, THE PATHS ARE THE FILES CARRYING IT and the
+    # key is checked over those. A copy matched on text alone at the same
+    # version is not appended: the reason says the identity was carried, and it
+    # has to be true of every path it stands beside.
+    title = fold(wanted.title)
+    carrying = index.held_by_isrc(isrc_token(wanted.isrc))
+    settled = [held for held in carrying if fold(held.title) == title]
+    doubtful = [held for held in carrying if fold(held.title) != title]
+    owned = index.held(wanted.artist, wanted.title)
+    if settled:
+        exact, agreed = settled, Why.ISRC_EXACT
+    else:
+        exact = [held for held in owned if held.version_key == wanted.version_key]
+        agreed = (
+            Why.EXACT
+            if any(held.recording == wanted.recording for held in exact)
+            else Why.CREDITED_EXACT
+        )
 
     if exact:
         # EVERY held copy, not the first one the directory walk returned. Reading
@@ -2293,7 +2475,7 @@ def resolve_one(
             return TrackMatch(
                 wanted=wanted,
                 state=MatchState.MATCHED,
-                why=Why.EXACT,
+                why=agreed,
                 paths=tuple(str(held.path) for held in exact),
             )
         return TrackMatch(
@@ -2311,6 +2493,15 @@ def resolve_one(
             state=MatchState.NEEDS_REVIEW,
             why=Why.VERSION_DIFFERS,
             candidates=_candidates_for(wanted, owned),
+        )
+
+    if doubtful:
+        # The ISRC agrees and the title does not, see above. Asked, not assumed.
+        return TrackMatch(
+            wanted=wanted,
+            state=MatchState.NEEDS_REVIEW,
+            why=Why.TITLE_APPROXIMATE,
+            candidates=_candidates_for(wanted, doubtful),
         )
 
     # THE OTHER READING, ASKED ABOUT RATHER THAN ASSUMED, and placed here for two
@@ -2331,7 +2522,7 @@ def resolve_one(
         # strength of a parse they are being asked about in the same breath.
         held = [
             row
-            for row in index.versions(confirming.recording)
+            for row in index.held(confirming.artist, confirming.title)
             if row.version_key == confirming.version_key
         ]
         return TrackMatch(
@@ -2575,9 +2766,12 @@ __all__ = [
     "Why",
     "acquisition_options",
     "apply_verdict",
+    "credited_members",
     "digest",
     "fold",
+    "fold_isrc",
     "index_library",
+    "isrc_token",
     "key_disagreement",
     "key_token",
     "listed_title",

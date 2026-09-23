@@ -34,12 +34,12 @@ Layer: modules.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Mapping
 
+from cratekit.acquire import match
 from cratekit.core import config, locations, naming, tags
 from cratekit.core.cause import Scope, refuse
 from cratekit.modules.outbound.export import LocalTrack
@@ -532,9 +532,6 @@ def prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:
 
 #: Twelve characters: country, registrant, year, designation. Hyphens and spaces
 #: are presentation and are folded away before this is asked.
-_ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
-
-
 def isrc_for(
     entry: library_export.CollectionEntry,
     *,
@@ -568,9 +565,9 @@ def isrc_for(
     path = Path(resolved.path)
     if not path.is_file():
         return ""
-    raw = tags.read_tag(path, "isrc") or ""
-    folded = re.sub(r"[\s-]", "", raw).upper()
-    return folded if _ISRC.fullmatch(folded) else ""
+    # THE INDEX'S OWN FOLD AND VALIDATION, so the hearts export and the
+    # library index cannot read one tag two ways.
+    return match.isrc_token(tags.read_tag(path, "isrc"))
 
 
 def _rows(
