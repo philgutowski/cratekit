@@ -1,0 +1,24 @@
+name = "r675-b"
+pass_kind = "light"
+
+# The two rows r675.md promoted to the full suite and could not kill, re-run
+# after each existing layer was given a test that reaches it alone: the leaf
+# rule had shadowed both in every fixture the first table had.
+
+[[rows]]
+id = "E1_existence_not_asked"
+description = "existing layer: a row under no rule is dark whether or not its file is on disk, R-500's rejected first cut"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '''        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):'''
+new = '''        elif resolved.resolution is locations.Resolution.UNMAPPED:'''
+
+[[rows]]
+id = "E3_not_a_path_is_dark"
+description = "existing layer: a row the resolver calls not a path is dark too, so a device relative row under a candidate's name refuses"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '''        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):'''
+new = '''        elif not os.path.exists(decoded):'''

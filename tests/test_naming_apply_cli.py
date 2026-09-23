@@ -832,6 +832,38 @@ def test_a_streamed_track_recorded_as_a_catalogue_path_refuses_nothing(collected
     assert not held.exists() and not free.exists()
 
 
+def test_a_row_whose_file_exists_elsewhere_does_not_hold_a_namesake_in_the_library(
+    collected, tmp_path
+):
+    """The existence half of dark, reached alone. A track in a downloads folder
+    under no rule, present where its row says, shares its name with a library
+    file the plan would rename. The row has answered, it names its own file, so
+    the namesake is not in doubt and is renamed. Without the existence test the
+    row is dark, its leaf matches, and the verb refuses over a file it holds."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    downloads = tmp_path / "laptop" / "Downloads"
+    downloads.mkdir(parents=True)
+    namesake = _track(downloads, "1A - 124 - Held.flac", key="1A")
+    _record(collected, str(namesake), identifier="10")
+    _apply(folder)
+    assert not held.exists() and (folder / "01A - 124 - Held.flac").is_file()
+    assert not free.exists()
+    assert namesake.is_file()
+
+
+def test_a_device_relative_row_neither_blocks_nor_protects(collected):
+    """The other resolution with no path, reached alone. A row recorded relative
+    to a device, no leading slash, is not a path on this machine and is never
+    dark, whatever its leaf. Without the resolution test it reads as an absent
+    file under a candidate's name and refuses."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, "Contents/Artist/1A - 124 - Held.flac", identifier="10")
+    _apply(folder)
+    assert not held.exists() and not free.exists()
+
+
 def test_a_dark_row_is_only_asked_about_the_files_being_renamed(collected):
     """A file the plan holds as unnamed is not renamed, so a dark row under its
     name cannot be stranded by this pass and refuses nothing."""
