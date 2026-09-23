@@ -157,6 +157,19 @@ is held the same way. They appear in the plan marked `collides`, carrying the
 reason, and are counted under `totals.collides`. Give one of them a name of its
 own, or move it out of the folder, and the next pass renames both.
 
+A freshly acquired file is named for its provider identifier, `92654769.flac`,
+and that is the one name the verb composes: a stem with no letters at all is
+given the body `Artist - Title` from its tags, the version kept inside the title
+as tagged, and no head until the file has been analysed. A stem carrying any
+text is carried as it is, so the verb never rewrites a name a person or the
+source system chose. An identifier file whose tags cannot compose a body, no
+artist tag, no title tag, or a title that is only a head, is a fourth held back
+class, marked `unnamed` with the reason and counted under `totals.unnamed`, and
+is never renamed to its title alone. Tag it and the next pass names it.
+
+The gate screen shows the totals, each planned rename and each held file with
+its reason, so the plan is read before it is answered.
+
 The verb answers `rename-incomplete` when it could not carry out every rename
 the plan promised, whether that is a collision, a file that left while the gate
 waited, a name taken after the plan was approved, a rename the filesystem

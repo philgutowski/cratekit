@@ -550,7 +550,7 @@ def test_a_referenced_file_is_untouched_and_its_sibling_is_renamed(collected):
         held.name: "referenced",
         free.name: "rename",
     }
-    assert plan["totals"] == {"count": 1, "referenced": 1, "collides": 0}
+    assert plan["totals"] == {"count": 1, "referenced": 1, "collides": 0, "unnamed": 0}
     _apply(folder)
     assert held.is_file() and held.read_bytes() == before
     assert not free.exists() and (folder / "02A - 124 - Free.flac").is_file()
@@ -1000,7 +1000,7 @@ def test_two_files_rendering_to_one_name_are_not_promised_two_renames(configured
     first, second = _colliding_pair(folder)
     plan = _plan(folder)
     assert _actions(plan) == {first.name: "collides", second.name: "collides"}
-    assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 2}
+    assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 2, "unnamed": 0}
     assert first.is_file() and second.is_file()
 
 
@@ -1033,6 +1033,7 @@ def test_a_collision_answers_with_the_files_that_stayed_put(configured):
         "count": 0,
         "referenced": 0,
         "collides": 2,
+        "unnamed": 0,
         "renamed": 0,
         "incomplete": 2,
     }
@@ -1073,7 +1074,7 @@ def test_a_target_a_collider_holds_is_held_back_too(configured):
         second.name: "collides",
         third.name: "collides",
     }
-    assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 3}
+    assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 3, "unnamed": 0}
     code, envelope = _answer(folder)
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["data"]["totals"]["renamed"] == 0
@@ -1168,6 +1169,7 @@ def test_a_sweep_that_carried_out_every_rename_still_answers_ok(configured):
         "count": 2,
         "referenced": 0,
         "collides": 0,
+        "unnamed": 0,
         "renamed": 2,
         "incomplete": 0,
     }
@@ -1282,3 +1284,247 @@ def test_a_title_tag_that_could_not_be_written_is_named(configured, monkeypatch)
     ]
     assert envelope["data"]["totals"]["renamed"] == 1
     assert renamed.is_file()
+
+
+# ---------------------------------------------------------------------------
+# R-669: an identifier stem is composed from the artist and title tags.
+#
+# The vendored downloader names every file it lands for its provider
+# identifier and defers naming to this verb, and this verb carried the
+# identifier as the body (R-168), so a landed batch was fifty four numbers on
+# disk for life (R-407). The one stem this verb composes is one with no letters
+# at all; every stem carrying text is still carried as it is.
+# ---------------------------------------------------------------------------
+
+
+def _acquired(folder: Path, name: str, **fields: str) -> Path:
+    """A file the way the downloader leaves it: named for its identifier, tagged."""
+    made = synth_container(folder, ".flac")
+    target = folder / name
+    made.rename(target)
+    if fields:
+        assert tags.write_tags(target, dict(fields))
+    return target
+
+
+def _held(plan: dict) -> dict[str, str]:
+    return {item["from"]: item["why"] for item in plan["items"] if item["action"] == "unnamed"}
+
+
+def _renames(plan: dict) -> list[tuple[str, str]]:
+    return [(item["from"], item["to"]) for item in plan["items"] if item["action"] == "rename"]
+
+
+def test_an_identifier_stem_is_composed_from_the_artist_and_title_tags(configured):
+    """The brief's first scenario: a key the wheel does not hold, no tempo, so
+    no head, and a body carrying both tags in the library's own order."""
+    folder = _folder(configured)
+    _acquired(
+        folder, "92654769.flac",
+        artist="Tirzah", title="Affection", isrc="GBCEL1800129", initialkey="Bb",
+    )
+    plan = _plan(folder)
+    assert _moves(plan) == [("92654769.flac", "Tirzah - Affection.flac")]
+    assert plan["totals"] == {"count": 1, "referenced": 0, "collides": 0, "unnamed": 0}
+
+
+def test_a_camelot_key_tag_without_a_tempo_still_renders_no_head(configured):
+    """The state every file is in before rekordbox analysis. The head stays
+    all or nothing, and the composed body is not given half a head."""
+    folder = _folder(configured)
+    _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection", initialkey="7A")
+    assert _moves(_plan(folder)) == [("92654769.flac", "Tirzah - Affection.flac")]
+
+
+def test_a_stem_carrying_text_is_not_recomposed_from_its_tags(configured):
+    """R-168 stands: the artist and title tags are there and disagree with the
+    filename, and the plan pads the head and touches nothing else."""
+    folder = _folder(configured)
+    _acquired(
+        folder, "4A - 126 - Burning (Extended Mix).flac",
+        artist="Someone Else", title="Burning", initialkey="4A",
+    )
+    assert _moves(_plan(folder)) == [
+        ("4A - 126 - Burning (Extended Mix).flac", "04A - 126 - Burning (Extended Mix).flac")
+    ]
+
+
+def test_a_padded_text_stem_with_tags_plans_nothing(configured):
+    folder = _folder(configured)
+    _acquired(
+        folder, "04A - 126 - Burning (Extended Mix).flac",
+        artist="Someone Else", title="Burning (Extended Mix)",
+    )
+    plan = _plan(folder)
+    assert plan["items"] == []
+
+
+def test_an_identifier_with_no_artist_tag_is_held_and_named_in_the_plan(configured):
+    """Never renamed to its title alone, and never silently left out: the file
+    is in the plan under its own action with the reason, and the digest covers
+    it, so a tag written while the gate waits changes the plan a person saw."""
+    folder = _folder(configured)
+    _acquired(folder, "12345.flac", title="Affection")
+    plan = _plan(folder)
+    assert _renames(plan) == []
+    assert _held(plan) == {"12345.flac": (
+        "its name is an identifier and it carries no artist tag, so it is not "
+        "renamed to its title alone"
+    )}
+    assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 0, "unnamed": 1}
+    before = plan["digest"]
+    assert tags.write_tags(folder / "12345.flac", {"artist": "Tirzah"})
+    assert _plan(folder)["digest"] != before
+
+
+def test_an_identifier_with_no_tags_at_all_is_held_with_its_own_reason(configured):
+    folder = _folder(configured)
+    _acquired(folder, "12345.flac")
+    why = _held(_plan(folder))["12345.flac"]
+    assert "neither an artist tag nor a title tag" in why
+
+
+def test_an_identifier_whose_title_tag_is_only_a_head_is_held(configured):
+    """R-664's shape: the live system writes the head into the tag. A tag that
+    is nothing but a head has no body to give, and the artist alone is not a
+    name."""
+    folder = _folder(configured)
+    _acquired(folder, "12345.flac", artist="Tirzah", title="07A - 126 - ")
+    why = _held(_plan(folder))["12345.flac"]
+    assert "title tag is empty once the head is removed" in why
+
+
+def test_a_head_inside_the_title_tag_is_not_composed_into_the_body(configured):
+    """The head belongs to the head derivation and the body is the tag's body.
+    No tempo reaches the filename from the tag's head, because the file's own
+    name has no head and the title's head is a text convention the live system
+    wrote (R-664), and the key comes off the tag as it does for every file."""
+    folder = _folder(configured)
+    _acquired(folder, "12345.flac", artist="Tirzah", title="07A - 126 - Affection")
+    moves = _moves(_plan(folder))
+    assert moves == [("12345.flac", "07A - 126 - Tirzah - Affection.flac")]
+
+
+def test_every_credited_artist_reaches_the_composed_body(configured):
+    """A Vorbis comment can hold the credit as several fields, and the single
+    value reader answers with the first. The library writes the credits into
+    one segment separated by a comma, so the composed body does the same."""
+    import mutagen
+
+    folder = _folder(configured)
+    path = _acquired(folder, "12345.flac", title="Affection")
+    handle = mutagen.File(path)
+    handle["ARTIST"] = ["Tirzah", "Coby Sey"]
+    handle.save()
+    assert _moves(_plan(folder)) == [("12345.flac", "Tirzah, Coby Sey - Affection.flac")]
+
+
+def test_a_slash_in_a_tag_takes_the_body_form_of_a_segment(configured):
+    folder = _folder(configured)
+    _acquired(folder, "12345.flac", artist="AC/DC", title="Affection")
+    assert _moves(_plan(folder)) == [("12345.flac", "AC-DC - Affection.flac")]
+
+
+def test_a_composed_body_over_the_ceiling_is_fitted_not_left_as_a_number(configured):
+    folder = _folder(configured)
+    title = ("Extremely Long Song Title Part " * 8).strip()
+    _acquired(folder, "12345.flac", artist="Artist Name", title=title)
+    moves = _moves(_plan(folder))
+    assert len(moves) == 1
+    after = Path(moves[0][1]).stem
+    assert after.startswith("Artist Name - ")
+    assert "~" in after, "an over ceiling name should carry the truncation hash"
+    assert len(moves[0][1].encode()) <= configured.naming.filename_max_bytes
+
+
+def test_a_folder_of_both_kinds_is_renamed_through_the_dispatcher(configured):
+    """The brief's driven scenario: the composed names exist, the text stems
+    are untouched, and the title tag body is the tag's own (R-168's second
+    half), never the composed filename body."""
+    folder = _folder(configured)
+    _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection", initialkey="7A")
+    _acquired(folder, "4A - 126 - Burning (Extended Mix).flac", artist="Someone", title="Burning")
+    _acquired(folder, "12345.flac", title="Nameless")
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["data"]["totals"] == {
+        "count": 2,
+        "referenced": 0,
+        "collides": 0,
+        "unnamed": 1,
+        "renamed": 2,
+        "incomplete": 1,
+    }
+    assert sorted(p.name for p in folder.glob("*.flac")) == [
+        "04A - 126 - Burning (Extended Mix).flac",
+        "12345.flac",
+        "Tirzah - Affection.flac",
+    ]
+    assert tags.read_tag(folder / "Tirzah - Affection.flac", "title") == "Affection"
+    assert tags.read_tag(folder / "04A - 126 - Burning (Extended Mix).flac", "title") == (
+        "04A - 126 - Burning"
+    )
+    incomplete = envelope["cause"]["detail"]["incomplete"]
+    assert [item["from"] for item in incomplete] == ["12345.flac"]
+    assert "no artist tag" in incomplete[0]["why"]
+
+
+def test_an_artist_tag_removed_while_the_gate_waits_holds_the_file(configured, monkeypatch):
+    """The apply pass re-reads the tags after the gate rather than trusting the
+    plan's, so a body composed from a tag that is gone is not written."""
+    folder = _folder(configured)
+    path = _acquired(folder, "12345.flac", artist="Tirzah", title="Affection")
+    real = naming_cli._plan_for
+
+    def plan_then_strip(root, *, cfg):
+        plan = real(root, cfg=cfg)
+        import mutagen
+
+        handle = mutagen.File(path)
+        del handle["ARTIST"]
+        handle.save()
+        return plan
+
+    monkeypatch.setattr(naming_cli, "_plan_for", plan_then_strip)
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert path.is_file()
+    assert not (folder / "Tirzah - Affection.flac").exists()
+    assert "no artist tag" in envelope["cause"]["detail"]["incomplete"][0]["why"]
+
+
+def test_the_gate_shows_the_totals_and_every_item(configured):
+    """R-670: the screen carried the question and not one rename. The blocked
+    envelope's ``shown`` carries the counts, each planned rename and each held
+    file with its reason, the way the landing gate shows its files."""
+    folder = _folder(configured)
+    _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection")
+    _acquired(folder, "12345.flac", title="Nameless")
+    code, out, _ = drive(["--output", "json", "name", "apply", "--root", str(folder)])
+    assert code == int(ExitCode.DECISION_REQUIRED), out
+    shown = json.loads(out)["cause"]["detail"]["shown"]
+    assert shown["root"] == str(folder)
+    assert (shown["renames"], shown["referenced"], shown["collides"], shown["unnamed"]) == (
+        1, 0, 0, 1
+    )
+    assert shown["planned"] == [{"from": "92654769.flac", "to": "Tirzah - Affection.flac"}]
+    assert shown["held"] == [
+        {"from": "12345.flac", "as": "unnamed", "why": (
+            "its name is an identifier and it carries no artist tag, so it is not "
+            "renamed to its title alone"
+        )}
+    ]
+    assert sorted(p.name for p in folder.glob("*.flac")) == ["12345.flac", "92654769.flac"]
+
+
+def test_the_gate_names_a_referenced_file_among_the_held(collected):
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, str(held), identifier="10")
+    code, out, _ = drive(["--output", "json", "name", "apply", "--root", str(folder)])
+    assert code == int(ExitCode.DECISION_REQUIRED), out
+    shown = json.loads(out)["cause"]["detail"]["shown"]
+    assert shown["held"] == [
+        {"from": held.name, "as": "referenced", "why": "the rekordbox collection references it"}
+    ]
+    assert [item["from"] for item in shown["planned"]] == [free.name]
