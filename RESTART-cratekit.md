@@ -4,7 +4,36 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: A5 sitting 8 record, issue #178 line 1 ticked, `unit/issue178`,
+**Last merged: A5 sitting 9 record, issue #178 line 2 ticked, `unit/issue178`,
+2026-09-23.** A record only merge, no code. Line 2 of #178, a small playlist,
+ran end to end on the pipx install at `94ad650`, and for the first time the
+session drove every verb and answered both write gates itself at the author's
+direction, the author doing the rekordbox import and export and one verb this
+session's permission layer refused. **The numbers:** job `673e`, the ten track
+playlist the 9-17 `sync all` pass queued, continued under a `config-drift`
+warning and settled **3 owned by ISRC, all three files line 1 landed, 7
+missing**; 7 acquired in 47 seconds, none refused; 7 tagged from Beatport with
+art on 7; `name apply` planned and applied **7 renames, nothing held**, R-675's
+leaf rule holding on its second live plan; the batch landed into
+`Music/2026-09-23T225804Z-d66b` with an intake file of 9998 entries, imported
+and proven off `Music/9-23-export-3.xml`, the intake file retired. Before the
+workflow, the sitting 8 question was measured off a copy of the review
+database: of 190 unresolved items, 102 are label rows for line 5 and **85 of
+the 88 `version-match` items ask about a row job `c645` now owns**, three
+live, so no pass was made and the shape is R-679. `crate delete review` was
+planned once on the live library by the author, **baselined, 7404 accepted as
+history, 0 offered, no refusal**, and R-676 CLOSED on its first arm. R-677
+and R-678 observed again and stand. Record in `docs/cutover.md`, sitting 9,
+with the next sitting named: line 3, inbox routing.
+**Main's highest residual number is R-679.** No issue owed after this merge:
+R-677, R-678 and R-679 go to the board as residual issues for the Relay
+feeder after the push, by the author's decision in the sitting.
+
+**Next: "Take #178" again, line 3**, once the Relay feeder has worked R-677,
+R-678 and R-679, or alongside it in a worktree, since Relay owns `main` while
+it runs.
+
+**Merged before it: A5 sitting 8 record, issue #178 line 1 ticked, `unit/issue178`,
 2026-09-23.** A record only merge, no code. Line 1 of #178, favourites in, ran
 end to end on the pipx install: the rename over 54 files, the landing, the
 rekordbox import, the import proof, and a fresh favourites resolution. **The
@@ -24,10 +53,6 @@ shape, neither on the board bar. Record in `docs/cutover.md`, sitting 8, with
 the next sitting named: line 2, a small playlist, and the 190 unresolved
 review items before it.
 **Main's highest residual number is R-678.** No issue owed after this merge.
-
-**Next: "Take #178" again, line 2**, or a review queue pass first. R-676, the
-deletion pass's same shape as R-675, is read and not driven and a plan only
-`crate delete` on a disposable copy of the database answers it.
 
 **Merged before it: R-675, the eighth attended sitting of #178, `unit/issue178`,
 2026-09-23, a fix in the sitting.** R-500's dark row guard refused every live
