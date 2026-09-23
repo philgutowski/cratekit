@@ -4,7 +4,48 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-667, issue #193, `unit/issue193`, 2026-09-23.**
+**Last merged: R-675, the eighth attended sitting of #178, `unit/issue178`,
+2026-09-23, a fix in the sitting.** R-500's dark row guard refused every live
+rename plan. **Why:** the first `name apply --root` over download staging
+after R-669's unit, the first live plan that would rename anything, refused
+`collection-row-unmapped` over 582 rows before its gate; sitting 7 reached the
+gate only because its plan was empty and the collection is read only when a
+plan has work in it. Measured on a disposable copy of the live database: 137
+active streamed tracks rekordbox 7 records as `/v4/catalog/tracks/<id>/`, a
+slash path the resolver reads as unmapped where the guard's docstring excused
+only the colon form, 437 tombstones under two folders that are gone, 8 rows
+on the other account of this machine. No honest prefix rule maps any of them.
+**The rule, decided by the author at the stop:** a renamed volume or a moved
+mount changes a path's prefix and never its leaf, so a dark row refuses only
+when its file name is the name of a file the pass would rename, and not one a
+resolved row already holds. `_referenced` takes the files being renamed, in
+both verbs that call it, and the refusal pairs each dark row with the files it
+could be naming under a second remedy step for a row no rule can place.
+R-523 and R-524 CLOSED on the same rule. **The built in review at high
+raised six findings, four driven in one round** (the held candidate, the
+paired detail, the second step, the two naming tests), one already landed in
+the docs commit, one declined as the same as the first. **Tables**
+`docs/mutation/r675.md` and `r675-b.md`, read in `r675-notes.md`: **23 rows,
+21 killed on the subset, two zeros on existing layers the leaf rule shadowed
+in every fixture, each given the test that reaches it alone and killed on the
+re-run.** Driven on the live database copy: 17341 rows, 54 candidates, 0.05
+seconds, no refusal, a planted dark row under one candidate's name still
+refuses with that file named. Filed R-676, the deletion pass's same shape one
+file over, read and not driven. `docs/solutions/` entry:
+`integration-issues/a-guard-the-verb-consults-only-when-there-is-work-is-not-proven-by-a-live-run-with-no-work.md`.
+`CONCEPTS.md` gains "Dark row".
+Battery: ruff clean, **10064 passed** and 1 skipped in 90 seconds. Scan clean.
+**Main's highest residual number is R-676.** No issue owed after this merge:
+R-675 closed in the same merge, R-676 waits to be driven.
+
+**Next: the sitting continues on the pipx install rebuilt from this `main`.**
+`name apply --root` over download staging should now reach its gate with 54
+renames shown, R-669's second condition, then the landing over a fresh export,
+the import, `intake imported`, and the fresh favourites listing counted by
+reason, R-667's second condition and R-674's measurement. Sitting 8's record
+in `docs/cutover.md` is the merge after this one.
+
+**Merged before it: R-667, issue #193, `unit/issue193`, 2026-09-23.**
 The library index answers a row by the identity both sides carry before it
 compares text, and a processed file's credited artist list holds a row naming
 one of them. **Why:** sitting 7 measured 49 of 206 hearts held by ISRC tag and

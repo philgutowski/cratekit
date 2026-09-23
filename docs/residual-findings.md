@@ -27409,8 +27409,58 @@ gate with every acquired file planned.
 
 **On the board bar, (c).** No issue owed: closed in the same merge.
 
-**Closed 2026-09-23 on `unit/issue178` on its fixture condition**, twelve
+**Closed 2026-09-23 on `unit/issue178` on its fixture condition**, sixteen
 tests across `tests/test_naming_apply_cli.py` and
 `tests/intake/test_repair_apply.py`, and R-523 and R-524 closed on the same
-rule. The live condition is the sitting's, below in `docs/cutover.md` sitting 8.
+rule. The built in review at high raised six findings and four were driven in
+one round: a candidate a resolved row references is never renamed, so a dark
+row under its name puts nothing in doubt and the resolved keys are read before
+the leaf index is built; the refusal pairs each dark row with the files it
+could be naming, in row order under one cap, instead of two lists that could
+not be read together; the remedy carries a second step for a row no rule can
+place, R-523's own closing condition; and the cross folder leaf match and the
+held candidate each have a test naming the rule. The fifth finding, the record
+not yet filed, was the docs commit that followed the review's snapshot. Two
+tables, `docs/mutation/r675.md` and `r675-b.md`, read in `r675-notes.md`: 23
+rows, 21 killed on the subset, two zeros on existing layers the leaf rule
+shadowed in every fixture, each given the test that reaches it alone and
+killed on the re-run. The live condition is the sitting's, in `docs/cutover.md`
+sitting 8.
+
+---
+
+## R-676. The deletion pass refuses on every active unmapped row, and the live library carries 137 active streamed rows that resolve unmapped
+
+**Found:** 2026-09-23, on `unit/issue178`, by reading for R-675's shape one
+file over, as the fifth defect pattern says to. Read, not driven.
+
+`deletion/candidates.py` refuses `deletion-reference-set-incomplete` when any
+active row records a location this machine cannot resolve, by design: the
+proof that a removed file is unreferenced needs an identity from every row.
+R-675 measured 137 active rows on the live library recorded as
+`/v4/catalog/tracks/<id>/`, rekordbox 7's form for a streamed track, which
+the shared resolver reads as an unmapped path because it starts with a slash,
+where the colon form the deletion pass's docstring reasons about is
+`NOT_A_PATH`. If those rows reach the reference set the way they reached
+`name apply`'s guard, the deletion verb refuses on this library on every run,
+and no prefix rule can honestly map a streamed track.
+
+**Measured cost:** unmeasured. The deletion verb has not run on the live
+library and this entry is a reading of the code against R-675's count, not a
+refusal observed. If it holds, board bar (c), a workflow that cannot finish.
+
+**Why not fixed here.** The sitting fixed the guard in front of it and the
+deletion pass has a different proof to make: a streamed row names no file, so
+excusing it declines irrelevant evidence rather than removing real evidence,
+which is the distinction the pass's own docstring draws for the colon form,
+and extending it to the slash form is a unit's decision with the deletion
+suite behind it.
+
+**Closes when:** `crate delete` is planned once on the live library, or a
+disposable copy of it, and either passes the reference set or refuses over
+exactly those rows, and if it refuses, the slash form of a streamed track is
+excused the way the colon form is, with a test on the live spelling.
+
+**Not on the board bar until driven.** Issue owed after the sitting that
+drives it, if it refuses.
 
