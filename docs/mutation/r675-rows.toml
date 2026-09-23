@@ -11,10 +11,8 @@ description = "_referenced: the leaf test dropped, so every dark row refuses, wh
 file = "src/cratekit/write/naming_cli.py"
 surface = "user"
 tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
-old = '''            named = leaves.get(_key(Path(decoded).name))
-            if named:'''
-new = '''            named = leaves.get(_key(Path(decoded).name)) or [decoded]
-            if named:'''
+old = '''        if (named := leaves.get(_key(Path(decoded).name)))'''
+new = '''        if (named := leaves.get(_key(Path(decoded).name)) or [decoded])'''
 
 [[rows]]
 id = "G2_row_leaf_not_keyed"
@@ -22,8 +20,8 @@ description = "_referenced: the dark row's leaf is looked up as spelled, so a ca
 file = "src/cratekit/write/naming_cli.py"
 surface = "user"
 tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
-old = '''            named = leaves.get(_key(Path(decoded).name))'''
-new = '''            named = leaves.get(Path(decoded).name)'''
+old = '''        if (named := leaves.get(_key(Path(decoded).name)))'''
+new = '''        if (named := leaves.get(Path(decoded).name))'''
 
 [[rows]]
 id = "G3_candidate_leaf_not_keyed"
@@ -40,8 +38,8 @@ description = "_referenced: the candidates in doubt are never collected, so the 
 file = "src/cratekit/write/naming_cli.py"
 surface = "user"
 tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
-old = '''                could_name.extend(named)'''
-new = '''                could_name.extend([])'''
+old = '''            "could_name": [{"row": decoded, "files": named} for decoded, named in dark[:20]],'''
+new = '''            "could_name": [{"row": decoded, "files": []} for decoded, named in dark[:20]],'''
 
 [[rows]]
 id = "G5_leaf_compared_as_whole_path"
@@ -49,8 +47,8 @@ description = "_referenced: the dark row is looked up by its whole decoded path 
 file = "src/cratekit/write/naming_cli.py"
 surface = "user"
 tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
-old = '''            named = leaves.get(_key(Path(decoded).name))'''
-new = '''            named = leaves.get(_key(decoded))'''
+old = '''        if (named := leaves.get(_key(Path(decoded).name)))'''
+new = '''        if (named := leaves.get(_key(decoded)))'''
 
 [[rows]]
 id = "G6_plan_asks_with_no_candidates"
@@ -107,13 +105,13 @@ old = '''            "unmapped_prefixes": prefixes[:20],'''
 new = '''            "unmapped_prefixes": [],'''
 
 [[rows]]
-id = "G12_could_name_unsorted_and_repeated"
-description = "_unmapped_refusal: the candidates in doubt listed in row order with repeats, so two rows under one name list it twice"
+id = "G12_could_name_uncapped"
+description = "_unmapped_refusal: the pairs list uncapped, so a fresh setup's 9937 dark rows are 9937 pairs in one envelope"
 file = "src/cratekit/write/naming_cli.py"
 surface = "user"
 tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
-old = '''            "could_name": sorted(set(could_name))[:20],'''
-new = '''            "could_name": could_name,'''
+old = '''            "could_name": [{"row": decoded, "files": named} for decoded, named in dark[:20]],'''
+new = '''            "could_name": [{"row": decoded, "files": named} for decoded, named in dark],'''
 
 [[rows]]
 id = "G13_as_recorded_key_dropped"
@@ -144,7 +142,7 @@ description = "_unmapped_refusal: the first dark location no longer quoted in th
 file = "src/cratekit/write/naming_cli.py"
 surface = "user"
 tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
-old = '''        f"of a file this plan would rename, the first of them {dark[0]}, so "'''
+old = '''        f"of a file this plan would rename, the first of them {dark[0][0]}, so "'''
 new = '''        f"of a file this plan would rename, so "'''
 
 [[rows]]
@@ -153,8 +151,8 @@ description = "_unmapped_refusal: the locations list uncapped"
 file = "src/cratekit/write/naming_cli.py"
 surface = "user"
 tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
-old = '''            "unmapped_locations": dark[:20],'''
-new = '''            "unmapped_locations": dark,'''
+old = '''            "unmapped_locations": locations_listed[:20],'''
+new = '''            "unmapped_locations": locations_listed,'''
 
 [[rows]]
 id = "G17_prefixes_uncapped"
@@ -204,3 +202,26 @@ new = '''            return tuple(
                 for row in handle.get_content()
                 if not row.rb_local_deleted
             )'''
+
+[[rows]]
+id = "G18_held_candidates_asked_about"
+description = "_referenced: a candidate the resolved rows hold is still indexed, so a dark row under its name refuses although the file is never renamed"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '''        if not _is_referenced(path, referenced):
+            leaves.setdefault(_key(path.name), []).append(str(path))'''
+new = '''        leaves.setdefault(_key(path.name), []).append(str(path))'''
+
+[[rows]]
+id = "G19_second_step_dropped"
+description = "_unmapped_refusal: the step for a row no rule can place is left out, so a person with no volume to map is told to map one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '''            "when no volume is missing, the row names a file that is gone and no "
+            "rule can place it: rename the file it could be naming by hand, or "
+            "remove that track in rekordbox, then run this again",
+        ),'''
+new = '''        ),'''
+

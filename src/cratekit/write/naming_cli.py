@@ -324,10 +324,15 @@ def _referenced(
     consumer of the shared resolver.
 
     COULD NAME means the row's file name is one of ``renaming``, the files this
-    pass would rename, compared as keys. A renamed volume or a moved mount
-    changes a path's prefix and never its leaf, so a dark row under another
-    leaf cannot be any candidate under another spelling, and refusing on it
-    stops the verb over rows that are not in doubt. The first live plan with
+    pass would rename, compared as keys, and not one the resolved rows already
+    hold: a candidate a resolved row references is never renamed (R-407), so a
+    dark row under its name puts nothing in doubt, and the resolved keys are
+    read first for that reason. A renamed volume or a moved mount changes a
+    path's prefix and never its leaf, so a dark row under another leaf cannot
+    be any candidate under another spelling, and refusing on it stops the verb
+    over rows that are not in doubt. A colliding candidate is still asked
+    about, because a collision is a rename the library still owes and the
+    question comes due when it is resolved. The first live plan with
     renames measured 582 such rows: 137 streamed tracks rekordbox records as
     ``/v4/catalog/tracks/<id>/``, which starts with a slash and so reaches the
     resolver as a path, 437 tombstones under two folders that no longer exist,
@@ -351,15 +356,8 @@ def _referenced(
     a drive letter and a location on another host, are still excused here.
     """
     rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
-    # THE LEAVES THIS PASS WOULD RENAME, keyed as the rows are, because a dark
-    # row is compared to them by name alone: that is the one part of a recorded
-    # path a renamed volume leaves as it was.
-    leaves: dict[str, list[str]] = {}
-    for path in renaming:
-        leaves.setdefault(_key(path.name), []).append(str(path))
     keys: set[str] = set()
-    dark: list[str] = []
-    could_name: list[str] = []
+    unplaced: list[str] = []
     for value in recorded:
         if not value:
             continue
@@ -371,16 +369,27 @@ def _referenced(
         if resolved.path is not None:
             keys.add(_key(resolved.path))
         elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):
-            named = leaves.get(_key(Path(decoded).name))
-            if named:
-                dark.append(decoded)
-                could_name.extend(named)
+            unplaced.append(decoded)
+    referenced = frozenset(keys)
+    # THE LEAVES THIS PASS WOULD RENAME, keyed as the rows are, because a dark
+    # row is compared to them by name alone: that is the one part of a recorded
+    # path a renamed volume leaves as it was. A candidate the resolved rows
+    # hold is left out, since it is not renamed whatever a dark row says.
+    leaves: dict[str, list[str]] = {}
+    for path in renaming:
+        if not _is_referenced(path, referenced):
+            leaves.setdefault(_key(path.name), []).append(str(path))
+    dark = [
+        (decoded, named)
+        for decoded in unplaced
+        if (named := leaves.get(_key(Path(decoded).name)))
+    ]
     if dark:
-        raise _unmapped_refusal(dark, could_name=could_name)
-    return frozenset(keys)
+        raise _unmapped_refusal(dark)
+    return referenced
 
 
-def _unmapped_refusal(dark: list[str], *, could_name: list[str]) -> CratekitError:
+def _unmapped_refusal(dark: list[tuple[str, list[str]]]) -> CratekitError:
     """The refusal over rows nothing resolves, worded as the deletion pass's is.
 
     The count leads and the first location follows, because the count says how
@@ -388,10 +397,18 @@ def _unmapped_refusal(dark: list[str], *, could_name: list[str]) -> CratekitErro
     against their rules. It is the DECODED location, since that is the text a
     rule is matched against, and a percent-encoded spelling copied into a rule
     would never match. The prefixes are grouped in the detail so ten thousand
-    rows under one old volume name read as one correction. ``could_name`` is
-    the files in the plan those rows could be naming, since R-675 made that the
-    condition, so a person sees which of their renames is in doubt and not only
-    which rows are.
+    rows under one old volume name read as one correction. ``could_name``
+    pairs each dark row with the files in the plan it could be naming, since
+    R-675 made that the condition, in the same order and under the same cap as
+    the locations, so a person sees which of their renames each row puts in
+    doubt and not only which rows are dark.
+
+    TWO STEPS, because the rows this refusal now names come in two kinds and a
+    rule answers one of them. A row under the library's own drive by an old
+    name is placed by a prefix rule. A row under a folder that is on this
+    machine, or was, names a file that is gone, and no rule can place it: the
+    file it could be naming is renamed by hand or the track is removed in
+    rekordbox, which is what R-523's close asked the steps to say.
 
     ``fix-config-values`` and not ``run-doctor``, which is what the deletion
     pass says: no doctor check reads the prefix map, so that token would send a
@@ -399,27 +416,33 @@ def _unmapped_refusal(dark: list[str], *, could_name: list[str]) -> CratekitErro
     """
     count = len(dark)
     rows = "collection row records" if count == 1 else "collection rows record"
-    prefixes = sorted({prefix for prefix in map(locations.leading_prefix, dark) if prefix})
+    locations_listed = [decoded for decoded, _ in dark]
+    prefixes = sorted(
+        {prefix for prefix in map(locations.leading_prefix, locations_listed) if prefix}
+    )
     return refuse(
         "collection-row-unmapped",
         f"{count} {rows} a location this machine cannot resolve under the name "
-        f"of a file this plan would rename, the first of them {dark[0]}, so "
+        f"of a file this plan would rename, the first of them {dark[0][0]}, so "
         f"whether that row names the file is not known and the rename could "
         f"strand it; nothing is renamed",
         steps=(
-            "add a rule to library.location_prefix_map whose from side is the "
-            "recorded volume spelled exactly as it is named here, capitals "
-            "included, and whose to side is where that volume is mounted now, "
-            "then run this again",
+            "when the recorded volume is this library's drive under an old name, "
+            "add a rule to library.location_prefix_map whose from side is that "
+            "volume spelled exactly as recorded, capitals included, and whose to "
+            "side is where it is mounted now, then run this again",
+            "when no volume is missing, the row names a file that is gone and no "
+            "rule can place it: rename the file it could be naming by hand, or "
+            "remove that track in rekordbox, then run this again",
         ),
         remedy=Remedy.FIX_CONFIG_VALUES,
         scope=Scope.RUN,
         origin=("write.naming_cli",),
         detail={
             "unmapped": count,
-            "unmapped_locations": dark[:20],
+            "unmapped_locations": locations_listed[:20],
             "unmapped_prefixes": prefixes[:20],
-            "could_name": sorted(set(could_name))[:20],
+            "could_name": [{"row": decoded, "files": named} for decoded, named in dark[:20]],
         },
     )
 

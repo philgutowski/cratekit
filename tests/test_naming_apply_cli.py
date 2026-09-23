@@ -602,6 +602,8 @@ def test_a_row_under_an_unmapped_volume_refuses_and_renames_nothing(collected):
     assert cause["reason"] == "collection-row-unmapped"
     assert cause["remediation"]["remedy"] == "fix-config-values"
     assert "location_prefix_map" in cause["remediation"]["steps"][0]
+    # The second step is for a row no rule can place, R-523's close.
+    assert "no rule can place it" in cause["remediation"]["steps"][1]
     assert cause["message"].startswith("1 collection row records")
     assert f"/mnt/volume/{relative}" in cause["message"]
     assert cause["detail"]["unmapped"] == 1
@@ -631,7 +633,9 @@ def test_every_unmapped_row_is_counted_and_the_first_is_named(collected):
     held, free = _pair(folder)
     _record(collected, "/mnt/volume/Music/2A - 124 - Free.flac", identifier="10", deleted=1)
     _record(collected, "/mnt/library/Music/1A - 124 - Held.flac", identifier="11")
-    _record(collected, str(held), identifier="12")
+    # A row under the root resolves whether or not its file is there, so it is
+    # not dark and holds no candidate.
+    _record(collected, str(folder / "03A - 124 - Other.flac"), identifier="12")
     code, envelope = _refusal(folder)
     assert code == int(ExitCode.PRECONDITION), envelope
     cause = envelope["cause"]
@@ -640,20 +644,58 @@ def test_every_unmapped_row_is_counted_and_the_first_is_named(collected):
     assert "/mnt/library/Music/1A - 124 - Held.flac" not in cause["message"]
     assert cause["detail"]["unmapped"] == 2
     assert cause["detail"]["unmapped_prefixes"] == ["/mnt/library", "/mnt/volume"]
-    # Sorted, not in row order: the rows name Free first and Held second.
-    assert cause["detail"]["could_name"] == [str(held), str(free)]
+    # Each dark row paired with the files it could be naming, in row order,
+    # the same order as the locations, so the two lists read together.
+    assert cause["detail"]["could_name"] == [
+        {"row": "/mnt/volume/Music/2A - 124 - Free.flac", "files": [str(free)]},
+        {"row": "/mnt/library/Music/1A - 124 - Held.flac", "files": [str(held)]},
+    ]
     assert held.is_file() and free.is_file()
 
 
-def test_two_dark_rows_under_one_candidate_name_name_it_once(collected):
+def test_two_dark_rows_under_one_candidate_name_each_name_it(collected):
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="10")
     _record(collected, "/mnt/library/Contents/1A - 124 - Held.flac", identifier="11", deleted=1)
     _code, envelope = _refusal(folder)
     assert envelope["cause"]["detail"]["unmapped"] == 2
-    assert envelope["cause"]["detail"]["could_name"] == [str(held)]
+    assert [pair["files"] for pair in envelope["cause"]["detail"]["could_name"]] == [
+        [str(held)],
+        [str(held)],
+    ]
     assert held.is_file() and free.is_file()
+
+
+def test_a_dark_row_is_matched_across_folders_by_leaf_alone(collected, tmp_path):
+    """The rule the guard rests on, named: a renamed volume or a moved mount
+    changes a path's prefix and never its leaf. The row sits under a folder
+    tree unlike the candidate's in every segment but the last, and it refuses."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    elsewhere = tmp_path / "old-laptop" / "Downloads" / "stick" / "1A - 124 - Held.flac"
+    _record(collected, str(elsewhere), identifier="10")
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["detail"]["could_name"] == [
+        {"row": str(elsewhere), "files": [str(held)]}
+    ]
+    assert held.is_file() and free.is_file()
+
+
+def test_a_dark_row_under_a_held_candidate_name_refuses_nothing(collected):
+    """A candidate a resolved row references is never renamed (R-407), so a
+    dark row under its name puts nothing in doubt: the resolved keys are read
+    before the dark rows are compared. The held file stays, its sibling goes."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, str(held), identifier="10")
+    _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="11", deleted=1)
+    plan = _plan(folder)
+    assert plan["totals"] == {"count": 1, "referenced": 1, "collides": 0, "unnamed": 0}
+    _apply(folder)
+    assert held.is_file()
+    assert not free.exists() and (folder / "02A - 124 - Free.flac").is_file()
 
 
 @pytest.mark.parametrize(
@@ -722,7 +764,7 @@ def test_a_gone_file_under_a_folder_on_this_machine_refuses_under_a_candidate_na
     code, envelope = _refusal(folder)
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["detail"]["unmapped_locations"] == [str(gone)]
-    assert envelope["cause"]["detail"]["could_name"] == [str(held)]
+    assert envelope["cause"]["detail"]["could_name"] == [{"row": str(gone), "files": [str(held)]}]
     assert held.is_file() and free.is_file()
 
 
@@ -761,7 +803,9 @@ def test_a_dark_tombstone_under_a_candidate_name_still_refuses(collected):
     _record(collected, "/mnt/volume/Music/2A - 124 - Free.flac", identifier="10", deleted=1)
     code, envelope = _refusal(folder)
     assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["detail"]["could_name"] == [str(free)]
+    assert envelope["cause"]["detail"]["could_name"] == [
+        {"row": "/mnt/volume/Music/2A - 124 - Free.flac", "files": [str(free)]}
+    ]
     assert held.is_file() and free.is_file()
 
 
@@ -814,6 +858,7 @@ def test_the_refusal_counts_every_row_and_lists_no_more_than_twenty(collected):
     assert detail["unmapped"] == 25
     assert detail["unmapped_locations"] == list(recorded[:20])
     assert detail["unmapped_prefixes"] == [f"/absent-{index:02d}/music" for index in range(20)]
+    assert [pair["row"] for pair in detail["could_name"]] == list(recorded[:20])
     assert refused.value.cause.message.startswith("25 collection rows record")
 
 

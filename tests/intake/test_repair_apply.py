@@ -169,7 +169,9 @@ def test_a_dark_row_under_a_proposal_name_refuses_the_repair(collected):
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "collection-row-unmapped"
-    assert envelope["cause"]["detail"]["could_name"] == [str(held)]
+    assert envelope["cause"]["detail"]["could_name"] == [
+        {"row": f"/mnt/volume/Music/{LONG}", "files": [str(held)]}
+    ]
     assert _names(folder) == {LONG}
 
 
@@ -206,7 +208,9 @@ def test_a_dark_row_recorded_after_the_gate_refuses_the_repair_before_any_rename
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "collection-row-unmapped"
-    assert envelope["cause"]["detail"]["could_name"] == [str(held)]
+    assert envelope["cause"]["detail"]["could_name"] == [
+        {"row": f"/mnt/volume/Music/{LONG}", "files": [str(held)]}
+    ]
     assert _names(folder) == {LONG}
 
 
