@@ -4,7 +4,50 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-343, issue #190, `unit/issue190`, 2026-09-22.**
+**Last merged: R-664, issue #192, `unit/issue192`, 2026-09-23.**
+The library index strips the `KEY - BPM - ` head from the title tag the way it
+has always stripped it from the filename stem. **Why:** sitting 6's first live
+favourites job resolved 206 hearts as 0 owned, 61 offered and 145 missing over
+a library holding at least 96 of them, because `match._read_from_disk` took the
+tag verbatim and the live system writes the head into the tag on 9767 of 9868
+files. `intake missing --job` would have listed those 96 for download. **The
+change:** the tag passes through `naming.strip_heads` under the caller's
+template, both ends, before the pair rule; a tag that is only a head strips to
+empty and falls to the filename, the branch an absent tag takes; the head
+inside the tag carries the key when the stem has none, below the stem's head
+and above the `initialkey` tag. That last rule reverses the unit's first draft:
+the built in review at high drove a file that indexed with no key until a
+rename padded the same head into its filename, so one file gave two answers,
+and `naming_cli` already read the head off either surface. The review's seven
+findings were all driven in one round: the record, the four other verbatim
+readers (R-665), the trailing collision (named and tested, one rule on both
+surfaces), the key inconsistency (fixed), three container opens per file
+(R-666, R-169's shape), three hand copies of the tagged fixture (now
+`tests/_containers.py:tagged_container`), redundant wrapping (gone). Ten
+tests in `test_match_states.py` over real containers, one through the
+dispatcher in `test_intake_missing.py`: `intake playlist` then `intake missing
+--job` over a file held under a headed tag, owned, nothing written.
+**R-664 CLOSED on its first condition.** Its second, the 206 frozen rows of job
+`0dbf` re-resolved on the live library with none of sitting 4's 59 missing for
+the head alone, is the next sitting's, attended, over a fresh listing. Filed
+R-665, the tagging searchers ask the catalogue for the headed title, driven on
+`tag_one`, not on the board bar; R-666, the index reader opens each container
+three times, not on the board bar. No issue owed.
+Battery: ruff clean, **9997 passed** and 1 skipped in 69 seconds. Scan clean.
+Mutation table `docs/mutation/r664.md`: **11 rows, the author's own, all
+killed**, 7 over the unit's own diff and 4 over the reader's existing guards,
+956 collected on every row, no zero, no composite owed, null control 0, 14
+invocations. `docs/solutions/` entry:
+`integration-issues/the-live-library-writes-the-head-into-the-title-tag-so-a-plain-tag-fixture-proves-nothing-about-a-tag-reader.md`.
+**Main's highest residual number is R-666.**
+
+**Next: A5 line 1, issue #178, resumes at the next attended sitting.** Bring
+the pipx install to this merge, run `crate intake playlist favorites` for a
+FRESH listing, report the three counts against sitting 6's 96, 27 and 83, then
+`intake missing --job` over that job. `docs/cutover.md`, "Next sitting", is
+the sequence after it.
+
+**Merged before it: R-343, issue #190, `unit/issue190`, 2026-09-22.**
 The mutation driver's children start in a throwaway installation state, and a
 fingerprint of the real one is checked after every child. **Why now:** on
 2026-09-20 at 16:55 a child of the driver overwrote the live configuration
@@ -75,9 +118,9 @@ head inside the tag, so no processed file resolves owned and `intake missing`
 would have listed at least 96 owned tracks for download. Measured on the
 volume with the head stripped from the tag: 96 owned, 27 offered, 83 missing.
 Nothing after the listing ran, no acknowledgment was minted, nothing was
-written to the library. Record in `docs/cutover.md`, sitting 6. **Next: the
-unit for R-664, then line 1 resumes at `intake missing` over a fresh listing.**
-**Main's highest residual number is R-664.**
+written to the library. Record in `docs/cutover.md`, sitting 6. The unit for
+R-664 landed the same day, above. **Main's highest residual number was R-664
+at that commit.**
 
 **The live configuration is rebuilt, sitting 5, 2026-09-23.** `crate setup`
 from the pipx install at `1d2136f`, three runs, every value from a record:

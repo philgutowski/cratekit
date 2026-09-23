@@ -26878,3 +26878,95 @@ head alone.
 **On the board bar, (b) and (a):** the product says missing over 96 tracks the
 library holds, and the list it writes from that has `acquire download` put
 duplicates into the library. Issue owed after this commit.
+
+**Closed 2026-09-23 on its first condition, by the unit for issue #192.**
+`match._read_from_disk` passes the title tag through `naming.strip_heads`
+under the same template the stem strips under, before the pair rule, so a tag
+of `06A - 126 - Dr. Beat` indexes as `Dr. Beat` and a provider row spelling
+`Dr. Beat` resolves matched, driven against a real container in
+`tests/test_match_states.py` and through `intake playlist` and `intake missing
+--job` in `tests/test_intake_missing.py`, where a file held under a headed tag
+is owned and nothing is written. A tag that is only a head strips to empty and
+falls to the filename, the branch an absent tag takes. The head inside the tag
+carries the key when the stem has none, below the stem's head and above the
+`initialkey` tag, which reverses the unit's first draft: the review drove a
+file that indexed with no key until a rename padded the same head into its
+filename, so one file gave two answers, and `write/naming_cli.py` already read
+the head off either surface. A release genuinely ending in a code and a number
+loses that tail on the tag as it always has on the stem, and a test names it.
+**The second condition, the 206 frozen rows of job `0dbf` re-resolved on the
+live library with none of sitting 4's 59 missing for the head alone, is the
+next sitting's measurement**, attended, over a fresh listing, as the brief and
+`docs/cutover.md` say. The four other readers that take the title tag
+verbatim are R-665.
+
+---
+
+## R-665. The tagging searchers ask the catalogue for the headed title, so a processed file's genre search is a query nobody released
+
+**Found by** the built in review of the unit for issue #192, 2026-09-23,
+hunting the shape R-664 fixed one file over.
+
+`tagging/tag.py:tag_one` and `tagging/retag.py` read the title tag verbatim
+and hand it to the searcher as the title, `hit = searcher(artist, title)`.
+`intake/ingest.py` strips a leading head only, through `strip_head`, and
+`intake/normalize.from_audio_file` takes the tag verbatim into a `Wanted` that
+neither of its two callers resolves against the index, so those two carry no
+cost today and are named so the next reader of this seam does not re-derive
+that. The two searchers do carry one.
+
+**Driven, 2026-09-23.** `tag_one` over a real container tagged
+`06A - 126 - Dr. Beat` by `Felixcw` asked its searcher for
+`('Felixcw', '06A - 126 - Dr. Beat')`. One candidate was driven and it
+produces the input. `retag` was read, not driven, and reads the same two tags
+the same way three lines before its own search.
+
+**Measured cost, and where it lands.** `tag folder` runs over freshly
+downloaded files before analysis writes a head, so on the shipped pipeline the
+title it searches is plain and the cost is not reached; that is stated from
+the pipeline's order, not driven. `retag` runs over library files, 9767 of
+9868 of which carry the head inside the tag, so a retag sweep searches the
+catalogue for a headed title on nearly every file, gets no hit, and asks
+rather than answers. The size of that miss rate against the real catalogue is
+unmeasured.
+
+**Why not fixed here.** The unit's seam is the index reader. The review's
+proposed shape is one title reader on the tags or naming seam, taking the
+template and stripping both ends, called from all five sites, and that is a
+decision about a helper four modules share rather than a repair to one.
+
+**Closes when:** every reader that compares a title tag with a provider
+spelling strips the head under the library's template through one shared
+call, and a retag over a headed real container asks its searcher for the plain
+title.
+
+**Not on the board bar.** A search that misses becomes a question in the
+review queue, not a false answer, a lost file or a blocked verb, and the one
+verb that reaches it is a sweep a person runs deliberately.
+
+---
+
+## R-666. The index reader opens every container three times, and the walk is the library
+
+**Found by** the built in review of the unit for issue #192, 2026-09-23.
+R-169's shape, on the index reader rather than the rename.
+
+`match._read_from_disk` calls `tags.read_tag` for the artist, the title and
+the `initialkey`, and each call opens and parses the container. The unit did
+not add a read: the tag head is parsed off the title already read. It did not
+remove one either. `index_library` walks the whole music folder, so every
+playlist intake, the inbound check of `sync all`, `intake set` and `match run`
+pay three parses per file over 9868 files.
+
+**Measured cost.** Not measured in seconds, and the report says so. The shape
+is roughly thirty thousand container opens per walk against about ten
+thousand, on an external volume.
+
+**Why not fixed here.** A one open reader is a change to the tags seam,
+`read_tags(path, fields)` or a shape like `read_tag_values`, and the unit's
+seam is the index.
+
+**Closes when:** the reader opens each container once and the walk over a
+fixture of a thousand files is timed against the current one.
+
+**Not on the board bar.** Maintainer facing: slow, not wrong.

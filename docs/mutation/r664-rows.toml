@@ -1,0 +1,157 @@
+name = "r664"
+pass_kind = "light"
+
+# ---------------------------------------------------------------------------
+# The unit's own diff: the tag title stripped of its head in match._read_from_disk,
+# and the key read off the tag's head below the stem's
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "G1_tag_taken_verbatim"
+description = "Take the title tag verbatim again, stripping heads from the stem only, which is the shipped defect"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    spelled_tag = tags.read_tag(path, "title") or ""
+    tagged_title = naming.strip_heads(spelled_tag, template=template)
+'''
+new = '''    spelled_tag = tags.read_tag(path, "title") or ""
+    tagged_title = spelled_tag
+'''
+
+[[rows]]
+id = "G2_leading_head_only"
+description = "Strip only a leading head from the tag, leaving a head written as a suffix, where the stem strips both ends"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    spelled_tag = tags.read_tag(path, "title") or ""
+    tagged_title = naming.strip_heads(spelled_tag, template=template)
+'''
+new = '''    spelled_tag = tags.read_tag(path, "title") or ""
+    tagged_title = naming.strip_head(spelled_tag, template=template)
+'''
+
+[[rows]]
+id = "G3_default_template_for_the_tag"
+description = "Strip the tag under the bare default template rather than the caller's, so a lossy marker the library declares stays in the tag's title"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    spelled_tag = tags.read_tag(path, "title") or ""
+    tagged_title = naming.strip_heads(spelled_tag, template=template)
+'''
+new = '''    spelled_tag = tags.read_tag(path, "title") or ""
+    tagged_title = naming.strip_heads(spelled_tag, template=naming.NameTemplate())
+'''
+
+[[rows]]
+id = "G4_strip_after_the_pair_rule"
+description = "Strip the head after the pair rule chose the tag, so a head only tag wins the pair rule with an empty title instead of falling to the filename"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    spelled_tag = tags.read_tag(path, "title") or ""
+    tagged_title = naming.strip_heads(spelled_tag, template=template)
+    named_artist, named_title = artist_part.strip(), str(title_part).strip()
+    if tagged_artist and tagged_title:
+        artist, spelled = tagged_artist, tagged_title
+    elif named_artist and named_title:
+        artist, spelled = named_artist, named_title
+    else:
+        artist, spelled = tagged_artist or named_artist, tagged_title or named_title
+    title, version = split_title(spelled)
+'''
+new = '''    spelled_tag = tags.read_tag(path, "title") or ""
+    tagged_title = spelled_tag
+    named_artist, named_title = artist_part.strip(), str(title_part).strip()
+    if tagged_artist and tagged_title:
+        artist, spelled = tagged_artist, tagged_title
+    elif named_artist and named_title:
+        artist, spelled = named_artist, named_title
+    else:
+        artist, spelled = tagged_artist or named_artist, tagged_title or named_title
+    title, version = split_title(naming.strip_heads(spelled, template=template))
+'''
+
+[[rows]]
+id = "G5_key_not_read_from_the_tag_head"
+description = "Stop reading the key off a head found only inside the title tag, the first draft's precedence the review reversed"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    written_key = head.get("key") or tag_head.get("key")
+'''
+new = '''    written_key = head.get("key")
+'''
+
+[[rows]]
+id = "G6_tag_head_outranks_stem_head"
+description = "Let the head inside the tag outrank the head in the filename"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    written_key = head.get("key") or tag_head.get("key")
+'''
+new = '''    written_key = tag_head.get("key") or head.get("key")
+'''
+
+[[rows]]
+id = "G7_initialkey_outranks_tag_head"
+description = "Let the initialkey tag outrank the head inside the title tag"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    written_key = head.get("key") or tag_head.get("key")
+    key = written_key or tags.read_tag(path, "initialkey")
+'''
+new = '''    written_key = head.get("key") or tags.read_tag(path, "initialkey")
+    key = written_key or tag_head.get("key")
+'''
+
+# ---------------------------------------------------------------------------
+# A fixed sample of the reader's existing guards, the ones the diff sits between
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "E1_stem_head_kept"
+description = "Stop stripping the head from the stem, the filename half of the same rule"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    body = naming.strip_heads(stem, template=template)
+'''
+new = '''    body = stem
+'''
+
+[[rows]]
+id = "E2_pair_rule_field_by_field"
+description = "Collapse the pair rule to field by field fallback, the shape that assembled an identity matching neither source"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    if tagged_artist and tagged_title:
+        artist, spelled = tagged_artist, tagged_title
+    elif named_artist and named_title:
+        artist, spelled = named_artist, named_title
+    else:
+        artist, spelled = tagged_artist or named_artist, tagged_title or named_title
+'''
+new = '''    artist, spelled = tagged_artist or named_artist, tagged_title or named_title
+'''
+
+[[rows]]
+id = "E3_initialkey_tag_before_the_heads"
+description = "Let the initialkey tag outrank both heads, reversing the key's declared precedence"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    key = written_key or tags.read_tag(path, "initialkey")
+'''
+new = '''    key = tags.read_tag(path, "initialkey") or written_key
+'''
+
+[[rows]]
+id = "E4_title_not_split"
+description = "Skip split_title on the chosen title, so a version stays inside the recording token"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+old = '''    title, version = split_title(spelled)
+'''
+new = '''    title, version = spelled, ""
+'''
+
+[[dropped]]
+id = "G8_parse_head_on_the_stripped_title"
+description = "Parse the tag head off the stripped title rather than the spelled tag"
+reason = "equivalent to G5, the stripped title never carries a leading head, so it would measure the same absence twice"
