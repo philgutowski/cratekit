@@ -151,7 +151,7 @@ import hashlib
 import re
 import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -202,6 +202,11 @@ class Why(StrEnum):
 
     #: The library holds this exact version.
     EXACT = "exact"
+    #: The library holds a file carrying this row's ISRC. Identity by the one
+    #: field both sides carry, and a slug of its own because "exact" would claim
+    #: a text agreement that did not happen: the file's artist tag may list
+    #: every credited artist where the row names one.
+    ISRC_EXACT = "isrc-exact"
     #: A person already said one of the owned versions is this record.
     VERDICT_ACCEPTED = "verdict-accepted"
     #: A person already said none of them is.
@@ -749,6 +754,36 @@ def key_token(key: str | None) -> str:
     """
     parsed = naming.parse_camelot(str(key)) if key else None
     return "" if parsed is None else f"{parsed[0]:02d}{parsed[1]}"
+
+
+_ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
+
+
+def isrc_token(value: object) -> str:
+    """The folded ISRC, or ``""`` when the value is not one.
+
+    Whitespace and hyphens dropped and the rest upper cased, which is the fold
+    the outbound source and the missing verb already apply to the same tag, so
+    a hyphenated spelling on one side and a bare one on the other are one
+    identity. A value that does not read as an ISRC once folded, a catalogue
+    number or a stray label, is NOT an identity and folds to empty rather than
+    to a key nothing else could share by accident.
+    """
+    folded = re.sub(r"[\s-]", "", str(value or "")).upper()
+    return folded if _ISRC.fullmatch(folded) else ""
+
+
+def credited_members(artist: str) -> tuple[str, ...]:
+    """The names a comma separated artist tag credits, each stripped, in order.
+
+    A bare name with no comma is a list of one. THIS IS THE ONE PLACE A COMMA
+    SPLITS AN ARTIST, and it is safe here for a reason :func:`_first_named`
+    cannot claim: the split is used for MEMBERSHIP, never for identity. A row
+    is held under this rule only when its primary artist is one whole member of
+    the list AND the folded title agrees, so a comma inside a single artist's
+    own name can lose a match and cannot invent one on its own.
+    """
+    return tuple(part for part in (piece.strip() for piece in str(artist).split(",")) if part)
 
 
 def listed_title(title: str, version: str) -> str:
@@ -1648,10 +1683,19 @@ class Owned:
     title: str
     version: str
     key: str | None
+    #: THE FILE'S ISRC, FOLDED, or empty when the tag is absent or malformed.
+    #: 1691 of 9868 files on the live volume carry none, and those are held by
+    #: the credited list rule or by the recording token alone.
+    isrc: str = ""
 
     @property
     def recording(self) -> str:
         return recording_token(self.artist, self.title)
+
+    @property
+    def members(self) -> frozenset[str]:
+        """The folded names the artist tag credits, for the credited list rule."""
+        return frozenset(fold(name) for name in credited_members(self.artist))
 
     @property
     def version_key(self) -> str:
@@ -1673,6 +1717,14 @@ class LibraryIndex:
     """
 
     by_recording: Mapping[str, tuple[Owned, ...]]
+    #: Every file under the folded ISRC it carries. A file with no ISRC tag is
+    #: in :attr:`by_recording` and not here.
+    by_isrc: Mapping[str, tuple[Owned, ...]] = field(default_factory=dict)
+    #: Every file under its folded title alone, the lookup the credited list
+    #: rule reads. Membership is decided at the lookup, not here, so one file
+    #: is indexed once however many artists its tag credits and ``__len__``
+    #: still counts files.
+    by_title: Mapping[str, tuple[Owned, ...]] = field(default_factory=dict)
 
     @property
     def recordings(self) -> tuple[str, ...]:
@@ -1680,6 +1732,39 @@ class LibraryIndex:
 
     def versions(self, recording: str) -> tuple[Owned, ...]:
         return self.by_recording.get(recording, ())
+
+    def held_by_isrc(self, isrc: str) -> tuple[Owned, ...]:
+        """Every file carrying this folded ISRC. Empty for an empty token, so a
+        row with no ISRC, or a malformed one, asks nothing here."""
+        return self.by_isrc.get(isrc, ()) if isrc else ()
+
+    def held(self, artist: str, title: str) -> tuple[Owned, ...]:
+        """Every file that IS this recording, under two rules in order.
+
+        The recording token first, the exact text rule every caller had. Then
+        THE CREDITED LIST RULE: a file whose folded title is this title and
+        whose artist tag credits this artist as one whole member. In this
+        library the artist tag of a processed file lists every credited
+        artist, ``Malive, Tito Azevedo, MRQZ``, where the provider row names
+        the primary one, ``Malive``, so the token can never agree and the
+        approximate pass either offered the file or scored it under the floor.
+        The finding is the residual titled "The match engine never consults the
+        ISRC, and a processed file's artist tag lists every credited artist, so
+        a quarter of the hearts the library holds read missing or offered",
+        cited by title for the reason given under :func:`split_title`.
+
+        Whole names, never substrings: ``Tito`` is not a member of that list.
+        The two rules are unioned, token hits first, because a file tagged with
+        the one artist and a file tagged with the list are both copies the
+        library holds.
+        """
+        exact = self.versions(recording_token(artist, title))
+        member = fold(artist)
+        credited = tuple(
+            one for one in self.by_title.get(fold(title), ())
+            if member in one.members and one not in exact
+        )
+        return exact + credited
 
     def __len__(self) -> int:
         return sum(len(held) for held in self.by_recording.values())
@@ -1735,8 +1820,12 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
     if not separator:
         artist_part, title_part = "", body
 
-    tagged_artist = str(tags.read_tag(path, "artist") or "").strip()
-    spelled_tag = tags.read_tag(path, "title") or ""
+    # ONE CONTAINER OPEN FOR THE FOUR FIELDS. Three opens per file was the shape
+    # the residual titled "The index reader opens every container three times,
+    # and the walk is the library" recorded, and the ISRC is not a fourth.
+    read = tags.read_tags(path, ("artist", "title", "initialkey", "isrc"))
+    tagged_artist = str(read["artist"] or "").strip()
+    spelled_tag = read["title"] or ""
     tagged_title = naming.strip_heads(spelled_tag, template=template)
     named_artist, named_title = artist_part.strip(), str(title_part).strip()
     if tagged_artist and tagged_title:
@@ -1749,13 +1838,14 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
 
     tag_head = naming.parse_head(spelled_tag, template=template) or {}
     written_key = head.get("key") or tag_head.get("key")
-    key = written_key or tags.read_tag(path, "initialkey")
+    key = written_key or read["initialkey"]
     return Owned(
         path=path,
         artist=artist,
         title=title,
         version=version,
         key=str(key).strip() if key else None,
+        isrc=isrc_token(read["isrc"]),
     )
 
 
@@ -1776,13 +1866,22 @@ def index_library(
     shape = template or naming.NameTemplate()
     suffixes = {suffix.lower() for suffix in naming.AUDIO_EXTS}
     grouped: dict[str, list[Owned]] = {}
+    by_isrc: dict[str, list[Owned]] = {}
+    by_title: dict[str, list[Owned]] = {}
     if root.is_dir():
         for path in sorted(root.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in suffixes:
                 continue
             held = reader(path, shape)
             grouped.setdefault(held.recording, []).append(held)
-    return LibraryIndex(by_recording={key: tuple(rows) for key, rows in grouped.items()})
+            by_title.setdefault(fold(held.title), []).append(held)
+            if held.isrc:
+                by_isrc.setdefault(held.isrc, []).append(held)
+    return LibraryIndex(
+        by_recording={key: tuple(rows) for key, rows in grouped.items()},
+        by_isrc={key: tuple(rows) for key, rows in by_isrc.items()},
+        by_title={key: tuple(rows) for key, rows in by_title.items()},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2105,7 +2204,7 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     for recording, version_key, key in grouped:
         rows = grouped[(recording, version_key, key)]
         first = rows[0]
-        if recording != wanted.recording:
+        if not _same_recording(wanted, first):
             difference = Why.TITLE_APPROXIMATE
         elif version_key != wanted.version_key:
             difference = Why.VERSION_DIFFERS
@@ -2125,6 +2224,17 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
             )
         )
     return tuple(built)
+
+
+def _same_recording(wanted: Wanted, held: Owned) -> bool:
+    """Whether ``held`` is the recording ``wanted`` names, under either rule
+    :meth:`LibraryIndex.held` applies, so a credited hit at another version is
+    reported as the version question it is and not as a scored resemblance."""
+    if held.recording == wanted.recording:
+        return True
+    if held.isrc and held.isrc == isrc_token(wanted.isrc):
+        return True
+    return fold(held.title) == fold(wanted.title) and fold(wanted.artist) in held.members
 
 
 def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
@@ -2206,7 +2316,7 @@ def _held_exactly(wanted: Wanted, index: LibraryIndex) -> bool:
     """
     return any(
         held.version_key == wanted.version_key
-        for held in index.versions(wanted.recording)
+        for held in index.held(wanted.artist, wanted.title)
     )
 
 
@@ -2276,8 +2386,16 @@ def resolve_one(
     reading is offered as a QUESTION, below, once nothing the list actually said
     has matched. See :func:`_other_reading_the_library_holds`.
     """
-    owned = index.versions(wanted.recording)
+    # THE ISRC FIRST, because it is the one identity both sides carry and it
+    # is exact and cheap. A hit settles the recording and the version, whatever
+    # the artist tag says, and it says nothing about the key, which is the
+    # library's own statement and is still checked below. The text rules come
+    # second, for the rows with no ISRC and the 1691 files with no tag.
+    by_isrc = index.held_by_isrc(isrc_token(wanted.isrc))
+    owned = index.held(wanted.artist, wanted.title)
     exact = [held for held in owned if held.version_key == wanted.version_key]
+    if by_isrc:
+        exact = list(by_isrc) + [held for held in exact if held not in by_isrc]
 
     if exact:
         # EVERY held copy, not the first one the directory walk returned. Reading
@@ -2293,7 +2411,7 @@ def resolve_one(
             return TrackMatch(
                 wanted=wanted,
                 state=MatchState.MATCHED,
-                why=Why.EXACT,
+                why=Why.ISRC_EXACT if by_isrc else Why.EXACT,
                 paths=tuple(str(held.path) for held in exact),
             )
         return TrackMatch(
@@ -2331,7 +2449,7 @@ def resolve_one(
         # strength of a parse they are being asked about in the same breath.
         held = [
             row
-            for row in index.versions(confirming.recording)
+            for row in index.held(confirming.artist, confirming.title)
             if row.version_key == confirming.version_key
         ]
         return TrackMatch(
@@ -2575,9 +2693,11 @@ __all__ = [
     "Why",
     "acquisition_options",
     "apply_verdict",
+    "credited_members",
     "digest",
     "fold",
     "index_library",
+    "isrc_token",
     "key_disagreement",
     "key_token",
     "listed_title",

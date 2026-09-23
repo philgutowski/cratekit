@@ -218,6 +218,62 @@ def test_a_track_held_under_a_headed_title_tag_is_owned_and_nothing_is_listed(
     assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
 
 
+def test_a_track_held_under_the_rows_isrc_is_owned_and_nothing_is_listed(
+    cfg, library, tmp_path, monkeypatch
+):
+    """R-667, the fifth scenario, through the dispatcher.
+
+    The library's artist tag lists every credited artist and the provider row
+    names the primary one, so no text comparison can match, and both carry the
+    ISRC. The seventh sitting's ``intake missing --job`` listed 26 such files
+    for download."""
+    tagged_container(
+        tmp_path,
+        library / "Music" / "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Extended Mix).flac",
+        artist="Malive, Tito Azevedo, MRQZ", title="04A - 126 - Burning (Extended Mix)",
+        isrc="USNRS2644532",
+    )
+    heart = Track("301", "Malive", "Burning (Extended Mix)")
+    heart.isrc = "USNRS2644532"
+    job_id = finished(monkeypatch, [heart])
+    (report,) = artifacts.committed(intake_cli.ARTIFACTS, cfg, job_id)
+    assert report["state"] == "owned", report
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["owned"], summary["offered"]) == (0, 1, 0)
+    assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
+
+
+def test_a_track_held_with_no_isrc_under_a_credited_list_is_owned_and_nothing_is_listed(
+    cfg, library, tmp_path, monkeypatch
+):
+    """R-667's second rule through the dispatcher: the same file with no ISRC
+    tag, one of the 1691 on the volume, held by the primary artist's membership
+    in the file's credited list."""
+    tagged_container(
+        tmp_path,
+        library / "Music" / "07A - 128 - Traumer, antraum, Anton - Hyaku.flac",
+        artist="Traumer, antraum, Anton", title="07A - 128 - Hyaku",
+    )
+    heart = Track("302", "antraum", "Hyaku")
+    heart.isrc = "USNRS2644599"
+    job_id = finished(monkeypatch, [heart])
+    (report,) = artifacts.committed(intake_cli.ARTIFACTS, cfg, job_id)
+    assert report["state"] == "owned", report
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["owned"], summary["offered"]) == (0, 1, 0)
+    assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
+
+
 def test_the_default_human_output_names_the_list_and_the_next_command(cfg, library, monkeypatch):
     mixed_library(library)
     job_id = finished(monkeypatch, hearts())
