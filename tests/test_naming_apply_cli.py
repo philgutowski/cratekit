@@ -629,18 +629,30 @@ def test_every_unmapped_row_is_counted_and_the_first_is_named(collected):
     file the plan would rename, and a third row that resolves."""
     folder = _folder(collected)
     held, free = _pair(folder)
-    _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="10")
-    _record(collected, "/mnt/library/Music/2A - 124 - Free.flac", identifier="11", deleted=1)
+    _record(collected, "/mnt/volume/Music/2A - 124 - Free.flac", identifier="10", deleted=1)
+    _record(collected, "/mnt/library/Music/1A - 124 - Held.flac", identifier="11")
     _record(collected, str(held), identifier="12")
     code, envelope = _refusal(folder)
     assert code == int(ExitCode.PRECONDITION), envelope
     cause = envelope["cause"]
     assert cause["message"].startswith("2 collection rows record")
-    assert "/mnt/volume/Music/1A - 124 - Held.flac" in cause["message"]
-    assert "/mnt/library/Music/2A - 124 - Free.flac" not in cause["message"]
+    assert "/mnt/volume/Music/2A - 124 - Free.flac" in cause["message"]
+    assert "/mnt/library/Music/1A - 124 - Held.flac" not in cause["message"]
     assert cause["detail"]["unmapped"] == 2
     assert cause["detail"]["unmapped_prefixes"] == ["/mnt/library", "/mnt/volume"]
-    assert cause["detail"]["could_name"] == sorted([str(held), str(free)])
+    # Sorted, not in row order: the rows name Free first and Held second.
+    assert cause["detail"]["could_name"] == [str(held), str(free)]
+    assert held.is_file() and free.is_file()
+
+
+def test_two_dark_rows_under_one_candidate_name_name_it_once(collected):
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="10")
+    _record(collected, "/mnt/library/Contents/1A - 124 - Held.flac", identifier="11", deleted=1)
+    _code, envelope = _refusal(folder)
+    assert envelope["cause"]["detail"]["unmapped"] == 2
+    assert envelope["cause"]["detail"]["could_name"] == [str(held)]
     assert held.is_file() and free.is_file()
 
 
