@@ -2607,7 +2607,12 @@ def test_every_caller_of_adjudicate_gates_on_the_rows_that_touch_the_queue():
     assert len(callers) >= 4, [path.name for path in callers]
     for path in callers:
         text = path.read_text(encoding="utf-8")
-        assert "match_cli.touches_the_queue(" in text, path
+        # AS MANY GATES AS CALLS. The missing pass calls ``adjudicate`` twice,
+        # and a module that names the predicate once could still gate its
+        # other call on the needs-review state alone.
+        assert text.count("match_cli.touches_the_queue(") >= text.count(
+            "match_cli.adjudicate("
+        ), path
         assert "resolved.of(match.MatchState.NEEDS_REVIEW):" not in text, path
 
 
