@@ -19,7 +19,6 @@ from __future__ import annotations
 import dataclasses
 import io
 import json
-import shutil
 from pathlib import Path
 
 import pytest
@@ -29,7 +28,7 @@ from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import match_cli
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
-from cratekit.core import artifacts, config, jobs, tags
+from cratekit.core import artifacts, config, jobs
 from cratekit.core.cause import Cause, Remediation
 from cratekit.core.exit_codes import ExitCode
 from cratekit.deletion import stores
@@ -37,7 +36,7 @@ from cratekit.deletion.library import RemovedRow
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import missing_cli
 from cratekit.label import catalogue
-from tests._containers import synth_container
+from tests._containers import tagged_container
 from tests.acquire_fakes import FAKE_ADAPTER, FAKE_DECLARATION, FakeAdapter, Landing, Script
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, StrictCatalogue, catalogue_factory
@@ -201,9 +200,10 @@ def test_a_track_held_under_a_headed_title_tag_is_owned_and_nothing_is_listed(
     a library holding at least 96 of them, and ``intake missing --job`` would
     have written those 96 to the list ``acquire download`` reads. A real
     container with the head in both places, the way the volume holds it."""
-    probe = synth_container(tmp_path, ".flac")
-    assert tags.write_tags(probe, {"artist": "Aurora Bloom", "title": "08A - 124 - Sun Path"})
-    shutil.copy2(probe, library / "Music" / "08A - 124 - Aurora Bloom - Sun Path.flac")
+    tagged_container(
+        tmp_path, library / "Music" / "08A - 124 - Aurora Bloom - Sun Path.flac",
+        artist="Aurora Bloom", title="08A - 124 - Sun Path",
+    )
     job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path")])
     (report,) = artifacts.committed(intake_cli.ARTIFACTS, cfg, job_id)
     assert report["state"] == "owned", report

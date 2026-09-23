@@ -50,4 +50,20 @@ def synth_container(tmp_path: Path, suffix: str) -> Path:
     return out
 
 
-__all__ = ["require_ffmpeg", "synth_container"]
+def tagged_container(tmp_path: Path, target: Path, **fields: str) -> Path:
+    """A real container at ``target`` carrying ``fields`` as its tags.
+
+    One synthesizer, one tag writer, one copy. Three tests had written this
+    sequence by hand with three signatures, and the point of this module is that
+    there is one opinion about what a valid file is.
+    """
+    from cratekit.core import tags
+
+    probe = synth_container(tmp_path, target.suffix)
+    assert tags.write_tags(probe, dict(fields))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(probe, target)
+    return target
+
+
+__all__ = ["require_ffmpeg", "synth_container", "tagged_container"]

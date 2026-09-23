@@ -1721,9 +1721,12 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
     heart is offered or missing", cited by title for the reason given under
     :func:`split_title`. A tag that is nothing but a head strips to empty and
     takes the branch an absent tag takes, which is the filename. The head found
-    inside the tag is NOT read for the key: the stem's head and the
-    ``initialkey`` tag keep the precedence above, and a title tag is not where
-    this product, or the live system, ever wrote a key on purpose.
+    inside the tag carries the key when the stem has none, below the stem's
+    head and above the ``initialkey`` tag, which is the opinion
+    ``write/naming_cli.py`` already holds about the same bytes: the first draft
+    read nothing off the tag's head, and the review drove a file that indexed
+    with no key until a rename padded the same head into its filename, so one
+    file gave two answers depending on whether ``naming apply`` had run.
     """
     stem = path.stem
     head = naming.parse_head(stem, template=template) or {}
@@ -1733,9 +1736,8 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
         artist_part, title_part = "", body
 
     tagged_artist = str(tags.read_tag(path, "artist") or "").strip()
-    tagged_title = naming.strip_heads(
-        str(tags.read_tag(path, "title") or ""), template=template
-    ).strip()
+    spelled_tag = tags.read_tag(path, "title") or ""
+    tagged_title = naming.strip_heads(spelled_tag, template=template)
     named_artist, named_title = artist_part.strip(), str(title_part).strip()
     if tagged_artist and tagged_title:
         artist, spelled = tagged_artist, tagged_title
@@ -1745,7 +1747,8 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
         artist, spelled = tagged_artist or named_artist, tagged_title or named_title
     title, version = split_title(spelled)
 
-    written_key = head.get("key")
+    tag_head = naming.parse_head(spelled_tag, template=template) or {}
+    written_key = head.get("key") or tag_head.get("key")
     key = written_key or tags.read_tag(path, "initialkey")
     return Owned(
         path=path,
