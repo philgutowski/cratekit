@@ -1603,6 +1603,154 @@ def test_the_camelot_head_written_into_the_filename_is_the_librarys_key(music):
     assert held[0].key == "03B"
 
 
+# ---------------------------------------------------------------------------
+# The headed title tag: the head inside the TITLE TAG comes off the way the stem's does
+# ---------------------------------------------------------------------------
+
+
+def headed_tag(music: Path, tmp_path: Path, name: str, *, artist: str, title: str) -> Path:
+    """A real container in the library carrying the given tags under ``name``.
+
+    The live library writes the ``KEY - BPM - `` head into the title tag as well
+    as the filename, the live system's convention, so a fixture that puts the
+    head only in the name proves nothing about the reader this section is
+    written against. The finding is the residual titled "The index takes the
+    title tag with its head on, so no processed file resolves owned and every
+    heart is offered or missing", cited by title for the reason ``split_title``
+    gives.
+    """
+    probe = synth_container(tmp_path, ".flac")
+    assert tags.write_tags(probe, {"artist": artist, "title": title})
+    target = music / f"{name}.flac"
+    shutil.copy2(probe, target)
+    return target
+
+
+def test_a_head_inside_the_title_tag_is_stripped_so_a_plain_provider_row_matches(
+    music, tmp_path
+):
+    """The headed tag, first scenario. 9767 of 9868 files on the live volume carry
+    the head inside the tag, and every one of them resolved offered or missing
+    against a provider row spelling the plain title, because the tag was taken
+    verbatim and only the stem was stripped."""
+    headed_tag(
+        music, tmp_path, "06A - 126 - Felixcw - Dr. Beat",
+        artist="Felixcw", title="06A - 126 - Dr. Beat",
+    )
+
+    index = index_of(music)
+    held = index.versions(match.recording_token("Felixcw", "Dr. Beat"))
+    assert [(row.artist, row.title, row.version, row.key) for row in held] == [
+        ("Felixcw", "Dr. Beat", "", "06A")
+    ]
+    assert index.versions(match.recording_token("Felixcw", "06A - 126 - Dr. Beat")) == ()
+    found = resolve([one(artist="Felixcw", title="Dr. Beat", origin=match.TIDAL)], index)
+    assert found.matches[0].state is match.MatchState.MATCHED
+
+
+def test_a_head_only_in_the_filename_with_a_plain_tag_indexes_as_it_did(music, tmp_path):
+    """The headed tag, second scenario: the change moves nothing that already worked."""
+    headed_tag(
+        music, tmp_path, "06A - 126 - Felixcw - Dr. Beat", artist="Felixcw", title="Dr. Beat"
+    )
+    held = index_of(music).versions(match.recording_token("Felixcw", "Dr. Beat"))
+    assert [(row.artist, row.title, row.version, row.key) for row in held] == [
+        ("Felixcw", "Dr. Beat", "", "06A")
+    ]
+
+
+def test_the_tempo_goes_with_the_head_and_a_number_opening_the_title_stays(music, tmp_path):
+    """The headed tag, third scenario. The head is exactly a key, a tempo and the
+    terminator, so ``50`` after the terminator is the title's own first word."""
+    headed_tag(
+        music, tmp_path, "10A - 100 - Mira Vale - 50 BPM Metronome",
+        artist="Mira Vale", title="10A - 100 - 50 BPM Metronome",
+    )
+    index = index_of(music)
+    held = index.versions(match.recording_token("Mira Vale", "50 BPM Metronome"))
+    assert [row.title for row in held] == ["50 BPM Metronome"]
+    found = resolve([one(artist="Mira Vale", title="50 BPM Metronome")], index)
+    assert found.matches[0].state is match.MatchState.MATCHED
+
+
+def test_a_title_that_genuinely_opens_with_a_camelot_code_and_a_number_is_read_as_a_head(
+    music, tmp_path
+):
+    """The collision the filename side already accepts, named rather than hidden.
+
+    A release titled ``8A - 124 - Sun Path`` cannot be told from a head, on the
+    tag any more than on the stem. ``strip_heads`` is not widened to guess, so the
+    tag reads the way the stem has always read."""
+    headed_tag(
+        music, tmp_path, "Aurora Bloom - 8A - 124 - Sun Path",
+        artist="Aurora Bloom", title="8A - 124 - Sun Path",
+    )
+    index = index_of(music)
+    assert index.versions(match.recording_token("Aurora Bloom", "Sun Path"))
+    assert index.versions(match.recording_token("Aurora Bloom", "8A - 124 - Sun Path")) == ()
+
+
+def test_a_tag_that_is_only_a_head_falls_to_the_filename_the_way_an_empty_tag_does(
+    music, tmp_path
+):
+    """The headed tag, fourth scenario: the head only tag, on the read side.
+
+    A title tag of ``06A - 126 -`` says nothing about the title once the head is
+    off, so it is treated as the absent tag it amounts to and the pair rule falls
+    to the filename, which is what the reader does today for a file with no
+    title tag at all. Before this unit the head itself became the title and the
+    file was reachable by nothing."""
+    headed_tag(
+        music, tmp_path, "06A - 126 - Aurora Bloom - Sun Path",
+        artist="Aurora Bloom", title="06A - 126 -",
+    )
+    index = index_of(music)
+    held = index.versions(match.recording_token("Aurora Bloom", "Sun Path"))
+    assert [(row.artist, row.title, row.key) for row in held] == [("Aurora Bloom", "Sun Path", "06A")]
+    assert len(index) == 1
+
+
+def test_a_plain_title_tag_is_untouched_by_the_head_strip(music, tmp_path):
+    """The headed tag, the fourth scenario's other half. A title with no head reads as
+    it always has, dash version included."""
+    headed_tag(
+        music, tmp_path, "08A - 124 - Aurora Bloom - Sun Path",
+        artist="Aurora Bloom", title="Sun Path - Radio Edit",
+    )
+    held = index_of(music).versions(match.recording_token("Aurora Bloom", "Sun Path"))
+    assert [(row.title, row.version) for row in held] == [("Sun Path", "Radio Edit")]
+
+
+def test_a_head_found_only_in_the_tag_is_not_read_for_the_key(music, tmp_path):
+    """The key's precedence is unchanged by this unit, on purpose.
+
+    The filename head is the library's own statement and the ``initialkey`` tag
+    is the file's. A head inside the title tag is text some tool wrote into the
+    wrong field, and reading a key off it would make a stripped head carry an
+    opinion the reader never held before. So a file whose stem carries no head
+    keeps the key it had, which here is none."""
+    headed_tag(
+        music, tmp_path, "Aurora Bloom - Sun Path", artist="Aurora Bloom", title="06A - 126 - Sun Path"
+    )
+    held = index_of(music).versions(match.recording_token("Aurora Bloom", "Sun Path"))
+    assert [(row.title, row.key) for row in held] == [("Sun Path", None)]
+
+
+def test_a_headed_tag_with_a_lossy_marker_strips_under_the_librarys_template(
+    music, tmp_path, cfg
+):
+    """The template the verbs hand the index is the library's, marker included,
+    and the tag strips under the same one the stem does."""
+    marker = cfg.naming.lossy_marker
+    headed_tag(
+        music, tmp_path, f"08A - 124 - {marker} Aurora Bloom - Sun Path",
+        artist="Aurora Bloom", title=f"08A - 124 - {marker} Sun Path",
+    )
+    aware = match.index_library(music, template=match_cli.library_template(cfg))
+    held = aware.versions(match.recording_token("Aurora Bloom", "Sun Path"))
+    assert [row.title for row in held] == ["Sun Path"]
+
+
 def test_a_file_the_containers_table_does_not_name_is_not_in_the_library(music):
     (music / "notes.txt").write_text("not audio")
     assert len(index_of(music)) == 0

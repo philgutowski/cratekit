@@ -1709,6 +1709,21 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
     convention, so for the key the NAME is the library's own statement and the
     tag is whatever some other tool last wrote. For the artist and the title
     there is no such convention and the tag is the file speaking.
+
+    THE TITLE TAG IS STRIPPED OF ITS HEAD THE WAY THE STEM IS. The live library
+    writes ``KEY - BPM - `` into the title tag as well as the filename, the live
+    system's convention, and 9767 of 9868 files on the volume carry it there. A
+    tag taken verbatim put the head inside every recording token, so no
+    processed file could match a provider row exactly and the first live
+    favourites job resolved 206 hearts as 0 owned over a library holding at
+    least 96 of them. The finding is the residual titled "The index takes the
+    title tag with its head on, so no processed file resolves owned and every
+    heart is offered or missing", cited by title for the reason given under
+    :func:`split_title`. A tag that is nothing but a head strips to empty and
+    takes the branch an absent tag takes, which is the filename. The head found
+    inside the tag is NOT read for the key: the stem's head and the
+    ``initialkey`` tag keep the precedence above, and a title tag is not where
+    this product, or the live system, ever wrote a key on purpose.
     """
     stem = path.stem
     head = naming.parse_head(stem, template=template) or {}
@@ -1718,7 +1733,9 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
         artist_part, title_part = "", body
 
     tagged_artist = str(tags.read_tag(path, "artist") or "").strip()
-    tagged_title = str(tags.read_tag(path, "title") or "").strip()
+    tagged_title = naming.strip_heads(
+        str(tags.read_tag(path, "title") or ""), template=template
+    ).strip()
     named_artist, named_title = artist_part.strip(), str(title_part).strip()
     if tagged_artist and tagged_title:
         artist, spelled = tagged_artist, tagged_title
