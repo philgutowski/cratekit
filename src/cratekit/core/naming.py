@@ -534,6 +534,21 @@ def trim_dangling(s: str) -> str:
     return _DANGLING_RE.sub("", s)
 
 
+def compose_body(artist: str | None, title: str | None, *, sep: str = " - ") -> str:
+    """``Artist - Title`` from tag values, each in its segment form, empties dropped.
+
+    THE ONE COMPOSER. The fallback acquisition path built this join for the stem
+    it commits a fetched upload under, and the naming verb built it again for an
+    acquired file named for its provider identifier (R-669), with a different
+    rule set, so one track could take two stems by the path it arrived through.
+    What each caller requires of its inputs, both tags or nothing, a length cap,
+    is the caller's; the join is not.
+    """
+    return sep.join(
+        part for part in (sanitize_segment(artist or ""), sanitize_segment(title or "")) if part
+    )
+
+
 def dedupe_stem(
     stem: str,
     title: str | None = None,

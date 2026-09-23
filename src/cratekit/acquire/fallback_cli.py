@@ -501,10 +501,7 @@ def acquire_fallback_fetch(ctx) -> Envelope:
 
 def fetch_stem(artist: str, title: str) -> str:
     """The stem a fetched track is committed under, from the ROW and nothing else."""
-    joined = " - ".join(
-        part for part in (naming.sanitize_segment(artist), naming.sanitize_segment(title)) if part
-    )
-    return naming.trim_dangling(joined[:STEM_LIMIT])
+    return naming.trim_dangling(naming.compose_body(artist, title)[:STEM_LIMIT])
 
 
 def _exists(final: Path, detail: dict[str, Any]) -> CratekitError:
