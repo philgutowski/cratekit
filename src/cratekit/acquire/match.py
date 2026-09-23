@@ -246,6 +246,18 @@ class Why(StrEnum):
     VERDICT_UNSPECIFIC = "verdict-unspecific"
 
 
+#: The whys under which RESOLUTION owns a row on its own evidence, consulting no
+#: queue and no person. A row matched under one of these retires any question an
+#: earlier run filed about the same line, the residual titled "A review item
+#: outlives its question: a later resolution that owns the row leaves the
+#: version-match item open, and no verdict or predicate can retire it
+#: honestly", and a matched row under any
+#: OTHER why does not: ``VERDICT_ACCEPTED`` is a person's answer being applied,
+#: and a person's answer retires nothing. Spelled as a set rather than read off
+#: the state so the retiring side recognizes the rules positively, and a fourth
+#: owning rule is added here on purpose or retires nothing.
+OWNING_RULES: frozenset[Why] = frozenset({Why.EXACT, Why.ISRC_EXACT, Why.CREDITED_EXACT})
+
 #: The kind a version-match question is offered under. An identifier, normalized
 #: by the queue on the way in, and the same one every producer of this question
 #: must use or two spellings become two items for one candidate.
@@ -1071,12 +1083,60 @@ def question_identity(
     about the extended mix and the radio edit comes back matched, carrying the
     paths of whatever the extended-mix answer named.
     """
+    return _identity_asking(artist, title, version, key, question_shape(why))
+
+
+def _identity_asking(
+    artist: str, title: str, version: str, key: str | None, asks: str
+) -> dict[str, str]:
+    """The identity of one question, given its shape rather than its why.
+
+    The one spelling of the mapping, so :func:`question_identity`, which has a
+    why in hand, and :func:`every_question_identity`, which has none, cannot
+    come to disagree about a key or a token and file one question under two
+    identifiers.
+    """
     return {
         "recording": recording_token(artist, title),
         "version": version_token(version),
         "key": key_token(key),
-        "asks": question_shape(why),
+        "asks": asks,
     }
+
+
+#: Every shape a question can take, in the order they were declared. Read by
+#: :func:`every_question_identity`, which has no why to hand because the row it
+#: is asked about is not a question any more.
+QUESTION_SHAPES: tuple[str, ...] = (
+    ASKS_ABOUT_KEY,
+    ASKS_ABOUT_VERSION,
+    ASKS_ABOUT_RECORDING,
+    ASKS_ABOUT_READING,
+)
+
+
+def every_question_identity(
+    artist: str, title: str, version: str, key: str | None
+) -> tuple[dict[str, str], ...]:
+    """Every identity one list line can have been offered under, one per shape.
+
+    Asked for a row that resolution now OWNS, which is a row with no why to
+    derive a question from: ``question_shape`` refuses a matched why on purpose,
+    because a matched row must never be filed as a question. But an earlier run
+    over the same line may have filed one, under any of the four shapes, before
+    the file carrying the row's ISRC arrived or before the rule that owns it now
+    existed. The residual ``OWNING_RULES`` cites measured 85 such items on the
+    live library. The retiring side cannot know which shape was asked, so it
+    asks about all of them, and a shape nobody asked under is an identifier the
+    queue simply does not hold.
+
+    ONE PER SHAPE AND NOT ONE PER WHY. The two key whys share one shape by
+    design, so enumerating whys would compute one identifier twice and count a
+    retirement twice.
+    """
+    return tuple(
+        _identity_asking(artist, title, version, key, asks) for asks in QUESTION_SHAPES
+    )
 
 
 #: How many hex characters of the digest an identifier carries. SIXTEEN, which is
@@ -1386,6 +1446,15 @@ class Wanted:
         nothing else. :func:`question_shape` argues both halves.
         """
         return question_identity(self.artist, self.title, self.version, self.key, why)
+
+    def questions(self) -> tuple[dict[str, str], ...]:
+        """Every identity this line can have been asked under, one per shape.
+
+        For the row that is no longer a question: resolution owned it, and the
+        items an earlier run filed about it are retired through these. See
+        :func:`every_question_identity`.
+        """
+        return every_question_identity(self.artist, self.title, self.version, self.key)
 
 
 def _field(row: object, name: str, default: Any = None) -> Any:
@@ -2745,7 +2814,9 @@ __all__ = [
     "DIGEST_WIDTH",
     "KEY_QUESTIONS",
     "PAYLOAD_STATES",
+    "OWNING_RULES",
     "QUESTION_KIND",
+    "QUESTION_SHAPES",
     "READERS",
     "SPOTIFY",
     "STALLED",
@@ -2775,6 +2846,7 @@ __all__ = [
     "key_disagreement",
     "key_token",
     "listed_title",
+    "every_question_identity",
     "question_identity",
     "question_shape",
     "read_row",

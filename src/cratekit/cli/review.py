@@ -63,6 +63,11 @@ def _summary(item: review.Item) -> dict[str, Any]:
     Deliberately not the whole record. A listing of a large queue that carried
     every payload would put megabytes on standard output for a person who wanted
     to know what is outstanding, and ``show`` exists for the whole record.
+
+    The actor rides with the verdict because for the third verdict it IS the
+    decision: a superseded item's actor is the rule that owned its row, and a
+    listing that said "superseded" and not by what would send a person to
+    ``show`` for every one of eighty five.
     """
     return {
         "id": item.item_id,
@@ -71,6 +76,7 @@ def _summary(item: review.Item) -> dict[str, Any]:
         "ordinal": item.ordinal,
         "verdict": str(item.verdict) if item.verdict is not None else None,
         "option": item.option,
+        "actor": item.actor,
     }
 
 
@@ -269,7 +275,10 @@ def build_resolve(parser: argparse.ArgumentParser, entry: registry.Entry) -> Non
     parser.add_argument(
         "--verdict",
         required=True,
-        choices=tuple(str(member) for member in review.Verdict),
+        # A PERSON'S vocabulary and not the enum's. The third verdict records
+        # that a later resolution owned the row, and a person typing it would
+        # record something that did not happen.
+        choices=tuple(str(member) for member in review.PERSON_VERDICTS),
         help="settle in favour of a candidate, or against all of them",
     )
     parser.add_argument("--option", help="the candidate this verdict chooses")

@@ -84,6 +84,9 @@ RESIDUALS: tuple[str, ...] = (
     "The match engine never consults the ISRC, and a processed file's artist tag "
     "lists every credited artist, so a quarter of the hearts the library holds "
     "read missing or offered",
+    "A review item outlives its question: a later resolution that owns the row "
+    "leaves the version-match item open, and no verdict or predicate can retire "
+    "it honestly",
 )
 
 
@@ -2428,6 +2431,225 @@ def test_the_transitive_walk_actually_walks():
         _source_of("cratekit.write.trees"), package="cratekit.write"
     )
     assert reaches_an_export_reader("from cratekit.write import trees\n")
+
+
+# ---------------------------------------------------------------------------
+# A resolution that owns a row retires the question an earlier run asked about
+# it. The residual titled "A review item outlives its question: a later
+# resolution that owns the row leaves the version-match item open, and no
+# verdict or predicate can retire it honestly".
+# ---------------------------------------------------------------------------
+
+
+def _adjudicated(store, wanted, index) -> match.TrackMatch:
+    return match_cli.adjudicate(
+        store,
+        resolve([wanted], index),
+        handler_key="acquire.match.run",
+        suppresses=nothing_suppressed,
+        suppression_id=no_identifier,
+    ).matches[0]
+
+
+def _ask_about_burning(store, music) -> match.TrackMatch:
+    """Put the brief's row in front of a person: the library holds the radio
+    edit and the row asks for the extended mix, so the row is a VERSION question
+    and the queue gains one open item about it."""
+    hold(music, "04A - 126 - Malive - Burning (Radio Edit)")
+    asked = _adjudicated(
+        store,
+        row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532"),
+        index_of(music),
+    )
+    assert asked.state is match.MatchState.NEEDS_REVIEW
+    assert asked.why is match.Why.VERSION_DIFFERS
+    assert [one.item_id for one in review.list_items(store)] == [asked.item_id]
+    return asked
+
+
+@pytest.mark.parametrize(
+    ("isrc_on_the_file", "rule"),
+    [("USNRS2644532", match.Why.ISRC_EXACT), (None, match.Why.CREDITED_EXACT)],
+    ids=["isrc-exact", "credited-exact"],
+)
+def test_a_row_owned_by_a_later_resolution_retires_its_open_question_naming_the_rule(
+    cfg, music, tmp_path, isrc_on_the_file, rule
+):
+    """The brief's first scenario, under both rules the live measurement found:
+    81 items under the ISRC rule and 4 under the credited one."""
+    with review.open_store(cfg) as store:
+        asked = _ask_about_burning(store, music)
+        burning(music, tmp_path, isrc=isrc_on_the_file)
+        owned = _adjudicated(
+            store,
+            row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532"),
+            index_of(music),
+        )
+        assert (owned.state, owned.why) == (match.MatchState.MATCHED, rule)
+        assert owned.item_id is None, "an owned row is not a question and names no item"
+
+        assert [one.item_id for one in review.list_items(store)] == []
+        assert [one.item_id for one in review.list_items(store, include_suppressed=True)] == []
+        retired = review.get(store, asked.item_id)
+        assert retired.verdict is review.Verdict.SUPERSEDED
+        assert retired.actor == str(rule)
+        assert retired.option is None
+
+
+def test_a_retired_question_offered_again_is_neither_reopened_nor_duplicated(
+    cfg, music, tmp_path
+):
+    """The brief's second scenario, at the seam. The same row resolved twice
+    more against the owning library leaves one item, still retired."""
+    with review.open_store(cfg) as store:
+        asked = _ask_about_burning(store, music)
+        burning(music, tmp_path)
+        line = row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")
+        for _ in range(2):
+            owned = _adjudicated(store, line, index_of(music))
+            assert owned.why is match.Why.ISRC_EXACT
+        everything = review.list_items(store, include_resolved=True, limit=None).items
+        assert [one.item_id for one in everything] == [asked.item_id]
+        assert everything[0].verdict is review.Verdict.SUPERSEDED
+
+
+def test_a_persons_answer_is_never_overwritten_by_a_later_resolution(cfg, music, tmp_path):
+    """The brief's fourth scenario, at the seam. A rejection recorded before the
+    ISRC file arrived stands, with its actor, after the rule owns the row."""
+    with review.open_store(cfg) as store:
+        asked = _ask_about_burning(store, music)
+        review.resolve(store, asked.item_id, review.Verdict.REJECTED, actor="phillip")
+        burning(music, tmp_path)
+        owned = _adjudicated(
+            store,
+            row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532"),
+            index_of(music),
+        )
+        assert owned.why is match.Why.ISRC_EXACT
+        kept = review.get(store, asked.item_id)
+        assert kept.verdict is review.Verdict.REJECTED
+        assert kept.actor == "phillip"
+
+
+def test_a_retired_question_the_row_asks_again_is_reopened_not_read_as_a_rejection(
+    cfg, music, tmp_path
+):
+    """THE REVERSE DIRECTION, which the brief does not name and the third
+    verdict makes reachable. The file carrying the ISRC is deleted, so the row
+    is a version question again. Left standing, the machine's verdict reaches
+    ``apply_verdict`` as "not accepted", which is a rejection nobody made: the
+    row would report MISSING under ``verdict-rejected`` and acquisition would go
+    and fetch a record the library may hold. So the machine revokes its own
+    verdict and the question is asked again, open, with the fresh description."""
+    with review.open_store(cfg) as store:
+        asked = _ask_about_burning(store, music)
+        carrying = burning(music, tmp_path)
+        line = row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")
+        assert _adjudicated(store, line, index_of(music)).why is match.Why.ISRC_EXACT
+        assert review.get(store, asked.item_id).verdict is review.Verdict.SUPERSEDED
+
+        carrying.unlink()
+        again = _adjudicated(store, line, index_of(music))
+        assert (again.state, again.why) == (
+            match.MatchState.NEEDS_REVIEW,
+            match.Why.VERSION_DIFFERS,
+        )
+        assert again.item_id == asked.item_id
+        reopened = review.get(store, asked.item_id)
+        assert reopened.verdict is None
+        assert reopened.actor == "acquire.match.run"
+        assert [one.item_id for one in review.list_items(store)] == [asked.item_id]
+
+
+def test_a_persons_acceptance_being_applied_retires_nothing(cfg, music, tmp_path):
+    """``OWNING_RULES`` is a positive set. A row matched because a PERSON
+    accepted it is a matched row under ``verdict-accepted``, and that path must
+    not walk the retiring side: the item it would find is the very one carrying
+    the acceptance, which ``supersede`` leaves alone anyway, but the guard is
+    the recognition and not the second layer."""
+    assert match.Why.VERDICT_ACCEPTED not in match.OWNING_RULES
+    assert match.OWNING_RULES == frozenset(
+        {match.Why.EXACT, match.Why.ISRC_EXACT, match.Why.CREDITED_EXACT}
+    )
+    with review.open_store(cfg) as store:
+        asked = _ask_about_burning(store, music)
+        (candidate,) = asked.candidates
+        review.resolve(
+            store, asked.item_id, review.Verdict.ACCEPTED,
+            option=candidate.candidate_id, actor="phillip",
+        )
+        applied = _adjudicated(
+            store,
+            row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532"),
+            index_of(music),
+        )
+        assert (applied.state, applied.why) == (
+            match.MatchState.MATCHED,
+            match.Why.VERDICT_ACCEPTED,
+        )
+        kept = review.get(store, asked.item_id)
+        assert kept.verdict is review.Verdict.ACCEPTED
+        assert kept.actor == "phillip"
+
+
+def test_every_question_identity_is_one_per_shape_and_agrees_with_the_asked_one():
+    """The retiring side enumerates shapes, and each must be the identity the
+    asking side would have filed under, or a retirement looks for an item
+    under an identifier nothing ever wrote to."""
+    line = one(artist="Aurora Bloom", title="Sun Path", version="Extended Mix", key="08A")
+    identities = line.questions()
+    assert [identity["asks"] for identity in identities] == list(match.QUESTION_SHAPES)
+    assert len({json.dumps(identity, sort_keys=True) for identity in identities}) == 4
+    for why in (
+        match.Why.KEY_DIFFERS,
+        match.Why.KEY_RELATIVE,
+        match.Why.VERSION_DIFFERS,
+        match.Why.TITLE_APPROXIMATE,
+        match.Why.READING_AMBIGUOUS,
+    ):
+        assert line.question(why) in identities
+
+
+def test_the_verb_lists_a_retired_question_only_when_asked_for_everything(
+    cfg, music, tmp_path
+):
+    """End to end through ``match run`` and ``review list``: the item a first
+    run filed leaves the open list when a second run owns the row, and reads
+    the third verdict with its rule under ``--all``."""
+    hold(music, "04A - 126 - Malive - Burning (Radio Edit)")
+    listing = write_list(
+        tmp_path,
+        json.dumps({
+            "list": 1,
+            "origin": match.TIDAL,
+            "tracks": [{
+                "id": "301", "artist": {"name": "Malive"},
+                "title": "Burning (Extended Mix)", "isrc": "USNRS2644532",
+            }],
+        }),
+        "burning.json",
+    )
+    code, first = drive(["match", "run", listing])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    item_id = first["data"]["needs_review"][0]["review_item"]
+    _code, listed = drive(["review", "list"])
+    assert [one["id"] for one in listed["data"]["items"]] == [item_id]
+
+    burning(music, tmp_path)
+    code, second = drive(["match", "run", listing])
+    assert code == int(ExitCode.OK)
+    assert second["data"]["matched"][0]["why"] == "isrc-exact"
+    assert second["data"]["needs_review"] == []
+
+    _code, listed = drive(["review", "list"])
+    assert listed["data"]["items"] == []
+    _code, suppressed = drive(["review", "list", "--suppressed"])
+    assert suppressed["data"]["items"] == []
+    _code, everything = drive(["review", "list", "--all"])
+    (retired,) = everything["data"]["items"]
+    assert retired["id"] == item_id
+    assert retired["verdict"] == "superseded"
+    assert retired["actor"] == "isrc-exact"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

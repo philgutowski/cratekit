@@ -1112,6 +1112,145 @@ def test_an_unresolved_cause_says_how_many_are_outstanding_and_what_to_do():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Part 7b: the third verdict, written by a resolution and never by a person
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The residual titled "A review item outlives its question: a later resolution
+# that owns the row leaves the version-match item open, and no verdict or
+# predicate can retire it honestly". A question filed before the ISRC and
+# credited rules existed asks about a row those rules now own, and nothing in
+# the vocabulary could say so: a rejection is a decision against every
+# candidate that nobody made. So a third verdict, SUPERSEDED, recorded by the
+# resolution that owned the row, naming the rule, and by nothing a person types.
+
+
+def test_supersede_retires_an_open_item_naming_the_rule_and_it_leaves_the_open_list(store):
+    item = _offer_one(store)
+    retired = review.supersede(store, item.item_id, rule="isrc-exact")
+    assert retired is not None
+    assert retired.verdict is review.Verdict.SUPERSEDED
+    assert retired.actor == "isrc-exact"
+    assert retired.option is None
+    assert retired.decided
+    assert retired.resolved
+    # NOT A SUPPRESSION. A rejection is; this is the question ceasing to be one.
+    assert not retired.suppressed
+    assert [one.item_id for one in review.list_items(store)] == []
+    assert [one.item_id for one in review.list_items(store, include_suppressed=True)] == []
+    assert [one.item_id for one in review.list_items(store, include_resolved=True)] == [
+        item.item_id
+    ]
+    assert review.count_unresolved(store) == 0
+
+
+@pytest.mark.parametrize("theirs", [review.Verdict.ACCEPTED, review.Verdict.REJECTED])
+def test_supersede_never_overwrites_a_persons_verdict(store, theirs):
+    """The brief's fourth scenario. A resolution walks two hundred rows and most
+    answered questions on its path were answered by a person before the rule
+    existed, so their verdict stands and the call reports it did nothing."""
+    item = _offer_one(store)
+    review.resolve(store, item.item_id, theirs, actor="phillip")
+    assert review.supersede(store, item.item_id, rule="isrc-exact") is None
+    kept = review.get(store, item.item_id)
+    assert kept.verdict is theirs
+    assert kept.actor == "phillip"
+
+
+def test_supersede_reports_nothing_for_an_item_nobody_filed(store):
+    assert review.supersede(store, "rv_never_offered", rule="isrc-exact") is None
+
+
+def test_supersede_refuses_an_empty_rule(store):
+    item = _offer_one(store)
+    with pytest.raises(CratekitError) as caught:
+        review.supersede(store, item.item_id, rule="")
+    assert caught.value.cause.reason == "review-selection-invalid"
+    assert review.get(store, item.item_id).verdict is None
+
+
+def test_a_superseded_item_offered_again_is_neither_reopened_nor_duplicated(store):
+    """The brief's second scenario. ``offer`` is idempotent by identity and a
+    resolved row is left alone, and the third verdict is a resolution."""
+    item = _offer_one(store)
+    review.supersede(store, item.item_id, rule="isrc-exact")
+    again = _offer_one(store, payload={"wanted": "track a", "found": "a newer description"})
+    assert again.item_id == item.item_id
+    assert again.verdict is review.Verdict.SUPERSEDED
+    assert again.actor == "isrc-exact"
+    assert again.payload == item.payload, "a resolved item's payload is left alone"
+    assert len(review.list_items(store, include_resolved=True, limit=None)) == 1
+
+
+def test_clear_returns_a_superseded_item_to_the_open_list(store):
+    """The brief's third scenario. Revocable like any verdict."""
+    item = _offer_one(store)
+    review.supersede(store, item.item_id, rule="isrc-exact")
+    cleared = review.clear(store, item.item_id, actor="phillip")
+    assert cleared.verdict is None
+    assert cleared.actor == "phillip"
+    assert [one.item_id for one in review.list_items(store)] == [item.item_id]
+
+
+def test_a_batch_resolution_does_not_touch_items_a_resolution_superseded(store):
+    """The brief's sixth scenario. A predicate over a payload field would have
+    swept 86 items to take the three live ones; a superseded item is settled,
+    so the sweep is a filter over what is outstanding and leaves it alone."""
+    first = _offer_one(store, key="a", payload={"why": "title-approximate"})
+    second = _offer_one(store, key="b", payload={"why": "title-approximate"})
+    review.supersede(store, first.item_id, rule="isrc-exact")
+    swept = review.resolve_where(
+        store,
+        review.Predicate(queue=review.Queue.VERSION_MATCH, payload_equals={"why": "title-approximate"}),
+        review.Verdict.REJECTED,
+        actor="phillip",
+    )
+    assert [one.item_id for one in swept] == [second.item_id]
+    untouched = review.get(store, first.item_id)
+    assert untouched.verdict is review.Verdict.SUPERSEDED
+    assert untouched.actor == "isrc-exact"
+
+
+def test_an_export_carrying_the_third_verdict_imports_without_conflict(cfg, store, tmp_path):
+    """The brief's fifth scenario, in both directions: into a queue that never
+    saw the item, and back into the one that wrote it."""
+    item = _offer_one(store)
+    review.supersede(store, item.item_id, rule="credited-exact")
+    document = review.export_document(store)
+    assert document["items"][0]["verdict"] == "superseded"
+
+    with review.open_store(cfg, path=tmp_path / "elsewhere.sqlite3") as other:
+        taken = review.import_document(other, document, actor="importer")
+        assert taken.conflicts == ()
+        assert taken.inserted == (item.item_id,)
+        landed = review.get(other, item.item_id)
+        assert landed.verdict is review.Verdict.SUPERSEDED
+        assert landed.actor == "credited-exact"
+        assert [one.item_id for one in review.list_items(other)] == []
+
+    back = review.import_document(store, document, actor="importer")
+    assert back.conflicts == ()
+    assert back.unchanged == (item.item_id,)
+
+
+def test_the_command_line_offers_a_person_only_the_persons_verdicts(store, capsys):
+    """The machine's verdict cannot be typed. ``PERSON_VERDICTS`` is the parser's
+    vocabulary, and argparse refuses the third with its own status. The refusal
+    lands on the process's own stderr, since argparse writes there and not to
+    the injected stream, so it is read through ``capsys``."""
+    assert review.PERSON_VERDICTS == (review.Verdict.ACCEPTED, review.Verdict.REJECTED)
+    item = _offer_one(store)
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(
+        ["--output", "json", "review", "resolve", item.item_id, "--verdict", "superseded"],
+        stdout=out,
+        stderr=err,
+    )
+    assert code == 2
+    assert "invalid choice: 'superseded'" in capsys.readouterr().err
+    assert review.get(store, item.item_id).verdict is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Part 8: the decision stores, which share this shape and are revocable
 # ═══════════════════════════════════════════════════════════════════════════
 

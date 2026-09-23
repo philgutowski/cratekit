@@ -171,16 +171,39 @@ class Queue(StrEnum):
 
 
 class Verdict(StrEnum):
-    """What a person decided. Two answers, and the second one is the new half.
+    """How an item was settled. Two of these a person writes, and one the product.
 
     ACCEPTED means the item is settled in favour of a candidate. REJECTED means
     the item is settled AGAINST every candidate, and it suppresses the item until
     somebody explicitly clears it. The source system has no representation for the
     second at all, which is the whole reason its unresolved items roll forward.
+
+    SUPERSEDED means the question was never answered because it stopped being
+    one: a later resolution owned the row the item asked about under a rule that
+    never consults the queue, so there is nothing left for a person to decide.
+    R-679 is the shape it retires. 85 of 88 open version questions on the live
+    library asked about rows the ISRC and credited rules had since settled, and
+    the vocabulary had no honest way to say so: ``rejected`` records a decision
+    against every candidate that nobody made, and reads as exactly wrong when the
+    candidate is the very file the rule now owns. So it is a third value, NOT a
+    suppression, since :attr:`Item.suppressed` stays a rejection alone, and
+    revocable by ``clear`` like any verdict. It is written by :func:`supersede`
+    and nothing a person types: ``PERSON_VERDICTS`` is the command line's
+    vocabulary, because a person recording "a rule settled this" would be
+    recording something that did not happen.
     """
 
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
+#: The verdicts a PERSON records. The command line offers these and no other,
+#: so the machine's verdict cannot be typed by hand. Derived as a subtraction
+#: rather than spelled, so a fourth person verdict is added in one place.
+PERSON_VERDICTS: tuple[Verdict, ...] = tuple(
+    member for member in Verdict if member is not Verdict.SUPERSEDED
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1381,6 +1404,54 @@ def clear(store: ReviewStore, item_id: str, *, actor: str) -> Item:
     return get(store, item_id)
 
 
+def supersede(store: ReviewStore, item_id: str, *, rule: str) -> Item | None:
+    """Retire an OPEN item whose question a later resolution has answered by owning
+    the row, recording the rule that did. R-679.
+
+    The verdict written is :attr:`Verdict.SUPERSEDED` and the ``actor`` column
+    carries ``rule``, the resolution slug that owned the row, because the rule is
+    what decided and the column is where a reader looks for who did. ``option``
+    stays empty: the rule owned the row on its own evidence and did not choose
+    among the candidates the item offered, and writing one would claim it had.
+
+    NEVER OVER A PERSON'S VERDICT, and never a refusal either, which is the
+    difference from :func:`resolve`. The row is updated only where the reader's
+    own definition of unresolved holds, the same condition ``resolve`` re-checks
+    inside its transaction, so an ``accepted`` or ``rejected`` somebody recorded
+    stands and the function reports ``None``. A refusal would be wrong here: the
+    producer superseding is a resolution walking a list of two hundred rows, and
+    an item already settled by a person is not an error on its path, it is the
+    expected case for every row a person answered before the rule existed. An
+    item that is unknown reports ``None`` for the same reason: a resolution asks
+    about every question a row COULD have been asked under, and most were not.
+
+    Returns the item as it now reads when this call retired it, so a caller can
+    count what it did rather than what it tried.
+    """
+    if not rule:
+        raise refuse(
+            "review-selection-invalid",
+            "a superseded item names the rule that owned its row; an empty one "
+            "would record that something settled the question and not what",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.ITEM,
+            origin=("review",),
+            detail={"item_id": item_id},
+        )
+    now = timestamp()
+    unresolved, unresolved_values = _UNRESOLVED
+    with store.immediate() as conn:
+        row = conn.execute(
+            f"UPDATE review_items SET verdict = ?, option = NULL, actor = ?, decided = ?, "
+            f"updated = ? WHERE item_id = ? AND {unresolved}",
+            (str(Verdict.SUPERSEDED), rule, now, now, item_id, *unresolved_values),
+        )
+        changed = int(row.rowcount or 0)
+    if not changed:
+        return None
+    return get(store, item_id)
+
+
 def resolve_where(
     store: ReviewStore,
     predicate: Predicate,
@@ -2190,9 +2261,11 @@ __all__ = [
     "Queue",
     "ReviewStore",
     "Surface",
+    "PERSON_VERDICTS",
     "Verdict",
     "adjudicated_queues",
     "clear",
+    "supersede",
     "count_unresolved",
     "decision_store_keys",
     "suppression_id_for",
