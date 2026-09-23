@@ -27105,6 +27105,33 @@ nothing for the files it exists for, and after the import no verb can, so the
 library's legibility on disk is lost per batch and for good. Issue owed after
 this merge.
 
+**Closed 2026-09-23 on `unit/issue194`, on the fixture condition.** A stem
+that is digits and nothing else once the head is off, the form the vendored
+adapter's `{track_id}` template writes, is composed from the tags as
+`Artist - Title` in `write/naming_cli._composed_body`, the title stripped of
+any head the live system wrote into it (R-664), every credited artist kept
+from a multi valued field, through the same template, dedupe and byte budget
+as any other name. The head derivation is untouched, so a key tag with no
+tempo renders no head. **Digits only, not "no letters", narrower than this
+entry's own proposal**, because the built in review drove a name a person can
+choose out of symbols, `2 + 2 = 5`, and R-168's rule stands over it. An
+identifier whose tags cannot compose a body, no artist, no title, or a title
+that is only a head, is a fourth held class, `unnamed`, listed with its
+reason, inside the digest, counted, and owed on apply the way a collision is,
+with a step in the report that says to tag it. An imported identifier file is
+held as `referenced` and never owed, because no tag can make it renamable
+under R-407, so the collection is now read for a held file alone. The apply
+pass re-reads the tags after the gate and owes a rename whose rendered name is
+not the one the plan was approved with, since a body derived from tags can
+drift while a gate waits where a body carried from the filename could not.
+Driven through the dispatcher over real containers: `92654769.flac` tagged
+Tirzah, Affection, key `Bb` plans `Tirzah - Affection.flac`; the same with
+`7A` still no head; a text stem with disagreeing tags plans its head padding
+and nothing else; `12345.flac` with no artist is held and named; a folder of
+both kinds applied on a yes leaves the composed name, the text stem untouched
+and the title tag body the tag's own. **The second condition, fifty four
+renames planned over the live staging folder, is the next sitting's, attended.**
+
 ## R-670. The rename gate asks "Apply these renames?" and shows none, on either output form
 
 **Found:** at the seventh attended sitting, 2026-09-23. `name apply` calls
@@ -27128,3 +27155,64 @@ landing gate does, and a test reads the count off the blocked envelope's
 
 **Not on the board bar.** The gate still holds the write; the abort answer
 reads the plan; a wording and shape fix.
+
+**Closed 2026-09-23 on `unit/issue194`, inside R-669's unit.** `name_apply`
+passes `_shown(plan, root=root)` as the gate's context: the root, the four
+totals, each planned rename as `from` and `to`, each held file with its class
+and its reason, the way the landing gate shows its files. A referenced item
+now carries its reason on the item like the other held classes, so the plan
+and the screen say the same thing. Each list stops at `PLAN_SHOWN`, two
+hundred, and says how many it left out, because the default root is the
+library and the screen is printed and parsed. A test reads the count, the
+planned list and the held list off the blocked envelope's `shown`.
+
+## R-671. An identifier file is opened three times to build one spec, and the apply pass opens it three times again
+
+**Found:** by the built in review of R-669's unit, 2026-09-23. R-169's shape,
+one file over.
+
+`write/naming_cli._spec_for` reads the title tag and the initialkey tag, two
+container opens per file, and for a stem that is digits only it reads the
+artist values as well, a third. `_plan_for` builds a spec per file and
+`name_apply` builds it again for each rename after the gate, so a landed batch
+of fifty four identifier files costs 162 opens to plan and 162 more to apply.
+A text stem pays two and two, as before this unit.
+
+**Measured cost:** not measured in seconds, and the report says so. The third
+open falls only on identifier files, which are a batch's worth and never the
+library's, so the sweep R-169 names is not made slower by it.
+
+**Why not fixed here.** R-169 already records the correct fix, one container
+read per file in `core/tags`, and that is a change to the tag reader rather
+than to this verb. The plan and apply passes must keep reading independently,
+so caching across the gate is not the fix.
+
+**Closes when:** R-169 closes, with the artist values read in the same open.
+
+**Not on the board bar.** A maintainer facing cost on a path that works.
+
+## R-672. An identifier file acquired lossy carries no marker on either surface, so the composed name is unmarked
+
+**Found:** reading `_spec_for` for R-669's unit, 2026-09-23. Not driven, and
+the report says so.
+
+The lossy flag is read as the marker's presence in the filename stem or the
+title tag, `lossy=marker in path.stem or marker in title`. A file the vendored
+adapter lands is named for its identifier and tagged from the catalogue, so
+neither surface carries the marker whatever the container is. Composing the
+body does not change that: a lossy identifier file composes to an unmarked
+`Artist - Title` the same way a lossy text stem was carried unmarked before.
+The fallback fetch path marks the stem it commits itself, so its files are
+not identifier files and this does not reach them. The vendored path refused
+the one lossy only track at the seventh sitting by policy, so no lossy
+identifier file has been produced yet.
+
+**Measured cost:** unmeasured. Zero candidates were driven, because the
+acquisition policy in force refuses the input. R-213's second clause already
+records that no test lands a lossy file through the alternative adapter.
+
+**Closes when:** a lossy identifier file, landed under a policy that permits
+one, composes to a marked name, or the marker is derived from the container
+rather than read off a surface that never carried it.
+
+**Not on the board bar.** Reachability unmeasured under the shipped policy.

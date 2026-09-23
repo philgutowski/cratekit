@@ -1,0 +1,73 @@
+{
+  "name": "r669-b",
+  "pass_kind": "light",
+  "branch": "unit/issue194-an-acquired-file-is-named-for-its-provid",
+  "head": "27dc777",
+  "when": "2026-09-23 19:18 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10023,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "state_guarded": "~/Library/Application Support/cratekit (1950 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/naming.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/naming.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "7c7a6f74b3c7d0ea",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10023,
+    "baseline_collected": 10023,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_composer_not_sanitized",
+      "description": "G14's composite: drop the one sanitizer, the composer's, now that the copy in _artist is gone, so a slash in a credit reaches the filename",
+      "file": "src/cratekit/core/naming.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c8cfa761d4c0de34",
+      "subset": [
+        "tests/test_naming_apply_cli.py",
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 122,
+      "baseline_collected": 122,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback_fetch.py::test_the_stem_is_the_rows_and_carries_no_path_separator",
+        "tests/test_naming_apply_cli.py::test_a_slash_in_a_tag_takes_the_body_form_of_a_segment"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        part for part in (sanitize_segment(artist or \"\"), sanitize_segment(title or \"\")) if part",
+      "new": "        part for part in (artist or \"\", title or \"\") if part"
+    }
+  ],
+  "dropped": []
+}

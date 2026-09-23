@@ -4,7 +4,53 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: A5 sitting 7 record, issue #178 line 1, `unit/issue178`,
+**Last merged: R-669 with R-670, issue #194, `unit/issue194`, 2026-09-23.**
+An acquired file, named by the vendored adapter for its provider identifier,
+is given a body from its artist and title tags by `name apply`. **The rule
+is narrow:** a stem that is digits and nothing else once the head is off is
+composed as `Artist - Title` through the existing template, dedupe and byte
+budget, the title first stripped of any head the live system wrote into it
+(R-664), every credited artist kept from a multi valued field. Any other stem
+is carried as it is, so R-168 stays closed. The head derivation is untouched.
+An identifier whose tags cannot compose a body is a fourth held class,
+`unnamed`, listed with its reason, inside the digest, counted, owed on apply
+the way a collision is, with a step in the report that says to tag it. **The
+built in review at high raised ten findings, nine fixed in one round:** an
+imported identifier file is held as `referenced` and never owed, because no
+tag can make it renamable under R-407, so the collection is read for a held
+file alone; the apply pass compares the name it renders after the gate to the
+`to` the plan was approved with and owes a drift, for every file; digits only
+rather than no letters, since `2 + 2 = 5` is a name a person can choose; the
+`Artist - Title` join is one function, `naming.compose_body`, and the fallback
+fetch path calls it too; the gate screen lists at most 200 planned and 200
+held. R-670 CLOSED inside the unit: the rename gate shows the root, the four
+totals, each planned rename and each held file with its reason, read off the
+blocked envelope's `shown`. **R-669 CLOSED on its fixture condition; its
+second, 54 renames planned over the live staging folder, is the next
+sitting's, attended.** Filed R-671, three container opens per identifier
+file, R-169's shape, and R-672, a lossy identifier file composes unmarked,
+reachability unmeasured under the shipped policy. Neither on the board bar.
+No issue owed.
+Battery: ruff clean, **10022 passed** and 1 skipped in 63 seconds. Scan clean.
+Mutation tables `docs/mutation/r669.md` and `r669-b.md`, read in
+`r669-notes.md`: **26 rows, the author's own, 25 killed and one zero
+explained**, G14 a sanitizer covered by the composer's, removed at
+`27dc777`, its composite B1 killed 2 over the two suites that reach the
+composer. `docs/solutions/` entry:
+`workflow-issues/a-value-given-a-new-source-does-not-inherit-the-guards-written-for-the-old-one.md`.
+`CONCEPTS.md` "Held back" now names three classes.
+**Main's highest residual number is R-672.** No issue owed after this
+merge: R-667 is #193 and R-669 was #194.
+
+**Next: the author's decision at the landing gate, `docs/cutover.md`, "Next
+sitting", now unblocked.** The recommendation was to hold the landing until
+this unit landed, and it has: `name apply --root` over download staging on
+the pipx install, once it is rebuilt from this `main`, should plan 54 renames
+and show them on the gate, which is R-669's second condition. Then the
+landing, then the import, then `intake imported`. The build queue holds
+R-667 for Relay or a session.
+
+**Merged before it: A5 sitting 7 record, issue #178 line 1, `unit/issue178`,
 2026-09-23.** A record only merge, no code. Line 1 of #178, favourites in, ran
 from the fresh listing to the landing gate on the pipx install at `2e30b0d`:
 215 declared, 206 listed, 9 withheld; **96 owned, 29 offered, 81 missing**
@@ -26,11 +72,6 @@ needing the list positional. `docs/solutions/` entry:
 `integration-issues/a-match-count-is-not-a-held-count-so-check-a-list-by-isrc-before-a-download.md`.
 Record in `docs/cutover.md`, sitting 7. **Main's highest residual number is
 R-670.** Issues owed after this merge: R-667 and R-669.
-
-**Next: the author's decision at the landing gate, `docs/cutover.md`, "Next
-sitting".** The recommendation is to hold the landing until R-669's unit
-lands, because R-407 makes a landed and imported file unrenamable. The build
-queue then holds R-667 and R-669 for Relay or a session.
 
 **Merged before it: R-664, issue #192, `unit/issue192`, 2026-09-23.**
 The library index strips the `KEY - BPM - ` head from the title tag the way it

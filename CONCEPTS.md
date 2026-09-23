@@ -927,11 +927,15 @@ and never supplies one.
 ### Held back
 A file a plan lists and deliberately does not act on, marked with its own action
 and counted out of `totals.count`, so the plan states what it is leaving alone
-rather than omitting it. `name apply` holds back two classes and they are not the
-same kind of thing: a `referenced` file is held for ever, because rekordbox
-records a path once and only a person can decide to reimport it, and a `collides`
-file is held until somebody gives one of two files a name of its own. The first
-is a success and the second is outstanding work.
+rather than omitting it. `name apply` holds back three classes and they are not
+the same kind of thing: a `referenced` file is held for ever, because rekordbox
+records a path once and only a person can decide to reimport it, a `collides`
+file is held until somebody gives one of two files a name of its own, and an
+`unnamed` file, one named for its provider identifier whose tags cannot compose
+a body, is held until somebody writes the tag. The first is a success and the
+other two are outstanding work, owed on apply. A referenced file wins over the
+other two classes, because nothing a person does to its name or its tags makes
+it renamable.
 
 *Avoid:* reading a held back file as one the plan missed. A candidate the plan
 never mentions is a bug; a candidate it names and declines is the design.
