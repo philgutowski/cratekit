@@ -1951,6 +1951,45 @@ def test_a_rows_isrc_is_folded_before_it_is_asked(music, tmp_path):
     assert found.matches[0].why is match.Why.ISRC_EXACT
 
 
+def test_an_isrc_hit_whose_artist_tag_credits_nobody_the_row_names_still_asks_about_the_key_alone(
+    music, tmp_path
+):
+    """The ISRC clause of the candidate labeller on its own. A compilation
+    copy tagged ``Various Artists`` carries the row's ISRC and the row's title,
+    and names no member the row names, so only the ISRC says it is the
+    recording. The match asks about the key, and the candidate has to say the
+    same rather than call the file a scored resemblance."""
+    credited(
+        music, tmp_path, "07B - 126 - Various Artists - Burning (Extended Mix)",
+        artist="Various Artists", title="07B - 126 - Burning (Extended Mix)", isrc="USNRS2644532",
+    )
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532", key="07A")],
+        index_of(music),
+    )
+    (one_match,) = found.matches
+    assert one_match.state is match.MatchState.NEEDS_REVIEW
+    assert one_match.why is match.Why.KEY_RELATIVE
+    assert [c.difference for c in one_match.candidates] == [match.Why.KEY_RELATIVE]
+
+
+def test_a_files_isrc_tag_is_folded_before_it_is_indexed(music, tmp_path):
+    """The file side of the fold. A tag another tagger wrote hyphenated and
+    lower case is the same identity as the provider's bare upper case one, and
+    the index has to key it that way or the row never finds it."""
+    credited(
+        music, tmp_path, "04A - 126 - Malive - Burning (Extended Mix)",
+        artist="Malive, Tito Azevedo, MRQZ", title="04A - 126 - Burning (Extended Mix)",
+        isrc="us-nrs-26-44532",
+    )
+    index = index_of(music)
+    assert list(index.by_isrc) == ["USNRS2644532"]
+    found = resolve(
+        [row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")], index
+    )
+    assert found.matches[0].why is match.Why.ISRC_EXACT
+
+
 def test_a_malformed_isrc_tag_is_not_an_identity(music, tmp_path):
     """A catalogue number in the ISRC tag is a value that is not a recording's
     identity, and it is dropped the way ``source.isrc_for`` drops it, so a row
@@ -1962,6 +2001,9 @@ def test_a_malformed_isrc_tag_is_not_an_identity(music, tmp_path):
     index = index_of(music)
     assert index.held_by_isrc(match.isrc_token("CAT-001")) == ()
     assert match.isrc_token("CAT-001") == ""
+    # NOT IN THE MAP UNDER ANY SPELLING. A junk key nothing asks for is still a
+    # key the next reader of this map would trust.
+    assert index.by_isrc == {}
     found = resolve([row(artist="Someone Else", title="Tide", isrc="CAT-001")], index)
     assert found.matches[0].state is not match.MatchState.MATCHED
 
