@@ -27,6 +27,7 @@ plan as ``unnamed``, never renamed to a title alone.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from pathlib import Path
 
 from cratekit.cli import output
@@ -293,7 +294,9 @@ def _key(path: str) -> str:
     return locations.norm_for_compare(path).casefold()
 
 
-def _referenced(recorded: tuple[str, ...], *, cfg: config.Config) -> frozenset[str]:
+def _referenced(
+    recorded: tuple[str, ...], *, cfg: config.Config, renaming: Iterable[Path]
+) -> frozenset[str]:
     """The keys of every file the collection references, or a refusal.
 
     Each row contributes its path as recorded AND its path after the configured
@@ -311,13 +314,28 @@ def _referenced(recorded: tuple[str, ...], *, cfg: config.Config) -> frozenset[s
     toward holding it back, which is what the casefold and the second spelling
     are for. Casefolding the writers' index would manufacture ambiguous rows.
 
-    A DARK ROW REFUSES THE WHOLE VERB (R-500). Dark is two facts together: no
-    rule resolves the row, and the file it records is not on this machine under
-    that spelling. Its only key is then a spelling nothing here carries, so it
-    would match no candidate and the file it names would be renamed out from
-    under it. Holding nothing back for that row is absence read as evidence. A
-    rule that differs from the recorded volume only in case is no rule, here as
-    in every other consumer of the shared resolver.
+    A DARK ROW THAT COULD NAME A CANDIDATE REFUSES THE WHOLE VERB (R-500,
+    narrowed by R-675). Dark is two facts together: no rule resolves the row,
+    and the file it records is not on this machine under that spelling. Its
+    only key is then a spelling nothing here carries, so it would match no
+    candidate and the file it names would be renamed out from under it. Holding
+    nothing back for that row is absence read as evidence. A rule that differs
+    from the recorded volume only in case is no rule, here as in every other
+    consumer of the shared resolver.
+
+    COULD NAME means the row's file name is one of ``renaming``, the files this
+    pass would rename, compared as keys. A renamed volume or a moved mount
+    changes a path's prefix and never its leaf, so a dark row under another
+    leaf cannot be any candidate under another spelling, and refusing on it
+    stops the verb over rows that are not in doubt. The first live plan with
+    renames measured 582 such rows: 137 streamed tracks rekordbox records as
+    ``/v4/catalog/tracks/<id>/``, which starts with a slash and so reaches the
+    resolver as a path, 437 tombstones under two folders that no longer exist,
+    and 8 rows on another account of this machine. None could name a file in
+    download staging, and the refusal held every rename in the library for
+    good. A dark row whose leaf IS a candidate's still refuses, as R-500 drove
+    it, and a tombstone counts the same as a live row (R-524): a restore
+    brings it back pointing at what it recorded.
 
     AN UNMAPPED ROW WHOSE RECORDED FILE EXISTS HAS ANSWERED. A track imported
     from a downloads folder, or the demo tracks rekordbox installs, sit outside
@@ -333,8 +351,15 @@ def _referenced(recorded: tuple[str, ...], *, cfg: config.Config) -> frozenset[s
     a drive letter and a location on another host, are still excused here.
     """
     rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
+    # THE LEAVES THIS PASS WOULD RENAME, keyed as the rows are, because a dark
+    # row is compared to them by name alone: that is the one part of a recorded
+    # path a renamed volume leaves as it was.
+    leaves: dict[str, list[str]] = {}
+    for path in renaming:
+        leaves.setdefault(_key(path.name), []).append(str(path))
     keys: set[str] = set()
     dark: list[str] = []
+    could_name: list[str] = []
     for value in recorded:
         if not value:
             continue
@@ -346,13 +371,16 @@ def _referenced(recorded: tuple[str, ...], *, cfg: config.Config) -> frozenset[s
         if resolved.path is not None:
             keys.add(_key(resolved.path))
         elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):
-            dark.append(decoded)
+            named = leaves.get(_key(Path(decoded).name))
+            if named:
+                dark.append(decoded)
+                could_name.extend(named)
     if dark:
-        raise _unmapped_refusal(dark)
+        raise _unmapped_refusal(dark, could_name=could_name)
     return frozenset(keys)
 
 
-def _unmapped_refusal(dark: list[str]) -> CratekitError:
+def _unmapped_refusal(dark: list[str], *, could_name: list[str]) -> CratekitError:
     """The refusal over rows nothing resolves, worded as the deletion pass's is.
 
     The count leads and the first location follows, because the count says how
@@ -360,7 +388,10 @@ def _unmapped_refusal(dark: list[str]) -> CratekitError:
     against their rules. It is the DECODED location, since that is the text a
     rule is matched against, and a percent-encoded spelling copied into a rule
     would never match. The prefixes are grouped in the detail so ten thousand
-    rows under one old volume name read as one correction.
+    rows under one old volume name read as one correction. ``could_name`` is
+    the files in the plan those rows could be naming, since R-675 made that the
+    condition, so a person sees which of their renames is in doubt and not only
+    which rows are.
 
     ``fix-config-values`` and not ``run-doctor``, which is what the deletion
     pass says: no doctor check reads the prefix map, so that token would send a
@@ -371,9 +402,10 @@ def _unmapped_refusal(dark: list[str]) -> CratekitError:
     prefixes = sorted({prefix for prefix in map(locations.leading_prefix, dark) if prefix})
     return refuse(
         "collection-row-unmapped",
-        f"{count} {rows} a location this machine cannot resolve, the first of "
-        f"them {dark[0]}, so which file each of them names is not known and a "
-        f"rename could strand any of them; nothing is renamed",
+        f"{count} {rows} a location this machine cannot resolve under the name "
+        f"of a file this plan would rename, the first of them {dark[0]}, so "
+        f"whether that row names the file is not known and the rename could "
+        f"strand it; nothing is renamed",
         steps=(
             "add a rule to library.location_prefix_map whose from side is the "
             "recorded volume spelled exactly as it is named here, capitals "
@@ -387,6 +419,7 @@ def _unmapped_refusal(dark: list[str]) -> CratekitError:
             "unmapped": count,
             "unmapped_locations": dark[:20],
             "unmapped_prefixes": prefixes[:20],
+            "could_name": sorted(set(could_name))[:20],
         },
     )
 
@@ -400,7 +433,7 @@ def _is_referenced(path: Path, referenced: frozenset[str]) -> bool:
     return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced
 
 
-def referenced_keys(cfg: config.Config) -> frozenset[str]:
+def referenced_keys(cfg: config.Config, *, renaming: Iterable[Path]) -> frozenset[str]:
     """The referenced set, read fresh, for a second verb that renames files.
 
     ``repair paths --apply`` (U102) holds a file back by the same rule this verb
@@ -408,9 +441,10 @@ def referenced_keys(cfg: config.Config) -> frozenset[str]:
     this guard are two places for the next correction to miss. Every refusal
     ``_recorded`` and ``_referenced`` raise therefore reaches that verb too, in
     the same words. The lookup of ``_recorded`` is late, through the module, so
-    a test that stubs the collection stubs it for both verbs.
+    a test that stubs the collection stubs it for both verbs. ``renaming`` is
+    the files that verb would rename, for the dark row rule above.
     """
-    return _referenced(_recorded(cfg), cfg=cfg)
+    return _referenced(_recorded(cfg), cfg=cfg, renaming=renaming)
 
 
 def is_referenced(path: Path, referenced: frozenset[str]) -> bool:
@@ -537,7 +571,9 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
             if rendered.filename != path.name:
                 candidates.append((path, rendered.filename))
     referenced = (
-        _referenced(_recorded(cfg), cfg=cfg) if candidates or uncomposed else frozenset()
+        _referenced(_recorded(cfg), cfg=cfg, renaming=[path for path, _ in candidates])
+        if candidates or uncomposed
+        else frozenset()
     )
     # ASKED ONCE PER CANDIDATE. ``_is_referenced`` resolves the path, which is a
     # syscall per candidate, and a sweep of a real library has thousands.
@@ -731,7 +767,13 @@ def name_apply(ctx) -> Envelope:
     # READ AGAIN AFTER THE GATE, because the gate can wait on a person for as
     # long as they like and rekordbox can import a file in that time. The plan's
     # check decides what a person was shown; this one decides what is touched.
-    referenced = _referenced(_recorded(cfg), cfg=cfg) if renames else frozenset()
+    referenced = (
+        _referenced(
+            _recorded(cfg), cfg=cfg, renaming=[Path(item["path"]) for item in renames]
+        )
+        if renames
+        else frozenset()
+    )
     for item in renames:
         path = Path(item["path"])
         if not path.is_file():

@@ -578,12 +578,16 @@ def test_a_row_under_a_remapped_volume_still_protects_its_file(collected):
 
 
 # ---------------------------------------------------------------------------
-# R-500: a row whose recorded prefix matches no rule refuses the whole verb.
+# R-500: a row whose recorded prefix matches no rule refuses the whole verb,
+# when it could name a file the plan would rename (R-675).
 #
 # Such a row is keyed only by a spelling no file on this machine carries, so it
 # matches no candidate and the file it names is planned as an ordinary rename.
-# The deletion pass refuses on the same condition, and the two writers now agree
-# about what an unmapped row means.
+# A renamed volume changes a path's prefix and never its leaf, so the rows that
+# could be a candidate under another spelling are the ones whose file name is a
+# candidate's, and the first live plan with renames found 582 dark rows none of
+# which was (R-675). The tests below record rows under a candidate's own name
+# where they mean to refuse, and under another name where they mean to pass.
 # ---------------------------------------------------------------------------
 
 
@@ -611,7 +615,7 @@ def test_an_unmapped_row_refuses_the_plan_too(collected):
     in it would show a rename the apply was never going to be allowed."""
     folder = _folder(collected)
     _pair(folder)
-    _record(collected, "/mnt/volume/Music/elsewhere.flac", identifier="10")
+    _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="10")
     code, out, _ = drive([
         "--output", "json", "-d", "name.apply.confirm=abort",
         "name", "apply", "--root", str(folder),
@@ -621,19 +625,22 @@ def test_an_unmapped_row_refuses_the_plan_too(collected):
 
 
 def test_every_unmapped_row_is_counted_and_the_first_is_named(collected):
+    """Two dark rows, one of them a tombstone (R-524), each under the name of a
+    file the plan would rename, and a third row that resolves."""
     folder = _folder(collected)
     held, free = _pair(folder)
-    _record(collected, "/mnt/volume/Music/b.flac", identifier="10")
-    _record(collected, "/mnt/library/Music/a.flac", identifier="11", deleted=1)
+    _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="10")
+    _record(collected, "/mnt/library/Music/2A - 124 - Free.flac", identifier="11", deleted=1)
     _record(collected, str(held), identifier="12")
     code, envelope = _refusal(folder)
     assert code == int(ExitCode.PRECONDITION), envelope
     cause = envelope["cause"]
     assert cause["message"].startswith("2 collection rows record")
-    assert "/mnt/volume/Music/b.flac" in cause["message"]
-    assert "/mnt/library/Music/a.flac" not in cause["message"]
+    assert "/mnt/volume/Music/1A - 124 - Held.flac" in cause["message"]
+    assert "/mnt/library/Music/2A - 124 - Free.flac" not in cause["message"]
     assert cause["detail"]["unmapped"] == 2
     assert cause["detail"]["unmapped_prefixes"] == ["/mnt/library", "/mnt/volume"]
+    assert cause["detail"]["could_name"] == sorted([str(held), str(free)])
     assert held.is_file() and free.is_file()
 
 
@@ -664,7 +671,7 @@ def test_a_row_that_goes_unmapped_after_the_gate_refuses_before_any_rename(
     gained a row under a volume no rule names."""
     folder = _folder(collected)
     held, free = _pair(folder)
-    reads = iter([(), ("/mnt/volume/Music/late.flac",)])
+    reads = iter([(), ("/mnt/volume/Music/1A - 124 - Held.flac",)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
     code, envelope = _refusal(folder)
     assert code == int(ExitCode.PRECONDITION), envelope
@@ -677,29 +684,112 @@ def test_the_refusal_names_the_decoded_location_a_rule_is_matched_against(collec
     compared with the decoded path and the encoded spelling would never match."""
     folder = _folder(collected)
     _pair(folder)
-    _record(collected, "file://localhost/mnt/volume/My%20Music/x.flac", identifier="10")
+    _record(
+        collected,
+        "file://localhost/mnt/volume/My%20Music/1A%20-%20124%20-%20Held.flac",
+        identifier="10",
+    )
     _code, envelope = _refusal(folder)
     cause = envelope["cause"]
-    assert "/mnt/volume/My Music/x.flac" in cause["message"]
+    assert "/mnt/volume/My Music/1A - 124 - Held.flac" in cause["message"]
     assert "%20" not in cause["message"]
-    assert cause["detail"]["unmapped_locations"] == ["/mnt/volume/My Music/x.flac"]
+    assert cause["detail"]["unmapped_locations"] == ["/mnt/volume/My Music/1A - 124 - Held.flac"]
 
 
-def test_an_unmapped_row_whose_file_is_gone_refuses_even_outside_a_volume(
+def test_a_gone_file_under_a_folder_on_this_machine_refuses_under_a_candidate_name(
     collected, tmp_path
 ):
     """The other half of the existence rule. The folder is on this machine and
-    the recorded file is not, so nothing says which file the row names."""
+    the recorded file is not, and the row carries a candidate's name, so nothing
+    says whether the row names that candidate."""
+    folder = tmp_path / "laptop" / "Downloads"
+    folder.mkdir(parents=True)
+    held, free = _pair(folder)
+    gone = tmp_path / "elsewhere" / "1A - 124 - Held.flac"
+    _record(collected, str(gone), identifier="10")
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["detail"]["unmapped_locations"] == [str(gone)]
+    assert envelope["cause"]["detail"]["could_name"] == [str(held)]
+    assert held.is_file() and free.is_file()
+
+
+def test_a_gone_file_under_another_name_refuses_nothing(collected, tmp_path):
+    """R-523, decided: a dark row whose file name is no candidate's cannot be a
+    candidate under another spelling, so it holds nothing and refuses nothing.
+    The row is under a folder that exists here, the shape R-523 filed."""
     folder = tmp_path / "laptop" / "Downloads"
     folder.mkdir(parents=True)
     held, free = _pair(folder)
     _record(collected, str(folder / "moved away.flac"), identifier="10")
+    _apply(folder)
+    assert not held.exists() and not free.exists()
+    assert (folder / "01A - 124 - Held.flac").is_file()
+
+
+def test_a_dark_tombstone_under_another_name_refuses_nothing(collected):
+    """R-524, decided: a tombstone counts exactly as a live row does, so one
+    under a gone folder refuses when its name is a candidate's and passes when
+    it is not. The live library carries 437 of the second kind."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(
+        collected,
+        "/Users/somebody/Music/Original_Tracks/Adam Ten - Magic Circus.flac",
+        identifier="10",
+        deleted=1,
+    )
+    _apply(folder)
+    assert not held.exists() and not free.exists()
+
+
+def test_a_dark_tombstone_under_a_candidate_name_still_refuses(collected):
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, "/mnt/volume/Music/2A - 124 - Free.flac", identifier="10", deleted=1)
     code, envelope = _refusal(folder)
     assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["detail"]["unmapped_locations"] == [
-        str(folder / "moved away.flac")
-    ]
+    assert envelope["cause"]["detail"]["could_name"] == [str(free)]
     assert held.is_file() and free.is_file()
+
+
+def test_a_dark_row_is_matched_to_a_candidate_by_name_ignoring_case(collected):
+    """The leaf is compared as the referenced set compares a path, casefolded
+    and composed, because the volume the library sits on ignores case."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, "/mnt/volume/Music/1a - 124 - HELD.FLAC", identifier="10")
+    code, envelope = _refusal(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert held.is_file() and free.is_file()
+
+
+def test_a_streamed_track_recorded_as_a_catalogue_path_refuses_nothing(collected):
+    """The live form. rekordbox 7 records a streamed track as a path under
+    ``/v4/catalog/tracks/``, which starts with a slash and reaches the resolver
+    as an unmapped path with no file behind it. The first live plan found 137
+    active rows of this shape (R-675). It names no file, so it holds nothing."""
+    folder = _folder(collected)
+    held, free = _pair(folder)
+    _record(collected, "/v4/catalog/tracks/17477108/", identifier="10")
+    _apply(folder)
+    assert not held.exists() and not free.exists()
+
+
+def test_a_dark_row_is_only_asked_about_the_files_being_renamed(collected):
+    """A file the plan holds as unnamed is not renamed, so a dark row under its
+    name cannot be stranded by this pass and refuses nothing."""
+    folder = _folder(collected)
+    _track(folder, "12345.flac")
+    held, _free = _pair(folder)
+    _record(collected, "/mnt/volume/Music/12345.flac", identifier="10")
+    plan = _plan(folder)
+    assert plan["totals"]["unnamed"] == 1
+    assert plan["totals"]["count"] == 2
+    _code, envelope = _answer(folder)
+    assert envelope["cause"]["reason"] == "rename-incomplete", envelope
+    assert [item["from"] for item in envelope["cause"]["detail"]["incomplete"]] == ["12345.flac"]
+    assert not held.exists()
 
 
 def test_the_refusal_counts_every_row_and_lists_no_more_than_twenty(collected):
@@ -707,7 +797,7 @@ def test_the_refusal_counts_every_row_and_lists_no_more_than_twenty(collected):
     strings in one envelope. The count is never capped, only the two lists."""
     recorded = tuple(f"/absent-{index:02d}/music/track.flac" for index in range(25))
     with pytest.raises(naming_cli.CratekitError) as refused:
-        naming_cli._referenced(recorded, cfg=collected)
+        naming_cli._referenced(recorded, cfg=collected, renaming=[Path("/x/track.flac")])
     detail = refused.value.cause.detail
     assert detail["unmapped"] == 25
     assert detail["unmapped_locations"] == list(recorded[:20])
@@ -721,7 +811,7 @@ def test_a_row_recording_a_link_to_nothing_is_dark(collected, tmp_path):
     link itself."""
     folder = _folder(collected)
     held, free = _pair(folder)
-    dangling = tmp_path / "elsewhere" / "gone.flac"
+    dangling = tmp_path / "elsewhere" / "1A - 124 - Held.flac"
     dangling.parent.mkdir()
     dangling.symlink_to(tmp_path / "elsewhere" / "never there.flac")
     _record(collected, str(dangling), identifier="10")
