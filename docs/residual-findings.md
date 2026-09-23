@@ -26757,3 +26757,63 @@ earlier rows are re-measured or their tables annotated.
 
 **Not on the board bar.** Maintainer facing: nothing a person using the
 shipped verbs pays for.
+
+---
+
+## R-662. A setup re-run cannot repair a spelled backup remote that disagrees with the destinations
+
+**Found:** at the fifth attended sitting, 2026-09-23, rebuilding the
+configuration R-343's leak destroyed.
+
+The leaked fixture file spelled `remote = "remote"`. R-345's rule derives the
+remote from the destinations only when the file does not spell one, and the
+destinations given on the command line named `gdrive`, so setup refused under
+`config-unusable` naming the disagreement, and its own fix line said
+`crate setup`. No flag sets or clears `backup.remote`, so the re-run it
+recommends reproduces the refusal. The sitting moved the fixture file out of the
+state directory by hand, as sitting 1 did with the same class of debris.
+
+**Measured cost.** One refused run and a hand move of the configuration file,
+on a machine where the file was already known to be fixture data. On a machine
+where a person had mistyped the remote, the same loop holds and the fix line
+points back at itself.
+
+**Why not fixed here.** A sitting's write to the wizard is a unit's work, and
+the wizard's flag set was decided by R-345 a day earlier.
+
+**Closes when:** setup takes `--backup-remote`, or derives the remote from the
+destinations whenever the given destinations agree among themselves and the
+recorded remote is not among rclone's, and the refusal's fix line names the
+flag rather than the command that just refused.
+
+**Not on the board bar.** Maintainer facing: a recovery path, nothing lost,
+nothing false.
+
+---
+
+## R-663. Setup accepts a zero byte database path and reports it as a missing table on the copy
+
+**Found:** at the fifth attended sitting, 2026-09-23.
+
+`PIONEER/rekordbox/master.db` on the library volume is a zero byte file dated
+2026-05-21, one directory over from the live `PIONEER/Master/master.db`. Given
+as `--db-path`, setup recorded it, copied it, and the canary read failed with
+`no such table: agentRegistry` on the copy, twice, once for the canary and once
+for the prefix rule offer, each with the full SQL statement. `db_containment`
+passed, since the file sits under the root. Nothing said the file was empty.
+
+**Measured cost.** One setup run and the pin and prefix rule not recorded
+until the path was corrected. The wrong path came from a `find` that returned
+both files and an author who took the first one. A configuration recorded
+against that path reads as a library with no tables, and every verb that opens
+a copy fails the same way with the same statement.
+
+**Why not fixed here.** A sitting fix on setup's path validation belongs in a
+session with the canary's tests.
+
+**Closes when:** setup refuses a database path whose file is empty, or whose
+copy has none of the tables the canary reads, under a cause that names the
+size and the path rather than the table, and doctor reports the same.
+
+**Not on the board bar.** Maintainer facing: the wrong path was the author's,
+and the product refused rather than proceeding.

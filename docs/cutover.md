@@ -94,6 +94,41 @@ twice. R-352, R-354, R-356 and R-361 carry their live measurements. Six
 findings filed, R-378 to R-383, of which R-383 is the one with reach beyond this
 sitting.
 
+## Sitting 5, 2026-09-23, afternoon
+
+Machine state before: the live configuration had been overwritten on
+2026-09-20 at 16:55 with a test fixture configuration, R-343's predicted worst
+case, and doctor failed three checks. R-343 was closed on `main` earlier the
+same day, so the mutation driver can no longer do it again. The volume mounted,
+rekordbox and its agent closed. The pipx `crate` was 736 commits behind pushed
+`main`, at the R-368 merge, and was brought to `1d2136f` first, since running
+setup off it would have rebuilt the configuration against defects `main` had
+already fixed. No backup acknowledgment was minted: nothing in this sitting
+writes to the library or the database.
+
+One workflow, the rebuild, and it took three runs of `crate setup`. Every value
+was recovered from a record rather than from memory: the volume UUID from
+`diskutil`, lowercased on purpose (R-344); the three backup destinations from
+`backup_facts.json` under `.cratekit/local` on the volume, the mirror and the
+dated archive both named for the volume and the snapshots under
+`gdrive:rekordbox_db`, all three present on the Drive; the live database by
+size and date, `PIONEER/Master/master.db`,
+281 MB, last written at sitting 3's My Tags apply to the minute; the drive's old
+name, `BoatRx`, from the source system's own constant and then from the
+database's drive registry.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| Rebuild, run 1 | refused | `config-unusable`: the fixture file spelled `remote = "remote"`, setup derives the remote only when the file does not spell one, and the destinations named `gdrive`. No flag overrides a spelled remote, so a re-run cannot repair one (R-662). The fixture file was moved out of the state directory, which is what sitting 1 did with the same debris; the queue, run records and credential index stayed. | refused |
+| Rebuild, run 2 | wrote the configuration, failed the canary | The path given for the database was `PIONEER/rekordbox/master.db`, a zero byte file dated May 21 one directory over from the live one, the author's error. Setup accepted it, copied it, and reported `no such table: agentRegistry` on the copy (R-663). The pin and the prefix rule were not recorded because the `!` runner passes no terminal and every prompt took its default. | partial |
+| Rebuild, run 3 | `setup: ok` | Answers fed on stdin, two yeses. Pin recorded at 7.2.18.0311 by an explicit answer, with no confirmation date yet. The `BoatRx` rule offered off the database's `BaseDBDrive` and `CurrentDBDrive` and recorded, which is R-372's close working live for the first time. The existing taxonomy on the volume, 18 buckets, left alone. Backup ages read back from the volume, 7 and 6 days. | live |
+| `crate doctor` | yes | Exit 0, no failing check. 9784 of 9937 active rows resolve under one rule; 153 do not, 137 under `/v4/catalog`, 8 under the home directory, 8 elsewhere, the streaming and home rows sitting 3 also counted. `rekordbox.pins` notes the pin has no date on which it was confirmed against a real write. | live |
+
+Two findings filed, R-662 and R-663, neither on the board bar. The `!` runner
+having no terminal is an operator fact for the next sitting, not a product one:
+a wizard answer goes in through a pipe from that runner or from a Terminal
+window, and the sittings' "typed yes" is still the author's either way.
+
 ## What blocks a full sync cycle, stated plainly
 
 The board is complete and the product cannot yet do its central workflow,
@@ -138,16 +173,14 @@ lists Tidal. The vendored downloader is the only Tidal facing code that runs.
 
 ## Next sitting
 
-The three adapters have all run live, so the next sitting is the first one that
-can attempt a sync cycle rather than a seam. In order:
-
-1. **A decision on R-383**, which is a unit rather than a sitting's work: one
-   pagination rule governs every Tidal facing read in the product.
-2. **The tree flip, R-131**, which has been blocked behind a sync placing tracks
-   and is no longer blocked by a seam.
-3. **The 19 jobs `sync all` left queued**, which include 11 label debris
-   playlists nobody wants swept. Decide R-361's rule before resuming any of them,
-   or cancel the debris.
+The configuration is rebuilt and doctor is clean, so the queue is A5, issue
+#178, in its own order, and the next sitting is line 1: favourites in, through
+`intake playlist favorites`, `intake missing`, `acquire download`, `tag folder`,
+`name apply`, `intake land` and the rekordbox import, with the heart count
+compared against the account's 197, which is R-383's live half since U65 landed
+its code half. R-361's rule landed on `relay/95`, so the 11 label debris
+playlists are excluded before they are queued. The list this section carried
+before sitting 5 is superseded by #178.
 
 Anything that writes needs a backup acknowledgment inside its validity window:
 `crate session ack` from a Terminal window, answered with `crate run decide`,
