@@ -98,19 +98,24 @@ def _is_identifier(stem: str) -> bool:
 
 
 def _artist(path: Path) -> str | None:
-    """The artist tag as one body segment, with every credited artist kept.
+    """The artist tag as one credit line, with every credited artist kept.
 
     Read as VALUES rather than as one string, because a Vorbis comment can hold
     the credit as several ``ARTIST`` fields and the single value reader answers
     with the first of them alone. The library's convention writes the credits
     into one segment separated by a comma, so a multi valued field is joined the
     same way rather than naming the file for whoever happened to be listed first.
+
+    NOT SANITIZED HERE. ``naming.compose_body`` puts each part into its segment
+    form, and a second sanitizer in front of it was a guard nothing measured:
+    the mutation table's one zero row was this function's copy, dead because the
+    composer's held. One layer, in the composer, where the fallback fetch path
+    pays for it too.
     """
     values = tags.read_tag_values(path, "artist")
     if not values:
         return None
-    kept = [naming.sanitize_segment(value) for value in values if value and value.strip()]
-    return ", ".join(segment for segment in kept if segment) or None
+    return ", ".join(value.strip() for value in values if value and value.strip()) or None
 
 
 def _composed_body(
