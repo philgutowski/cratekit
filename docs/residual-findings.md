@@ -23015,8 +23015,19 @@ move into the library, which is already stranded.
 **Closes when:** one of the two is chosen and pinned, and if the first, the
 refusal's steps say how to declare a folder outside the library.
 
----
+**CLOSED 2026-09-23 on `unit/issue178`, inside R-675's fix, by a third option
+neither paragraph above named.** A dark row refuses only when its file name is
+the name of a file the pass would rename, because a renamed volume or a moved
+mount changes a path's prefix and never its leaf, so a row under another name
+cannot be a candidate under another spelling. A gone file under a folder on
+this machine therefore refuses when the row carries a candidate's name and
+passes when it does not, and the anchor idea was not needed. Pinned by
+`test_a_gone_file_under_a_folder_on_this_machine_refuses_under_a_candidate_name`
+and `test_a_gone_file_under_another_name_refuses_nothing`. Measured on the
+live library: 184 tombstones and 9 rows under two home folders, none under a
+staging file's name.
 
+---
 ## R-524. A dark tombstoned row refuses `name apply`, and the deletion pass skips the same row
 
 **Found:** 2026-09-19, on `relay/181`, by the built in review of R-500. Driven,
@@ -23036,8 +23047,18 @@ dead volume, and it is an odd thing to ask for.
 **Closes when:** a person decides whether a dark tombstone refuses, is held
 to a warning in the plan, or is passed over, and a test pins it.
 
----
+**CLOSED 2026-09-23 on `unit/issue178`, inside R-675's fix: a dark tombstone
+refuses, on the same condition as a live row.** It counts, because a restore
+brings it back pointing at what it recorded, and it refuses only when its file
+name is one the pass would rename (R-675), so the odd remedy is asked for only
+when the row could actually be the file. Pinned by
+`test_a_dark_tombstone_under_another_name_refuses_nothing` and
+`test_a_dark_tombstone_under_a_candidate_name_still_refuses`. Counted on the
+live library: 437 dark tombstones, 252 under a device content tree and 184
+under a home folder, none under a staging file's name. The deletion pass still
+skips the same row, R-500's deliberate difference, unchanged.
 
+---
 ## R-525. A row recorded with a drive letter or on another host is excused by `name apply` and refused by the deletion pass
 
 **Found:** 2026-09-19, on `relay/181`, by the built in review of R-500. Read,
@@ -27331,3 +27352,65 @@ whose file carries the row's ISRC is decided one way or the other.
 **Not on the board bar.** The product asks rather than answers, over a
 population it cannot yet size, and the cost of the alternative is the one
 board bar (b) names.
+
+---
+
+## R-675. R-500's dark row guard refused every live rename plan, because rekordbox records a streamed track as a slash path and a real library carries hundreds of tombstones under folders that are gone
+
+**Found:** at the eighth attended sitting, 2026-09-23, on the first `crate
+name apply --root` over download staging after R-669's unit, the first live
+plan that would rename anything. The verb refused `collection-row-unmapped`,
+582 rows, before the gate, and renamed nothing. Sitting 7's run of the same
+verb over the same folder reached the gate, because its plan was empty and
+`_plan_for` reads the collection only when something would be renamed, so the
+guard had never once been consulted on the live library.
+
+**The mechanism.** R-500's rule: a row no prefix rule resolves whose recorded
+file is absent is DARK, and one dark row refuses the whole verb, since its only
+key is a spelling nothing here carries and the file it names could be any
+candidate under another spelling. Measured on a disposable copy of the live
+database, 17341 rows, the 582 are 137 active rows recorded as
+`/v4/catalog/tracks/<id>/`, which is how rekordbox 7 records a streamed Tidal
+track, a form that starts with a slash and so reaches
+`locations.resolve_recorded_path` as an absolute path rather than the colon
+form the resolver excuses as `NOT_A_PATH`; 252 tombstones under a device
+content tree, 184 tombstones under the old `Original_Tracks` folder in the home
+directory, both gone; and 9 rows on the other account of this machine. The
+guard's own docstring said a streaming pseudo-location contributes nothing,
+which was true of the fixture form and not of the live one. No honest prefix
+rule maps any of the four families, the refusal's remedy, so the verb could not
+rename a file on this library at all, and line 10 of #178 would have refused
+the same way.
+
+**Measured cost.** Board bar (c): the naming step of the acquisition workflow
+cannot run on the live library, and after the import R-407 makes the batch
+unrenamable for good, so R-669's fix was unreachable in practice. Nothing
+renamed wrongly.
+
+**The fix, in the sitting.** A renamed volume or a moved mount changes a path's
+prefix and never its leaf, so a dark row can be a candidate under another
+spelling only when its file name is a candidate's. `_referenced` now takes the
+files the pass would rename and a dark row refuses only when its leaf, keyed as
+the referenced set keys a path, NFC and casefolded, is one of theirs; the
+refusal lists those candidates as `could_name` beside the rows. Nothing else
+about dark changed: the existence test, the exact prefix match and the
+tombstone count stand, and the streamed form has a test of its own under its
+live spelling. `repair paths --apply` passes its own candidates through the
+same seam, and had no test over a dark row at all, so both of its reads gained
+one. Driven against the live database copy: 54 candidates, 0.05 seconds, no
+refusal, no staging file referenced, and a planted dark row under one
+candidate's name still refuses with that file named.
+
+**Closes when:** a dark row whose file name is a candidate's refuses and one
+under another name does not, on a live row, a tombstone, a gone file under a
+folder on this machine and the `/v4/catalog` form, driven through both verbs;
+and `name apply --root` over download staging on the live library reaches its
+gate with every acquired file planned.
+
+**On the board bar, (c).** No issue owed: closed in the same merge.
+
+**Closed 2026-09-23 on `unit/issue178` on its fixture condition**, twelve
+tests across `tests/test_naming_apply_cli.py` and
+`tests/intake/test_repair_apply.py`, and R-523 and R-524 closed on the same
+rule. The live condition is the sitting's, below in `docs/cutover.md` sitting 8.
+

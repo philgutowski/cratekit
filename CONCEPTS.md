@@ -958,6 +958,24 @@ it renamable.
 *Avoid:* reading a held back file as one the plan missed. A candidate the plan
 never mentions is a bug; a candidate it names and declines is the design.
 
+### Dark row
+A collection row that no prefix rule resolves and whose recorded file is not on
+this machine under that spelling. It is the one kind of row the referenced guard
+in `name apply` cannot place: its key is a spelling nothing here carries, so it
+protects nothing by matching, and the file it names might be a candidate under
+another spelling of the same volume. A dark row refuses the whole verb only when
+its file name is the name of a file the pass would rename, because a renamed
+volume or a moved mount changes a path's prefix and never its leaf, and a row
+under another name cannot be any candidate. Tombstones count, since a restore
+brings one back pointing at what it recorded. On the live library the dark rows
+are streamed tracks, which rekordbox records as a slash path with no file behind
+it, and tombstones under folders that no longer exist, hundreds of each, and none
+of them names a file a plan would touch.
+
+*Avoid:* reading a dark row as a row under a missing volume. Most are rows that
+name nothing, and a guard that refuses on all of them never runs on a real
+library (R-500's first cut, R-675).
+
 ### Carried out in part
 A run that performed some of what its plan promised and could not perform the
 rest. It is neither a refusal, which touches nothing, nor ok. This product has no

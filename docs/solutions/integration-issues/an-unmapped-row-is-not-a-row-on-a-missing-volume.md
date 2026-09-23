@@ -87,8 +87,17 @@ name a candidate, and a row whose own file is present cannot.
 - `trees.located` is the one decode then resolve step. Call it rather than
   pairing `location_to_path` with `resolve_recorded_path` again.
 
+## Narrowed again, 2026-09-23
+
+The first live plan that would rename anything found 582 dark rows on the
+live library and no honest rule for any of them: streamed tracks rekordbox
+records as `/v4/catalog/tracks/<id>/`, a slash path with no file behind it,
+and tombstones under folders that are gone (R-675). A dark row now refuses
+only when its file name is one the pass would rename, since a renamed volume
+changes a prefix and never a leaf. That rule closed R-523 and R-524 as well.
+The learning beside this one, "A guard the verb consults only when there is
+work", is why sitting 7 never saw it.
+
 ## Still open
 
-R-523, a row whose file is gone under a folder that exists still refuses. R-524,
-tombstones count here and not in the deletion pass. R-525, drive letter rows are
-excused here and refused there.
+R-525, drive letter rows are excused here and refused there.
