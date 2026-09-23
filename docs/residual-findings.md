@@ -18264,6 +18264,16 @@ below is deliberately unchanged.
 library, 197 both ways at the numbers this entry records, or whatever the account
 holds on the day.
 
+**CLOSED 2026-09-23 at the sixth attended sitting, the live half.** `crate intake
+playlist favorites` from the pipx install at `1d2136f` read the account under
+U65's rule: **215 declared by the provider's count, 206 listed, 9 withheld**, and
+the 9 said so, in the `intake-hearts-withheld` warning and in the envelope's
+`shortfall` block, which is R-504's report by count. The old rule had read 93 of
+197 six days earlier. The account held 197 on 2026-09-17 and 215 on the day, so
+the number moved with the account and not with the read, and the walk no longer
+ends on a page shape. What the 206 rows then resolved to on the library is
+R-664, a different defect in a different module.
+
 ---
 
 ## R-384. Every listing now pays one extra request, and on artist releases that is doubled
@@ -26817,3 +26827,54 @@ size and the path rather than the table, and doctor reports the same.
 
 **Not on the board bar.** Maintainer facing: the wrong path was the author's,
 and the product refused rather than proceeding.
+
+---
+
+## R-664. The index takes the title tag with its head on, so no processed file resolves owned and every heart is offered or missing
+
+**Found:** at the sixth attended sitting, 2026-09-23, on the first live `crate
+intake playlist favorites`.
+
+The job resolved the account's 206 listed hearts against the library: **0 owned,
+61 offered, 145 missing.** Sitting 4's favourites sweep had matched 59 of those
+same hearts to library rows by ISRC; the intake worker resolved 37 of the 59 as
+missing and 22 as offered. `match._read_from_disk` takes a file's title from its
+tag first, verbatim, and strips heads only from the filename stem. In this
+library the Title tag carries the same `KEY - BPM - ` head the filename does,
+`06A - 126 - Dr. Beat` for a file the provider spells `Dr. Beat`, the live
+system's convention that R-168 records. So the recording token of every
+processed file holds the head, an exact match is impossible, and the approximate
+pass either offers the file as `title-approximate` or, when the head outweighs a
+short title, scores it under the floor of 82 and reports missing.
+
+**Measured on the tree, 2026-09-23.** 9767 of 9868 files under the music folder
+index with a head in their title. The 206 frozen rows of job
+`2026-09-23T17:21:30Z-0dbf`, resolved against the same volume with a reader that
+passes the tag title through `naming.strip_heads` and nothing else changed: **96
+owned, 27 offered, 83 missing**, against the shipped reader's 0, 61 and 145 on
+the same rows in the same process. Of sitting 4's 59, 37 matched outright, 8
+were offered and 14 stayed missing, those 14 being rows whose artist tag lists
+every credited artist where the provider names one, a second and narrower gap
+that the ISRC both sides carry would close, unmeasured beyond that count.
+
+**Measured cost, and it is the whole acquisition workflow.** `crate intake
+missing --job` writes the missing rows to the list `acquire download` reads, so
+the next step of A5 line 1 would have listed at least 96 owned tracks, and the
+download and the landing after it would have put 96 duplicates into the library
+and the collection. Every playlist intake, the inbound check of `crate sync
+all`, `intake set` and `match run` read the same index and say missing over the
+same files. The sitting stopped at the listing, with job `0dbf` succeeded and
+its 61 review items unanswered.
+
+**Why not fixed here.** The reader is the one every caller of the index shares,
+and R-71 and R-168 sit on the same seam. A unit's work, not a sitting's.
+
+**Closes when:** a file whose title tag carries a head indexes under the head
+stripped title, driven against a tag spelled `06A - 126 - Dr. Beat` and a
+provider row spelling `Dr. Beat`, and the 206 frozen rows of job `0dbf`
+re-resolved on the live library report none of sitting 4's 59 missing for the
+head alone.
+
+**On the board bar, (b) and (a):** the product says missing over 96 tracks the
+library holds, and the list it writes from that has `acquire download` put
+duplicates into the library. Issue owed after this commit.

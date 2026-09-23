@@ -129,6 +129,26 @@ having no terminal is an operator fact for the next sitting, not a product one:
 a wizard answer goes in through a pipe from that runner or from a Terminal
 window, and the sittings' "typed yes" is still the author's either way.
 
+## Sitting 6, 2026-09-23, afternoon
+
+Machine state before: the volume mounted, rekordbox and its agent closed,
+`crate doctor` from the pipx install at `1d2136f` exit 0 with no failing check,
+the pin still without a confirmation date, backup ages 7 and 6 days. No backup
+acknowledgment was minted: the sitting stopped before anything that writes.
+
+One workflow, A5 line 1, favourites in, and it ran its first two steps. Every
+verb was run from the pipx install, never the checkout.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `intake playlist favorites`, the listing | yes | 1.7 seconds. **215 declared, 206 listed, 9 withheld**, said in the `intake-hearts-withheld` warning and the envelope's `shortfall` block. That is R-383's live half, closed: the old rule read 93 of 197 at sitting 4, and the account holds 215 today. The verb queues and returns, and the human renderer prints nothing about the job it queued (R-378's shape); the job identifier was read out of `job list --output json`. | live, R-383 closed |
+| `intake playlist favorites --job`, the resolution | yes | 13 seconds, 206 settled: **0 owned, 61 offered, 145 missing.** Sitting 4 had matched 59 of these hearts to library rows by ISRC; this run reported 37 of the 59 missing and 22 offered. Cause: the Title tag of every processed file carries the `KEY - BPM - ` head, the index takes the tag verbatim, so no processed file can match exactly. Re-resolved on the volume with the head stripped from the tag: 96 owned, 27 offered, 83 missing (R-664). | live, output false |
+| `intake missing --job` and everything after | not run | The list would have carried at least 96 owned tracks, and the download and landing would have put 96 duplicates into the library. Stopped by the author's decision. Job `2026-09-23T17:21:30Z-0dbf` stays succeeded with its 61 `version-match` review items unanswered, and sitting 4's ten item playlist job `673e` is still queued from that day. | stopped |
+
+One finding filed, R-664, on the board bar, and R-383 closed. Line 1 of #178 is
+not ticked: the tick is a pointer to a record of the workflow having run, and it
+ran two steps of seven.
+
 ## What blocks a full sync cycle, stated plainly
 
 The board is complete and the product cannot yet do its central workflow,
@@ -173,14 +193,14 @@ lists Tidal. The vendored downloader is the only Tidal facing code that runs.
 
 ## Next sitting
 
-The configuration is rebuilt and doctor is clean, so the queue is A5, issue
-#178, in its own order, and the next sitting is line 1: favourites in, through
-`intake playlist favorites`, `intake missing`, `acquire download`, `tag folder`,
-`name apply`, `intake land` and the rekordbox import, with the heart count
-compared against the account's 197, which is R-383's live half since U65 landed
-its code half. R-361's rule landed on `relay/95`, so the 11 label debris
-playlists are excluded before they are queued. The list this section carried
-before sitting 5 is superseded by #178.
+Line 1 of #178 resumes once R-664's unit has landed and the pipx install has
+been brought to that merge, and it resumes at `intake missing --job` over a
+FRESH listing rather than job `0dbf`, because a job's items are resolved once
+and `0dbf`'s artifacts say missing over owned files. Then `acquire download`,
+`tag folder`, `name apply`, `intake land` and the rekordbox import. R-383 is
+closed and needs nothing more. R-361's rule landed on `relay/95`, so the 11
+label debris playlists are excluded before they are queued. The list this
+section carried before sitting 5 is superseded by #178.
 
 Anything that writes needs a backup acknowledgment inside its validity window:
 `crate session ack` from a Terminal window, answered with `crate run decide`,
