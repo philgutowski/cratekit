@@ -27532,7 +27532,8 @@ gate, so a missing or unusable export refuses on the plan read, with a test
 that drives the plan over an absent export and reads the refusal before any
 answer.
 
-**Not on the board bar.** A shape fix; the write is still held.
+**Not on the board bar.** A shape fix; the write is still held. Issue #195,
+filed after the ninth sitting for the Relay feeder.
 
 ---
 
@@ -27557,7 +27558,10 @@ identifier, the resolution names its owned, offered and missing counts, and
 the import proof names what it proved and retired, each driven in the default
 human mode the way R-378's fix was.
 
-**Not on the board bar.** A wording and shape fix, no data at risk.
+**Not on the board bar.** A wording and shape fix, no data at risk. Issue
+#196, filed after the ninth sitting for the Relay feeder, its scope widened to
+the queueing half of `acquire download` and `tag folder`, which sitting 9
+found printing `ok` and no job identifier the same way.
 
 
 ---
@@ -27598,5 +27602,5 @@ offers an item, owns the row by ISRC on the next resolution, and reads the
 item gone from the open list. A predicate that selects open items by the
 row's later state is the other acceptable shape.
 
-**Not on the board bar.** A shape fix, no write held. Issue owed to the
-Relay queue after this sitting.
+**Not on the board bar.** A shape fix, no write held. Issue #197, filed after
+the ninth sitting for the Relay feeder.
