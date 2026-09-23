@@ -1,0 +1,165 @@
+name = "r679-a"
+pass_kind = "light"
+
+# Table A: the store's third verdict, its one writer, and the command line.
+# Subset: the three files that drive the review store for this unit.
+
+[[rows]]
+id = "A1_supersede_guard_both_layers"
+description = "supersede: drop the empty column condition from the read and the write together, so a person's verdict is overwritten"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''            f"SELECT item_id FROM review_items WHERE item_id IN ({marks}) "
+            f"AND verdict IS NULL ORDER BY ordinal",
+            wanted,
+        )
+    )
+    if not open_ids:
+        return ()
+    now = timestamp()
+    marks = ", ".join("?" for _ in open_ids)
+    with store.immediate() as conn:
+        conn.execute(
+            f"UPDATE review_items SET verdict = ?, option = NULL, actor = ?, decided = ?, "
+            f"updated = ? WHERE item_id IN ({marks}) AND verdict IS NULL",'''
+new = '''            f"SELECT item_id FROM review_items WHERE item_id IN ({marks}) "
+            f"ORDER BY ordinal",
+            wanted,
+        )
+    )
+    if not open_ids:
+        return ()
+    now = timestamp()
+    marks = ", ".join("?" for _ in open_ids)
+    with store.immediate() as conn:
+        conn.execute(
+            f"UPDATE review_items SET verdict = ?, option = NULL, actor = ?, decided = ?, "
+            f"updated = ? WHERE item_id IN ({marks})",'''
+
+[[rows]]
+id = "A2_supersede_read_layer_alone"
+description = "supersede: drop the empty column condition from the read alone, leaving the write's; the write is the guard and the read the efficiency"
+file = "src/cratekit/core/review.py"
+surface = "maintainer"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''            f"SELECT item_id FROM review_items WHERE item_id IN ({marks}) "
+            f"AND verdict IS NULL ORDER BY ordinal",
+            wanted,'''
+new = '''            f"SELECT item_id FROM review_items WHERE item_id IN ({marks}) "
+            f"ORDER BY ordinal",
+            wanted,'''
+
+[[rows]]
+id = "A3_supersede_readers_predicate"
+description = "supersede: widen the write's condition to the reader's unresolved predicate, so a verdict a newer build wrote is overwritten"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''            f"SELECT item_id FROM review_items WHERE item_id IN ({marks}) "
+            f"AND verdict IS NULL ORDER BY ordinal",
+            wanted,
+        )
+    )
+    if not open_ids:
+        return ()
+    now = timestamp()
+    marks = ", ".join("?" for _ in open_ids)
+    with store.immediate() as conn:
+        conn.execute(
+            f"UPDATE review_items SET verdict = ?, option = NULL, actor = ?, decided = ?, "
+            f"updated = ? WHERE item_id IN ({marks}) AND verdict IS NULL",'''
+new = '''            f"SELECT item_id FROM review_items WHERE item_id IN ({marks}) "
+            f"AND (verdict IS NULL OR verdict NOT IN ('accepted', 'rejected', 'superseded')) ORDER BY ordinal",
+            wanted,
+        )
+    )
+    if not open_ids:
+        return ()
+    now = timestamp()
+    marks = ", ".join("?" for _ in open_ids)
+    with store.immediate() as conn:
+        conn.execute(
+            f"UPDATE review_items SET verdict = ?, option = NULL, actor = ?, decided = ?, "
+            f"updated = ? WHERE item_id IN ({marks}) AND (verdict IS NULL OR verdict NOT IN ('accepted', 'rejected', 'superseded'))",'''
+
+[[rows]]
+id = "A4_resolve_admits_the_machines_verdict"
+description = "resolve: drop the refusal of the machine's verdict, so a batch or an import can land it with a candidate"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''    if verdict not in PERSON_VERDICTS:
+        # The machine's verdict has its own writer with its own invariants: no'''
+new = '''    if False:
+        # The machine's verdict has its own writer with its own invariants: no'''
+
+[[rows]]
+id = "A5_import_routes_through_resolve"
+description = "import: send an incoming superseded verdict through resolve rather than supersede"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''        if verdict is Verdict.SUPERSEDED:
+            # The machine's verdict travels under the machine's rules: the'''
+new = '''        if False:
+            # The machine's verdict travels under the machine's rules: the'''
+
+[[rows]]
+id = "A6_empty_rule_admitted"
+description = "supersede: drop the refusal of an empty rule, so a superseded item can name nothing"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''    if not rule:
+        raise refuse(
+            "review-selection-invalid",
+            "a superseded item names the rule that owned its row; an empty one "'''
+new = '''    if False:
+        raise refuse(
+            "review-selection-invalid",
+            "a superseded item names the rule that owned its row; an empty one "'''
+
+[[rows]]
+id = "A7_person_verdicts_are_all_verdicts"
+description = "PERSON_VERDICTS: include the machine's verdict, so the command line offers it"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''    member for member in Verdict if member is not Verdict.SUPERSEDED'''
+new = '''    member for member in Verdict'''
+
+[[rows]]
+id = "A8_actor_is_not_the_rule"
+description = "supersede: write a fixed word as the actor instead of the rule that owned the row"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''            (str(Verdict.SUPERSEDED), rule, now, now, *open_ids),'''
+new = '''            (str(Verdict.SUPERSEDED), "resolution", now, now, *open_ids),'''
+
+[[rows]]
+id = "E1_cli_offers_every_verdict"
+description = "review resolve: offer the whole enum as --verdict choices"
+file = "src/cratekit/cli/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''        choices=tuple(str(member) for member in review.PERSON_VERDICTS),'''
+new = '''        choices=tuple(str(member) for member in review.Verdict),'''
+
+[[rows]]
+id = "E2_listing_drops_the_actor"
+description = "review list: leave the actor out of the listing, so a superseded row shows no rule"
+file = "src/cratekit/cli/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''        "option": item.option,
+        "actor": item.actor,
+    }'''
+new = '''        "option": item.option,
+    }'''
+
+[[dropped]]
+id = "A9_readback_without_the_stamp"
+description = "supersede: read back retired rows without the decided stamp"
+reason = "maintainer facing and only observable under a race between the read and the write, which a serial suite cannot stage"
