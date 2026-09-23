@@ -2592,6 +2592,49 @@ def test_a_persons_acceptance_being_applied_retires_nothing(cfg, music, tmp_path
         assert kept.actor == "phillip"
 
 
+def test_every_caller_of_adjudicate_gates_on_the_rows_that_touch_the_queue():
+    """THE FIX THAT LANDS ON THE CHECKING PATH. The retirement lives inside
+    ``adjudicate``, and four of its five callers opened the review store only
+    for a question, so an owned row reached it from ``match run`` alone and
+    from none of the verbs that filed the live items. Every module that calls
+    ``adjudicate`` now names the shared predicate, and a new caller that gates
+    on the needs-review state alone fails here."""
+    callers = [
+        path
+        for path in (REPO_ROOT / "src" / "cratekit").rglob("*.py")
+        if "match_cli.adjudicate(" in path.read_text(encoding="utf-8")
+    ]
+    assert len(callers) >= 4, [path.name for path in callers]
+    for path in callers:
+        text = path.read_text(encoding="utf-8")
+        assert "match_cli.touches_the_queue(" in text, path
+        assert "resolved.of(match.MatchState.NEEDS_REVIEW):" not in text, path
+
+
+def test_the_gate_predicate_admits_a_question_and_a_rule_owned_row_and_nothing_else():
+    line = one()
+    def shaped(state, why):
+        return match.TrackMatch(wanted=line, state=state, why=why)
+    assert match_cli.touches_the_queue(
+        shaped(match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS)
+    )
+    for why in match.OWNING_RULES:
+        assert match_cli.owned_by_a_rule(shaped(match.MatchState.MATCHED, why))
+        assert match_cli.touches_the_queue(shaped(match.MatchState.MATCHED, why))
+    assert not match_cli.owned_by_a_rule(
+        shaped(match.MatchState.MATCHED, match.Why.VERDICT_ACCEPTED)
+    )
+    assert not match_cli.touches_the_queue(
+        shaped(match.MatchState.MATCHED, match.Why.VERDICT_ACCEPTED)
+    )
+    assert not match_cli.touches_the_queue(
+        shaped(match.MatchState.MISSING, match.Why.NOT_IN_LIBRARY)
+    )
+    assert not match_cli.touches_the_queue(
+        shaped(match.MatchState.SUPPRESSED, match.Why.TOMBSTONED)
+    )
+
+
 def test_every_question_identity_is_one_per_shape_and_agrees_with_the_asked_one():
     """The retiring side enumerates shapes, and each must be the identity the
     asking side would have filed under, or a retirement looks for an item

@@ -556,9 +556,10 @@ def label_approved(ctx) -> Envelope:
                 for one in wanted
             )
         )
-        if resolved.of(match.MatchState.NEEDS_REVIEW):
-            # THE REVIEW STORE IS OPENED ONLY FOR A QUESTION, as the intake
-            # worker opens it, and the offer is idempotent on the question.
+        if any(match_cli.touches_the_queue(one) for one in resolved.matches):
+            # THE REVIEW STORE IS OPENED ONLY WHEN A ROW TOUCHES IT, a question
+            # or a row a rule owns, as the intake worker opens it, and the
+            # offer is idempotent on the question.
             with review.open_store(cfg) as items:
                 resolved = match_cli.adjudicate(
                     items,

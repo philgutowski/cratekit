@@ -1217,16 +1217,17 @@ def resolve_track(wanted: Wanted, job: jobs.Job, cfg: config.Config) -> match.Tr
     resolve against the index and the tombstone snapshot, then let the review
     queue turn a needs review state into an item and read back any answer a
     person already gave. The offer is idempotent, so a resume that redoes the
-    item asks nothing twice. THE REVIEW STORE IS OPENED ONLY FOR A QUESTION:
-    ``adjudicate`` passes an owned or a missing track straight through, so
-    opening and initialising the store for those would be fifty opens to use
-    it twice.
+    item asks nothing twice. THE REVIEW STORE IS OPENED ONLY WHEN THE ROW
+    TOUCHES IT: a question, or a row a rule owns, whose earlier question is
+    retired there. A missing or a tombstoned track passes straight through and
+    opens nothing. This used to open only for a question, and an owned row
+    then reached the retirement from no intake job at all.
     """
     view = _resolved_for(job, cfg)
     found = match.resolve_one(
         wanted, view.index, suppresses=view.suppresses, suppression_id=view.suppression_id
     )
-    if found.state is not match.MatchState.NEEDS_REVIEW:
+    if not match_cli.touches_the_queue(found):
         return found
     with review.open_store(cfg) as items:
         result = match_cli.adjudicate(

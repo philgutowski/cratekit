@@ -150,7 +150,7 @@ def missing_rows(
         )
     index, suppresses, identify = match_cli.library_view(cfg)
     resolved = match.resolve_all(wanted, index, suppresses=suppresses, suppression_id=identify)
-    if resolved.of(match.MatchState.NEEDS_REVIEW):
+    if any(match_cli.touches_the_queue(one) for one in resolved.matches):
         with review.open_store(cfg) as items:
             resolved = match_cli.adjudicate(
                 items,

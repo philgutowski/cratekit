@@ -1019,8 +1019,11 @@ resolution owned the row the item asked about under a rule that never consults
 the queue, the ISRC rule or the credited rule or an exact hold, so the question
 stopped being one. The item's actor names the rule. It leaves the open list, is
 not a suppression, cannot be typed at `crate review resolve`, and `clear` revokes
-it like any verdict. When the rule stops owning the row, the next resolution
-revokes it itself and asks the question again.
+it like any verdict. When the row becomes a question again, because the file the
+rule owned it by is gone and another cut is held, the next resolution revokes it
+itself and asks. A row that goes missing instead keeps the verdict until it is a
+question again; there is nothing to ask about a missing row, and an open item
+about one is the shape the third verdict exists to end.
 
 ### Confirm gate
 A recorded act that this invocation may proceed. It is not a verdict. Honouring

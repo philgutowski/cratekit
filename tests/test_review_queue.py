@@ -1126,8 +1126,7 @@ def test_an_unresolved_cause_says_how_many_are_outstanding_and_what_to_do():
 
 def test_supersede_retires_an_open_item_naming_the_rule_and_it_leaves_the_open_list(store):
     item = _offer_one(store)
-    retired = review.supersede(store, item.item_id, rule="isrc-exact")
-    assert retired is not None
+    (retired,) = review.supersede(store, [item.item_id], rule="isrc-exact")
     assert retired.verdict is review.Verdict.SUPERSEDED
     assert retired.actor == "isrc-exact"
     assert retired.option is None
@@ -1143,6 +1142,24 @@ def test_supersede_retires_an_open_item_naming_the_rule_and_it_leaves_the_open_l
     assert review.count_unresolved(store) == 0
 
 
+def test_supersede_takes_several_identifiers_and_retires_only_the_open_ones_among_them(store):
+    """The producer asks about the four shapes a line can have been asked under
+    in one call; most were never filed and some are answered."""
+    first = _offer_one(store, key="a")
+    second = _offer_one(store, key="b")
+    third = _offer_one(store, key="c")
+    review.resolve(store, second.item_id, review.Verdict.ACCEPTED, actor="phillip")
+    retired = review.supersede(
+        store,
+        [first.item_id, second.item_id, "rv_never_offered", third.item_id, first.item_id],
+        rule="isrc-exact",
+    )
+    assert [one.item_id for one in retired] == [first.item_id, third.item_id]
+    assert all(one.verdict is review.Verdict.SUPERSEDED for one in retired)
+    assert review.get(store, second.item_id).actor == "phillip"
+    assert review.supersede(store, [], rule="isrc-exact") == ()
+
+
 @pytest.mark.parametrize("theirs", [review.Verdict.ACCEPTED, review.Verdict.REJECTED])
 def test_supersede_never_overwrites_a_persons_verdict(store, theirs):
     """The brief's fourth scenario. A resolution walks two hundred rows and most
@@ -1150,21 +1167,55 @@ def test_supersede_never_overwrites_a_persons_verdict(store, theirs):
     existed, so their verdict stands and the call reports it did nothing."""
     item = _offer_one(store)
     review.resolve(store, item.item_id, theirs, actor="phillip")
-    assert review.supersede(store, item.item_id, rule="isrc-exact") is None
+    assert review.supersede(store, [item.item_id], rule="isrc-exact") == ()
     kept = review.get(store, item.item_id)
     assert kept.verdict is theirs
     assert kept.actor == "phillip"
 
 
+def test_supersede_never_overwrites_a_verdict_this_build_cannot_read(store):
+    """NARROWER THAN RESOLVE, on purpose. A person answering a question they
+    were shown may write over a value a newer build left; a resolution running
+    on every pass may not, because that value is a decision somebody made on
+    the build that could represent it."""
+    item = _offer_one(store)
+    with store.immediate() as conn:
+        conn.execute(
+            "UPDATE review_items SET verdict = 'from-a-newer-build' WHERE item_id = ?",
+            (item.item_id,),
+        )
+    assert review.get(store, item.item_id).verdict is None, "the reader sees a question"
+    assert review.supersede(store, [item.item_id], rule="isrc-exact") == ()
+    assert review.get(store, item.item_id).stored_verdict == "from-a-newer-build"
+
+
 def test_supersede_reports_nothing_for_an_item_nobody_filed(store):
-    assert review.supersede(store, "rv_never_offered", rule="isrc-exact") is None
+    assert review.supersede(store, ["rv_never_offered"], rule="isrc-exact") == ()
 
 
 def test_supersede_refuses_an_empty_rule(store):
     item = _offer_one(store)
     with pytest.raises(CratekitError) as caught:
-        review.supersede(store, item.item_id, rule="")
+        review.supersede(store, [item.item_id], rule="")
     assert caught.value.cause.reason == "review-selection-invalid"
+    assert review.get(store, item.item_id).verdict is None
+
+
+def test_resolve_and_the_batch_refuse_the_machines_verdict(store):
+    """The third verdict has one writer. ``resolve`` is a person's path, and
+    ``resolve_where`` and the import ride on it, so letting it through would
+    land a superseded item naming a candidate and a person."""
+    item = _offer_one(store)
+    with pytest.raises(CratekitError) as caught:
+        review.resolve(store, item.item_id, review.Verdict.SUPERSEDED, actor="phillip")
+    assert caught.value.cause.reason == "review-selection-invalid"
+    with pytest.raises(CratekitError):
+        review.resolve_where(
+            store,
+            review.Predicate(queue=review.Queue.VERSION_MATCH),
+            review.Verdict.SUPERSEDED,
+            actor="phillip",
+        )
     assert review.get(store, item.item_id).verdict is None
 
 
@@ -1172,7 +1223,7 @@ def test_a_superseded_item_offered_again_is_neither_reopened_nor_duplicated(stor
     """The brief's second scenario. ``offer`` is idempotent by identity and a
     resolved row is left alone, and the third verdict is a resolution."""
     item = _offer_one(store)
-    review.supersede(store, item.item_id, rule="isrc-exact")
+    review.supersede(store, [item.item_id], rule="isrc-exact")
     again = _offer_one(store, payload={"wanted": "track a", "found": "a newer description"})
     assert again.item_id == item.item_id
     assert again.verdict is review.Verdict.SUPERSEDED
@@ -1184,7 +1235,7 @@ def test_a_superseded_item_offered_again_is_neither_reopened_nor_duplicated(stor
 def test_clear_returns_a_superseded_item_to_the_open_list(store):
     """The brief's third scenario. Revocable like any verdict."""
     item = _offer_one(store)
-    review.supersede(store, item.item_id, rule="isrc-exact")
+    review.supersede(store, [item.item_id], rule="isrc-exact")
     cleared = review.clear(store, item.item_id, actor="phillip")
     assert cleared.verdict is None
     assert cleared.actor == "phillip"
@@ -1197,7 +1248,7 @@ def test_a_batch_resolution_does_not_touch_items_a_resolution_superseded(store):
     so the sweep is a filter over what is outstanding and leaves it alone."""
     first = _offer_one(store, key="a", payload={"why": "title-approximate"})
     second = _offer_one(store, key="b", payload={"why": "title-approximate"})
-    review.supersede(store, first.item_id, rule="isrc-exact")
+    review.supersede(store, [first.item_id], rule="isrc-exact")
     swept = review.resolve_where(
         store,
         review.Predicate(queue=review.Queue.VERSION_MATCH, payload_equals={"why": "title-approximate"}),
@@ -1214,7 +1265,7 @@ def test_an_export_carrying_the_third_verdict_imports_without_conflict(cfg, stor
     """The brief's fifth scenario, in both directions: into a queue that never
     saw the item, and back into the one that wrote it."""
     item = _offer_one(store)
-    review.supersede(store, item.item_id, rule="credited-exact")
+    review.supersede(store, [item.item_id], rule="credited-exact")
     document = review.export_document(store)
     assert document["items"][0]["verdict"] == "superseded"
 
@@ -1230,6 +1281,34 @@ def test_an_export_carrying_the_third_verdict_imports_without_conflict(cfg, stor
     back = review.import_document(store, document, actor="importer")
     assert back.conflicts == ()
     assert back.unchanged == (item.item_id,)
+
+
+def test_an_import_carries_the_machines_verdict_under_the_machines_rules(cfg, store, tmp_path):
+    """A document is a transport and not a second writer. An incoming
+    superseded verdict lands through ``supersede``: the option it carries is
+    dropped, the actor is the rule, and a document naming no rule is reported
+    as not applied rather than landing a verdict nothing can explain."""
+    item = _offer_one(store)
+    edited = {
+        "export": review.EXPORT_VERSION,
+        "queue": "",
+        "exported": "2026-09-23T00:00:00Z",
+        "items": [
+            {**item.to_json(), "verdict": "superseded", "option": "opt-accept", "actor": "isrc-exact"},
+        ],
+    }
+    taken = review.import_document(store, edited, actor="importer")
+    assert taken.conflicts == ()
+    landed = review.get(store, item.item_id)
+    assert landed.verdict is review.Verdict.SUPERSEDED
+    assert landed.actor == "isrc-exact"
+    assert landed.option is None
+
+    other = _offer_one(store, key="b")
+    unnamed = {**edited, "items": [{**other.to_json(), "verdict": "superseded", "actor": ""}]}
+    taken = review.import_document(store, unnamed, actor="importer")
+    assert taken.reasons == {other.item_id: review.CONFLICT_NOT_APPLIED}
+    assert review.get(store, other.item_id).verdict is None
 
 
 def test_the_command_line_offers_a_person_only_the_persons_verdicts(store, capsys):

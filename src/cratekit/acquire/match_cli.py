@@ -414,6 +414,29 @@ def _item(items: review.ReviewStore, item_id: str) -> review.Item | None:
     return review.find(items, item_id)
 
 
+def owned_by_a_rule(found: match.TrackMatch) -> bool:
+    """Whether resolution owned this row on its own evidence, consulting no
+    queue and no person. A matched row under a person's applied acceptance is
+    not one, and ``OWNING_RULES`` is the positive list."""
+    return found.state is match.MatchState.MATCHED and found.why in match.OWNING_RULES
+
+
+def touches_the_queue(found: match.TrackMatch) -> bool:
+    """Whether ``adjudicate`` has anything to do with this row.
+
+    A question is offered or read back, and a row a rule owns retires the
+    question an earlier run asked about it. EVERY CALLER GATES ON THIS and not
+    on the needs-review state alone. Four of the five used to, opening the
+    store "only for a question", and the retirement was unreachable from every
+    verb but ``match run``: the intake worker, the missing pass, the label
+    sweep and the fallback pass, which between them filed the 85 stale items
+    the residual measured, would have re-resolved the owning job and retired
+    none of them. A row that is owned or missing with no question in its batch
+    still costs no store open.
+    """
+    return found.state is match.MatchState.NEEDS_REVIEW or owned_by_a_rule(found)
+
+
 def retire_questions(
     items: review.ReviewStore, found: match.TrackMatch
 ) -> tuple[review.Item, ...]:
@@ -421,25 +444,19 @@ def retire_questions(
 
     A line can have been asked about under any of the four question shapes, and
     the retiring side has no why to derive one from, so it asks about all of
-    them. Each is READ before it is written: most identifiers were never filed,
-    and a row that was filed and then answered by a person is left exactly as
-    they left it. ``supersede`` guards the write with the same unresolved
-    condition again, inside its transaction, so a person answering between the
-    read and the write still wins.
-
-    Returns what was retired, so a caller counts what happened rather than
-    what was attempted.
+    them in one call. ``supersede`` reads which are open once, writes only
+    over an empty column, and reports what it retired, so a row nobody ever
+    asked about costs one read, and a question a person answered before the
+    rule existed is left exactly as they left it.
     """
-    retired: list[review.Item] = []
-    for identity in found.wanted.questions():
-        item_id = review.item_id_for(QUEUE, match.QUESTION_KIND, identity)
-        held = _item(items, item_id)
-        if held is None or held.resolved:
-            continue
-        done = review.supersede(items, item_id, rule=str(found.why))
-        if done is not None:
-            retired.append(done)
-    return tuple(retired)
+    return review.supersede(
+        items,
+        tuple(
+            review.item_id_for(QUEUE, match.QUESTION_KIND, identity)
+            for identity in found.wanted.questions()
+        ),
+        rule=str(found.why),
+    )
 
 
 def adjudicate(
@@ -464,7 +481,7 @@ def adjudicate(
     """
     settled: list[match.TrackMatch] = []
     for found in result.matches:
-        if found.state is match.MatchState.MATCHED and found.why in match.OWNING_RULES:
+        if owned_by_a_rule(found):
             # RESOLUTION OWNED THIS ROW on its own evidence, under a rule that
             # never consults the queue. Any question an earlier run filed about
             # the same line is no longer one, so it is retired here, naming the
