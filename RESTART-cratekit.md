@@ -4,7 +4,49 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-669 with R-670, issue #194, `unit/issue194`, 2026-09-23.**
+**Last merged: R-667, issue #193, `unit/issue193`, 2026-09-23.**
+The library index answers a row by the identity both sides carry before it
+compares text, and a processed file's credited artist list holds a row naming
+one of them. **Why:** sitting 7 measured 49 of 206 hearts held by ISRC tag and
+read as missing or offered, because `recording_token` joined the file's whole
+artist tag, `Malive, Tito Azevedo, MRQZ`, where the provider row names
+`Malive`, and `Owned` had no ISRC field. `intake missing --job` listed 26
+held files for download. **The change, two rules in order:** `Owned` carries
+the file's ISRC folded, `LibraryIndex.by_isrc` is asked first, and a file
+carrying the row's ISRC whose folded title agrees is owned under
+`isrc-exact`, the key still checked over those files and no text copy joining
+the paths. Then `LibraryIndex.held`, the recording token and after it the
+credited list rule: a file whose folded title is the row's and whose comma
+separated artist tag credits the row's primary artist as one whole member is
+the same recording, under `credited-exact`. The reader takes its four fields
+through one container open, `tags.read_tags`, timed at 0.14 s against 0.21 s
+per thousand files, which closes R-666. **The built in review at high raised
+eight findings, all driven in one round:** an ISRC agrees only with the folded
+title, a file carrying it under another title is offered with its path rather
+than called owned (R-674, the conservative call, recorded with the other
+option); an ISRC settles the version on the candidate too; one fold,
+`match.fold_isrc` and `match.isrc_token`, called by the outbound source and the
+missing verb, two private regexes gone; members computed once per file; the
+comma only limit stated with its measurement on the live volume, tags read
+only, 3041 of 9868 artist tags with a comma and 142 joined some other way, the
+ampersand mostly a band's own name (R-673). **R-667 CLOSED on its fixture
+condition; its second, the 206 rows of job `7caa` re-resolved live with none
+of the 49 missing or offered, is the next sitting of #178, attended, and that
+sitting should count the held rows by reason.** R-666 CLOSED. Filed R-673 and
+R-674, neither on the board bar. No issue owed.
+Battery: ruff clean, **10049 passed** and 1 skipped in 84 seconds. Scan clean.
+Mutation table `docs/mutation/r667.md`, read in `r667-notes.md`: **25 rows,
+the author's own, 23 killed on a subset of 490 and two zeros confirmed on the full suite, each given a test that reaches its clause alone and re-run killed in `r667-b.md`**. `docs/solutions/` entry:
+`workflow-issues/a-guard-covered-by-another-guard-gets-a-direct-test-per-layer-because-the-driver-mutates-one-site-per-row.md`.
+`CONCEPTS.md` gains "Credited list rule".
+**Main's highest residual number is R-674.** No issue owed after this merge.
+
+**Next: the landing gate decision in `docs/cutover.md`, "Next sitting", then
+the 206 rows of `7caa` re-resolved on the pipx install rebuilt from this
+`main`, counted by reason.** The build queue is empty of units; #29 stays
+attended.
+
+**Merged before it: R-669 with R-670, issue #194, `unit/issue194`, 2026-09-23.**
 An acquired file, named by the vendored adapter for its provider identifier,
 is given a body from its artist and title tags by `name apply`. **The rule
 is narrow:** a stem that is digits and nothing else once the head is off is

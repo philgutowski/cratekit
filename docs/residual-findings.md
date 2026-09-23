@@ -26979,6 +26979,17 @@ fixture of a thousand files is timed against the current one.
 
 **Not on the board bar.** Maintainer facing: slow, not wrong.
 
+**Closed 2026-09-23 by the unit for issue #193, which needed it.** The brief
+forbade a fourth open for the ISRC, so `tags.read_tags(path, fields)` opens a
+container once and answers each field exactly as `read_tag` does, and
+`read_tag` is now one field of it. `match._read_from_disk` reads its four
+fields through one call, and a test counts the opens. Timed over a fixture of
+a thousand real containers on the local disk, three walks each: one open
+0.14 s, the three open reader it replaces 0.21 s, the four open shape 0.30 s.
+The live volume, external, was walked once reading two fields for the
+credited list measurement: 9868 files in 11.7 s. Not timed against the three
+open reader on the volume.
+
 ## R-667. The match engine never consults the ISRC, and a processed file's artist tag lists every credited artist, so a quarter of the hearts the library holds read missing or offered
 
 **Found:** at the seventh attended sitting, 2026-09-23, on the second live
@@ -27040,6 +27051,39 @@ missing or offered.
 library holds and its own list has `acquire download` put duplicates into the
 library, and it asks 23 questions over files it holds. Issue owed after this
 merge.
+
+**Closed 2026-09-23 on its first condition, by the unit for issue #193.**
+Two rules, in the order the entry proposed. `Owned` carries the file's ISRC
+tag folded through `match.isrc_token`, `LibraryIndex.by_isrc` can be asked by
+it, and `resolve_one` asks before any text rule: a file carrying the row's
+ISRC whose folded title agrees is owned under a reason of its own,
+`isrc-exact`, the key still checked over those files, driven against a real
+container tagged `Malive, Tito Azevedo, MRQZ` and `04A - 126 - Burning
+(Extended Mix)` with ISRC `USNRS2644532` and a provider row spelling `Malive`
+and `Burning (Extended Mix)` under the same ISRC, in
+`tests/test_match_states.py`, and through `intake playlist` then `intake
+missing --job` in `tests/test_intake_missing.py`, where it is owned and
+nothing is written. For the files with no ISRC tag, `LibraryIndex.held`
+applies the credited list rule after the recording token: a file whose folded
+title is the row's and whose comma separated artist tag credits the row's
+primary artist as one whole member is the same recording, under
+`credited-exact`, driven on the same container with its ISRC removed and on
+`Traumer, antraum, Anton` against `antraum`. Whole names, never substrings.
+A credited hit at another version is the version question it is. The built
+in review at high raised eight findings and all were driven: an ISRC agrees
+only with the folded title and a file carrying the ISRC under another title
+is offered as a question with its path rather than called owned (R-674); an
+ISRC settled row lists the files carrying it and no text copy; an ISRC
+settles the version on the candidate too; the fold has one owner,
+`match.fold_isrc` and `match.isrc_token`, called by the outbound source and
+the missing verb; members are computed once per file. The reader takes its
+four fields through one container open (R-666). The comma is the only joiner,
+measured on the live volume (R-673). **The second condition, the 206 rows of
+job `7caa` re-resolved on the live library with none of the 49 held by ISRC
+missing or offered, is the next sitting of #178, attended.** This unit's walk
+of the same folder counted 1588 files with no ISRC tag against the sitting's
+1691, both read through `tags`, and the difference is recorded and not
+explained: no mechanism is offered without a measurement showing it.
 
 ## R-668. The download verb's resume needs the list named again
 
@@ -27216,3 +27260,74 @@ one, composes to a marked name, or the marker is derived from the container
 rather than read off a surface that never carried it.
 
 **Not on the board bar.** Reachability unmeasured under the shipped policy.
+
+---
+
+## R-673. The credited list rule splits on the comma alone, and 142 artist tags on the volume join their credits some other way
+
+**Found by** the built in review of the unit for issue #193, 2026-09-23,
+proposing that the splitter recognise the ampersand, `x`, `feat` and `vs`.
+
+**Measured on the live volume, 2026-09-23, tags read only.** Of 9868 files,
+3041 carry a comma in the artist tag. Of the tags with no comma, 105 carry an
+ampersand, 25 a `feat` or `ft`, 5 an `x`, 7 an `and`, none a `vs`. The
+ampersand examples are `Above & Beyond`, `Ottmar Liebert & Luna Negra` and
+`Flash & The Pan`, a band's own name and not a join, so a splitter on it
+would make `Above` a member and hand that artist every collaboration. The
+`feat` and `x` examples are joins, `Guy Mantzur & Khen feat. Kamila`,
+`Truth x Lies`, `Livsey x Rude Jude`.
+
+**Measured cost.** At most 37 files, the `feat`, `ft`, `x` and `and` tags
+with no comma, can be held by a provider row naming one of their credited
+artists and still resolve offered or missing, a question in the review queue
+or a listing for download. How many of the account's hearts name one of them
+is unmeasured. The 105 ampersand tags are mostly not a cost, because the
+provider names the band the same way.
+
+**Why not fixed here.** A join the tag does not delimit is a guess about
+where one artist ends, which is the wrong join risk `_first_named` refuses
+for identity, and the population the guess would serve is 37 files.
+
+**Closes when:** a rule for the `feat` and `x` joiners is decided, or the 37
+are retagged with a comma and the count re-measured at zero.
+
+**Not on the board bar.** A question in the queue over a file the library
+holds, or a download a person checks by ISRC first, over a population of 37.
+
+---
+
+## R-674. A file carrying the row's ISRC under another title is offered as a question, and whether the volume holds one is unmeasured
+
+**Found by** the built in review of the unit for issue #193, 2026-09-23. The
+unit's first draft called any ISRC hit owned, and the review named the shape
+that makes: a bootleg or edit ingested with the original's tags, or a tagger
+that wrote one ISRC across a release, carries ISRC X under a different title,
+the heart for X resolves owned to that file, its paths point at the wrong
+recording, and the row is never acquired with nothing saying so.
+
+**The conservative call, taken.** `resolve_one` settles a row by ISRC only
+when the file's folded title agrees with the row's. A file carrying the ISRC
+under a different title is offered as a `title-approximate` question with its
+path, so a person decides, and it is never called owned on one tag. The
+review drove the shape on a fixture, `tests/test_match_states.py`, the test
+named for an ISRC hit whose title disagrees.
+
+**What is unmeasured.** Whether any of the 49 rows held by ISRC on the live
+volume disagree on the folded title. Sitting 7's 22 rows from sitting 4's
+sample read their heads off correctly and failed on the artist alone, so
+those 22 agree; the other 27 were not read for it. If some disagree, the
+next sitting sees them offered rather than owned, which is a question and
+not a listing for download.
+
+**The other option, recorded.** Trust the ISRC outright, as the brief's
+wording "an exact ISRC hit is owned" reads. It costs a wrong owned over a
+mis-tagged file, silent, against a question over a right one, visible. The
+unit took the visible cost.
+
+**Closes when:** the next sitting of #178 reports the 49 held rows by
+reason, `isrc-exact`, `credited-exact` and offered, and any offered row
+whose file carries the row's ISRC is decided one way or the other.
+
+**Not on the board bar.** The product asks rather than answers, over a
+population it cannot yet size, and the cost of the alternative is the one
+board bar (b) names.
