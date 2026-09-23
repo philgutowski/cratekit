@@ -155,6 +155,78 @@ def test_an_accepted_proposal_renames_its_file(configured):
     assert (totals["count"], totals["renamed"], totals["incomplete"]) == (1, 1, 0)
 
 
+def test_a_dark_row_under_a_proposal_name_refuses_the_repair(collected):
+    """R-500's guard, through this verb: a row no rule resolves, whose file is
+    absent and whose name is one this pass would rename, refuses before any
+    rename, in name apply's words. The candidates are this verb's own (R-675)."""
+    folder = _folder(collected)
+    held = _audio(folder, LONG)
+    _scan(folder)
+    _accept(collected, held)
+    _record(collected, f"/mnt/volume/Music/{LONG}", identifier="10")
+
+    code, envelope = _answer("apply")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "collection-row-unmapped"
+    assert envelope["cause"]["detail"]["could_name"] == [
+        {"row": f"/mnt/volume/Music/{LONG}", "files": [str(held)]}
+    ]
+    assert _names(folder) == {LONG}
+
+
+def test_a_dark_row_under_a_proposal_name_refuses_the_repair_plan_too(collected):
+    """The abort answer reads the plan, and the plan's own read carries the
+    guard, so a hole in the collection is seen before anyone is asked."""
+    folder = _folder(collected)
+    held = _audio(folder, LONG)
+    _scan(folder)
+    _accept(collected, held)
+    _record(collected, f"/mnt/volume/Music/{LONG}", identifier="10")
+
+    code, envelope = _answer("abort")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "collection-row-unmapped"
+    assert _names(folder) == {LONG}
+
+
+def test_a_dark_row_recorded_after_the_gate_refuses_the_repair_before_any_rename(
+    collected, monkeypatch
+):
+    """The apply's own read, with its own candidates: the plan saw a collection
+    every row of which resolved, and the read after the gate finds a dark row
+    under the name of the file about to be renamed."""
+    folder = _folder(collected)
+    held = _audio(folder, LONG)
+    _scan(folder)
+    _accept(collected, held)
+    reads = iter([(), (f"/mnt/volume/Music/{LONG}",)])
+    monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
+
+    code, envelope = _answer("apply")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "collection-row-unmapped"
+    assert envelope["cause"]["detail"]["could_name"] == [
+        {"row": f"/mnt/volume/Music/{LONG}", "files": [str(held)]}
+    ]
+    assert _names(folder) == {LONG}
+
+
+def test_a_dark_row_under_another_name_lets_the_repair_run(collected):
+    folder = _folder(collected)
+    held = _audio(folder, LONG)
+    _scan(folder)
+    _accept(collected, held)
+    _record(collected, "/mnt/volume/Music/elsewhere.flac", identifier="10")
+
+    code, envelope = _answer("apply")
+
+    assert code == int(ExitCode.OK), envelope
+    assert _names(folder) == {SHORT}
+
+
 def test_a_proposal_for_a_referenced_file_refuses_and_its_sibling_is_renamed(collected):
     folder = _folder(collected)
     held = _audio(folder, LONG)

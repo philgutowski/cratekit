@@ -229,7 +229,11 @@ def _plan_for(decided: repair.Decided, *, root: Path | None, cfg: config.Config)
             continue
         candidates.append((accepted, path))
 
-    referenced = naming_cli.referenced_keys(cfg) if candidates else frozenset()
+    referenced = (
+        naming_cli.referenced_keys(cfg, renaming=[path for _, path in candidates])
+        if candidates
+        else frozenset()
+    )
     free = [
         (accepted, path)
         for accepted, path in candidates
@@ -351,7 +355,11 @@ def _apply(ctx, cfg: config.Config) -> Envelope:
     # READ AGAIN AFTER THE GATE, as ``name apply`` does and for its reason: the
     # plan's check decides what a person was shown, this one decides what is
     # touched, and rekordbox can import a file between the two.
-    referenced = naming_cli.referenced_keys(cfg) if renames else frozenset()
+    referenced = (
+        naming_cli.referenced_keys(cfg, renaming=[Path(item["path"]) for item in renames])
+        if renames
+        else frozenset()
+    )
     for item in renames:
         path = Path(item["path"])
         if not path.is_file():

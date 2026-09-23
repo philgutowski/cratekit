@@ -1,0 +1,102 @@
+{
+  "name": "r675-b",
+  "pass_kind": "light",
+  "branch": "unit/issue178",
+  "head": "f5c4ce2",
+  "when": "2026-09-23 22:05 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10065,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "state_guarded": "~/Library/Application Support/cratekit (1956 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/naming_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/naming_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a7d1852399fb5adb",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10065,
+    "baseline_collected": 10065,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "E1_existence_not_asked",
+      "description": "existing layer: a row under no rule is dark whether or not its file is on disk, R-500's rejected first cut",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0b556878d11fc826",
+      "subset": [
+        "tests/test_naming_apply_cli.py",
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 130,
+      "baseline_collected": 130,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_row_whose_file_exists_elsewhere_does_not_hold_a_namesake_in_the_library"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):",
+      "new": "        elif resolved.resolution is locations.Resolution.UNMAPPED:"
+    },
+    {
+      "id": "E3_not_a_path_is_dark",
+      "description": "existing layer: a row the resolver calls not a path is dark too, so a device relative row under a candidate's name refuses",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "933ce8fefc3599db",
+      "subset": [
+        "tests/test_naming_apply_cli.py",
+        "tests/intake/test_repair_apply.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 130,
+      "baseline_collected": 130,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_device_relative_row_neither_blocks_nor_protects"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):",
+      "new": "        elif not os.path.exists(decoded):"
+    }
+  ],
+  "dropped": []
+}
