@@ -48,6 +48,14 @@ UNNAMED = "unnamed"
 #: How many incomplete items one cause's detail carries, the same bound the
 #: unmapped refusal puts on its own list and for the same measured reason.
 INCOMPLETE_SHOWN = 20
+#: How many planned and how many held items the gate screen lists (R-670). A
+#: batch is tens of files and is shown whole; a sweep of the library root can be
+#: thousands, and the screen is printed to a terminal and parsed by the runner,
+#: so past this bound the totals carry the rest.
+PLAN_SHOWN = 200
+#: Why a referenced item is held, carried on the item like the other held
+#: classes carry theirs, so the plan and the screen say the same thing.
+REFERENCED_WHY = "the rekordbox collection references it"
 
 
 def _load() -> config.Config:
@@ -78,8 +86,15 @@ def _budget(cfg: config.Config) -> NameBudget:
     )
 
 
-def _has_letters(text: str) -> bool:
-    return any(ch.isalpha() for ch in text)
+def _is_identifier(stem: str) -> bool:
+    """A stem that is digits and nothing else, the form the downloader writes.
+
+    Digits only, not "no letters", because a name a person chose can carry no
+    letters, ``2 + 2 = 5``, and R-168's rule stands over it. The staging template
+    is ``{track_id}``, which is a number, and a number is the one stem nobody
+    chose.
+    """
+    return stem.strip().isdigit()
 
 
 def _artist(path: Path) -> str | None:
@@ -111,12 +126,8 @@ def _composed_body(
     (R-407), and an artist alone is not a name.
     """
     artist = _artist(path)
-    title = (
-        naming.sanitize_segment(naming.strip_head(tagged_title, template=template))
-        if tagged_title
-        else ""
-    )
-    if not artist and not title:
+    title = naming.strip_head(tagged_title, template=template).strip() if tagged_title else ""
+    if not artist and not tagged_title:
         return None, (
             "its name is an identifier and it carries neither an artist tag nor a "
             "title tag, so no name can be composed for it"
@@ -126,12 +137,17 @@ def _composed_body(
             "its name is an identifier and it carries no artist tag, so it is not "
             "renamed to its title alone"
         )
+    if not tagged_title:
+        return None, (
+            "its name is an identifier and it carries no title tag, so it is not "
+            "renamed to its artist alone"
+        )
     if not title:
         return None, (
-            "its name is an identifier and its title tag is empty once the head is "
-            "removed, so no name can be composed for it"
+            "its name is an identifier and its title tag is only a head, empty once "
+            "the head is removed, so no name can be composed for it"
         )
-    return f"{artist}{template.segment_sep}{title}", None
+    return naming.compose_body(artist, title, sep=template.segment_sep), None
 
 
 def _spec_for(
@@ -180,8 +196,8 @@ def _spec_for(
     this verb, and this verb, by the rule above, carried that identifier as the
     body. So a landed batch was fifty four numbers on disk and, once imported,
     R-407 made every one of them unrenamable for life. A stem that carries NO
-    LETTERS AT ALL once the head is off is not a body anybody wrote, and only
-    that stem is composed from the tags. A stem with one letter in it is text a
+    DIGITS AND NOTHING ELSE once the head is off is not a body anybody wrote,
+    and only that stem is composed from the tags. Any other stem is text a
     person or the source system chose, and R-168's decision stands over it.
     """
     tagged_title = tags.read_tag(path, "title")
@@ -196,7 +212,7 @@ def _spec_for(
     marker = cfg.naming.lossy_marker
     stem = naming.strip_head(path.stem, template=template)
     unnamed = None
-    if not _has_letters(stem):
+    if _is_identifier(stem):
         composed, unnamed = _composed_body(path, tagged_title, template=template)
         stem = composed if composed is not None else stem
     return NameSpec(
@@ -493,28 +509,31 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
     number of renames that can actually be performed rather than the number the
     plan wished for. An identifier file with no body to compose is a fourth
     (R-669), listed with its reason, so a person reading the plan sees the file
-    that will stay a number and why, rather than a plan that omits it.
+    that will stay a number and why, rather than a plan that omits it. THE
+    COLLECTION WINS OVER THE HOLD: an imported identifier file is one this verb
+    can never rename (R-407), so it is held as referenced and never owed, rather
+    than sending a person to tag a file whose tag can change nothing.
     """
     template = _template(cfg)
     budget = _budget(cfg)
     candidates: list[tuple[Path, str]] = []
-    unnamed: list[dict[str, str]] = []
+    uncomposed: list[tuple[Path, str]] = []
     if root.is_dir():
         for path in sorted(root.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in AUDIO_EXTS:
                 continue
             spec, why = _spec_for(path, template=template, cfg=cfg)
             if why is not None:
-                unnamed.append(
-                    {"action": UNNAMED, "from": path.name, "path": str(path), "why": why}
-                )
+                uncomposed.append((path, why))
                 continue
             rendered = naming.build(
                 spec, template=template, budget=budget, parent_dir=str(path.parent)
             )
             if rendered.filename != path.name:
                 candidates.append((path, rendered.filename))
-    referenced = _referenced(_recorded(cfg), cfg=cfg) if candidates else frozenset()
+    referenced = (
+        _referenced(_recorded(cfg), cfg=cfg) if candidates or uncomposed else frozenset()
+    )
     # ASKED ONCE PER CANDIDATE. ``_is_referenced`` resolves the path, which is a
     # syscall per candidate, and a sweep of a real library has thousands.
     decided = [
@@ -523,10 +542,21 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
     collides = _collisions([(path, filename) for path, filename, ref in decided if not ref])
     items: list[dict[str, str]] = []
     held = 0
+    unnamed: list[dict[str, str]] = []
+    for path, why in uncomposed:
+        if _is_referenced(path, referenced):
+            held += 1
+            items.append(
+                {"action": REFERENCED, "from": path.name, "path": str(path), "why": REFERENCED_WHY}
+            )
+        else:
+            unnamed.append({"action": UNNAMED, "from": path.name, "path": str(path), "why": why})
     for path, filename, ref in decided:
         if ref:
             held += 1
-            items.append({"action": REFERENCED, "from": path.name, "path": str(path)})
+            items.append(
+                {"action": REFERENCED, "from": path.name, "path": str(path), "why": REFERENCED_WHY}
+            )
         elif str(path) in collides:
             items.append(
                 {
@@ -558,32 +588,37 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
 def _shown(plan: dict, *, root: Path) -> dict[str, object]:
     """What the gate screen puts in front of the person (R-670).
 
-    The totals and every item, the way the landing gate beside this verb shows
+    The totals and the items, the way the landing gate beside this verb shows
     its count and its files. Without this the screen carried the question and
     the options and not one rename, so a person confirmed a plan they had not
     seen. A held item carries the reason it is held, because a plan that says a
     file is not moving without saying why sends a person to diff the folder.
+    Each list stops at ``PLAN_SHOWN`` and says how many it left out, since the
+    default root is the whole library.
     """
     items = plan["items"]
-    return {
+    planned = [
+        {"from": item["from"], "to": item["to"]} for item in items if item["action"] == RENAME
+    ]
+    held = [
+        {"from": item["from"], "as": item["action"], "why": item["why"]}
+        for item in items
+        if item["action"] != RENAME
+    ]
+    shown: dict[str, object] = {
         "root": str(root),
         "renames": plan["totals"]["count"],
         "referenced": plan["totals"]["referenced"],
         "collides": plan["totals"]["collides"],
         "unnamed": plan["totals"]["unnamed"],
-        "planned": [
-            {"from": item["from"], "to": item["to"]} for item in items if item["action"] == RENAME
-        ],
-        "held": [
-            {
-                "from": item["from"],
-                "as": item["action"],
-                "why": item.get("why", "the rekordbox collection references it"),
-            }
-            for item in items
-            if item["action"] != RENAME
-        ],
+        "planned": planned[:PLAN_SHOWN],
     }
+    if len(planned) > PLAN_SHOWN:
+        shown["planned not listed"] = len(planned) - PLAN_SHOWN
+    shown["held"] = held[:PLAN_SHOWN]
+    if len(held) > PLAN_SHOWN:
+        shown["held not listed"] = len(held) - PLAN_SHOWN
+    return shown
 
 
 def build(parser, entry) -> None:
@@ -597,7 +632,7 @@ def build(parser, entry) -> None:
 
 
 def _incomplete_cause(
-    incomplete: list[dict[str, str]], *, renamed: int, collides: int
+    incomplete: list[dict[str, str]], *, renamed: int, collides: int, unnamed: int
 ) -> Cause:
     """What the run answers when part of the plan did not happen (R-172).
 
@@ -627,6 +662,11 @@ def _incomplete_cause(
         steps.append(
             "a file that renders to a name another file is using needs a name of "
             "its own, or one of the two moved out of the folder"
+        )
+    if unnamed:
+        steps.append(
+            "a file marked unnamed is named for its provider identifier and needs "
+            "an artist tag and a title tag written before this can name it"
         )
     return refuse(
         "rename-incomplete",
@@ -700,7 +740,8 @@ def name_apply(ctx) -> Envelope:
             )
             continue
         # READ AGAIN, the tags as much as the collection: a plan composed this
-        # body from tags a person could have edited while the gate waited.
+        # body from tags a person could have edited while the gate waited, and
+        # a name the person did not see is not a name the person approved.
         built, why = _spec_for(path, template=template, cfg=cfg)
         if why is not None:
             _owed(item, why)
@@ -708,6 +749,13 @@ def name_apply(ctx) -> Envelope:
         rendered = naming.build(
             built, template=template, budget=budget, parent_dir=str(path.parent)
         )
+        if rendered.filename != item["to"]:
+            _owed(
+                item,
+                f"it now renders as {rendered.filename}, not the {item['to']} the plan "
+                "was approved with, because a tag changed after the plan was built",
+            )
+            continue
         target = path.with_name(rendered.filename)
         if target != path:
             if not naming.claim_target(target):
@@ -746,7 +794,12 @@ def name_apply(ctx) -> Envelope:
         verb=ctx.entry.name,
         run_id=ctx.run.run_id,
         started=ctx.started,
-        cause=_incomplete_cause(incomplete, renamed=renamed, collides=collided),
+        cause=_incomplete_cause(
+            incomplete,
+            renamed=renamed,
+            collides=collided,
+            unnamed=plan["totals"]["unnamed"],
+        ),
         schema=ctx.entry.output_schema or output.current_schema("plan"),
         data=plan,
     )

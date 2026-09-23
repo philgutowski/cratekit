@@ -1391,14 +1391,14 @@ def test_an_identifier_whose_title_tag_is_only_a_head_is_held(configured):
     folder = _folder(configured)
     _acquired(folder, "12345.flac", artist="Tirzah", title="07A - 126 - ")
     why = _held(_plan(folder))["12345.flac"]
-    assert "title tag is empty once the head is removed" in why
+    assert "title tag is only a head" in why
 
 
 def test_a_head_inside_the_title_tag_is_not_composed_into_the_body(configured):
     """The head belongs to the head derivation and the body is the tag's body.
-    No tempo reaches the filename from the tag's head, because the file's own
-    name has no head and the title's head is a text convention the live system
-    wrote (R-664), and the key comes off the tag as it does for every file."""
+    The head the live system wrote into the tag (R-664) is rendered onto the
+    filename through the same title fallback every file has had since U39, as
+    text, and the composed body carries none of it."""
     folder = _folder(configured)
     _acquired(folder, "12345.flac", artist="Tirzah", title="07A - 126 - Affection")
     moves = _moves(_plan(folder))
@@ -1528,3 +1528,129 @@ def test_the_gate_names_a_referenced_file_among_the_held(collected):
         {"from": held.name, "as": "referenced", "why": "the rekordbox collection references it"}
     ]
     assert [item["from"] for item in shown["planned"]] == [free.name]
+
+
+def test_an_identifier_with_an_artist_and_no_title_tag_is_held_with_its_own_reason(configured):
+    folder = _folder(configured)
+    _acquired(folder, "12345.flac", artist="Tirzah")
+    why = _held(_plan(folder))["12345.flac"]
+    assert "no title tag" in why and "artist alone" in why
+
+
+def test_a_letterless_stem_that_is_not_a_number_is_carried_as_it_is(configured):
+    """Digits only, not "no letters". A name a person chose can be all symbols
+    and R-168's rule stands over it: nothing planned, nothing owed."""
+    folder = _folder(configured)
+    _acquired(folder, "2 + 2 = 5.flac")
+    plan = _plan(folder)
+    assert plan["items"] == []
+
+
+def test_an_empty_artist_value_does_not_lead_the_body_with_a_comma(configured):
+    import mutagen
+
+    folder = _folder(configured)
+    path = _acquired(folder, "12345.flac", title="Affection")
+    handle = mutagen.File(path)
+    handle["ARTIST"] = ["", "Tirzah"]
+    handle.save()
+    assert _moves(_plan(folder)) == [("12345.flac", "Tirzah - Affection.flac")]
+
+
+def test_the_digest_covers_a_held_identifier_file(configured):
+    """A folder holding one held file and an empty folder are different plans,
+    so a person who approved one has not approved the other."""
+    folder = _folder(configured)
+    empty = _plan(folder)["digest"]
+    _acquired(folder, "12345.flac", title="Nameless")
+    assert _plan(folder)["digest"] != empty
+
+
+def test_a_referenced_identifier_file_is_held_as_referenced_and_never_owed(collected):
+    """An imported identifier file is one this verb can never rename (R-407),
+    whatever its tags say. It is held as referenced, not unnamed, and the sweep
+    answers ok rather than sending a person to write a tag that changes nothing."""
+    folder = _folder(collected)
+    path = _acquired(folder, "12345.flac", title="Nameless")
+    _record(collected, str(path), identifier="10")
+    plan = _plan(folder)
+    assert _actions(plan) == {"12345.flac": "referenced"}
+    assert plan["totals"] == {"count": 0, "referenced": 1, "collides": 0, "unnamed": 0}
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    assert path.is_file()
+
+
+def test_a_held_identifier_file_reads_the_collection_even_with_nothing_to_rename(collected, monkeypatch):
+    """The collection decides between referenced and unnamed, so it is read for
+    a held file alone, where a plan with no rename candidate used to skip it."""
+    folder = _folder(collected)
+    _acquired(folder, "12345.flac", title="Nameless")
+    reads: list[int] = []
+    real = naming_cli._recorded
+    monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: (reads.append(1), real(cfg))[1])
+    _plan(folder)
+    assert reads == [1]
+
+
+def test_a_tag_edited_while_the_gate_waits_is_not_renamed_to_a_name_nobody_saw(
+    configured, monkeypatch
+):
+    """The plan showed one name and the tags now render another. The rename is
+    owed rather than performed, because approval was of the name shown."""
+    folder = _folder(configured)
+    path = _acquired(folder, "12345.flac", artist="Tirzah", title="Affection")
+    real = naming_cli._plan_for
+
+    def plan_then_edit(root, *, cfg):
+        plan = real(root, cfg=cfg)
+        assert tags.write_tags(path, {"artist": "Tirza"})
+        return plan
+
+    monkeypatch.setattr(naming_cli, "_plan_for", plan_then_edit)
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert sorted(p.name for p in folder.glob("*.flac")) == ["12345.flac"]
+    why = envelope["cause"]["detail"]["incomplete"][0]["why"]
+    assert "Tirza - Affection.flac" in why and "Tirzah - Affection.flac" in why
+
+
+def test_the_report_over_a_held_identifier_says_to_tag_it(configured):
+    """The generic step, run this again, is the one action that cannot fix an
+    unnamed file, so the cause carries the step that can."""
+    folder = _folder(configured)
+    _acquired(folder, "12345.flac", title="Nameless")
+    code, envelope = _answer(folder)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert any("artist tag and a title tag" in step for step in steps), steps
+
+
+def test_the_gate_screen_lists_no_more_than_the_bound_and_counts_the_rest():
+    """A sweep of the library root is thousands of items and the screen is
+    printed and parsed, so the lists stop at the bound and the totals carry on."""
+    bound = naming_cli.PLAN_SHOWN
+    items = [
+        {"action": "rename", "from": f"{n}.flac", "to": f"A - {n}.flac", "path": f"/x/{n}.flac"}
+        for n in range(bound + 3)
+    ] + [
+        {"action": "unnamed", "from": f"h{n}.flac", "path": f"/x/h{n}.flac", "why": "held"}
+        for n in range(bound + 1)
+    ]
+    plan = {
+        "items": items,
+        "totals": {"count": bound + 3, "referenced": 0, "collides": 0, "unnamed": bound + 1},
+    }
+    shown = naming_cli._shown(plan, root=Path("/x"))
+    assert len(shown["planned"]) == bound and shown["planned not listed"] == 3
+    assert len(shown["held"]) == bound and shown["held not listed"] == 1
+    assert shown["renames"] == bound + 3
+
+
+def test_the_gate_screen_omits_the_not_listed_keys_under_the_bound(configured):
+    folder = _folder(configured)
+    _acquired(folder, "12345.flac", artist="Tirzah", title="Affection")
+    code, out, _ = drive(["--output", "json", "name", "apply", "--root", str(folder)])
+    shown = json.loads(out)["cause"]["detail"]["shown"]
+    assert "planned not listed" not in shown and "held not listed" not in shown
