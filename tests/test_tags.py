@@ -392,9 +392,15 @@ def test_one_open_reads_every_field_the_way_the_one_field_reader_does(tmp_path, 
                              "isrc": "ZZ0000000001"})
     fields = ("artist", "title", "initialkey", "isrc")
 
-    assert read_tags(path, fields) == {field: read_tag(path, field) for field in fields}
-    assert read_tags(path, fields)["initialkey"] is None
-    assert read_tags(path, fields)["isrc"] == "ZZ0000000001"
+    # AGAINST THE VALUES WRITTEN, not against read_tag, which is now one field
+    # of the reader under test and would make the comparison X equals X.
+    assert read_tags(path, fields) == {
+        "artist": "Probe Artist",
+        "title": "01A - 124 - Probe Title",
+        "initialkey": None,
+        "isrc": "ZZ0000000001",
+    }
+    assert read_tag(path, "isrc") == "ZZ0000000001"
 
 
 def test_one_open_over_an_unknown_field_raises_rather_than_answering_none():

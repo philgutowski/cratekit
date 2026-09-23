@@ -172,7 +172,6 @@ _WORD: Mapping[match.MatchState, str] = {
 #: Twelve characters: country, registrant, year, designation. Hyphens and
 #: spaces are presentation and are folded away before the shape is asked, and a
 #: code of any other shape is never sent to the provider.
-_ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
 
 #: Why a row was handed on rather than listed, one word a script can switch on.
 NO_ISRC = "none"
@@ -423,7 +422,9 @@ def _source_ref(job: jobs.Job) -> str | None:
 
 
 def _isrc_of(wanted: match.Wanted) -> str:
-    return re.sub(r"[\s-]", "", str(wanted.isrc or "")).upper()
+    """The row's ISRC folded and NOT validated, so a malformed one is still
+    named as malformed below rather than read as absent. One fold, the index's."""
+    return match.fold_isrc(wanted.isrc)
 
 
 def _ids_or_unnamed(code: str, tracks: tuple[Any, ...]) -> tuple[str, ...] | _Unnamed:
@@ -473,7 +474,7 @@ def _named_by_isrc(
     in hand before the caller writes anything.
     """
     codes = [_isrc_of(one) for one in wanted]
-    askable = list(dict.fromkeys(code for code in codes if _ISRC.fullmatch(code)))
+    askable = list(dict.fromkeys(code for code in codes if match.isrc_token(code)))
     answers: dict[str, tuple[str, ...] | _Unnamed] = {}
     if askable:
         found = (resolve or _catalogue_once())()

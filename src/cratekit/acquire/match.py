@@ -207,6 +207,11 @@ class Why(StrEnum):
     #: a text agreement that did not happen: the file's artist tag may list
     #: every credited artist where the row names one.
     ISRC_EXACT = "isrc-exact"
+    #: The library holds this version under the credited list rule: the file's
+    #: artist tag lists every credited artist and the row's primary artist is
+    #: one of them. The same rationale as the slug above, applied the same way:
+    #: the recording token never agreed, and "exact" would say it did.
+    CREDITED_EXACT = "credited-exact"
     #: A person already said one of the owned versions is this record.
     VERDICT_ACCEPTED = "verdict-accepted"
     #: A person already said none of them is.
@@ -759,17 +764,25 @@ def key_token(key: str | None) -> str:
 _ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
 
 
-def isrc_token(value: object) -> str:
-    """The folded ISRC, or ``""`` when the value is not one.
+def fold_isrc(value: object) -> str:
+    """An ISRC spelling with its whitespace and hyphens dropped, upper cased.
 
-    Whitespace and hyphens dropped and the rest upper cased, which is the fold
-    the outbound source and the missing verb already apply to the same tag, so
-    a hyphenated spelling on one side and a bare one on the other are one
-    identity. A value that does not read as an ISRC once folded, a catalogue
-    number or a stray label, is NOT an identity and folds to empty rather than
-    to a key nothing else could share by accident.
+    THE ONE FOLD, called by the outbound source, the missing verb and the index,
+    so a hyphenated spelling on one side and a bare one on the other are one
+    string. Not validated: a verb that has to say a value was malformed rather
+    than absent reads this and then asks :func:`isrc_token`.
     """
-    folded = re.sub(r"[\s-]", "", str(value or "")).upper()
+    return re.sub(r"[\s-]", "", str(value or "")).upper()
+
+
+def isrc_token(value: object) -> str:
+    """The folded ISRC as an identity, or ``""`` when the value is not one.
+
+    A value that does not read as an ISRC once folded, a catalogue number or a
+    stray label, is NOT an identity and folds to empty rather than to a key
+    nothing else could share by accident.
+    """
+    folded = fold_isrc(value)
     return folded if _ISRC.fullmatch(folded) else ""
 
 
@@ -1687,15 +1700,20 @@ class Owned:
     #: 1691 of 9868 files on the live volume carry none, and those are held by
     #: the credited list rule or by the recording token alone.
     isrc: str = ""
+    #: THE FOLDED NAMES THE ARTIST TAG CREDITS, for the credited list rule.
+    #: Computed once when the file is read, not on every lookup, because the
+    #: index answers one membership question per row over every file under a
+    #: title and the inputs never change between rows.
+    members: frozenset[str] = field(init=False, default=frozenset())
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "members", frozenset(fold(name) for name in credited_members(self.artist))
+        )
 
     @property
     def recording(self) -> str:
         return recording_token(self.artist, self.title)
-
-    @property
-    def members(self) -> frozenset[str]:
-        """The folded names the artist tag credits, for the credited list rule."""
-        return frozenset(fold(name) for name in credited_members(self.artist))
 
     @property
     def version_key(self) -> str:
@@ -1757,12 +1775,21 @@ class LibraryIndex:
         The two rules are unioned, token hits first, because a file tagged with
         the one artist and a file tagged with the list are both copies the
         library holds.
+
+        A COMMA IS THE ONLY JOINER, and that is a measured limit rather than an
+        oversight. Walked on the live volume on 2026-09-23, 3041 of 9868 artist
+        tags carry a comma, and of the tags with no comma 105 carry an
+        ampersand, 25 a feat or ft, and 12 an x or an and. The ampersand is a
+        band's own name far more often than a join, ``Above & Beyond``, so
+        splitting on it would invent members, and the other two are a
+        population of 37 a person can answer from the review queue.
         """
         exact = self.versions(recording_token(artist, title))
         member = fold(artist)
+        counted = {one.path for one in exact}
         credited = tuple(
             one for one in self.by_title.get(fold(title), ())
-            if member in one.members and one not in exact
+            if member in one.members and one.path not in counted
         )
         return exact + credited
 
@@ -2193,6 +2220,7 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     for held in owned:
         grouped.setdefault((held.recording, held.version_key, held.key_key), []).append(held)
     built: list[Candidate] = []
+    token = isrc_token(wanted.isrc)
     # INSERTION ORDER, NOT SORTED. Sorting looked harmless and threw away the one
     # ordering that carries information: the approximate pass hands its rows over
     # best score first, and re-sorting them alphabetically then truncating to the
@@ -2204,9 +2232,14 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     for recording, version_key, key in grouped:
         rows = grouped[(recording, version_key, key)]
         first = rows[0]
-        if not _same_recording(wanted, first):
+        if not _same_recording(wanted, first, token):
             difference = Why.TITLE_APPROXIMATE
-        elif version_key != wanted.version_key:
+        elif version_key != wanted.version_key and not _carries(first, token):
+            # AN ISRC SETTLES THE VERSION TOO. A file carrying the row's ISRC
+            # under another version spelling is that version however it is
+            # spelled, so the only question left about it is the key, and a
+            # candidate that said "version" beside a match that said "key"
+            # would ask a person a question the engine had already settled.
             difference = Why.VERSION_DIFFERS
         else:
             difference = key_disagreement(wanted.key, key) or Why.EXACT
@@ -2226,15 +2259,23 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     return tuple(built)
 
 
-def _same_recording(wanted: Wanted, held: Owned) -> bool:
-    """Whether ``held`` is the recording ``wanted`` names, under either rule
-    :meth:`LibraryIndex.held` applies, so a credited hit at another version is
-    reported as the version question it is and not as a scored resemblance."""
+def _carries(held: Owned, token: str) -> bool:
+    """Whether ``held`` carries this ISRC. Empty carries nothing."""
+    return bool(token) and held.isrc == token
+
+
+def _same_recording(wanted: Wanted, held: Owned, token: str) -> bool:
+    """Whether ``held`` is the recording ``wanted`` names, under any rule
+    :func:`resolve_one` applies, so a credited hit or an ISRC hit at another
+    version is reported as the version question it is and not as a scored
+    resemblance. ``token`` is the row's folded ISRC, computed once by the
+    caller. An ISRC agrees only WITH the folded title, see :func:`resolve_one`.
+    """
     if held.recording == wanted.recording:
         return True
-    if held.isrc and held.isrc == isrc_token(wanted.isrc):
-        return True
-    return fold(held.title) == fold(wanted.title) and fold(wanted.artist) in held.members
+    if fold(held.title) != fold(wanted.title):
+        return False
+    return fold(wanted.artist) in held.members or _carries(held, token)
 
 
 def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
@@ -2391,11 +2432,34 @@ def resolve_one(
     # the artist tag says, and it says nothing about the key, which is the
     # library's own statement and is still checked below. The text rules come
     # second, for the rows with no ISRC and the 1691 files with no tag.
-    by_isrc = index.held_by_isrc(isrc_token(wanted.isrc))
+    #
+    # AN ISRC AGREES ONLY WITH THE FOLDED TITLE. A file carrying the row's ISRC
+    # under a different title is not called owned on the strength of one tag:
+    # a bootleg ingested with the original's tags, or a tagger that wrote one
+    # ISRC across a release, would otherwise mark the heart owned, point its
+    # paths at the wrong recording, and the row would never be acquired and
+    # nothing would say so. Such a file is offered as a question instead, below,
+    # under the discovery reason, with its paths, and the review drove the
+    # shape rather than the live volume, whose 49 held rows agreed on the title.
+    #
+    # WHEN THE ISRC SETTLES A ROW, THE PATHS ARE THE FILES CARRYING IT and the
+    # key is checked over those. A copy matched on text alone at the same
+    # version is not appended: the reason says the identity was carried, and it
+    # has to be true of every path it stands beside.
+    title = fold(wanted.title)
+    carrying = index.held_by_isrc(isrc_token(wanted.isrc))
+    settled = [held for held in carrying if fold(held.title) == title]
+    doubtful = [held for held in carrying if fold(held.title) != title]
     owned = index.held(wanted.artist, wanted.title)
-    exact = [held for held in owned if held.version_key == wanted.version_key]
-    if by_isrc:
-        exact = list(by_isrc) + [held for held in exact if held not in by_isrc]
+    if settled:
+        exact, agreed = settled, Why.ISRC_EXACT
+    else:
+        exact = [held for held in owned if held.version_key == wanted.version_key]
+        agreed = (
+            Why.EXACT
+            if any(held.recording == wanted.recording for held in exact)
+            else Why.CREDITED_EXACT
+        )
 
     if exact:
         # EVERY held copy, not the first one the directory walk returned. Reading
@@ -2411,7 +2475,7 @@ def resolve_one(
             return TrackMatch(
                 wanted=wanted,
                 state=MatchState.MATCHED,
-                why=Why.ISRC_EXACT if by_isrc else Why.EXACT,
+                why=agreed,
                 paths=tuple(str(held.path) for held in exact),
             )
         return TrackMatch(
@@ -2429,6 +2493,15 @@ def resolve_one(
             state=MatchState.NEEDS_REVIEW,
             why=Why.VERSION_DIFFERS,
             candidates=_candidates_for(wanted, owned),
+        )
+
+    if doubtful:
+        # The ISRC agrees and the title does not, see above. Asked, not assumed.
+        return TrackMatch(
+            wanted=wanted,
+            state=MatchState.NEEDS_REVIEW,
+            why=Why.TITLE_APPROXIMATE,
+            candidates=_candidates_for(wanted, doubtful),
         )
 
     # THE OTHER READING, ASKED ABOUT RATHER THAN ASSUMED, and placed here for two
@@ -2696,6 +2769,7 @@ __all__ = [
     "credited_members",
     "digest",
     "fold",
+    "fold_isrc",
     "index_library",
     "isrc_token",
     "key_disagreement",

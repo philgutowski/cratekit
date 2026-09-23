@@ -541,7 +541,7 @@ def read_tags(path: Path, fields: Sequence[str]) -> dict[str, str | None]:
         if handle is None or handle.tags is None:
             return absent
         tags = handle.tags
-    except Exception as exc:  # noqa: BLE001 - see the note above read_tag
+    except Exception as exc:  # noqa: BLE001, see the note above read_tag
         log.debug("tag read failed for %s: %s", path, exc)
         return absent
     return {
@@ -564,7 +564,7 @@ def _one_text(tags: object, key: str, dialect: Dialect, path: Path) -> str | Non
             # An MP4 freeform atom carries bytes, not text.
             return bytes(value).decode("utf-8").strip() or None
         return str(value).strip() or None
-    except Exception as exc:  # noqa: BLE001 - see the note above read_tag
+    except Exception as exc:  # noqa: BLE001, see the note above read_tag
         log.debug("tag read failed for %s %s: %s", path, key, exc)
         return None
 
