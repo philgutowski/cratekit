@@ -26900,6 +26900,14 @@ next sitting's measurement**, attended, over a fresh listing, as the brief and
 `docs/cutover.md` say. The four other readers that take the title tag
 verbatim are R-665.
 
+**Closed 2026-09-23 on its second condition, at the seventh attended
+sitting.** Job `2026-09-23T18:12:52Z-7caa`, the same 206 rows as `0dbf` over a
+fresh listing, resolved 96 owned, 29 offered and 81 missing, against the
+reader's 0, 61 and 145 and the measured 96, 27 and 83. Of sitting 4's 59, 37
+owned, 9 offered and 13 missing, and every one of the 22 reads its head off
+the tag correctly and fails on the artist alone, which is the narrower gap
+this entry named and R-667 now measures at 49 of 206.
+
 ---
 
 ## R-665. The tagging searchers ask the catalogue for the headed title, so a processed file's genre search is a query nobody released
@@ -26970,3 +26978,153 @@ seam is the index.
 fixture of a thousand files is timed against the current one.
 
 **Not on the board bar.** Maintainer facing: slow, not wrong.
+
+## R-667. The match engine never consults the ISRC, and a processed file's artist tag lists every credited artist, so a quarter of the hearts the library holds read missing or offered
+
+**Found:** at the seventh attended sitting, 2026-09-23, on the second live
+`crate intake playlist favorites`, the first over the index that strips the
+head from the title tag (R-664). R-664 named this gap as "second and
+narrower" and put it at 14 rows, unmeasured beyond that count. Measured on the
+tree it is 49 of 206, a quarter of the account's hearts.
+
+**The mechanism.** `match._read_from_disk` takes the artist tag verbatim, and
+in this library the artist tag lists every credited artist, `Malive, Tito
+Azevedo, MRQZ`, where the provider row names the primary artist alone,
+`Malive`. `recording_token` joins the folded artist and the folded title, so
+the file's recording is `malive tito azevedo mrqz / burning` and the wanted one
+is `malive / burning`, and an exact match is impossible however the title
+reads. The approximate pass then either offers the file as `title-approximate`
+or, when the credited list outweighs the title, scores it under the floor and
+reports missing. Both sides carry the ISRC: R-355 made the file's tag readable
+through `source.isrc_for`, and every report the intake worker writes carries
+the provider row's, but `Owned` has no ISRC field and the index cannot be asked
+by one. `BY_ISRC` in the same module is the acquisition candidate search on the
+provider side, not a library lookup.
+
+**Measured on the tree, 2026-09-23.** Job `2026-09-23T18:12:52Z-7caa`, the
+same 206 rows as `0dbf`: 96 owned, 29 offered, 81 missing. The music folder
+walked by ISRC tag, 9868 files, 1691 of them with no ISRC tag: **26 of the 81
+missing rows and 23 of the 29 offered rows are held under the row's own
+ISRC.** Of sitting 4's 59 hearts matched to rows by ISRC, 37 owned, 9 offered,
+13 missing, and every one of the 22 reads its head off correctly and fails on
+the artist alone, which is R-664's second condition, met. `intake missing
+--job` wrote all 81 rows to the list, 26 of them held. Held rows include
+`Nico Szabo, Aske Izan :: Paranoid` against the provider's `Nico Szabo`,
+`Ferreck Dawn, Hayley May :: Deep Inside` against `Ferreck Dawn`, and
+`Traumer, antraum, Anton :: Hyaku` against `antraum`, where the primary artist
+is not even first in the list.
+
+**Measured cost.** `acquire download` over the product's own list puts 26
+duplicates into staging, and `intake land` after it would put them into the
+library and the collection. The 23 offered rows are questions a person is
+asked about files the library plainly holds, and an answer of no lists them
+for download too (R-503). The sitting hand built a list of the 55 unheld rows
+and downloaded those, so nothing duplicate reached staging.
+
+**Why not fixed here.** The index is the seam every caller shares, R-71,
+R-168 and R-664 sit on it, and an ISRC lookup changes the shape of `Owned`
+and `LibraryIndex`. Two rules would close it and the unit chooses: an ISRC
+lookup first, exact and cheap, which the 1691 files without an ISRC tag
+cannot use; and a credited list rule, the provider's primary artist a member
+of the file's list, for the rest. A unit's work, not a sitting's.
+
+**Closes when:** a file whose artist tag lists several credited artists and
+whose ISRC tag matches the provider row resolves owned, driven against a real
+container tagged `Malive, Tito Azevedo, MRQZ` and `04A - 126 - Burning
+(Extended Mix)` with ISRC `USNRS2644532` and a provider row spelling `Malive`
+and `Burning (Extended Mix)` under the same ISRC; and the 206 rows of job
+`7caa` re-resolved on the live library report none of the 49 held by ISRC as
+missing or offered.
+
+**On the board bar, (a) and (b):** the product says missing over 26 tracks the
+library holds and its own list has `acquire download` put duplicates into the
+library, and it asks 23 questions over files it holds. Issue owed after this
+merge.
+
+## R-668. The download verb's resume needs the list named again
+
+**Found:** at the seventh attended sitting, 2026-09-23. `crate acquire
+download --job <id>` refuses with argparse's "the following arguments are
+required: list", though the help says the flag continues the acquisition
+already queued and the queued job froze the list's absolute path. The resume
+argv the product builds for itself carries the list, so nothing automated is
+affected; a person continuing a job by hand types the path a second time.
+
+**Closes when:** `--job` alone drives the queued job, reading the frozen list
+path off the job, or the help says the list is required either way.
+
+**Not on the board bar.** A wording and shape fix, no data at risk.
+
+## R-669. An acquired file is named for its provider identifier and no verb ever names it, so a landed batch is fifty four numbers
+
+**Found:** at the seventh attended sitting, 2026-09-23, on the first `crate
+name apply --root` over a folder `acquire download` had filled.
+
+Two decisions, each recorded and each sound alone, meet in a hole. The
+vendored adapter names the file it lands `{track_id}` on purpose, "naming is
+U4's engine working from the declared template, and letting the downloader
+choose a library name would put a second naming authority in the pipeline"
+(`acquire/vendored.py`, `STAGING_TEMPLATE`). The naming verb, by R-168's
+decision, pads the head it understands and leaves the body it does not:
+`write/naming_cli.py:_spec_for` takes the stem through `strip_head` and never
+composes a body from the artist and title tags. A freshly acquired file has
+no head to pad, since the tempo has no tag field and the only source of one
+is a filename head the file does not have, and its body is the identifier. So
+the plan renders every name unchanged.
+
+**Measured on the tree, 2026-09-23.** Fifty four files in download staging,
+every one named `<id>.flac`, thirty nine with an `initialkey` tag: the plan
+is `count 0, referenced 0, collides 0`, items empty, on both output forms.
+The landing plan after it moves the same fifty four names into
+`Music/<batch>/`. The tags are complete, artist, title, ISRC, genre on forty
+and art on all, so rekordbox will show the track; the file on disk, on a
+player browsing folders, on a USB, and in any listing outside rekordbox, is a
+number.
+
+**Measured cost, and it is for life.** U67 made `name apply` refuse a file
+the collection references (R-407), which every landed file is once it is
+imported. So the sequence the design names, `tag folder`, `name apply`,
+`intake land`, the import, lands a file the product can never name
+afterwards. The source system named at download, `Artist - Title`, and the
+head was padded later by its pad stage.
+
+**Why not fixed here.** The naming seam owns it and R-168 is the recorded
+decision not to recompose a body. The narrower rule that does not reopen
+R-168: a stem that is exactly the provider identifier, or that carries no
+letters, is composed from the tags, and every other stem is left as it is. A
+unit's.
+
+**Closes when:** a staged file named `92654769.flac` with artist and title
+tags plans a rename to a body carrying both, a file whose stem already
+carries text plans none, driven through the dispatcher over real containers;
+and the fifty four files in staging plan fifty four renames on the live
+folder.
+
+**On the board bar, (c):** the naming step of the acquisition workflow does
+nothing for the files it exists for, and after the import no verb can, so the
+library's legibility on disk is lost per batch and for good. Issue owed after
+this merge.
+
+## R-670. The rename gate asks "Apply these renames?" and shows none, on either output form
+
+**Found:** at the seventh attended sitting, 2026-09-23. `name apply` calls
+`ctx.gate.require(spec, digest=plan["digest"])` with nothing shown, so the
+gate screen carries the prompt, the options and the answer command and not
+one rename, in the human form and in the JSON cause alike, and `run show`
+on the blocked run has only the gate. `intake land` beside it passes its
+plan and the same screen shows the count, the files, the folder, the batch
+and the intake file. A person answering the rename gate confirms a plan they
+have not seen, and #178's line 10, "plan only, to read the referenced
+count", cannot be read from the gate at all.
+
+**The read that works today.** `crate --output json -d
+name.apply.confirm=abort name apply --root <dir>` returns the plan as the
+no-op envelope's data, digest, items and totals, with nothing renamed. That
+is how this sitting read it.
+
+**Closes when:** the rename gate shows its totals and its items the way the
+landing gate does, and a test reads the count off the blocked envelope's
+`shown`.
+
+**Not on the board bar.** The gate still holds the write; the abort answer
+reads the plan; a wording and shape fix.
