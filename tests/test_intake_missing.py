@@ -36,6 +36,7 @@ from cratekit.deletion.library import RemovedRow
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import missing_cli
 from cratekit.label import catalogue
+from tests._containers import tagged_container
 from tests.acquire_fakes import FAKE_ADAPTER, FAKE_DECLARATION, FakeAdapter, Landing, Script
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, StrictCatalogue, catalogue_factory
@@ -187,6 +188,34 @@ def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch):
     assert set(sidecar["rows"]) == {"204", "205"}
     assert {row["source"] for row in sidecar["rows"].values()} == {"playlist"}
     assert {row["source_ref"] for row in sidecar["rows"].values()} == {"favorites"}
+
+
+def test_a_track_held_under_a_headed_title_tag_is_owned_and_nothing_is_listed(
+    cfg, library, tmp_path, monkeypatch
+):
+    """R-664, the fifth scenario, through the dispatcher.
+
+    The live library writes ``KEY - BPM - `` into the title tag as well as the
+    filename. The first live favourites job resolved 206 hearts as 0 owned over
+    a library holding at least 96 of them, and ``intake missing --job`` would
+    have written those 96 to the list ``acquire download`` reads. A real
+    container with the head in both places, the way the volume holds it."""
+    tagged_container(
+        tmp_path, library / "Music" / "08A - 124 - Aurora Bloom - Sun Path.flac",
+        artist="Aurora Bloom", title="08A - 124 - Sun Path",
+    )
+    job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path")])
+    (report,) = artifacts.committed(intake_cli.ARTIFACTS, cfg, job_id)
+    assert report["state"] == "owned", report
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    summary = envelope["data"]["summary"]
+    assert (summary["written"], summary["owned"], summary["offered"]) == (0, 1, 0)
+    assert (summary["list"], summary["next"]) == (None, None)
+    assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
 
 
 def test_the_default_human_output_names_the_list_and_the_next_command(cfg, library, monkeypatch):
