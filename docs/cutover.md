@@ -178,6 +178,36 @@ Four findings filed, R-667 to R-670, two of them on the board bar, R-667 and
 R-669, issues owed after this merge. R-664 closed. Line 1 of #178 is not
 ticked: it ran five steps of seven and stopped at the first gate.
 
+## Sitting 8, 2026-09-23, evening
+
+Machine state before: the volume mounted, rekordbox and its agent closed,
+the pipx install brought from `2e30b0d` to `f4f5e08`, the R-667 merge, with
+its extras kept, `crate doctor` exit 0 with no failing check, backup ages 7
+and 7 days. The acknowledgment had expired on the 18th and was minted by the
+author from a Terminal window at 21:33Z, valid until 09:33Z. Attended
+throughout: the author drove every verb from the pipx install and the
+session recorded. Every write ran inside the acknowledgment window.
+
+One workflow, A5 line 1, favourites in, resumed at the rename gate the
+landing hold left, and it ran to the end.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `name apply --root Downloads`, first run | refused | `collection-row-unmapped`, **582 rows**, before the gate. R-500's guard reads the collection only when a plan would rename something, so sitting 7's empty plan never reached it and this was its first live read. On a disposable copy of the database: 137 active streamed tracks recorded as `/v4/catalog/tracks/<id>/`, 437 tombstones under two folders that are gone, 8 rows on the other account. No honest prefix rule maps any of them (R-675). The author chose to fix the guard in the sitting. | refused, fixed in the sitting |
+| R-675, the fix | built, reviewed, merged, pushed | A dark row refuses only when its file name is one the plan would rename and no resolved row holds. Merged to `main` at `93e8f40` with R-523 and R-524 closed, the pipx install rebuilt from it. | fixed, merged with the sitting |
+| `name apply --root Downloads`, second run | to the gate, then applied | Run `2026-09-23T22:16:52Z-ab7c`: **renames 54, referenced 0, collides 0, unnamed 0**, every planned name shown on the gate (R-670 live). The plan was read back through the abort answer, its digest equal to the one the gate held, and all 54 names equal the body composed from each file's own artist and title tags. Applied: `name.apply: ok`, 54 files on disk named `Artist - Title.flac`, none still an identifier. R-669's second condition met. | cut over for one batch |
+| Fresh export | yes, by hand | `Music/9-23-export.xml`, 9937 entries. The landing verb reached its gate before the file existed and would have refused after the answer with nothing moved (R-677). | live |
+| `intake land --export`, run `2026-09-23T22:22:41Z-4773` | to the gate, then applied | 54 files from `Downloads` into `Music/2026-09-23T222241Z-4773`, intake file `2026-09-23T222241Z-4773_inboxed.xml` at the volume root, 9991 entries, the 54 new rows in a playlist of the batch's name under INBOX, each with no tempo element and an average BPM of zero, 39 with a key and 40 with a genre. Staging empty afterwards. | cut over for one batch |
+| The rekordbox import | yes, by hand | The intake file set as the rekordbox xml library, the playlist found under INBOX, imported, then `Music/9-23-export-2.xml` exported with 9991 entries and all 54 batch locations. | live |
+| `intake imported --export` | yes | `intake.imported: ok`, the intake file retired as `.imported`, run `4773` settled with no gate open. The human form printed nothing about the 54 it proved (R-678). | cut over |
+| `intake playlist favorites`, the listing | yes | 215 declared, 206 listed, 9 withheld, job `2026-09-23T22:34:35Z-c645`, the same as sittings 6 and 7. | live |
+| `intake playlist favorites --job`, the resolution | yes | 10 seconds, 206 settled: **203 owned, 2 offered, 1 missing.** By reason: 198 `isrc-exact`, 4 `credited-exact`, 1 `exact`, 1 `version-differs`, 1 `title-approximate`, 1 `not-in-library`. **All 49 rows held by ISRC at sitting 7 resolve owned under `isrc-exact`**, R-667's second condition met. All 54 landed files resolve owned by ISRC. No offered row has a file carrying its ISRC, R-674 measured at zero and closed. The 4 credited hits are three Steve Reich movements and one Breaking Beattz row, each in a processed folder with no ISRC tag. The two offered rows, `Above & Beyond :: Fractals` at another version and `Elderbrook :: I'll Find My Way To You` as a title question, are real questions in `crate review list`. The one missing row is `Calvin Harris :: Satisfy`, lossy only, refused by policy. | live, R-667 and R-674 closed |
+
+Line 1 of #178 is ticked: favourites in ran from the listing to the import
+proof on the pipx install, and the heart count against the brief's 197 is
+215 on the account today, 206 served. Filed R-675 to R-678, R-675 closed in
+the sitting; R-676 is the deletion pass's same shape, read and not driven.
+
 ## What blocks a full sync cycle, stated plainly
 
 The board is complete and the product cannot yet do its central workflow,
@@ -222,29 +252,23 @@ lists Tidal. The vendored downloader is the only Tidal facing code that runs.
 
 ## Next sitting
 
-Line 1 of #178 stands at the landing gate with 54 tagged files in download
-staging, and the answer is the author's, with a decision in front of it.
+Line 1 is done and line 2, a small playlist through the same path, is the
+natural next: sitting 4's ten item playlist job `673e` is still queued from
+that day and would be the one to drive, or a fresh share sheet link. Before
+it, the review queue holds 190 unresolved items, 61 `version-match` questions
+from job `0dbf`, the same from `7caa`, and 46 label releases from sitting 4,
+and a queue that keeps answering the same questions is R-382's shape, so a
+pass through `crate review list` is worth a sitting of its own or the start
+of the next.
 
-The files are named `<id>.flac` and `name apply` will not name them (R-669).
-Once landed and imported, R-407 makes them unrenamable by any verb. So the
-choice is: land now and accept fifty four numbered files for life, or hold
-the landing until R-669's unit lands and plan the rename first. Holding costs
-nothing, nothing sweeps a file out of staging, and the recommendation is to
-hold. After that unit: `name apply --root` over download staging,
-answered, then a fresh `intake land --export` over a fresh export, since the
-landing digest covers the folder listing and every plan run names a new
-batch, then the import in rekordbox, then `intake imported`. Run `9416` can be
-answered or left; a later run supersedes it.
+Two things stand from this sitting. R-676 says the deletion pass refuses on
+the 137 streamed rows the way `name apply` did, read and not driven; a plan
+only `crate delete` on a disposable copy of the database answers it. R-677
+and R-678 are shape findings on the landing gate and the human renderer,
+neither holding a write.
 
-Two other things the landing will carry whatever the choice. The 26 missing
-and 23 offered rows the library holds by ISRC (R-667) are not in this batch
-and need no download; once R-667's unit lands, a fresh listing resolves them
-owned. The 6 offered rows not held by ISRC are real questions in `crate
-review list`. The lossy only heart, `Calvin Harris :: Satisfy`, is refused by
-policy and stays missing on purpose.
-
-Anything that writes needs a backup acknowledgment inside its validity window:
-`crate session ack` from a Terminal window, answered with `crate run decide`,
-continued with `--run`, by the author and never by a session. The full library
-vocal pass, R-376, is still a separate attended choice and is still blocked on
-nothing.
+The acknowledgment minted at 21:33Z on the 23rd expires at 09:33Z on the
+24th. Anything that writes after that needs a new one from a Terminal
+window, answered with `crate run decide` and continued with `--run`, by the
+author and never by a session. The full library vocal pass, R-376, is still
+a separate attended choice and is still blocked on nothing.

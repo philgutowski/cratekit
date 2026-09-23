@@ -27106,6 +27106,17 @@ of the same folder counted 1588 files with no ISRC tag against the sitting's
 1691, both read through `tags`, and the difference is recorded and not
 explained: no mechanism is offered without a measurement showing it.
 
+**CLOSED on its second condition 2026-09-23, sitting 8 of #178.** The 206
+rows of job `7caa` re-resolved on the live library as job
+`2026-09-23T22:34:35Z-c645` on the pipx install at `93e8f40`: **203 owned, 2
+offered, 1 missing**, and all 49 rows held by ISRC at sitting 7 owned under
+`isrc-exact`, none missing, none offered. By reason across the 206: 198
+`isrc-exact`, 4 `credited-exact`, 1 `exact`, 1 `version-differs`, 1
+`title-approximate`, 1 `not-in-library`. The 4 credited hits are files in a
+processed folder with no ISRC tag, three Steve Reich movements and one
+Breaking Beattz row, the rule's second half working live. The missing row is
+the lossy only heart, refused by policy. Record in `docs/cutover.md`, sitting 8.
+
 ## R-668. The download verb's resume needs the list named again
 
 **Found:** at the seventh attended sitting, 2026-09-23. `crate acquire
@@ -27196,6 +27207,17 @@ and nothing else; `12345.flac` with no artist is held and named; a folder of
 both kinds applied on a yes leaves the composed name, the text stem untouched
 and the title tag body the tag's own. **The second condition, fifty four
 renames planned over the live staging folder, is the next sitting's, attended.**
+
+**CLOSED on its second condition 2026-09-23, sitting 8 of #178.** `name
+apply --root` over download staging on the pipx install at `93e8f40` planned
+**54 renames, 0 referenced, 0 collisions, 0 unnamed**, run
+`2026-09-23T22:16:52Z-ab7c`, every name shown on the gate, and the plan read
+back through the abort answer carried the digest the gate held with all 54
+names equal to the body composed from each file's tags. Applied, 54 renamed,
+none incomplete, and the batch landed and imported under those names. The
+first run of the verb in the sitting refused before the gate over R-500's
+guard, which is R-675, fixed in the sitting before this condition could be
+met. Record in `docs/cutover.md`, sitting 8.
 
 ## R-670. The rename gate asks "Apply these renames?" and shows none, on either output form
 
@@ -27353,6 +27375,14 @@ whose file carries the row's ISRC is decided one way or the other.
 population it cannot yet size, and the cost of the alternative is the one
 board bar (b) names.
 
+**CLOSED 2026-09-23, sitting 8 of #178, measured at zero.** The 49 rows held
+by ISRC resolved 49 `isrc-exact`, 0 `credited-exact`, 0 offered, so every
+held file agrees with its row on the folded title. Across the whole job, no
+offered row has a file in the library carrying its ISRC: the two offered rows
+carry ISRCs the library does not hold. The conservative call stands unexercised
+on this library, and the population it guards against is zero today. Record in
+`docs/cutover.md`, sitting 8.
+
 ---
 
 ## R-675. R-500's dark row guard refused every live rename plan, because rekordbox records a streamed track as a slash path and a real library carries hundreds of tombstones under folders that are gone
@@ -27427,6 +27457,11 @@ shadowed in every fixture, each given the test that reaches it alone and
 killed on the re-run. The live condition is the sitting's, in `docs/cutover.md`
 sitting 8.
 
+**Live condition met 2026-09-23, the same sitting.** On the pipx install
+rebuilt from `93e8f40`, `name apply --root` over download staging reached its
+gate with 54 renames planned and nothing held, against the 582 row refusal of
+the run before the fix. Record in `docs/cutover.md`, sitting 8.
+
 ---
 
 ## R-676. The deletion pass refuses on every active unmapped row, and the live library carries 137 active streamed rows that resolve unmapped
@@ -27463,4 +27498,53 @@ excused the way the colon form is, with a test on the live spelling.
 
 **Not on the board bar until driven.** Issue owed after the sitting that
 drives it, if it refuses.
+
+---
+
+## R-677. The landing verb gates before it looks for the export, so a person answers a plan over a file that is not there
+
+**Found:** at the eighth attended sitting, 2026-09-23. `crate intake land
+--export Music/9-23-export.xml` was run before the export had been written,
+and it reached its gate with the full plan, 54 files, the batch folder and
+the intake file named, and the export path spelled on the screen as if it
+existed. The engine checks the export before its first move, on a copy, and
+would have refused `library-export-unusable` with nothing moved, so the cost
+is one answer spent and one gate to re-run. The verb reads a manifest before
+the gate for exactly this reason, "so a file that is not a manifest refuses
+before anybody spends an answer on it", and does not do the same for the
+export.
+
+**Measured cost:** one wasted gate in the sitting, no data at risk.
+
+**Closes when:** the landing verb asks the engine's export check before the
+gate, so a missing or unusable export refuses on the plan read, with a test
+that drives the plan over an absent export and reads the refusal before any
+answer.
+
+**Not on the board bar.** A shape fix; the write is still held.
+
+---
+
+## R-678. `intake playlist` and `intake imported` print ok and nothing a person can read, R-378's shape on the intake payloads
+
+**Found:** across sittings 6, 7 and 8, 2026-09-23. `intake playlist favorites`
+prints the withheld warning and a run id and not the job it queued, so the
+identifier is read out of `job list --output json` every time. The resolution
+with `--job` prints `intake.playlist: ok` and a run id over 206 settled rows,
+and the counts, 203 owned, 2 offered, 1 missing, are read from the job's
+artifacts or `job show --output json`. `intake imported` prints
+`intake.imported: ok` over 54 proven rows and a retired intake file and names
+neither. R-378 closed the same defect for the harvest's `review_set/1`
+payload; these three verbs answer through other payload shapes the human
+renderer has no case for.
+
+**Measured cost:** every sitting has needed a second invocation in JSON to
+learn what the verb did. Nothing is wrong in what it computed.
+
+**Closes when:** the human rendering of a queued intake job names the job
+identifier, the resolution names its owned, offered and missing counts, and
+the import proof names what it proved and retired, each driven in the default
+human mode the way R-378's fix was.
+
+**Not on the board bar.** A wording and shape fix, no data at risk.
 
