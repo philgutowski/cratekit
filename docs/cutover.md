@@ -208,6 +208,57 @@ proof on the pipx install, and the heart count against the brief's 197 is
 215 on the account today, 206 served. Filed R-675 to R-678, R-675 closed in
 the sitting; R-676 is the deletion pass's same shape, read and not driven.
 
+## Sitting 9, 2026-09-23, evening, late
+
+Machine state before: the volume mounted, rekordbox and its agent closed,
+the pipx install brought from `93e8f40` to `94ad650`, the sitting 8 record
+merge, with its extras kept, `crate doctor` exit 0 with no failing check,
+backup ages 7 and 7 days, 153 of 9991 active rows under no prefix rule.
+The acknowledgment minted by the author at 21:33Z on the 23rd was still
+valid, until 09:33Z, and every write ran inside it. Driven differently from
+sitting 8, at the author's direction: the session drove every verb from the
+pipx install and answered both gates itself, and the author did the two
+things only a person can do, the rekordbox import and the export. The
+author's review of each gate is the plan printed on it, recorded below.
+
+Before the workflow, the decision the sitting 8 record left open: whether the
+190 unresolved review items get a pass first. Measured off a copy of the
+queue database, not driven: 98 `label-release` and 4 `harvested-label` from
+sitting 4, which are line 5's, and 88 `version-match`, 58 from job `0dbf`,
+29 from `7caa` and 1 from `c645`. Joined against `c645`'s 206 rows, **85 of
+the 88 ask about a row that resolution now owns**, 81 under `isrc-exact` and
+4 under `credited-exact`. Three are live: `Above & Beyond :: Fractals` twice,
+once asking the recording and once the version, and `Elderbrook :: I'll Find
+My Way To You` once. The sitting 8 note's count, 61, 61 and 46, was wrong.
+The verdict vocabulary is `accepted` or `rejected` and `--where` matches a
+payload field by equality, so no honest sweep exists. Decided: no pass, the
+stale item shape is R-679, line 2 now.
+
+One workflow, A5 line 2, a small playlist through line 1's path. The
+playlist is the ten track one sitting 4 ran standalone as `e3f4`, all ten
+missing that day, continued here as job `2026-09-17T16:44:44Z-673e`, the
+copy the 9-17 `sync all` pass queued and nobody had driven.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `intake playlist <url> --job 673e`, the resolution | yes | 9.6 seconds, a `config-drift` warning naming four keys changed since the job was queued, the job run against its frozen copy. 10 settled: **3 owned, 7 missing**, the 3 under `isrc-exact`, every one a file sitting 8 landed into `4773` (Teak, Dame Un Grrr, Falling Feels Like Flying), so the hearts and this playlist overlap by three and the overlap was found by ISRC. The human form printed `ok` and the counts came from the artifacts (R-678). | live |
+| `intake missing --job 673e` | yes | 8.7 seconds, 7 rows to `intake-2026-09-17T16:44:44Z-673e.list.json` with its manifest, 3 owned not listed, 0 offered, 0 by ISRC. This verb's human form names every count and the next command. | live |
+| `acquire download <list>`, job `2026-09-23T22:53:38Z-ad05` | yes, twice | The first call queued 7 and returned `ok` in 0.3 seconds with no job identifier printed (R-678's shape, one more verb). The second, `--job`, drove them in 47 seconds: **7 acquired, 0 refused**, every file 16 bit 44.1 kHz FLAC, artist, title and ISRC tagged, 212 MB in staging. | cut over for one batch |
+| `tag folder`, job `2026-09-23T22:55:19Z-81b9` | yes, twice | Queue then drive, 17 seconds: **7 tagged, 0 no hit, 0 off taxonomy**, all from Beatport, Deep House 3, Melodic House 2, Organic House 1, Afro House 1, art present on 7 and the picture block repaired on 7. | cut over for one batch |
+| `name apply --root Downloads` | to the gate, then applied | Run `2026-09-23T22:56:37Z-3316`, 1.7 seconds with the collection read: **renames 7, referenced 0, collides 0, unnamed 0**, every name composed from the file's own tags, `Artist - Title.flac`, one carrying `(Radio-Edit)` from its title tag. R-675's leaf rule held on its second live plan. The gate was answered `apply` through `crate run decide` and the run continued with the global `--run`, which sits before the verb, not after it. 7 files renamed on disk. | cut over for one batch |
+| `intake land --export Music/9-23-export-2.xml`, run `2026-09-23T22:58:04Z-d66b` | to the gate, then applied | Against sitting 8's post import export, 9991 entries, written a minute before rekordbox closed. 7 files from `Downloads` into `Music/2026-09-23T225804Z-d66b`, intake file `2026-09-23T225804Z-d66b_inboxed.xml` at the volume root, **9998 entries**, the 7 new rows in a playlist of the batch's name under INBOX, each with no tempo element and an average BPM of zero, 6 with a key and 7 with a genre. Staging empty afterwards. The run then reported `PENDING_HUMAN` with the three steps a person owes. | cut over for one batch |
+| The rekordbox import | yes, by hand | The intake file set as the rekordbox xml library, the playlist found under INBOX, imported, then `Music/9-23-export-3.xml` exported with **9998 entries and all 7 batch locations**, each still with no tempo element and an average BPM of zero. | live |
+| `intake imported --export Music/9-23-export-3.xml` | yes | 0.7 seconds, `intake.imported: ok`, the intake file retired as `.imported`, run `d66b` settled with no gate open. The human form again named nothing it proved (R-678). | cut over |
+| `crate delete review`, plan only, run `2026-09-23T23:09:32Z-65f0` | to the gate, answered abort | Run by the author from a Terminal window, because this session's permission layer refused the verb as a deletion. The reference set was complete: **baselined, 7404 accepted as history, 0 offered**, no refusal over the 137 streamed rows. R-676 closed on its first arm, nothing moved. | measured, R-676 closed |
+
+Line 2 of #178 is ticked: a small playlist ran from the queued job to the
+import proof on the pipx install, three of its ten rows already owned by ISRC
+from line 1's batch, seven acquired, tagged, named, landed and imported.
+Every verb but the deletion plan was driven by the session, both write gates
+answered by it after the plan matched the tags, and nothing needed a second
+invocation except to learn a count the human form withheld. Filed R-679.
+R-676 closed. R-677 and R-678 were observed again and stand.
+
 ## What blocks a full sync cycle, stated plainly
 
 The board is complete and the product cannot yet do its central workflow,
@@ -252,23 +303,21 @@ lists Tidal. The vendored downloader is the only Tidal facing code that runs.
 
 ## Next sitting
 
-Line 1 is done and line 2, a small playlist through the same path, is the
-natural next: sitting 4's ten item playlist job `673e` is still queued from
-that day and would be the one to drive, or a fresh share sheet link. Before
-it, the review queue holds 190 unresolved items, 61 `version-match` questions
-from job `0dbf`, the same from `7caa`, and 46 label releases from sitting 4,
-and a queue that keeps answering the same questions is R-382's shape, so a
-pass through `crate review list` is worth a sitting of its own or the start
-of the next.
+Lines 1 and 2 are done. Line 3, inbox routing, is the natural next: `route
+inbox --export` on a fresh export, imported, with ratings and the long track
+playlist read in rekordbox, and `Music/9-23-export-3.xml` is fresh for it
+until the library changes. The 61 landed rows of the two batches sit in two
+INBOX playlists with no tempo element and an average BPM of zero, so the
+routing pass is the first thing to read them.
 
-Two things stand from this sitting. R-676 says the deletion pass refuses on
-the 137 streamed rows the way `name apply` did, read and not driven; a plan
-only `crate delete` on a disposable copy of the database answers it. R-677
-and R-678 are shape findings on the landing gate and the human renderer,
-neither holding a write.
+The review queue holds 190 items and 105 of them are real: 102 label rows for
+line 5 and three `version-match` questions. The other 85 are R-679's, open
+questions about rows a later resolution owned, and a unit closes them, not a
+person. R-677, R-678 and R-679 are code residuals with no write held, and
+after this sitting each is a residual issue on the board for the Relay
+feeder to take in turn, the feeder restarted for them.
 
 The acknowledgment minted at 21:33Z on the 23rd expires at 09:33Z on the
 24th. Anything that writes after that needs a new one from a Terminal
-window, answered with `crate run decide` and continued with `--run`, by the
-author and never by a session. The full library vocal pass, R-376, is still
-a separate attended choice and is still blocked on nothing.
+window, by the author and never by a session. The full library vocal pass,
+R-376, is still a separate attended choice and is still blocked on nothing.

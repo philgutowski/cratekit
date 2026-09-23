@@ -27499,6 +27499,17 @@ excused the way the colon form is, with a test on the live spelling.
 **Not on the board bar until driven.** Issue owed after the sitting that
 drives it, if it refuses.
 
+**Closed 2026-09-23 at the ninth attended sitting, on the first arm.** `crate
+delete review` was planned once on the live library, rekordbox closed, from
+the pipx install at `94ad650`, run `2026-09-23T23:09:32Z-65f0`: it reached
+its gate with the reference set complete, **baselined, 7404 rows accepted as
+history, 0 offered**, and no `deletion-reference-set-incomplete` refusal over
+the 137 streamed rows or any other. The gate was answered `abort` and nothing
+moved. The reading was wrong about the pass, not about the rows: the pass did
+not refuse on them, so the slash form needs no excusal there. The mechanism
+was not traced in the sitting; the closing condition asked for the plan, and
+the plan passed.
+
 ---
 
 ## R-677. The landing verb gates before it looks for the export, so a person answers a plan over a file that is not there
@@ -27548,3 +27559,44 @@ human mode the way R-378's fix was.
 
 **Not on the board bar.** A wording and shape fix, no data at risk.
 
+
+---
+
+## R-679. A review item outlives its question: a later resolution that owns the row leaves the version-match item open, and no verdict or predicate can retire it honestly
+
+**Found:** at the ninth attended sitting, 2026-09-23, measured off a copy of
+the queue database while deciding whether the 190 unresolved items got a
+pass before line 2 of #178.
+
+The 88 open `version-match` items were joined to job `c645`'s 206 rows by
+the provider reference. **85 ask about a row that resolution now owns**, 81
+under `isrc-exact` and 4 under `credited-exact`, because R-667 added the two
+rules after jobs `0dbf` and `7caa` had offered them. Three are live. `offer`
+is idempotent by identity, which is right, and nothing on the other side
+withdraws an item when the row it asked about is settled by a rule that
+never consults the queue. `crate review list` therefore says 190 questions
+where 3 and the 102 label rows are real.
+
+The verdict vocabulary is `accepted` or `rejected`. Rejecting settles the
+item against every candidate and suppresses it, which is a decision the
+person did not make and which would read wrong if the candidate is the very
+file the ISRC rule now owns. `--where` matches `queue`, `kind` or a payload
+field by equality, so `payload.why=title-approximate` would sweep 86 and
+take the live Elderbrook item with them. No honest sweep exists, and a hand
+pass is 85 commands recording something that did not happen.
+
+**Measured cost:** a queue that reads as 63 times larger than it is on the
+matching side, which is the shape that makes a person stop reading it. No
+data at risk; the owned rows are owned and nothing downstream waits on the
+stale items.
+
+**Closes when:** a resolution that owns a row settles or withdraws that
+row's open `version-match` items with a verdict that says so, distinct from
+`accepted` and `rejected`, and `crate review list` on this library drops
+from 190 to the three live items plus the 102 label rows, with a test that
+offers an item, owns the row by ISRC on the next resolution, and reads the
+item gone from the open list. A predicate that selects open items by the
+row's later state is the other acceptable shape.
+
+**Not on the board bar.** A shape fix, no write held. Issue owed to the
+Relay queue after this sitting.
