@@ -43,14 +43,10 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config
-from cratekit.core.cause import CratekitError, Outcome
+from cratekit.core.cause import CratekitError, Outcome, Remedy
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import ingest, landing
-
-#: The reason an unanswered gate refuses with. This layer cannot import the
-#: gate's own class, so it reads the reason the class always carries.
-DECISION_REQUIRED = "decision-required"
 
 #: The action every planned file carries until the apply reports on it.
 LAND = "land"
@@ -305,11 +301,13 @@ def intake_land(ctx) -> Envelope:
             context=_shown(planned, target=target, destination=destination, manifest=manifest),
         )
     except CratekitError as exc:
-        # THE REFUSAL TAKES THE PLACE OF AN UNANSWERED GATE ONLY. An answer
-        # already given is honored exactly as it was before the check existed,
-        # so an abort still ends in nothing done, and an apply reaches the
-        # engine, which asks the same checks again before its first move.
-        if unusable is not None and exc.cause.reason == DECISION_REQUIRED:
+        # THE REFUSAL TAKES THE PLACE OF AN UNANSWERED GATE ONLY, the refusal
+        # whose remedy is to answer it. An answer already given is honored
+        # exactly as it was before the check existed, so an abort still ends in
+        # nothing done, and an apply reaches the engine, which asks the same
+        # checks again before its first move. Read off the remedy because this
+        # layer cannot import the gate's own class.
+        if unusable is not None and exc.cause.remediation.remedy is Remedy.ANSWER_DECISION:
             raise unusable from None
         raise
     if option != "apply" or not planned.items:
