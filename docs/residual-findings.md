@@ -28402,6 +28402,31 @@ longer say the unplaced file reaches rekordbox through an import: the
 sweep's says the file is a review and owes none, and the writer's calls it a
 review somebody reads. The two remedies stand as they were.
 
+**Closed 2026-09-24 on `relay/207`, issue #207.** Both remedies in
+`write/routing_cli.py` name what the export medium delivers. `EXPORT_REMEDY`
+is now the review half, `route inbox --export` writes a review of the routing
+and a person files its tracks by hand, since no import can land a nested
+playlist, and the new `export_remedy(declared)` adds the long track root
+playlist by the name the active declaration gives it, which one import can
+land, or nothing when the taxonomy declares none. `plan_inbox` and the
+applied no-native-tree answer of `route inbox` both build it from the plan's
+declaration, so the declined and applied answers carry the same words.
+`UNPLACED_EXPORT_REMEDY` says `route unplaced --export` writes a review of
+where each unplaced track belongs, filed by hand, and adds to no root
+playlist and owes no import. Both are short sentences with no joining colon.
+The docstrings match: `route_unplaced_export` plans and writes a review that
+owes no import, `route_unplaced` says its placements are nested membership no
+import lands, and `apply_unplaced_export` already called its file a review.
+The skill's section heading says the export gives a review. Tests in
+`tests/test_routing_workers.py` pin each remedy's literal text rather than
+the constant: the inbox remedy in five answers, the review alone declined and
+applied for a taxonomy with no long track playlist, an edited playlist name,
+and the unplaced remedy in full. The review's finding that the skill still
+says `route inbox --export` rates the intake is R-699 and was left there.
+The mutation table is authored, eight rows, and NOT measured,
+`docs/mutation/r695-notes.md` says why: the installed copy's `analyze
+vocals` job that halted R-694's table was still running.
+
 ---
 
 ## R-696. The xml star rating writer has no caller since R-688 and keeps its ungoverned exemption
