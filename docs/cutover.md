@@ -298,62 +298,54 @@ this and U29's per workflow choice. Filed R-685 to R-688, R-679 CLOSED live.
 R-678 held on both intake verbs. R-682 read again: the by reason counts still
 come off the artifacts.
 
+## Sitting 11, 2026-09-24, evening
+
+Machine state before: the volume mounted, rekordbox and its agent closed by
+the author for the whole sitting, the pipx install at `40daec7`, the Cratekit
+Relay feeder building #202 to #204. Driven from the attended worktree and the
+pipx install, so nothing merged to main until the feeder had left after #204.
+No acknowledgment was minted: nothing this sitting wrote the database.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| A4 #177, the Rating scale | yes, on a disposable copy | The live database copied once with its wal and shm, opened through `rb_writer.open_db`. Distinct `Rating` on the 9,998 rows not soft deleted: 0 on 539, 1 on 1,659, 2 on 996, 3 on 2,994, 4 on 1,434, 5 on 2,376. **The database stores stars, 0 to 5.** R-414 narrowed to its planner half, filed for the feeder, with the fold pinned at the database boundary by the author. | read, #177 closes |
+| A3 #176, the Name padding count | yes, on a disposable copy | `plan_title_padding` plan only with the naming verb's template: 9,756 headed titles, **13 unpadded**, every change on the key span alone. **Decided by the author:** the thirteen stay as they are for now and the planner is kept. R-165 stays open with the count. | read, #176 closes |
+| #212's taxonomy step | yes | `[long_tracks]` appended to the active taxonomy copy on the volume after a dated backup beside it. `core.active_taxonomy.load` reads `LongTracks(over_seconds=1200)` and doctor's `taxonomy.active` is ok. | done |
+| A5 line 10, `name apply` plan only | to the gate, answered abort | Run `2026-09-24T21:03:23Z-ee30`, 16 seconds over the library root: **5,205 files, 5,144 referenced and held, 61 renames, 0 collisions, 0 unnamed.** Every rename pads a single digit key on a file the collection does not reference, 27 of them in one sample pack folder. Some held names repeat the title around the artist, `Title - Artist - Title`, read and not measured. | measured, nothing written |
+| A7 #213, `sync labels` | yes, job `2026-09-24T20:45:49Z-c519` | 47 labels, **27 swept, 20 failed** on `TooManyRequests` and recorded permanent (R-704). A fresh copy of the review queue after: **55 of the 98 addressed rows now carry the artist's name**, 43 still carry an address, all under five labels the limit cut off, Anjunadeep 33. The sweep also offered **1,701 new releases**, so the unresolved label rows are 1,799 across 28 labels. | partial, #213 stays open |
+| A5 line 7, `analyze vocals --recursive` over the library | running | Job `2026-09-24T21:04:27Z-fbe8`, 9,929 tracks at about twenty a minute, left running overnight. The calibration and the filing pass come after it and after #212. | running |
+| A5 line 6, the typed tracklist | yes | A screenshot of a 24 line tracklist typed into a text list, `intake missing --list`: **1 listed by search, 2 owned, 13 near misses offered for review, 8 found nothing.** | live |
+| A5 line 6, the set | yes, split | A 5 hour 5 minute mix URL refused at 732 calls against the bound of 400, nothing spent (R-706). Fetched, split into two even halves by hand, each identified: Part A job `8c68`, 24 tracks, 366 calls; Part B job `ae42`, 28 tracks, 6 owned, 366 calls. `intake missing --job` on each: 10 and 8 listed by ISRC, 14 and 14 unlisted, most of them an ISRC the provider files under several releases. | live, split by hand |
+| A5 line 6, the downloads | yes, twice | First, all 19 failed `the downloader reported no file` on available lossless tracks. The downloader's own lookup, repeated outside it, answered `TooManyRequests`; the tool swallows it (R-703) and the label sweep beside it had spent the allowance (R-705). About ten minutes after the sweep ended the limit cleared and **all 18 unique tracks landed** as FLAC in Downloads; the one track on both lists was refused `output-exists` on its second copy, correctly. | cut over through the download |
+
+Line 6 of #178 is ticked for the set, the typed tracklist and the fallback
+search and download; tagging, naming and landing the 18 wait for rekordbox to
+be free after the vocal pass. Line 10 is ticked with the plan above. Filed
+R-703 to R-706.
+
 ## What blocks a full sync cycle, stated plainly
 
-The board is complete and the product cannot yet do its central workflow,
-because two seams have no adapter behind them and one source has no listing.
-Each was a residual and is a unit on the board since this sitting: U62 (#84) the catalogue, U63 (#85) the account, U64 (#86) the playlists source, with U29 declared dependent on all three.
+Corrected at sitting 11. This section once said the three Tidal seams, U62
+the catalogue, U63 the account and U64 the playlists source, had no live proof
+and that line 4 waited on them. Sitting 4 drove all three live, fixed R-355 and
+closed R-144, so none of them blocks anything.
 
-1. **R-258, the catalogue.** U62 landed its agent half on 2026-09-16:
-   `label.catalogue.resolve` now returns `label.tidal_catalogue.TidalCatalogue`
-   over the stored session, proven against a fake client only. **Owed to the
-   next attended sitting:** one real `crate intake playlist`, one real label
-   sweep and one real harvest, plus the observations R-350, R-352, R-353 and
-   R-354 close on. Before U62, `label.catalogue.resolve` refused
-   `label-catalogue-unbound` on every real invocation once a session existed.
-   `intake playlist`, the label sweep and the playlist harvest all end there.
-   Consequence for acquisition: `acquire download` refuses a text list and
-   needs a provider list document, and nothing in the product can produce one.
-   The download smoke test above used a hand written document carrying a
-   track id found through the library the adapter sits on.
-2. **R-226, the outbound account.** U63 landed its agent half on 2026-09-16:
-   `modules.outbound.account.resolve` now returns
-   `modules.outbound.tidal_account.TidalAccount` over the stored session, proven
-   against a fake client only. **Owed to the next attended sitting:** one real
-   `crate export playlist` and one real `crate sync favorites`, which is R-144's
-   closing condition. **Read R-355 first**: the rows those verbs build carry no
-   ISRC, so a live run today matches nothing and writes nothing until the rows
-   gain one. R-356 and R-357 are the observations the same sitting can make.
-3. **The playlists source.** U64 landed its agent half on 2026-09-16:
-   `crate sync all` lists the account's own playlists through the catalogue's
-   new `account_playlists` read, excludes the `DOWNLOADED ` prefixed ones, the
-   ids in the playlists cursor, the favourites placeholders, open jobs and empty
-   playlists, and queues each remaining one as an `intake.playlist` job under
-   the pass's run id. Proven against a fake catalogue only. **Owed to the next
-   attended sitting:** one real `crate sync all` on the slim or full profile,
-   reading the `playlists` block of its summary against the live account, which
-   is what R-361 closes on. **Read R-358 and R-359 first**: a swept playlist is
-   not renamed on the account, so DJ_tools sweeps it again while both run, and
-   swept means resolved, not acquired.
-
-Until those three land, "the author lives on Cratekit through a full sync
-cycle" cannot start, and DJ_tools stays the live system for everything that
-lists Tidal. The vendored downloader is the only Tidal facing code that runs.
+**The blocker is #212**, the routing tree's database cutover. Sitting 10
+proved the rekordbox xml bridge cannot land nested membership (R-687) or a
+rating on an owned row (R-688), so a full sync cycle's routing has to land
+through the database. #212 runs without ratings by the author's decision of
+sitting 11, and ratings follow once the R-414 planner card lands. Line 4 of
+#178, the full sync cycle, comes after #212.
 
 ## Next sitting
 
-Line 3 is recorded and its memberships did not land, so the next natural
-step is not line 4, which is blocked on the three seams above, but one of
-two: the routing tree's database cutover, which is U29's and attended, after
-which `route inbox` without `--export` files the 61 rows and the ratings
-through the session gates; or line 5, labels, now that `crate review list`
-reads 105 items of which 102 are the label rows it needs. Line 10, `name
-apply` plan only against the live library, is a short sitting on its own.
+**#212 first**, once the overnight vocal job has finished and rekordbox can be
+opened: delete the three stray root playlists sitting 10 left, keep `Sets and
+Long Tracks`, take a fresh export, then `route inbox` without `--export`
+through the session gates, no ratings. Then line 4, the full sync cycle.
 
-Before any of them: R-685 to R-688 are residual issues #198 to #201 on the
-board for the Relay feeder, R-685 and R-686 code fixes, R-687 and R-688 wording and a
-decision each. The three stray root playlists `Unsorted`, `High` and
-`Soul / R&B` are the author's to delete in rekordbox before the next export.
-The acknowledgment is expired and stays so until a verb that reads it is on
-the table; the sitting 10 record says which those are. The full library
-vocal pass, R-376, is still a separate attended choice.
+Also owed: the 18 downloads from sitting 11 tagged, named and landed; a second
+`sync labels` for the 20 labels the rate limit stopped, **run with no download
+beside it** (R-705), after which the 43 addressed rows are read again and #213
+closes; the 1,799 label rows reviewed for line 5; the vocal calibration and
+filing pass for line 7, after #212.

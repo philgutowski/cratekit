@@ -28501,3 +28501,93 @@ beside them, and a test reads the files off the blocked envelope's `shown`.
 
 **Not on the board bar.** A rendering, the write is still held and the
 declined run reads the plan.
+
+---
+
+## R-703. The vendored downloader swallows the provider's error and the adapter reports only that no file came back
+
+**Found:** 2026-09-24 at the eleventh attended sitting, A5 line 6. Nineteen
+downloads across three lists failed with `unavailable-transient: the
+downloader reported no file`, on tracks the provider reports available,
+streamable and lossless. The cause was found only by repeating the
+downloader's own lookup, `session.track(id, with_album=True)`, outside it: the
+album read answered `TooManyRequests`. `_validate_and_prepare_media` in the
+vendored `tidal_dl_ng/download.py` catches every exception and returns
+`None` without logging it, `item` turns that into `(False, "")`, and
+`landed_file` in `acquire/vendored.py` can only say no file came back. The
+adapter also hands the tool `_discard_tool_logging`, so even the causes the
+tool does log are dropped.
+
+**Measured cost:** one sitting's diagnosis. Every download failed for about
+fifteen minutes, and the printed remedy, retry later, was right by accident.
+Nothing on the screen or in the job named a rate limit, so the obvious reading
+was a broken downloader or a delisted track.
+
+**Closes when:** a failed item's cause names the provider's own error, a rate
+limit reads as a rate limit, and a test drives a lookup that raises through the
+adapter and reads the exception's name off the item cause.
+
+**Not on the board bar by itself**, and filed for the feeder because it cost a
+sitting and will cost the next one.
+
+---
+
+## R-704. The labels sync records a provider rate limit as a permanent failure, so resuming the job cannot retry it
+
+**Found:** 2026-09-24 at the eleventh attended sitting, A7. `crate sync labels`
+over the 47 label registry settled 27 labels and failed 20, every failure
+`sync-source-lookups-failed` over `TooManyRequests: Album unavailable`, and the
+job recorded all 20 as `permanent_failed`, with "every failure is permanent so
+resuming this job cannot succeed". A rate limit clears on its own; the same
+lookups answered about ten minutes later.
+
+**Measured cost:** 20 of 47 labels not swept, among them the five whose 43
+review rows still carry an object address (R-389), and the only way to retry
+them is a whole new sweep, which spends the calls on the 27 that succeeded
+again and meets the same limit.
+
+**Closes when:** a rate limit answer from the catalogue is a retryable item
+cause, `crate job resume` re-arms exactly those items, and a test drives a
+`TooManyRequests` through one label's listing and resumes it.
+
+---
+
+## R-705. Nothing keeps a label sweep and a download from sharing one rate limited account
+
+**Found:** 2026-09-24 at the eleventh attended sitting. The label sweep and
+three `acquire download` runs ran in the same half hour on one provider
+account, and the sweep's catalogue crawl drove the account into rate limiting,
+which failed every download (R-703) and 20 of the sweep's own labels (R-704).
+Each verb runs its own driver and neither knows the other is spending the same
+allowance.
+
+**Measured cost:** the whole download batch of a sitting and 20 labels. A full
+`crate sync all`, which queues a labels job beside the playlist intakes it then
+downloads, is the same shape on a larger scale.
+
+**Closes when:** provider calls from concurrent drivers share one pacing
+decision, or a second provider driver waits while one holds the account, and a
+test runs two drivers against one fake that rate limits.
+
+---
+
+## R-706. A set longer than the recognition bound cannot be identified whole, and a split set lands as unrelated parts
+
+**Found:** 2026-09-24 at the eleventh attended sitting, A5 line 6. `crate
+intake set` on a mix URL of 5 hours 5 minutes refused before any call,
+`intake-recognition-spend-bound`, 732 calls against the fixed per run bound of
+400 in `intake/acrcloud.py`. The refusal was right to spend nothing. The only
+way through was by hand: the recording was fetched, split into two even halves
+with ffmpeg, and each half identified as its own set, 366 calls each, 24 and
+28 tracks.
+
+**Measured cost:** a sitting's hand work, and two intake jobs for one set whose
+tracks then land as two batches named Part A and Part B. A long live recording
+is an ordinary input for this author, so the next one costs the same.
+
+**Closes when:** a set over the bound is split into even parts each under it,
+each part is identified, and the parts' tracks resolve and land as one batch
+under the set's own name, with the whole spend checked against the monthly
+bound before the first call. Decided by Phillip 2026-09-24: joined back into
+one playlist where that is not new building, else the parts named Part A, Part
+B and Part C.
