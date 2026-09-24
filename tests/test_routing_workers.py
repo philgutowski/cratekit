@@ -2481,6 +2481,26 @@ def test_a_taxonomy_with_no_long_track_playlist_gets_the_review_alone_as_its_rem
         ] == [INBOX_REMEDY_REVIEW], (option, envelope["warnings"])
 
 
+def test_the_remedy_names_the_long_track_playlist_the_active_copy_declares(configured):
+    """An EDIT, not only a removal: the display a person gave the long track
+    playlist in their own declaration is the one the remedy names, since it is
+    the playlist an import would land (R-685, R-695)."""
+    shipped = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
+    line = f'display = "{LONG_PLAYLIST}"'
+    assert shipped.count(line) == 1
+    write_active(configured, shipped.replace(line, 'display = "Long Sets By Hand"'))
+    code, envelope = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), envelope
+    assert [
+        warning["message"]
+        for warning in envelope["warnings"]
+        if warning["code"] == "no-native-tree"
+    ] == [
+        f"{INBOX_REMEDY_REVIEW}. It also adds long tracks to the root playlist "
+        "'Long Sets By Hand', which one import can land"
+    ], envelope["warnings"]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # U87, reversed by R-688: the export sweep plans no star rating
 # ═══════════════════════════════════════════════════════════════════════════

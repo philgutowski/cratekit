@@ -1,0 +1,127 @@
+name = "r695"
+pass_kind = "light"
+
+# R-695: the two no-native-tree remedies name what the export medium
+# delivers, a review of the routing and, for the inbox sweep, the long track
+# root playlist the taxonomy declares, rather than a filing. Scoped to the two
+# remedy texts, the new export_remedy builder and its two callers. Author's
+# table, no independent verifier (METHOD, 2026-09-07).
+
+[[rows]]
+id = "T1_inbox_remedy_says_it_files"
+description = "the inbox remedy goes back to saying the library is still filed through an export, the defect R-695 recorded"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    "no tree has cut over, so nothing files this library into the routing tree. "
+'''
+new = '''
+    "no tree has cut over, so this library is still filed through an export. "
+'''
+
+[[rows]]
+id = "T2_inbox_remedy_drops_the_review"
+description = "the inbox remedy no longer says the file is a review a person files by hand"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    "file. It writes a review of the routing, and you file its tracks by hand, "
+    "since no import can land a nested playlist"
+'''
+new = '''
+    "file, which routes the intake"
+'''
+
+[[rows]]
+id = "T3_unplaced_remedy_says_it_places"
+description = "the unplaced remedy goes back to saying the export places what the routing tree does not hold"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    "that file. It writes a review of where each unplaced track belongs, and you "
+    "file those tracks by hand, since no import can land a nested playlist. It "
+    "adds to no root playlist and owes no import"
+'''
+new = '''
+    "that file, which places what the routing tree does not hold"
+'''
+
+[[rows]]
+id = "B1_long_clause_never_added"
+description = "export_remedy never names the long track playlist, so a person is not told the one thing an import lands"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if declared.long_tracks is None:
+        return EXPORT_REMEDY
+    return (
+'''
+new = '''
+    if True:
+        return EXPORT_REMEDY
+    return (
+'''
+
+[[rows]]
+id = "B2_long_clause_always_added"
+description = "export_remedy names a long track playlist whether or not the taxonomy declares one"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if declared.long_tracks is None:
+        return EXPORT_REMEDY
+    return (
+        f"{EXPORT_REMEDY}. It also adds long tracks to the root playlist "
+        f"{declared.long_tracks.display!r}, which one import can land"
+    )
+'''
+new = '''
+    return (
+        f"{EXPORT_REMEDY}. It also adds long tracks to the root playlist "
+        f"'Sets and Long Tracks', which one import can land"
+    )
+'''
+
+[[rows]]
+id = "B3_shipped_name_not_declared_name"
+description = "export_remedy names the shipped long track playlist rather than the one the active declaration names"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        f"{declared.long_tracks.display!r}, which one import can land"
+'''
+new = '''
+        f"{'Sets and Long Tracks'!r}, which one import can land"
+'''
+
+[[rows]]
+id = "C1_plan_carries_the_bare_review"
+description = "plan_inbox carries the bare review text, so the gate and the declined answer drop the long track playlist"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        warnings.append({"code": "no-native-tree", "message": export_remedy(declared)})
+'''
+new = '''
+        warnings.append({"code": "no-native-tree", "message": EXPORT_REMEDY})
+'''
+
+[[rows]]
+id = "C2_applied_answer_carries_the_bare_review"
+description = "the applied no-native-tree answer of route inbox carries the bare review text, so declined and applied answers differ"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            [{"code": "no-native-tree", "message": export_remedy(planned.declared)}]
+'''
+new = '''
+            [{"code": "no-native-tree", "message": EXPORT_REMEDY}]
+'''
