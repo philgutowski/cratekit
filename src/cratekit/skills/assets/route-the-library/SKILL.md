@@ -117,7 +117,8 @@ Every collection track that no playlist under the routing tree holds is routed
 by the same decision the intake sweep makes, and the result is written to
 `collection_placed.xml` beside the export. The export itself and the database
 are never written, so this is safe with rekordbox open and asks no question
-first. The file is the review: nothing reaches the library until you import it.
+first. The file is the review, and nothing in it reaches the library through an
+import, as the end of this section says.
 
 A track filed anywhere under the tree is left where it is, even in a sub the
 rules would not pick. A bucket with no sub yet gets one, and the answer lists
@@ -125,10 +126,13 @@ every sub it created. A missing genre folder is a warning, never invented. A
 track whose file is not on this machine is a warning and is not placed. Ratings
 are not set here; `route inbox --export` rates the intake.
 
-The run ends waiting on the import. Import the file as a rekordbox xml library,
-import the routing tree from it, then export again and run the same command on
-the new export. It places nothing once the import has landed, and that is the
-check.
+The run ends waiting, and the file is a review rather than something to import.
+Every placement in it is a playlist nested inside the routing tree, and
+rekordbox cannot land one from an xml file: a nested playlist imported on its
+own lands at the playlist root as a new playlist, and a folder imported whole
+keeps what it held and adds a second copy of every playlist inside it. The
+placements land once the tree cuts over to the database. Until then the same
+command plans the same placements on every fresh export.
 
 ## Resort queues rather than sweeps
 
