@@ -3687,6 +3687,10 @@ def test_vocal_subs_alone_are_a_change_and_write_a_file(configured, voiced, tmp_
     assert envelope["data"]["totals"]["inserted"] == 0
     assert len(envelope["data"]["totals"]["vox_created"]) == 2
     assert _routed(bare).is_file()
+    # R-694: a created sub is nested too, so a file of subs alone is a review.
+    assert envelope["pending_human_action"] is None
+    (review,) = _not_landable(envelope)
+    assert review.startswith("0 membership(s) routed and 2 sub-playlist(s) created"), review
 
 
 def test_a_calibrated_export_with_no_routing_tree_warns_rather_than_crashing(
