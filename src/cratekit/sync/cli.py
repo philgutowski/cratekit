@@ -313,10 +313,20 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
 
     def ask(plans: list[_Plan]) -> None:
         gate = next(g for g in ctx.entry.gates if g.name == CONFIRM)
+        # THE TRACKS THE SWEEP'S DIGEST COVERS ARE SHOWN (R-693), the way the
+        # favourites verb's own gate shows them, beside what would queue.
         option = ctx.gate.require(
             gate,
-            digest=favorites_cli.sweep_digest(exported, resolved),
-            context={**_awaiting(plans), **shell.shown_export(age)},
+            plan={
+                "digest": favorites_cli.sweep_digest(exported, resolved),
+                "items": list(resolved.track_ids),
+            },
+            context={
+                **_awaiting(plans),
+                shell.PLAYLIST: resolved.key,
+                shell.EXPORT_PATH: str(exported),
+                **shell.shown_export(age),
+            },
         )
         if option == "abort":
             plan.not_queued = DECLINED

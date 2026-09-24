@@ -1339,6 +1339,52 @@ def selected(folder: Path) -> list[Path]:
     ]
 
 
+def test_the_retag_gate_shows_every_row_the_digest_was_taken_over(repair_on, folder, silence):
+    """The gate carried the question and not one file (R-693). Its ``shown``
+    now holds the plan rows the digest was taken over, each file with the genre
+    it carries, and the folder in front of them."""
+    del repair_on
+    for name in ("a", "b"):
+        coarse(folder, silence, name)
+    expected = retag_cli.plan_for(str(folder.absolute()), TAXONOMY)
+
+    code, refused = drive(["tag", "retag", str(folder)])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["items"] == expected["items"]
+    assert [row["current"] for row in shown["items"]] == [CATCH_ALL, CATCH_ALL]
+    assert shown["digest"] == expected["digest"]
+    assert shown["count"] == 2
+    assert shown[retag_cli.FOLDER_KEY] == str(folder.absolute())
+
+
+def test_the_retag_resume_gate_shows_the_frozen_rows_it_asks_about(
+    repair_on, folder, silence
+):
+    """A resume on a run holding no answer shows the rows the confirmation was
+    recorded against, read off the frozen payload and never off a fresh walk."""
+    del repair_on
+    for name in ("a", "b"):
+        coarse(folder, silence, name)
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    with jobs.open_store() as store:
+        payload = jobs.get(store, job_id).payload
+    # THE FOLDER MOVES ON, so a screen built from a fresh walk would differ.
+    assert tags.write_genre(folder / "a.flac", SPECIFIC), "the stand-in write failed"
+
+    code, refused = drive(["tag", "retag", str(folder), "--job", job_id])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == RETAG_GATE
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["items"] == payload[retag_cli.ITEMS_KEY]
+    assert len(shown["items"]) == 2, "the frozen rows were not what the screen showed"
+    assert shown["count"] == 2
+    assert shown[retag_cli.FOLDER_KEY] == payload[retag_cli.FOLDER_KEY]
+    assert shown["digest"] == retag_cli.digest_for(
+        payload[retag_cli.FOLDER_KEY], payload[retag_cli.ITEMS_KEY]
+    )
+
+
 def test_a_resume_after_a_partial_run_meets_its_gate_rather_than_going_stale(
     repair_on, folder, silence, monkeypatch
 ):

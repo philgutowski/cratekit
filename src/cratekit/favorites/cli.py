@@ -260,8 +260,17 @@ def sync_favorites(ctx) -> Envelope:
     cfg = shell.load_config("favorites.cli")
     age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
 
+    # THE TRACKS THE DIGEST COVERS ARE SHOWN (R-693), through the gate layer,
+    # beside the export's age. The resume shows the same tracks off the
+    # frozen payload.
     option = ctx.gate.require(
-        spec, digest=sweep_digest(exported, resolved), context=shell.shown_export(age)
+        spec,
+        plan={"digest": sweep_digest(exported, resolved), "items": list(resolved.track_ids)},
+        context={
+            shell.PLAYLIST: resolved.key,
+            shell.EXPORT_PATH: str(exported),
+            **shell.shown_export(age),
+        },
     )
     if option == "abort":
         # THE DECLARED SHAPE, and nothing about the playlist. See

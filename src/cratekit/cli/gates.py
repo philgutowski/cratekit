@@ -306,6 +306,41 @@ def load(run_id: str) -> RunState:
     return RunState.from_json(raw)
 
 
+#: The keys :func:`shown_plan` fills from the plan. A fact under one of these
+#: names would be overwritten without a word, so it is refused instead.
+SHOWN_PLAN_KEYS = ("digest", "count", "items")
+
+
+def shown_plan(plan: Mapping[str, Any], facts: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """What a digest bound gate puts in front of the person (R-693).
+
+    The facts the caller names, then the plan's digest, its count and EVERY
+    ITEM the digest was taken over, so the screen is the plan a person
+    approves, and a JSON reader can compare it with the plan a declined run
+    returns where the verb returns one. R-670 and R-686 closed this shape one
+    verb at a time, and seven gates were still passing a digest and nothing to
+    show, so their screens carried the question and not the plan; a declined
+    run was the only way to read one. This is the one body every digest bound
+    gate shows through, and :meth:`Gates.require` calls it whenever a plan is
+    passed.
+
+    THERE IS NO BOUND. The digest covers every item, and a list cut short
+    would ask for approval of items nobody was shown. ``count`` is the number
+    of items, which is what the digest covers, and a verb whose own totals
+    count something narrower names them in its facts under their own names,
+    never under one of ``SHOWN_PLAN_KEYS``: a fact under one of those would
+    be overwritten by the plan's value without a word, so it is refused.
+
+    The values must be JSON already, the rule :class:`DecisionRequired` states.
+    """
+    named = dict(facts or {})
+    taken = sorted(set(named) & set(SHOWN_PLAN_KEYS))
+    if taken:
+        raise ValueError(f"shown_plan() fills {taken} from the plan; name the fact differently")
+    items = list(plan["items"])
+    return {**named, "digest": plan["digest"], "count": len(items), "items": items}
+
+
 def parse_decision_flags(values: list[str]) -> dict[str, str]:
     """Turn repeated ``gate=option`` arguments into a mapping.
 
@@ -366,6 +401,7 @@ class Gates:
         *,
         digest: str | None = None,
         context: Mapping[str, Any] | None = None,
+        plan: Mapping[str, Any] | None = None,
     ) -> str:
         """Return the chosen option, or raise so the CLI can exit resumably.
 
@@ -376,7 +412,21 @@ class Gates:
         them would make what a person is shown depend on whether they typed a
         flag. It is a display value and never an input to the decision, so
         nothing below reads it.
+
+        ``plan`` IS THE DIGESTED PLAN, ``digest`` AND ``items`` ON ONE MAPPING
+        (R-693). The digest the decision binds to is read off it, and the
+        screen shows its items through :func:`shown_plan`, with ``context`` as
+        the facts in front of them. One object for both, so what a person is
+        shown and what their answer is recorded against cannot be two plans.
+        A caller passes ``digest`` or ``plan`` and never both, because two
+        sources of the digest is exactly how the screen and the binding come
+        to disagree, and that is refused here rather than resolved quietly.
         """
+        if plan is not None:
+            if digest is not None:
+                raise TypeError("require() takes a digest or a plan, not both")
+            digest = plan["digest"]
+            context = shown_plan(plan, context)
         self.reached.append(spec.name)
 
         recorded = self.state.decisions.get(spec.name)
@@ -591,4 +641,6 @@ __all__ = [
     "run_dir",
     "run_path",
     "save",
+    "shown_plan",
+    "SHOWN_PLAN_KEYS",
 ]

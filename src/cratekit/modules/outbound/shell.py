@@ -56,6 +56,12 @@ EXPORT = "export"
 #: person to confirm again. The track set is what the write actually is.
 TRACKS = "tracks"
 
+#: The fact under which a gate screen names the export document's path (R-693).
+#: NOT ``EXPORT``: :func:`shown_export` already shows a block under ``export``
+#: with the document's name and age, and the resume, which may not read the
+#: document, names the frozen path beside it rather than in its place.
+EXPORT_PATH = "export path"
+
 
 def load_config(origin: str) -> config.Config:
     """The current configuration, or the refusal a person can act on.
@@ -372,14 +378,18 @@ def resume(
     with jobs.open_store() as store:
         queued = jobs.get(store, job_id)
         payload = queued.payload or {}
+        playlist = str(payload.get(PLAYLIST) or "")
+        exported = str(payload.get(EXPORT) or "")
+        tracks = [str(track) for track in payload.get(TRACKS) or ()]
+        extra = dict(frozen_extra(payload)) if frozen_extra is not None else {}
+        # THE FROZEN PLAN IS SHOWN THROUGH THE GATE LAYER (R-693): every
+        # track the digest covers, with the playlist, the export path and any
+        # extra the digest was taken over in front of them. Nothing here is
+        # read from the export document, for the reason above.
         option = ctx.gate.require(
             spec,
-            digest=digest(
-                str(payload.get(PLAYLIST) or ""),
-                str(payload.get(EXPORT) or ""),
-                [str(track) for track in payload.get(TRACKS) or ()],
-                **(frozen_extra(payload) if frozen_extra is not None else {}),
-            ),
+            plan={"digest": digest(playlist, exported, tracks, **extra), "items": tracks},
+            context={PLAYLIST: playlist, EXPORT_PATH: exported, **extra},
         )
         if option == "abort":
             return ctx.envelope(data=declined(queued.job_id), outcome=Outcome.NO_OP)
@@ -425,6 +435,7 @@ def resume(
 
 __all__ = [
     "EXPORT",
+    "EXPORT_PATH",
     "PLAYLIST",
     "TRACKS",
     "age_warnings",

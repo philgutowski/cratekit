@@ -404,7 +404,10 @@ def retag_genres(ctx) -> Envelope:
 
     folder = str(Path(named).expanduser().absolute())
     plan = plan_for(folder, active_taxonomy.load(cfg))
-    option = ctx.gate.require(_plan_gate(ctx), digest=plan["digest"])
+    # THE PLAN IS SHOWN THROUGH THE GATE LAYER (R-693): each file with the
+    # genre it carries, the digest they were taken over, and the folder in
+    # front of them, so a person confirms a sweep they have read.
+    option = ctx.gate.require(_plan_gate(ctx), plan=plan, context={FOLDER_KEY: folder})
     if option == "abort":
         return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
 
@@ -495,16 +498,17 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     with jobs.open_store() as store:
         queued = jobs.get(store, ctx.args.job)
         payload = queued.payload or {}
+        folder = str(payload.get(FOLDER_KEY) or "")
+        rows = [dict(row) for row in payload.get(ITEMS_KEY) or ()]
+        # THE FROZEN PLAN IS SHOWN THE WAY THE FIRST ASK SHOWED IT (R-693):
+        # the rows the confirmation was recorded against, and their digest.
         option = ctx.gate.require(
             _plan_gate(ctx),
-            digest=digest_for(
-                str(payload.get(FOLDER_KEY) or ""),
-                [dict(row) for row in payload.get(ITEMS_KEY) or ()],
-            ),
+            plan={"digest": digest_for(folder, rows), "items": rows},
+            context={FOLDER_KEY: folder},
         )
         if option == "abort":
             return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
-        folder = str(payload.get(FOLDER_KEY) or "")
         try:
             job, warnings = shell.advance(
                 ctx,

@@ -966,3 +966,59 @@ def test_a_resume_reconciles_a_claim_a_dead_driver_left_behind(installed):
         reconciled = jobs.get(store, job_id)
         assert reconciled.state is jobs.JobState.FAILED
         assert [item.state for item in jobs.items(store, job_id)] == [jobs.ItemState.FAILED]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-693: the approval gate shows the plan it asks about
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _expected_document(installed) -> dict:
+    """The plan document, with the entries the digest lists marked out."""
+    plan = apply_cli.current_plan(installed, taxonomy.default_taxonomy())
+    document = adopt_plan.to_json(plan)
+    listed = {entry.entry_id for entry in plan.applicable()}
+    document["listed"] = [entry for entry in document["entries"] if entry["id"] in listed]
+    assert 0 < len(document["listed"]) < len(document["entries"]), (
+        "the fixture needs an applicable entry and one the plan will not touch, "
+        "or the screen's choice between them cannot be seen"
+    )
+    return document
+
+
+def _shown_matches(shown: dict, document: dict) -> None:
+    assert shown["items"] == document["listed"]
+    assert shown["digest"] == document["digest"]
+    assert shown["count"] == len(document["listed"])
+    assert shown["tree"] == document["tree"]
+    assert shown["counts"] == document["counts"]
+    assert shown["collisions"] == document["collisions"]
+
+
+def test_the_approval_gate_shows_every_entry_the_digest_was_taken_over(installed):
+    """The gate carried the question and not one entry (R-693). Its ``shown``
+    now holds the entries the digest lists, the applicable ones, with the
+    digest, the tree, the counts per disposition and the collisions the digest
+    was taken over. What the plan will not touch is on the screen as a count,
+    since the digest does not name those entries."""
+    document = _expected_document(installed)
+    code, refused = _drive(["adopt", "apply"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _shown_matches(refused["cause"]["detail"]["shown"], document)
+    assert _queued(installed) == []
+
+
+def test_the_resume_gate_shows_the_rebuilt_plan_it_asks_about(installed):
+    """A resume on a run holding no answer meets the same gate over the plan
+    rebuilt from the census, and shows it the same way."""
+    document = _expected_document(installed)
+    _code, refused = _drive(["adopt", "apply"])
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, "adopt.apply.approve", "approve", "--actor", "a-person"])
+    _approved, envelope = _drive(["--run", run_id, "adopt", "apply"])
+    job_id = envelope["data"]["job_id"]
+
+    code, refused = _drive(["adopt", "apply", "--job", job_id])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == "adopt.apply.approve"
+    _shown_matches(refused["cause"]["detail"]["shown"], document)

@@ -402,6 +402,33 @@ def _approval_gate(entry):
     )
 
 
+def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
+    """The plan as the approval gate shows it, and the facts beside it (R-693).
+
+    THE ITEMS ARE THE APPLICABLE ENTRIES, because those are the entries the
+    digest lists: an approval binds to the work an apply may write, and a
+    screen listing every scanned track would move when a track the digest
+    does not name changed its recorded location, so a recorded answer would
+    stand over a screen that reads differently. What the plan will not touch
+    is on the screen as the counts per disposition, which the digest covers
+    as well, beside the tree and the collisions. Read off the same document
+    ``adopt plan`` prints, so the two say the same thing.
+    """
+    document = plan_engine.to_json(plan)
+    listed = {entry.entry_id for entry in plan.applicable()}
+    return (
+        {
+            "digest": document["digest"],
+            "items": [entry for entry in document["entries"] if entry["id"] in listed],
+        },
+        {
+            "tree": document["tree"],
+            "counts": document["counts"],
+            "collisions": document["collisions"],
+        },
+    )
+
+
 def apply_adoption(ctx) -> Envelope:
     """Ask the approval gate against this plan, then queue the pass.
 
@@ -443,7 +470,8 @@ def apply_adoption(ctx) -> Envelope:
 
     plan = current_plan(cfg, declared)
     spec = _approval_gate(ctx.entry)
-    option = ctx.gate.require(spec, digest=plan.digest())
+    digested, facts = _digested(plan)
+    option = ctx.gate.require(spec, plan=digested, context=facts)
     if option == "abort":
         # ``job_id`` IS THE EMPTY STRING RATHER THAN ``None``. ``cli.output``
         # closes the declared ``job_state/1`` surface with
@@ -518,7 +546,8 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     declared = active_taxonomy.load(cfg)
     plan = current_plan(cfg, declared)
     spec = _approval_gate(ctx.entry)
-    if ctx.gate.require(spec, digest=plan.digest()) == "abort":
+    digested, facts = _digested(plan)
+    if ctx.gate.require(spec, plan=digested, context=facts) == "abort":
         return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
 
     with jobs.open_store() as store:

@@ -269,6 +269,25 @@ def test_the_composed_gate_names_the_exports_date_beside_what_would_queue(
     assert shown["export"]["freshness"] == "stale"
 
 
+def test_the_composed_gate_shows_the_tracks_the_sweeps_digest_covers(installed, exported):
+    """R-693, on the composed gate: the favourites the sweep would heart back
+    are listed the way the favourites verb's own gate lists them, beside what
+    would queue and the export's date."""
+    del installed
+    register(LABELS[0])
+    code, refused = drive(_verb(exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    _exported, resolved = favorites_cli.resolve_sweep(str(exported), None)
+    assert shown["items"] == list(resolved.track_ids)
+    assert shown["items"]
+    assert shown["count"] == len(resolved.track_ids)
+    assert shown["playlist"] == resolved.key
+    assert shown["export path"] == str(exported)
+    assert shown["digest"] == favorites_cli.sweep_digest(exported, resolved)
+    assert shown["would_queue"] == ["favorites", "labels"]
+
+
 def test_a_pass_that_queued_over_an_old_export_warns_and_still_queues(
     installed, exported
 ):

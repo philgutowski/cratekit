@@ -1,0 +1,137 @@
+name = "r693-a"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_require_drops_the_plans_context"
+description = "Gates.require: bind the digest off the plan but show nothing, the defect R-693 recorded, one layer down"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''            context = shown_plan(plan, context)'''
+new = '''            context = context'''
+
+[[rows]]
+id = "G2_items_cut_to_the_first"
+description = "shown_plan: list only the first item, a bound the ledger forbids"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''    items = list(plan["items"])
+    return {**named, "digest": plan["digest"], "count": len(items), "items": items}'''
+new = '''    items = list(plan["items"])
+    return {**named, "digest": plan["digest"], "count": len(items), "items": items[:1]}'''
+
+[[rows]]
+id = "G3_digest_not_shown"
+description = "shown_plan: show an empty digest, so a reader cannot match the screen to the recorded offer"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''    return {**named, "digest": plan["digest"], "count": len(items), "items": items}'''
+new = '''    return {**named, "digest": "", "count": len(items), "items": items}'''
+
+[[rows]]
+id = "G4_facts_dropped"
+description = "shown_plan: drop the caller's facts, so the folder, root or profile never reaches the screen"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''    return {**named, "digest": plan["digest"], "count": len(items), "items": items}'''
+new = '''    return {"digest": plan["digest"], "count": len(items), "items": items}'''
+
+[[rows]]
+id = "G5_reserved_fact_overwritten"
+description = "shown_plan: accept a fact named digest, count or items and let the plan overwrite it silently"
+file = "src/cratekit/cli/gates.py"
+surface = "maintainer"
+tests = ["tests/test_gate_shown_plan.py"]
+old = '''    if taken:
+        raise ValueError'''
+new = '''    if False:
+        raise ValueError'''
+
+[[rows]]
+id = "G6_digest_beside_plan_accepted"
+description = "Gates.require: accept a digest beside a plan, two sources of the one the answer binds to"
+file = "src/cratekit/cli/gates.py"
+surface = "maintainer"
+tests = ["tests/test_gate_shown_plan.py"]
+old = '''            if digest is not None:
+                raise TypeError("require() takes a digest or a plan, not both")'''
+new = '''            if False:
+                raise TypeError("require() takes a digest or a plan, not both")'''
+
+[[rows]]
+id = "G7_offer_not_read_off_the_plan"
+description = "Gates.require: show the plan but bind the decision to no digest, so a moved plan is never stale"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''            digest = plan["digest"]
+            context = shown_plan(plan, context)'''
+new = '''            digest = None
+            context = shown_plan(plan, context)'''
+
+[[rows]]
+id = "A1_adopt_shows_every_entry"
+description = "adopt apply: list every scanned entry, not the applicable ones the digest names"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_gate_shown_plan.py"]
+old = '''            "items": [entry for entry in document["entries"] if entry["id"] in listed],'''
+new = '''            "items": [entry for entry in document["entries"] if True],'''
+
+[[rows]]
+id = "A2_adopt_facts_dropped"
+description = "adopt apply: show the entries with no tree, counts or collisions in front of them"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_gate_shown_plan.py"]
+old = '''        {
+            "tree": document["tree"],
+            "counts": document["counts"],
+            "collisions": document["collisions"],
+        },
+    )'''
+new = '''        {},
+    )'''
+
+[[rows]]
+id = "A3_adopt_resume_digest_only"
+description = "adopt apply --job: ask the gate over the digest alone, the shape the ledger recorded"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_gate_shown_plan.py"]
+old = '''    if ctx.gate.require(spec, plan=digested, context=facts) == "abort":'''
+new = '''    if ctx.gate.require(spec, digest=digested["digest"]) == "abort":'''
+
+[[rows]]
+id = "R1_repair_digest_only"
+description = "repair paths --apply: ask the gate over the digest alone, the shape the ledger recorded"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_gate_shown_plan.py"]
+old = '''    option = ctx.gate.require(
+        spec, plan=plan, context={"root": str(root) if root is not None else None, **totals}
+    )'''
+new = '''    option = ctx.gate.require(spec, digest=plan["digest"])'''
+
+[[rows]]
+id = "R2_repair_totals_dropped"
+description = "repair paths --apply: show the root and no totals, so the renames it can perform are not on the screen"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_gate_shown_plan.py"]
+old = '''        spec, plan=plan, context={"root": str(root) if root is not None else None, **totals}'''
+new = '''        spec, plan=plan, context={"root": str(root) if root is not None else None}'''
+
+[[rows]]
+id = "P1_profile_digest_only"
+description = "profile set: ask the gate over the digest alone, the shape the ledger recorded"
+file = "src/cratekit/cli/verbs/profile.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_gate_shown_plan.py"]
+old = '''    option = ctx.gate.require(
+        spec, plan=plan, context={"profile": ctx.args.name, **plan["totals"]}
+    )'''
+new = '''    option = ctx.gate.require(spec, digest=plan["digest"])'''
