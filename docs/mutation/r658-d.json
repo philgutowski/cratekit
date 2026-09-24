@@ -1,0 +1,100 @@
+{
+  "name": "r658-d",
+  "pass_kind": "light",
+  "branch": "relay/191",
+  "head": "e824246",
+  "when": "2026-09-24 01:32 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10135,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "state_guarded": "~/Library/Application Support/cratekit (2446 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to tests/test_restore.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "tests/test_restore.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "dcce6865aa88858a",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10135,
+    "baseline_collected": 10135,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "D1_an_undo_comes_back",
+      "description": "Put a body monkeypatch.undo() back into the restore retry test; the ban must name it",
+      "file": "tests/test_restore.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "90a4b8d2bfdbf75f",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 6,
+      "baseline_collected": 6,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_no_test_undoes_the_shared_monkeypatch"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    # Put right what the error named, then do what the refusal said.\n    log.write_bytes(b\"the second attempt's log\")\n",
+      "new": "    # Put right what the error named, then do what the refusal said.\n    monkeypatch.undo()\n    log.write_bytes(b\"the second attempt's log\")\n"
+    },
+    {
+      "id": "D2_the_ban_looks_for_another_name",
+      "description": "The ban matches a method named undone rather than undo, so it sees nothing",
+      "file": "tests/test_isolation_survives_undo.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6b9bf40accda0e61",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 6,
+      "baseline_collected": 6,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_the_ban_sees_an_undo"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        and node.func.attr == \"undo\"\n",
+      "new": "        and node.func.attr == \"undone\"\n"
+    }
+  ],
+  "dropped": []
+}
