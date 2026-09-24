@@ -1,0 +1,119 @@
+name = "r678-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_drop_the_job_state_case"
+description = "the original defect for the three queueing verbs: render never asks for the job"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py", "tests/test_intake_imported.py"]
+old = '''    lines += render_job_state(envelope, drive=drive)
+'''
+new = ""
+
+[[rows]]
+id = "A2_drop_the_import_proof_case"
+description = "the original defect for intake imported: render never asks for the proof"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_intake_imported.py"]
+old = '''    lines += render_import_proof(envelope)
+'''
+new = ""
+
+[[rows]]
+id = "A3_job_case_ungated_on_schema"
+description = "the job case renders any schema whose data carries a job id"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py", "tests/test_intake_imported.py"]
+old = '''    if not envelope.schema.startswith("job_state/"):
+        return []'''
+new = '''    if False:
+        return []'''
+
+[[rows]]
+id = "A4_empty_job_id_renders_a_job"
+description = "a queue that held nothing prints a job line with an empty identifier"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py", "tests/test_intake_imported.py"]
+old = '''    if not isinstance(job_id, str) or not job_id:
+        return []'''
+new = '''    if not isinstance(job_id, str):
+        return []'''
+
+[[rows]]
+id = "A5_drive_line_for_any_state"
+description = "a handed in drive is printed for a job that is no longer queued"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py", "tests/test_intake_imported.py"]
+old = '''    if state == "queued" and drive:'''
+new = '''    if drive:'''
+
+[[rows]]
+id = "A6_resolution_for_every_job_verb"
+description = "the intake resolution counts print under any job_state verb"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py", "tests/test_intake_imported.py"]
+old = '''    if envelope.verb in _RESOLVING_VERBS and state != "queued":'''
+new = '''    if state != "queued":'''
+
+[[rows]]
+id = "A7_next_for_an_unfinished_job"
+description = "intake missing is offered for a job it will refuse, one not succeeded"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py", "tests/test_intake_imported.py"]
+old = '''    if state == "succeeded" and isinstance(progress.get("missing"), int) and progress["missing"]:'''
+new = '''    if isinstance(progress.get("missing"), int) and progress["missing"]:'''
+
+[[rows]]
+id = "A8_next_with_nothing_missing"
+description = "intake missing is offered over a resolution with zero missing"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py", "tests/test_intake_imported.py"]
+old = '''    if state == "succeeded" and isinstance(progress.get("missing"), int) and progress["missing"]:'''
+new = '''    if state == "succeeded" and isinstance(progress.get("missing"), int):'''
+
+[[rows]]
+id = "A9_absent_word_printed"
+description = "a resolution word the progress does not carry is read anyway"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py", "tests/test_intake_imported.py"]
+old = '''        for word, said in _RESOLUTION_WORDS
+        if isinstance(progress.get(word), int)
+    ]'''
+new = '''        for word, said in _RESOLUTION_WORDS
+    ]'''
+
+[[rows]]
+id = "A10_proof_ungated_on_verb"
+description = "every plan verb's items are rendered as import proof lines"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_intake_imported.py"]
+old = '''    if not envelope.schema.startswith("plan/") or envelope.verb != "intake.imported":'''
+new = '''    if not envelope.schema.startswith("plan/"):'''
+
+[[rows]]
+id = "A11_run_count_not_the_total"
+description = "the proven run count is recounted rather than read from the verb's total"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_intake_imported.py"]
+old = '''    runs = runs if isinstance(runs, int) else len(proven)'''
+new = '''    runs = len(proven)'''
+
+[[rows]]
+id = "A12_retired_file_unnamed"
+description = "the retired intake file's name is dropped from the proof line"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_intake_imported.py"]
+old = '''    filed = f"intake file retired to {PurePath(str(retired)).name}" if retired else None'''
+new = '''    filed = None'''

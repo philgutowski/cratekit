@@ -1,0 +1,14 @@
+name = "r678-c"
+pass_kind = "light"
+
+[[rows]]
+id = "A3_after_the_test_fix"
+description = "the job case renders any schema whose data carries a job id"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py", "tests/test_intake_imported.py"]
+old = '''    if not envelope.schema.startswith("job_state/"):
+        return []'''
+new = '''    if False:
+        return []'''
+

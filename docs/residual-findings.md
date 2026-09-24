@@ -27563,6 +27563,25 @@ human mode the way R-378's fix was.
 the queueing half of `acquire download` and `tag folder`, which sitting 9
 found printing `ok` and no job identifier the same way.
 
+**Closed 2026-09-23 on `relay/196`.** `cli.render.render_job_state` is gated
+on the `job_state` schema and a nonempty job identifier. It names the job and
+its state, the settled count, and for a queued job the command that drives it.
+For an `intake playlist` or `intake set` resolution it names owned, offered,
+missing and suppressed, and for a succeeded one with rows missing, `crate
+intake missing --job`. `cli.render.render_import_proof` is gated on the `plan`
+schema and the `intake.imported` verb. It names each run as proven with its
+track count and the retired file, not imported, not verifiable, or retired
+earlier, and then the totals. The drive command is the one thing not read from
+the envelope. The frozen payload it is rebuilt from is in the queue, so
+`cli._drive_argv` reads the job back in human mode only, for the verb that
+queued it, and names nothing when the lookup fails. The json is untouched: the
+json mode test replaces every new case with a tripwire. Tests drive each verb
+through the real dispatcher in the default mode with the new shared
+`tests.cli_drive.drive_human`. Mutation tables `docs/mutation/r678-a.md`,
+`r678-b.md` and `r678-c.md`, read in `r678-notes.md`: 16 mutations, 15 killing,
+one maintainer facing zero, null control 0 of 10118. The brief's by reason
+breakdown was not built, and R-682 says why.
+
 
 ---
 
@@ -27676,3 +27695,55 @@ listable, whatever the review answer" paid for, so the choice is the record's
 and not a session's.
 
 **Not on the board bar.** Churn on a settled item, no write held.
+
+
+---
+
+## R-682. The intake resolution has no by reason breakdown a renderer can read
+
+**Found:** 2026-09-23, on `relay/196`, while building the human rendering
+for R-678. The brief asked the rendering of `intake playlist --job` to name its
+counts by state and by reason. The counts by state are on the `job_state`
+payload's `progress`, from `intake.cli._summary`. The reason each row resolved
+the way it did, `exact`, `isrc-exact`, `credited-exact`, `version-differs` and
+the rest of `match.Why`, is on each item's report artifact under `why` and on
+nothing the envelope carries. The renderer is a function of the envelope, and
+the same brief required the json to stay byte for byte what it was, so the
+breakdown cannot be rendered without adding a field the brief forbids.
+
+**Measured cost:** a person who wants to know how many of 206 owned rows were
+owned by ISRC rather than by text still reads the artifacts or `job show
+--output json` for them. The counts by state, which R-678 closed on, are
+printed.
+
+**Closes when:** somebody decides whether a `by_reason` count belongs under
+the intake summary's `progress`, which is a json change every consumer sees,
+and if it does, `_summary` counts `why` the way it counts `state` and the
+renderer prints it.
+
+**Not on the board bar.** A missing line in a rendering, nothing false said.
+
+---
+
+## R-683. The drive command is found by reading the job back and comparing verb names
+
+**Found:** 2026-09-23, on `relay/196`, by the built in review. `cli._drive_argv`
+learns whether this invocation queued the job by opening the queue again after
+the verb returned, reading the job, and comparing its handler's verb name with
+the envelope's. The verb had the job in hand a moment earlier. The name check
+is a heuristic: `intake set --job` driving an `intake.playlist` job through the
+shared intake keys fails it and prints no drive, and a re-invocation that
+ended with the job still queued passes it and prints the command it just ran.
+The second open also pays for the queue's setup and could wait out a busy
+timeout while another driver writes, only to print one line.
+
+**Measured cost:** unmeasured on the tree. Neither misfire was driven, since
+each needs a drive that ends with its job still queued, and no busy wait was
+observed; a failed lookup names no drive and leaves the job line standing,
+which the broad catch guarantees and `r678-b` row B3 measures.
+
+**Closes when:** the queueing verbs record the job they enqueued on the
+`Context`, as a value the envelope does not serialize, and `_emit` reads the
+drive from that rather than from the queue.
+
+**Not on the board bar.** Maintainer facing, nothing false said to a person.

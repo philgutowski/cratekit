@@ -275,6 +275,45 @@ def build_parser(
 # ---------------------------------------------------------------------------
 
 
+def _drive_argv(envelope: Envelope) -> list[str] | None:
+    """The command line that drives the job this invocation just queued, or None.
+
+    HUMAN MODE ONLY, AND NEVER INTO THE ENVELOPE. The job is continued by its own
+    verb's command rebuilt from the frozen payload, which is in the queue and not
+    in the payload, and putting it there would change every consumer's json. So
+    it is read back here, where the words are about to be written.
+
+    ONLY FOR THE VERB THAT QUEUED IT. ``job resume`` answers with a queued job
+    too, after it has already spawned the child driving it, and a second drive
+    command under that one would invite two drivers onto one job. The job's own
+    handler key names its verb, so the check is that it names this one.
+
+    A LOOKUP THAT FAILS IS NOT A FAILED VERB, AND IT NAMES NO COMMAND. This runs
+    in ``_emit``, outside the boundary that converts exceptions, after the job is
+    queued, so anything it raises would be a traceback over a success. And no
+    fallback command is named, because every one on offer, ``job resume``
+    included, reads the same row through the same builder and refuses for the
+    same reason. The job line still names the identifier.
+    """
+    data = envelope.data
+    if not envelope.schema.startswith("job_state/") or data.get("state") != "queued":
+        return None
+    job_id = data.get("job_id")
+    if not isinstance(job_id, str) or not job_id:
+        return None
+    from cratekit.cli import jobs as cli_jobs
+    from cratekit.core import jobs
+
+    try:
+        with jobs.open_store() as store:
+            job = jobs.get(store, job_id)
+        if registry.by_handler_key(job.handler_key).name != envelope.verb:
+            return None
+        return cli_jobs.argv_for(job)
+    except Exception:  # noqa: BLE001 - see the docstring, a success stays a success
+        return None
+
+
 def _emit(envelope: Envelope, *, as_json: bool, stdout, stderr) -> None:
     """Write the result. In JSON mode stdout carries the envelope and NOTHING else.
 
@@ -288,7 +327,7 @@ def _emit(envelope: Envelope, *, as_json: bool, stdout, stderr) -> None:
             print(render.render(envelope), end="", file=stderr)
         return
     stream = stdout if envelope.exit_code is ExitCode.OK else stderr
-    print(render.render(envelope), end="", file=stream)
+    print(render.render(envelope, drive=_drive_argv(envelope)), end="", file=stream)
     if envelope.cause is not None and envelope.cause.reason == "decision-required":
         print(render.render_gate(envelope.cause), end="", file=stderr)
 

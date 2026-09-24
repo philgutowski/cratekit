@@ -34,7 +34,7 @@ from cratekit.intake import acrcloud, recognize
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 from tests._containers import tagged_container
-from tests.cli_drive import drive
+from tests.cli_drive import drive, drive_human
 from tests.intake.test_recognition import FakeCarver, FakeTransport, hit, miss
 from tests.label_fakes import (
     PROTOCOL_METHODS,
@@ -1397,3 +1397,96 @@ def test_a_queued_set_freezes_the_recognition_section_it_was_identified_under(
     assert frozen == config.RecognitionConfig(
         host="identify-eu-west-1.acrcloud.com", monthly_calls=50
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-678: what a person reads without asking for json
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_queueing_favorites_names_the_job_and_the_command_that_drives_it(
+    cfg, library, monkeypatch
+):
+    """The sittings read the identifier out of ``job list --output json`` every time."""
+    bind_hearts(monkeypatch, five_hearts())
+
+    code, text = drive_human(["intake", "playlist", "favorites"])
+
+    assert code == int(ExitCode.OK), text
+    with jobs.open_store() as store:
+        (job,) = jobs.list_jobs(store)
+    lines = text.splitlines()
+    assert f"  job: {job.job_id}, queued" in lines, text
+    assert f"  drive it with: crate intake playlist favorites --job {job.job_id}" in lines, text
+    assert "  items: 0 of 5 settled" in lines, text
+
+
+def test_the_resolution_names_owned_offered_and_missing_and_the_next_command(
+    cfg, library, monkeypatch
+):
+    """206 settled rows printed ``intake.playlist: ok`` and the counts were read from artifacts."""
+    job_id, _ = queued_hearts(cfg, library, monkeypatch)
+
+    code, text = drive_human(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), text
+    lines = text.splitlines()
+    assert f"  job: {job_id}, succeeded" in lines, text
+    assert "  owned: 2 already in the library" in lines, text
+    assert (
+        "  offered: 1 held in another version, offered for review; see: crate review list"
+        in lines
+    ), text
+    assert "  missing: 2 not in the library" in lines, text
+    assert "  suppressed: 0 deleted on purpose" in lines, text
+    assert f"  next: crate intake missing --job {job_id}" in lines, text
+    assert not any(line.startswith("  drive it with:") for line in lines), text
+
+
+def test_a_resolution_with_nothing_missing_names_no_next_command(cfg, library, monkeypatch):
+    bind_playlist(monkeypatch, "pl-1", [Track("101", "Aurora Bloom", "Sun Path")])
+    owned(library, "Aurora Bloom - Sun Path.flac")
+    code, envelope = drive(["intake", "playlist", "pl-1"])
+    job_id = envelope["data"]["job_id"]
+
+    code, text = drive_human(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), text
+    lines = text.splitlines()
+    assert "  owned: 1 already in the library" in lines, text
+    assert "  missing: 0 not in the library" in lines, text
+    assert not any(line.startswith("  next:") for line in lines), text
+
+
+def test_an_empty_playlist_names_no_job_because_none_was_queued(cfg, monkeypatch):
+    bind_playlist(monkeypatch, "pl-1", [])
+
+    code, text = drive_human(["intake", "playlist", "pl-1"])
+
+    assert code == int(ExitCode.OK), text
+    assert text.splitlines()[0] == "intake.playlist: no_op", text
+    assert "  job:" not in text, text
+    assert "drive it with" not in text, text
+
+
+def test_json_mode_never_reaches_the_human_cases(cfg, library, monkeypatch):
+    """Scenario 5: the json a consumer reads cannot have moved.
+
+    Every new case is reached only from the human path. Each is replaced with a
+    tripwire and the verb is driven in json mode, queue and resolution both; a
+    json answer that consulted any of them fails here rather than differing.
+    """
+    from cratekit import cli
+    from cratekit.cli import render
+
+    def tripwire(*args, **kwargs):
+        raise AssertionError("json mode reached a human renderer")
+
+    monkeypatch.setattr(cli, "_drive_argv", tripwire)
+    monkeypatch.setattr(render, "render_job_state", tripwire)
+    monkeypatch.setattr(render, "render_import_proof", tripwire)
+    job_id, _ = queued_hearts(cfg, library, monkeypatch)
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), envelope
+    assert set(envelope["data"]) == {"job_id", "state", "cause", "progress"}
