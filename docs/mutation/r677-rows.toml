@@ -1,0 +1,131 @@
+name = "r677"
+pass_kind = "light"
+
+[[rows]]
+id = "V1_no_preflight_before_the_gate"
+description = "the original defect: the plan read never asks the engine, so a missing export reaches the gate"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''    if planned.items:
+        try:'''
+new = '''    if False:
+        try:'''
+
+[[rows]]
+id = "V2_preflight_on_a_plan_of_nothing"
+description = "an empty staging folder is refused over the export instead of shown as a plan of nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''    if planned.items:
+        try:'''
+new = '''    if True:
+        try:'''
+
+[[rows]]
+id = "V3_refusal_never_replaces_the_gate"
+description = "the preflight refusal is caught and dropped, so the gate is offered over an unusable export"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''        if unusable is not None and exc.cause.remediation.remedy is Remedy.ANSWER_DECISION:
+            raise unusable from None'''
+new = '''        if False:
+            raise unusable from None'''
+
+[[rows]]
+id = "V4_remedy_condition_dropped"
+description = "any gate refusal, a stale answer included, is replaced by the preflight refusal"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''        if unusable is not None and exc.cause.remediation.remedy is Remedy.ANSWER_DECISION:'''
+new = '''        if unusable is not None:'''
+
+[[rows]]
+id = "V5_preflight_raises_directly"
+description = "the preflight refusal is raised at once, so a recorded abort over a missing export refuses instead of ending in nothing done"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''        except CratekitError as exc:
+            unusable = exc'''
+new = '''        except CratekitError as exc:
+            raise exc'''
+
+[[rows]]
+id = "V6_manifest_rows_not_handed_over"
+description = "the plan read asks the export check without the manifest's label rows, so a label layout the export cannot take reaches the gate"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''                label_rows=manifest.rows if manifest is not None else (),'''
+new = '''                label_rows=(),'''
+
+[[rows]]
+id = "E1_export_asked_before_the_library"
+description = "the preflight asks the export before the library, so an unmounted volume is named as a missing export"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''    _check_batch(plan.batch)
+    _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))'''
+new = '''    _check_batch(plan.batch)
+    _check_export(export, destination, tree_registry.read(cfg), label_rows)
+    _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))'''
+
+[[rows]]
+id = "E2_library_check_dropped"
+description = "the preflight never asks the library"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''    _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))
+    if destination.exists():'''
+new = '''    if destination.exists():'''
+
+[[rows]]
+id = "E3_intake_file_check_dropped"
+description = "the preflight never asks whether the intake file is already there"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''    if destination.exists():
+        raise refuse(
+            "output-exists",'''
+new = '''    if False:
+        raise refuse(
+            "output-exists",'''
+
+[[rows]]
+id = "E4_export_check_dropped"
+description = "the preflight never asks the export, for the plan read and for apply alike"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''    _check_export(export, destination, registry, label_rows)
+    return registry'''
+new = '''    return registry'''
+
+[[rows]]
+id = "E5_apply_skips_the_preflight"
+description = "sample of the existing guard, now behind the shared call, apply moves without its pre-move checks"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''    registry = preflight(
+        plan, cfg=cfg, export=export, destination=destination, label_rows=label_rows
+    )'''
+new = '''    registry = tree_registry.read(cfg)'''
+
+[[rows]]
+id = "E6_apply_preflight_without_label_rows"
+description = "sample of R-455 behind the shared call, apply asks the label tree check with no rows"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_intake_imported.py", "tests/test_sync_mark.py"]
+old = '''        plan, cfg=cfg, export=export, destination=destination, label_rows=label_rows
+    )'''
+new = '''        plan, cfg=cfg, export=export, destination=destination, label_rows=()
+    )'''
