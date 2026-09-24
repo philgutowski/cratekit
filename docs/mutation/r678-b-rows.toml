@@ -1,0 +1,40 @@
+name = "r678-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_emit_hands_in_no_drive"
+description = "the dispatcher never looks the drive up, so no queueing verb names its command"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py"]
+old = '''    print(render.render(envelope, drive=_drive_argv(envelope)), end="", file=stream)'''
+new = '''    print(render.render(envelope), end="", file=stream)'''
+
+[[rows]]
+id = "B2_drive_for_a_verb_that_did_not_queue"
+description = "job show and job resume name a second driver for a queued job"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py"]
+old = '''        if registry.by_handler_key(job.handler_key).name != envelope.verb:
+            return None
+'''
+new = ""
+
+[[rows]]
+id = "B3_narrow_catch"
+description = "a builder raising anything but a refusal escapes as a traceback over a queued job"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py"]
+old = '''    except Exception:  # noqa: BLE001 - see the docstring, a success stays a success'''
+new = '''    except CratekitError:'''
+
+[[rows]]
+id = "B4_lookup_for_any_state"
+description = "the store is read for a job that is not queued"
+file = "src/cratekit/cli/__init__.py"
+surface = "maintainer"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py", "tests/test_acquire_workers.py", "tests/test_tag_workers.py"]
+old = '''    if not envelope.schema.startswith("job_state/") or data.get("state") != "queued":'''
+new = '''    if not envelope.schema.startswith("job_state/"):'''
