@@ -1,0 +1,166 @@
+name = "r686"
+pass_kind = "light"
+
+# R-686: the route.inbox.apply gate shows the plan it asks about. A display
+# change on a gate that still holds the write, so the table is scoped to the
+# branch's own new lines. Author's table, no independent verifier (METHOD,
+# 2026-09-07).
+
+[[rows]]
+id = "G1_gate_passes_no_context"
+description = "The apply gate drops its context, the defect R-686 recorded"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    return ctx.gate.require(spec, digest=plan["digest"], context=shown)
+'''
+new = '''
+    return ctx.gate.require(spec, digest=plan["digest"])
+'''
+
+[[rows]]
+id = "S1_items_cut_to_the_first"
+description = "The screen lists only the first item, a bound the digest does not have"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "items": plan["items"],
+    }
+'''
+new = '''
+        "items": plan["items"][:1],
+    }
+'''
+
+[[rows]]
+id = "S2_digest_not_shown"
+description = "The digest is left off the screen, so a person cannot tie the answer to the plan"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "digest": plan["digest"],
+        "count": plan["totals"]["count"],
+'''
+new = '''
+        "count": plan["totals"]["count"],
+'''
+
+[[rows]]
+id = "E1_tracks_counts_every_item"
+description = "tracks counts created playlists as tracks"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "tracks": len(tracks),
+'''
+new = '''
+        "tracks": len(items),
+'''
+
+[[rows]]
+id = "E2_routed_counts_vocal"
+description = "routed is counted off the vocal column instead of the destination"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "routed": sum(1 for item in tracks if item["destination"]),
+'''
+new = '''
+        "routed": sum(1 for item in tracks if item["vocal"]),
+'''
+
+[[rows]]
+id = "E3_rated_counts_every_track"
+description = "rated counts every track whether the plan rates it or not"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "rated": sum(1 for item in tracks if item["rating"]),
+'''
+new = '''
+        "rated": len(tracks),
+'''
+
+[[rows]]
+id = "E4_long_tracks_intake_only"
+description = "long tracks counts only the first track's membership"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "long tracks": sum(1 for item in tracks if item["long_track"]),
+'''
+new = '''
+        "long tracks": sum(1 for item in tracks[:1] if item["long_track"]),
+'''
+
+[[rows]]
+id = "E5_warnings_dropped"
+description = "The planner's warnings stay off the screen"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "warnings": [warning["message"] for warning in warnings],
+'''
+new = '''
+        "warnings": [],
+'''
+
+[[rows]]
+id = "E6_gaps_dropped"
+description = "The dimensions not derived stay off the screen"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "not derived": list(gaps),
+'''
+new = '''
+        "not derived": [],
+'''
+
+[[rows]]
+id = "E7_subs_not_named"
+description = "The created vocal subs are left off the screen"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "vocal subs created": list(vox_created),
+'''
+new = '''
+        "vocal subs created": [],
+'''
+
+[[rows]]
+id = "D1_database_path_blind"
+description = "The database path's gate is given an empty context"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    option = _apply_gate(ctx, plan, _shown(plan))
+'''
+new = '''
+    option = _apply_gate(ctx, plan, {})
+'''
+
+[[rows]]
+id = "R1_empty_list_bare_header"
+description = "An empty collection in a gate's context renders as a bare header again"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py"]
+old = '''
+        if isinstance(value, (Mapping, list, tuple)) and not value:
+'''
+new = '''
+        if False:
+'''
