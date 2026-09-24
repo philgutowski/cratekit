@@ -2446,7 +2446,12 @@ def test_an_export_route_refuses_a_routing_tree_that_has_cut_over(
 
 
 def test_without_export_a_library_with_no_native_tree_names_the_export_remedy(stocked):
-    """Still no-native-tree, and now the answer names the medium that works."""
+    """Still no-native-tree, and the answer names what the export medium
+    delivers and no more (R-695): a review of the routing, since no import
+    lands a nested playlist (R-687), and the long track root playlist, the one
+    thing the inbox sweep writes that an import lands. The text is spelled
+    here rather than read from the constant, so a remedy that goes back to
+    saying the export files the library fails this test."""
     code, envelope = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["reason"] == "no-native-tree"
@@ -2455,7 +2460,14 @@ def test_without_export_a_library_with_no_native_tree_names_the_export_remedy(st
         for warning in envelope["warnings"]
         if warning["code"] == "no-native-tree"
     ]
-    assert remedies and "--export" in remedies[0], envelope["warnings"]
+    assert remedies == [
+        "no tree has cut over, so nothing files this library into the routing "
+        "tree: export the collection from rekordbox and run route inbox --export "
+        "with that file, which writes a review of the routing to file by hand, "
+        "since no import can land a nested playlist, and, when the taxonomy "
+        "declares a long track playlist, adds long tracks to that root playlist, "
+        "which one import can land"
+    ], envelope["warnings"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3753,7 +3765,7 @@ def test_a_folder_the_vocal_writer_cannot_serve_is_a_warning_and_the_rest_are_se
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# U91: route unplaced --export places what the routing tree does not hold
+# U91: route unplaced --export plans a place for what the routing tree does not hold
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # The source system's ``dj-sort-unplaced`` read a fresh export, routed every
@@ -3965,7 +3977,11 @@ def test_a_track_held_only_outside_the_tree_is_unplaced(configured, tagged, tmp_
 def test_without_the_flag_nothing_is_written_and_the_answer_names_the_flag(
     configured, tagged, tmp_path
 ):
-    """The report R-313 made stays a report, and says which medium places."""
+    """The report R-313 made stays a report, and says what the export medium
+    delivers (R-695): a review of where each track belongs, and no root
+    playlist and no import, since every placement is nested (R-694). Spelled
+    here rather than read from the constant, so a remedy that goes back to
+    saying the export places tracks fails this test."""
     export = _unplaced_export(configured, tmp_path / "exports")
     before = {path.name: path.read_bytes() for path in export.parent.iterdir()}
     code, envelope = _drive(["route", "unplaced"])
@@ -3973,7 +3989,13 @@ def test_without_the_flag_nothing_is_written_and_the_answer_names_the_flag(
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["compared"] is False
     assert [w["code"] for w in envelope["warnings"]] == ["no-native-tree"]
-    assert "route unplaced --export" in envelope["warnings"][0]["message"]
+    assert envelope["warnings"][0]["message"] == (
+        "no tree has cut over, so nothing places what the routing tree does not "
+        "hold: export the collection from rekordbox and run route unplaced "
+        "--export with that file, which writes a review of where each unplaced "
+        "track belongs to file by hand, since no import can land a nested "
+        "playlist, and adds to no root playlist, so it owes no import"
+    )
     assert {path.name: path.read_bytes() for path in export.parent.iterdir()} == before
 
 
