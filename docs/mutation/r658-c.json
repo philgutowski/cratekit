@@ -1,0 +1,71 @@
+{
+  "name": "r658-c",
+  "pass_kind": "light",
+  "branch": "relay/191",
+  "head": "25214d6",
+  "when": "2026-09-24 01:23 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10133,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "state_guarded": "~/Library/Application Support/cratekit (2446 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/adopt/revert.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/adopt/revert.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "9658a9680b2dc531",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10133,
+    "baseline_collected": 10133,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "S4c_dataless_skip_returns",
+      "description": "Composite for S4, run as its own table: put back a skip that refuses to read a dataless file, which only the scoped evicted stat can reach",
+      "file": "src/cratekit/adopt/revert.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8a00a135d1173e74",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 615,
+      "baseline_collected": 615,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_a_cloud_EVICTED_file_IS_read_because_the_restore_fetches_it_anyway"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if recorded_size is not None and info.st_size != recorded_size:\n        return _Looked(ByteRead.A_DIFFERENT_SIZE)\n    try:\n        found = digest_of(target)\n",
+      "new": "    if recorded_size is not None and info.st_size != recorded_size:\n        return _Looked(ByteRead.A_DIFFERENT_SIZE)\n    if getattr(info, \"st_flags\", 0) & 0x40000000:\n        return _Looked(ByteRead.UNREADABLE)\n    try:\n        found = digest_of(target)\n"
+    }
+  ],
+  "dropped": []
+}
