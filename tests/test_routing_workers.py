@@ -3342,6 +3342,128 @@ def test_the_database_inbox_gate_shows_its_items(acknowledged, native, vox_level
     assert shown["count"] == len(declined["data"]["items"])
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# R-691: the database path plans its placements before the gate
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The database path's plan was the file list, and the routing was decided in
+# the apply after the answer, so R-686's carry showed the files and not one
+# destination. The plan now carries where each file goes, the digest binds it,
+# and the write consumes the plan the person read.
+
+#: Where the shipped rules file an untagged intake file: the declared fallback
+#: bucket and its sink, as display names, the way the export gate names them.
+FALLBACK_DESTINATION = "Electronica / Other/Unsorted"
+
+
+def _blocked_inbox() -> dict:
+    code, blocked = _drive(["route", "inbox"])
+    assert code == int(ExitCode.DECISION_REQUIRED), blocked
+    return blocked["cause"]["detail"]["shown"]
+
+
+def _filed_under(cfg: config.Config, root_id: str, content_id: str) -> set[str]:
+    """Every ``folder/playlist`` under the governed root holding this row."""
+    handle = rb_writer.open_db(Path(cfg.library.db_path), cfg=cfg)
+    try:
+        return {
+            f"{node.folder_display}/{node.playlist_display}"
+            for node in rebuild.read_tree(handle, root_id)
+            if content_id in node.content_ids
+        }
+    finally:
+        rb_writer.close_db(handle)
+
+
+def test_the_database_inbox_gate_shows_each_files_destination(acknowledged, native):
+    """The residual in one test: a destination is read off the gate's ``shown``,
+    the items are the declined run's byte for byte, and the totals are counted
+    off them the way the export gate's are."""
+    shown = _blocked_inbox()
+    intake = _intake_dir(acknowledged)
+    assert shown["items"] == [
+        {
+            "path": str(intake / ARRIVED),
+            "name": ARRIVED,
+            "destination": FALLBACK_DESTINATION,
+            "vocal": "",
+        }
+    ]
+    code, declined = _drive(["-d", "route.inbox.apply=abort", "route", "inbox"])
+    assert code == int(ExitCode.OK), declined
+    assert shown["items"] == declined["data"]["items"]
+    assert shown["digest"] == declined["data"]["digest"]
+    assert shown["intake"] == str(intake)
+    assert (shown["count"], shown["tracks"], shown["routed"], shown["vocal"]) == (1, 1, 1, 0)
+    assert shown["trees"] == [TREE_ID]
+    assert shown["not derived"] == [rebuild.VOCAL_DIMENSION]
+    assert shown["warnings"] == []
+
+
+def test_the_database_apply_files_the_track_where_the_gate_said(acknowledged, native, vox_levels):
+    """The plan the gate showed is the plan the write consumes, asserted where it
+    can be seen: the row lands under the folder and playlist the screen named,
+    and under the vocal sub the screen named once the library is calibrated."""
+    _calibrated(acknowledged)
+    vox_levels[ARRIVED] = 6
+    shown = _blocked_inbox()
+    (item,) = shown["items"]
+    vox = _vox_display()
+    assert item["destination"] == FALLBACK_DESTINATION
+    assert item["vocal"] == f"Electronica / Other/{vox}"
+    assert (shown["routed"], shown["vocal"]) == (1, 1)
+    assert shown["not derived"] == []
+
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert applied["data"]["digest"] == shown["digest"]
+    assert _filed_under(acknowledged, native, "2") == {item["destination"], item["vocal"]}
+
+
+def test_the_database_digest_binds_the_destinations_not_the_file_list(
+    acknowledged, native, vox_levels
+):
+    """The defect's other half. The digest was taken over the file list, so a
+    decision recorded against it stayed valid while the routing underneath it
+    changed. Now a reading that moves a placement moves the digest, over one
+    unchanged folder."""
+    before = _blocked_inbox()
+    assert [item["vocal"] for item in before["items"]] == [""]
+    _calibrated(acknowledged)
+    vox_levels[ARRIVED] = 6
+    after = _blocked_inbox()
+    assert [item["name"] for item in after["items"]] == [item["name"] for item in before["items"]]
+    assert [item["vocal"] for item in after["items"]] != [""]
+    assert after["digest"] != before["digest"], (
+        "the placement changed and the digest did not, so the digest binds the "
+        "file list and not where the files go"
+    )
+
+
+def test_the_database_gate_on_a_library_with_no_native_tree_says_so_before_the_answer(stocked):
+    """Nothing native means nothing derived and nothing written, and the gate
+    says so before the question rather than the envelope after it: every file
+    is listed with no destination and the export remedy is on the screen."""
+    shown = _blocked_inbox()
+    assert [item["destination"] for item in shown["items"]] == [""]
+    assert (shown["tracks"], shown["routed"], shown["trees"]) == (1, 0, [])
+    assert shown["warnings"] == [routing_cli.EXPORT_REMEDY]
+    assert not Path(stocked.library.db_path).exists(), "the plan opened a database"
+
+
+def test_the_database_gate_prints_the_destination_in_the_default_mode(acknowledged, native):
+    """The human screen is the one a person answers from."""
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["route", "inbox"], stdout=out, stderr=err)
+    assert code == int(ExitCode.DECISION_REQUIRED), err.getvalue()
+    screen = out.getvalue() + err.getvalue()
+    assert "Apply this routing plan to the library?" in screen
+    assert f"name={ARRIVED}, destination={FALLBACK_DESTINATION}, vocal=" in screen
+    assert "routed: 1" in screen
+    assert f"trees:\n    {TREE_ID}" in screen, screen
+    assert "  warnings: none" in screen
+
+
 def test_an_uncalibrated_export_creates_no_vocal_sub_and_names_the_gap(
     configured, voiced, tmp_path
 ):

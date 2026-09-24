@@ -36,6 +36,12 @@ REGISTRY records for the tree, the destinations resolve through
 :func:`cratekit.write.trees.write_tree_membership`, which owns the session
 gates. Nothing about where a track goes is decided in this file.
 
+THE DATABASE PATH PLANS BEFORE ITS GATE, since R-691. :func:`plan_inbox`
+takes the readings and the placements first, the gate shows each file's
+destination, the digest binds those destinations, and :func:`apply_inbox`
+writes the plan it was handed rather than deriving a second one after the
+answer.
+
 Layer: write.
 """
 
@@ -146,16 +152,149 @@ def _no_op(state: str, **progress: Any) -> dict[str, Any]:
     return {"job_id": "", "state": state, "cause": None, "progress": dict(progress)}
 
 
-def _inbox_items(cfg: config.Config) -> list[dict[str, str]]:
-    declared = active_taxonomy.load(cfg)
-    folder = Path(cfg.library.root) / declared.intake.display
+def _inbox_files(folder: Path) -> list[Path]:
+    """Every file in the intake folder, sorted, dotfiles left out."""
     if not folder.is_dir():
         return []
-    items: list[dict[str, str]] = []
-    for path in sorted(folder.iterdir()):
-        if path.is_file() and not path.name.startswith("."):
-            items.append({"path": str(path), "name": path.name})
-    return items
+    return [
+        path
+        for path in sorted(folder.iterdir())
+        if path.is_file() and not path.name.startswith(".")
+    ]
+
+
+@dataclass(frozen=True)
+class InboxPlan:
+    """Where the database path puts each intake file, decided BEFORE the gate (R-691).
+
+    ``items`` is what the digest is taken over and what the person is shown:
+    each file's path and name, the folder and sub it files into, and the vocal
+    sub it also files into, as display names. ``placements`` is the same
+    decision in the engine's own terms, one tuple per tree that has cut over,
+    and it is what the write consumes, so the write cannot decide differently
+    from what the screen said. ``readings``, ``declared`` and ``threshold`` are
+    the inputs that decision was made from, carried so the write reads none of
+    them a second time. ``warnings`` are what the planner knew before the
+    question was asked.
+    """
+
+    folder: Path
+    items: list[dict[str, str]]
+    entries: tree_registry.Registry
+    native: tuple[str, ...]
+    declared: taxonomy.Taxonomy
+    threshold: float | None
+    readings: list[rebuild.Truth]
+    placements: dict[str, tuple[rebuild.DeclaredPlacement, ...]]
+    gaps: tuple[str, ...]
+    warnings: list[dict[str, str]]
+
+
+def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
+    """Decide where every intake file goes, without opening the database.
+
+    THE PLAN USED TO BE THE FILE LIST, and the routing was decided inside the
+    apply after the gate, so a person answered a placement they could not read
+    (R-691). Now the readings, the derivation and the display names are all
+    taken here, by the calls the write makes: the readings come from
+    :func:`cratekit.write.rebuild.read_truth`, the placements from
+    ``declared_membership`` through the derivation the REGISTRY records for
+    each tree that has cut over, and the display names from
+    :func:`cratekit.write.routing_pass.destination`, which is what the export
+    path's :func:`_decide` names its destinations with. So the two media, and
+    the screen and the write, cannot disagree about where a track goes.
+
+    THE CALIBRATED CUT IS READ HERE, before the database is opened, so a
+    corrupt calibration refuses before anything is written (U89). None on a
+    library never calibrated, and the derivation then names the dimension it
+    left out in ``gaps``.
+
+    A LIBRARY WITH NOTHING NATIVE DERIVES NOTHING. There is no registry source
+    to derive by and no tree the write would take, so every file is listed
+    with no destination and the export remedy rides as a warning, on the
+    screen before the answer rather than in the envelope after it. The apply
+    still answers ``no-native-tree`` for it, as it always did.
+
+    AN EMPTY FOLDER DERIVES NOTHING EITHER. The derivation refuses an empty
+    result as evidence of nothing, and an empty folder is not that: it is the
+    ``inbox-empty`` answer the verb gives after the gate, with nothing opened.
+    """
+    folder = Path(cfg.library.root) / declared.intake.display
+    files = _inbox_files(folder)
+    entries = tree_registry.read(cfg)
+    native = _native_trees(entries)
+    threshold = metadata_cli.load_vocal_threshold(cfg)
+    readings = [rebuild.read_truth(path) for path in files]
+    placements: dict[str, tuple[rebuild.DeclaredPlacement, ...]] = {}
+    gaps: set[str] = set()
+    warnings: list[dict[str, str]] = []
+    if not native:
+        warnings.append({"code": "no-native-tree", "message": EXPORT_REMEDY})
+    elif files:
+        for tree_id in native:
+            placed, not_derived = rebuild.declared_membership(
+                cfg,
+                declared,
+                source=entries.derivation_source(tree_id),
+                vocal_threshold=threshold,
+                truth=readings,
+            )
+            placements[tree_id] = placed
+            gaps.update(not_derived)
+    destined: dict[str, str] = {}
+    vocal: dict[str, str] = {}
+    for placed in placements.values():
+        for placement in placed:
+            folder_name, sub = routing_pass.destination(
+                declared, placement.bucket, placement.sub
+            )
+            named = vocal if placement.sub == trees.VOX_SUB_CLASS else destined
+            named.setdefault(placement.location, f"{folder_name}/{sub}")
+    items = [
+        {
+            "path": str(path),
+            "name": path.name,
+            "destination": destined.get(str(path), ""),
+            "vocal": vocal.get(str(path), ""),
+        }
+        for path in files
+    ]
+    return InboxPlan(
+        folder=folder,
+        items=items,
+        entries=entries,
+        native=native,
+        declared=declared,
+        threshold=threshold,
+        readings=readings,
+        placements=placements,
+        gaps=tuple(sorted(gaps)),
+        warnings=warnings,
+    )
+
+
+def _inbox_facts(plan: InboxPlan) -> dict[str, Any]:
+    """The database gate's totals, counted off the items it lists (R-691).
+
+    The same shape as :func:`_export_facts`, for the same reason: a total
+    counted from the list cannot disagree with the list printed under it. The
+    trees the write goes into are named, since on this medium the destination
+    is a playlist in the database and not a file. ``not derived`` and the
+    warnings ride for the reason the export's do: an empty vocal column on an
+    uncalibrated library means the dimension was not read, and a file with no
+    destination on a library with nothing native has its reason on the same
+    screen as the question.
+    """
+    items = plan.items
+    return {
+        "intake": str(plan.folder),
+        "tracks": len(items),
+        "routed": sum(1 for item in items if item["destination"]),
+        "vocal": sum(1 for item in items if item["vocal"]),
+        "trees": list(plan.native),
+        "not derived": list(plan.gaps),
+        "warnings": [warning["message"] for warning in plan.warnings],
+    }
 
 
 def _shown(plan: dict, **facts: Any) -> dict[str, Any]:
@@ -435,17 +574,22 @@ def skipped_warnings(records: list[dict[str, Any]]) -> list[dict[str, str]]:
     return warnings
 
 
-def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, Any]:
+def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
     """File the intake folder into every tree that has cut over.
 
     THE ONE THING THIS FUNCTION EXISTS FOR is that it is the call the confirmed
     branch was missing. Everything it does is a call into an engine that already
-    owns the rule: the tag readings come from
-    :func:`cratekit.write.rebuild.read_truth`, the placements from
-    ``declared_membership`` through the derivation the registry records, the
-    destinations from ``plan_destinations``, and the write from
-    ``write_tree_membership``, which takes the acknowledgment, the volume
-    identity, the session lock, the verified capture and the analysis watch.
+    owns the rule: the placements are the ones :func:`plan_inbox` derived and
+    the gate showed, the destinations come from ``plan_destinations``, and the
+    write from ``write_tree_membership``, which takes the acknowledgment, the
+    volume identity, the session lock, the verified capture and the analysis
+    watch.
+
+    THE PLAN IS CONSUMED, NOT REMADE (R-691). The readings, the declaration,
+    the cut and the placements are the plan's, so what is written is what the
+    digest bound and the person read. Deriving again here would be a second
+    decision that agrees with the first until the folder or the declaration
+    moves between the two, at which point the screen and the write would part.
 
     A LIBRARY WITH NOTHING NATIVE WRITES NOTHING AND SAYS SO. Every tree is on
     the XML bridge until its cutover, and membership written into the database
@@ -453,14 +597,9 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
     own answer rather than as an empty success, because "nothing needed doing"
     and "there is nowhere to put this yet" are different sentences with different
     remedies.
-
-    THE READINGS ARE TAKEN ONCE AND REUSED FOR EVERY TREE. ``read_truth`` never
-    raises for an unreadable file, so a stray file in the intake folder routes to
-    the declared fallback and is visible in the result rather than abandoning the
-    run.
     """
-    entries = tree_registry.read(cfg)
-    native = _native_trees(entries)
+    entries = planned.entries
+    native = planned.native
     if not native:
         return {
             "applied": False,
@@ -469,12 +608,7 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
             "skipped": 0,
             "skipped_files": [],
         }
-    # THE CALIBRATED CUT, read before the database is opened so a corrupt
-    # calibration refuses before anything is written (U89). None on a library
-    # never calibrated, and the engine then names the dimension it left out.
-    threshold = metadata_cli.load_vocal_threshold(cfg)
-    readings = [rebuild.read_truth(Path(item["path"])) for item in items]
-    declared = active_taxonomy.load(cfg)
+    declared = planned.declared
     added = 0
     skipped = 0
     # WHICH FILES, AND WHY, kept rather than counted (R-318). A confirmed apply
@@ -484,20 +618,13 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
     # WHAT THE ENGINE SAID IT DID NOT COMPARE, kept rather than dropped (R-316).
     # Dropping it is how a confirmed apply over a taxonomy that declares a vocal
     # sub-playlist reported an ordinary write while filing nothing into it.
-    not_compared: set[str] = set()
+    not_compared: set[str] = set(planned.gaps)
     handle = rb_writer.open_db(cfg=cfg)
     try:
         known = {str(row.ID) for row in handle.get_playlist()}
         rows = list(routing_pass.content_rows(handle))
         for tree_id in native:
-            placements, gaps = rebuild.declared_membership(
-                cfg,
-                declared,
-                source=entries.derivation_source(tree_id),
-                vocal_threshold=threshold,
-                truth=readings,
-            )
-            not_compared.update(gaps)
+            placements = planned.placements[tree_id]
             root_id = tree_registry.anchored_root(
                 tree_id, entries, root_exists=lambda root: root in known
             )
@@ -935,12 +1062,12 @@ def plan_export(
     readings come from :func:`cratekit.write.rebuild.read_truth`, the placements
     from :func:`cratekit.write.rebuild.derive_from_taxonomy`, and the display
     names from :func:`cratekit.write.routing_pass.destination`, which are the
-    three calls :func:`apply_inbox` makes through ``declared_membership``. So the
+    three calls :func:`plan_inbox` makes through ``declared_membership``. So the
     two media cannot disagree about where a track goes. The genre is the FILE's,
     not the export's ``Genre`` attribute, for the reason
     :func:`cratekit.core.tags.read_genre_from_file` gives.
 
-    THE CALIBRATED CUT IS THE ONE LOADER'S, the same read :func:`apply_inbox`
+    THE CALIBRATED CUT IS THE ONE LOADER'S, the same read :func:`plan_inbox`
     makes (U89). With none the vocal dimension is named in ``gaps`` rather than
     derived. With one, a vocal track files under the vocal sub as well as its
     energy sub, and :func:`_vox_subs` has made that sub first.
@@ -1254,9 +1381,12 @@ def route_inbox(ctx) -> Envelope:
     cfg = _load()
     if ctx.args.export:
         return route_inbox_export(ctx, cfg, Path(ctx.args.export))
-    items = _inbox_items(cfg)
+    # ONE READ PER VERB (R-685): the declaration the plan is derived from is
+    # the one the write files by, carried on the plan rather than read again.
+    planned = plan_inbox(cfg, active_taxonomy.load(cfg))
+    items = planned.items
     plan = _plan(items, kind="inbox")
-    option = _apply_gate(ctx, plan, _shown(plan))
+    option = _apply_gate(ctx, plan, _shown(plan, **_inbox_facts(planned)))
     if option != "apply":
         return ctx.envelope(data=_plan(items, kind="inbox", applied=False), outcome=Outcome.NO_OP)
     if not items:
@@ -1267,7 +1397,7 @@ def route_inbox(ctx) -> Envelope:
             data=_plan(items, kind="inbox", applied=False, reason="inbox-empty"),
             outcome=Outcome.NO_OP,
         )
-    result = apply_inbox(cfg, items)
+    result = apply_inbox(cfg, planned)
     # THE GAPS RIDE AS A WARNING, NOT IN THE TOTALS. They are what this run did
     # not compare rather than a count of what it did, and the warning is the one
     # place every surface over this engine says so in the same words.
