@@ -27913,6 +27913,23 @@ gate envelope carries the same items.
 **Not on the board bar.** A rendering, the write is still held. Issue #199, filed after the tenth sitting
 for the Relay feeder.
 
+**Closed 2026-09-24 on `relay/199`.** `_apply_gate` passes `_shown(plan)` as the
+gate's context, R-670's carry. The screen lists the digest, the count and
+every item the digest was taken over, unchanged, so the json gate envelope's
+`shown.items` equal the declined run's `data.items` and a test compares the
+two. The export path adds its totals counted off those items: tracks, routed,
+vocal, rated and long tracks, each created vocal sub by name, the dimensions
+not derived, and the planner's warnings, so an intake track listed with no
+destination carries its reason on the same screen. The database path of
+`route inbox` shares the helper and shows its intake files (see R-691 for
+what that path's plan cannot show). There is no bound, unlike R-670's
+`PLAN_SHOWN`, because the digest covers every item and a list cut short asks
+for approval of items nobody was shown; a first sweep over a library with
+many long tracks prints one line each. An empty list in any gate's context
+now renders as `none` rather than a bare header. `route unplaced` has no gate
+(U91's decision), so it had nothing to render. An answered run's envelope is
+unchanged. Mutation table `docs/mutation/r686.md`, twelve rows, all killed.
+
 ---
 
 ## R-687. A playlist imported from the rekordbox xml bridge lands at the playlist root whatever folder the file put it in, so the landing's batch playlist and the routing pass's nested subs both miss their folder and the pending steps say otherwise
@@ -28031,3 +28048,69 @@ between a plan and its apply and reads the refusal.
 
 **Not on the board bar.** Reachability unmeasured, and the precedent it
 follows is documented.
+
+---
+
+## R-691. The database route inbox gate shows the intake files and no destination, because that path's plan is the file list and the routing is decided after the answer
+
+**Found:** by the built in review on `relay/199`, 2026-09-24, while R-686 was
+closed. `route inbox` without `--export` builds its plan from `_inbox_items`,
+each file's path and name, and decides where each goes inside `apply_inbox`
+after the gate. R-686's fix shows that plan, so the gate now lists the files,
+but not one destination, and the digest binds the file list and not where
+the files go.
+
+**Measured cost:** not driven on a library; the path needs a tree that has
+cut over, and the tenth sitting ran the export medium. A person answering it
+approves a routing whose destinations they have not seen.
+
+**Closes when:** the database path plans its placements before the gate, the
+items carry each file's destination the way the export items do, and the
+digest is taken over them, with a test reading a destination off the gate's
+`shown`.
+
+**Not on the board bar.** The write is still held behind the gate, and the
+path is reached only once a tree has cut over.
+
+---
+
+## R-692. The route gate names each track by its export id and its rating on the raw byte scale, so a person reads numbers rather than songs and stars
+
+**Found:** by the built in review on `relay/199`, 2026-09-24. The gate R-686
+opened lists the plan's items as they are, so a line reads
+`track_id=11, destination=Deep House/Low, ..., rating=255`. The id is the
+export's TrackID, and 255 is five stars on rekordbox's 0 to 255 scale. The
+export row the planner already read carries the artist and the title.
+
+**Measured cost:** a person has to look each id up in the export to know
+which song a line files, and has to know the byte scale to read the rating.
+Not driven at a sitting.
+
+**Closes when:** the gate's items name each track's artist and title and its
+rating as stars, beside the fields the digest covers, while the answered
+envelope's `data.items` stay as they are, with a test reading a title and a
+star count off the gate's `shown`.
+
+**Not on the board bar.** A rendering, the plan is readable and the write is
+held.
+
+---
+
+## R-693. Seven other digest bound gates still show no plan, so R-670 and R-686 are one class closed one verb at a time
+
+**Found:** by the built in review on `relay/199`, 2026-09-24, and swept by
+grep over every `gate.require` call in `src`. These pass a digest and no
+context, so their screens carry the question and not the plan: `adopt apply`
+twice in `adopt/apply_cli.py`, `intake/repair_cli.py`, the queued resume in
+`modules/outbound/shell.py`, `tag retag` twice in `tagging/retag_cli.py`,
+and `cli/verbs/profile.py`. The five verbs that do show a plan each build
+their own `_shown`, and they disagree about a bound.
+
+**Measured cost:** not driven per verb. Each is the R-670 shape: a declined
+run is the only way to read the plan.
+
+**Closes when:** each of the seven shows the items its digest covers, or a
+shared helper in the gate layer shows a digested plan's items whenever one is
+passed, with a test per verb reading its items off the blocked envelope.
+
+**Not on the board bar.** A rendering on gates that still hold their writes.

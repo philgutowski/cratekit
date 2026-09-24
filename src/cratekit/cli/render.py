@@ -568,7 +568,11 @@ def _shown_lines(shown: Mapping[str, Any]) -> list[str]:
     """
     lines: list[str] = []
     for name, value in shown.items():
-        if isinstance(value, Mapping):
+        if isinstance(value, (Mapping, list, tuple)) and not value:
+            # AN EMPTY COLLECTION SAYS SO. A bare header with nothing under it
+            # cannot be told apart from a list that failed to print (R-686).
+            lines.append(f"  {name}: none")
+        elif isinstance(value, Mapping):
             lines.append(f"  {name}:")
             for key, entry in value.items():
                 lines.append(f"    {key}: {_shown_value(entry)}")

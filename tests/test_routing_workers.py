@@ -1833,7 +1833,7 @@ def test_a_gate_answer_this_verb_does_not_recognise_writes_nothing(
     del acknowledged
     from cratekit.write import routing_cli
 
-    monkeypatch.setattr(routing_cli, "_apply_gate", lambda ctx, plan: "later")
+    monkeypatch.setattr(routing_cli, "_apply_gate", lambda ctx, plan, shown: "later")
     code, envelope = _drive(["route", "inbox"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == str(Outcome.NO_OP), envelope
@@ -3177,6 +3177,115 @@ def test_a_calibrated_export_files_over_the_cut_and_not_under_it(configured, voi
     created = [item["destination"] for item in envelope["data"]["items"] if not item["track_id"]]
     assert created == totals["vox_created"]
     assert "vocal sub-playlist" in envelope["pending_human_action"]["summary"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-686: the apply gate shows the plan it asks about
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _blocked_export(export: Path) -> dict:
+    code, envelope = _drive(["route", "inbox", "--export", str(export)])
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    return envelope
+
+
+def _gate_export(configured, voiced, tmp_path) -> Path:
+    """One export whose plan carries every column: a routed track, a vocal
+    track, a rating, a long track in and out of the intake, and two new subs."""
+    _calibrated(configured)
+    voiced["Low Track.flac"] = 6
+    return _long_export(configured, tmp_path / "exports", ratings={"12": "0"})
+
+
+def test_the_export_gate_shows_every_item_the_digest_was_taken_over(
+    configured, voiced, tmp_path
+):
+    """The gate carried the question and not one item. Its ``shown`` now holds
+    the declined run's items, byte for byte, and the digest they were taken
+    over, so what a person approves is what they read."""
+    export = _gate_export(configured, voiced, tmp_path)
+    shown = _blocked_export(export)["cause"]["detail"]["shown"]
+    code, declined = _drive(
+        ["-d", "route.inbox.apply=abort", "route", "inbox", "--export", str(export)]
+    )
+    assert code == int(ExitCode.OK), declined
+    assert shown["items"] == declined["data"]["items"]
+    assert shown["digest"] == declined["data"]["digest"]
+    assert shown["count"] == 6
+    assert shown["export"] == str(export)
+    counted = (
+        shown["tracks"],
+        shown["routed"],
+        shown["vocal"],
+        shown["rated"],
+        shown["long tracks"],
+    )
+    assert counted == (4, 3, 1, 1, 2)
+    vox = _vox_display()
+    assert shown["vocal subs created"] == [f"Deep House/{vox}", f"Tech House/{vox}"]
+    assert shown["not derived"] == []
+    assert shown["warnings"] == []
+    assert not _routed(export).exists()
+
+
+def test_the_export_gate_names_the_vocal_dimension_it_did_not_read(
+    configured, voiced, tmp_path
+):
+    """Uncalibrated, the vocal column is empty because it was not read, and the
+    screen says so rather than letting it read as no vocal tracks."""
+    export = _write_export(configured, tmp_path / "exports")
+    shown = _blocked_export(export)["cause"]["detail"]["shown"]
+    assert shown["not derived"] == [rebuild.VOCAL_DIMENSION]
+    assert (shown["routed"], shown["vocal"]) == (3, 0)
+
+
+def test_the_export_gate_says_why_an_intake_track_goes_nowhere(configured, voiced, tmp_path):
+    """The case the screen matters most for: a track the planner could not
+    read is listed with no destination, and its reason is on the screen before
+    the answer rather than in the envelope after it."""
+    export = _write_export(configured, tmp_path / "exports", missing_file="12")
+    shown = _blocked_export(export)["cause"]["detail"]["shown"]
+    offered = {item["track_id"]: item["destination"] for item in shown["items"]}
+    assert offered == {"11": "Deep House/Low", "12": "", "13": "Tech House/High"}
+    assert (shown["tracks"], shown["routed"]) == (3, 2)
+    (warning,) = shown["warnings"]
+    assert "track 12" in warning and "not routed" in warning
+
+
+def test_the_export_gate_prints_the_plan_in_the_default_mode(configured, voiced, tmp_path):
+    """The human screen is the one a person answers from, so the plan has to
+    reach it and not stop at the JSON envelope."""
+    export = _gate_export(configured, voiced, tmp_path)
+    digest = _blocked_export(export)["cause"]["detail"]["shown"]["digest"]
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["route", "inbox", "--export", str(export)], stdout=out, stderr=err)
+    assert code == int(ExitCode.DECISION_REQUIRED), err.getvalue()
+    screen = out.getvalue() + err.getvalue()
+    assert "Apply this routing plan to the library?" in screen
+    assert f"digest: {digest}" in screen
+    assert "routed: 3" in screen and "long tracks: 2" in screen
+    # An empty list says none, rather than a header with nothing under it.
+    assert "  warnings: none" in screen and "  not derived: none" in screen
+    vox = _vox_display()
+    assert (
+        f"track_id=11, destination=Deep House/Low, vocal=Deep House/{vox}, "
+        f"rating=" in screen
+    )
+    assert f"long_track={LONG_PLAYLIST}" in screen
+    assert f"track_id=, destination=Tech House/{vox}," in screen
+
+
+def test_the_database_inbox_gate_shows_its_items(acknowledged, native, vox_levels):
+    """The same gate on the database path was as blind, and one carry serves it."""
+    code, blocked = _drive(["route", "inbox"])
+    assert code == int(ExitCode.DECISION_REQUIRED), blocked
+    shown = blocked["cause"]["detail"]["shown"]
+    code, declined = _drive(["-d", "route.inbox.apply=abort", "route", "inbox"])
+    assert code == int(ExitCode.OK), declined
+    assert shown["items"] == declined["data"]["items"] != []
+    assert shown["digest"] == declined["data"]["digest"]
+    assert shown["count"] == len(declined["data"]["items"])
 
 
 def test_an_uncalibrated_export_creates_no_vocal_sub_and_names_the_gap(
