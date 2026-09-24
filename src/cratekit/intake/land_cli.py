@@ -273,6 +273,12 @@ def intake_land(ctx) -> Envelope:
     planned = _planned(folder, cfg, batch)
     target = landing.target_dir(cfg, batch)
     destination = intake_file(cfg, batch)
+    if planned.items:
+        # THE EXPORT IS ASKED BEFORE THE GATE TOO (R-677), for the manifest's
+        # reason: a plan over an export that is not there, or not a collection,
+        # could never run, and the engine's own check says so on a copy. Only
+        # when something would move, since a plan of nothing splices nothing.
+        landing.check_export(export, cfg, destination, manifest)
     payload = _payload(
         planned, target=target, destination=destination, export=export, manifest=manifest
     )

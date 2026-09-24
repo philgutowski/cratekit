@@ -466,6 +466,24 @@ def _check_export(
         ) from exc
 
 
+def check_export(
+    export: Path,
+    cfg: config.Config,
+    destination: Path,
+    manifest: LabelManifest | None = None,
+) -> None:
+    """The export check :func:`apply` makes, asked by a caller before its gate.
+
+    R-677. The same check, on the same copy, with the registry read the way
+    :func:`apply` reads it, so a verb that shows somebody a plan refuses a
+    missing or unusable export before anybody spends an answer on it. It is a
+    check and not a promise: :func:`apply` asks it again before the first move,
+    because the file can change between the answer and the moves.
+    """
+    rows = manifest.rows if manifest is not None else ()
+    _check_export(export, destination, tree_registry.read(cfg), rows)
+
+
 def _label_of(row: listdoc.ManifestRow) -> str:
     return (row.provenance.label_name or "").strip()
 

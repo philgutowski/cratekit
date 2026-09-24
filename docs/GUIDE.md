@@ -267,7 +267,11 @@ crate route inbox
 crate route pending
 ```
 
-`intake land` reads download staging unless you name another folder. The files go
+`intake land` reads download staging unless you name another folder. Take the
+export before you run it: an export that is not there, or is not a collection the
+landed files can be spliced into, is refused before the plan reaches its gate, so
+no answer is spent on it.
+The files go
 to a new folder under your music folder, named for the run unless you pass
 `--name`, and the importable file is written beside the library as
 `NAME_inboxed.xml`. It never replaces a file already in the library: a file whose

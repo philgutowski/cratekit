@@ -23,7 +23,7 @@ import pytest
 
 from cratekit import cli
 from cratekit.acquire import listdoc
-from cratekit.cli import output, registry
+from cratekit.cli import gates, output, registry
 from cratekit.core import config, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
@@ -529,6 +529,121 @@ def test_the_list_passed_where_the_manifest_belongs_is_refused_before_the_gate(
     assert "not a manifest" in refused["cause"]["message"]
     assert code == int(ExitCode.PRECONDITION)
     assert _staged_names(cfg) == ["One.flac"]
+
+
+# ---------------------------------------------------------------------------
+# The export is asked before the gate (R-677)
+# ---------------------------------------------------------------------------
+
+
+def _assert_refused_before_the_gate(cfg: config.Config, code: int, envelope: dict) -> None:
+    """Refused with no gate offered, no run left to resume, and nothing moved."""
+    assert envelope["cause"]["reason"] == "library-export-unusable", envelope
+    assert code == int(ExitCode.PRECONDITION)
+    assert "gate" not in (envelope["cause"].get("detail") or {})
+    assert envelope["outcome"] != "blocked"
+    assert not gates.run_path(envelope["run_id"]).exists()
+    assert _staged_names(cfg) == ["One.flac"]
+    assert not _music(cfg, BATCH).exists()
+    assert not _intake(cfg, BATCH).exists()
+
+
+def test_a_plan_over_an_export_that_is_not_there_refuses_before_the_gate(
+    cfg, silence, tmp_path
+):
+    """The eighth sitting's order: the verb run before the export was written."""
+    _stage(cfg, silence, "One.flac")
+
+    code, envelope = _drive(_land(tmp_path / "absent.xml", "--name", BATCH))
+
+    _assert_refused_before_the_gate(cfg, code, envelope)
+    assert str(tmp_path / "absent.xml") in envelope["cause"]["message"]
+
+
+def test_a_plan_over_an_export_that_is_not_a_collection_refuses_before_the_gate(
+    cfg, silence, tmp_path
+):
+    _stage(cfg, silence, "One.flac")
+    notes = tmp_path / "notes.xml"
+    notes.write_bytes(b'<?xml version="1.0"?><NOTES>not a rekordbox export</NOTES>\n')
+
+    code, envelope = _drive(_land(notes, "--name", BATCH))
+
+    _assert_refused_before_the_gate(cfg, code, envelope)
+
+
+def test_a_plan_over_an_export_without_the_intake_folder_refuses_before_the_gate(
+    cfg, silence, tmp_path
+):
+    """A collection the intake playlist cannot be written into, which only the
+    engine's trial splice on a copy can see, refuses on the plan read as well."""
+    _stage(cfg, silence, "One.flac")
+    bare = tmp_path / "bare.xml"
+    bare.write_bytes(_fresh_xml().replace(b'Name="INBOX"', b'Name="ELSEWHERE"'))
+
+    code, envelope = _drive(_land(bare, "--name", BATCH))
+
+    _assert_refused_before_the_gate(cfg, code, envelope)
+
+
+def test_a_plan_over_a_usable_export_reaches_the_gate_with_the_digest_it_had_before(
+    cfg, silence, export, monkeypatch
+):
+    """The check adds a refusal and nothing else. The digest offered with it is
+    the one offered with the check taken out, so an answer recorded before the
+    check existed is not made stale by it."""
+    _stage(cfg, silence, "One.flac")
+    asked: list[Path] = []
+    real = landing.check_export
+
+    def spied(export_path, *args, **kwargs):
+        asked.append(export_path)
+        return real(export_path, *args, **kwargs)
+
+    monkeypatch.setattr(landing, "check_export", spied)
+    code, refused = _drive(_land(export, "--name", BATCH))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == GATE
+    assert asked == [export]
+    offered = gates.load(refused["run_id"]).offers[GATE]
+
+    monkeypatch.setattr(landing, "check_export", lambda *args, **kwargs: None)
+    code, without = _drive(_land(export, "--name", BATCH))
+    assert code == int(ExitCode.DECISION_REQUIRED), without
+    assert gates.load(without["run_id"]).offers[GATE] == offered
+
+
+def test_the_export_is_asked_with_the_manifest_the_gate_will_show(
+    cfg, silence, export, tmp_path, monkeypatch
+):
+    """The label tree check is part of the engine's export check, so the
+    manifest's rows go with it and a label layout the export cannot take
+    refuses on the plan read too."""
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
+    handed: list[object] = []
+    real = landing.check_export
+
+    def spied(export_path, cfg_, destination, manifest_=None):
+        handed.append(manifest_)
+        return real(export_path, cfg_, destination, manifest_)
+
+    monkeypatch.setattr(landing, "check_export", spied)
+    code, refused = _drive(_land(export, "--name", BATCH, "--manifest", str(manifest)))
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert len(handed) == 1 and handed[0] is not None
+    assert handed[0].path == manifest
+    assert [row.provenance.label_name for row in handed[0].rows] == ["Kompakt"]
+
+
+def test_a_plan_of_nothing_asks_nothing_of_the_export(cfg, tmp_path):
+    """Empty staging is a plan of nothing on the name apply precedent, and a
+    plan of nothing splices nothing, so it is not refused over the export."""
+    code, refused = _drive(_land(tmp_path / "absent.xml", "--name", BATCH))
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["count"] == 0
 
 
 # ---------------------------------------------------------------------------
