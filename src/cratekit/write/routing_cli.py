@@ -50,7 +50,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
 from cratekit.core import (
@@ -323,8 +323,10 @@ def _shown(plan: dict, **facts: Any) -> dict[str, Any]:
     """What the apply gate puts in front of the person (R-686).
 
     The facts the caller names, then the digest, the count and EVERY ITEM the
-    digest was taken over, unchanged, so the screen is the plan a person
-    approves and a JSON reader can compare it with the declined run's items.
+    digest was taken over, so the screen is the plan a person approves and a
+    JSON reader can compare it with the declined run's items. The export gate
+    hands in its plan through :func:`_named`, so each of its items also leads
+    with the track's artist and title, which a reader drops to compare (R-692).
     Without this the gate carried the question and the options and not one
     item, and a person answered a routing plan they could not read. There is
     no bound: the digest covers every item, and a list cut short would ask for
@@ -1076,28 +1078,33 @@ def _decide(
     return Decision(plan, destined, vocal, files, readings, placements, gaps)
 
 
+class ExportPlan(NamedTuple):
+    """What :func:`plan_export` decided, by name and still unpackable in order.
+
+    ``content`` is the export's bytes with any vocal sub-playlist already
+    added, which is why they are returned rather than read again. ``plan`` is
+    what the bridge writer takes, ``owed`` how many rows are owed a star
+    rating, ``items`` what the digest is taken over, and ``names`` each planned
+    track's artist and title by export id, for :func:`_named` alone (R-692).
+    """
+
+    content: bytes
+    plan: dict[tuple[str, str], list[str]]
+    owed: int
+    long_plan: LongPlan
+    items: list[dict[str, str]]
+    warnings: list[dict[str, str]]
+    gaps: tuple[str, ...]
+    vox_created: tuple[str, ...]
+    names: dict[str, dict[str, str]]
+
+
 def plan_export(
     cfg: config.Config, export: Path, *, declared: taxonomy.Taxonomy | None = None
-) -> tuple[
-    bytes,
-    dict[tuple[str, str], list[str]],
-    int,
-    LongPlan,
-    list[dict[str, str]],
-    list[dict[str, str]],
-    tuple[str, ...],
-    tuple[str, ...],
-    dict[str, dict[str, str]],
-]:
+) -> ExportPlan:
     """Read one fresh export and decide where each intake track goes.
 
-    Returns the bytes to write into, the plan the bridge writer takes, how many
-    rows are owed a star rating, the long track additions, the items a person
-    is shown, the warnings, the dimensions not derived, the vocal
-    sub-playlists created, and each planned track's artist and title by export
-    id for :func:`_named`. The bytes are the export's with any vocal
-    sub-playlist already added, which is why they are returned rather than read
-    again.
+    Returns an :class:`ExportPlan`, the fields named there.
 
     NO STAR RATING IS PLANNED (R-688). The ratings the source system's sort
     would have set are only counted, because the medium cannot carry them: see
@@ -1186,7 +1193,9 @@ def plan_export(
         for item in items
         if item["track_id"] in by_id
     }
-    return content, plan, owed, long_plan, items, warnings, gaps, vox_created, names
+    return ExportPlan(
+        content, plan, owed, long_plan, items, warnings, gaps, vox_created, names
+    )
 
 
 def apply_export(

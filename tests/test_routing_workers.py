@@ -1979,7 +1979,7 @@ def _export_track(
     rated = "" if rating is None else f' Rating="{rating}"'
     length = "" if seconds is None else f' TotalTime="{seconds}"'
     lines = [
-        f'    <TRACK TrackID="{tid}" Name="Track {tid}" Artist="A" Genre="Ignored"{length}',
+        f'    <TRACK TrackID="{tid}" Name="Track {tid}" Artist="Artist {tid}" Genre="Ignored"{length}',
         f'           AverageBpm="{bpm}"{rated} Location="{location}">',
     ]
     if analyzed:
@@ -2924,7 +2924,7 @@ def test_an_edit_to_the_active_copy_is_the_playlist_the_routing_plan_names(
     export = _long_export(configured, tmp_path / "exports")
 
     planned = routing_cli.plan_export(configured, export)
-    long_plan, items = planned[3], planned[4]
+    long_plan, items = planned.long_plan, planned.items
     assert long_plan.keys
     assert {item["long_track"] for item in items} - {""} == {"Long Sets By Hand"}
 
@@ -3323,7 +3323,7 @@ def test_the_export_gate_prints_the_plan_in_the_default_mode(configured, voiced,
     assert "are owed a star rating" in screen, "the owed rating never reached the screen"
     vox = _vox_display()
     assert (
-        f"artist=A, title=Track 11, track_id=11, destination=Deep House/Low, "
+        f"artist=Artist 11, title=Track 11, track_id=11, destination=Deep House/Low, "
         f"vocal=Deep House/{vox}, long_track=" in screen
     )
     assert "rating=" not in screen
@@ -3349,14 +3349,15 @@ def test_the_export_gate_names_each_track_by_artist_and_title(configured, voiced
     screen's test, not this one's."""
     export = _gate_export(configured, voiced, tmp_path)
     shown = _blocked_export(export)["cause"]["detail"]["shown"]
-    named = {item["track_id"]: (item["artist"], item["title"]) for item in shown["items"]}
-    assert named == {
-        "11": ("A", "Track 11"),
-        "12": ("A", "Track 12"),
-        "13": ("A", "Track 13"),
-        "31": ("A", "Track 31"),
-        "": ("", ""),
-    }
+    named = [(item["track_id"], item["artist"], item["title"]) for item in shown["items"]]
+    assert named == [
+        ("11", "Artist 11", "Track 11"),
+        ("12", "Artist 12", "Track 12"),
+        ("13", "Artist 13", "Track 13"),
+        ("31", "Artist 31", "Track 31"),
+        ("", "", ""),
+        ("", "", ""),
+    ]
     code, declined = _drive(
         ["-d", "route.inbox.apply=abort", "route", "inbox", "--export", str(export)]
     )
@@ -3373,8 +3374,8 @@ def test_the_export_gate_leaves_an_unread_track_unnamed(configured, voiced, tmp_
     in the warnings, and has no name to show rather than a borrowed one."""
     export = _write_export(configured, tmp_path / "exports", inbox=("11", "99"))
     shown = _blocked_export(export)["cause"]["detail"]["shown"]
-    named = {item["track_id"]: (item["artist"], item["title"]) for item in shown["items"]}
-    assert named == {"11": ("A", "Track 11"), "99": ("", "")}
+    named = [(item["track_id"], item["artist"], item["title"]) for item in shown["items"]]
+    assert named == [("11", "Artist 11", "Track 11"), ("99", "", "")]
 
 
 def test_the_database_inbox_gate_shows_its_items(acknowledged, native, vox_levels):

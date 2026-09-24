@@ -16,6 +16,7 @@ anything.
 
 from __future__ import annotations
 
+import json
 import shlex
 from collections.abc import Mapping, Sequence
 from pathlib import PurePath
@@ -581,13 +582,33 @@ def _shown_lines(shown: Mapping[str, Any]) -> list[str]:
             for item in value:
                 if isinstance(item, Mapping):
                     lines.append(
-                        "    " + ", ".join(f"{k}={_shown_value(v)}" for k, v in item.items())
+                        "    " + ", ".join(f"{k}={_item_value(v)}" for k, v in item.items())
                     )
                 else:
                     lines.append(f"    {_shown_value(item)}")
         else:
             lines.append(f"  {name}: {_shown_value(value)}")
     return lines
+
+
+#: What makes a free text value read as more than one field on a ``k=v, k=v``
+#: line, or as more than one line.
+_FIELD_BREAKERS = (",", "=", "\n", "\r")
+
+
+def _item_value(value: Any) -> str:
+    """One value on an item's ``k=v, k=v`` line, quoted when it would break it.
+
+    A gate that names a track by its artist and title (R-692) puts free text on
+    that line for the first time, and an artist such as "Kerri Chandler, Jerome
+    Sydenham" would read as a field of its own, a title holding "=" could print
+    what looks like a destination, and a line break would split the item in
+    two. Such a value is printed as a JSON string, quoted and escaped. Every
+    other value prints as it always did.
+    """
+    if isinstance(value, str) and any(mark in value for mark in _FIELD_BREAKERS):
+        return json.dumps(value, ensure_ascii=False)
+    return _shown_value(value)
 
 
 def _shown_value(value: Any) -> str:
