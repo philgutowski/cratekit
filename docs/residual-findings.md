@@ -27965,6 +27965,31 @@ workflow cutover and not a wording fix. A test pins each step text.
 **Not on the board bar.** The wording half is a session's, the mechanism is
 attended. Issue #200, filed after the tenth sitting for the Relay feeder, scoped to the wording.
 
+**CLOSED in wording 2026-09-24, on `relay/200`, issue #200.** `intake land`,
+and `intake file` through the same `ingest.import_steps`, now has five
+steps. It tells a person to import the batch playlist on its own and never
+the intake folder, which would append a second copy of every batch, and to
+drag the playlist from the playlist root into the intake folder, named from
+the active taxonomy. `route inbox --export` names no import of the routing
+tree. It says to import any root playlist the run added tracks to and nothing
+else, says the nested memberships cannot land from the file, and its check
+step promises only that a root playlist gains nothing on a second run.
+`route unplaced --export` carried the same "import the routing tree"
+sentence. Every one of its placements is nested, so its steps now name no
+import at all and tell a person to file the reviewed tracks by hand. The
+route-the-library skill says the same. The review drove two promises out of
+the first draft: `route inbox` without `--export` reads files on disk and not
+INBOX members, and `route unplaced` without `--export` only reports, so no
+step may say either lands the memberships at a cutover. The inbox step also
+stopped naming the ratings as something to import, since the rated tracks'
+only playlists in the file are the nested batches. That leaves R-688's
+decision open and removes no claim from its summary. Tests pin every step
+text. The mutation table `docs/mutation/r687.md` has nine rows and all nine
+were killed. Steps persisted on an intake session before this merge keep the
+old text, three steps with no drag, and the refusal that replays them says
+nothing false about the folder. The mechanism stays U29's. R-694 and R-695
+record what the review found at the edges.
+
 ---
 
 ## R-688. A star rating written into an export does not land on a row rekordbox already owns
@@ -28114,3 +28139,53 @@ shared helper in the gate layer shows a digested plan's items whenever one is
 passed, with a test per verb reading its items off the blocked envelope.
 
 **Not on the board bar.** A rendering on gates that still hold their writes.
+
+---
+
+## R-694. The export sweeps end pending on every run while the bridge cannot land nested membership, so their own check never answers
+
+**Found:** by the built in review on `relay/200`, 2026-09-24, closing R-687.
+`route inbox --export` and `route unplaced --export` each return a
+`rekordbox_import` pending action whose verify verb is the sweep itself, read
+as proven when a second run over a fresh export inserts nothing. Neither
+sweep's routing lands through the file, so a second run plans the same
+routing, writes a file and returns `PENDING_HUMAN` again. Sitting 10 measured
+it on the inbox sweep: the proof run planned the same 259 destinations. For
+the unplaced sweep the steps now name no import at all, and the envelope
+still says an import is owed.
+
+**Measured cost:** a person who did everything the steps name gets the same
+pending answer as one who did nothing, and a JSON reader sees a human action
+that can never be completed. Nothing lost. Measured on the inbox sweep at
+sitting 10, not driven on the unplaced sweep.
+
+**Closes when:** each export sweep's outcome says what the file can deliver,
+a no-op or a review with no pending import when nothing it wrote is landable,
+and a pending import only for a root playlist it added to, with a test per
+sweep, or when the tree's cutover retires the export medium for routing.
+
+**Not on the board bar.** The steps are honest since R-687 closed, and the
+remaining shape is the envelope's outcome. The cutover that retires it is
+attended.
+
+---
+
+## R-695. The warnings that send a person to the export medium still say it files and places tracks, which R-687's steps now deny
+
+**Found:** by the built in review on `relay/200`, 2026-09-24, closing R-687.
+`EXPORT_REMEDY` in `write/routing_cli.py` says a library with nothing native
+"is still filed through an export", and `UNPLACED_EXPORT_REMEDY` says
+`route unplaced --export` "places what the routing tree does not hold". The
+docstrings of `route_unplaced_export` and `apply_unplaced_export` say the file
+reaches rekordbox when a person imports it. The pending steps now say the
+routing tree's membership cannot land from either file.
+
+**Measured cost:** the tool says two things across two envelopes. A
+warning points a person at a medium whose steps then say it cannot deliver
+the routing. Not driven at a sitting.
+
+**Closes when:** both remedies name what the export medium delivers, a
+review of the routing and a root playlist the inbox sweep adds to, and the
+two docstrings match, with a test pinning each remedy's text.
+
+**Not on the board bar.** A wording fix.
