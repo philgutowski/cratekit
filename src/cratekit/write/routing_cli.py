@@ -171,11 +171,12 @@ class InboxPlan:
     each file's path and name, the folder and sub it files into, and the vocal
     sub it also files into, as display names. ``placements`` is the same
     decision in the engine's own terms, one tuple per tree that has cut over,
-    and it is what the write consumes, so the write cannot decide differently
-    from what the screen said. ``readings``, ``declared`` and ``threshold`` are
-    the inputs that decision was made from, carried so the write reads none of
-    them a second time. ``warnings`` are what the planner knew before the
-    question was asked.
+    every native tree present even when the folder is empty, and it is what
+    the write consumes, so the write cannot decide differently from what the
+    screen said. ``declared`` and ``entries`` are the declaration and the
+    registry the decision was made against, carried so the write reads neither
+    a second time. ``warnings`` are what the planner knew before the question
+    was asked.
     """
 
     folder: Path
@@ -183,8 +184,6 @@ class InboxPlan:
     entries: tree_registry.Registry
     native: tuple[str, ...]
     declared: taxonomy.Taxonomy
-    threshold: float | None
-    readings: list[rebuild.Truth]
     placements: dict[str, tuple[rebuild.DeclaredPlacement, ...]]
     gaps: tuple[str, ...]
     warnings: list[dict[str, str]]
@@ -207,39 +206,54 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     THE CALIBRATED CUT IS READ HERE, before the database is opened, so a
     corrupt calibration refuses before anything is written (U89). None on a
     library never calibrated, and the derivation then names the dimension it
-    left out in ``gaps``.
+    left out in ``gaps``. It is read only when something will be derived, so
+    a library with nothing native still gets the export remedy, the answer
+    that applies to it, and not a calibration refusal over a cut it cannot
+    use.
 
-    A LIBRARY WITH NOTHING NATIVE DERIVES NOTHING. There is no registry source
-    to derive by and no tree the write would take, so every file is listed
-    with no destination and the export remedy rides as a warning, on the
-    screen before the answer rather than in the envelope after it. The apply
-    still answers ``no-native-tree`` for it, as it always did.
+    A LIBRARY WITH NOTHING NATIVE DERIVES NOTHING, AND READS NO FILE. There is
+    no registry source to derive by and no tree the write would take, so
+    every file is listed with no destination and the export remedy rides as a
+    warning, on the screen before the answer rather than in the envelope after
+    it. The apply still answers ``no-native-tree`` for it, as it always did.
 
     AN EMPTY FOLDER DERIVES NOTHING EITHER. The derivation refuses an empty
     result as evidence of nothing, and an empty folder is not that: it is the
     ``inbox-empty`` answer the verb gives after the gate, with nothing opened.
+
+    ONE DERIVATION PER SOURCE. Two trees that cut over on the same registry
+    source derive the same placements from the same readings, so the rules
+    run once per source and each tree is mapped to its source's tuple.
     """
     folder = Path(cfg.library.root) / declared.intake.display
     files = _inbox_files(folder)
     entries = tree_registry.read(cfg)
     native = _native_trees(entries)
-    threshold = metadata_cli.load_vocal_threshold(cfg)
-    readings = [rebuild.read_truth(path) for path in files]
-    placements: dict[str, tuple[rebuild.DeclaredPlacement, ...]] = {}
+    placements: dict[str, tuple[rebuild.DeclaredPlacement, ...]] = {
+        tree_id: () for tree_id in native
+    }
     gaps: set[str] = set()
     warnings: list[dict[str, str]] = []
     if not native:
         warnings.append({"code": "no-native-tree", "message": EXPORT_REMEDY})
     elif files:
+        threshold = metadata_cli.load_vocal_threshold(cfg)
+        readings = [rebuild.read_truth(path) for path in files]
+        derived: dict[
+            tree_registry.DerivationSource | None,
+            tuple[tuple[rebuild.DeclaredPlacement, ...], tuple[str, ...]],
+        ] = {}
         for tree_id in native:
-            placed, not_derived = rebuild.declared_membership(
-                cfg,
-                declared,
-                source=entries.derivation_source(tree_id),
-                vocal_threshold=threshold,
-                truth=readings,
-            )
-            placements[tree_id] = placed
+            source = entries.derivation_source(tree_id)
+            if source not in derived:
+                derived[source] = rebuild.declared_membership(
+                    cfg,
+                    declared,
+                    source=source,
+                    vocal_threshold=threshold,
+                    truth=readings,
+                )
+            placements[tree_id], not_derived = derived[source]
             gaps.update(not_derived)
     destined: dict[str, str] = {}
     vocal: dict[str, str] = {}
@@ -265,8 +279,6 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
         entries=entries,
         native=native,
         declared=declared,
-        threshold=threshold,
-        readings=readings,
         placements=placements,
         gaps=tuple(sorted(gaps)),
         warnings=warnings,
@@ -285,15 +297,25 @@ def _inbox_facts(plan: InboxPlan) -> dict[str, Any]:
     destination on a library with nothing native has its reason on the same
     screen as the question.
     """
-    items = plan.items
     return {
         "intake": str(plan.folder),
-        "tracks": len(items),
-        "routed": sum(1 for item in items if item["destination"]),
-        "vocal": sum(1 for item in items if item["vocal"]),
+        "tracks": len(plan.items),
+        **_placed_counts(plan.items),
         "trees": list(plan.native),
         "not derived": list(plan.gaps),
         "warnings": [warning["message"] for warning in plan.warnings],
+    }
+
+
+def _placed_counts(tracks: list[dict[str, str]]) -> dict[str, int]:
+    """How many of these track items file somewhere, and how many under a vocal sub.
+
+    One counter for both gates, so a change to what counts as routed lands on
+    both screens or on neither.
+    """
+    return {
+        "routed": sum(1 for item in tracks if item["destination"]),
+        "vocal": sum(1 for item in tracks if item["vocal"]),
     }
 
 
@@ -339,8 +361,7 @@ def _export_facts(
     return {
         "export": str(export),
         "tracks": len(tracks),
-        "routed": sum(1 for item in tracks if item["destination"]),
-        "vocal": sum(1 for item in tracks if item["vocal"]),
+        **_placed_counts(tracks),
         "long tracks": sum(1 for item in tracks if item["long_track"]),
         "vocal subs created": list(vox_created),
         "not derived": list(gaps),
@@ -615,10 +636,6 @@ def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
     # over an intake folder nobody had imported answered ``skipped: 20`` and named
     # no file, which reads as a failed verb rather than as a step not yet taken.
     missed: dict[str, tuple[trees.RowMatch, list[str]]] = {}
-    # WHAT THE ENGINE SAID IT DID NOT COMPARE, kept rather than dropped (R-316).
-    # Dropping it is how a confirmed apply over a taxonomy that declares a vocal
-    # sub-playlist reported an ordinary write while filing nothing into it.
-    not_compared: set[str] = set(planned.gaps)
     handle = rb_writer.open_db(cfg=cfg)
     try:
         known = {str(row.ID) for row in handle.get_playlist()}
@@ -667,7 +684,11 @@ def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
         "skipped": skipped,
         "skipped_files": _skipped_files(cfg, rows, missed),
         "trees": len(native),
-        "not_compared": tuple(sorted(not_compared)),
+        # WHAT THE ENGINE SAID IT DID NOT COMPARE, kept rather than dropped
+        # (R-316). Dropping it is how a confirmed apply over a taxonomy that
+        # declares a vocal sub-playlist reported an ordinary write while filing
+        # nothing into it. The plan's, since the plan made the derivation.
+        "not_compared": planned.gaps,
     }
 
 
@@ -1387,8 +1408,15 @@ def route_inbox(ctx) -> Envelope:
     items = planned.items
     plan = _plan(items, kind="inbox")
     option = _apply_gate(ctx, plan, _shown(plan, **_inbox_facts(planned)))
+    # THE PLANNER'S WARNINGS RIDE ON EVERY ANSWER, as the export path's do,
+    # so a reader of the declined envelope learns why every destination is
+    # empty without the screen.
     if option != "apply":
-        return ctx.envelope(data=_plan(items, kind="inbox", applied=False), outcome=Outcome.NO_OP)
+        return ctx.envelope(
+            data=_plan(items, kind="inbox", applied=False),
+            outcome=Outcome.NO_OP,
+            warnings=planned.warnings,
+        )
     if not items:
         # AN EMPTY FOLDER IS NOT A WRITE. Nothing is opened, no session is taken
         # and the declaration is never derived, which is what makes this true on
@@ -1396,6 +1424,7 @@ def route_inbox(ctx) -> Envelope:
         return ctx.envelope(
             data=_plan(items, kind="inbox", applied=False, reason="inbox-empty"),
             outcome=Outcome.NO_OP,
+            warnings=planned.warnings,
         )
     result = apply_inbox(cfg, planned)
     # THE GAPS RIDE AS A WARNING, NOT IN THE TOTALS. They are what this run did

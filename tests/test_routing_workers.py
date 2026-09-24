@@ -3440,15 +3440,62 @@ def test_the_database_digest_binds_the_destinations_not_the_file_list(
     )
 
 
-def test_the_database_gate_on_a_library_with_no_native_tree_says_so_before_the_answer(stocked):
+def test_the_database_gate_on_a_library_with_no_native_tree_says_so_before_the_answer(
+    stocked, monkeypatch
+):
     """Nothing native means nothing derived and nothing written, and the gate
     says so before the question rather than the envelope after it: every file
-    is listed with no destination and the export remedy is on the screen."""
+    is listed with no destination and the export remedy is on the screen.
+
+    Nothing is read for it either. The review found the first draft loading
+    the calibration and every file's tags on a library that can use neither,
+    so a corrupt calibration refused a verb whose real answer is the export
+    remedy. The reader is armed to raise, and the calibration is corrupt, and
+    the gate still shows the plan; the declined envelope carries the same
+    warning the screen did, so a reader of the JSON learns why every
+    destination is empty."""
+    _calibrate(stocked, '{"threshold": 5.')
+
+    def unread(path):
+        raise AssertionError(f"read {path} on a library with nothing native")
+
+    monkeypatch.setattr(rebuild, "read_truth", unread)
     shown = _blocked_inbox()
     assert [item["destination"] for item in shown["items"]] == [""]
     assert (shown["tracks"], shown["routed"], shown["trees"]) == (1, 0, [])
     assert shown["warnings"] == [routing_cli.EXPORT_REMEDY]
     assert not Path(stocked.library.db_path).exists(), "the plan opened a database"
+
+    code, declined = _drive(["-d", "route.inbox.apply=abort", "route", "inbox"])
+    assert code == int(ExitCode.OK), declined
+    assert declined["data"]["totals"]["applied"] is False
+    assert [w["message"] for w in declined["warnings"]] == [routing_cli.EXPORT_REMEDY]
+
+
+def test_an_empty_inbox_with_no_native_tree_answers_inbox_empty_with_the_remedy(stocked):
+    """Both facts are true of the state, and both surfaces now say both: the
+    gate shows the remedy, and the confirmed answer is still inbox-empty and
+    carries the same warning rather than dropping it."""
+    for path in _intake_dir(stocked).iterdir():
+        path.unlink()
+    shown = _blocked_inbox()
+    assert shown["items"] == [] and shown["warnings"] == [routing_cli.EXPORT_REMEDY]
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert applied["data"]["totals"]["reason"] == "inbox-empty"
+    assert [w["message"] for w in applied["warnings"]] == [routing_cli.EXPORT_REMEDY]
+
+
+def test_an_empty_inbox_plan_names_every_native_tree(acknowledged, native):
+    """The write indexes the plan by tree, so a plan over an empty folder still
+    carries every tree that has cut over, with nothing to place in it, rather
+    than a mapping the write would fail to index inside an open database."""
+    for path in _intake_dir(acknowledged).iterdir():
+        path.unlink()
+    planned = routing_cli.plan_inbox(acknowledged, taxonomy.default_taxonomy())
+    assert planned.items == []
+    assert planned.placements == {TREE_ID: ()}
+    assert planned.warnings == []
 
 
 def test_the_database_gate_prints_the_destination_in_the_default_mode(acknowledged, native):
