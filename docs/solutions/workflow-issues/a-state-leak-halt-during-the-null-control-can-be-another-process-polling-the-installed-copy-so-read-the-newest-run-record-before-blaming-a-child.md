@@ -15,12 +15,15 @@ applies_when:
     verb that writes run records.
   - The Relay feeder or the installed pipx copy of cratekit is in use on the
     same machine.
+  - The halt repeats on every rerun with the entry count unchanged, because a
+    real job is running from the installed copy.
 tags:
   - mutation-driver
   - state-leak
   - r-343
   - relay
   - run-record
+  - job-queue
 ---
 
 # A state leak halt during the null control can be another process polling the installed copy, so read the newest run record before blaming a child
@@ -64,3 +67,26 @@ The one caveat the guard already states: it watches the application support
 root only. A child reaching the redirected home or data root is not seen by
 this check, so a clean count is not proof of isolation, only the absence of
 the one leak it measures.
+
+## A second shape: a live job halts every rerun
+
+On 2026-09-24, on `relay/203`, the first attempt halted on one new run record
+as above, a `job.show` poll. The rerun halted again with the entry count
+UNCHANGED, 2900 before and after. The change was the job queue's write ahead
+log under `jobs/`: a real `crate sync labels` job, started from another
+session against the installed copy, was running, and its lock file under
+`jobs/` named a process that was still alive. While that job runs, the queue
+changes under every child, so every rerun halts, and two bounded waits of
+over nine minutes each did not see it end.
+
+How to tell: an unchanged count with a halt means a file changed in place.
+Read the lock files under `jobs/` and check whether the process each one
+names is alive. If one is, the table cannot be measured until that job ends.
+
+What not to do: the driver's watched roots follow `CRATEKIT_CONFIG_DIR` and
+`CRATEKIT_STATE_DIR` in its own environment, so an empty directory there
+gets the table to run. That turns off the one check for R-343's shape, which
+is a decision for an attended session, not an unattended one. Record the
+table as unmeasured in its notes file, commit the rows so a later session
+can run them as they are, and say so in the ledger.
+

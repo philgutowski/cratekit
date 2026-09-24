@@ -28179,6 +28179,26 @@ held.
 **Narrowed 2026-09-24, on `relay/201` (R-688).** The items no longer carry a
 rating, so the byte scale half is gone. The export id half stands.
 
+**Closed 2026-09-24 on `relay/203`, issue #203.** `plan_export` in
+`write/routing_cli.py` hands back each planned track's artist and title from
+the collection rows it already read, and `_named` puts them at the head of
+every item the `route inbox --export` gate shows, beside the fields the
+digest covers, so a line reads `artist=..., title=..., track_id=11,
+destination=Deep House/Low, ...`. A created vocal sub row and an intake key
+with no collection row get empty names. The digest and the answered
+envelope's `data.items` are the plan's, unnamed, as the bar asks. The rating
+half needed nothing: the export items carry none since R-688, and the
+database path's items carry none and already name each file by its file
+name. The review drove one more change: the gate screen's `k=v, k=v` line
+now quotes, as a JSON string, a value holding a comma, an equals sign or a
+line break, since an artist such as "Kerri Chandler, Jerome Sydenham" read
+as a field of its own. `plan_export` returns a NamedTuple. The mutation
+rows, thirteen, are in `docs/mutation/r692-rows.toml` and were NOT measured
+in this session: a real `sync labels` job from another session held the
+installed copy's queue open the whole time and the driver's leak guard
+halted every attempt, see `docs/mutation/r692-notes.md`. R-700 records the
+digest binding the review raised.
+
 ---
 
 ## R-693. Seven other digest bound gates still show no plan, so R-670 and R-686 are one class closed one verb at a time
@@ -28342,3 +28362,29 @@ that section.
 
 **Not on the board bar.** Wording, and the product's own warning already
 says the true thing.
+
+---
+
+## R-700. The export route gate names each track by artist and title, and the digest a decision is bound to still covers only the export id
+
+**Found:** by the built in review on `relay/203`, 2026-09-24, while R-692 was
+closed. The gate now leads each line with the artist and title a person
+reads, but the digest is taken over the plan's items, `track_id`,
+`destination`, `vocal` and `long_track`, as R-692's bar required. A recorded
+`apply` is bound to ids and not to the songs that were shown.
+
+**Measured cost:** not driven. It needs an answer recorded against one export
+and a resume against a fresh export in which the same TrackID names a
+different song with the same destination, for example after a restore
+renumbered the collection. The routing reads the file by Location, so a
+different file under the same id usually moves the destination and the
+digest with it; a retitle with no move does not, and there the write files
+what the person approved. No producer of the first case was driven.
+
+**Closes when:** a decision says whether the names belong inside the digest,
+and if they do, the digest is taken over the named items on the offer, the
+decline and the apply alike, with a test that a retitled row stales a
+recorded answer.
+
+**Not on the board bar.** Reachability unmeasured, and the write is held.
+
