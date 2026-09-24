@@ -84,7 +84,7 @@ from typing import Any
 
 from cratekit.acquire import listdoc, match, match_cli
 from cratekit.cli.output import Envelope
-from cratekit.core import review, routing, taxonomy
+from cratekit.core import active_taxonomy, review, routing, taxonomy
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.review import Queue
 from cratekit.intake.missing_cli import LISTS_DIR
@@ -497,6 +497,9 @@ def label_approved(ctx) -> Envelope:
             outcome=Outcome.NO_OP,
         )
 
+    # THE DECLARATION BEFORE THE FIRST LOGIN (R-685). An active copy that cannot
+    # be read refuses here, not after every accepted release was fetched.
+    declared = active_taxonomy.load(cfg)
     # LOOKED UP ON THE MODULE AT CALL TIME, the contract ``catalogue`` states,
     # which is what lets a suite substitute the seam.
     found = catalogue.resolve(cfg)
@@ -538,7 +541,7 @@ def label_approved(ctx) -> Envelope:
     # THE GATE BEFORE ANY RESOLUTION, so a held release is never offered for
     # review and never listed, and every release it judges is judged against
     # the same set.
-    held, unjudged = _gated(taxonomy.default_taxonomy(), answered, failures)
+    held, unjudged = _gated(declared, answered, failures)
     ungated = [
         (release, unjudged[release.item_id])
         for release, _outcome in answered

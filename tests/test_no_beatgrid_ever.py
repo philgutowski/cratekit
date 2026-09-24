@@ -408,9 +408,10 @@ def _meta(**over):
 
 
 def test_track_xml_has_no_beatgrid():
+    from cratekit.core import taxonomy
     from cratekit.intake.collection_xml import build_track_xml
 
-    xml = build_track_xml(42, _meta(), "2026-01-01")
+    xml = build_track_xml(42, _meta(), "2026-01-01", declared=taxonomy.default_taxonomy())
     for token in FORBIDDEN_TOKENS:
         assert token not in xml, (
             f"beat-grid token {token!r} leaked into TRACK XML; external grids are "
@@ -426,9 +427,10 @@ def test_track_xml_has_no_grid_even_with_inizio_and_no_energy():
     produce zero grid, and it must still produce a real TRACK entry, so the guard
     cannot pass by emitting nothing at all.
     """
+    from cratekit.core import taxonomy
     from cratekit.intake.collection_xml import build_track_xml
 
-    xml = build_track_xml(7, _meta(energy=None, inizio=3.25), "2026-01-01")
+    xml = build_track_xml(7, _meta(energy=None, inizio=3.25), "2026-01-01", declared=taxonomy.default_taxonomy())
     assert "<TEMPO" not in xml
     assert '<TRACK TrackID="7"' in xml and "</TRACK>" in xml
 

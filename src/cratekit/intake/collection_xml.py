@@ -47,12 +47,13 @@ _TRACK_ID = re.compile(rb'<TRACK\b[^>]*\bTrackID="(\d+)"')
 _TRACK_NAME_ONLY = re.compile(rb"<TRACK\b[^>]*\bName=")
 
 
-def _rating_for(energy: object) -> int:
+def _rating_for(energy: object, declared: taxonomy.Taxonomy) -> int:
     """Star rating from energy, or 0 when there is no reading.
 
-    Cuts come from the shipped taxonomy so a later template that changes the
-    even-fifths map is the one this emitter follows. A hardcoded table here
-    would be a second opinion about a value the template already holds.
+    Cuts come from the library's active taxonomy (R-685) so an edited template
+    that changes the even-fifths map is the one this emitter follows. A
+    hardcoded table here would be a second opinion about a value the template
+    already holds.
     """
     if energy is None or energy == "":
         return 0
@@ -60,7 +61,7 @@ def _rating_for(energy: object) -> int:
         level = int(energy)
     except (TypeError, ValueError):
         return 0
-    value = routing.energy_rating(taxonomy.default_taxonomy(), level)
+    value = routing.energy_rating(declared, level)
     return int(value) if value is not None else 0
 
 
@@ -77,14 +78,17 @@ def _location_attr(raw: object) -> str:
     return locations.location_url(text)
 
 
-def build_track_xml(tid: int, meta: dict, date_added: str) -> str:
+def build_track_xml(
+    tid: int, meta: dict, date_added: str, *, declared: taxonomy.Taxonomy
+) -> str:
     """One COLLECTION TRACK element, gridless, CRLF, rekordbox attribute order.
 
     ``inizio`` may be present. It is ignored. ``bpm`` may be present. It is
-    ignored. Neither may reach the XML.
+    ignored. Neither may reach the XML. ``declared`` is the library's active
+    taxonomy, whose energy cuts give the rating.
     """
     escape = xml_escape_attr
-    rating = _rating_for(meta.get("energy"))
+    rating = _rating_for(meta.get("energy"), declared)
     location = _location_attr(meta["location"])
     kind = escape(meta.get("kind") or "FLAC File")
     # The empty ``grid`` binding is the whole R17 claim in one place. A

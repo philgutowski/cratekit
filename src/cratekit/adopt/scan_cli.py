@@ -53,7 +53,7 @@ from __future__ import annotations
 from cratekit.adopt import artifacts, collection, shell
 from cratekit.adopt import scan as scan_engine
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs, taxonomy
+from cratekit.core import active_taxonomy, config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 
@@ -206,7 +206,7 @@ def scan(ctx) -> Envelope:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload={"tree": taxonomy.default_taxonomy().tree.id},
+            payload={"tree": active_taxonomy.load(cfg).tree.id},
             # ONE LIVE ROW IS ONE ITEM. Without them the queue holds a job with
             # nothing to claim and the driver reports an empty success over a
             # census it never took.
@@ -285,7 +285,7 @@ def handle(job, item, cfg) -> jobs.Produced:
             origin=("adopt", "scan_cli"),
             detail={"content_id": item.item_id},
         )
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     (classified,) = scan_engine.scan_rows(
         [row],
         declared,

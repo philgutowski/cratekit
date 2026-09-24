@@ -72,7 +72,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, jobs, review, tags, taxonomy
+from cratekit.core import active_taxonomy, config, jobs, review, tags
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -403,7 +403,7 @@ def retag_genres(ctx) -> Envelope:
         return _resume(ctx, cfg)
 
     folder = str(Path(named).expanduser().absolute())
-    plan = plan_for(folder, taxonomy.default_taxonomy())
+    plan = plan_for(folder, active_taxonomy.load(cfg))
     option = ctx.gate.require(_plan_gate(ctx), digest=plan["digest"])
     if option == "abort":
         return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
@@ -604,7 +604,7 @@ def handle(job, item, cfg) -> jobs.Produced:
             origin=("tagging", "retag_cli"),
             detail={"item": item.item_id},
         )
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     current = tags.read_genre_from_file(path) or ""
     if not current:
         result = retag.RetagResult(path=path, current=current, reason=retag.NO_GENRE)

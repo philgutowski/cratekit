@@ -72,6 +72,7 @@ from cratekit.adopt import plan as plan_engine
 from cratekit.adopt.approval import grant
 from cratekit.cli.output import Envelope
 from cratekit.core import (
+    active_taxonomy,
     analysis_store,
     config,
     jobs,
@@ -435,7 +436,7 @@ def apply_adoption(ctx) -> Envelope:
     could only be invented by the worker.
     """
     cfg = _load()
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
 
     if ctx.args.job:
         return _resume(ctx, cfg)
@@ -514,7 +515,7 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     ``jobs.cancel`` builds, so the narrower predicate exits 0 over an interrupted
     apply. SUCCEEDED carries no cause and is unaffected.
     """
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     plan = current_plan(cfg, declared)
     spec = _approval_gate(ctx.entry)
     if ctx.gate.require(spec, digest=plan.digest()) == "abort":
@@ -612,7 +613,7 @@ def handle(job, item, cfg) -> jobs.Produced:
     the job is resumable for the day the cutover exists.
     """
     del item
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     plan = current_plan(cfg, declared)
     frozen_digest = str((job.payload or {}).get("digest") or "")
     if plan.digest() != frozen_digest:

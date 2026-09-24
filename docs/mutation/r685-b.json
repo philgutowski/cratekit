@@ -1,0 +1,230 @@
+{
+  "name": "r685-b",
+  "pass_kind": "light",
+  "branch": "relay/198",
+  "head": "540978e",
+  "when": "2026-09-24 15:03 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10149,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "state_guarded": "~/Library/Application Support/cratekit (2892 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/cli/converge.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/cli/converge.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "aa5bceeb83dc373d",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10149,
+    "baseline_collected": 10149,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_converge_opens_before_it_reads",
+      "description": "Converge opens the database before reading the declaration, the order the review found",
+      "file": "src/cratekit/cli/converge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2e48b649c77fbdb0",
+      "subset": [
+        "tests/test_rebuild.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 105,
+      "baseline_collected": 105,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rebuild.py::test_an_active_taxonomy_that_cannot_be_read_is_not_compared_and_opens_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            declared = active_taxonomy.load(cfg)\n            handle = rb_writer.open_db(cfg=cfg)\n",
+      "new": "            handle = rb_writer.open_db(cfg=cfg)\n            declared = active_taxonomy.load(cfg)\n"
+    },
+    {
+      "id": "C2_converge_lets_the_refusal_escape",
+      "description": "The declaration is read outside the try, so a refusal escapes instead of reading NOT COMPARED",
+      "file": "src/cratekit/cli/converge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "952dfc0d7008eb1e",
+      "subset": [
+        "tests/test_rebuild.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 105,
+      "baseline_collected": 105,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rebuild.py::test_an_active_taxonomy_that_cannot_be_read_is_not_compared_and_opens_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        handle = declared = None\n        try:\n            declared = active_taxonomy.load(cfg)\n            handle = rb_writer.open_db(cfg=cfg)\n",
+      "new": "        handle = declared = None\n        declared = active_taxonomy.load(cfg)\n        try:\n            handle = rb_writer.open_db(cfg=cfg)\n"
+    },
+    {
+      "id": "P1_place_files_rereads_the_registry",
+      "description": "place_files ignores the registry the landing handed it and reads its own after the moves",
+      "file": "src/cratekit/intake/ingest.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "203d5fce289a6a33",
+      "subset": [
+        "tests/test_landing_labels.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_landing_labels.py::test_the_registry_is_read_before_the_first_move_and_never_after"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if registry is None:\n        registry = tree_registry.read(cfg)\n",
+      "new": "    registry = tree_registry.read(cfg)\n"
+    },
+    {
+      "id": "G1_the_guard_forgets_aliases",
+      "description": "The guard stops binding aliased imports, so an import as another name hides the call",
+      "file": "tests/test_active_taxonomy.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "f137f4e724ff39b4",
+      "subset": [
+        "tests/test_active_taxonomy.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 12,
+      "baseline_collected": 12,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_active_taxonomy.py::test_the_guard_sees_every_spelling_it_should_refuse"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    bound[alias.asname or alias.name] = alias.name\n",
+      "new": "                    pass\n"
+    },
+    {
+      "id": "G2_the_guard_forgets_attributes",
+      "description": "The guard stops matching module attribute calls, the spelling every verb used",
+      "file": "tests/test_active_taxonomy.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "8084f57134365b0d",
+      "subset": [
+        "tests/test_active_taxonomy.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 12,
+      "baseline_collected": 12,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_active_taxonomy.py::test_the_guard_sees_every_spelling_it_should_refuse"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(func, ast.Attribute) and func.attr in READERS:\n",
+      "new": "        if isinstance(func, ast.Attribute) and func.attr in ():\n"
+    },
+    {
+      "id": "G3_the_guard_allows_every_module",
+      "description": "Every module is on every allow list, so the guard refuses nothing",
+      "file": "tests/test_active_taxonomy.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "caf449f7d79ab50c",
+      "subset": [
+        "tests/test_active_taxonomy.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 10149,
+      "baseline_collected": 10149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "            if path not in READERS[name]:\n",
+      "new": "            if False:\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "V3_set_build_reads_the_shipped_text",
+      "description": "set build parses the shipped text",
+      "reason": "same guard as V1 and V2, which is the one that holds a verb reading the shipped text; no behavior test drives set build over an edited active copy, recorded in the notes"
+    },
+    {
+      "id": "O1_label_approved_reads_after_the_network",
+      "description": "label approved moves its load back after the provider fetches",
+      "reason": "an ordering whose only cost is wasted network work; no test can see it without a refusing active copy and a counting provider, ranked below the cap"
+    },
+    {
+      "id": "O2_one_read_per_routing_verb",
+      "description": "apply_export ignores the declaration the verb passed and reads its own",
+      "reason": "the two reads agree unless the file changes inside one invocation; no test can reach that, ranked below the cap and named in the notes"
+    }
+  ]
+}

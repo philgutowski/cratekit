@@ -48,6 +48,7 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
 from cratekit.core import (
+    active_taxonomy,
     analysis_store,
     artifacts,
     config,
@@ -127,7 +128,7 @@ def _no_op(state: str, **progress: Any) -> dict[str, Any]:
 
 
 def _inbox_items(cfg: config.Config) -> list[dict[str, str]]:
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     folder = Path(cfg.library.root) / declared.intake.display
     if not folder.is_dir():
         return []
@@ -403,7 +404,7 @@ def apply_inbox(cfg: config.Config, items: list[dict[str, str]]) -> dict[str, An
     # never calibrated, and the engine then names the dimension it left out.
     threshold = metadata_cli.load_vocal_threshold(cfg)
     readings = [rebuild.read_truth(Path(item["path"])) for item in items]
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     added = 0
     skipped = 0
     # WHICH FILES, AND WHY, kept rather than counted (R-318). A confirmed apply
@@ -819,7 +820,7 @@ def _decide(
 
 
 def plan_export(
-    cfg: config.Config, export: Path
+    cfg: config.Config, export: Path, *, declared: taxonomy.Taxonomy | None = None
 ) -> tuple[
     bytes,
     dict[tuple[str, str], list[str]],
@@ -853,7 +854,11 @@ def plan_export(
     energy sub, and :func:`_vox_subs` has made that sub first.
     """
     content = _read_export(export)
-    declared = taxonomy.default_taxonomy()
+    if declared is None:
+        # ONE READ PER VERB (R-685): the verb passes the declaration it
+        # checked the bridge with, so the plan, the write and the pending
+        # action are one declaration. A caller that has none reads it here.
+        declared = active_taxonomy.load(cfg)
     keys = _inbox_keys(content, declared, export)
     by_id = {
         track.track_id: rbxml.attributes(content, track)
@@ -919,6 +924,8 @@ def apply_export(
     ratings: dict[str, int],
     long_plan: LongPlan = LongPlan(),
     vox_created: tuple[str, ...] = (),
+    *,
+    declared: taxonomy.Taxonomy | None = None,
 ) -> tuple[Path | None, trees.RouteReport, int, int, str | None]:
     """Write the plan into a copy of the export, beside it, never in place.
 
@@ -951,7 +958,11 @@ def apply_export(
     system wrote it after the ratings. It is a direct child of the playlist
     root and no tree, so no registry answer governs it.
     """
-    declared = taxonomy.default_taxonomy()
+    if declared is None:
+        # ONE READ PER VERB (R-685): the verb passes the declaration it
+        # checked the bridge with, so the plan, the write and the pending
+        # action are one declaration. A caller that has none reads it here.
+        declared = active_taxonomy.load(cfg)
     tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
     buffer = bytearray(content)
     report = trees.apply_playlist_changes(plan, buffer, tree=tree)
@@ -1052,13 +1063,13 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     both asked by :func:`_refuse_off_the_bridge` before the plan is offered, so a
     person is never asked to approve a write the guard would stop.
     """
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     _refuse_off_the_bridge(
         cfg, declared, export, instead="run route inbox without --export, which "
         "writes the database",
     )
     content, plan, ratings, long_plan, items, warnings, gaps, vox_created = plan_export(
-        cfg, export
+        cfg, export, declared=declared
     )
     offered = _plan(items, kind="inbox-export")
     option = _apply_gate(ctx, offered)
@@ -1069,7 +1080,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             warnings=warnings,
         )
     destination, report, rated, lengthened, long_warning = apply_export(
-        cfg, export, content, plan, ratings, long_plan, vox_created
+        cfg, export, content, plan, ratings, long_plan, vox_created, declared=declared
     )
     # ONE CODE FOR EVERY SKIPPED WRITE, because the writer reports a missing
     # tree, a missing genre folder and a missing sub as sentences and the
@@ -1305,7 +1316,7 @@ def unplaced_keys(
 
 
 def plan_unplaced_export(
-    cfg: config.Config, export: Path
+    cfg: config.Config, export: Path, *, declared: taxonomy.Taxonomy | None = None
 ) -> tuple[
     bytes,
     dict[tuple[str, str], list[str]],
@@ -1324,7 +1335,11 @@ def plan_unplaced_export(
     separate vocal pass runs first.
     """
     content = _read_export(export)
-    declared = taxonomy.default_taxonomy()
+    if declared is None:
+        # ONE READ PER VERB (R-685): the verb passes the declaration it
+        # checked the bridge with, so the plan, the write and the pending
+        # action are one declaration. A caller that has none reads it here.
+        declared = active_taxonomy.load(cfg)
     tree_node = _routing_tree_node(content, declared, export)
     by_id = {
         track.track_id: rbxml.attributes(content, track)
@@ -1350,6 +1365,8 @@ def apply_unplaced_export(
     export: Path,
     content: bytes,
     plan: dict[tuple[str, str], list[str]],
+    *,
+    declared: taxonomy.Taxonomy | None = None,
 ) -> tuple[Path | None, trees.RouteReport]:
     """Write the plan into a copy of the export, beside it, never in place.
 
@@ -1365,7 +1382,11 @@ def apply_unplaced_export(
     NOTHING INSERTED IS NOTHING WRITTEN. A file identical to the export would
     still be a file somebody is told to import.
     """
-    declared = taxonomy.default_taxonomy()
+    if declared is None:
+        # ONE READ PER VERB (R-685): the verb passes the declaration it
+        # checked the bridge with, so the plan, the write and the pending
+        # action are one declaration. A caller that has none reads it here.
+        declared = active_taxonomy.load(cfg)
     tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
     buffer = bytearray(content)
     report = trees.apply_unplaced_changes(plan, buffer, tree=tree)
@@ -1410,13 +1431,13 @@ def route_unplaced_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     rekordbox only when a person imports it, which is the review. The report
     without ``--export`` is unchanged.
     """
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     _refuse_off_the_bridge(
         cfg, declared, export, instead="run route unplaced without --export, which "
         "reports what the database's tree does not hold",
     )
-    content, plan, items, warnings, gaps = plan_unplaced_export(cfg, export)
-    destination, report = apply_unplaced_export(cfg, export, content, plan)
+    content, plan, items, warnings, gaps = plan_unplaced_export(cfg, export, declared=declared)
+    destination, report = apply_unplaced_export(cfg, export, content, plan, declared=declared)
     warnings = [
         *warnings,
         *({"code": "route-write-skipped", "message": text} for text in report.warnings),
@@ -1541,6 +1562,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             # is read as it stands, not frozen with the job. A corrupt calibration
             # refuses here before any item is claimed.
             threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
+            declared = active_taxonomy.load(jobs.frozen_config(job))
             # FROM HERE THIS RUN DROVE, so from here a refusal owes the leftovers.
             frozen = jobs.frozen_config(job)
             _, warnings = ctx.run_job(store, job)
@@ -1552,7 +1574,9 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             records, listed_in = _left_behind(frozen, job.job_id)
             warnings = (
                 *warnings,
-                *rebuild.not_compared_warnings(rebuild.governed_not_compared(threshold)),
+                *rebuild.not_compared_warnings(
+                    rebuild.governed_not_compared(threshold, declared)
+                ),
                 *rebuild.left_behind_warnings(records, listed_in=listed_in),
             )
         jobs.raise_for_state(job)
@@ -1627,7 +1651,7 @@ def handle_resort(job, item, cfg) -> None:
         # configuration names. None on a library never calibrated (U89, D7).
         vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
     )
-    left = rebuild.left_behind(report.after, taxonomy.default_taxonomy())
+    left = rebuild.left_behind(report.after, active_taxonomy.load(cfg))
     return artifacts.produced(
         RESORT_ARTIFACTS,
         cfg,
@@ -1714,7 +1738,7 @@ def route_pending(ctx) -> Envelope:
             warnings=[{"code": "no-native-tree", "message": PENDING_REMEDY}],
         )
 
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     handle = rb_writer.open_db(cfg=cfg)
     try:
         known = {str(row.ID) for row in handle.get_playlist()}

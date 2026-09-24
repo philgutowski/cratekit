@@ -180,7 +180,9 @@ def test_a_file_with_no_declared_sub_is_left_in_staging_naming_tag_folder(
     monkeypatch.setattr(
         ingest,
         "decide_placement",
-        lambda meta: None if meta.get("genre") == "Nowhere Genre" else real(meta),
+        lambda meta, declared: (
+            None if meta.get("genre") == "Nowhere Genre" else real(meta, declared)
+        ),
     )
 
     result = landing.apply(
@@ -502,7 +504,7 @@ def test_a_batch_where_nothing_lands_leaves_no_batch_folder(
     exist before the call. The earlier test made that folder itself, so it
     could never see one left behind."""
     _stage(cfg, silence, "Nowhere.flac", genre="Nowhere Genre")
-    monkeypatch.setattr(ingest, "decide_placement", lambda meta: None)
+    monkeypatch.setattr(ingest, "decide_placement", lambda meta, declared: None)
     target = Path(cfg.library.root) / cfg.library.music_dir / BATCH
 
     with pytest.raises(CratekitError) as excinfo:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cratekit.core import locations
+from cratekit.core import locations, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.intake.collection_xml import (
     GRIDLESS_AVERAGE_BPM,
@@ -42,7 +42,7 @@ def test_emitted_location_matches_rekordbox_encoding_for_space_and_bang(tmp_path
     path.parent.mkdir()
     path.write_bytes(b"x")
     synthesized = locations.location_url(path)
-    xml = build_track_xml(9, _meta(location=str(path)), "2026-01-01")
+    xml = build_track_xml(9, _meta(location=str(path)), "2026-01-01", declared=taxonomy.default_taxonomy())
     assert f'Location="{synthesized}"' in xml
     assert "%20" in xml
     assert "Trevor!" in xml
@@ -53,25 +53,25 @@ def test_emitted_location_matches_rekordbox_encoding_for_space_and_bang(tmp_path
 def test_an_inherited_location_is_not_reencoded():
     """A Fresh Export Location is carried through unmodified."""
     inherited = "file://localhost/library/stale-volume/Already%20Here!.flac"
-    xml = build_track_xml(3, _meta(location=inherited), "2026-01-01")
+    xml = build_track_xml(3, _meta(location=inherited), "2026-01-01", declared=taxonomy.default_taxonomy())
     assert f'Location="{inherited}"' in xml
 
 
 def test_average_bpm_is_the_gridless_constant_even_when_bpm_is_present():
-    xml = build_track_xml(1, _meta(bpm=174.0), "2026-08-17")
+    xml = build_track_xml(1, _meta(bpm=174.0), "2026-08-17", declared=taxonomy.default_taxonomy())
     assert f'AverageBpm="{GRIDLESS_AVERAGE_BPM}"' in xml
     assert "174" not in xml.split("Name=")[0] or 'AverageBpm="174' not in xml
     assert 'AverageBpm="174' not in xml
 
 
 def test_inizio_does_not_become_a_tempo_child():
-    xml = build_track_xml(2, _meta(energy=None, inizio=3.25), "2026-01-01")
+    xml = build_track_xml(2, _meta(energy=None, inizio=3.25), "2026-01-01", declared=taxonomy.default_taxonomy())
     for token in FORBIDDEN_TOKENS:
         assert token not in xml
 
 
 def test_emitted_bytes_use_crlf_and_no_bare_lf():
-    xml = build_track_xml(4, _meta(), "2026-01-01")
+    xml = build_track_xml(4, _meta(), "2026-01-01", declared=taxonomy.default_taxonomy())
     assert _no_bare_lf(xml.encode("utf-8"))
 
 
@@ -87,13 +87,13 @@ def test_a_u22_stub_listing_is_not_a_splice_target():
     assert is_stub_listing(stub)
     assert not is_stub_listing(_fresh_xml())
     with pytest.raises(CratekitError) as excinfo:
-        splice_tracks(bytearray(stub), [build_track_xml(1, _meta(), "2026-01-01")])
+        splice_tracks(bytearray(stub), [build_track_xml(1, _meta(), "2026-01-01", declared=taxonomy.default_taxonomy())])
     assert excinfo.value.cause.reason == "intake-export-is-stub"
 
 
 def test_splice_into_a_fresh_export_bumps_entries_and_inserts_the_track():
     buf = bytearray(_fresh_xml())
-    xml = build_track_xml(900000001, _meta(), "2026-01-01")
+    xml = build_track_xml(900000001, _meta(), "2026-01-01", declared=taxonomy.default_taxonomy())
     splice_tracks(buf, [xml])
     out = bytes(buf)
     assert b'Entries="1"' in out

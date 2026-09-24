@@ -1,0 +1,164 @@
+name = "r685-a"
+pass_kind = "light"
+
+# R-685: the one loader for a library's active taxonomy, the verbs that read
+# through it, and the guard that keeps them there. Scoped to the branch's own
+# guards. Author's table, no independent verifier (METHOD, 2026-09-07).
+
+[[rows]]
+id = "L1_the_active_copy_is_never_read"
+description = "The loader resolves a path nothing is ever at, so every library falls back to the shipped template: R-685's defect, restored in the loader"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py", "tests/test_routing_workers.py", "tests/test_landing_labels.py", "tests/test_rebuild.py"]
+old = '''
+    path = config.state_path("taxonomy_active", cfg)
+    try:
+        text = path.read_text(encoding="utf-8")
+'''
+new = '''
+    path = config.state_path("taxonomy_active", cfg).with_name("never-there.toml")
+    try:
+        text = path.read_text(encoding="utf-8")
+'''
+
+[[rows]]
+id = "L2_an_unmounted_library_falls_back"
+description = "Drop the library root check, so an absent volume reads as no active copy and routes by the shipped template"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py", "tests/test_routing_workers.py", "tests/test_landing_labels.py", "tests/test_rebuild.py"]
+old = '''
+        if not cfg.library.root.is_dir():
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "L3_a_copy_that_does_not_parse_falls_back"
+description = "An active copy that fails validation is replaced by the shipped template instead of refused"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py", "tests/test_rebuild.py"]
+old = '''
+    try:
+        return taxonomy.load_taxonomy(text)
+    except taxonomy.TaxonomyError as exc:
+        raise refuse(
+'''
+new = '''
+    try:
+        return taxonomy.load_taxonomy(text)
+    except taxonomy.TaxonomyError as exc:
+        return _shipped(cfg.taxonomy.template)
+        raise refuse(
+'''
+
+[[rows]]
+id = "L4_an_unreadable_copy_falls_back"
+description = "An active copy that cannot be read is replaced by the shipped template instead of refused"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py"]
+old = '''
+    except (OSError, UnicodeDecodeError) as exc:
+        raise refuse(
+'''
+new = '''
+    except (OSError, UnicodeDecodeError) as exc:
+        return _shipped(cfg.taxonomy.template)
+        raise refuse(
+'''
+
+[[rows]]
+id = "L5_the_fallback_is_always_default"
+description = "The fallback reads the default template whatever taxonomy.template names"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py"]
+old = '''
+        return _shipped(cfg.taxonomy.template)
+    except (OSError, UnicodeDecodeError) as exc:
+'''
+new = '''
+        return _shipped("default")
+    except (OSError, UnicodeDecodeError) as exc:
+'''
+
+[[rows]]
+id = "L6_a_permission_is_a_defect_to_report"
+description = "The unreadable branch always says report a defect, never grant access"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py"]
+old = '''
+            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+'''
+new = '''
+            remedy=Remedy.REPORT_DEFECT,
+'''
+
+[[rows]]
+id = "L7_a_parse_failure_names_a_defect"
+description = "The parse refusal's remedy moves from run setup to report a defect, disagreeing with doctor"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py"]
+old = '''
+            f"the active taxonomy template at {path} is not usable: {exc}",
+            remedy=Remedy.RUN_SETUP,
+'''
+new = '''
+            f"the active taxonomy template at {path} is not usable: {exc}",
+            remedy=Remedy.REPORT_DEFECT,
+'''
+
+[[rows]]
+id = "V1_route_inbox_export_reads_the_shipped_text"
+description = "The export routing verb parses the shipped text instead of loading the library's copy"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py", "tests/test_routing_workers.py"]
+old = '''
+    declared = active_taxonomy.load(cfg)
+    _refuse_off_the_bridge(
+        cfg, declared, export, instead="run route inbox without --export, which "
+'''
+new = '''
+    declared = taxonomy.load_taxonomy(taxonomy.shipped_template_text("default"))
+    _refuse_off_the_bridge(
+        cfg, declared, export, instead="run route inbox without --export, which "
+'''
+
+[[rows]]
+id = "V2_landing_preflight_reads_the_shipped_text"
+description = "The landing's preflight parses the shipped text, so an undeclared catalog tree is not seen"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_active_taxonomy.py", "tests/test_landing_labels.py"]
+old = '''
+    checked = Checked(registry=tree_registry.read(cfg), declared=active_taxonomy.load(cfg))
+'''
+new = '''
+    checked = Checked(
+        registry=tree_registry.read(cfg),
+        declared=taxonomy.load_taxonomy(taxonomy.shipped_template_text("default")),
+    )
+'''
+
+[[rows]]
+id = "V2_composite_a_landing_under_an_alias"
+description = "What V2 holds without the guard's spelling: an aliased default loader at the preflight"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+pairs_with = "V2_landing_preflight_reads_the_shipped_text"
+tests = ["tests/test_landing_labels.py"]
+old = '''
+    checked = Checked(registry=tree_registry.read(cfg), declared=active_taxonomy.load(cfg))
+'''
+new = '''
+    from cratekit.core.taxonomy import default_taxonomy as shipped
+
+    checked = Checked(registry=tree_registry.read(cfg), declared=shipped())
+'''

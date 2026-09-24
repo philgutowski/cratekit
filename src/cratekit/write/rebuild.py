@@ -83,6 +83,7 @@ from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.core import (
+    active_taxonomy,
     analysis_store,
     config,
     convergence,
@@ -1826,7 +1827,7 @@ def rebuild_governed_tree(
     second walk written here.
     """
     entries = tree_registry.read(cfg)
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     handle = rb_writer.open_db(cfg=cfg)
     try:
         known = {str(row.ID) for row in handle.get_playlist()}
@@ -1857,11 +1858,13 @@ def rebuild_governed_tree(
         rb_writer.close_db(handle)
 
 
-def governed_not_compared(vocal_threshold: float | None) -> tuple[str, ...]:
+def governed_not_compared(
+    vocal_threshold: float | None, declared: taxonomy.Taxonomy
+) -> tuple[str, ...]:
     """What :func:`rebuild_governed_tree` leaves uncompared, asked without a library.
 
-    THE SAME TWO INPUTS THAT FUNCTION DERIVES WITH: the shipped taxonomy, and
-    the vocal threshold, which the resume reads through the same loader, at
+    THE SAME TWO INPUTS THAT FUNCTION DERIVES WITH: the library's active
+    taxonomy (R-685), and the vocal threshold, which the resume reads through the same loader, at
     the path the same frozen configuration names, as the worker does. Passed
     rather than assumed, so
     the warning stops the moment a calibration is read and the dimension is
@@ -1872,7 +1875,7 @@ def governed_not_compared(vocal_threshold: float | None) -> tuple[str, ...]:
     recover it would walk every file in the library a second time to answer a
     question that does not depend on any of them.
     """
-    return not_derived(taxonomy.default_taxonomy(), vocal_threshold=vocal_threshold)
+    return not_derived(declared, vocal_threshold=vocal_threshold)
 
 
 __all__ = [

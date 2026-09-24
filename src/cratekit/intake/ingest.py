@@ -20,6 +20,7 @@ from pathlib import Path
 
 from cratekit.cli import output
 from cratekit.core import (
+    active_taxonomy,
     config,
     locations,
     naming,
@@ -133,9 +134,14 @@ def read_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
     }
 
 
-def decide_placement(meta: dict) -> tuple[str, str, str] | None:
-    """(tree, bucket, sub) ids, or None when the taxonomy declares no sub."""
-    declared = taxonomy.default_taxonomy()
+def decide_placement(
+    meta: dict, declared: taxonomy.Taxonomy
+) -> tuple[str, str, str] | None:
+    """(tree, bucket, sub) ids, or None when the taxonomy declares no sub.
+
+    ``declared`` is the library's active taxonomy (R-685), read once by the
+    caller rather than once per file.
+    """
     resolved = routing.resolve_bucket(declared, meta.get("genre"))
     sub = routing.energy_sub(
         declared,
@@ -181,12 +187,19 @@ def place_files(
     session_id: str | None = None,
     date_added: str | None = None,
     lossy: bool = False,
+    declared: taxonomy.Taxonomy | None = None,
+    registry: tree_registry.Registry | None = None,
 ) -> list[PlacedTrack]:
     """Splice each file into ``destination`` and record routing intents.
 
     The Fresh Export is a path the caller names. This function does not hunt
     for one: a hunt that picked the newest XML would pick a pending intake
     file, including a U22 stub listing.
+
+    ``declared`` is the library's active taxonomy and ``registry`` the tree
+    registry, when the caller already read them to check what this writes, so
+    the check and the write agree; with none each is read here, the taxonomy
+    from the library and never from the shipped template.
     """
     if not export.is_file():
         raise refuse(
@@ -223,10 +236,11 @@ def place_files(
     next_id = collection_xml.next_track_id(bytes(content))
     placed: list[PlacedTrack] = []
     xml_rows: list[str] = []
-    declared = taxonomy.default_taxonomy()
+    if declared is None:
+        declared = active_taxonomy.load(cfg)
     for offset, path in enumerate(paths):
         meta = read_meta(path, cfg=cfg, lossy=lossy)
-        placement = decide_placement(meta)
+        placement = decide_placement(meta, declared)
         if placement is None:
             raise refuse(
                 "intake-list-unusable",
@@ -236,7 +250,7 @@ def place_files(
             )
         tree_id, bucket_id, sub_id = placement
         tid = next_id + offset
-        xml = collection_xml.build_track_xml(tid, meta, added)
+        xml = collection_xml.build_track_xml(tid, meta, added, declared=declared)
         xml_rows.append(xml)
         placed.append(
             PlacedTrack(
@@ -251,7 +265,9 @@ def place_files(
         )
 
     collection_xml.splice_tracks(content, xml_rows)
-    tree = rbxml.intake_tree(declared, tree_registry.read(cfg))
+    if registry is None:
+        registry = tree_registry.read(cfg)
+    tree = rbxml.intake_tree(declared, registry)
     playlist_error = rbxml.insert_intake_playlist(
         content,
         destination.stem,

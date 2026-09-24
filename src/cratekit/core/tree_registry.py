@@ -52,7 +52,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Callable
 
-from cratekit.core import config, session, snapshot, taxonomy
+from cratekit.core import active_taxonomy, config, session, snapshot, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 
@@ -695,7 +695,7 @@ def record_cutover(
             f"underneath this registry cannot be detected"
         )
     assert_rebuildable(tree_id, source)
-    assert_not_intake(tree_id)
+    assert_not_intake(tree_id, active_taxonomy.load(cfg))
     with config._exclusive_lock(lock_path(cfg)):
         updated = read(cfg).with_record(
             TreeRecord(
@@ -933,7 +933,7 @@ def refuse_database_write(tree_id: str, registry: Registry) -> None:
         )
 
 
-def assert_not_intake(tree_id: str) -> None:
+def assert_not_intake(tree_id: str, declared: taxonomy.Taxonomy) -> None:
     """Refuse a cutover of the intake tree. It stays on the XML bridge (R16).
 
     Rebuildability is the wrong question here. The intake tree can be
@@ -941,8 +941,10 @@ def assert_not_intake(tree_id: str) -> None:
     :func:`assert_rebuildable`. The intake folder is still the XML bridge
     for new files, and flipping it would make the next splice refuse the
     one tree that is supposed to keep accepting imports.
+
+    ``declared`` is the library's active taxonomy (R-685), because the intake
+    folder a person renamed in their own declaration is the one this protects.
     """
-    declared = taxonomy.default_taxonomy()
     if tree_id == declared.intake.id:
         raise TreeModeRefused(
             f"the tree {tree_id!r} is this library's intake folder, so it "

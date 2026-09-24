@@ -1,0 +1,108 @@
+name = "r685-b"
+pass_kind = "light"
+
+# R-685: the one loader for a library's active taxonomy, the verbs that read
+# through it, and the guard that keeps them there. Scoped to the branch's own
+# guards. Author's table, no independent verifier (METHOD, 2026-09-07).
+
+[[rows]]
+id = "C1_converge_opens_before_it_reads"
+description = "Converge opens the database before reading the declaration, the order the review found"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_rebuild.py"]
+old = '''
+            declared = active_taxonomy.load(cfg)
+            handle = rb_writer.open_db(cfg=cfg)
+'''
+new = '''
+            handle = rb_writer.open_db(cfg=cfg)
+            declared = active_taxonomy.load(cfg)
+'''
+
+[[rows]]
+id = "C2_converge_lets_the_refusal_escape"
+description = "The declaration is read outside the try, so a refusal escapes instead of reading NOT COMPARED"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_rebuild.py"]
+old = '''
+        handle = declared = None
+        try:
+            declared = active_taxonomy.load(cfg)
+            handle = rb_writer.open_db(cfg=cfg)
+'''
+new = '''
+        handle = declared = None
+        declared = active_taxonomy.load(cfg)
+        try:
+            handle = rb_writer.open_db(cfg=cfg)
+'''
+
+[[rows]]
+id = "P1_place_files_rereads_the_registry"
+description = "place_files ignores the registry the landing handed it and reads its own after the moves"
+file = "src/cratekit/intake/ingest.py"
+surface = "maintainer"
+tests = ["tests/test_landing_labels.py"]
+old = '''
+    if registry is None:
+        registry = tree_registry.read(cfg)
+'''
+new = '''
+    registry = tree_registry.read(cfg)
+'''
+
+[[rows]]
+id = "G1_the_guard_forgets_aliases"
+description = "The guard stops binding aliased imports, so an import as another name hides the call"
+file = "tests/test_active_taxonomy.py"
+surface = "maintainer"
+tests = ["tests/test_active_taxonomy.py"]
+old = '''
+                    bound[alias.asname or alias.name] = alias.name
+'''
+new = '''
+                    pass
+'''
+
+[[rows]]
+id = "G2_the_guard_forgets_attributes"
+description = "The guard stops matching module attribute calls, the spelling every verb used"
+file = "tests/test_active_taxonomy.py"
+surface = "maintainer"
+tests = ["tests/test_active_taxonomy.py"]
+old = '''
+        if isinstance(func, ast.Attribute) and func.attr in READERS:
+'''
+new = '''
+        if isinstance(func, ast.Attribute) and func.attr in ():
+'''
+
+[[rows]]
+id = "G3_the_guard_allows_every_module"
+description = "Every module is on every allow list, so the guard refuses nothing"
+file = "tests/test_active_taxonomy.py"
+surface = "maintainer"
+tests = ["tests/test_active_taxonomy.py"]
+old = '''
+            if path not in READERS[name]:
+'''
+new = '''
+            if False:
+'''
+
+[[dropped]]
+id = "V3_set_build_reads_the_shipped_text"
+description = "set build parses the shipped text"
+reason = "same guard as V1 and V2, which is the one that holds a verb reading the shipped text; no behavior test drives set build over an edited active copy, recorded in the notes"
+
+[[dropped]]
+id = "O1_label_approved_reads_after_the_network"
+description = "label approved moves its load back after the provider fetches"
+reason = "an ordering whose only cost is wasted network work; no test can see it without a refusing active copy and a counting provider, ranked below the cap"
+
+[[dropped]]
+id = "O2_one_read_per_routing_verb"
+description = "apply_export ignores the declaration the verb passed and reads its own"
+reason = "the two reads agree unless the file changes inside one invocation; no test can reach that, ranked below the cap and named in the notes"

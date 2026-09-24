@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
-from cratekit.core import config, convergence, rb_writer, taxonomy, tree_registry
+from cratekit.core import active_taxonomy, config, convergence, rb_writer, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import metadata_cli, rebuild, routing_pass
@@ -189,14 +189,19 @@ def converge(ctx: "Context") -> Envelope:
         # library until the first cutover, without a rekordbox database existing
         # at all. A failure to open is a NOT COMPARED answer for each native
         # tree, never an absent one.
-        handle = None
+        #
+        # THE DECLARATION IS READ FIRST, and a refusal to read it is the same
+        # NOT COMPARED answer (R-685). Read after the open, a refusal escaped
+        # between the open and the close, so it held the database and gave a
+        # refusal in place of the one answer this verb exists to give.
+        handle = declared = None
         try:
+            declared = active_taxonomy.load(cfg)
             handle = rb_writer.open_db(cfg=cfg)
         except CratekitError as exc:
             for tree_id in native:
                 live[tree_id] = (NOT_COMPARED, exc.cause.message)
-        if handle is not None:
-            declared = taxonomy.default_taxonomy()
+        if handle is not None and declared is not None:
             try:
                 for tree_id in native:
                     live[tree_id] = _compare(

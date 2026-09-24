@@ -4,7 +4,30 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: A5 sitting 10 record, issue #178 line 3 ticked, `unit/issue178`,
+**Last merged: R-685, issue #198, `relay/198`, 2026-09-24.** Every verb reads
+the library's ACTIVE taxonomy, the copy setup put at
+`.cratekit/coupled/taxonomy.toml` on the volume, through one loader,
+`core.active_taxonomy.load`. The shipped template the configuration names is
+the fallback only when the library root is there and holds no active copy; an
+absent root refuses as an unmounted volume, and an unreadable or unparseable
+copy refuses as `config-unusable`, with doctor's remedies. All 34 call sites
+in 12 modules moved, the helpers with no configuration take the declaration as
+a required parameter, and an AST guard in `tests/test_active_taxonomy.py`
+refuses the default loader, the shipped text or the parser anywhere else. The
+landing reads the declaration and the registry once in preflight and hands
+both to every write. `converge` reads the declaration before it opens the
+database, so a refusal is a NOT COMPARED row and never a held handle. **On the
+live library this changes one thing**: the long track playlist is no longer
+planned, because that library's active copy predates `[long_tracks]`. Adding
+the section to the active copy by hand brings it back. **The numbers:** 10,149
+collected, 10,148 passed and 1 skipped; two mutation tables,
+`docs/mutation/r685-a.md` and `r685-b.md`, 16 rows, 15 killed, the zero read
+in `r685-notes.md`. The stale copy question was decided conservatively, not a
+doctor finding, and filed as **R-689**; the review's per item re-read findings
+are **R-690**. Neither meets the board bar. **Main's highest residual number
+is R-690.**
+
+**Merged before it: A5 sitting 10 record, issue #178 line 3 ticked, `unit/issue178`,
 2026-09-24.** A record only merge, no code. Two things ran on the pipx install
 at `40daec7`. **R-679's owed live measurement, taken and CLOSED**: a fresh
 favourites listing, job `2026-09-24T11:49:23Z-c3ca`, 207 hearts served, 203

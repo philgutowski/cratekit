@@ -462,8 +462,10 @@ def default_taxonomy() -> Taxonomy:
     """The template that ships in the wheel, read-only.
 
     The ONE input this module performs, and it is against packaged data that
-    cannot vary at runtime. A library's active template is read by the caller and
-    passed to :func:`load_taxonomy` as text.
+    cannot vary at runtime. It is NOT the taxonomy a verb routes by: a library's
+    active template is read by :func:`cratekit.core.active_taxonomy.load`, and
+    ``tests/test_active_taxonomy.py`` refuses a call to this from any other
+    module in the package (R-685). No verb read the active copy until then.
     """
     return load_taxonomy(shipped_template_text(DEFAULT_TEMPLATE_NAME))
 

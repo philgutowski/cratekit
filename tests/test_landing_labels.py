@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -25,11 +24,13 @@ from cratekit.intake import landing
 from cratekit.label import approved_cli
 from cratekit.write import trees
 from tests._containers import synth_container
+from tests.test_active_taxonomy import shipped_without, write_active
 from tests.test_config import valid_data
 from tests.test_xml_splice_golden import _check
 from tests.xml_fixtures import _fresh_xml, _no_bare_lf
 
 BATCH = "2026-09-19_labels"
+DECLARED = taxonomy.default_taxonomy()
 
 
 @pytest.fixture
@@ -200,8 +201,8 @@ def test_an_undeclared_catalog_tree_refuses_before_any_file_moves(
 ):
     staged = _stage(cfg, silence, "Ada", "North")
     manifest = _manifest(tmp_path, [("101", "Ada", "North", "Kompakt", 2025)])
-    without = replace(taxonomy.default_taxonomy(), catalog=None)
-    monkeypatch.setattr(taxonomy, "default_taxonomy", lambda: without)
+    # THE LIBRARY'S OWN DECLARATION, on the volume where setup puts it (R-685).
+    write_active(cfg, shipped_without("catalog"))
 
     with pytest.raises(CratekitError) as excinfo:
         _land(cfg, export, manifest)
@@ -223,8 +224,7 @@ def test_an_undeclared_catalog_tree_costs_a_landing_with_no_label_row_nothing(
     manifest = _manifest(
         tmp_path, [("101", "Ada", "North", "Kompakt", 2025)], source="favourites"
     )
-    without = replace(taxonomy.default_taxonomy(), catalog=None)
-    monkeypatch.setattr(taxonomy, "default_taxonomy", lambda: without)
+    write_active(cfg, shipped_without("catalog"))
 
     landed = _land(cfg, export, manifest)
 
@@ -242,7 +242,9 @@ def test_an_export_holding_a_label_folder_twice_refuses_before_any_file_moves(
     once = tmp_path / "once.xml"
     once.write_bytes(_fresh_xml())
     buckets = {2020: [{"track_ids": [900000001]}]}
-    trees.insert_record_labels_tree(once, "Kompakt", buckets, once, registry=tree_registry.EMPTY)
+    trees.insert_record_labels_tree(
+        once, "Kompakt", buckets, once, declared=DECLARED, registry=tree_registry.EMPTY
+    )
     body = once.read_bytes()
     # The folder holds one playlist, so its own close is the second one.
     start = body.index(b'<NODE Name="Kompakt" Type="0"')
@@ -278,7 +280,12 @@ def test_a_held_year_playlist_the_writer_cannot_extend_refuses_before_any_move(
     held = tmp_path / "held.xml"
     held.write_bytes(_fresh_xml())
     trees.insert_record_labels_tree(
-        held, "Kompakt", {2025: [{"track_ids": [900000001]}]}, held, registry=tree_registry.EMPTY
+        held,
+        "Kompakt",
+        {2025: [{"track_ids": [900000001]}]},
+        held,
+        declared=DECLARED,
+        registry=tree_registry.EMPTY,
     )
     body = held.read_bytes()
     opened = b'<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">'
@@ -464,7 +471,9 @@ def test_what_was_reported_filed_written_again_changes_no_byte(
             for entry in landed.labelled
             if entry.label == label
         }
-        trees.insert_record_labels_tree(again, label, buckets, again, registry=tree_registry.read(cfg))
+        trees.insert_record_labels_tree(
+            again, label, buckets, again, declared=DECLARED, registry=tree_registry.read(cfg)
+        )
 
     assert again.read_bytes() == before
 
@@ -627,10 +636,10 @@ def test_the_registry_is_read_before_the_first_move_and_never_after(
     landed = _land(cfg, export, manifest)
 
     assert len(landed.labelled) == 1
-    # Once by this engine, before the batch folder exists. The read after it is
-    # ``place_files`` making its own splice, which is not this engine's, and
-    # there is no third: the label write is handed the first one.
-    assert seen == [False, True]
+    # Once, before the batch folder exists, and never again. ``place_files``
+    # used to make a read of its own after the moves; since R-685 it is handed
+    # the preflight's, beside the active taxonomy, and so is the label write.
+    assert seen == [False]
 
 
 def test_a_marked_lossy_file_with_no_title_tag_is_still_filed(

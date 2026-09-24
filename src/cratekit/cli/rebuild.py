@@ -33,7 +33,7 @@ from typing import Any
 
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs, tree_registry
+from cratekit.core import active_taxonomy, config, jobs, tree_registry
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import metadata_cli
@@ -181,6 +181,8 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         # with the job, so a calibration made after queueing is the one used.
         # A corrupt calibration refuses here before any item is claimed.
         threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
+        # The declaration the worker derives with, read the same way (R-685).
+        declared = active_taxonomy.load(jobs.frozen_config(job))
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
         # WHAT THE REBUILD DID NOT COMPARE, beside the drift (R-316). The worker
@@ -191,7 +193,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         # this run.
         warnings = (
             *warnings,
-            *engine.not_compared_warnings(engine.governed_not_compared(threshold)),
+            *engine.not_compared_warnings(engine.governed_not_compared(threshold, declared)),
         )
     jobs.raise_for_state(job)
     return ctx.envelope(

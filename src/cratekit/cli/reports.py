@@ -48,7 +48,7 @@ from pathlib import Path
 from cratekit.cli import registry
 from cratekit.cli.doctor import Finding, Status
 from cratekit.cli.output import Envelope
-from cratekit.core import config, review, taxonomy
+from cratekit.core import active_taxonomy, config, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import MarkerRule, NameTemplate
@@ -183,7 +183,7 @@ def audit_coverage(ctx) -> Envelope:
     from a consumer reading only the summary.
     """
     cfg = _load()
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     report = coverage.survey(_view(ctx), tree=declared.tree)
 
     limit = max(0, int(ctx.args.limit))
@@ -297,7 +297,7 @@ def report_library(ctx) -> Envelope:
     what a person's library should look like.
     """
     cfg = _load()
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     stats = library_report.statistics(
         _view(ctx), declared=declared, template=_template(cfg)
     )
@@ -424,7 +424,7 @@ def report_intake_aging(ctx) -> Envelope:
     looks at.
     """
     cfg = _load()
-    declared = taxonomy.default_taxonomy()
+    declared = active_taxonomy.load(cfg)
     report = aging.intake_aging(
         _view(ctx),
         intake=declared.intake,

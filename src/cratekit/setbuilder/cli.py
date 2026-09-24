@@ -68,7 +68,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, taxonomy
+from cratekit.core import active_taxonomy, config, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import MarkerRule, NameTemplate
@@ -552,9 +552,12 @@ def set_build(ctx) -> Envelope:
             origin=("setbuilder", "cli"),
             detail={"root": str(root)},
         )
+    # THE DECLARATION BEFORE THE WALK (R-685), so an active copy that cannot be
+    # read refuses before minutes of index building rather than after them.
+    declared = active_taxonomy.load(cfg)
     if ctx.args.unowned is not None:
         anchor = unowned_anchor(ctx.args.unowned, ctx.args.key, ctx.args.tempo)
-        return _emit(ctx, anchor, _index(cfg, root))
+        return _emit(ctx, declared, anchor, _index(cfg, root))
     if ctx.args.key is not None or ctx.args.tempo is not None:
         raise refuse(
             "setbuild-supplied-needs-unowned",
@@ -572,7 +575,7 @@ def set_build(ctx) -> Envelope:
         # An empty name refuses inside ``named_anchor`` before it reads the
         # index, so it is handed an empty one and never pays for the walk.
         index = _index(cfg, root) if names_something(ctx.args.named) else ()
-        return _emit(ctx, named_anchor(ctx.args.named, index), index)
+        return _emit(ctx, declared, named_anchor(ctx.args.named, index), index)
     candidate = anchor_path(str(ctx.args.anchor or ""), root)
     index = _index(cfg, root)
     track = anchor_in_index(candidate, index)
@@ -589,7 +592,7 @@ def set_build(ctx) -> Envelope:
             origin=("setbuilder", "cli"),
             detail={"anchor": str(candidate), "indexed": len(index)},
         )
-    return _emit(ctx, track, index)
+    return _emit(ctx, declared, track, index)
 
 
 def _index(cfg: config.Config, root: Path) -> tuple[setbuilder.Track, ...]:
@@ -605,11 +608,13 @@ def _index(cfg: config.Config, root: Path) -> tuple[setbuilder.Track, ...]:
     )
 
 
-def _emit(ctx, anchor, index: Sequence[setbuilder.Track]) -> Envelope:
+def _emit(
+    ctx, declared: taxonomy.Taxonomy, anchor, index: Sequence[setbuilder.Track]
+) -> Envelope:
     plan = plan_for(
         anchor,
         index,
-        declared=taxonomy.default_taxonomy(),
+        declared=declared,
         count=ctx.args.count,
         role=ctx.args.role,
         vox_threshold=ctx.args.vox_threshold,

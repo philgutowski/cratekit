@@ -42,10 +42,11 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import tree_registry
+from cratekit.core import taxonomy, tree_registry
 from tests.xml_fixtures import _fresh_xml, _no_bare_lf, _routing_xml, _xml_doc
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
+DECLARED = taxonomy.default_taxonomy()
 REGEN = os.environ.get("REGEN") == "1"
 
 # Every golden, the invariant it locks, and a byte marker proving that invariant
@@ -133,6 +134,7 @@ def _check(name: str, produced: bytes) -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 # Integrity half: the ported goldens are intact and still mean something.
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 
 def test_every_declared_golden_is_present_and_no_others():
@@ -354,7 +356,7 @@ def _vox_fixture() -> bytes:
 def test_add_vocal_playlists_golden():
     from cratekit.write.trees import add_vox_playlists
 
-    out, modified = add_vox_playlists(_vox_fixture(), registry=tree_registry.EMPTY)
+    out, modified = add_vox_playlists(_vox_fixture(), DECLARED, registry=tree_registry.EMPTY)
     assert modified == ["Deep House"]
     _check("create_vox_playlists", out)
     assert _no_bare_lf(out)
@@ -364,8 +366,8 @@ def test_add_vocal_playlists_golden():
 def test_add_vocal_playlists_is_idempotent():
     from cratekit.write.trees import add_vox_playlists
 
-    once, _ = add_vox_playlists(_vox_fixture(), registry=tree_registry.EMPTY)
-    twice, modified = add_vox_playlists(once, registry=tree_registry.EMPTY)
+    once, _ = add_vox_playlists(_vox_fixture(), DECLARED, registry=tree_registry.EMPTY)
+    twice, modified = add_vox_playlists(once, DECLARED, registry=tree_registry.EMPTY)
     assert modified == []
     assert twice == once
 
@@ -382,7 +384,7 @@ def test_label_subtree_golden(tmp_path):
         2024: [{"track_ids": [900000003]}],
     }
     trees.insert_record_labels_tree(
-        source, "Kompakt", buckets, out_path, registry=tree_registry.EMPTY
+        source, "Kompakt", buckets, out_path, declared=DECLARED, registry=tree_registry.EMPTY
     )
     out = out_path.read_bytes()
     _check("label_library_insert", out)
@@ -409,7 +411,7 @@ def test_label_subtree_written_twice_matches_the_single_write_golden(tmp_path):
     }
     once = tmp_path / "once.xml"
     twice = tmp_path / "twice.xml"
-    trees.insert_record_labels_tree(source, "Kompakt", buckets, once, registry=tree_registry.EMPTY)
-    trees.insert_record_labels_tree(once, "Kompakt", buckets, twice, registry=tree_registry.EMPTY)
+    trees.insert_record_labels_tree(source, "Kompakt", buckets, once, declared=DECLARED, registry=tree_registry.EMPTY)
+    trees.insert_record_labels_tree(once, "Kompakt", buckets, twice, declared=DECLARED, registry=tree_registry.EMPTY)
     _check("label_library_insert", twice.read_bytes())
     assert twice.read_bytes() == once.read_bytes()

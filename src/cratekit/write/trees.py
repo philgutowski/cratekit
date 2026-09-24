@@ -529,7 +529,7 @@ def _governed_or_named(
 
 def add_vox_playlists(
     raw: bytes,
-    declared: taxonomy.Taxonomy | None = None,
+    declared: taxonomy.Taxonomy,
     *,
     registry: tree_registry.Registry | None = None,
     tree: rbxml.Tree | None = None,
@@ -546,9 +546,9 @@ def add_vox_playlists(
     byte-identical, so re-running after a new folder appears touches only the new
     one and the returned list is exactly what changed.
 
-    The declared taxonomy supplies both names. Passing your library's active
-    template rather than letting this reach for the shipped default is what makes
-    it correct for a user who renamed either one.
+    The declared taxonomy supplies both names. It is required, and it is the
+    library's active template (R-685): a shipped default reached for here is
+    what made this wrong for a user who renamed either one.
 
     EVERY WARNING IS CARRIED OUT, which is why this returns a report rather than
     the bare name list it used to. A folder the emitter could not serve, because
@@ -556,7 +556,7 @@ def add_vox_playlists(
     the same fact as a folder that already had the playlist, and both looked
     identical to a caller reading only the list of names that changed.
     """
-    active = taxonomy.default_taxonomy() if declared is None else declared
+    active = declared
     sub_display = active.sub_class(sub_class_id).display
     target = _governed_or_named(tree, registry, active.tree, what="the vocal sweep")
 
@@ -595,14 +595,14 @@ def _catalog_playlists(
 
 
 def _catalog_tree(
-    declared: taxonomy.Taxonomy | None,
+    declared: taxonomy.Taxonomy,
     registry: tree_registry.Registry | None,
     tree: rbxml.Tree | None,
 ) -> rbxml.Tree:
     """The tree a catalogued source is written into, or a refusal by name."""
     if tree is not None:
         return tree
-    active = taxonomy.default_taxonomy() if declared is None else declared
+    active = declared
     if active.catalog is None:
         raise cause.refuse(
             "catalog-tree-undeclared",
@@ -637,7 +637,7 @@ def check_record_labels_tree(
     raw: bytes,
     catalog: Mapping[str, Iterable[int]],
     *,
-    declared: taxonomy.Taxonomy | None = None,
+    declared: taxonomy.Taxonomy,
     registry: tree_registry.Registry | None = None,
     tree: rbxml.Tree | None = None,
 ) -> None:
@@ -679,7 +679,7 @@ def insert_record_labels_trees(
     catalog: Mapping[str, Mapping[int, Sequence[Mapping[str, Any]]]],
     out_path: Path | str,
     *,
-    declared: taxonomy.Taxonomy | None = None,
+    declared: taxonomy.Taxonomy,
     registry: tree_registry.Registry | None = None,
     tree: rbxml.Tree | None = None,
 ) -> Path:
@@ -713,7 +713,7 @@ def insert_record_labels_tree(
     buckets: Mapping[int, Sequence[Mapping[str, Any]]],
     out_path: Path | str,
     *,
-    declared: taxonomy.Taxonomy | None = None,
+    declared: taxonomy.Taxonomy,
     registry: tree_registry.Registry | None = None,
     tree: rbxml.Tree | None = None,
 ) -> Path:

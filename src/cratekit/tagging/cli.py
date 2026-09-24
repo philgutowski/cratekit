@@ -35,7 +35,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cratekit.cli.output import Envelope
-from cratekit.core import art, config, jobs, taxonomy
+from cratekit.core import active_taxonomy, art, config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.tagging import artifacts, searchers, shell
@@ -388,7 +388,7 @@ def handle(job, item, cfg) -> jobs.Produced:
         )
     result = tag_engine.tag_one(
         path,
-        searcher=searchers.for_taxonomy(taxonomy.default_taxonomy()),
+        searcher=searchers.for_taxonomy(active_taxonomy.load(cfg)),
         fetch_image=searchers.for_images(),
     )
     return artifacts.produced(

@@ -8,7 +8,7 @@ import pytest
 
 from cratekit.acquire.adapter import LosslessPolicy
 from cratekit.acquire.match import Wanted
-from cratekit.core import config, naming
+from cratekit.core import config, naming, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.naming import MarkerRule, NameSpec, NameTemplate
 from cratekit.intake import normalize, pipeline, recognize
@@ -175,7 +175,7 @@ def test_staging_files_are_refused(tmp_path):
 
 
 def test_placement_uses_taxonomy_ids_not_display_names():
-    placement = decide_placement({"genre": "", "energy": None})
+    placement = decide_placement({"genre": "", "energy": None}, taxonomy.default_taxonomy())
     assert placement is not None
     tree, bucket, sub = placement
     assert tree == "genre_energy"
