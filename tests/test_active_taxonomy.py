@@ -72,7 +72,10 @@ def shipped_without(section: str) -> str:
 
 # Each way a module could come to route by a template that is not the library's,
 # and the only modules that may take it. Setup writes the active copy from the
-# shipped text, and doctor parses the active copy to report on it.
+# shipped text, and doctor parses the active copy to report on it. Doctor
+# compares the copy against the shipped template by a fingerprint the definer
+# computes (R-689), and stays OFF the shipped text list on purpose: a module
+# holding the shipped text and the parser is one line from routing by it.
 READERS = {
     "default_taxonomy": frozenset({LOADER, DEFINER}),
     "shipped_template_text": frozenset({LOADER, DEFINER, SRC / "cli" / "setup.py"}),

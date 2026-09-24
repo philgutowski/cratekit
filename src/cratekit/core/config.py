@@ -1753,6 +1753,27 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="taxonomy_origin",
+        snapshot=SnapshotRole.COUPLED,
+        # A record about the active copy. Nothing routes by it; doctor reads it.
+        rollback_effects=(RollbackEffect.NONE,),
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="taxonomy.origin.toml",
+        why=(
+            "R-689. Which shipped text the active taxonomy copy was made from: "
+            "the template's short name and a digest of the packaged text setup "
+            "copied. Without it a copy that fell behind the shipped template "
+            "cannot be told from one a person edited, so doctor could not say "
+            "why a section the shipped template gained after setup is absent "
+            "from every verb. It lives beside the copy it describes and rolls "
+            "back with it, because a restored older copy under a newer record "
+            "would read as edited when it is not. Setup writes it once, with the "
+            "copy, and never for a copy it left alone, since it cannot know "
+            "where an existing copy came from."
+        ),
+    ),
+    StateFile(
         key="active_run_sentinel",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.LIBRARY,

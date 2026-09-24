@@ -42,11 +42,12 @@ from cratekit.cli import jobs as jobs_cli
 from cratekit.cli import setup as setup_verb
 from cratekit.cli.doctor import Probes as RealProbes
 from cratekit.cli.verbs import login as login_verb
-from cratekit.core import backup_facts, binaries, config, jobs, profiles, secrets, session
+from cratekit.core import backup_facts, binaries, config, jobs, profiles, secrets, session, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests import doctor_machines
 from tests._hardware import filesystem_kind, hdiutil_available, read_only_volume
+from tests.test_active_taxonomy import shipped_without, write_active
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -2870,6 +2871,215 @@ def test_an_active_template_on_the_recorded_volume_reports_what_it_verified(conf
     assert finding.status is doctor.Status.OK
     assert "on the recorded library volume" in finding.detail
     assert "'default'" in finding.detail
+
+
+# ── taxonomy.active: a stale copy told from an edited one (R-689) ────────────
+#
+# Setup records a digest of the shipped text it copied, beside the copy. Doctor
+# reads the record and answers with three digests: the recorded one, the copy's
+# and the shipped text's. The one INFO is a copy that still matches the record
+# while the shipped text has moved on, which is the tenth sitting's library:
+# set up before ``[long_tracks]`` shipped, never edited, and since R-685 missing
+# the section from every verb with nothing saying why.
+
+
+def _seed_with_origin(cfg: config.Config) -> Path:
+    """What setup leaves: the copy and the record, through the wizard's own code."""
+    wizard = setup_verb._Wizard({}, silent())
+    setup_verb._seed_taxonomy(wizard, cfg, probes())
+    return config.state_path("taxonomy_origin", cfg)
+
+
+def _taxonomy_finding(cfg: config.Config) -> doctor.Finding:
+    return find(doctor.run(cfg, probes=probes()), "taxonomy.active")
+
+
+def test_setup_records_which_shipped_text_the_copy_was_made_from(configured):
+    origin = _seed_with_origin(configured)
+    assert origin.is_file()
+    assert origin.parent == config.state_path("taxonomy_active", configured).parent
+    record = tomllib.loads(origin.read_text(encoding="utf-8"))
+    shipped = setup_verb.template_text("default")
+    assert record == {
+        "template": "default",
+        "sha256": taxonomy.template_digest(shipped),
+    }
+    assert config.state_path("taxonomy_active", configured).read_text(encoding="utf-8") == shipped
+
+
+def test_setup_writes_no_record_for_a_copy_it_left_alone(configured):
+    """It cannot know which shipped text an existing copy came from, so a record
+    would say "unedited" over a copy nothing established that about."""
+    seed_taxonomy(configured)
+    origin = _seed_with_origin(configured)
+    assert not origin.exists()
+
+
+def test_a_copy_setup_made_that_the_shipped_template_has_since_outgrown_is_info(configured):
+    """The tenth sitting's library. The record says the copy is the one setup
+    made, the copy still matches it, and the shipped text has moved on."""
+    older = shipped_without("long_tracks")
+    write_active(configured, older)
+    origin = config.state_path("taxonomy_origin", configured)
+    origin.write_text(taxonomy.origin_record_text("default", older), encoding="utf-8")
+    finding = _taxonomy_finding(configured)
+    assert finding.status is doctor.Status.INFO
+    assert finding.remedy is None
+    assert "unedited" in finding.detail
+    assert "[long_tracks]" in finding.detail
+    assert "does not rewrite the copy" in finding.detail
+    # Reported, never repaired: the copy is exactly what it was.
+    assert config.state_path("taxonomy_active", configured).read_text(encoding="utf-8") == older
+
+
+def test_a_copy_the_person_edited_is_theirs_whatever_the_shipped_template_did(configured):
+    older = shipped_without("long_tracks")
+    write_active(configured, older)
+    origin = config.state_path("taxonomy_origin", configured)
+    origin.write_text(taxonomy.origin_record_text("default", older), encoding="utf-8")
+    active = config.state_path("taxonomy_active", configured)
+    active.write_text("# mine\n" + older, encoding="utf-8")
+    finding = _taxonomy_finding(configured)
+    assert finding.status is doctor.Status.OK
+    assert "edited since setup copied the shipped 'default'" in finding.detail
+    assert "long_tracks" not in finding.detail
+
+
+def test_a_copy_setup_made_from_the_text_that_still_ships_is_ok_and_says_so(configured):
+    _seed_with_origin(configured)
+    finding = _taxonomy_finding(configured)
+    assert finding.status is doctor.Status.OK
+    assert "unedited since setup copied the shipped 'default', which has not changed" in (
+        finding.detail
+    )
+
+
+def test_a_copy_with_no_record_says_the_origin_is_unrecorded(configured):
+    """Every library set up before the record existed. Matching the shipped text
+    as it ships now is said; differing from it is said as undecidable, since
+    the two histories look the same from here."""
+    seed_taxonomy(configured)
+    matching = _taxonomy_finding(configured)
+    assert matching.status is doctor.Status.OK
+    assert "nothing records which shipped text" in matching.detail
+    assert "matches the shipped 'default' as it ships now" in matching.detail
+
+    write_active(configured, shipped_without("long_tracks"))
+    differing = _taxonomy_finding(configured)
+    assert differing.status is doctor.Status.OK
+    assert "nothing records which shipped text" in differing.detail
+    assert "cannot be told" in differing.detail
+    assert "long_tracks" not in differing.detail
+
+
+def test_a_record_that_cannot_be_used_is_said_rather_than_read_as_no_record(configured):
+    origin = _seed_with_origin(configured)
+    origin.write_text('template = "default"\nsha256 = "short"\n', encoding="utf-8")
+    finding = _taxonomy_finding(configured)
+    assert finding.status is doctor.Status.INFO
+    assert "is not usable" in finding.detail
+    assert "cannot be told" in finding.detail
+
+
+def test_a_record_this_account_cannot_read_is_said_rather_than_read_as_no_record(configured):
+    origin = _seed_with_origin(configured)
+    origin.chmod(0)
+    try:
+        finding = _taxonomy_finding(configured)
+    finally:
+        origin.chmod(0o644)
+    assert finding.status is doctor.Status.INFO
+    assert "could not be read" in finding.detail
+    assert finding.remedy is None
+
+
+def test_a_shipped_template_that_dropped_a_section_the_copy_still_has_is_named_too(configured):
+    """The difference runs both ways. A shipped template that removed or renamed
+    a section leaves nothing gained, and the detail must not then claim the
+    change is inside sections both declare."""
+    older = shipped_without("long_tracks") + "\n[retired_section]\nkept = true\n"
+    write_active(configured, older)
+    origin = config.state_path("taxonomy_origin", configured)
+    origin.write_text(taxonomy.origin_record_text("default", older), encoding="utf-8")
+    finding = _taxonomy_finding(configured)
+    assert finding.status is doctor.Status.INFO
+    assert "it now declares [long_tracks], which the copy does not" in finding.detail
+    assert "it no longer declares [retired_section], which the copy still does" in (
+        finding.detail
+    )
+
+
+def test_a_shipped_change_inside_a_section_both_declare_is_said_as_such(configured):
+    shipped = setup_verb.template_text("default")
+    bucket = taxonomy.load_taxonomy(shipped).buckets[0]
+    older = shipped.replace(f'display = "{bucket.display}"', 'display = "Older Name"', 1)
+    assert older != shipped
+    write_active(configured, older)
+    origin = config.state_path("taxonomy_origin", configured)
+    origin.write_text(taxonomy.origin_record_text("default", older), encoding="utf-8")
+    finding = _taxonomy_finding(configured)
+    assert finding.status is doctor.Status.INFO
+    assert "the difference is inside sections both declare" in finding.detail
+    assert "[" not in finding.detail.split("has changed since:")[1].split(".")[0]
+
+
+def test_a_record_naming_a_template_other_than_the_configured_one_is_info(configured):
+    """The record carries the fact the name check alone cannot see: the copy came
+    from one shipped template and the configuration now names another."""
+    origin = _seed_with_origin(configured)
+    record = origin.read_text(encoding="utf-8").replace('template = "default"', 'template = "club"')
+    origin.write_text(record, encoding="utf-8")
+    finding = _taxonomy_finding(configured)
+    assert finding.status is doctor.Status.INFO
+    assert "made from the shipped 'club'" in finding.detail
+    assert "taxonomy.template now names 'default'" in finding.detail
+    assert "leaves an existing copy alone" in finding.detail
+
+
+def test_a_packaged_text_that_cannot_be_read_is_a_damaged_install_and_compares_nothing(
+    configured, monkeypatch
+):
+    _seed_with_origin(configured)
+
+    def unreadable(name: str) -> taxonomy.Fingerprint:
+        raise OSError(errno.EIO, "packaged text", name)
+
+    monkeypatch.setattr(taxonomy, "shipped_template_fingerprint", unreadable)
+    finding = _taxonomy_finding(configured)
+    assert finding.status is doctor.Status.INFO
+    assert "could not be read" in finding.detail
+    assert "damaged or partial install" in finding.detail
+
+
+def test_a_record_that_cannot_be_written_does_not_uncopy_the_template(configured, monkeypatch):
+    """The copy is there and every verb routes by it. The note says the record is
+    missing and names no remedy, since a second run leaves the copy alone."""
+    real = config.atomic_write_bytes
+    active = config.state_path("taxonomy_active", configured)
+
+    def refuse_second(data: bytes, path: Path, *args, **kwargs):
+        if path != active:
+            raise OSError(errno.EROFS, "read only", str(path))
+        return real(data, path, *args, **kwargs)
+
+    monkeypatch.setattr(config, "atomic_write_bytes", refuse_second)
+    wizard = setup_verb._Wizard({}, silent())
+    setup_verb._seed_taxonomy(wizard, configured, probes())
+    assert active.is_file()
+    assert not config.state_path("taxonomy_origin", configured).exists()
+    notes = [n for n in wizard.notes if n.key == "setup.taxonomy"]
+    assert [n.status for n in notes] == [doctor.Status.INFO]
+    assert "could not be written" in notes[0].detail
+    assert "leaves the copy alone" in notes[0].detail
+    assert notes[0].remedy is None
+
+
+def test_the_origin_record_rolls_back_with_the_copy_it_describes():
+    """A restored older copy under a newer record would read as edited."""
+    entry = config.state_file("taxonomy_origin")
+    assert entry.snapshot is config.SnapshotRole.COUPLED
+    assert entry.root is config.StateRoot.LIBRARY
+    assert entry.rollback_effects == (config.RollbackEffect.NONE,)
 
 
 def test_a_taxonomy_typo_is_repaired_by_the_verb_whose_remedy_names_it(configured):
