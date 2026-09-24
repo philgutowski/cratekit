@@ -10169,8 +10169,9 @@ Phillip:** the thirteen Names are left as they are for now, since a
 thirteen row sort quirk is not worth a sitting's time, the write time default
 keeps every row Cratekit names padded from here on, and the drift stops
 at cutover when the source system's landing path retires. The planner and its
-tests are deleted as the caller less code this entry names, filed for the
-feeder as this residual's own card, which closes it. The copy was deleted after
+tests stay, since they are the only code that could pad these rows later
+without hand edits, and this entry stays open with today's count. No card is
+filed. The copy was deleted after
 the read and nothing was written.
 
 ## R-166. The CUT.md reconciliation has no guard against drifting back apart
