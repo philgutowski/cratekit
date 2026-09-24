@@ -83,6 +83,17 @@ How to tell: an unchanged count with a halt means a file changed in place.
 Read the lock files under `jobs/` and check whether the process each one
 names is alive. If one is, the table cannot be measured until that job ends.
 
+The same shape with a GROWING count, on `relay/204` the same day: the halt
+came during the full baseline with the count up by 28, and the new files
+were analysis artifacts under `jobs/analysis-artifacts/<job id>/`, one per
+track, from a real `crate analyze vocals --recursive` job over the whole
+library. A job that writes an artifact per item makes the count climb on
+every child rather than hold still, so the first message already reads as
+R-343's shape. The tell is the same: the new files sit under a job id, and
+the process that job's lock names is alive. A library wide analysis does
+not end inside a session, so the table is recorded as unmeasured at once
+rather than after a bounded wait.
+
 What not to do: the driver's watched roots follow `CRATEKIT_CONFIG_DIR` and
 `CRATEKIT_STATE_DIR` in its own environment, so an empty directory there
 gets the table to run. That turns off the one check for R-343's shape, which

@@ -28220,6 +28220,38 @@ passed, with a test per verb reading its items off the blocked envelope.
 
 **Not on the board bar.** A rendering on gates that still hold their writes.
 
+**Closed 2026-09-24 on `relay/204`, issue #204.** One body in the gate layer,
+`gates.shown_plan`: the caller's facts, then the plan's digest, its item
+count and every item the digest was taken over, with no bound. A fact named
+`digest`, `count` or `items` is refused rather than overwritten.
+`Gates.require` takes a `plan` keyword, reads the digest it binds the
+decision to off that plan and shows the items through the helper, so the
+screen and the binding come from one object, and a digest beside a plan is
+refused. All seven go through it: `adopt apply` on the first ask and the
+resume shows the applicable entries, the ones the digest lists, with the
+tree, the counts per disposition and the collisions; `repair paths --apply`
+shows every item with its class and reason, the root and its totals with
+the renames named `renames`; the queued resume in `outbound/shell.py` shows
+the frozen tracks with the playlist, the path under `export path` and any
+frozen extra, reading nothing off the export document; `tag retag` on the
+first ask and the resume shows the rows with the folder; `profile set` shows
+the delta with the profile, `enabling` and `disabling`. The review widened
+the class by three: the `export playlist`, `sync favorites` and `sync all`
+first asks showed the export's age and not one track, so they now list the
+tracks their digest covers beside the age, and one gate shows one plan on
+either screen. `route inbox` reaches the same body through its run's gate
+resolver, since the write layer may not import the CLI's. The sweep that
+found the seven is a test: every `gate.require` call in `src` passing a
+digest passes a plan, or its file is named with the reason it shows its
+items another way (`name apply` by R-670's bound, `intake land`, `sync
+mark`, `session restore`, and `crate delete review`, which R-702 records).
+A test per verb reads its items off the blocked envelope's `shown`. The
+mutation table, twenty one rows in `docs/mutation/r693-a-rows.toml` and
+`r693-b-rows.toml`, was NOT measured: a real `analyze vocals` job over the
+whole library was running from the installed copy for the whole session
+and the driver's leak guard halted on it, the shape R-692's notes record.
+`r693-notes.md` says how to run it. R-701 records what the review left.
+
 ---
 
 ## R-694. The export sweeps end pending on every run while the bridge cannot land nested membership, so their own check never answers
@@ -28388,3 +28420,48 @@ recorded answer.
 
 **Not on the board bar.** Reachability unmeasured, and the write is held.
 
+---
+
+## R-701. adopt apply serializes the whole plan document on every resume, including the respawned child whose answer is already recorded
+
+**Found:** by the built in review on `relay/204`, 2026-09-24, closing R-693.
+`_digested` in `adopt/apply_cli.py` calls `plan.to_json` on the first ask and
+on every `--job` resume before the gate is asked, so a dict per scanned
+track and a second `counts()` pass are built for `Gates.require` to discard
+when the run already holds a decision. Before this unit only `plan.digest()`
+ran there. The plan itself is rebuilt from the census on every resume by
+R26's decision, and that rebuild is the larger cost.
+
+**Measured cost:** not measured. The serialization is linear in the scanned
+tracks and runs once per respawn, beside a census rebuild that reads every
+row. No run is known to have felt it.
+
+**Closes when:** the shown plan is built only when the gate refuses, by a
+callable the gate layer invokes on refusal, or when a measurement on a
+library of the DJ's size shows the serialization is a rounding error beside
+the rebuild and the ledger says so.
+
+**Not on the board bar.** Maintainer facing, nothing a person sees.
+
+---
+
+## R-702. The delete review gate shows the baseline and the offered count and not one of the files it would move to the Trash
+
+**Found:** on `relay/204`, 2026-09-24, writing the sweep guard that closed
+R-693. `deletion/cli.py` asks `delete.review.confirm` over
+`_plan_digest(found)` with R-134's screen beside it: whether this run
+baselined, what it accepted as history, and how many files are offered. The
+files themselves, `found.deletable`, are not on the screen, so a person
+answering "move these files to the Trash?" reads a number and not a name.
+The guard names this gate in its allowance with this number.
+
+**Measured cost:** not driven at a sitting. The write is to the Trash, which
+is recoverable, and the declined run's data lists the offered files, so the
+R-670 read works: answer abort and read the no-op envelope.
+
+**Closes when:** the gate hands its plan to the gate layer with the offered
+files as its items, the digest they were taken over and R-134's three facts
+beside them, and a test reads the files off the blocked envelope's `shown`.
+
+**Not on the board bar.** A rendering, the write is still held and the
+declined run reads the plan.
