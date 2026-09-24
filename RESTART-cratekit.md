@@ -4,7 +4,24 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-685, issue #198, `relay/198`, 2026-09-24.** Every verb reads
+**Last merged: R-686, issue #199, `relay/199`, 2026-09-24.** The
+`route.inbox.apply` gate shows the plan it asks about, in both output modes.
+`_apply_gate` in `write/routing_cli.py` passes the plan as the gate's context,
+R-670's carry: the digest, the count and every item the digest covers,
+unchanged, so the json gate envelope's `shown.items` equal a declined run's
+`data.items`. The export path adds totals counted off those items (tracks,
+routed, vocal, rated, long tracks), the created vocal subs by name, the
+dimensions not derived and the planner's warnings. The database path shows its
+intake files. No bound on the list, on purpose. An empty list in any gate's
+context now renders as `none`. `route unplaced` has no gate, so nothing
+changed there. **The numbers:** 10,154 collected, 10,153 passed and 1
+skipped; `docs/mutation/r686.md`, 12 rows, all killed. The review's findings
+that did not hold the merge are **R-691** (the database path's plan carries no
+destinations), **R-692** (tracks named by export id, ratings on the byte
+scale) and **R-693** (seven other digest bound gates show no plan). None meets
+the board bar. **Main's highest residual number is R-693.**
+
+**Merged before it: R-685, issue #198, `relay/198`, 2026-09-24.** Every verb reads
 the library's ACTIVE taxonomy, the copy setup put at
 `.cratekit/coupled/taxonomy.toml` on the volume, through one loader,
 `core.active_taxonomy.load`. The shipped template the configuration names is
