@@ -18,8 +18,9 @@ lands where the screen said and the declaration is read once per verb. A
 library with nothing native reads no file and no calibration, lists its
 files with no destination, and carries the export remedy on the gate and on
 the declined and empty answers. What the path writes is unchanged. **The
-numbers:** 10,163 collected; `docs/mutation/r691.md`, 16 rows, all killed,
-and the notes in `r691-notes.md`. R-690 is narrowed for this verb. What the
+numbers:** 10,163 collected, 10,162 passed and 1 skipped;
+`docs/mutation/r691.md`, 16 rows, all killed, and the notes in
+`r691-notes.md`. R-690 is narrowed for this verb. What the
 review left at the edges is **R-698** (the empty derivation refusal, now
 before the gate, names a music directory the inbox path never read) and
 **R-699** (the skill still says the export sweep rates the intake). Neither
