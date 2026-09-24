@@ -46,15 +46,26 @@ INTAKE_WORKFLOW = "intake"
 VERIFY_VERB = "intake.imported"
 
 
-def import_steps(destination: Path) -> tuple[str, ...]:
+def import_steps(destination: Path, intake: str) -> tuple[str, ...]:
     """What a person does with an intake file, end to end, in order.
 
     END TO END IS THE REQUIREMENT. The steps used to stop at the import, and a
     person who followed every one of them was left with a session and a file
     that each refused the cutover precheck (R-501).
+
+    THE BATCH PLAYLIST LANDS AT THE PLAYLIST ROOT, whatever folder the file puts
+    it in, and a routing pass reads only the intake folder, so the drag is a
+    step (R-687). The folder itself is never imported: an existing folder
+    imported from the file keeps every child it had and appends the file's
+    copies, doubling each batch already in it.
     """
     return (
         f"import {destination} into rekordbox as a rekordbox xml library",
+        f"import the {destination.stem} playlist from it on its own, never the "
+        f"{intake} folder, which would add a second copy of every batch already "
+        f"in it",
+        f"the {destination.stem} playlist lands at the playlist root, so drag it "
+        f"into the {intake} folder, where a routing pass reads its batches",
         "take a Fresh Export of the collection from rekordbox",
         "run crate intake imported --export with that Fresh Export, which "
         "proves the import, retires the intake file and settles this run",
@@ -312,7 +323,7 @@ def place_files(
                     f"which rekordbox has not imported yet"
                 ),
                 verify_verb=VERIFY_VERB,
-                steps=import_steps(destination),
+                steps=import_steps(destination, declared.intake.display),
             ),
             cfg,
         )

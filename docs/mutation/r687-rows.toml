@@ -1,0 +1,140 @@
+name = "r687"
+pass_kind = "light"
+
+# R-687: the pending steps of intake land, route inbox --export and route
+# unplaced --export name only what the rekordbox xml bridge can land. Wording
+# only, no guard added, so the table is scoped to the new step texts and asks
+# whether each one is pinned. Author's table, no independent verifier (METHOD,
+# 2026-09-07).
+
+[[rows]]
+id = "I1_drag_step_dropped"
+description = "intake land loses the drag step, the defect R-687 recorded: the batch stays at the playlist root"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_landing.py"]
+old = '''
+        f"the {destination.stem} playlist lands at the playlist root, so drag it "
+        f"into the {intake} folder, where a routing pass reads its batches",
+'''
+new = '''
+'''
+
+[[rows]]
+id = "I2_folder_import_allowed"
+description = "intake land's import step stops forbidding the intake folder, which doubles every batch in it"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_landing.py"]
+old = '''
+        f"import the {destination.stem} playlist from it on its own, never the "
+        f"{intake} folder, which would add a second copy of every batch already "
+        f"in it",
+'''
+new = '''
+        f"import the {intake} folder from it",
+'''
+
+[[rows]]
+id = "I3_intake_folder_name_hardwired"
+description = "the drag step names a fixed folder rather than the library's declared intake folder"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_landing.py"]
+old = '''
+                steps=import_steps(destination, declared.intake.display),
+'''
+new = '''
+                steps=import_steps(destination, "Intake"),
+'''
+
+[[rows]]
+id = "R1_inbox_names_tree_import"
+description = "route inbox --export goes back to naming an import of the routing tree, the defect R-687 recorded"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            f"import from it, one at a time, any root playlist this run added "
+            f"tracks to, and nothing else",
+'''
+new = '''
+            f"import the routing tree and any root playlist this run added "
+            f"tracks to from it",
+'''
+
+[[rows]]
+id = "R2_inbox_warning_dropped"
+description = "route inbox --export loses the step saying the tree's memberships cannot land from the file"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            ROUTING_TREE_UNIMPORTABLE
+            + ", so the routed memberships cannot land from this file; this "
+            "build writes nested membership only to a tree that has cut over to "
+            "the database",
+'''
+new = '''
+'''
+
+[[rows]]
+id = "R3_inbox_check_promises_nothing_routed"
+description = "route inbox --export's check step goes back to promising a second run routes nothing"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            "that file, which adds nothing to a root playlist once its import "
+            "has landed and plans the routing again, since the bridge cannot "
+            "land it",
+'''
+new = '''
+            "that file, which routes, rates and adds nothing once the import has "
+            "landed",
+'''
+
+[[rows]]
+id = "R4_shared_warning_reworded"
+description = "the shared warning stops saying a folder import doubles its playlists"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    "playlist, and a folder imported from it keeps every playlist it held and "
+    "adds a second copy of each"
+'''
+new = '''
+    "playlist"
+'''
+
+[[rows]]
+id = "U1_unplaced_names_tree_import"
+description = "route unplaced --export goes back to naming an import of the routing tree"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            f"read {destination} as the review of what the placements would be, "
+            f"and import nothing from it",
+'''
+new = '''
+            f"import {destination} into rekordbox as a rekordbox xml library and "
+            f"import the routing tree from it",
+'''
+
+[[rows]]
+id = "U2_unplaced_hand_filing_dropped"
+description = "route unplaced --export stops telling a person to file the reviewed tracks by hand"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            "file the tracks this review names by hand in rekordbox; until they "
+            "are filed, route unplaced --export plans the same placements on "
+            "every fresh export",
+'''
+new = '''
+            "until then route unplaced --export plans the same placements on "
+            "every fresh export",
+'''

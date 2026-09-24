@@ -2152,6 +2152,22 @@ def test_an_export_inbox_lands_each_track_in_its_declared_sub(configured, tagged
     assert pending["verify_verb"] == "route.inbox", (
         "the import check is not the verb that proves it by inserting nothing"
     )
+    # R-687, measured at the tenth attended sitting: the bridge lands a root
+    # playlist and nothing nested, so the steps name no import of the tree.
+    assert pending["steps"] == [
+        f"import {_routed(export)} into rekordbox as a rekordbox xml library and "
+        "import from it, one at a time, any root playlist this run added tracks "
+        "to, and nothing else",
+        "leave the routing tree's folders and playlists unimported: a nested "
+        "playlist imported from the file lands at the playlist root as a new "
+        "playlist, and a folder imported from it keeps every playlist it held and "
+        "adds a second copy of each, so the routed memberships cannot land from "
+        "this file; this build writes nested membership only to a tree that has "
+        "cut over to the database",
+        "then export the collection again and run route inbox --export with that "
+        "file, which adds nothing to a root playlist once its import has landed "
+        "and plans the routing again, since the bridge cannot land it",
+    ]
 
 
 def test_an_export_sub_that_does_not_exist_is_a_warning_and_nothing_is_created(
@@ -3525,6 +3541,20 @@ def test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created(
     assert pending["artifact"] == str(_placed(export))
     assert pending["verify_verb"] == "route.unplaced"
     assert "1 sub-playlist(s) were created" in pending["summary"]
+    # R-687: every placement is nested membership, which the bridge never lands,
+    # so the steps name no import at all.
+    assert pending["steps"] == [
+        f"read {_placed(export)} as the review of what the placements would be, "
+        "and import nothing from it",
+        "leave the routing tree's folders and playlists unimported: a nested "
+        "playlist imported from the file lands at the playlist root as a new "
+        "playlist, and a folder imported from it keeps every playlist it held and "
+        "adds a second copy of each, so the placements cannot land from this "
+        "file, and route unplaced without --export only reports",
+        "file the tracks this review names by hand in rekordbox; until they are "
+        "filed, route unplaced --export plans the same placements on every fresh "
+        "export",
+    ]
     assert export.read_bytes() != written, "the export itself was the file written"
 
 

@@ -4,7 +4,25 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-686, issue #199, `relay/199`, 2026-09-24.** The
+**Last merged: R-687, issue #200, `relay/200`, 2026-09-24.** Wording only.
+The pending steps name only what the rekordbox xml bridge can land.
+`ingest.import_steps` takes the intake folder's name and gives five steps.
+It tells a person to import the batch playlist on its own and never the
+intake folder, then to drag the playlist from the playlist root into that
+folder. `intake land` and `intake file` both carry these steps.
+`route inbox --export` names no import of the routing tree, only a root
+playlist the run added to. `route unplaced --export` names no import at all
+and tells a person to file the reviewed tracks by hand. The shared reason is
+`ROUTING_TREE_UNIMPORTABLE` in `write/routing_cli.py`. The route-the-library
+skill says the same. Landing nested membership is still U29's. **The
+numbers:** 10,154 collected, 10,153 passed and 1 skipped; `docs/mutation/r687.md`,
+9 rows, all killed. The review's findings that did not hold the merge are
+**R-694** (the export sweeps end pending on every run, so their own check
+never answers) and **R-695** (the warnings that point at the export medium
+still say it files and places). Neither meets the board bar. **Main's highest
+residual number is R-695.**
+
+**Merged before it: R-686, issue #199, `relay/199`, 2026-09-24.** The
 `route.inbox.apply` gate shows the plan it asks about, in both output modes.
 `_apply_gate` in `write/routing_cli.py` passes the plan as the gate's context,
 R-670's carry: the digest, the count and every item the digest covers,

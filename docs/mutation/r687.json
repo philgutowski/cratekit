@@ -1,0 +1,310 @@
+{
+  "name": "r687",
+  "pass_kind": "light",
+  "branch": "relay/200",
+  "head": "7d9fbf2",
+  "when": "2026-09-24 16:23 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10154,
+  "baseline_exit": 0,
+  "pytest_runs": 13,
+  "state_guarded": "~/Library/Application Support/cratekit (2892 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/ingest.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/ingest.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "4a3b5196cc702638",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10154,
+    "baseline_collected": 10154,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "I1_drag_step_dropped",
+      "description": "intake land loses the drag step, the defect R-687 recorded: the batch stays at the playlist root",
+      "file": "src/cratekit/intake/ingest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cc081dcd1e9dc0c5",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_a_landing_followed_step_by_step_passes_the_cutover_precheck",
+        "tests/test_intake_imported.py::test_a_placed_call_ends_awaiting_import_with_the_action_persisted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"the {destination.stem} playlist lands at the playlist root, so drag it \"\n        f\"into the {intake} folder, where a routing pass reads its batches\",\n",
+      "new": ""
+    },
+    {
+      "id": "I2_folder_import_allowed",
+      "description": "intake land's import step stops forbidding the intake folder, which doubles every batch in it",
+      "file": "src/cratekit/intake/ingest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1962df6d934111a9",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_a_landing_followed_step_by_step_passes_the_cutover_precheck",
+        "tests/test_intake_imported.py::test_a_placed_call_ends_awaiting_import_with_the_action_persisted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"import the {destination.stem} playlist from it on its own, never the \"\n        f\"{intake} folder, which would add a second copy of every batch already \"\n        f\"in it\",\n",
+      "new": "        f\"import the {intake} folder from it\",\n"
+    },
+    {
+      "id": "I3_intake_folder_name_hardwired",
+      "description": "the drag step names a fixed folder rather than the library's declared intake folder",
+      "file": "src/cratekit/intake/ingest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b55ab797c1b1068a",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_landing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_imported.py::test_a_landing_followed_step_by_step_passes_the_cutover_precheck",
+        "tests/test_intake_imported.py::test_a_placed_call_ends_awaiting_import_with_the_action_persisted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                steps=import_steps(destination, declared.intake.display),\n",
+      "new": "                steps=import_steps(destination, \"Intake\"),\n"
+    },
+    {
+      "id": "R1_inbox_names_tree_import",
+      "description": "route inbox --export goes back to naming an import of the routing tree, the defect R-687 recorded",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "15db11a3f1cbbf55",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_an_export_inbox_lands_each_track_in_its_declared_sub"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"import from it, one at a time, any root playlist this run added \"\n            f\"tracks to, and nothing else\",\n",
+      "new": "            f\"import the routing tree and any root playlist this run added \"\n            f\"tracks to from it\",\n"
+    },
+    {
+      "id": "R2_inbox_warning_dropped",
+      "description": "route inbox --export loses the step saying the tree's memberships cannot land from the file",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "835b0f4f8187b7e0",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_an_export_inbox_lands_each_track_in_its_declared_sub"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            ROUTING_TREE_UNIMPORTABLE\n            + \", so the routed memberships cannot land from this file; this \"\n            \"build writes nested membership only to a tree that has cut over to \"\n            \"the database\",\n",
+      "new": ""
+    },
+    {
+      "id": "R3_inbox_check_promises_nothing_routed",
+      "description": "route inbox --export's check step goes back to promising a second run routes nothing",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c575b0828260272e",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_an_export_inbox_lands_each_track_in_its_declared_sub"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"that file, which adds nothing to a root playlist once its import \"\n            \"has landed and plans the routing again, since the bridge cannot \"\n            \"land it\",\n",
+      "new": "            \"that file, which routes, rates and adds nothing once the import has \"\n            \"landed\",\n"
+    },
+    {
+      "id": "R4_shared_warning_reworded",
+      "description": "the shared warning stops saying a folder import doubles its playlists",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ab59397b38b6c9f7",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_an_export_inbox_lands_each_track_in_its_declared_sub",
+        "tests/test_routing_workers.py::test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"playlist, and a folder imported from it keeps every playlist it held and \"\n    \"adds a second copy of each\"\n",
+      "new": "    \"playlist\"\n"
+    },
+    {
+      "id": "U1_unplaced_names_tree_import",
+      "description": "route unplaced --export goes back to naming an import of the routing tree",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9f4b0e0050cdc30f",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"read {destination} as the review of what the placements would be, \"\n            f\"and import nothing from it\",\n",
+      "new": "            f\"import {destination} into rekordbox as a rekordbox xml library and \"\n            f\"import the routing tree from it\",\n"
+    },
+    {
+      "id": "U2_unplaced_hand_filing_dropped",
+      "description": "route unplaced --export stops telling a person to file the reviewed tracks by hand",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aca573fc216cb664",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"file the tracks this review names by hand in rekordbox; until they \"\n            \"are filed, route unplaced --export plans the same placements on \"\n            \"every fresh export\",\n",
+      "new": "            \"until then route unplaced --export plans the same placements on \"\n            \"every fresh export\",\n"
+    }
+  ],
+  "dropped": []
+}

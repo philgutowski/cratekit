@@ -146,12 +146,16 @@ def test_a_landing_followed_step_by_step_passes_the_cutover_precheck(
     assert refusal.reason == "cutover-open-run"
     assert list(refusal.remediation.steps) == pending["steps"]
 
-    # The steps, in order: import, take a Fresh Export, run the verify verb.
+    # The steps, in order: import, import the batch playlist alone, drag it into
+    # the intake folder (R-687), take a Fresh Export, run the verify verb.
     assert pending["verify_verb"] == "intake.imported"
     assert pending["verify_verb"] in registry.VERB_NAMES
+    assert len(pending["steps"]) == 5
     assert str(intake_file) in pending["steps"][0]
-    assert "Fresh Export" in pending["steps"][1]
-    assert "crate intake imported --export" in pending["steps"][2]
+    assert f"import the {intake_file.stem} playlist from it on its own" in pending["steps"][1]
+    assert "drag it into the INBOX folder" in pending["steps"][2]
+    assert "Fresh Export" in pending["steps"][3]
+    assert "crate intake imported --export" in pending["steps"][4]
     after = _export_after_import(tmp_path, intake_file)
     code, result = _drive(["intake", "imported", "--export", str(after)])
 
@@ -442,10 +446,21 @@ def test_a_placed_call_ends_awaiting_import_with_the_action_persisted(cfg, silen
     assert record.pending.verify_verb == ingest.VERIFY_VERB == "intake.imported"
     # Spelled out, because an expected value read off ``ingest.import_steps``
     # would only say the function returns what it returns.
-    first, second, third = record.pending.steps
+    first, alone, drag, export_step, verify = record.pending.steps
     assert first == f"import {destination} into rekordbox as a rekordbox xml library"
-    assert second == "take a Fresh Export of the collection from rekordbox"
-    assert third.startswith("run crate intake imported --export with that Fresh Export")
+    # R-687, measured at the tenth attended sitting: an imported batch playlist
+    # lands at the playlist root, and an existing folder imported from the file
+    # appends a second copy of every child it already held.
+    assert alone == (
+        "import the placed_inboxed playlist from it on its own, never the INBOX "
+        "folder, which would add a second copy of every batch already in it"
+    )
+    assert drag == (
+        "the placed_inboxed playlist lands at the playlist root, so drag it into "
+        "the INBOX folder, where a routing pass reads its batches"
+    )
+    assert export_step == "take a Fresh Export of the collection from rekordbox"
+    assert verify.startswith("run crate intake imported --export with that Fresh Export")
     assert ingest.persisted_pending(cfg, placed) == record.pending
 
 
