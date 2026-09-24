@@ -2796,6 +2796,8 @@ def test_a_long_track_alone_is_a_change_and_writes_a_file(configured, tagged, tm
     totals = envelope["data"]["totals"]
     assert (totals["inserted"], totals["long_added"]) == (0, 2)
     assert _long_members(_routed(export).read_bytes()) == ("11", "31")
+    # Nothing nested was written, so there is no review to warn about (R-694).
+    assert _not_landable(envelope) == []
 
 
 def test_an_export_run_owes_the_import_of_the_root_playlist_it_added_to_alone(
