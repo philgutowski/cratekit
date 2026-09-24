@@ -52,10 +52,18 @@ def test_an_empty_job_id_is_a_queue_that_held_nothing_and_renders_nothing():
 
 
 def test_the_job_case_is_gated_on_the_schema_not_a_job_id_key():
-    diagnostic = envelope(
-        "intake.missing", "diagnostic", {"checks": [], "summary": {"job_id": "j-1"}}
+    """A job identifier at the TOP of another surface's data, where the job case reads it.
+
+    Nested under ``summary`` it was stopped by the empty identifier gate instead,
+    and the mutation table measured this gate at zero until the key was lifted.
+    """
+    review_set = envelope(
+        "review.list",
+        "review_set",
+        {"queue": "q", "items": [], "unresolved": 0, "job_id": "j-1", "state": "queued"},
     )
-    assert render.render_job_state(diagnostic) == []
+    assert render.render_job_state(review_set) == []
+    assert render.render_job_state(review_set, drive=["x"]) == []
 
 
 def test_the_resolution_counts_belong_to_the_intake_verbs_alone():
