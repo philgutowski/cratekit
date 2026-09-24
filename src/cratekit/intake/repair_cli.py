@@ -328,7 +328,14 @@ def _apply(ctx, cfg: config.Config) -> Envelope:
         decided = repair.decided(store)
     plan = _plan_for(decided, root=root, cfg=cfg)
     spec = next(gate for gate in ctx.entry.gates if gate.name == "repair.paths.confirm")
-    option = ctx.gate.require(spec, digest=plan["digest"])
+    # THE PLAN IS SHOWN THROUGH THE GATE LAYER (R-693): every item with its
+    # class and its reason, the digest they were taken over, and the root and
+    # totals in front of them, so a person confirms renames they have read.
+    option = ctx.gate.require(
+        spec,
+        plan=plan,
+        context={"root": str(root) if root is not None else None, "totals": plan["totals"]},
+    )
     if option == "abort":
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
 

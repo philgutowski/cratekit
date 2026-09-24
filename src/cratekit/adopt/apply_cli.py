@@ -402,6 +402,27 @@ def _approval_gate(entry):
     )
 
 
+def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
+    """The plan as the approval gate shows it, and the facts beside it (R-693).
+
+    EVERY ENTRY, not only the applicable ones. The plan holds every scanned
+    track, its digest counts them all by disposition, and a person approving
+    the tree should read what it will not touch beside what it will. The tree,
+    the counts and the collisions are the rest of what the digest was taken
+    over, so they are the facts in front of the items. Read off the same
+    document ``adopt plan`` prints, so the two say the same thing.
+    """
+    document = plan_engine.to_json(plan)
+    return (
+        {"digest": document["digest"], "items": document["entries"]},
+        {
+            "tree": document["tree"],
+            "counts": document["counts"],
+            "collisions": document["collisions"],
+        },
+    )
+
+
 def apply_adoption(ctx) -> Envelope:
     """Ask the approval gate against this plan, then queue the pass.
 
@@ -443,7 +464,8 @@ def apply_adoption(ctx) -> Envelope:
 
     plan = current_plan(cfg, declared)
     spec = _approval_gate(ctx.entry)
-    option = ctx.gate.require(spec, digest=plan.digest())
+    digested, facts = _digested(plan)
+    option = ctx.gate.require(spec, plan=digested, context=facts)
     if option == "abort":
         # ``job_id`` IS THE EMPTY STRING RATHER THAN ``None``. ``cli.output``
         # closes the declared ``job_state/1`` surface with
@@ -518,7 +540,8 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
     declared = active_taxonomy.load(cfg)
     plan = current_plan(cfg, declared)
     spec = _approval_gate(ctx.entry)
-    if ctx.gate.require(spec, digest=plan.digest()) == "abort":
+    digested, facts = _digested(plan)
+    if ctx.gate.require(spec, plan=digested, context=facts) == "abort":
         return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
 
     with jobs.open_store() as store:

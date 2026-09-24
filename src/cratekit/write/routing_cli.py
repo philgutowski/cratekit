@@ -52,6 +52,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from cratekit.cli import gates
 from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
 from cratekit.core import (
     active_taxonomy,
@@ -330,14 +331,12 @@ def _shown(plan: dict, **facts: Any) -> dict[str, Any]:
     Without this the gate carried the question and the options and not one
     item, and a person answered a routing plan they could not read. There is
     no bound: the digest covers every item, and a list cut short would ask for
-    approval of items nobody was shown.
+    approval of items nobody was shown. The body is the gate layer's
+    :func:`cratekit.cli.gates.shown_plan` since R-693 closed the rest of the
+    class through it; ``totals.count`` here is the item count, so nothing
+    this screen said has changed.
     """
-    return {
-        **facts,
-        "digest": plan["digest"],
-        "count": plan["totals"]["count"],
-        "items": plan["items"],
-    }
+    return gates.shown_plan(plan, **facts)
 
 
 def _named(plan: dict, names: dict[str, dict[str, str]]) -> dict:
