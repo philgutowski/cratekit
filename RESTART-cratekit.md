@@ -4,7 +4,33 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: sitting 11 record, issues #177 and #176, `attended`,
+**Last merged: R-689, issue #205, `relay/205`, 2026-09-24.** A stale active
+taxonomy copy is told from an edited one. Setup writes
+`coupled/taxonomy.origin.toml` beside the copy, the template's short name and a
+sha256 of the shipped text it copied, a new COUPLED state file
+`taxonomy_origin` in `core/config.py`, written only with a copy setup makes
+and never for one it left alone; a record write that fails after the copy
+landed is an INFO note with no remedy. `core/taxonomy.py` gained
+`template_digest`, `Fingerprint` (digest and top level sections),
+`template_fingerprint`, `shipped_template_fingerprint`, `Origin`,
+`origin_record_text` and `parse_origin_record`. Doctor's `taxonomy.active`
+compares the recorded digest, the copy's and the shipped text's, through the
+fingerprint so doctor stays off the guard's shipped text list: a copy that
+still matches the record while the shipped text moved on is INFO naming the
+sections gained and dropped; a copy that differs from the record is OK as
+edited; no record is OK with the origin said to be unrecorded and whether the
+copy matches the shipped text now; an unreadable or unusable record, or one
+naming a template other than the configured one, is INFO. Doctor never
+writes. Thirteen tests in `tests/test_doctor.py`, the tenth sitting's shape
+among them. **The mutation table was NOT measured:** twelve rows in
+`docs/mutation/r689-rows.toml`, and `r689-notes.md` says why, the same
+`analyze vocals` job from the installed copy that halted R-693's table was
+still running and the driver's leak guard halted on the full baseline. Run
+those rows with no cratekit job running. Filed **R-707** (a copy made before
+the record existed has no way to gain one), not on the board bar. **Main's
+highest residual number is R-707.**
+
+**Merged before it: sitting 11 record, issues #177 and #176, `attended`,
 2026-09-24.** A record only merge, no code. Read on disposable copies of the
 live database: the `Rating` scale is **stars, 0 to 5**, on 9,998 rows (A4,
 R-414 narrowed to its planner half and filed for the feeder, the fold pinned at

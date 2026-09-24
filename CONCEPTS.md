@@ -159,6 +159,14 @@ verb reads through `core.active_taxonomy.load`, and a guard test refuses any
 other module that reads a template (R-685). Until then no verb read the active
 copy, so an edit to it changed nothing.
 
+Beside it, `taxonomy.origin.toml` is the ORIGIN RECORD (R-689): the shipped
+template's short name and a sha256 of the text setup copied, written with the
+copy and never for a copy setup left alone. Doctor reads it to tell a copy that
+fell behind the shipped template, still matching the record while the shipped
+text moved on, which is INFO, from one a person edited, which is theirs and
+reads OK. A copy with no record is said to be unrecorded rather than guessed
+either way. Doctor never rewrites the copy.
+
 ### Off taxonomy
 A genre that WAS written onto a file and that this template has no place of its
 own for: the catalogue's own word, passed through by the last tier of

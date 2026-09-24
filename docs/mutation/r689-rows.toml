@@ -1,0 +1,138 @@
+name = "r689"
+pass_kind = "light"
+
+# R-689: setup records which shipped text the active taxonomy copy was made
+# from, and doctor tells a copy that fell behind the shipped template from one
+# a person edited. Twelve rows over the three files the unit touched. Every
+# row's subset is the doctor suite, which holds the branch tests, and the
+# active taxonomy suite, which holds the guard and the shared helpers.
+
+[[rows]]
+id = "D1_stale_is_ok"
+description = "doctor: report the stale copy as OK instead of INFO, so the one finding this unit exists for is never raised"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''    return Status.INFO, (
+        f"the copy is the one setup made from the shipped {record.template!r}, "'''
+new = '''    return Status.OK, (
+        f"the copy is the one setup made from the shipped {record.template!r}, "'''
+
+[[rows]]
+id = "D2_edited_against_current"
+description = "doctor: decide edited by comparing the copy with the shipped text as it ships now instead of with the record, so a stale unedited copy reads as edited"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''    if active.digest != record.digest:
+        return Status.OK, f"edited since setup copied the shipped {record.template!r}"'''
+new = '''    if active.digest != current.digest:
+        return Status.OK, f"edited since setup copied the shipped {record.template!r}"'''
+
+[[rows]]
+id = "D3_name_mismatch_dropped"
+description = "doctor: drop the branch where the record names a template other than the configured one"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''    if record is not None and record.template != named:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "D4_gained_reversed"
+description = "doctor: compute gained sections in the wrong direction, so the section the shipped template gained is named as one the copy has"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''    gained = sorted(current.sections - active.sections)'''
+new = '''    gained = sorted(active.sections - current.sections)'''
+
+[[rows]]
+id = "D5_dropped_direction_gone"
+description = "doctor: never name a section the shipped template dropped, so a removed section reads as a change inside sections both declare"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''    if dropped:
+        changes.append('''
+new = '''    if False:
+        changes.append('''
+
+[[rows]]
+id = "D6_unrecorded_always_matches"
+description = "doctor: with no record, claim the copy matches the shipped text whatever the digests say"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''    if record is None:
+        if active.digest == current.digest:'''
+new = '''    if record is None:
+        if True:'''
+
+[[rows]]
+id = "D7_unusable_record_is_ok"
+description = "doctor: report an unusable record as OK, so a corrupt record reads like a healthy library"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''        except ValueError as exc:
+            return Status.INFO, ('''
+new = '''        except ValueError as exc:
+            return Status.OK, ('''
+
+[[rows]]
+id = "S1_no_record_written"
+description = "setup: skip the record write and still report the origin as recorded"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''        config.atomic_write_bytes(taxonomy.origin_record_text(name, text).encode("utf-8"), origin)'''
+new = '''        origin = origin'''
+
+[[rows]]
+id = "S3_wrong_digest_recorded"
+description = "setup: record a digest of text other than what was copied, so every fresh copy reads as edited"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''        config.atomic_write_bytes(taxonomy.origin_record_text(name, text).encode("utf-8"), origin)'''
+new = '''        config.atomic_write_bytes(taxonomy.origin_record_text(name, text + "\\n").encode("utf-8"), origin)'''
+
+[[rows]]
+id = "T1_digest_ignores_text"
+description = "taxonomy: digest a constant instead of the text, so every template has one fingerprint and nothing is ever stale"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''    return hashlib.sha256(text.encode("utf-8")).hexdigest()'''
+new = '''    return hashlib.sha256(b"").hexdigest()'''
+
+[[rows]]
+id = "T2_no_sections"
+description = "taxonomy: a fingerprint with no sections, so a stale copy is reported without naming what it lacks"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''        sections = frozenset(
+            name for name, value in data.items() if isinstance(value, (dict, list))
+        )'''
+new = '''        sections = frozenset()'''
+
+[[rows]]
+id = "T3_any_string_is_a_digest"
+description = "taxonomy: accept any string as the recorded digest, so a malformed record reads as a record"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_active_taxonomy.py"]
+old = '''    if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):'''
+new = '''    if not isinstance(digest, str):'''
+
+[[dropped]]
+id = "S2_record_for_a_copy_left_alone"
+description = "setup: write the record on the already-there path too"
+reason = "not one string replacement; the write sits after the early return, and moving it is a restructure the driver cannot express. test_setup_writes_no_record_for_a_copy_it_left_alone is the test written to kill it"
+
+[[dropped]]
+id = "G1_doctor_on_the_shipped_text_list"
+description = "guard: put doctor back on the shipped text allow list"
+reason = "a mutation of tests/, which the driver does not do, and on a clean tree the guard has no offender to find, the same shape as R-685's G3"

@@ -28108,6 +28108,31 @@ finding.
 **Not on the board bar.** Maintainer facing, nothing false is said and no
 write is held.
 
+**Closed 2026-09-24 on `relay/205`, issue #205.** The first option. Setup
+writes `taxonomy.origin.toml` beside the copy, the template's short name and
+a sha256 of the shipped text it copied, a COUPLED state file so a restore
+rolls it back with the copy it describes, and only for a copy it makes:
+setup cannot know which text a copy it left alone came from, and a record
+written anyway would say "unedited" over a copy nothing established that
+about. Doctor's `taxonomy.active` compares three digests, the recorded one,
+the copy's and the shipped text's as it ships now, by a `Fingerprint` that
+`core/taxonomy` computes so doctor never holds the shipped text beside the
+parser. A copy that still matches the record while the shipped text moved on
+is INFO, naming the top level sections the shipped template gained and the
+ones it dropped, or "inside sections both declare" when neither. A copy that
+differs from the record is OK as edited, and what the shipped text did since
+is not raised. No record, which is every library set up before this, is OK
+with the origin said to be unrecorded and whether the copy matches the shipped
+text now; a record that cannot be read or used, or that names a template
+other than the configured one, is INFO with the reason. Doctor never writes
+the copy. The second option was not taken because it would flag every
+deliberate edit for life, and the third because the live library's case would
+stay unexplained. The tenth sitting's shape is pinned in
+`tests/test_doctor.py`, an older copy under a record of that older text.
+Thirteen tests. The mutation table is authored, twelve rows, and NOT
+measured, `docs/mutation/r689-notes.md` says why. R-707 records that a copy
+made before this has no way to gain a record.
+
 ---
 
 ## R-690. A job re-reads the active taxonomy per item and on resume, so an edit made while a job is open changes the declaration its remaining items are judged by
@@ -28591,3 +28616,31 @@ under the set's own name, with the whole spend checked against the monthly
 bound before the first call. Decided by Phillip 2026-09-24: joined back into
 one playlist where that is not new building, else the parts named Part A, Part
 B and Part C.
+
+---
+
+## R-707. A copy made before the origin record existed has no way to gain one, so every library set up before R-689 reads as unrecorded for life
+
+**Found:** on `relay/205`, 2026-09-24, closing R-689. Setup writes the origin
+record only with a copy it makes, and leaves an existing copy alone. No verb
+records an origin on an explicit ask, so a library set up before the record
+existed, which is every library there is today, has doctor say "nothing
+records which shipped text the copy was made from" on every run, and once
+the shipped template moves on again the stale and edited histories are as
+indistinguishable for that library as they were before R-689.
+
+**Measured cost:** the live library. Its copy was edited by hand at the
+eleventh sitting to add `[long_tracks]`, so it differs from the shipped text
+and carries no record; doctor's detail says so and can say nothing more. Not
+driven on the live volume, which is off limits; the shape is the no record
+branch in `tests/test_doctor.py`.
+
+**Closes when:** a person can record the origin for an existing copy on an
+explicit ask, a `crate taxonomy` verb or a setup flag that, given the copy
+matches the shipped text as it ships now, writes the record for that text,
+and refuses when it does not match, since the origin of a copy that already
+differs cannot be established. A test drives the ask on a matching copy and
+reads the record, and on a differing one and reads the refusal.
+
+**Not on the board bar.** Maintainer facing, nothing false is said and no
+write is held.
