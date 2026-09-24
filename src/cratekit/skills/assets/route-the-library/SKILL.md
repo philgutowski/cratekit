@@ -129,8 +129,9 @@ every sub it created. A missing genre folder is a warning, never invented. A
 track whose file is not on this machine is a warning and is not placed. Ratings
 are not set here; `route inbox --export` rates the intake.
 
-The run ends waiting, and the file is a review rather than something to import.
-Every placement in it is a playlist nested inside the routing tree, and
+The run ends ok and owes no import, because the file is a review rather than
+something to import, and a warning says so. Every placement in it is a playlist
+nested inside the routing tree, and
 rekordbox cannot land one from an xml file: a nested playlist imported on its
 own lands at the playlist root as a new playlist, and a folder imported whole
 keeps what it held and adds a second copy of every playlist inside it, and
