@@ -87,13 +87,17 @@ RESORT_ARTIFACTS = artifacts.Location(final="resort-artifacts", staging="resort-
 RATING_NOT_LANDABLE = "rating-not-landable"
 
 
-def _rating_not_landable(count: int) -> str:
-    return (
-        f"{count} intake track(s) are owed a star rating from energy and none was "
-        f"planned: every row of a collection export is one rekordbox already "
-        f"holds, an import keeps the database's rating on such a row, and this "
-        f"build writes no rating to the database"
-    )
+def _rating_not_landable(owed: int) -> list[dict[str, str]]:
+    """The owed rating warning, as a list so a count of zero adds nothing."""
+    if not owed:
+        return []
+    return [{
+        "code": RATING_NOT_LANDABLE,
+        "message": f"{owed} intake row(s) are owed a star rating from energy and "
+        f"none was planned: every row of a collection export is one rekordbox "
+        f"already holds, an import keeps the database's rating on such a row, "
+        f"and this build writes no rating to the database",
+    }]
 
 
 def _load() -> config.Config:
@@ -665,21 +669,21 @@ def _unrated(row: dict[str, str]) -> bool:
     writes for a track nobody rated. Any other value, including one this reader
     cannot parse, is somebody's, and overwriting it would need a record of who
     set it that nothing keeps. A row with no ``Rating`` attribute at all is not
-    planned either: the writer patches a value in place and cannot add one, so a
-    rating planned there would be a write the run declares and never performs.
+    counted either: a rekordbox export writes the attribute on every row, so its
+    absence says nothing about whether somebody rated the track.
     """
     value = row.get("Rating")
     return value is not None and value.strip() in ("", "0")
 
 
-def _ratings(
+def _owed_ratings(
     declared: taxonomy.Taxonomy,
     placements: tuple[rebuild.DeclaredPlacement, ...],
     readings: list[rebuild.Truth],
     files: dict[str, list[str]],
     by_id: dict[str, dict[str, str]],
-) -> dict[str, int]:
-    """The star rating each unrated intake track is owed from its energy.
+) -> int:
+    """How many unrated intake rows are owed a star rating from their energy.
 
     THE SOURCE SYSTEM'S RULE, IN THE SAME PASS AS THE FILING: every sort set a
     rating from energy on a track whose rating was still zero. The energy is the
@@ -692,26 +696,26 @@ def _ratings(
     rekordbox already holds, and an import keeps the database's rating on such
     a row, so a rating written into the file never lands. The export sweep
     counts these into :data:`RATING_NOT_LANDABLE` and writes none of them.
+    ROWS, not files: rekordbox rates each row, so two rows naming one file are
+    two ratings a person sets.
 
     THE EXPORT SCALE, which is the taxonomy's own. The cuts are written as 51 to
     255, the values an export carries, so nothing is converted here, and the
     database planner's unconfirmed scale (R-414) is not on this path at all.
 
-    Only a track the pass PLACES is rated. A track with no placement is one the
-    declaration has nowhere to put, and a rating is part of filing it.
+    Only a track the pass PLACES is counted. A track with no placement is one
+    the declaration has nowhere to put, and the source system rated a track as
+    part of filing it.
     """
     energy = {reading.location: reading.energy for reading in readings}
-    plan: dict[str, int] = {}
+    owed = 0
     for placement in placements:
         if not routing.rates(declared, placement.bucket):
             continue
-        rating = routing.energy_rating(declared, energy.get(placement.location))
-        if rating is None:
+        if routing.energy_rating(declared, energy.get(placement.location)) is None:
             continue
-        for key in files[placement.location]:
-            if _unrated(by_id[key]):
-                plan[key] = rating
-    return plan
+        owed += sum(1 for key in files[placement.location] if _unrated(by_id[key]))
+    return owed
 
 
 #: A ``TotalTime`` this pass will read as a length: digits and nothing else.
@@ -839,7 +843,7 @@ class Decision:
     ``destined`` and ``vocal`` name each track's energy sub and vocal sub as a
     person is shown them. ``files`` maps each readable file to the keys that
     name it, and ``readings`` and ``placements`` are the engine's own answers,
-    kept for a caller that rates from the same reading.
+    kept for a caller that counts owed ratings from the same reading.
     """
 
     plan: dict[tuple[str, str], list[str]]
@@ -905,6 +909,7 @@ def plan_export(
 ) -> tuple[
     bytes,
     dict[tuple[str, str], list[str]],
+    int,
     LongPlan,
     list[dict[str, str]],
     list[dict[str, str]],
@@ -913,15 +918,18 @@ def plan_export(
 ]:
     """Read one fresh export and decide where each intake track goes.
 
-    Returns the bytes to write into, the plan the bridge writer takes, the long
-    track additions, the items a person is shown, the warnings, the dimensions
-    not derived, and the vocal sub-playlists created. The bytes are the
-    export's with any vocal sub-playlist already added, which is why they are
-    returned rather than read again.
+    Returns the bytes to write into, the plan the bridge writer takes, how many
+    rows are owed a star rating, the long track additions, the items a person
+    is shown, the warnings, the dimensions not derived, and the vocal
+    sub-playlists created. The bytes are the export's with any vocal
+    sub-playlist already added, which is why they are returned rather than read
+    again.
 
     NO STAR RATING IS PLANNED (R-688). The ratings the source system's sort
-    would have set are counted into one :data:`RATING_NOT_LANDABLE` warning,
-    because the medium cannot carry them: see :func:`_ratings`.
+    would have set are only counted, because the medium cannot carry them: see
+    :func:`_owed_ratings`. The count is not a warning here, because the
+    warnings decide whether a run was blocked and an owed rating never blocks
+    one; the verb gives it as :data:`RATING_NOT_LANDABLE` beside them.
 
     THE ROUTING DECISION IS THE NATIVE PATH'S, called rather than restated. The
     readings come from :func:`cratekit.write.rebuild.read_truth`, the placements
@@ -965,9 +973,9 @@ def plan_export(
     decision = _decide(cfg, declared, rows, threshold, warnings)
     plan, destined, vocal = decision.plan, decision.destined, decision.vocal
     gaps = decision.gaps
-    owed = _ratings(declared, decision.placements, decision.readings, decision.files, by_id)
-    if owed:
-        warnings.append({"code": RATING_NOT_LANDABLE, "message": _rating_not_landable(len(owed))})
+    owed = _owed_ratings(
+        declared, decision.placements, decision.readings, decision.files, by_id
+    )
     long_plan = _long_tracks(declared, content, by_id, warnings)
     lengthy = set(long_plan.keys)
     playlist = declared.long_tracks.display if declared.long_tracks else ""
@@ -996,7 +1004,7 @@ def plan_export(
         {"track_id": "", "destination": created, "vocal": "", "long_track": ""}
         for created in vox_created
     ]
-    return content, plan, long_plan, items, warnings, gaps, vox_created
+    return content, plan, owed, long_plan, items, warnings, gaps, vox_created
 
 
 def apply_export(
@@ -1035,7 +1043,7 @@ def apply_export(
     this file exists to carry into rekordbox.
 
     THE LONG TRACK PLAYLIST IS WRITTEN LAST and ONCE, add only, as the source
-    system wrote it after the membership. It is a direct child of the playlist
+    system wrote it last. It is a direct child of the playlist
     root and no tree, so no registry answer governs it.
     """
     if declared is None:
@@ -1153,17 +1161,18 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         cfg, declared, export, instead="run route inbox without --export, which "
         "writes the database",
     )
-    content, plan, long_plan, items, warnings, gaps, vox_created = plan_export(
+    content, plan, owed, long_plan, items, warnings, gaps, vox_created = plan_export(
         cfg, export, declared=declared
     )
+    unrated = _rating_not_landable(owed)
     offered = _plan(items, kind="inbox-export")
-    facts = _export_facts(items, export, gaps, vox_created, warnings)
+    facts = _export_facts(items, export, gaps, vox_created, [*warnings, *unrated])
     option = _apply_gate(ctx, offered, _shown(offered, **facts))
     if option != "apply":
         return ctx.envelope(
             data=_plan(items, kind="inbox-export", applied=False),
             outcome=Outcome.NO_OP,
-            warnings=warnings,
+            warnings=[*warnings, *unrated],
         )
     destination, report, lengthened, long_warning = apply_export(
         cfg, export, content, plan, long_plan, vox_created, declared=declared
@@ -1184,16 +1193,17 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND. It is the answer the
     # pending action names as proof an import landed, so a run whose every write
     # was skipped, or whose every track could not be read, must not give it:
-    # that is a run that could not route, not a library already filed. An owed
-    # rating does not count: no run of this medium can ever land one (R-688),
-    # so counting it would answer route-blocked over a library already filed,
-    # every time, and the warning still rides beside the answer.
+    # that is a run that could not route, not a library already filed. The owed
+    # ratings are not in ``warnings`` yet: no run of this medium can ever land
+    # one (R-688), so counting them would answer route-blocked over a library
+    # already filed, every time. They join the warnings after the answer.
     if destination is not None:
         reason = None
-    elif any(warning["code"] != RATING_NOT_LANDABLE for warning in warnings):
+    elif warnings:
         reason = "route-blocked"
     else:
         reason = "nothing-to-route"
+    warnings += unrated
     data = _plan(
         items,
         kind="inbox-export",

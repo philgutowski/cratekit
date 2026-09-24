@@ -2516,7 +2516,7 @@ def test_an_owed_star_rating_is_not_written_into_the_export(configured, tagged, 
     written = _ratings_of(_routed(export).read_bytes())
     assert written == {"21": "0", "22": "", "23": "102", "24": "0", "25": "0"}
     (message,) = _owed(envelope)
-    assert message.startswith("2 intake track(s) are owed a star rating"), message
+    assert message.startswith("2 intake row(s) are owed a star rating"), message
     assert "rated" not in envelope["data"]["totals"]
     pending = envelope["pending_human_action"]
     # The steps name the written file, whose tmp path carries this test's name.
@@ -2524,33 +2524,46 @@ def test_an_owed_star_rating_is_not_written_into_the_export(configured, tagged, 
     assert all("rating" not in text for text in texts), texts
 
 
-def test_a_hand_rated_export_track_is_never_overwritten(configured, tagged, tmp_path):
-    export = _rating_export(configured, tmp_path / "exports")
-    _apply_export(export)
-    assert _ratings_of(_routed(export).read_bytes())["23"] == "102", (
-        "a rating a person set was replaced by the energy curve"
+def _alone(cfg: config.Config, folder: Path, tid: str, rating: str) -> Path:
+    """An export of one RATING_TRACKS row, so the owed count is that row's."""
+    tracks = {tid: RATING_TRACKS[tid]}
+    return _write_export(
+        cfg, folder, tracks=tracks, ratings={tid: rating}, folders=RATING_FOLDERS
     )
 
 
-def test_a_track_in_a_bucket_that_does_not_rate_is_filed_and_left_unrated(
-    configured, tagged, tmp_path
-):
-    """Filed, so the pass reached it, and still unrated, so the flag held."""
-    export = _rating_export(configured, tmp_path / "exports")
-    _apply_export(export)
-    written = _routed(export).read_bytes()
-    assert _sub_keys(written, "NonElectronic", "Jazz") == ("24",)
-    assert _ratings_of(written)["24"] == "0", "a rates = false bucket was rated"
+def test_a_lone_unrated_track_with_energy_is_owed_one_rating(configured, tagged, tmp_path):
+    """The positive the three rules below are measured against, on the same
+    single row shape, so their empty answer is the rule's and not the shape's."""
+    export = _alone(configured, tmp_path / "exports", "21", "0")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    (message,) = _owed(envelope)
+    assert message.startswith("1 intake row(s) are owed a star rating"), message
 
 
-def test_a_track_with_no_energy_reading_is_filed_and_left_unrated(
+def test_a_hand_rated_export_track_is_not_owed_a_rating(configured, tagged, tmp_path):
+    export = _alone(configured, tmp_path / "exports", "23", "102")
+    _code, envelope = _apply_export(export)
+    assert _owed(envelope) == [], "a rating a person set was counted as owed"
+    assert _ratings_of(_routed(export).read_bytes())["23"] == "102"
+
+
+def test_a_track_in_a_bucket_that_does_not_rate_is_filed_and_not_owed(
     configured, tagged, tmp_path
 ):
-    export = _rating_export(configured, tmp_path / "exports")
-    _apply_export(export)
-    written = _routed(export).read_bytes()
-    assert _sub_keys(written, "Deep House", "Unsorted") == ("25",)
-    assert _ratings_of(written)["25"] == "0", "a track with no energy was rated"
+    """Filed, so the pass reached it, and not counted, so the flag held."""
+    export = _alone(configured, tmp_path / "exports", "24", "0")
+    _code, envelope = _apply_export(export)
+    assert _sub_keys(_routed(export).read_bytes(), "NonElectronic", "Jazz") == ("24",)
+    assert _owed(envelope) == [], "a rates = false bucket was counted as owed"
+
+
+def test_a_track_with_no_energy_reading_is_filed_and_not_owed(configured, tagged, tmp_path):
+    export = _alone(configured, tmp_path / "exports", "25", "0")
+    _code, envelope = _apply_export(export)
+    assert _sub_keys(_routed(export).read_bytes(), "Deep House", "Unsorted") == ("25",)
+    assert _owed(envelope) == [], "a track with no energy was counted as owed"
 
 
 def test_a_second_run_still_owing_ratings_is_nothing_to_route(configured, tagged, tmp_path):
@@ -2582,7 +2595,7 @@ def test_the_offered_plan_names_no_rating_and_says_which_are_owed(
     assert all("rating" not in item for item in shown["items"])
     assert "rated" not in shown
     (warning,) = shown["warnings"]
-    assert warning.startswith("2 intake track(s) are owed a star rating"), warning
+    assert warning.startswith("2 intake row(s) are owed a star rating"), warning
     assert not _routed(export).exists()
 
 
@@ -2653,7 +2666,7 @@ def test_two_rows_naming_one_file_are_both_counted_as_owed(configured, tagged, t
     rated = _ratings_of(written)
     assert (rated["21"], rated["26"]) == ("0", "0")
     (message,) = _owed(envelope)
-    assert message.startswith("4 intake track(s) are owed a star rating"), message
+    assert message.startswith("4 intake row(s) are owed a star rating"), message
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2898,7 +2911,7 @@ def test_an_edit_to_the_active_copy_is_the_playlist_the_routing_plan_names(
     export = _long_export(configured, tmp_path / "exports")
 
     planned = routing_cli.plan_export(configured, export)
-    long_plan, items = planned[2], planned[3]
+    long_plan, items = planned[3], planned[4]
     assert long_plan.keys
     assert {item["long_track"] for item in items} - {""} == {"Long Sets By Hand"}
 
@@ -3240,7 +3253,7 @@ def test_the_export_gate_shows_every_item_the_digest_was_taken_over(
     assert shown["vocal subs created"] == [f"Deep House/{vox}", f"Tech House/{vox}"]
     assert shown["not derived"] == []
     (warning,) = shown["warnings"]
-    assert warning.startswith("1 intake track(s) are owed a star rating"), warning
+    assert warning.startswith("1 intake row(s) are owed a star rating"), warning
     assert not _routed(export).exists()
 
 
@@ -3253,6 +3266,18 @@ def test_the_export_gate_names_the_vocal_dimension_it_did_not_read(
     shown = _blocked_export(export)["cause"]["detail"]["shown"]
     assert shown["not derived"] == [rebuild.VOCAL_DIMENSION]
     assert (shown["routed"], shown["vocal"]) == (3, 0)
+
+
+def test_the_export_gate_screen_says_none_for_an_empty_warning_list(
+    configured, voiced, tmp_path
+):
+    """An empty list says none, rather than a header with nothing under it. The
+    rows here carry no rating attribute, so nothing is owed and nothing warns."""
+    export = _write_export(configured, tmp_path / "exports")
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["route", "inbox", "--export", str(export)], stdout=out, stderr=err)
+    assert code == int(ExitCode.DECISION_REQUIRED), err.getvalue()
+    assert "  warnings: none" in out.getvalue() + err.getvalue()
 
 
 def test_the_export_gate_says_why_an_intake_track_goes_nowhere(configured, voiced, tmp_path):
@@ -3280,7 +3305,6 @@ def test_the_export_gate_prints_the_plan_in_the_default_mode(configured, voiced,
     assert "Apply this routing plan to the library?" in screen
     assert f"digest: {digest}" in screen
     assert "routed: 3" in screen and "long tracks: 2" in screen
-    # An empty list says none, rather than a header with nothing under it.
     assert "  not derived: none" in screen
     assert "are owed a star rating" in screen, "the owed rating never reached the screen"
     vox = _vox_display()
