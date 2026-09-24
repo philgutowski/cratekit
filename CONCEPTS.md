@@ -148,6 +148,17 @@ A match also carries the cover URL off the same catalogue row as its genre,
 never off another row, because the artist and title gate that picks the genre
 is the only thing that says the picture belongs to this track.
 
+### Active taxonomy
+The copy of a taxonomy template that setup puts beside the database, under
+`.cratekit/coupled/taxonomy.toml` on the library volume, and the one declaration
+every verb routes, tags and writes trees by. It is the person's to edit. The
+SHIPPED template, packaged in the wheel and returned by
+`taxonomy.default_taxonomy()`, is only what the active copy starts as, and the
+fallback when a library that is there to look at holds no active copy. Every
+verb reads through `core.active_taxonomy.load`, and a guard test refuses any
+other module that reads a template (R-685). Until then no verb read the active
+copy, so an edit to it changed nothing.
+
 ### Off taxonomy
 A genre that WAS written onto a file and that this template has no place of its
 own for: the catalogue's own word, passed through by the last tier of

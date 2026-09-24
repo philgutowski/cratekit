@@ -27861,6 +27861,32 @@ Whether a stale active copy is a doctor finding is a second decision.
 **Not on the board bar.** No write held, nothing misfiled today. Issue #198, filed after the tenth sitting
 for the Relay feeder.
 
+**Closed 2026-09-24 on `relay/198`.** One loader, `core.active_taxonomy.load`,
+reads the active copy at `config.state_path("taxonomy_active", cfg)`, the path
+doctor's `taxonomy.active` check reads. The shipped template that
+`taxonomy.template` names stands in only when the library root is a directory
+and no active copy exists under it, which doctor already reports as a failure
+with run setup. Every other way of not reading the copy refuses: an absent
+library root as `library-volume-unmounted`, an unreadable copy and one that does
+not parse as `config-unusable`, each with the remedy doctor gives. All 34 call
+sites in 12 modules read through it, and the helpers with no configuration take
+the declaration as a required parameter, the four tree writers whose `None`
+default reached for the shipped template among them. A test walks the package's
+AST, aliases resolved, and refuses the default loader, the shipped text or the
+parser outside the modules allowed each. Two routing plan tests write an active
+copy on the volume, one without `[long_tracks]`, this entry's measured shape,
+and one renaming the long track playlist, and read each change in the plan and
+the written file. The built in review's six held findings were fixed in one
+round, among them `converge` opening the database before the read, which let a
+refusal hold the handle. Tables `docs/mutation/r685-a.md` and `r685-b.md`,
+sixteen rows, fifteen killed, the zero read in `r685-notes.md`.
+
+**The second decision, taken conservatively: a stale active copy is not a
+doctor finding.** An active copy older than the shipped template it was copied
+from, and one a person edited on purpose, look the same, since nothing records
+which shipped version a copy came from. A finding would tell the second person
+their own declaration is wrong. R-689 records the options.
+
 ---
 
 ## R-686. The route.inbox.apply gate shows no plan in either output mode, so a person answers a routing plan they cannot read
@@ -27948,3 +27974,60 @@ with a test that pins whichever the record decides.
 **Not on the board bar.** Nothing false in what was computed, the medium
 cannot carry it. Issue #201, filed after the tenth sitting for the Relay feeder, scoped to the
 decision and the text.
+
+---
+
+## R-689. Nothing records which shipped template an active copy was made from, so a copy that fell behind the shipped template cannot be told from one a person edited
+
+**Found:** on `relay/198`, 2026-09-24, deciding R-685's second question.
+Setup copies the shipped template beside the database and records only its
+short name, `taxonomy.template`. The shipped template then gains sections, as
+`[long_tracks]` arrived with U88 two days after the tenth sitting's library was
+set up. Since R-685 every verb reads the active copy, so a section the shipped
+template gained after setup is now absent from every verb, where before it was
+present in every verb whatever the active copy said.
+
+**Measured cost:** on the tenth sitting's library, the long track playlist
+stops being planned, which is what that library's declaration asks for. No
+other difference was measured. A person who wants a section added upstream has
+no way to learn it arrived.
+
+**Closes when:** the record decides between three options and a test pins the
+choice. Setup records a digest of the shipped text it copied, and doctor
+reports INFO when the shipped template has moved on and the active copy still
+matches the recorded digest, which is a copy nobody edited. Or doctor reports a
+per section difference as INFO whatever the history. Or nothing, stated in
+doctor's OK detail. The branch that filed this took the third, by not adding a
+finding.
+
+**Not on the board bar.** Maintainer facing, nothing false is said and no
+write is held.
+
+---
+
+## R-690. A job re-reads the active taxonomy per item and on resume, so an edit made while a job is open changes the declaration its remaining items are judged by
+
+**Found:** by the built in review on `relay/198`, 2026-09-24, four findings of
+one shape. The tag, retag, census and adoption workers each call
+`active_taxonomy.load(cfg)` per item, `handle_resort` reads it again for its
+left behind report after the engine read it, and the database routing verb
+reads it once for its plan and again in `apply_inbox` after the gate. The plan
+digests cover the items, not the declaration, so an edit between the plan and
+the last item is not refused as stale. The vocal threshold is read the same
+way and is documented as read as it stands (U89), so this is that precedent
+applied to the taxonomy, not a new rule.
+
+**Measured cost:** not driven. It needs a person to edit the active copy while
+a job is open or between an interrupted job and its resume. Before R-685 an
+edit changed nothing at all, so no run on main could reach it. The per item read
+costs one small file read and parse per item on the library volume, where it
+used to parse packaged data per item.
+
+**Closes when:** a job freezes the declaration it was planned against, as a
+digest in the payload that a resume compares and refuses on as
+`decision-stale`, or as the text itself, and the export and database routing
+verbs pass one read from plan to write, with a test that edits the active copy
+between a plan and its apply and reads the refusal.
+
+**Not on the board bar.** Reachability unmeasured, and the precedent it
+follows is documented.
