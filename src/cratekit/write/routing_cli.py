@@ -338,6 +338,30 @@ def _shown(plan: dict, **facts: Any) -> dict[str, Any]:
     }
 
 
+def _named(plan: dict, names: dict[str, dict[str, str]]) -> dict:
+    """The plan as the export gate shows it, each track named (R-692).
+
+    An export id is a number a person has to look up in the export to know
+    which song a line files, so each shown item leads with the artist and the
+    title the collection row carries, then every field the digest was taken
+    over, unchanged. A row with no track, a vocal sub this run creates, and an
+    intake key with no collection row get empty names rather than a missing
+    column.
+
+    THE NAMES ARE THE SCREEN'S ALONE. The digest and the answered envelope's
+    items are the plan's, so a name is outside what a decision is bound to,
+    and a JSON reader drops ``artist`` and ``title`` to compare the screen
+    with a declined run's items.
+    """
+    return {
+        **plan,
+        "items": [
+            {**names.get(item["track_id"], {"artist": "", "title": ""}), **item}
+            for item in plan["items"]
+        ],
+    }
+
+
 def _export_facts(
     items: list[dict[str, str]],
     export: Path,
@@ -1063,13 +1087,15 @@ def plan_export(
     list[dict[str, str]],
     tuple[str, ...],
     tuple[str, ...],
+    dict[str, dict[str, str]],
 ]:
     """Read one fresh export and decide where each intake track goes.
 
     Returns the bytes to write into, the plan the bridge writer takes, how many
     rows are owed a star rating, the long track additions, the items a person
-    is shown, the warnings, the dimensions not derived, and the vocal
-    sub-playlists created. The bytes are the export's with any vocal
+    is shown, the warnings, the dimensions not derived, the vocal
+    sub-playlists created, and each planned track's artist and title by export
+    id for :func:`_named`. The bytes are the export's with any vocal
     sub-playlist already added, which is why they are returned rather than read
     again.
 
@@ -1152,7 +1178,15 @@ def plan_export(
         {"track_id": "", "destination": created, "vocal": "", "long_track": ""}
         for created in vox_created
     ]
-    return content, plan, owed, long_plan, items, warnings, gaps, vox_created
+    names = {
+        item["track_id"]: {
+            "artist": by_id[item["track_id"]].get("Artist", ""),
+            "title": by_id[item["track_id"]].get("Name", ""),
+        }
+        for item in items
+        if item["track_id"] in by_id
+    }
+    return content, plan, owed, long_plan, items, warnings, gaps, vox_created, names
 
 
 def apply_export(
@@ -1309,13 +1343,13 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         cfg, declared, export, instead="run route inbox without --export, which "
         "writes the database",
     )
-    content, plan, owed, long_plan, items, warnings, gaps, vox_created = plan_export(
-        cfg, export, declared=declared
+    content, plan, owed, long_plan, items, warnings, gaps, vox_created, names = (
+        plan_export(cfg, export, declared=declared)
     )
     unrated = _rating_not_landable(owed)
     offered = _plan(items, kind="inbox-export")
     facts = _export_facts(items, export, gaps, vox_created, [*warnings, *unrated])
-    option = _apply_gate(ctx, offered, _shown(offered, **facts))
+    option = _apply_gate(ctx, offered, _shown(_named(offered, names), **facts))
     if option != "apply":
         return ctx.envelope(
             data=_plan(items, kind="inbox-export", applied=False),
