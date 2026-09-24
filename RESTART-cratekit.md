@@ -21,7 +21,7 @@ sections gained and dropped; a copy that differs from the record is OK as
 edited; no record is OK with the origin said to be unrecorded and whether the
 copy matches the shipped text now; an unreadable or unusable record, or one
 naming a template other than the configured one, is INFO. Doctor never
-writes. Thirteen tests in `tests/test_doctor.py`, the tenth sitting's shape
+writes. Fourteen tests in `tests/test_doctor.py`, the tenth sitting's shape
 among them. **The mutation table was NOT measured:** twelve rows in
 `docs/mutation/r689-rows.toml`, and `r689-notes.md` says why, the same
 `analyze vocals` job from the installed copy that halted R-693's table was

@@ -28129,7 +28129,7 @@ the copy. The second option was not taken because it would flag every
 deliberate edit for life, and the third because the live library's case would
 stay unexplained. The tenth sitting's shape is pinned in
 `tests/test_doctor.py`, an older copy under a record of that older text.
-Thirteen tests. The mutation table is authored, twelve rows, and NOT
+Fourteen tests. The mutation table is authored, twelve rows, and NOT
 measured, `docs/mutation/r689-notes.md` says why. R-707 records that a copy
 made before this has no way to gain a record.
 
