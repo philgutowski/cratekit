@@ -130,9 +130,10 @@ The run ends waiting, and the file is a review rather than something to import.
 Every placement in it is a playlist nested inside the routing tree, and
 rekordbox cannot land one from an xml file: a nested playlist imported on its
 own lands at the playlist root as a new playlist, and a folder imported whole
-keeps what it held and adds a second copy of every playlist inside it. The
-placements land once the tree cuts over to the database. Until then the same
-command plans the same placements on every fresh export.
+keeps what it held and adds a second copy of every playlist inside it, and
+`route unplaced` without `--export` only reports. File the tracks the review
+names by hand in rekordbox. Until they are filed, the same command plans the
+same placements on every fresh export.
 
 ## Resort queues rather than sweeps
 

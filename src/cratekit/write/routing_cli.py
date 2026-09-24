@@ -1075,11 +1075,12 @@ def _export_pending(
         artifact=str(destination),
         steps=(
             f"import {destination} into rekordbox as a rekordbox xml library and "
-            f"import the tracks' ratings and any root playlist this run added "
-            f"tracks to from it, one playlist at a time",
+            f"import from it, one at a time, any root playlist this run added "
+            f"tracks to, and nothing else",
             ROUTING_TREE_UNIMPORTABLE
-            + ", so the routed memberships land only when the tree cuts over to "
-            "the database and route inbox runs without --export",
+            + ", so the routed memberships cannot land from this file; this "
+            "build writes nested membership only to a tree that has cut over to "
+            "the database",
             "then export the collection again and run route inbox --export with "
             "that file, which adds nothing to a root playlist once its import "
             "has landed and plans the routing again, since the bridge cannot "
@@ -1480,19 +1481,19 @@ def _unplaced_pending(
         # once the tree holds the tracks. Every placement here is nested
         # membership, which never lands through the file, so the steps name no
         # import at all rather than one that strands or doubles the tree
-        # (R-687), and the check answers only once the tracks are filed some
-        # other way. Named by the
-        # caller from its registry entry, because this layer may not spell a
-        # verb (KTD23).
+        # (R-687), and the check answers only once a person has filed the
+        # tracks by hand. Named by the caller from its registry entry, because
+        # this layer may not spell a verb (KTD23).
         verify_verb=verb,
         artifact=str(destination),
         steps=(
             f"read {destination} as the review of what the placements would be, "
             f"and import nothing from it",
             ROUTING_TREE_UNIMPORTABLE
-            + ", so the placements land only when the tree cuts over to the "
-            "database",
-            "until then route unplaced --export plans the same placements on "
+            + ", so the placements cannot land from this file, and route "
+            "unplaced without --export only reports",
+            "file the tracks this review names by hand in rekordbox; until they "
+            "are filed, route unplaced --export plans the same placements on "
             "every fresh export",
         ),
     )

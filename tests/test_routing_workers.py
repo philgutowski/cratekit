@@ -2156,13 +2156,14 @@ def test_an_export_inbox_lands_each_track_in_its_declared_sub(configured, tagged
     # playlist and nothing nested, so the steps name no import of the tree.
     assert pending["steps"] == [
         f"import {_routed(export)} into rekordbox as a rekordbox xml library and "
-        "import the tracks' ratings and any root playlist this run added tracks "
-        "to from it, one playlist at a time",
+        "import from it, one at a time, any root playlist this run added tracks "
+        "to, and nothing else",
         "leave the routing tree's folders and playlists unimported: a nested "
         "playlist imported from the file lands at the playlist root as a new "
         "playlist, and a folder imported from it keeps every playlist it held and "
-        "adds a second copy of each, so the routed memberships land only when the "
-        "tree cuts over to the database and route inbox runs without --export",
+        "adds a second copy of each, so the routed memberships cannot land from "
+        "this file; this build writes nested membership only to a tree that has "
+        "cut over to the database",
         "then export the collection again and run route inbox --export with that "
         "file, which adds nothing to a root playlist once its import has landed "
         "and plans the routing again, since the bridge cannot land it",
@@ -3548,10 +3549,11 @@ def test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created(
         "leave the routing tree's folders and playlists unimported: a nested "
         "playlist imported from the file lands at the playlist root as a new "
         "playlist, and a folder imported from it keeps every playlist it held and "
-        "adds a second copy of each, so the placements land only when the tree "
-        "cuts over to the database",
-        "until then route unplaced --export plans the same placements on every "
-        "fresh export",
+        "adds a second copy of each, so the placements cannot land from this "
+        "file, and route unplaced without --export only reports",
+        "file the tracks this review names by hand in rekordbox; until they are "
+        "filed, route unplaced --export plans the same placements on every fresh "
+        "export",
     ]
     assert export.read_bytes() != written, "the export itself was the file written"
 

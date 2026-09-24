@@ -20,9 +20,9 @@ a second one built here, so what the screen said and what the session log holds
 cannot differ. Its steps run end to end: import the file, import the batch
 playlist on its own and drag it from the playlist root into the intake folder
 (R-687), take a Fresh Export, run ``intake imported``, which proves the import,
-retires the file and settles the run (R-501). It BLOCKS NOTHING. A blocking action makes every verb it names
-refuse, and no consequence of an unimported landing was driven that would
-justify that.
+retires the file and settles the run (R-501). It BLOCKS NOTHING. A blocking
+action makes every verb it names refuse, and no consequence of an unimported
+landing was driven that would justify that.
 
 THE SESSION RECORD IS WHERE IT IS REMEMBERED, NOT THE RUN RECORD. The action is
 not put on this run's own state, because nothing would ever clear it there and
