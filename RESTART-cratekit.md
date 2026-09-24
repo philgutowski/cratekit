@@ -12,7 +12,9 @@ taxonomy declares none; `plan_inbox` and `route inbox`'s applied answer both
 build it. `UNPLACED_EXPORT_REMEDY` names a review that adds to no root
 playlist and owes no import. The docstrings of `route_unplaced` and
 `route_unplaced_export` and the skill's heading say review, not place. Tests
-pin each remedy's literal text. **The mutation table was NOT measured:**
+pin each remedy's literal text. **The numbers:** 10,210 collected, 10,209
+passed and 1 skipped, ruff clean, `scan_repo.py` exit 0, and no test of this
+unit's among the ten slowest. **The mutation table was NOT measured:**
 eight rows in `docs/mutation/r695-rows.toml`, and `r695-notes.md` says why,
 the installed copy's `analyze vocals` job `2026-09-24T21:04:27Z-fbe8` was
 still running. No residual filed. **Main's highest residual number is
