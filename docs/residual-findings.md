@@ -28341,6 +28341,40 @@ sweep, or when the tree's cutover retires the export medium for routing.
 remaining shape is the envelope's outcome. The cutover that retires it is
 attended.
 
+**Closed 2026-09-24 on `relay/206`, issue #206.** The first option. In
+`write/routing_cli.py` the inbox sweep returns a `rekordbox_import` pending
+action only when the long track playlist gained tracks, since it is the one
+root playlist the sweep writes and the one thing the bridge lands. The action
+names that playlist alone: its summary counts the long tracks and claims no
+routing, its first step imports the playlist and nothing else, its second is
+`ROUTING_TREE_UNIMPORTABLE`, and its check step says a run over a fresh
+export owes no import once that import lands. A file of nested changes alone,
+routed memberships or created vocal subs, ends `ok` with exit 0 and no
+pending. The unplaced sweep's placements are all nested, so it never returns
+a pending import and `_unplaced_pending` is gone; a written review ends `ok`.
+Both sweeps give one `routing-not-landable` warning, `ROUTING_NOT_LANDABLE`
+through `_routing_not_landable`, counting the memberships and subs as a
+review no import can land, with the reason, `NESTED_UNLANDABLE`, now shared
+with the step, and the step a person takes: file the tracks by hand into the
+subs the review names, since the same routing plans again on every fresh
+export until they are. Decided: `ok` and not `no_op`, because a file was
+written and `no_op` reads as nothing routed; the warning is the signal that
+nothing it names was filed, which the review raised and which stays the
+reading of that warning. Tests in `tests/test_routing_workers.py` pin both
+warnings' full text, the pending action's full summary and steps, the
+tenth sitting's check run, a fresh export whose long track playlist landed
+and whose routing did not, answering `ok` with no pending, a later unplaced
+export with one track filed by hand answering `ok` with no pending, and no
+review warning on a file of long tracks alone. Twenty eight existing tests
+moved from `PENDING_HUMAN` to exit 0. The skill says when each sweep ends
+waiting. The kebab literal pin moved by one, 502 and 324. Swept for the same
+shape: every other `rekordbox_import` pending action is `intake land`,
+`intake file` or `intake imported`, whose check `intake imported` answers
+once the rows appear. The mutation table is authored, seventeen rows, and
+NOT measured, `docs/mutation/r694-notes.md` says why: the installed copy's
+`analyze vocals` job that halted R-689's and R-693's tables was still
+running.
+
 ---
 
 ## R-695. The warnings that send a person to the export medium still say it files and places tracks, which R-687's steps now deny
@@ -28362,6 +28396,11 @@ review of the routing and a root playlist the inbox sweep adds to, and the
 two docstrings match, with a test pinning each remedy's text.
 
 **Not on the board bar.** A wording fix.
+
+**Narrowed 2026-09-24, on `relay/206` (R-694).** The two docstrings no
+longer say the unplaced file reaches rekordbox through an import: the
+sweep's says the file is a review and owes none, and the writer's calls it a
+review somebody reads. The two remedies stand as they were.
 
 ---
 
