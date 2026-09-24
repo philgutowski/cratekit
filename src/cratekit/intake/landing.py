@@ -961,6 +961,7 @@ def apply(
             export=export,
             destination=destination,
             declared=checked.declared,
+            registry=checked.registry,
         )
     except Exception as exc:
         # ``place_files`` writes the intake file before it records the routing

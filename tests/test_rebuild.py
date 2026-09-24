@@ -2367,6 +2367,36 @@ def test_the_landed_verb_never_calls_an_uncompared_tree_converged(cfg, adopted_r
     assert converge_cli.MATCHING not in {entry["status"] for entry in checks}
 
 
+def test_an_active_taxonomy_that_cannot_be_read_is_not_compared_and_opens_nothing(
+    cfg, db, adopted_root, monkeypatch
+):
+    """R-685's loader refuses an active copy that does not parse, and this verb
+    turns that into the answer it exists to give rather than a refusal. It is
+    asked BEFORE the database is opened, so a refusal cannot hold the handle."""
+    from cratekit.core import rb_writer
+    from tests.test_active_taxonomy import write_active
+
+    tree_registry.write(cfg, _registry(str(adopted_root.ID)))
+    write_active(cfg, "this is = = not toml")
+    opened = []
+    monkeypatch.setattr(rb_writer, "open_db", lambda **kw: opened.append(kw))
+
+    class _Args:
+        tree = None
+
+    class _Ctx:
+        args = _Args()
+
+        @staticmethod
+        def envelope(*, data, **kwargs):
+            return {"data": data, **kwargs}
+
+    checks = converge_cli.converge(_Ctx())["data"]["checks"]
+    assert [entry["status"] for entry in checks] == [converge_cli.NOT_COMPARED]
+    assert "taxonomy" in checks[0]["detail"]
+    assert opened == []
+
+
 def test_the_rebuild_verb_records_a_named_person_for_a_disposition():
     """The guard behind this unit's remaining register entry (P5).
 

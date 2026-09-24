@@ -70,48 +70,77 @@ def shipped_without(section: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _default_taxonomy_calls(path: Path) -> list[int]:
+# Each way a module could come to route by a template that is not the library's,
+# and the only modules that may take it. Setup writes the active copy from the
+# shipped text, and doctor parses the active copy to report on it.
+READERS = {
+    "default_taxonomy": frozenset({LOADER, DEFINER}),
+    "shipped_template_text": frozenset({LOADER, DEFINER, SRC / "cli" / "setup.py"}),
+    "load_taxonomy": frozenset({LOADER, DEFINER, SRC / "cli" / "doctor.py"}),
+}
+
+
+def _reader_calls(path: Path) -> list[tuple[str, int]]:
+    """Every call in ``path`` to a name in READERS, aliased imports resolved."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    lines = []
+    bound = {name: name for name in READERS}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name in READERS:
+                    bound[alias.asname or alias.name] = alias.name
+    found = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
-        if name == "default_taxonomy":
-            lines.append(node.lineno)
-    return lines
+        if isinstance(func, ast.Attribute) and func.attr in READERS:
+            found.append((func.attr, node.lineno))
+        elif isinstance(func, ast.Name) and func.id in bound:
+            found.append((bound[func.id], node.lineno))
+    return found
 
 
 def test_no_module_but_the_loader_reads_the_shipped_template():
-    """Every verb reads the ACTIVE copy, so the shipped template is read nowhere else.
+    """Every verb reads the ACTIVE copy, so a template is parsed nowhere else.
 
-    An AST walk over every call, not a grep, so an alias or a line break does
-    not hide one. The definer is exempt for its own definition only; it calls
-    nothing.
+    An AST walk over every call, not a grep, with ``from ... import X as Y``
+    resolved, so an alias or a line break does not hide one. Three spellings
+    are watched, because routing by the shipped template can be written as the
+    default loader, or as the shipped text handed to the parser.
     """
     offenders = []
     for path in sorted(SRC.rglob("*.py")):
-        if path in (LOADER, DEFINER):
-            continue
-        offenders += [f"{path.relative_to(SRC)}:{line}" for line in _default_taxonomy_calls(path)]
+        for name, line in _reader_calls(path):
+            if path not in READERS[name]:
+                offenders.append(f"{path.relative_to(SRC)}:{line} {name}")
     assert offenders == [], (
-        "a module reads the shipped taxonomy instead of the library's active copy; "
-        f"read it through cratekit.core.active_taxonomy.load: {offenders}"
+        "a module reads a taxonomy other than the library's active copy; read it "
+        f"through cratekit.core.active_taxonomy.load: {offenders}"
     )
 
 
-def test_the_guard_sees_a_call_it_should_refuse(tmp_path):
-    """The walk above finds both spellings, so a green guard is not a blind one."""
+def test_the_guard_sees_every_spelling_it_should_refuse(tmp_path):
+    """The walk above finds each one, so a green guard is not a blind one."""
     probe = tmp_path / "probe.py"
     probe.write_text(
         "from cratekit.core import taxonomy\n"
         "from cratekit.core.taxonomy import default_taxonomy\n"
+        "from cratekit.core.taxonomy import default_taxonomy as shipped\n"
+        "from cratekit.core.taxonomy import load_taxonomy as parse\n"
         "a = taxonomy.default_taxonomy()\n"
-        "b = default_taxonomy()\n",
+        "b = default_taxonomy()\n"
+        "c = shipped()\n"
+        "d = parse(taxonomy.shipped_template_text('default'))\n",
         encoding="utf-8",
     )
-    assert _default_taxonomy_calls(probe) == [3, 4]
+    assert sorted(_reader_calls(probe)) == [
+        ("default_taxonomy", 5),
+        ("default_taxonomy", 6),
+        ("default_taxonomy", 7),
+        ("load_taxonomy", 8),
+        ("shipped_template_text", 8),
+    ]
 
 
 # ---------------------------------------------------------------------------

@@ -636,10 +636,10 @@ def test_the_registry_is_read_before_the_first_move_and_never_after(
     landed = _land(cfg, export, manifest)
 
     assert len(landed.labelled) == 1
-    # Once by this engine, before the batch folder exists. The read after it is
-    # ``place_files`` making its own splice, which is not this engine's, and
-    # there is no third: the label write is handed the first one.
-    assert seen == [False, True]
+    # Once, before the batch folder exists, and never again. ``place_files``
+    # used to make a read of its own after the moves; since R-685 it is handed
+    # the preflight's, beside the active taxonomy, and so is the label write.
+    assert seen == [False]
 
 
 def test_a_marked_lossy_file_with_no_title_tag_is_still_filed(

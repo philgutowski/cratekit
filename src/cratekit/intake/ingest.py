@@ -188,6 +188,7 @@ def place_files(
     date_added: str | None = None,
     lossy: bool = False,
     declared: taxonomy.Taxonomy | None = None,
+    registry: tree_registry.Registry | None = None,
 ) -> list[PlacedTrack]:
     """Splice each file into ``destination`` and record routing intents.
 
@@ -195,9 +196,10 @@ def place_files(
     for one: a hunt that picked the newest XML would pick a pending intake
     file, including a U22 stub listing.
 
-    ``declared`` is the library's active taxonomy when the caller already read
-    it to check what this writes, so the check and the write agree; with none
-    it is read here, from the library, never from the shipped template.
+    ``declared`` is the library's active taxonomy and ``registry`` the tree
+    registry, when the caller already read them to check what this writes, so
+    the check and the write agree; with none each is read here, the taxonomy
+    from the library and never from the shipped template.
     """
     if not export.is_file():
         raise refuse(
@@ -263,7 +265,9 @@ def place_files(
         )
 
     collection_xml.splice_tracks(content, xml_rows)
-    tree = rbxml.intake_tree(declared, tree_registry.read(cfg))
+    if registry is None:
+        registry = tree_registry.read(cfg)
+    tree = rbxml.intake_tree(declared, registry)
     playlist_error = rbxml.insert_intake_playlist(
         content,
         destination.stem,

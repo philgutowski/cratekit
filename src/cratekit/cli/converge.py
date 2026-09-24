@@ -189,14 +189,19 @@ def converge(ctx: "Context") -> Envelope:
         # library until the first cutover, without a rekordbox database existing
         # at all. A failure to open is a NOT COMPARED answer for each native
         # tree, never an absent one.
-        handle = None
+        #
+        # THE DECLARATION IS READ FIRST, and a refusal to read it is the same
+        # NOT COMPARED answer (R-685). Read after the open, a refusal escaped
+        # between the open and the close, so it held the database and gave a
+        # refusal in place of the one answer this verb exists to give.
+        handle = declared = None
         try:
+            declared = active_taxonomy.load(cfg)
             handle = rb_writer.open_db(cfg=cfg)
         except CratekitError as exc:
             for tree_id in native:
                 live[tree_id] = (NOT_COMPARED, exc.cause.message)
-        if handle is not None:
-            declared = active_taxonomy.load(cfg)
+        if handle is not None and declared is not None:
             try:
                 for tree_id in native:
                     live[tree_id] = _compare(

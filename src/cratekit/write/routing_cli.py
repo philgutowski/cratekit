@@ -820,7 +820,7 @@ def _decide(
 
 
 def plan_export(
-    cfg: config.Config, export: Path
+    cfg: config.Config, export: Path, *, declared: taxonomy.Taxonomy | None = None
 ) -> tuple[
     bytes,
     dict[tuple[str, str], list[str]],
@@ -854,7 +854,11 @@ def plan_export(
     energy sub, and :func:`_vox_subs` has made that sub first.
     """
     content = _read_export(export)
-    declared = active_taxonomy.load(cfg)
+    if declared is None:
+        # ONE READ PER VERB (R-685): the verb passes the declaration it
+        # checked the bridge with, so the plan, the write and the pending
+        # action are one declaration. A caller that has none reads it here.
+        declared = active_taxonomy.load(cfg)
     keys = _inbox_keys(content, declared, export)
     by_id = {
         track.track_id: rbxml.attributes(content, track)
@@ -920,6 +924,8 @@ def apply_export(
     ratings: dict[str, int],
     long_plan: LongPlan = LongPlan(),
     vox_created: tuple[str, ...] = (),
+    *,
+    declared: taxonomy.Taxonomy | None = None,
 ) -> tuple[Path | None, trees.RouteReport, int, int, str | None]:
     """Write the plan into a copy of the export, beside it, never in place.
 
@@ -952,7 +958,11 @@ def apply_export(
     system wrote it after the ratings. It is a direct child of the playlist
     root and no tree, so no registry answer governs it.
     """
-    declared = active_taxonomy.load(cfg)
+    if declared is None:
+        # ONE READ PER VERB (R-685): the verb passes the declaration it
+        # checked the bridge with, so the plan, the write and the pending
+        # action are one declaration. A caller that has none reads it here.
+        declared = active_taxonomy.load(cfg)
     tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
     buffer = bytearray(content)
     report = trees.apply_playlist_changes(plan, buffer, tree=tree)
@@ -1059,7 +1069,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         "writes the database",
     )
     content, plan, ratings, long_plan, items, warnings, gaps, vox_created = plan_export(
-        cfg, export
+        cfg, export, declared=declared
     )
     offered = _plan(items, kind="inbox-export")
     option = _apply_gate(ctx, offered)
@@ -1070,7 +1080,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             warnings=warnings,
         )
     destination, report, rated, lengthened, long_warning = apply_export(
-        cfg, export, content, plan, ratings, long_plan, vox_created
+        cfg, export, content, plan, ratings, long_plan, vox_created, declared=declared
     )
     # ONE CODE FOR EVERY SKIPPED WRITE, because the writer reports a missing
     # tree, a missing genre folder and a missing sub as sentences and the
@@ -1306,7 +1316,7 @@ def unplaced_keys(
 
 
 def plan_unplaced_export(
-    cfg: config.Config, export: Path
+    cfg: config.Config, export: Path, *, declared: taxonomy.Taxonomy | None = None
 ) -> tuple[
     bytes,
     dict[tuple[str, str], list[str]],
@@ -1325,7 +1335,11 @@ def plan_unplaced_export(
     separate vocal pass runs first.
     """
     content = _read_export(export)
-    declared = active_taxonomy.load(cfg)
+    if declared is None:
+        # ONE READ PER VERB (R-685): the verb passes the declaration it
+        # checked the bridge with, so the plan, the write and the pending
+        # action are one declaration. A caller that has none reads it here.
+        declared = active_taxonomy.load(cfg)
     tree_node = _routing_tree_node(content, declared, export)
     by_id = {
         track.track_id: rbxml.attributes(content, track)
@@ -1351,6 +1365,8 @@ def apply_unplaced_export(
     export: Path,
     content: bytes,
     plan: dict[tuple[str, str], list[str]],
+    *,
+    declared: taxonomy.Taxonomy | None = None,
 ) -> tuple[Path | None, trees.RouteReport]:
     """Write the plan into a copy of the export, beside it, never in place.
 
@@ -1366,7 +1382,11 @@ def apply_unplaced_export(
     NOTHING INSERTED IS NOTHING WRITTEN. A file identical to the export would
     still be a file somebody is told to import.
     """
-    declared = active_taxonomy.load(cfg)
+    if declared is None:
+        # ONE READ PER VERB (R-685): the verb passes the declaration it
+        # checked the bridge with, so the plan, the write and the pending
+        # action are one declaration. A caller that has none reads it here.
+        declared = active_taxonomy.load(cfg)
     tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
     buffer = bytearray(content)
     report = trees.apply_unplaced_changes(plan, buffer, tree=tree)
@@ -1416,8 +1436,8 @@ def route_unplaced_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         cfg, declared, export, instead="run route unplaced without --export, which "
         "reports what the database's tree does not hold",
     )
-    content, plan, items, warnings, gaps = plan_unplaced_export(cfg, export)
-    destination, report = apply_unplaced_export(cfg, export, content, plan)
+    content, plan, items, warnings, gaps = plan_unplaced_export(cfg, export, declared=declared)
+    destination, report = apply_unplaced_export(cfg, export, content, plan, declared=declared)
     warnings = [
         *warnings,
         *({"code": "route-write-skipped", "message": text} for text in report.warnings),
