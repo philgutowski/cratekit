@@ -62,6 +62,9 @@ OTHER_FOLDER = "Quiet? Corner"
 CATALOG_DISPLAY = "Catalogued Sources"
 ADOPTED_ROOT = "root-row-7788"
 
+DECLARED = taxonomy.default_taxonomy()
+
+
 
 def _esc(value: str) -> str:
     return rbxml.xml_escape_attr(value)
@@ -238,12 +241,12 @@ def test_the_default_tree_is_governed_so_a_cutover_refuses_the_sweep():
         )
     )
     with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
-        trees.add_vox_playlists(document, registry=native)
+        trees.add_vox_playlists(document, DECLARED, registry=native)
     assert excinfo.value.tree_id == declared.tree.id
 
     # And the same registry with the tree still on the bridge lets it through,
     # or the assertion above would also hold for a writer that refused always.
-    out, report = trees.add_vox_playlists(document, registry=tree_registry.EMPTY)
+    out, report = trees.add_vox_playlists(document, DECLARED, registry=tree_registry.EMPTY)
     assert report.modified == (FOLDER_DISPLAY,)
     assert out != document
 
@@ -256,7 +259,7 @@ def test_a_sweep_naming_neither_a_registry_nor_a_tree_refuses_to_guess():
     because they had the same default and would regress independently.
     """
     with pytest.raises(ValueError, match="registry"):
-        trees.add_vox_playlists(_tree_doc())
+        trees.add_vox_playlists(_tree_doc(), DECLARED)
 
 
 def test_a_catalog_import_naming_neither_a_registry_nor_a_tree_refuses(tmp_path):
@@ -265,7 +268,7 @@ def test_a_catalog_import_naming_neither_a_registry_nor_a_tree_refuses(tmp_path)
     source.write_bytes(_fresh_xml())
     with pytest.raises(ValueError, match="registry"):
         trees.insert_record_labels_tree(
-            source, "Kompakt", _buckets(2025), tmp_path / "out.xml"
+            source, "Kompakt", _buckets(2025), tmp_path / "out.xml", declared=DECLARED
         )
     assert not (tmp_path / "out.xml").exists()
 
@@ -317,7 +320,7 @@ def test_the_vocal_sweep_writes_the_direct_child_not_a_nested_namesake():
             "      </NODE>",
         ],
     )
-    out, report = trees.add_vox_playlists(document, tree=_ungoverned())
+    out, report = trees.add_vox_playlists(document, DECLARED, tree=_ungoverned())
     vox = taxonomy.default_taxonomy().sub_class(trees.VOX_SUB_CLASS).display
 
     # Both DIRECT children gain one, which is the sweep doing its job. What must
@@ -362,7 +365,7 @@ def test_the_vocal_sweep_carries_out_a_warning_instead_of_dropping_it():
         ],
     )
     before = bytes(document)
-    out, report = trees.add_vox_playlists(document, tree=_ungoverned())
+    out, report = trees.add_vox_playlists(document, DECLARED, tree=_ungoverned())
     assert report.modified == ()
     assert len(report.warnings) == 1
     assert "with vox" in report.warnings[0]
@@ -377,7 +380,7 @@ def test_two_folders_of_one_name_are_refused_rather_than_half_served():
     """
     raw = _tree_doc(folders=(FOLDER_DISPLAY, FOLDER_DISPLAY))
     with pytest.raises(trees.DuplicateFolders) as excinfo:
-        trees.add_vox_playlists(raw, tree=_ungoverned())
+        trees.add_vox_playlists(raw, DECLARED, tree=_ungoverned())
     assert FOLDER_DISPLAY in str(excinfo.value)
 
 
@@ -395,14 +398,14 @@ def test_a_playlist_wearing_the_trees_name_refuses_rather_than_walking_nothing()
         ],
     )
     with pytest.raises(trees.TreeUnreachable) as excinfo:
-        trees.add_vox_playlists(document, tree=_ungoverned())
+        trees.add_vox_playlists(document, DECLARED, tree=_ungoverned())
     assert "playlist" in str(excinfo.value)
 
 
 def test_a_sweep_over_a_document_with_no_such_tree_refuses(tmp_path):
     """The other half. An absent tree is a mistake, not a quiet no-op."""
     with pytest.raises(trees.TreeUnreachable):
-        trees.add_vox_playlists(_fresh_xml(), tree=_ungoverned())
+        trees.add_vox_playlists(_fresh_xml(), DECLARED, tree=_ungoverned())
 
 
 def test_the_vocal_sweep_touches_only_the_folders_that_lack_the_playlist():
@@ -415,13 +418,13 @@ def test_the_vocal_sweep_touches_only_the_folders_that_lack_the_playlist():
     declared = taxonomy.default_taxonomy()
     vox = declared.sub_class(trees.VOX_SUB_CLASS).display
 
-    once, modified = trees.add_vox_playlists(_tree_doc(), tree=_ungoverned())
+    once, modified = trees.add_vox_playlists(_tree_doc(), DECLARED, tree=_ungoverned())
     assert modified == [FOLDER_DISPLAY]
     assert once.count(rbxml.name_marker(vox)) == 1
 
     grown = _tree_doc(folders=(FOLDER_DISPLAY, OTHER_FOLDER))
-    seeded, _ = trees.add_vox_playlists(grown, tree=_ungoverned())
-    again, modified_again = trees.add_vox_playlists(seeded, tree=_ungoverned())
+    seeded, _ = trees.add_vox_playlists(grown, DECLARED, tree=_ungoverned())
+    again, modified_again = trees.add_vox_playlists(seeded, DECLARED, tree=_ungoverned())
     assert modified_again == []
     assert again == seeded
     assert again.count(rbxml.name_marker(vox)) == 2
@@ -487,11 +490,11 @@ def test_a_catalog_rerun_refreshes_the_folder_rather_than_duplicating_it(tmp_pat
     source.write_bytes(_fresh_xml())
     first = tmp_path / "one.xml"
     trees.insert_record_labels_tree(
-        source, "Kompakt", _buckets(2025), first, tree=rbxml.Tree(display=CATALOG_DISPLAY)
+        source, "Kompakt", _buckets(2025), first, declared=DECLARED, tree=rbxml.Tree(display=CATALOG_DISPLAY)
     )
     second = tmp_path / "two.xml"
     trees.insert_record_labels_tree(
-        first, "Kompakt", _buckets(2025, 2024), second, tree=rbxml.Tree(display=CATALOG_DISPLAY)
+        first, "Kompakt", _buckets(2025, 2024), second, declared=DECLARED, tree=rbxml.Tree(display=CATALOG_DISPLAY)
     )
 
     out = second.read_bytes()
@@ -530,7 +533,7 @@ def test_a_catalog_write_that_cannot_place_its_folder_writes_no_document(tmp_pat
             source,
             "Kompakt",
             _buckets(2025),
-            tmp_path / "out.xml",
+            tmp_path / "out.xml", declared=DECLARED,
             tree=rbxml.Tree(display=CATALOG_DISPLAY),
         )
     assert not (tmp_path / "out.xml").exists()
@@ -548,7 +551,7 @@ def test_the_catalog_check_refuses_what_the_writer_would_and_writes_nothing():
     with pytest.raises(CratekitError) as excinfo:
         trees.check_record_labels_tree(
             b"<DJ_PLAYLISTS></DJ_PLAYLISTS>\r\n",
-            {"Kompakt": [2025]},
+            {"Kompakt": [2025]}, declared=DECLARED,
             tree=rbxml.Tree(display=CATALOG_DISPLAY),
         )
     assert "Kompakt" in excinfo.value.cause.message
@@ -563,7 +566,7 @@ def test_the_catalog_check_asks_nothing_when_there_is_nothing_to_write():
 def test_the_catalog_check_passes_a_document_the_writer_can_write_and_leaves_it_alone():
     raw = _fresh_xml()
     trees.check_record_labels_tree(
-        raw, {"Kompakt": [2025, 2024], "Ostgut Ton": [2025]}, registry=tree_registry.EMPTY
+        raw, {"Kompakt": [2025, 2024], "Ostgut Ton": [2025]}, declared=DECLARED, registry=tree_registry.EMPTY
     )
     assert raw == _fresh_xml()
 
@@ -574,7 +577,7 @@ def test_the_catalog_check_refuses_a_held_year_playlist_that_appears_twice(tmp_p
     once = tmp_path / "once.xml"
     once.write_bytes(_fresh_xml())
     trees.insert_record_labels_tree(
-        once, "Kompakt", _buckets(2025), once, registry=tree_registry.EMPTY
+        once, "Kompakt", _buckets(2025), once, declared=DECLARED, registry=tree_registry.EMPTY
     )
     body = once.read_bytes()
     start = body.index(b'<NODE Name="Kompakt 2025"')
@@ -583,10 +586,10 @@ def test_the_catalog_check_refuses_a_held_year_playlist_that_appears_twice(tmp_p
     end = body.index(close, start) + len(close)
     doubled = body.replace(body[start:end], body[start:end] * 2, 1)
 
-    trees.check_record_labels_tree(doubled, {"Kompakt": [2024]}, registry=tree_registry.EMPTY)
+    trees.check_record_labels_tree(doubled, {"Kompakt": [2024]}, declared=DECLARED, registry=tree_registry.EMPTY)
     with pytest.raises(CratekitError):
         trees.check_record_labels_tree(
-            doubled, {"Kompakt": [2025]}, registry=tree_registry.EMPTY
+            doubled, {"Kompakt": [2025]}, declared=DECLARED, registry=tree_registry.EMPTY
         )
 
 
@@ -596,7 +599,7 @@ def test_several_sources_are_one_write_and_a_new_tree_reads_a_to_z(tmp_path):
     out = tmp_path / "out.xml"
     catalog = {"Ostgut Ton": _buckets(2025), "Kompakt": _buckets(2025, 2024)}
 
-    trees.insert_record_labels_trees(source, catalog, out, registry=tree_registry.EMPTY)
+    trees.insert_record_labels_trees(source, catalog, out, declared=DECLARED, registry=tree_registry.EMPTY)
 
     body = out.read_bytes()
     assert _no_bare_lf(body)
@@ -605,10 +608,10 @@ def test_several_sources_are_one_write_and_a_new_tree_reads_a_to_z(tmp_path):
     # The same bytes the one source writer gives, written last name first.
     step = tmp_path / "step.xml"
     trees.insert_record_labels_tree(
-        source, "Ostgut Ton", catalog["Ostgut Ton"], step, registry=tree_registry.EMPTY
+        source, "Ostgut Ton", catalog["Ostgut Ton"], step, declared=DECLARED, registry=tree_registry.EMPTY
     )
     trees.insert_record_labels_tree(
-        step, "Kompakt", catalog["Kompakt"], step, registry=tree_registry.EMPTY
+        step, "Kompakt", catalog["Kompakt"], step, declared=DECLARED, registry=tree_registry.EMPTY
     )
     assert step.read_bytes() == body
 
@@ -619,7 +622,7 @@ def test_one_source_the_writer_refuses_writes_none_of_them(tmp_path):
     once = tmp_path / "once.xml"
     once.write_bytes(_fresh_xml())
     trees.insert_record_labels_tree(
-        once, "Kompakt", _buckets(2025), once, registry=tree_registry.EMPTY
+        once, "Kompakt", _buckets(2025), once, declared=DECLARED, registry=tree_registry.EMPTY
     )
     body = once.read_bytes()
     opened = b'<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">'
@@ -631,7 +634,7 @@ def test_one_source_the_writer_refuses_writes_none_of_them(tmp_path):
         trees.insert_record_labels_trees(
             once,
             {"Ostgut Ton": _buckets(2025), "Kompakt": {2025: [{"track_ids": [7]}]}},
-            out,
+            out, declared=DECLARED,
             registry=tree_registry.EMPTY,
         )
 
@@ -645,7 +648,7 @@ def test_the_catalog_check_reaches_a_held_playlist_the_writer_cannot_extend(tmp_
     once = tmp_path / "once.xml"
     once.write_bytes(_fresh_xml())
     trees.insert_record_labels_tree(
-        once, "Kompakt", _buckets(2025), once, registry=tree_registry.EMPTY
+        once, "Kompakt", _buckets(2025), once, declared=DECLARED, registry=tree_registry.EMPTY
     )
     body = once.read_bytes()
     opened = b'<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">'
@@ -653,11 +656,11 @@ def test_the_catalog_check_reaches_a_held_playlist_the_writer_cannot_extend(tmp_
     broken = body.replace(opened, b'<NODE Name="Kompakt 2025" Type="1" KeyType="0">')
 
     with pytest.raises(CratekitError) as excinfo:
-        trees.check_record_labels_tree(broken, {"Kompakt": [2025]}, registry=tree_registry.EMPTY)
+        trees.check_record_labels_tree(broken, {"Kompakt": [2025]}, declared=DECLARED, registry=tree_registry.EMPTY)
 
     assert "Entries" in excinfo.value.cause.message
     # And the trial id is left in nothing: the check writes to a copy only.
-    trees.check_record_labels_tree(body, {"Kompakt": [2025]}, registry=tree_registry.EMPTY)
+    trees.check_record_labels_tree(body, {"Kompakt": [2025]}, declared=DECLARED, registry=tree_registry.EMPTY)
     assert b'Key="-1"' not in body
 
 

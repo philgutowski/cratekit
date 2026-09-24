@@ -6258,7 +6258,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # warning names before it counts the rest. It is a length and is never an
     # exit status. Measured by reading the unit's own diff of that file, and by
     # this pair moving by one and not by more.
-    assert (len(literal_holders), len(literal_both)) == (103, 24), (
+    # Re-pinned on the residual finding "Every verb reads the shipped taxonomy
+    # template, and the active copy on the volume is written by setup and read
+    # by doctor alone", 2026-09-24: holders move 103 to 104, and the
+    # also-holds-an-integer half is UNCHANGED at 24. ONE module joined and none
+    # left, and it is a new file. core/active_taxonomy.py names
+    # library-volume-unmounted and config-unusable through cause.refuse, the
+    # refusals of the one loader for a library's active taxonomy, and holds no
+    # integer at all. Measured by this pair moving by one on the holders side
+    # and by nothing on the other.
+    assert (len(literal_holders), len(literal_both)) == (104, 24), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

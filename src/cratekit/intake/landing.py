@@ -58,7 +58,7 @@ from pathlib import Path
 from typing import Iterator
 
 from cratekit.acquire import listdoc, match, match_cli
-from cratekit.core import config, jobs, tags, taxonomy, tree_registry
+from cratekit.core import active_taxonomy, config, jobs, tags, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.naming import AUDIO_EXTS, NameTemplate
 from cratekit.intake import collection_xml, ingest
@@ -119,6 +119,19 @@ class Labelled:
     year: int
     playlist: str
     track_ids: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Checked:
+    """What :func:`preflight` read, handed on so the write is asked of the same read.
+
+    The registry, and the library's active taxonomy (R-685): the intake tree,
+    the catalog tree and every file's placement were checked against these two,
+    and a second read after the moves could answer differently.
+    """
+
+    registry: tree_registry.Registry
+    declared: taxonomy.Taxonomy
 
 
 @dataclass(frozen=True, slots=True)
@@ -387,7 +400,7 @@ def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:
 def _check_export(
     export: Path,
     destination: Path,
-    registry: tree_registry.Registry,
+    checked: Checked,
     label_rows: tuple[listdoc.ManifestRow, ...] = (),
 ) -> None:
     """Every refusal ``place_files`` can make about the export, made on a copy.
@@ -406,7 +419,8 @@ def _check_export(
         )
     trial = bytearray(export.read_bytes())
     collection_xml.splice_tracks(trial, [])
-    tree = rbxml.intake_tree(taxonomy.default_taxonomy(), registry)
+    registry = checked.registry
+    tree = rbxml.intake_tree(checked.declared, registry)
     error = rbxml.insert_intake_playlist(trial, destination.stem, [], tree=tree)
     if error:
         raise refuse(
@@ -430,7 +444,9 @@ def _check_export(
         if name and year is not None:
             catalog.setdefault(name, set()).add(year)
     try:
-        trees.check_record_labels_tree(bytes(trial), catalog, registry=registry)
+        trees.check_record_labels_tree(
+            bytes(trial), catalog, declared=checked.declared, registry=registry
+        )
     except CratekitError as exc:
         said = (
             f"the label tree could not be written into {export.name} "
@@ -473,7 +489,7 @@ def preflight(
     export: Path,
     destination: Path,
     label_rows: tuple[listdoc.ManifestRow, ...] = (),
-) -> tree_registry.Registry:
+) -> Checked:
     """Every check :func:`apply` makes before its first move, in its order.
 
     ONE PLACE HOLDS THE ORDER, because a caller asks these before its gate
@@ -482,9 +498,9 @@ def preflight(
     library is asked before the export, so an unmounted volume holding both is
     named as the volume and not as a missing export.
 
-    Reads and refuses, and moves nothing. The registry it read is returned for
-    :func:`apply` to hand to the label writer, so the check and the write are
-    asked of one read.
+    Reads and refuses, and moves nothing. The registry and the active taxonomy
+    it read are returned for :func:`apply` to hand to the writers, so the check
+    and the write are asked of one read.
     """
     _check_batch(plan.batch)
     _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))
@@ -499,9 +515,9 @@ def preflight(
     # READ ONCE, BEFORE THE FIRST MOVE, and handed to both the check and the
     # write. A registry that cannot be read refuses here, with nothing moved,
     # and cannot refuse after the moves because nothing reads it again.
-    registry = tree_registry.read(cfg)
-    _check_export(export, destination, registry, label_rows)
-    return registry
+    checked = Checked(registry=tree_registry.read(cfg), declared=active_taxonomy.load(cfg))
+    _check_export(export, destination, checked, label_rows)
+    return checked
 
 
 def _label_of(row: listdoc.ManifestRow) -> str:
@@ -698,7 +714,7 @@ def _file_labels(
 def _label(
     cfg: config.Config,
     destination: Path,
-    registry: tree_registry.Registry,
+    checked: Checked,
     label_rows: tuple[listdoc.ManifestRow, ...],
     placed: list[PlacedTrack],
     batch_dir: Path,
@@ -748,7 +764,8 @@ def _label(
                 for label, by_year in years.items()
             },
             destination,
-            registry=registry,
+            declared=checked.declared,
+            registry=checked.registry,
         )
     except (CratekitError, OSError) as exc:
         said = f"the label tree could not be written ({exc})"
@@ -772,13 +789,13 @@ def _label(
     return labelled, unlabelled
 
 
-def _unplaceable(path: Path) -> Refused | None:
+def _unplaceable(path: Path, declared: taxonomy.Taxonomy) -> Refused | None:
     """A file ``place_files`` would refuse, asked of its tags before it moves."""
     meta = {
         "genre": tags.read_genre_from_file(path) or "",
         "energy": tags.read_energy_from_file(path),
     }
-    if ingest.decide_placement(meta) is not None:
+    if ingest.decide_placement(meta, declared) is not None:
         return None
     return Refused(
         path=path,
@@ -873,7 +890,7 @@ def apply(
                 detail={"manifest": str(manifest)},
             )
         label_rows = read.rows
-    registry = preflight(
+    checked = preflight(
         plan, cfg=cfg, export=export, destination=destination, label_rows=label_rows
     )
     target = target_dir(cfg, plan.batch)
@@ -881,7 +898,7 @@ def apply(
     refused: list[Refused] = []
     movable: list[Path] = []
     for item in plan.items:
-        blocked = _unplaceable(item) or _occupied(item, target / item.name)
+        blocked = _unplaceable(item, checked.declared) or _occupied(item, target / item.name)
         if blocked is not None:
             refused.append(blocked)
         else:
@@ -943,6 +960,7 @@ def apply(
             cfg=cfg,
             export=export,
             destination=destination,
+            declared=checked.declared,
         )
     except Exception as exc:
         # ``place_files`` writes the intake file before it records the routing
@@ -959,7 +977,7 @@ def apply(
             inner=inner,
         ) from exc
 
-    labelled, unlabelled = _label(cfg, destination, registry, label_rows, placed, target)
+    labelled, unlabelled = _label(cfg, destination, checked, label_rows, placed, target)
     return Landed(
         destination=destination,
         placed=tuple(placed),

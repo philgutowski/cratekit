@@ -65,6 +65,7 @@ import pytest
 from cratekit import cli
 from cratekit.cli import doctor, output, registry
 from cratekit.core import (
+    active_taxonomy,
     config,
     jobs,
     preflight,
@@ -77,6 +78,7 @@ from cratekit.core import (
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import rebuild, routing_cli, routing_pass, trees
+from tests.test_active_taxonomy import shipped_without, write_active
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import (
     RECORDED_APP_VERSION,
@@ -388,8 +390,14 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
         assert cfg is frozen
         return 7.5
 
+    def declared(cfg):
+        # R-685: the taxonomy too, from the library that configuration names.
+        assert cfg is frozen
+        return taxonomy.default_taxonomy()
+
     monkeypatch.setattr(rebuild, "rebuild_governed_tree", spy)
     monkeypatch.setattr(metadata_cli, "load_vocal_threshold", loader)
+    monkeypatch.setattr(active_taxonomy, "load", declared)
     monkeypatch.setattr(rebuild, "left_behind", left_behind)
     monkeypatch.setattr(rebuild, "left_behind_record", lambda entry: {"kept": entry})
     monkeypatch.setattr(routing_cli.artifacts, "produced", produced)
@@ -1234,7 +1242,8 @@ def no_vocal_dimension(monkeypatch):
         shipped,
         sub_classes=tuple(entry for entry in shipped.sub_classes if not entry.additive),
     )
-    monkeypatch.setattr(taxonomy, "default_taxonomy", lambda: narrowed)
+    # THROUGH THE ONE LOADER, which is what every verb reads (R-685).
+    monkeypatch.setattr(active_taxonomy, "load", lambda cfg: narrowed)
 
 
 def test_a_confirmed_inbox_over_the_shipped_taxonomy_says_the_vocal_dimension_was_not_compared(
@@ -1361,9 +1370,9 @@ def test_the_gap_rule_is_the_derivations_own():
     truth = [rebuild.Truth(location="/x/a.flac", genre=None, energy=None, voxlevel=None)]
     _placements, gaps = rebuild.derive_from_taxonomy(shipped, truth, vocal_threshold=None)
     assert gaps == (rebuild.VOCAL_DIMENSION,)
-    assert rebuild.governed_not_compared(None) == gaps
+    assert rebuild.governed_not_compared(None, shipped) == gaps
     assert rebuild.derive_from_taxonomy(shipped, truth, vocal_threshold=0.5)[1] == ()
-    assert rebuild.governed_not_compared(0.5) == ()
+    assert rebuild.governed_not_compared(0.5, shipped) == ()
 
 
 def test_the_warning_code_is_the_locked_spelling():
@@ -2838,21 +2847,49 @@ def test_the_offered_plan_names_each_long_track_before_anything_is_written(
     assert not _routed(export).exists()
 
 
-def test_a_template_declaring_no_long_track_playlist_builds_none(
-    configured, tagged, tmp_path, monkeypatch
-):
-    import dataclasses
+def test_a_template_declaring_no_long_track_playlist_builds_none(configured, tagged, tmp_path):
+    """The library's active copy says so, on the volume where setup put it.
 
-    shipped = taxonomy.default_taxonomy()
-    monkeypatch.setattr(
-        taxonomy, "default_taxonomy", lambda: dataclasses.replace(shipped, long_tracks=None)
-    )
+    The tenth sitting's shape exactly (R-685): an active copy made before the
+    shipped template gained ``[long_tracks]``. The shipped template still
+    declares the playlist, so a verb reading that instead builds one.
+    """
+    assert taxonomy.default_taxonomy().long_tracks is not None
+    write_active(configured, shipped_without("long_tracks"))
     export = _long_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert envelope["data"]["totals"]["long_added"] == 0
     assert _long_members(_routed(export).read_bytes()) is None
     assert all(item["long_track"] == "" for item in envelope["data"]["items"])
+
+
+def test_an_edit_to_the_active_copy_is_the_playlist_the_routing_plan_names(
+    configured, tagged, tmp_path
+):
+    """An EDIT, not only a removal: the display a person gave the long track
+    playlist in their own declaration is the one the plan offers and the file
+    holds, and the shipped name appears nowhere (R-685)."""
+    from cratekit.write import routing_cli
+
+    shipped = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
+    line = f'display = "{LONG_PLAYLIST}"'
+    assert shipped.count(line) == 1
+    write_active(configured, shipped.replace(line, 'display = "Long Sets By Hand"'))
+    export = _long_export(configured, tmp_path / "exports")
+
+    planned = routing_cli.plan_export(configured, export)
+    long_plan, items = planned[3], planned[4]
+    assert long_plan.keys
+    assert {item["long_track"] for item in items} - {""} == {"Long Sets By Hand"}
+
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    offered = {item["long_track"] for item in envelope["data"]["items"]} - {""}
+    assert offered == {"Long Sets By Hand"}
+    written = _routed(export).read_bytes()
+    assert _root_child(written, "Long Sets By Hand") is not None
+    assert _long_members(written) is None
 
 
 def test_the_add_only_writer_counts_each_new_track_once():

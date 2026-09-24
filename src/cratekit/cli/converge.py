@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
-from cratekit.core import config, convergence, rb_writer, taxonomy, tree_registry
+from cratekit.core import active_taxonomy, config, convergence, rb_writer, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import metadata_cli, rebuild, routing_pass
@@ -196,7 +196,7 @@ def converge(ctx: "Context") -> Envelope:
             for tree_id in native:
                 live[tree_id] = (NOT_COMPARED, exc.cause.message)
         if handle is not None:
-            declared = taxonomy.default_taxonomy()
+            declared = active_taxonomy.load(cfg)
             try:
                 for tree_id in native:
                     live[tree_id] = _compare(

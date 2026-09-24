@@ -112,7 +112,7 @@ from urllib.parse import quote_plus
 from cratekit.core import routing
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.taxonomy import Taxonomy, default_taxonomy
+from cratekit.core.taxonomy import Taxonomy
 from cratekit.tagging.tag import FetchImage, Searcher, SearchHit
 
 log = logging.getLogger(__name__)
@@ -880,7 +880,7 @@ def catalogue_searcher(
     return search
 
 
-def for_taxonomy(declared: Taxonomy | None = None) -> Searcher:
+def for_taxonomy(declared: Taxonomy) -> Searcher:
     """The searcher a worker should use, looked up rather than constructed.
 
     ``ItemHandler`` is a fixed callable, so a worker that built its own searcher
@@ -892,8 +892,12 @@ def for_taxonomy(declared: Taxonomy | None = None) -> Searcher:
     THE SUBSTITUTION IS IN PROCESS ONLY. The child that ``crate job resume``
     spawns is a fresh process and inherits nothing patched here, so a detached
     run always gets the live searcher. R-226, recorded rather than worked around.
+
+    ``declared`` is required and is the library's active taxonomy (R-685); a
+    shipped default reached for here tagged by a declaration the library does
+    not hold.
     """
-    return catalogue_searcher(default_taxonomy() if declared is None else declared)
+    return catalogue_searcher(declared)
 
 
 def for_images() -> FetchImage:
