@@ -838,3 +838,276 @@ def _run_child(script: Path, *args: str) -> subprocess.CompletedProcess:
     )
     assert done.returncode == 0, done.stderr
     return done
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The seams: every client build site asks the gate and attaches it
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+from cratekit.acquire import adapter as adapter_module  # noqa: E402 - the seam section
+from cratekit.acquire import provider_session, vendored  # noqa: E402
+from cratekit.acquire.adapter import (  # noqa: E402
+    AdapterSettings,
+    Offer,
+    TrackOutcome,
+    TrackRequest,
+)
+from cratekit.core import secrets  # noqa: E402
+from cratekit.label import catalogue, tidal_catalogue  # noqa: E402
+from cratekit.modules.outbound import account, tidal_account  # noqa: E402
+
+STORED = {
+    "token_type": "Bearer",
+    "access_token": "FAKE-value-1",
+    "refresh_token": "FAKE-value-2",
+    "expiry_time": 946684800.0,
+}
+
+
+class _LoginClient:
+    """A provider client whose login goes out through its transport, as the
+    real one's does, so the wrap is proven to cover the login itself."""
+
+    def __init__(self, transport: Transport | None = None) -> None:
+        self.request_session = transport or Transport()
+        self.token_type = None
+        self.access_token = None
+        self.refresh_token = None
+        self.expiry_time = None
+
+    def load_oauth_session(self, token_type, access_token, refresh_token=None, expiry_time=None, is_pkce=False):
+        self.request_session.request("POST", "https://auth.invalid/token")
+        self.token_type, self.access_token = token_type, access_token
+        self.refresh_token, self.expiry_time = refresh_token, expiry_time
+        return True
+
+
+def _record_session() -> None:
+    secrets.set_json(secrets.Credential.PROVIDER_SESSION, dict(STORED))
+
+
+def test_client_session_attaches_the_gate_before_the_login_goes_out(paths, clock, monkeypatch):
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    gate = make_gate(paths, clock)
+
+    opened = provider_session.client_session(gate=gate)
+
+    assert opened is client
+    assert client.request_session._cratekit_gate is gate
+    assert gate.calls == 1, "the login was not the first paced call"
+    assert client.request_session.calls == [("POST", "https://auth.invalid/token")]
+
+
+def test_client_session_refuses_inside_the_cooldown_before_building_a_client(
+    paths, clock, monkeypatch
+):
+    built: list[int] = []
+
+    def factory():
+        built.append(1)
+        return _LoginClient()
+
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", factory)
+    _record_session()
+    gate = make_gate(paths, clock)
+    trip(gate)
+
+    with pytest.raises(jobs.Parked) as caught:
+        provider_session.client_session(gate=gate)
+
+    assert caught.value.cause.reason == COOLDOWN
+    assert built == [], "a client was built inside the cooldown"
+
+
+def test_client_session_with_no_gate_still_paces_at_the_defaults(clock, monkeypatch):
+    """A caller that hands over nothing gets a gate, never a way past one."""
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+
+    provider_session.client_session()
+
+    attached = client.request_session._cratekit_gate
+    assert attached.settings == GateSettings()
+    assert attached.path == config.state_path(provider_gate.STATE_KEY)
+
+
+def test_the_catalogue_opener_paces_with_the_frozen_configuration(tmp_path, monkeypatch):
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    cfg = config.from_dict(_config_data(tmp_path, provider={"min_interval_s": 3.0, "cooldown_s": 60}))
+
+    tidal_catalogue.open_catalogue(cfg)
+
+    assert client.request_session._cratekit_gate.settings == GateSettings(3.0, 60.0)
+
+
+def test_the_account_opener_paces_with_the_frozen_configuration(tmp_path, monkeypatch):
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    cfg = config.from_dict(_config_data(tmp_path, provider={"min_interval_s": 3.0, "cooldown_s": 60}))
+
+    tidal_account.open_account(cfg)
+
+    assert client.request_session._cratekit_gate.settings == GateSettings(3.0, 60.0)
+
+
+def test_catalogue_resolve_hands_the_configuration_to_the_opener(tmp_path, monkeypatch):
+    """``resolve`` used to discard its configuration; the gate needs it."""
+    handed: list[Any] = []
+    monkeypatch.setattr(tidal_catalogue, "open_catalogue", lambda cfg=None: handed.append(cfg))
+    _record_session()
+    cfg = config.from_dict(_config_data(tmp_path))
+
+    catalogue.resolve(cfg)
+
+    assert handed == [cfg]
+
+
+def test_account_resolve_hands_the_configuration_to_the_opener(tmp_path, monkeypatch):
+    handed: list[Any] = []
+    monkeypatch.setattr(tidal_account, "open_account", lambda cfg=None: handed.append(cfg) or object())
+    _record_session()
+    cfg = config.from_dict(_config_data(tmp_path))
+
+    account.resolve(cfg)
+
+    assert handed == [cfg]
+
+
+def test_adapter_settings_carry_the_gate_settings_off_the_configuration(tmp_path):
+    cfg = config.from_dict(_config_data(tmp_path, provider={"min_interval_s": 0.25, "cooldown_s": 3600}))
+
+    settings = AdapterSettings.from_config(cfg)
+
+    assert settings.gate == GateSettings(min_interval_s=0.25, cooldown_s=3600.0)
+
+
+class _ToolSession:
+    """The vendored tool's session with a real transport shape."""
+
+    def __init__(self, transport: Transport | None = None) -> None:
+        self.request_session = transport or Transport()
+
+    def track(self, key: str) -> Any:
+        self.request_session.request("GET", f"https://api.invalid/tracks/{key}")
+        return SimpleNamespace(audio_quality="LOSSLESS")
+
+
+def _vendored(tmp_path: Path, paths, clock, **kwargs: Any) -> vendored._VendoredSource:
+    staging = tmp_path / "staging"
+    staging.mkdir(exist_ok=True)
+    settings = AdapterSettings(download_staging=staging, gate=GateSettings(min_interval_s=1.0))
+    source = vendored._VendoredSource(settings, tmp_path / "token.json", **kwargs)
+    # The gate is built from the settings; the clock is swapped so the test
+    # drives its schedule, the paths so it shares nothing with another test.
+    source._gate = make_gate(paths, clock)
+    return source
+
+
+def test_the_vendored_adapter_attaches_the_gate_to_an_injected_session(tmp_path, paths, clock):
+    session = _ToolSession()
+    source = _vendored(tmp_path, paths, clock, session=session)
+
+    source.authenticate()
+    source.offer(TrackRequest(key="x"))
+    source.offer(TrackRequest(key="y"))
+
+    assert session.request_session._cratekit_gate is source._gate
+    assert source._gate.calls == 2
+    assert clock.slept == [1.0]
+
+
+def test_the_vendored_adapter_refuses_inside_the_cooldown_before_touching_the_tool(
+    tmp_path, paths, clock
+):
+    session = _ToolSession()
+    source = _vendored(tmp_path, paths, clock, session=session)
+    trip(source._gate)
+
+    with pytest.raises(jobs.Parked) as caught:
+        source.authenticate()
+
+    assert caught.value.cause.reason == COOLDOWN
+    assert session.request_session.calls == []
+
+
+def test_a_trip_the_tool_swallowed_during_a_download_comes_out_of_fetch_as_the_park(
+    tmp_path, paths, clock
+):
+    """The wrapped tool answers "no file" over any exception, the trip included.
+    ``fetch`` asks the gate again after the tool returns, so the park reaches
+    the worker and the track goes back to pending rather than failing."""
+    session = _ToolSession()
+    source = _vendored(tmp_path, paths, clock, session=session)
+    source.authenticate()
+    gate = source._gate
+
+    class SwallowingDownload:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def item(self, **_kwargs: Any) -> tuple[bool, str]:
+            try:
+                trip(gate)
+            except jobs.Parked:
+                pass  # what the tool does with every exception
+            return False, ""
+
+    source._downloader = SwallowingDownload
+    source._tidal = object()
+
+    with pytest.raises(jobs.Parked) as caught:
+        source.fetch(TrackRequest(key="x"), tmp_path / "staging")
+
+    assert caught.value.cause.reason == COOLDOWN
+
+
+class _TrippingSource:
+    """A track source whose lookup or fetch raises the gate's park."""
+
+    def __init__(self, parked: CratekitError, *, at: str) -> None:
+        self.parked = parked
+        self.at = at
+
+    def authenticate(self) -> None:
+        pass
+
+    def offer(self, request: TrackRequest) -> Offer:
+        if self.at == "offer":
+            raise self.parked
+        return Offer(lossless=True, detail="LOSSLESS")
+
+    def fetch(self, request: TrackRequest, destination: Path) -> Path:
+        raise self.parked
+
+
+@pytest.mark.parametrize("at", ["offer", "fetch"])
+def test_acquire_one_lets_the_park_through_rather_than_failing_the_track(
+    tmp_path, paths, clock, at
+):
+    """Both broad catches in ``acquire_one`` turn an exception into one
+    unavailable track; the park is the one exception that must not be."""
+    parked = trip(make_gate(paths, clock))
+    settings = AdapterSettings(download_staging=tmp_path / "staging")
+
+    with pytest.raises(jobs.Parked) as caught:
+        adapter_module.acquire_one(_TrippingSource(parked, at=at), TrackRequest(key="x"), settings)
+
+    assert caught.value is parked
+
+
+def test_acquire_one_still_softens_an_ordinary_failure(tmp_path):
+    """The pass through is for the park alone: a dead track is still one
+    unavailable track and never the run."""
+    settings = AdapterSettings(download_staging=tmp_path / "staging")
+    source = _TrippingSource(RuntimeError("the provider had nothing"), at="offer")  # type: ignore[arg-type]
+
+    result = adapter_module.acquire_one(source, TrackRequest(key="x"), settings)
+
+    assert result.outcome is not TrackOutcome.ACQUIRED
