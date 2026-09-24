@@ -130,14 +130,21 @@ track whose file is not on this machine is a warning and is not placed. Ratings
 are not set here; `route inbox --export` rates the intake.
 
 The run ends ok and owes no import, because the file is a review rather than
-something to import, and a warning says so. Every placement in it is a playlist
-nested inside the routing tree, and
-rekordbox cannot land one from an xml file: a nested playlist imported on its
-own lands at the playlist root as a new playlist, and a folder imported whole
-keeps what it held and adds a second copy of every playlist inside it, and
+something to import, and a `routing-not-landable` warning says so. Every
+placement in it is a playlist nested inside the routing tree, and rekordbox
+cannot land one from an xml file: a nested playlist imported on its own lands
+at the playlist root as a new playlist, and a folder imported whole keeps what
+it held and adds a second copy of every playlist inside it, and
 `route unplaced` without `--export` only reports. File the tracks the review
 names by hand in rekordbox. Until they are filed, the same command plans the
 same placements on every fresh export.
+
+`route inbox --export` follows the same rule for the intake. Its routing is
+nested too, so it carries the same warning and owes no import. It ends waiting
+only when it added tracks to the long track playlist, which sits at the
+playlist root and is the one thing its file can land, and the import it names
+is that playlist alone. Once that import lands, the next run over a fresh
+export owes nothing.
 
 ## Resort queues rather than sweeps
 

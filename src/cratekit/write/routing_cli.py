@@ -733,13 +733,15 @@ PENDING_REMEDY = (
 )
 
 #: Why an export routing's file cannot deliver the routing tree, shared by both
-#: sweeps' pending steps. Measured at the tenth attended sitting (R-687), and
+#: sweeps' review warning. Measured at the tenth attended sitting (R-687), and
 #: the folder half is the source system's paid for learning on the label tree.
 NESTED_UNLANDABLE = (
     "a nested playlist imported from the file lands at the playlist root as a "
     "new playlist, and a folder imported from it keeps every playlist it held "
     "and adds a second copy of each"
 )
+#: The same reason as the step the inbox sweep's pending import gives, since a
+#: person importing the root playlist has the routing tree in front of them.
 ROUTING_TREE_UNIMPORTABLE = (
     "leave the routing tree's folders and playlists unimported: " + NESTED_UNLANDABLE
 )
@@ -964,7 +966,8 @@ def _long_tracks(
     A FOLDER of the playlist's name under the root is a warning and nothing is
     planned. The writer would refuse it anyway, and planning over it would offer
     a write that cannot happen. The warning keeps the run from answering
-    ``nothing-to-route``, the answer the import check reads as done.
+    ``nothing-to-route``, which says the library is filed, over a playlist it
+    could not build.
     """
     long_tracks = declared.long_tracks
     if long_tracks is None:
@@ -1311,10 +1314,7 @@ def _export_pending(
         steps=(
             f"import {destination} into rekordbox as a rekordbox xml library and "
             f"import from it the {playlist!r} playlist alone, and nothing else",
-            ROUTING_TREE_UNIMPORTABLE
-            + ", so the routed memberships cannot land from this file; this "
-            "build writes nested membership only to a tree that has cut over to "
-            "the database",
+            ROUTING_TREE_UNIMPORTABLE,
             "then export the collection again and run route inbox --export with "
             "that file, which owes no import once the playlist's import has "
             "landed, and whose routing is a review, since the bridge cannot "
@@ -1435,15 +1435,17 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         destination,
         report.inserted,
         len(vox_created),
-        "this build writes nested membership only to a tree that has cut over "
-        "to the database",
+        "file the intake tracks into the subs this review names by hand in "
+        "rekordbox; until they are filed, route inbox --export plans the same "
+        "routing on every fresh export, and this build writes nested membership "
+        "only to a tree that has cut over to the database",
     )
     # A PENDING IMPORT ONLY FOR WHAT AN IMPORT CAN LAND (R-694). The long track
     # playlist is the one root playlist this sweep writes, so a file that added
     # nothing to it owes no import: it is a review, and ends ok. Before this,
     # every run with a routing ended pending, and so did the check run a person
     # makes after importing, since the routing never lands and plans again.
-    if not lengthened:
+    if not lengthened or declared.long_tracks is None:
         return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
     return ctx.envelope(
         data=data,
@@ -1454,7 +1456,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             ctx.entry.name,
             destination,
             lengthened,
-            declared.long_tracks.display if declared.long_tracks else "",
+            declared.long_tracks.display,
         ),
         warnings=warnings,
     )
@@ -1664,8 +1666,8 @@ def plan_unplaced_export(
     content = _read_export(export)
     if declared is None:
         # ONE READ PER VERB (R-685): the verb passes the declaration it
-        # checked the bridge with, so the plan, the write and the pending
-        # action are one declaration. A caller that has none reads it here.
+        # checked the bridge with, so the plan, the write and the review
+        # warning are one declaration. A caller that has none reads it here.
         declared = active_taxonomy.load(cfg)
     tree_node = _routing_tree_node(content, declared, export)
     by_id = {
@@ -1711,8 +1713,8 @@ def apply_unplaced_export(
     """
     if declared is None:
         # ONE READ PER VERB (R-685): the verb passes the declaration it
-        # checked the bridge with, so the plan, the write and the pending
-        # action are one declaration. A caller that has none reads it here.
+        # checked the bridge with, so the plan, the write and the review
+        # warning are one declaration. A caller that has none reads it here.
         declared = active_taxonomy.load(cfg)
     tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
     buffer = bytearray(content)

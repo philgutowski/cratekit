@@ -2170,8 +2170,10 @@ def test_an_export_inbox_lands_each_track_in_its_declared_sub(configured, tagged
         "are a review that no import can land: a nested playlist imported from "
         "the file lands at the playlist root as a new playlist, and a folder "
         "imported from it keeps every playlist it held and adds a second copy of "
-        "each; this build writes nested membership only to a tree that has cut "
-        "over to the database",
+        "each; file the intake tracks into the subs this review names by hand in "
+        "rekordbox; until they are filed, route inbox --export plans the same "
+        "routing on every fresh export, and this build writes nested membership "
+        "only to a tree that has cut over to the database",
     ]
 
 
@@ -2820,9 +2822,7 @@ def test_an_export_run_owes_the_import_of_the_root_playlist_it_added_to_alone(
         "leave the routing tree's folders and playlists unimported: a nested "
         "playlist imported from the file lands at the playlist root as a new "
         "playlist, and a folder imported from it keeps every playlist it held and "
-        "adds a second copy of each, so the routed memberships cannot land from "
-        "this file; this build writes nested membership only to a tree that has "
-        "cut over to the database",
+        "adds a second copy of each",
         "then export the collection again and run route inbox --export with that "
         "file, which owes no import once the playlist's import has landed, and "
         "whose routing is a review, since the bridge cannot land it",
@@ -3879,19 +3879,24 @@ def test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created(
 def test_the_unplaced_check_run_owes_no_import_before_the_tracks_are_filed(
     configured, tagged, tmp_path
 ):
-    """R-694. A fresh export taken after a person read the review and filed
-    nothing plans the same placements, since none of them could land, and the
-    answer is the same review with no import owed, not a pending import whose
-    own check could never answer."""
-    export = _unplaced_export(configured, tmp_path / "exports")
-    _code, first = _sweep(export)
-    code, again = _sweep(export)
+    """R-694. A fresh export taken after a person read the review and filed one
+    of its three tracks by hand plans the other two again, since none of the
+    placements could land from the file. The answer is the same review with no
+    import owed, not a pending import whose own check could never answer."""
+    code, first = _sweep(_unplaced_export(configured, tmp_path / "before"))
+    assert code == int(ExitCode.OK), first
+    assert first["pending_human_action"] is None
+    later = _unplaced_export(
+        configured, tmp_path / "after", held={("Deep House", "Low"): ("11",)}
+    )
+    code, again = _sweep(later)
     assert code == int(ExitCode.OK), again
     assert again["outcome"] == str(Outcome.OK)
     assert again["pending_human_action"] is None
-    assert again["data"]["items"] == first["data"]["items"]
-    assert _not_landable(again) == _not_landable(first)
-    assert len(_not_landable(again)) == 1
+    assert [item["track_id"] for item in again["data"]["items"]] == ["12", "13"]
+    assert again["data"]["totals"]["inserted"] == 2
+    (review,) = _not_landable(again)
+    assert review.startswith("2 membership(s) routed and 1 sub-playlist(s) created"), review
 
 
 def test_a_placed_track_is_untouched_even_where_the_declaration_would_not_put_it(
