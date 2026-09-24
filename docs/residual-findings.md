@@ -10165,8 +10165,9 @@ not soft deleted, 9,756 titles carry a head and **13 are unpadded**, every one
 a single digit key, and every proposed change touched the key span alone, so
 `pad_head`'s edge is clean on the real data. Thirteen rows do not earn a
 database write verb with its gates, tests and mutation table. **Decided by
-Phillip:** the thirteen Names are padded by hand in rekordbox, the write time
-default keeps every row Cratekit names padded from here on, and the drift stops
+Phillip:** the thirteen Names are left as they are for now, since a
+thirteen row sort quirk is not worth a sitting's time, the write time default
+keeps every row Cratekit names padded from here on, and the drift stops
 at cutover when the source system's landing path retires. The planner and its
 tests are deleted as the caller less code this entry names, filed for the
 feeder as this residual's own card, which closes it. The copy was deleted after
