@@ -87,6 +87,8 @@ RESIDUALS: tuple[str, ...] = (
     "A review item outlives its question: a later resolution that owns the row "
     "leaves the version-match item open, and no verdict or predicate can retire "
     "it honestly",
+    "A superseded verdict outlives its rule when the row goes missing rather than "
+    "back to a question",
 )
 
 
@@ -2559,6 +2561,29 @@ def test_a_retired_question_the_row_asks_again_is_reopened_not_read_as_a_rejecti
         assert reopened.verdict is None
         assert reopened.actor == "acquire.match.run"
         assert [one.item_id for one in review.list_items(store)] == [asked.item_id]
+
+
+def test_a_retired_question_whose_row_goes_missing_keeps_the_verdict(cfg, music, tmp_path):
+    """THE COST RECORDED, not the feature. The residual titled "A superseded
+    verdict outlives its rule when the row goes missing rather than back to a
+    question": the reopen path revokes the machine's verdict only when there
+    is something to ask, and a missing row passes through, so the item keeps
+    a rule that no longer holds. Clearing it here would put an open question
+    about a missing row in front of a person. Pinned so the choice is made on
+    purpose when the residual is picked up, and the assertion flips with it."""
+    with review.open_store(cfg) as store:
+        asked = _ask_about_burning(store, music)
+        carrying = burning(music, tmp_path)
+        line = row(artist="Malive", title="Burning (Extended Mix)", isrc="USNRS2644532")
+        assert _adjudicated(store, line, index_of(music)).why is match.Why.ISRC_EXACT
+        carrying.unlink()
+        (music / "04A - 126 - Malive - Burning (Radio Edit).flac").unlink()
+        gone = _adjudicated(store, line, index_of(music))
+        assert (gone.state, gone.why) == (match.MatchState.MISSING, match.Why.NOT_IN_LIBRARY)
+        kept = review.get(store, asked.item_id)
+        assert kept.verdict is review.Verdict.SUPERSEDED
+        assert kept.actor == "isrc-exact"
+        assert [one.item_id for one in review.list_items(store)] == []
 
 
 def test_a_persons_acceptance_being_applied_retires_nothing(cfg, music, tmp_path):

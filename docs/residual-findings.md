@@ -27604,3 +27604,75 @@ row's later state is the other acceptable shape.
 
 **Not on the board bar.** A shape fix, no write held. Issue #197, filed after
 the ninth sitting for the Relay feeder.
+
+**CLOSED in code 2026-09-23, on `relay/197`, issue #197, live measurement
+owed.** A third verdict, `superseded`, written by `adjudicate` on every open
+`version-match` item about a row resolution owns under `exact`, `isrc-exact`
+or `credited-exact`, the actor carrying the rule; not a suppression, revocable
+by `clear`, untypeable at `crate review resolve`, carried by export and import
+through its own writer. Driven on a fixture under both rules and through
+`match run` and the intake worker's own path. **The live count, 190 to the
+three live items plus the 102 label rows, is the attended sitting's to make**:
+it needs the owning job re-resolved against the live library, which a session
+does not touch, so it is stated here as owed and not as done. R-680 and R-681
+record what the review found at its edges.
+
+## R-680. A superseded verdict outlives its rule when the row goes missing rather than back to a question
+
+**Found:** 2026-09-23, on `relay/197`, by the built in review, then driven on
+a fixture: a question retired under `isrc-exact`, the file carrying the ISRC
+deleted and no other cut held, the row resolving `missing` under
+`not-in-library`, and the item still reading `superseded` by `isrc-exact`.
+
+The reopen path in `adjudicate` revokes the machine's verdict only when the
+row is a question again, because that is the one state with something to
+ask. A row that goes missing passes straight through, so the item keeps a
+verdict asserting a rule owns a row nothing owns, until the row is either
+acquired back, which makes the verdict true again, or becomes a question,
+which revokes it.
+
+**Measured cost:** `crate review list --all` reads a rule that no longer
+holds, for as long as the row is missing. The open list is right, nothing
+downstream reads the verdict, and acquisition fetches the row as it should.
+Clearing the item on the missing path would be worse: it would put an open
+question about a missing row in front of a person, with candidates that no
+longer exist, which is the shape the third verdict exists to end.
+
+**Closes when:** the record decides what a superseded item should read once
+its row is missing, and whichever state is chosen is written on that path
+and driven. A fourth verdict is not obviously better than a stale third.
+
+**Not on the board bar.** A wording on a settled item, no write held.
+
+## R-681. A list holding one line twice, with and without its ISRC, flaps the retired item with the line order
+
+**Found:** 2026-09-23, on `relay/197`, by the built in review, then driven on
+a fixture: a file carrying the row's ISRC under an artist tag the text rules
+never credit, a library also holding the radio edit, and a list carrying the
+line once with the ISRC, owned `isrc-exact`, and once without it, a
+`version-differs` question. The two lines share one item identity, since the
+identity carries no ISRC.
+
+With the ISRC line first, the owned row retires nothing because the question
+is filed after it, and the run ends with the item open. With the ISRC line
+last, the question is filed and then retired, and the run ends with it
+superseded. On the next run in the first order the question finds the
+superseded item, revokes it and re-offers. The verdict, actor and updated
+columns rewrite on every run and whether a person sees the question depends
+on which line the reader emitted first.
+
+**Measured cost:** churn on one item and an order dependent answer to "is
+this a question", for a list that names the same recording twice with
+different provenance. No data at risk: the row with the ISRC is owned either
+way and reports so.
+
+**Closes when:** `adjudicate` settles a row's question and its retirement
+within one run by a rule that does not read the list order, for instance by
+retiring after every question in the batch has been offered and letting an
+owned row's retirement stand over a question the same batch asked. The cost
+of that shape, a needs-review row naming an item the open list does not
+show, is the one the residual titled "An offered track never becomes
+listable, whatever the review answer" paid for, so the choice is the record's
+and not a session's.
+
+**Not on the board bar.** Churn on a settled item, no write held.

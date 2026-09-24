@@ -4,7 +4,32 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: A5 sitting 9 record, issue #178 line 2 ticked, `unit/issue178`,
+**Last merged: R-679, issue #197, `relay/197`, 2026-09-23.** A third review
+verdict, `superseded`. The match engine's `adjudicate` writes it on every open
+`version-match` item about a row resolution owns under `exact`, `isrc-exact`
+or `credited-exact`, the actor carrying the rule; the item leaves the open
+list, is not a suppression, cannot be typed at `crate review resolve`, and
+`clear` revokes it. Export and import carry it through its own writer. **The
+built in review's first finding was the unit's real defect**: four of
+`adjudicate`'s five callers opened the review store only for a question, so
+the retirement was reachable from `match run` alone. One predicate,
+`touches_the_queue`, now gates every call site, a guard counts gates against
+calls per module, and the intake worker's own path is driven. **The numbers:**
+10,090 collected, all green; two mutation tables, `docs/mutation/r679-a.md`
+and `r679-b.md`, 22 rows, 20 killed, 2 zeros each explained in
+`r679-notes.md`. **The live measurement is owed**: `crate review list` on the
+live library should drop from 190 to the three live items plus the 102 label
+rows once the owning job is re-resolved, and that is the attended sitting's to
+do and to write into `docs/cutover.md`. R-680 and R-681 filed, both driven,
+neither on the board bar. A solutions entry records the call site trap.
+**Main's highest residual number is R-681.**
+
+**Next: the attended sitting re-resolves job `c645` on the pipx install and
+measures the open list**, then "Take #178" line 3. R-680's fix, whatever the
+record decides, lands on the missing state and must widen `touches_the_queue`
+first; the solutions entry says why.
+
+**Merged before it: A5 sitting 9 record, issue #178 line 2 ticked, `unit/issue178`,
 2026-09-23.** A record only merge, no code. Line 2 of #178, a small playlist,
 ran end to end on the pipx install at `94ad650`, and for the first time the
 session drove every verb and answered both write gates itself at the author's
@@ -25,13 +50,8 @@ planned once on the live library by the author, **baselined, 7404 accepted as
 history, 0 offered, no refusal**, and R-676 CLOSED on its first arm. R-677
 and R-678 observed again and stand. Record in `docs/cutover.md`, sitting 9,
 with the next sitting named: line 3, inbox routing.
-**Main's highest residual number is R-679.** No issue owed after this merge:
-R-677, R-678 and R-679 go to the board as residual issues for the Relay
-feeder after the push, by the author's decision in the sitting.
-
-**Next: "Take #178" again, line 3**, once the Relay feeder has worked R-677,
-R-678 and R-679, or alongside it in a worktree, since Relay owns `main` while
-it runs.
+Main's highest residual number was R-679 at that merge. R-677, R-678 and
+R-679 went to the board as #195 to #197 for the Relay feeder.
 
 **Merged before it: A5 sitting 8 record, issue #178 line 1 ticked, `unit/issue178`,
 2026-09-23.** A record only merge, no code. Line 1 of #178, favourites in, ran
