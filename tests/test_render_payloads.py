@@ -199,3 +199,27 @@ def test_the_proven_run_count_is_the_verbs_own_total():
     plan = {"digest": "d", "items": items, "totals": {"imported": 3}, "chunk": None}
     lines = render.render_import_proof(envelope("intake.imported", "plan", plan))
     assert "  proven: 3 run(s), 2 track(s); retired: 0 intake file(s)" in lines
+
+
+def test_a_shown_item_value_that_would_break_its_line_is_quoted():
+    """R-692: an artist with a comma, a title with an equals sign, or a value
+    holding either line break would otherwise read as a field of its own or
+    split the item. Each breaker is alone in its value, so dropping one from
+    the set is seen. A quoted value keeps its letters, and a plain value and a
+    non string one print as they always did."""
+    (header, line) = render._shown_lines({
+        "items": [{
+            "artist": "\u00c2me, Dixon",
+            "title": "Dub=Mix",
+            "note": "Part\n2",
+            "also": "Part\r3",
+            "track_id": "11",
+            "vocal": "",
+            "count": 3,
+        }]
+    })
+    assert header == "  items:"
+    assert line == (
+        '    artist="\u00c2me, Dixon", title="Dub=Mix", note="Part\\n2", '
+        'also="Part\\r3", track_id=11, vocal=, count=3'
+    )

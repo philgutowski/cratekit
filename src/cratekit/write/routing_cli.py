@@ -50,7 +50,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
 from cratekit.core import (
@@ -323,8 +323,10 @@ def _shown(plan: dict, **facts: Any) -> dict[str, Any]:
     """What the apply gate puts in front of the person (R-686).
 
     The facts the caller names, then the digest, the count and EVERY ITEM the
-    digest was taken over, unchanged, so the screen is the plan a person
-    approves and a JSON reader can compare it with the declined run's items.
+    digest was taken over, so the screen is the plan a person approves and a
+    JSON reader can compare it with the declined run's items. The export gate
+    hands in its plan through :func:`_named`, so each of its items also leads
+    with the track's artist and title, which a reader drops to compare (R-692).
     Without this the gate carried the question and the options and not one
     item, and a person answered a routing plan they could not read. There is
     no bound: the digest covers every item, and a list cut short would ask for
@@ -335,6 +337,30 @@ def _shown(plan: dict, **facts: Any) -> dict[str, Any]:
         "digest": plan["digest"],
         "count": plan["totals"]["count"],
         "items": plan["items"],
+    }
+
+
+def _named(plan: dict, names: dict[str, dict[str, str]]) -> dict:
+    """The plan as the export gate shows it, each track named (R-692).
+
+    An export id is a number a person has to look up in the export to know
+    which song a line files, so each shown item leads with the artist and the
+    title the collection row carries, then every field the digest was taken
+    over, unchanged. A row with no track, a vocal sub this run creates, and an
+    intake key with no collection row get empty names rather than a missing
+    column.
+
+    THE NAMES ARE THE SCREEN'S ALONE. The digest and the answered envelope's
+    items are the plan's, so a name is outside what a decision is bound to,
+    and a JSON reader drops ``artist`` and ``title`` to compare the screen
+    with a declined run's items.
+    """
+    return {
+        **plan,
+        "items": [
+            {**names.get(item["track_id"], {"artist": "", "title": ""}), **item}
+            for item in plan["items"]
+        ],
     }
 
 
@@ -1052,26 +1078,33 @@ def _decide(
     return Decision(plan, destined, vocal, files, readings, placements, gaps)
 
 
+class ExportPlan(NamedTuple):
+    """What :func:`plan_export` decided, by name and still unpackable in order.
+
+    ``content`` is the export's bytes with any vocal sub-playlist already
+    added, which is why they are returned rather than read again. ``plan`` is
+    what the bridge writer takes, ``owed`` how many rows are owed a star
+    rating, ``items`` what the digest is taken over, and ``names`` each planned
+    track's artist and title by export id, for :func:`_named` alone (R-692).
+    """
+
+    content: bytes
+    plan: dict[tuple[str, str], list[str]]
+    owed: int
+    long_plan: LongPlan
+    items: list[dict[str, str]]
+    warnings: list[dict[str, str]]
+    gaps: tuple[str, ...]
+    vox_created: tuple[str, ...]
+    names: dict[str, dict[str, str]]
+
+
 def plan_export(
     cfg: config.Config, export: Path, *, declared: taxonomy.Taxonomy | None = None
-) -> tuple[
-    bytes,
-    dict[tuple[str, str], list[str]],
-    int,
-    LongPlan,
-    list[dict[str, str]],
-    list[dict[str, str]],
-    tuple[str, ...],
-    tuple[str, ...],
-]:
+) -> ExportPlan:
     """Read one fresh export and decide where each intake track goes.
 
-    Returns the bytes to write into, the plan the bridge writer takes, how many
-    rows are owed a star rating, the long track additions, the items a person
-    is shown, the warnings, the dimensions not derived, and the vocal
-    sub-playlists created. The bytes are the export's with any vocal
-    sub-playlist already added, which is why they are returned rather than read
-    again.
+    Returns an :class:`ExportPlan`, the fields named there.
 
     NO STAR RATING IS PLANNED (R-688). The ratings the source system's sort
     would have set are only counted, because the medium cannot carry them: see
@@ -1152,7 +1185,17 @@ def plan_export(
         {"track_id": "", "destination": created, "vocal": "", "long_track": ""}
         for created in vox_created
     ]
-    return content, plan, owed, long_plan, items, warnings, gaps, vox_created
+    names = {
+        item["track_id"]: {
+            "artist": by_id[item["track_id"]].get("Artist", ""),
+            "title": by_id[item["track_id"]].get("Name", ""),
+        }
+        for item in items
+        if item["track_id"] in by_id
+    }
+    return ExportPlan(
+        content, plan, owed, long_plan, items, warnings, gaps, vox_created, names
+    )
 
 
 def apply_export(
@@ -1309,13 +1352,13 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         cfg, declared, export, instead="run route inbox without --export, which "
         "writes the database",
     )
-    content, plan, owed, long_plan, items, warnings, gaps, vox_created = plan_export(
-        cfg, export, declared=declared
+    content, plan, owed, long_plan, items, warnings, gaps, vox_created, names = (
+        plan_export(cfg, export, declared=declared)
     )
     unrated = _rating_not_landable(owed)
     offered = _plan(items, kind="inbox-export")
     facts = _export_facts(items, export, gaps, vox_created, [*warnings, *unrated])
-    option = _apply_gate(ctx, offered, _shown(offered, **facts))
+    option = _apply_gate(ctx, offered, _shown(_named(offered, names), **facts))
     if option != "apply":
         return ctx.envelope(
             data=_plan(items, kind="inbox-export", applied=False),

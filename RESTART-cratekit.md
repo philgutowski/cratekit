@@ -4,7 +4,24 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-691, issue #202, `relay/202`, 2026-09-24.** The database
+**Last merged: R-692, issue #203, `relay/203`, 2026-09-24.** The `route
+inbox --export` gate names each track. `plan_export` in `write/routing_cli.py`
+returns an `ExportPlan` NamedTuple that also carries each planned track's
+artist and title, from the collection rows it already read, and `_named` puts
+them at the head of every item the gate shows, beside the fields the digest
+covers. The digest and the answered envelope's `data.items` are unchanged. A
+created vocal sub row and an intake key with no collection row get empty
+names. The gate screen's `k=v, k=v` item line in `cli/render.py` now quotes,
+as a JSON string, a value holding a comma, an equals sign or a line break.
+**The numbers:** 10,166 collected, 10,165 passed and 1 skipped. The mutation
+table was NOT measured: thirteen rows sit in `docs/mutation/r692-rows.toml`,
+and `r692-notes.md` says why, a real `sync labels` job from another session
+held the installed copy's job queue and the driver's leak guard halted every
+attempt. Run those rows with no cratekit job running. What the review left is
+**R-700** (the digest binds the export id, not the names now shown), not on
+the board bar. **Main's highest residual number is R-700.**
+
+**Merged before it: R-691, issue #202, `relay/202`, 2026-09-24.** The database
 path of `route inbox` plans its placements before the gate. `plan_inbox` in
 `write/routing_cli.py` takes the readings, the calibrated cut and the
 placements first, by the calls the write made after the gate until now, and
@@ -24,7 +41,7 @@ numbers:** 10,163 collected, 10,162 passed and 1 skipped;
 review left at the edges is **R-698** (the empty derivation refusal, now
 before the gate, names a music directory the inbox path never read) and
 **R-699** (the skill still says the export sweep rates the intake). Neither
-meets the board bar. **Main's highest residual number is R-699.**
+meets the board bar.
 
 **Merged before it: R-688, issue #201, `relay/201`, 2026-09-24.** `route inbox
 --export` plans no star rating. Every row of a collection export is one
