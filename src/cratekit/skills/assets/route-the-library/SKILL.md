@@ -107,10 +107,11 @@ asks, per tree, whether declared membership matches what the database actually
 holds. A library can be fully covered and still unconverged, so read the one
 that matches the question you have.
 
-## Placing what nothing places, through an export
+## Reviewing what nothing places, through an export
 
 On a library whose routing tree has not cut over to the database, the report
-above compares nothing and says so. The act is on the export instead:
+above compares nothing and says so. The export gives a review of where those
+tracks belong, which you file by hand:
 
 ```bash
 crate route unplaced --export /path/to/collection.xml

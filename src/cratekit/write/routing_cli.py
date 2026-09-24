@@ -235,7 +235,7 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     gaps: set[str] = set()
     warnings: list[dict[str, str]] = []
     if not native:
-        warnings.append({"code": "no-native-tree", "message": EXPORT_REMEDY})
+        warnings.append({"code": "no-native-tree", "message": export_remedy(declared)})
     elif files:
         threshold = metadata_cli.load_vocal_threshold(cfg)
         readings = [rebuild.read_truth(path) for path in files]
@@ -718,15 +718,32 @@ ROUTED_SUFFIX = "_routed.xml"
 
 #: The warning a library with nothing native carries on the database path. It
 #: names what the export medium delivers and no more (R-695): a review of the
-#: routing, since no import lands nested membership (R-687), and the long
-#: tracks on the one root playlist the inbox sweep writes, which an import does.
+#: routing, since no import lands nested membership (R-687), and, through
+#: :func:`export_remedy`, the one root playlist the inbox sweep writes, which
+#: an import does land. This is the whole text when no such playlist is declared.
 EXPORT_REMEDY = (
-    "no tree has cut over, so nothing files this library into the routing tree: "
-    "export the collection from rekordbox and run route inbox --export with that "
-    "file, which writes a review of the routing to file by hand, since no import "
-    "can land a nested playlist, and, when the taxonomy declares a long track "
-    "playlist, adds long tracks to that root playlist, which one import can land"
+    "no tree has cut over, so nothing files this library into the routing tree. "
+    "Export the collection from rekordbox and run route inbox --export with that "
+    "file. It writes a review of the routing, and you file its tracks by hand, "
+    "since no import can land a nested playlist"
 )
+
+
+def export_remedy(declared: taxonomy.Taxonomy) -> str:
+    """:data:`EXPORT_REMEDY`, naming the long track playlist when one is declared.
+
+    ONE TEXT PER DECLARATION, built here so every answer of the verb carries
+    the same words. The long track playlist is the one root playlist the inbox
+    sweep writes and so the one thing an import lands (R-694); a taxonomy that
+    declares none gets the review alone, rather than a playlist it never writes.
+    """
+    if declared.long_tracks is None:
+        return EXPORT_REMEDY
+    return (
+        f"{EXPORT_REMEDY}. It also adds long tracks to the root playlist "
+        f"{declared.long_tracks.display!r}, which one import can land"
+    )
+
 
 #: The same, for the deferred placements. They wait for a cutover, and what a
 #: person can settle before one is the import itself.
@@ -1514,7 +1531,7 @@ def route_inbox(ctx) -> Envelope:
         data=_plan(items, kind="inbox", **result),
         outcome=Outcome.OK if result["applied"] else Outcome.NO_OP,
         warnings=(
-            [{"code": "no-native-tree", "message": EXPORT_REMEDY}]
+            [{"code": "no-native-tree", "message": export_remedy(planned.declared)}]
             if result["reason"] == "no-native-tree"
             else [
                 *rebuild.not_compared_warnings(not_compared),
@@ -1584,11 +1601,11 @@ PLACED_SUFFIX = "_placed.xml"
 #: export medium delivers here (R-695), a review and nothing an import lands,
 #: since every placement is nested membership under the routing tree (R-694).
 UNPLACED_EXPORT_REMEDY = (
-    "no tree has cut over, so nothing places what the routing tree does not hold: "
-    "export the collection from rekordbox and run route unplaced --export with "
-    "that file, which writes a review of where each unplaced track belongs to "
-    "file by hand, since no import can land a nested playlist, and adds to no "
-    "root playlist, so it owes no import"
+    "no tree has cut over, so nothing places what the routing tree does not hold. "
+    "Export the collection from rekordbox and run route unplaced --export with "
+    "that file. It writes a review of where each unplaced track belongs, and you "
+    "file those tracks by hand, since no import can land a nested playlist. It "
+    "adds to no root playlist and owes no import"
 )
 
 
@@ -1797,7 +1814,8 @@ def route_unplaced(ctx) -> Envelope:
     the export medium delivers, :data:`UNPLACED_EXPORT_REMEDY`.
 
     WITH ``--export`` IT WRITES A REVIEW (U91, R-694), on the medium that needs
-    no database write, and places nothing. See :func:`route_unplaced_export`.
+    no database write. Its placements are nested membership in a new file, which
+    no import lands. See :func:`route_unplaced_export`.
     """
     cfg = _load()
     if ctx.args.export:

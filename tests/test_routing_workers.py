@@ -2460,14 +2460,25 @@ def test_without_export_a_library_with_no_native_tree_names_the_export_remedy(st
         for warning in envelope["warnings"]
         if warning["code"] == "no-native-tree"
     ]
-    assert remedies == [
-        "no tree has cut over, so nothing files this library into the routing "
-        "tree: export the collection from rekordbox and run route inbox --export "
-        "with that file, which writes a review of the routing to file by hand, "
-        "since no import can land a nested playlist, and, when the taxonomy "
-        "declares a long track playlist, adds long tracks to that root playlist, "
-        "which one import can land"
-    ], envelope["warnings"]
+    assert remedies == [INBOX_REMEDY], envelope["warnings"]
+
+
+def test_a_taxonomy_with_no_long_track_playlist_gets_the_review_alone_as_its_remedy(
+    configured,
+):
+    """The remedy names the long track playlist only when the declaration
+    holds one, since a taxonomy without it gets no root playlist from the
+    sweep and an import owed for it would never exist (R-695). Both answers,
+    the declined one and the applied one, carry the same words."""
+    write_active(configured, shipped_without("long_tracks"))
+    for option in ("abort", "apply"):
+        code, envelope = _drive(["-d", f"route.inbox.apply={option}", "route", "inbox"])
+        assert code == int(ExitCode.OK), envelope
+        assert [
+            warning["message"]
+            for warning in envelope["warnings"]
+            if warning["code"] == "no-native-tree"
+        ] == [INBOX_REMEDY_REVIEW], (option, envelope["warnings"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3570,6 +3581,22 @@ def test_the_database_digest_binds_the_destinations_not_the_file_list(
     )
 
 
+#: What the export medium delivers, spelled here rather than read from the
+#: module, so a remedy that goes back to saying the export files the library
+#: fails every test that compares against it (R-695): a review of the routing,
+#: and the long track root playlist, the one thing an import lands.
+INBOX_REMEDY_REVIEW = (
+    "no tree has cut over, so nothing files this library into the routing tree. "
+    "Export the collection from rekordbox and run route inbox --export with that "
+    "file. It writes a review of the routing, and you file its tracks by hand, "
+    "since no import can land a nested playlist"
+)
+INBOX_REMEDY = (
+    f"{INBOX_REMEDY_REVIEW}. It also adds long tracks to the root playlist "
+    f"{LONG_PLAYLIST!r}, which one import can land"
+)
+
+
 def test_the_database_gate_on_a_library_with_no_native_tree_says_so_before_the_answer(
     stocked, monkeypatch
 ):
@@ -3593,13 +3620,13 @@ def test_the_database_gate_on_a_library_with_no_native_tree_says_so_before_the_a
     shown = _blocked_inbox()
     assert [item["destination"] for item in shown["items"]] == [""]
     assert (shown["tracks"], shown["routed"], shown["trees"]) == (1, 0, [])
-    assert shown["warnings"] == [routing_cli.EXPORT_REMEDY]
+    assert shown["warnings"] == [INBOX_REMEDY]
     assert not Path(stocked.library.db_path).exists(), "the plan opened a database"
 
     code, declined = _drive(["-d", "route.inbox.apply=abort", "route", "inbox"])
     assert code == int(ExitCode.OK), declined
     assert declined["data"]["totals"]["applied"] is False
-    assert [w["message"] for w in declined["warnings"]] == [routing_cli.EXPORT_REMEDY]
+    assert [w["message"] for w in declined["warnings"]] == [INBOX_REMEDY]
 
 
 def test_an_empty_inbox_with_no_native_tree_answers_inbox_empty_with_the_remedy(stocked):
@@ -3609,11 +3636,11 @@ def test_an_empty_inbox_with_no_native_tree_answers_inbox_empty_with_the_remedy(
     for path in _intake_dir(stocked).iterdir():
         path.unlink()
     shown = _blocked_inbox()
-    assert shown["items"] == [] and shown["warnings"] == [routing_cli.EXPORT_REMEDY]
+    assert shown["items"] == [] and shown["warnings"] == [INBOX_REMEDY]
     code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
     assert code == int(ExitCode.OK), applied
     assert applied["data"]["totals"]["reason"] == "inbox-empty"
-    assert [w["message"] for w in applied["warnings"]] == [routing_cli.EXPORT_REMEDY]
+    assert [w["message"] for w in applied["warnings"]] == [INBOX_REMEDY]
 
 
 def test_an_empty_inbox_plan_names_every_native_tree(acknowledged, native):
@@ -3991,10 +4018,10 @@ def test_without_the_flag_nothing_is_written_and_the_answer_names_the_flag(
     assert [w["code"] for w in envelope["warnings"]] == ["no-native-tree"]
     assert envelope["warnings"][0]["message"] == (
         "no tree has cut over, so nothing places what the routing tree does not "
-        "hold: export the collection from rekordbox and run route unplaced "
-        "--export with that file, which writes a review of where each unplaced "
-        "track belongs to file by hand, since no import can land a nested "
-        "playlist, and adds to no root playlist, so it owes no import"
+        "hold. Export the collection from rekordbox and run route unplaced "
+        "--export with that file. It writes a review of where each unplaced "
+        "track belongs, and you file those tracks by hand, since no import can "
+        "land a nested playlist. It adds to no root playlist and owes no import"
     )
     assert {path.name: path.read_bytes() for path in export.parent.iterdir()} == before
 
