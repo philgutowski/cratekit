@@ -27535,6 +27535,30 @@ answer.
 **Not on the board bar.** A shape fix; the write is still held. Issue #195,
 filed after the ninth sitting for the Relay feeder.
 
+**Closed 2026-09-23 on `relay/195`.** The engine's pre-move checks are one
+function, `intake.landing.preflight`, which asks the batch name, the library,
+the intake file, the registry and the export, in the order `apply` always
+asked them, and `apply` calls it too. `intake land` asks it on the plan read
+whenever the plan has files, and its refusal takes the place of an UNANSWERED
+gate only, read off the gate refusal's `ANSWER_DECISION` remedy since the
+modules layer cannot import the gate's class. An answer already given is
+honored exactly as before, so a recorded abort over an export that went
+missing still ends in nothing done and a recorded apply reaches the engine.
+The review widened the fix from the export alone to the whole preflight. The
+export asked on its own named an unmounted library as a missing export and
+read the registry off a volume that was not there. A plan of nothing asks
+nothing, on the `name apply` precedent. Tests drive an absent export, a file
+that is not a collection, a collection with no intake folder, an unmounted
+library, an intake file already there, a usable export reaching the gate with
+the digest it had without the check, the manifest rows handed over, and the
+recorded abort, apply and stale answers. Mutation tables
+`docs/mutation/r677.md` and `r677-b.md`, read in `r677-notes.md`, 12
+mutations, all killing after one test was added for the one zero, null
+control 0 of 10128. An unreadable export was driven and refuses
+`path-permission-denied` with its remedy, not an internal error, so the
+review's concern about an unwrapped read did not reproduce. The second read
+of the export on an answered apply is R-684.
+
 ---
 
 ## R-678. `intake playlist` and `intake imported` print ok and nothing a person can read, R-378's shape on the intake payloads
@@ -27747,3 +27771,27 @@ which the broad catch guarantees and `r678-b` row B3 measures.
 drive from that rather than from the queue.
 
 **Not on the board bar.** Maintainer facing, nothing false said to a person.
+
+---
+
+## R-684. An answered landing reads and trial splices the export twice
+
+**Found:** 2026-09-23, on `relay/195`, by the built in review. `intake land`
+asks the engine's preflight on every invocation whose plan has files, before
+the gate, because it cannot know whether the gate is answered until it asks.
+On an answered apply the engine then asks the same preflight again under the
+batch lock, so the export is read whole, copied and trial spliced twice, and
+the registry read twice. Before R-677 an answered apply did it once.
+
+**Measured cost:** unmeasured on the tree. No large export was timed. The
+fixture exports are a few kilobytes, and a real collection export runs to tens
+of megabytes, so the second pass is bounded by one read and one splice of that
+file.
+
+**Closes when:** the verb can tell an answered gate from an unanswered one
+before it asks, through the gate rather than by reading the run record, and
+skips the plan read preflight when the engine is about to ask it anyway, with
+a test that counts the reads on an answered apply.
+
+**Not on the board bar.** Efficiency only, nothing false said, nothing at
+risk.
