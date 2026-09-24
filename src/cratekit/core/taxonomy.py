@@ -40,6 +40,7 @@ library half-written.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -558,6 +559,60 @@ def shipped_template_text(name: str) -> str:
     """
     source = resources.files("cratekit") / "templates" / f"{_TEMPLATE_PREFIX}{name}{_TEMPLATE_SUFFIX}"
     return source.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# The origin record (R-689)
+# ---------------------------------------------------------------------------
+
+
+def template_digest(text: str) -> str:
+    """The fingerprint of one template's TEXT, as setup records it and doctor compares it.
+
+    ONE DEFINITION, used by both, because the comparison is only meaningful if
+    the two sides hashed the same bytes the same way. It is taken over the text
+    as read, not over the bytes on disk: ``Path.read_text`` folds a Windows line
+    ending to a newline, so an editor that rewrote the line endings and nothing
+    else is not counted as an edit, and the shipped text is read the same way.
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class Origin:
+    """Which shipped text an active copy was made from: the name and its digest."""
+
+    template: str
+    digest: str
+
+
+def origin_record_text(template: str, text: str) -> str:
+    """The record setup writes beside the copy, as TOML text."""
+    return (
+        "# Written by crate setup with the active taxonomy copy beside it. Which\n"
+        "# shipped template the copy was made from and a digest of that text, so\n"
+        "# doctor can tell a copy that fell behind the shipped template from one a\n"
+        "# person edited (R-689). Nothing routes by this file.\n"
+        f'template = "{template}"\n'
+        f'sha256 = "{template_digest(text)}"\n'
+    )
+
+
+def parse_origin_record(text: str) -> Origin:
+    """Read the record back. Raises ``ValueError`` for anything but the two fields."""
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"not valid TOML: {exc}") from exc
+    template, digest = data.get("template"), data.get("sha256")
+    if not isinstance(template, str) or not config.template_name_is_usable(template):
+        raise ValueError(f"template is not a shipped template name: {template!r}")
+    if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+        raise ValueError(f"sha256 is not a hex digest: {digest!r}")
+    return Origin(template=template, digest=digest)
+
+
+_DIGEST = re.compile(r"[0-9a-f]{64}")
 
 
 def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:

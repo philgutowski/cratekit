@@ -84,6 +84,7 @@ import json
 import shlex
 import subprocess
 import sys
+import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -1215,16 +1216,128 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
             detail=f"the active taxonomy template at {path} is not usable: {exc}",
             remedy=Remedy.RUN_SETUP,
         )
+    status, origin = _origin_verdict(inputs.cfg, text, named, shipped)
     return Finding(
         key=key,
         title=title,
-        status=Status.OK,
+        status=status,
         detail=(
             f"an active template at {path}, {_volume_clause(inputs)}, parses and "
             f"declares {len(declared.buckets)} buckets; taxonomy.template names "
-            f"the shipped {named!r}"
+            f"the shipped {named!r}; {origin}"
         ),
     )
+
+
+def _origin_verdict(
+    cfg: config.Config, active_text: str, named: str, shipped: tuple[str, ...]
+) -> tuple[Status, str]:
+    """Whether the active copy fell behind the shipped template, or was edited (R-689).
+
+    Three digests answer it: the one setup RECORDED beside the copy, the copy as
+    it is now, and the shipped text as it ships now. A copy that still matches
+    the record is the copy setup made, so if the shipped text has moved on the
+    library is missing what it gained, and that is the one INFO here. A copy
+    that differs from the record is the person's, and what the shipped text did
+    since is not this check's to raise. With no record, which is every library
+    set up before the record existed, the two cannot be told apart and the
+    detail says so rather than guessing either way.
+
+    IT REPORTS AND NEVER WRITES. The copy is the person's declaration, and a
+    section the shipped template gained is theirs to take or leave.
+    """
+    origin_path = config.state_path("taxonomy_origin", cfg)
+    record: taxonomy.Origin | None
+    try:
+        record_text = origin_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError):
+        record = None
+    except (OSError, UnicodeDecodeError) as exc:
+        return Status.INFO, (
+            f"the record of which shipped text the copy was made from, at "
+            f"{origin_path}, could not be read ({exc}), so a copy that fell "
+            f"behind the shipped template cannot be told from one a person edited"
+        )
+    else:
+        try:
+            record = taxonomy.parse_origin_record(record_text)
+        except ValueError as exc:
+            return Status.INFO, (
+                f"the record of which shipped text the copy was made from, at "
+                f"{origin_path}, is not usable ({exc}), so a copy that fell "
+                f"behind the shipped template cannot be told from one a person "
+                f"edited"
+            )
+    active_digest = taxonomy.template_digest(active_text)
+    if record is None:
+        # ``named`` is in the shipped set, the check above refused otherwise, so
+        # the only way not to read it is packaged data that lists and does not
+        # open, which is the damaged install setup reports the same way.
+        try:
+            current = taxonomy.shipped_template_text(named)
+        except (OSError, UnicodeDecodeError) as exc:
+            return Status.INFO, (
+                f"nothing records which shipped text the copy was made from, "
+                f"and the packaged text of {named!r} could not be read ({exc}), "
+                f"so the copy was compared with nothing. This is a damaged or "
+                f"partial install"
+            )
+        if active_digest == taxonomy.template_digest(current):
+            return Status.OK, (
+                f"nothing records which shipped text the copy was made from, "
+                f"and it matches the shipped {named!r} as it ships now"
+            )
+        return Status.OK, (
+            f"nothing records which shipped text the copy was made from, and it "
+            f"differs from the shipped {named!r} as it ships now, so whether it "
+            f"was edited or fell behind the shipped template cannot be told. "
+            f"Setup records the origin only for a copy it makes"
+        )
+    if active_digest != record.digest:
+        return Status.OK, f"edited since setup copied the shipped {record.template!r}"
+    if record.template not in shipped:
+        return Status.OK, (
+            f"unedited since setup copied the shipped {record.template!r}, which "
+            f"no longer ships, so whether that template has moved on was not "
+            f"established"
+        )
+    try:
+        current = taxonomy.shipped_template_text(record.template)
+    except (OSError, UnicodeDecodeError) as exc:
+        return Status.INFO, (
+            f"unedited since setup copied the shipped {record.template!r}, whose "
+            f"packaged text could not be read ({exc}), so whether that template "
+            f"has moved on was not established. This is a damaged or partial "
+            f"install"
+        )
+    if taxonomy.template_digest(current) == record.digest:
+        return Status.OK, (
+            f"unedited since setup copied the shipped {record.template!r}, which "
+            f"has not changed since"
+        )
+    gained = sorted(_top_level_sections(current) - _top_level_sections(active_text))
+    if gained:
+        change = (
+            f"it now declares {', '.join(f'[{name}]' for name in gained)}, which "
+            f"the copy does not"
+        )
+    else:
+        change = "the change is inside sections the copy already declares"
+    return Status.INFO, (
+        f"the copy is the one setup made from the shipped {record.template!r}, "
+        f"unedited, and that template has changed since: {change}. Every verb "
+        f"reads the copy, so nothing the shipped template gained applies to this "
+        f"library until it is copied in by hand; doctor does not rewrite the copy"
+    )
+
+
+def _top_level_sections(text: str) -> set[str]:
+    """The tables and arrays of tables a template declares at its top level."""
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return set()
+    return {name for name, value in data.items() if isinstance(value, (dict, list))}
 
 
 def _check_rekordbox_closed(inputs: _Inputs) -> Finding:

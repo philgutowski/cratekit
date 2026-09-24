@@ -975,11 +975,40 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
             error=exc,
         )
         return
+    # THE RECORD GOES WITH THE COPY, AND ONLY WITH THE COPY (R-689). It names the
+    # shipped text this copy started as, so doctor can later tell a copy that
+    # fell behind the shipped template from one a person edited. The branch
+    # above that leaves an existing copy alone writes no record, because setup
+    # cannot know which text that copy was made from, and a record written
+    # anyway would say the copy is unedited when nothing established it.
+    #
+    # A record that cannot be written does not un-copy the template: the copy
+    # is there and every verb routes by it. The note says the record is
+    # missing, and doctor's answer for this library is then "origin
+    # unrecorded", which is the truth.
+    origin = config.state_path("taxonomy_origin", cfg)
+    try:
+        config.atomic_write_bytes(taxonomy.origin_record_text(name, text).encode("utf-8"), origin)
+    except OSError as exc:
+        wizard.note(
+            "setup.taxonomy",
+            "active taxonomy template",
+            doctor.Status.INFO,
+            (
+                f"template {name!r} copied to {path}, and the record of which "
+                f"shipped text it was copied from could not be written to "
+                f"{origin} ({exc}), so doctor will not be able to tell this copy "
+                f"falling behind the shipped template from an edit. No remedy is "
+                f"named: a second run of setup leaves the copy alone and writes "
+                f"no record for it"
+            ),
+        )
+        return
     wizard.note(
         "setup.taxonomy",
         "active taxonomy template",
         doctor.Status.OK,
-        f"template {name!r} copied to {path}",
+        f"template {name!r} copied to {path}, its origin recorded at {origin}",
     )
 
 
