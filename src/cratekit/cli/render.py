@@ -372,8 +372,9 @@ def render_review_set(envelope: Envelope) -> list[str]:
 #: payloads and must not load a feature module to do it.
 _RESOLVING_VERBS: frozenset[str] = frozenset({"intake.playlist", "intake.set"})
 
-#: The intake resolution's four words, each with the sentence ``intake missing``
-#: already puts beside the same count, so the two verbs read as one vocabulary.
+#: The intake resolution's four words, each with a sentence worded after the
+#: ones ``intake missing`` puts beside the same counts. Not the same strings:
+#: that verb says what it left out of a list, and this says where a row stands.
 _RESOLUTION_WORDS: tuple[tuple[str, str], ...] = (
     ("owned", "already in the library"),
     ("offered", "held in another version, offered for review; see: crate review list"),
@@ -416,11 +417,11 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
     if isinstance(total, int) and isinstance(settled, int):
         lines.append(f"  items: {settled} of {total} settled")
     if envelope.verb in _RESOLVING_VERBS and state != "queued":
-        lines += _resolution_lines(job_id, progress)
+        lines += _resolution_lines(job_id, state, progress)
     return lines
 
 
-def _resolution_lines(job_id: str, progress: Mapping[str, Any]) -> list[str]:
+def _resolution_lines(job_id: str, state: str, progress: Mapping[str, Any]) -> list[str]:
     """An intake job's resolution, counted by state, then what to run next.
 
     Only the words the progress actually carries. A resolution from a build that
@@ -432,7 +433,8 @@ def _resolution_lines(job_id: str, progress: Mapping[str, Any]) -> list[str]:
         for word, said in _RESOLUTION_WORDS
         if isinstance(progress.get(word), int)
     ]
-    if isinstance(progress.get("missing"), int) and progress["missing"]:
+    if state == "succeeded" and isinstance(progress.get("missing"), int) and progress["missing"]:
+        # ONLY A SUCCEEDED JOB, because ``intake missing`` refuses every other.
         lines.append(f"  next: crate intake missing --job {job_id}")
     return lines
 
@@ -483,14 +485,18 @@ def render_import_proof(envelope: Envelope) -> list[str]:
     lines = [""]
     for item in items:
         lines.append(f"  {_proof_line(item) if isinstance(item, Mapping) else _shown_value(item)}")
+    # THE RUN COUNT IS THE VERB'S OWN TOTAL, so the summary a person reads and
+    # the one a consumer reads cannot disagree. The track and file counts are
+    # not totals the verb keeps, so they are summed from the same items.
     proven = [
         item for item in items if isinstance(item, Mapping) and item.get("action") == "imported"
     ]
+    totals = envelope.data.get("totals")
+    runs = totals.get("imported") if isinstance(totals, Mapping) else None
+    runs = runs if isinstance(runs, int) else len(proven)
     tracks = sum(item["count"] for item in proven if isinstance(item.get("count"), int))
     retired = sum(1 for item in items if isinstance(item, Mapping) and item.get("retired_to"))
-    lines.append(
-        f"  proven: {len(proven)} run(s), {tracks} track(s); retired: {retired} intake file(s)"
-    )
+    lines.append(f"  proven: {runs} run(s), {tracks} track(s); retired: {retired} intake file(s)")
     return lines
 
 

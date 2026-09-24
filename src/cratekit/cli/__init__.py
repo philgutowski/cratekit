@@ -288,9 +288,12 @@ def _drive_argv(envelope: Envelope) -> list[str] | None:
     command under that one would invite two drivers onto one job. The job's own
     handler key names its verb, so the check is that it names this one.
 
-    A LOOKUP THAT IS REFUSED IS NOT A FAILED VERB. The job is queued and the
-    envelope says so, so this answers with the generic resume, which drives the
-    same job in a child, rather than turning a success into a refusal.
+    A LOOKUP THAT FAILS IS NOT A FAILED VERB, AND IT NAMES NO COMMAND. This runs
+    in ``_emit``, outside the boundary that converts exceptions, after the job is
+    queued, so anything it raises would be a traceback over a success. And no
+    fallback command is named, because every one on offer, ``job resume``
+    included, reads the same row through the same builder and refuses for the
+    same reason. The job line still names the identifier.
     """
     data = envelope.data
     if not envelope.schema.startswith("job_state/") or data.get("state") != "queued":
@@ -307,8 +310,8 @@ def _drive_argv(envelope: Envelope) -> list[str] | None:
         if registry.by_handler_key(job.handler_key).name != envelope.verb:
             return None
         return cli_jobs.argv_for(job)
-    except (CratekitError, KeyError):
-        return ["job", "resume", job_id]
+    except Exception:  # noqa: BLE001 - see the docstring, a success stays a success
+        return None
 
 
 def _emit(envelope: Envelope, *, as_json: bool, stdout, stderr) -> None:

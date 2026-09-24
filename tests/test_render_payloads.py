@@ -143,10 +143,51 @@ def test_a_verb_showing_a_queued_job_it_did_not_queue_names_no_drive(tmp_path, m
     ]
 
 
-def test_a_job_the_queue_cannot_find_falls_back_to_the_generic_resume(tmp_path, monkeypatch):
-    """A refused lookup is not a failed verb: the job was queued, so a true command is named."""
+def test_a_job_the_queue_cannot_find_names_no_drive_rather_than_one_that_refuses(
+    tmp_path, monkeypatch
+):
+    """``job resume`` reads the same row and would refuse the same way, so nothing is named."""
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(tmp_path))
     config.save(config.from_dict(valid_data(tmp_path)))
     config.reset_cache()
 
-    assert cli._drive_argv(job_state(job_id="no-such")) == ["job", "resume", "no-such"]
+    assert cli._drive_argv(job_state(job_id="no-such")) is None
+
+
+def test_a_builder_that_raises_leaves_the_queued_verb_a_success(tmp_path, monkeypatch):
+    """The lookup runs outside the boundary, so a raise there would be a traceback over a queue."""
+    from cratekit.cli import jobs as cli_jobs
+
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(tmp_path))
+    config.save(config.from_dict(valid_data(tmp_path)))
+    config.reset_cache()
+    folder = tmp_path / "downloads"
+    folder.mkdir()
+    (folder / "a.flac").write_bytes(b"")
+
+    def broken(job):
+        raise TypeError("a frozen payload this builder did not expect")
+
+    monkeypatch.setattr(cli_jobs, "argv_for", broken)
+    code, text = drive_human(["tag", "folder", str(folder)])
+
+    assert code == 0, text
+    assert text.splitlines()[0] == "tag.folder: ok", text
+    assert any(line.startswith("  job: ") and line.endswith(", queued") for line in text.splitlines())
+    assert "drive it with" not in text, text
+
+
+def test_a_resolution_that_did_not_succeed_names_no_next_command():
+    """``intake missing`` refuses a job that has not succeeded, so it is not offered."""
+    counts = {"owned": 1, "offered": 0, "missing": 2, "suppressed": 0}
+    lines = render.render_job_state(job_state(verb="intake.playlist", state="running", progress=counts))
+
+    assert "  missing: 2 not in the library" in lines
+    assert not any(line.startswith("  next:") for line in lines)
+
+
+def test_the_proven_run_count_is_the_verbs_own_total():
+    items = [{"session_id": "s", "action": "imported", "count": 2, "retired_to": None}]
+    plan = {"digest": "d", "items": items, "totals": {"imported": 3}, "chunk": None}
+    lines = render.render_import_proof(envelope("intake.imported", "plan", plan))
+    assert "  proven: 3 run(s), 2 track(s); retired: 0 intake file(s)" in lines
