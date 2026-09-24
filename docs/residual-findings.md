@@ -19761,6 +19761,25 @@ disposable copy, which is attended.
 and its test agree with it, or ratings are written through the export medium
 only, where the taxonomy's scale is already the right one.
 
+**Read 2026-09-24 at the eleventh attended sitting, A4, issue #177, and
+narrowed to its planner half.** The live database was copied once, rekordbox
+and rekordboxAgent both gone, from the configured library database, the path
+`rb_writer.live_db_path` resolves, with its wal and shm sidecars into a fresh
+temporary directory, 281,153,536 bytes, and the copy was opened through `rb_writer.open_db` from the attended
+worktree at `a5b30cf`. The distinct `Rating` values on the rows not soft
+deleted, with their counts: 0 on 539, 1 on 1,659, 2 on 996, 3 on 2,994, 4 on
+1,434, 5 on 2,376. Six values, 0 to 5, and no 51, 102, 153, 204 or 255
+anywhere. **The database stores stars.** The belief above is confirmed, so
+`plan_rating_backfill` would write 255 into a field whose largest value is 5,
+and `tests/test_metadata_policy.py` pins that wrong number. The second arm of
+the closing condition is gone since R-688: an export cannot rate an owned row,
+so the database path is the only one that can land a rating, and the planner
+has to agree with the scale before #212 applies one. **What remains is the
+planner and its test on the 0 to 5 scale**, filed for the feeder as this
+residual's own card. The taxonomy's cut values stay on the export scale for
+the export writer, and where the conversion lives is that card's decision.
+The live file was not opened and the copy was deleted after the read.
+
 ---
 
 ## R-415. R-400 names a hand typed text list as the workaround, and `acquire download` refuses one
