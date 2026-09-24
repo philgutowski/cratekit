@@ -4,7 +4,23 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-694, issue #206, `relay/206`, 2026-09-24.** The export
+**Last merged: R-695, issue #207, `relay/207`, 2026-09-24.** The two
+no-native-tree remedies in `write/routing_cli.py` name what the export medium
+delivers. `EXPORT_REMEDY` is the review half, and `export_remedy(declared)`
+adds the long track root playlist by its declared name, or nothing when the
+taxonomy declares none; `plan_inbox` and `route inbox`'s applied answer both
+build it. `UNPLACED_EXPORT_REMEDY` names a review that adds to no root
+playlist and owes no import. The docstrings of `route_unplaced` and
+`route_unplaced_export` and the skill's heading say review, not place. Tests
+pin each remedy's literal text. **The numbers:** 10,210 collected, 10,209
+passed and 1 skipped, ruff clean, `scan_repo.py` exit 0, and no test of this
+unit's among the ten slowest. **The mutation table was NOT measured:**
+eight rows in `docs/mutation/r695-rows.toml`, and `r695-notes.md` says why,
+the installed copy's `analyze vocals` job `2026-09-24T21:04:27Z-fbe8` was
+still running. No residual filed. **Main's highest residual number is
+R-707.**
+
+**Merged before it: R-694, issue #206, `relay/206`, 2026-09-24.** The export
 sweeps owe an import only for what an import can land. `route inbox --export`
 ends `PENDING_HUMAN` with a `rekordbox_import` action only when the long track
 playlist, the one root playlist it writes, gained tracks, and the action names
@@ -3522,7 +3538,8 @@ and no test of this unit's among the ten slowest. **Main's highest residual
 number is R-452.**
 
 **The session before: U91, issue #136, `relay/136`, 2026-09-19.**
-`crate route unplaced --export X` places what the routing tree does not hold,
+`crate route unplaced --export X` places what the routing tree does not hold
+(a review since R-694, which no import lands),
 which closes R-313's placing arm. Every collection track that no playlist under
 the export's routing tree holds, at any depth, is routed by the decision
 `route inbox --export` makes, now one function, `routing_cli._decide`, and

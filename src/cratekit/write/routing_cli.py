@@ -235,7 +235,7 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     gaps: set[str] = set()
     warnings: list[dict[str, str]] = []
     if not native:
-        warnings.append({"code": "no-native-tree", "message": EXPORT_REMEDY})
+        warnings.append({"code": "no-native-tree", "message": export_remedy(declared)})
     elif files:
         threshold = metadata_cli.load_vocal_threshold(cfg)
         readings = [rebuild.read_truth(path) for path in files]
@@ -716,13 +716,34 @@ def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
 #: The suffix of the file an export routing writes, beside the export it read.
 ROUTED_SUFFIX = "_routed.xml"
 
-#: The warning a library with nothing native carries on the database path, so
-#: the answer names the medium that does work today rather than only the one
-#: that does not.
+#: The warning a library with nothing native carries on the database path. It
+#: names what the export medium delivers and no more (R-695): a review of the
+#: routing, since no import lands nested membership (R-687), and, through
+#: :func:`export_remedy`, the one root playlist the inbox sweep writes, which
+#: an import does land. This is the whole text when no such playlist is declared.
 EXPORT_REMEDY = (
-    "no tree has cut over, so this library is still filed through an export: "
-    "export the collection from rekordbox and run route inbox --export with that file"
+    "no tree has cut over, so nothing files this library into the routing tree. "
+    "Export the collection from rekordbox and run route inbox --export with that "
+    "file. It writes a review of the routing, and you file its tracks by hand, "
+    "since no import can land a nested playlist"
 )
+
+
+def export_remedy(declared: taxonomy.Taxonomy) -> str:
+    """:data:`EXPORT_REMEDY`, naming the long track playlist when one is declared.
+
+    ONE TEXT PER DECLARATION, built here so every answer of the verb carries
+    the same words. The long track playlist is the one root playlist the inbox
+    sweep writes and so the one thing an import lands (R-694); a taxonomy that
+    declares none gets the review alone, rather than a playlist it never writes.
+    """
+    if declared.long_tracks is None:
+        return EXPORT_REMEDY
+    return (
+        f"{EXPORT_REMEDY}. It also adds long tracks to the root playlist "
+        f"{declared.long_tracks.display!r}, which one import can land"
+    )
+
 
 #: The same, for the deferred placements. They wait for a cutover, and what a
 #: person can settle before one is the import itself.
@@ -1510,7 +1531,7 @@ def route_inbox(ctx) -> Envelope:
         data=_plan(items, kind="inbox", **result),
         outcome=Outcome.OK if result["applied"] else Outcome.NO_OP,
         warnings=(
-            [{"code": "no-native-tree", "message": EXPORT_REMEDY}]
+            [{"code": "no-native-tree", "message": export_remedy(planned.declared)}]
             if result["reason"] == "no-native-tree"
             else [
                 *rebuild.not_compared_warnings(not_compared),
@@ -1576,13 +1597,15 @@ def unplaced_items(cfg: config.Config) -> tuple[list[dict[str, str]], dict[str, 
 #: routing nobody has imported yet, and the intake filing would go with it.
 PLACED_SUFFIX = "_placed.xml"
 
-#: The warning the report carries when no tree has cut over, so the answer
-#: names the medium that places tracks today rather than only saying it did
-#: not compare.
+#: The warning the report carries when no tree has cut over. It names what the
+#: export medium delivers here (R-695), a review and nothing an import lands,
+#: since every placement is nested membership under the routing tree (R-694).
 UNPLACED_EXPORT_REMEDY = (
-    "no tree has cut over, so this library is still filed through an export: "
-    "export the collection from rekordbox and run route unplaced --export with "
-    "that file, which places what the routing tree does not hold"
+    "no tree has cut over, so nothing places what the routing tree does not hold. "
+    "Export the collection from rekordbox and run route unplaced --export with "
+    "that file. It writes a review of where each unplaced track belongs, and you "
+    "file those tracks by hand, since no import can land a nested playlist. It "
+    "adds to no root playlist and owes no import"
 )
 
 
@@ -1727,10 +1750,11 @@ def apply_unplaced_export(
 
 
 def route_unplaced_export(ctx, cfg: config.Config, export: Path) -> Envelope:
-    """Place every track a fresh export's routing tree does not hold, into a new file.
+    """Plan where every track a fresh export's routing tree does not hold belongs.
 
     NO GATE, and that is the brief's decision (U91). The export and the
-    database are never written; the file lands beside the export as a review.
+    database are never written; the plan lands beside the export as a review,
+    written by :func:`apply_unplaced_export`, which owes no import.
     The report without ``--export`` is unchanged.
 
     NO PENDING IMPORT, EVER (R-694). Every placement is nested membership
@@ -1782,15 +1806,16 @@ def route_unplaced_export(ctx, cfg: config.Config, export: Path) -> Envelope:
 
 
 def route_unplaced(ctx) -> Envelope:
-    """Report tracks no governed tree places, or place them through an export.
+    """Report tracks no governed tree places, or write a review of where they go.
 
     WITHOUT ``--export`` IT IS READ ONLY (R-313). The open carries no write
     intent and no session is entered, so the report is safe with rekordbox
-    open. On a library with nothing native it compares nothing and says which
-    medium would place the tracks.
+    open. On a library with nothing native it compares nothing and says what
+    the export medium delivers, :data:`UNPLACED_EXPORT_REMEDY`.
 
-    WITH ``--export`` THE ACT IS BACK (U91), on the medium that needs no
-    database write. See :func:`route_unplaced_export`.
+    WITH ``--export`` IT WRITES A REVIEW (U91, R-694), on the medium that needs
+    no database write. Its placements are nested membership in a new file, which
+    no import lands. See :func:`route_unplaced_export`.
     """
     cfg = _load()
     if ctx.args.export:
