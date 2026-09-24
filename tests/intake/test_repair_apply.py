@@ -693,3 +693,38 @@ def test_the_decided_reader_reads_accepted_as_verdict_and_option_together(config
         decided = repair.decided(store)
     assert [(a.path, a.proposed) for a in decided.accepted] == [(str(path.resolve()), SHORT)]
     assert (decided.kept, decided.rejected, decided.still_open) == (0, 0, 0)
+
+
+# ---------------------------------------------------------------------------
+# R-693: the gate shows the plan it asks about
+# ---------------------------------------------------------------------------
+
+
+def test_the_gate_shows_every_item_the_digest_was_taken_over(configured):
+    """The gate carried the question and not one rename (R-693). Its ``shown``
+    now holds the declined run's items, the digest they were taken over, the
+    root and the totals, so a person confirms renames they have read."""
+    folder = _folder(configured)
+    path = _audio(folder, LONG)
+    _scan(folder)
+    _accept(configured, path)
+
+    code, out, _ = drive(
+        ["--output", "json", "repair", "paths", "--apply", "--root", str(folder)]
+    )
+    assert code == int(ExitCode.DECISION_REQUIRED), out
+    shown = json.loads(out)["cause"]["detail"]["shown"]
+    code, declined = _answer("abort", "--root", str(folder))
+    assert code == int(ExitCode.OK), declined
+
+    assert shown["items"] == declined["data"]["items"]
+    assert shown["items"][0]["from"] == LONG and shown["items"][0]["to"] == SHORT
+    assert shown["digest"] == declined["data"]["digest"]
+    assert shown["count"] == 1
+    assert shown["totals"] == declined["data"]["totals"]
+    assert shown["root"] == str(folder)
+    assert _names(folder) == {LONG}
+
+    code, out, _ = drive(["--output", "json", "repair", "paths", "--apply"])
+    assert code == int(ExitCode.DECISION_REQUIRED), out
+    assert json.loads(out)["cause"]["detail"]["shown"]["root"] is None

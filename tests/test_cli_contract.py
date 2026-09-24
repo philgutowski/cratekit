@@ -885,6 +885,36 @@ def test_an_unanswered_gate_exits_with_the_documented_code_and_leaves_the_run_re
     assert "profile.set.apply" in state.offers
 
 
+def test_the_profile_gate_shows_the_delta_the_digest_was_taken_over(configured):
+    """The gate carried the question and not one module (R-693). Its ``shown``
+    now holds the declined run's items, each module turning on or off, the
+    digest they were taken over, the profile and the totals, in the json
+    envelope and on the screen a person answers from."""
+    code, out, _ = drive(["--output", "json", "profile", "set", "slim"])
+    assert code == int(ExitCode.DECISION_REQUIRED)
+    shown = json.loads(out)["cause"]["detail"]["shown"]
+    code, out, _ = drive(
+        ["--output", "json", "-d", "profile.set.apply=abort", "profile", "set", "slim"]
+    )
+    assert code == int(ExitCode.OK)
+    declined = json.loads(out)["data"]
+
+    assert shown["items"] == declined["items"]
+    assert shown["items"], "full to slim turns modules off, so the delta cannot be empty"
+    assert shown["digest"] == declined["digest"]
+    assert shown["count"] == len(declined["items"])
+    assert shown["totals"] == declined["totals"]
+    assert shown["profile"] == "slim"
+
+    code, out, err = drive(["profile", "set", "slim"])
+    assert code == int(ExitCode.DECISION_REQUIRED)
+    screen = out + err
+    assert f"  digest: {shown['digest']}" in screen
+    assert "  profile: slim" in screen
+    first = shown["items"][0]
+    assert f"    module={first['module']}, change={first['change']}" in screen
+
+
 def test_the_same_gate_answered_by_name_proceeds(configured):
     code, out, _ = drive(["--output", "json", "-d", "profile.set.apply=apply", "profile", "set", "slim"])
     assert code == int(ExitCode.OK)

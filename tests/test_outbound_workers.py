@@ -2101,3 +2101,39 @@ def test_new_playlist_does_not_hide_a_record_the_crate_already_has(
     _exported_once(exported, monkeypatch)
     shown = _shown_playlist([*export_verb(exported), "--new-playlist"])
     assert shown == {"action": export_cli.ACTION_UPDATE, "remote_id": "pl-1"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-693: the queued resume's gate shows the frozen plan it asks about
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_resume_gate_shows_the_frozen_tracks_the_digest_covers(
+    installed, exported, monkeypatch
+):
+    """A resume on a run holding no answer met the gate with nothing shown
+    (R-693). It now shows every frozen track the digest covers, with the
+    playlist, the export path and the frozen adoption in front of them, read
+    off the payload and never off the export document."""
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    with jobs.open_store() as store:
+        payload = jobs.get(store, job_id).payload
+
+    code, refused = drive([*export_verb(exported), "--job", job_id])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert detail["gate"] == "export.playlist.confirm"
+    shown = detail["shown"]
+    tracks = [str(track) for track in payload[shell_module.TRACKS]]
+    assert shown["items"] == tracks == ["1", "2", "3"]
+    assert shown["count"] == 3
+    assert shown[shell_module.PLAYLIST] == payload[shell_module.PLAYLIST] == outbound_fakes.CRATE
+    assert shown[shell_module.EXPORT] == payload[shell_module.EXPORT] == str(exported)
+    assert shown["adopts"] == str(payload.get(export_cli.ADOPTS) or "")
+    assert shown["digest"] == export_cli.confirm_digest(
+        shown[shell_module.PLAYLIST], shown[shell_module.EXPORT], tracks, adopts=shown["adopts"]
+    )
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is jobs.JobState.QUEUED
