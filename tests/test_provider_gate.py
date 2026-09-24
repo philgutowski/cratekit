@@ -1278,3 +1278,37 @@ def test_the_spend_line_survives_a_refusal(installed, monkeypatch):
     assert _spend_warnings(envelope) == [
         "1 call to the streaming provider this run, 1 answered with a rate limit"
     ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 1, continued. What a sweep costs per release, measured on the tree
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_one_offered_release_costs_two_calls_on_the_catalogue():
+    """The number the run time estimate in docs/mutation/r705-notes.md stands
+    on. Measured on the tree's own ``release_tracks`` over a counting client,
+    not on a fixture written beside the estimate: one album read and one page
+    of its tracks, for a release under one page. The eleventh sitting's sweep
+    offered 1,701 releases, so the offer checks alone were at least 3,402
+    calls before any listing or verification."""
+    reads: list[str] = []
+
+    class Album:
+        num_tracks = 3
+        year = 2024
+
+        def tracks(self, limit: int = 100, offset: int = 0) -> list[Any]:
+            reads.append(f"tracks limit={limit} offset={offset}")
+            return [SimpleNamespace(id=n, name=f"t{n}") for n in range(3)]
+
+    class Client:
+        def album(self, identity: str) -> Album:
+            reads.append(f"album {identity}")
+            return Album()
+
+    rows, year = tidal_catalogue.TidalCatalogue(Client()).release_tracks("r1")
+
+    assert (len(rows), year) == (3, 2024)
+    assert len(reads) == 2, reads
+    assert reads[0] == "album r1" and reads[1].startswith("tracks ")
