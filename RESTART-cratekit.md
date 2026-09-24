@@ -4,7 +4,28 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-688, issue #201, `relay/201`, 2026-09-24.** `route inbox
+**Last merged: R-691, issue #202, `relay/202`, 2026-09-24.** The database
+path of `route inbox` plans its placements before the gate. `plan_inbox` in
+`write/routing_cli.py` takes the readings, the calibrated cut and the
+placements first, by the calls the write made after the gate until now, and
+names each file's destination and vocal sub with `routing_pass.destination`,
+the export path's own naming. The items carry `path`, `name`, `destination`
+and `vocal`, the digest is taken over them, and the gate's facts are counted
+off the items the way the export gate's are: intake folder, tracks, routed,
+vocal, the trees the write goes into, not derived, warnings. `apply_inbox`
+consumes the plan it is handed and derives nothing a second time, so the row
+lands where the screen said and the declaration is read once per verb. A
+library with nothing native reads no file and no calibration, lists its
+files with no destination, and carries the export remedy on the gate and on
+the declined and empty answers. What the path writes is unchanged. **The
+numbers:** 10,163 collected; `docs/mutation/r691.md`, 16 rows, all killed,
+and the notes in `r691-notes.md`. R-690 is narrowed for this verb. What the
+review left at the edges is **R-698** (the empty derivation refusal, now
+before the gate, names a music directory the inbox path never read) and
+**R-699** (the skill still says the export sweep rates the intake). Neither
+meets the board bar. **Main's highest residual number is R-699.**
+
+**Merged before it: R-688, issue #201, `relay/201`, 2026-09-24.** `route inbox
 --export` plans no star rating. Every row of a collection export is one
 rekordbox already holds, and an import keeps the database's rating on such a
 row. The tenth sitting wrote four ratings into a file and read all four back
@@ -22,8 +43,8 @@ database path writes it, which is the cutover's. The rule behind this is in
 `r688-notes.md`. R-692 is narrowed to its export id half. What the decision
 left at its edges is **R-696** (the xml rating writer has no caller and keeps
 its exemption) and **R-697** (an unimported intake splice's created rows are
-described as held). Neither meets the board bar. **Main's highest residual
-number is R-697.**
+described as held). Neither meets the board bar. Main's highest residual
+number was R-697 at that merge.
 
 **Merged before it: R-687, issue #200, `relay/200`, 2026-09-24.** Wording only.
 The pending steps name only what the rekordbox xml bridge can land.

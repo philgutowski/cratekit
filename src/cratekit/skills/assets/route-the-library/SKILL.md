@@ -46,10 +46,13 @@ changed a track's analysis, that is a defect and not a feature.
 
 ## The intake folder offers a plan, then stops
 
-`route inbox` builds a plan of what is sitting in the intake folder and stops
-at a named gate before it writes anything. The gate is `route.inbox.apply`, it
-offers `apply` and `abort`, and nothing answers it implicitly. Run it once to
-read the plan, then answer:
+`route inbox` builds a plan of where each file sitting in the intake folder
+goes, the folder and sub-playlist per file and the vocal sub it also files
+into, and stops at a named gate before it writes anything. The gate shows that
+plan, its counts, the trees the write goes into and any warning, so the answer
+is given over what will be written. The gate is `route.inbox.apply`, it offers
+`apply` and `abort`, and nothing answers it implicitly. Run it once to read the
+plan, then answer:
 
 ```bash
 crate route inbox

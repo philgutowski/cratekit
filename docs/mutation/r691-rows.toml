@@ -1,0 +1,259 @@
+name = "r691"
+pass_kind = "light"
+
+# R-691: the database route inbox gate plans its placements before the gate
+# and shows each file's destination, the digest binds the placements, and the
+# write consumes the plan it showed. A rendering plus a seam move: the write
+# is unchanged, so the table is scoped to the new guards, the regression the
+# residual recorded, and the review round's fixes. Author's table, no
+# independent verifier (METHOD, 2026-09-07).
+
+[[rows]]
+id = "P1_destination_left_off_the_item"
+description = "each item is listed with no destination, the defect R-691 recorded: a person answers a placement they cannot read"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            "destination": destined.get(str(path), ""),
+            "vocal": vocal.get(str(path), ""),
+'''
+new = '''
+            "destination": "",
+            "vocal": vocal.get(str(path), ""),
+'''
+
+[[rows]]
+id = "P2_vocal_left_off_the_item"
+description = "the vocal sub a track also files into is left off the item"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            "destination": destined.get(str(path), ""),
+            "vocal": vocal.get(str(path), ""),
+'''
+new = '''
+            "destination": destined.get(str(path), ""),
+            "vocal": "",
+'''
+
+[[rows]]
+id = "P3_vocal_named_as_the_destination"
+description = "the vocal placement is written into the destination column instead of its own, so a vocal track shows one sub where it files into two"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            named = vocal if placement.sub == trees.VOX_SUB_CLASS else destined
+            named.setdefault(placement.location, f"{folder_name}/{sub}")
+'''
+new = '''
+            named = destined
+            named.setdefault(placement.location, f"{folder_name}/{sub}")
+'''
+
+[[rows]]
+id = "P4_digest_over_the_file_list"
+description = "the digest is taken over the file list alone, the other half of the defect: a decision recorded against it stays valid while the routing under it changes"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    digest = digest_of({"kind": kind, "items": items})
+'''
+new = '''
+    digest = digest_of({
+        "kind": kind,
+        "items": [
+            {k: v for k, v in item.items() if k in ("path", "name", "track_id")}
+            for item in items
+        ],
+    })
+'''
+
+[[rows]]
+id = "W1_write_ignores_the_plan"
+description = "the write takes no placement from the plan, so the confirmed apply files nothing where the screen said it would"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            placements = planned.placements[tree_id]
+'''
+new = '''
+            placements = ()
+'''
+
+[[rows]]
+id = "G1_gate_shown_without_facts"
+description = "the database gate is given the items and none of the facts counted off them"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    option = _apply_gate(ctx, plan, _shown(plan, **_inbox_facts(planned)))
+'''
+new = '''
+    option = _apply_gate(ctx, plan, _shown(plan))
+'''
+
+[[rows]]
+id = "F1_routed_counts_vocal"
+description = "routed is counted off the vocal column instead of the destination, on both gates"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "routed": sum(1 for item in tracks if item["destination"]),
+        "vocal": sum(1 for item in tracks if item["vocal"]),
+'''
+new = '''
+        "routed": sum(1 for item in tracks if item["vocal"]),
+        "vocal": sum(1 for item in tracks if item["vocal"]),
+'''
+
+[[rows]]
+id = "F2_trees_left_off"
+description = "the trees the write goes into are left off the screen"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "trees": list(plan.native),
+'''
+new = '''
+        "trees": [],
+'''
+
+[[rows]]
+id = "F3_planner_warnings_dropped_from_facts"
+description = "the planner's warnings stay off the screen, so a library with nothing native shows empty destinations and no reason"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "not derived": list(plan.gaps),
+        "warnings": [warning["message"] for warning in plan.warnings],
+'''
+new = '''
+        "not derived": list(plan.gaps),
+        "warnings": [],
+'''
+
+[[rows]]
+id = "F4_gaps_dropped_from_facts"
+description = "the dimensions not derived stay off the database gate's screen"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "not derived": list(plan.gaps),
+        "warnings": [warning["message"] for warning in plan.warnings],
+'''
+new = '''
+        "not derived": [],
+        "warnings": [warning["message"] for warning in plan.warnings],
+'''
+
+[[rows]]
+id = "N1_no_native_tree_not_warned_by_the_planner"
+description = "a library with nothing native gets no warning before the gate, so the screen lists files with no destination and no reason"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not native:
+        warnings.append({"code": "no-native-tree", "message": EXPORT_REMEDY})
+    elif files:
+'''
+new = '''
+    if not native:
+        pass
+    elif files:
+'''
+
+[[rows]]
+id = "N2_calibration_read_before_the_native_check"
+description = "the calibration and the file tags are read before the native check, the first draft's shape: a corrupt calibration refuses a library whose answer is the export remedy"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not native:
+        warnings.append({"code": "no-native-tree", "message": EXPORT_REMEDY})
+    elif files:
+        threshold = metadata_cli.load_vocal_threshold(cfg)
+        readings = [rebuild.read_truth(path) for path in files]
+'''
+new = '''
+    threshold = metadata_cli.load_vocal_threshold(cfg)
+    readings = [rebuild.read_truth(path) for path in files]
+    if not native:
+        warnings.append({"code": "no-native-tree", "message": EXPORT_REMEDY})
+    elif files:
+'''
+
+[[rows]]
+id = "N3_declined_envelope_drops_the_warning"
+description = "the declined answer drops the planner's warning, so a reader of the JSON after an abort cannot learn why every destination is empty"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        return ctx.envelope(
+            data=_plan(items, kind="inbox", applied=False),
+            outcome=Outcome.NO_OP,
+            warnings=planned.warnings,
+        )
+'''
+new = '''
+        return ctx.envelope(
+            data=_plan(items, kind="inbox", applied=False),
+            outcome=Outcome.NO_OP,
+        )
+'''
+
+[[rows]]
+id = "N4_inbox_empty_envelope_drops_the_warning"
+description = "the inbox-empty answer drops the planner's warning, so the screen and the answer name different reasons for one state"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            data=_plan(items, kind="inbox", applied=False, reason="inbox-empty"),
+            outcome=Outcome.NO_OP,
+            warnings=planned.warnings,
+'''
+new = '''
+            data=_plan(items, kind="inbox", applied=False, reason="inbox-empty"),
+            outcome=Outcome.NO_OP,
+'''
+
+[[rows]]
+id = "K1_empty_folder_plan_names_no_tree"
+description = "the plan's placements are keyed only when the folder has files, so the write's index has nothing to find for an empty folder"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    placements: dict[str, tuple[rebuild.DeclaredPlacement, ...]] = {
+        tree_id: () for tree_id in native
+    }
+'''
+new = '''
+    placements: dict[str, tuple[rebuild.DeclaredPlacement, ...]] = {}
+'''
+
+[[rows]]
+id = "K2_gaps_not_carried_to_the_apply"
+description = "the apply reports nothing as not compared, the R-316 shape, now that the derivation happened on the plan"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "not_compared": planned.gaps,
+'''
+new = '''
+        "not_compared": (),
+'''
