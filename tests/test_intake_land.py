@@ -701,6 +701,21 @@ def test_a_recorded_abort_is_honored_over_an_export_that_went_missing(cfg, silen
     assert _staged_names(cfg) == ["One.flac"]
 
 
+def test_a_stale_answer_stays_stale_over_an_export_that_is_not_there(cfg, silence, export, tmp_path):
+    """Only the refusal that asks for an answer gives way to the preflight. An
+    answer given against another plan is the gate's own verdict, and the
+    person is told the plan moved, not only that the new export is missing."""
+    _stage(cfg, silence, "One.flac")
+    code, refused = _drive(_land(export, "--name", BATCH))
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+
+    code, envelope = _drive(["--run", run_id, *_land(tmp_path / "absent.xml", "--name", BATCH)])
+
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    assert _staged_names(cfg) == ["One.flac"]
+
+
 def test_a_recorded_apply_over_an_export_that_went_missing_is_the_engine_s_refusal(
     cfg, silence, export, monkeypatch
 ):
