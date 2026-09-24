@@ -52,7 +52,6 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from cratekit.cli import gates
 from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
 from cratekit.core import (
     active_taxonomy,
@@ -320,25 +319,6 @@ def _placed_counts(tracks: list[dict[str, str]]) -> dict[str, int]:
     }
 
 
-def _shown(plan: dict, **facts: Any) -> dict[str, Any]:
-    """What the apply gate puts in front of the person (R-686).
-
-    The facts the caller names, then the digest, the count and EVERY ITEM the
-    digest was taken over, so the screen is the plan a person approves and a
-    JSON reader can compare it with the declined run's items. The export gate
-    hands in its plan through :func:`_named`, so each of its items also leads
-    with the track's artist and title, which a reader drops to compare (R-692).
-    Without this the gate carried the question and the options and not one
-    item, and a person answered a routing plan they could not read. There is
-    no bound: the digest covers every item, and a list cut short would ask for
-    approval of items nobody was shown. The body is the gate layer's
-    :func:`cratekit.cli.gates.shown_plan` since R-693 closed the rest of the
-    class through it; ``totals.count`` here is the item count, so nothing
-    this screen said has changed.
-    """
-    return gates.shown_plan(plan, **facts)
-
-
 def _named(plan: dict, names: dict[str, dict[str, str]]) -> dict:
     """The plan as the export gate shows it, each track named (R-692).
 
@@ -394,9 +374,24 @@ def _export_facts(
     }
 
 
-def _apply_gate(ctx, plan: dict, shown: dict[str, Any]) -> str:
+def _apply_gate(ctx, plan: dict, facts: dict[str, Any]) -> str:
+    """Ask the apply gate over ``plan``, showing it whole (R-686).
+
+    The gate layer shows the facts, then the digest, the count and EVERY ITEM
+    the digest was taken over, so the screen is the plan a person approves and
+    a JSON reader can compare it with the declined run's items. The export
+    gate hands in its plan through :func:`_named`, so each of its items also
+    leads with the track's artist and title, which a reader drops to compare
+    (R-692). Without this the gate carried the question and the options and
+    not one item, and a person answered a routing plan they could not read.
+    There is no bound: the digest covers every item, and a list cut short
+    would ask for approval of items nobody was shown. The body that renders
+    it is :func:`cratekit.cli.gates.shown_plan`, shared with every other
+    digest bound gate since R-693, and reached through the run's gate
+    resolver because this layer may not import the CLI's.
+    """
     spec = ctx.entry.gates[0]
-    return ctx.gate.require(spec, digest=plan["digest"], context=shown)
+    return ctx.gate.require(spec, plan=plan, context=facts)
 
 
 def _close_run(record, cfg: config.Config):
@@ -1357,7 +1352,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     unrated = _rating_not_landable(owed)
     offered = _plan(items, kind="inbox-export")
     facts = _export_facts(items, export, gaps, vox_created, [*warnings, *unrated])
-    option = _apply_gate(ctx, offered, _shown(_named(offered, names), **facts))
+    option = _apply_gate(ctx, _named(offered, names), facts)
     if option != "apply":
         return ctx.envelope(
             data=_plan(items, kind="inbox-export", applied=False),
@@ -1449,7 +1444,7 @@ def route_inbox(ctx) -> Envelope:
     planned = plan_inbox(cfg, active_taxonomy.load(cfg))
     items = planned.items
     plan = _plan(items, kind="inbox")
-    option = _apply_gate(ctx, plan, _shown(plan, **_inbox_facts(planned)))
+    option = _apply_gate(ctx, plan, _inbox_facts(planned))
     # THE PLANNER'S WARNINGS RIDE ON EVERY ANSWER, as the export path's do,
     # so a reader of the declined envelope learns why every destination is
     # empty without the screen.
