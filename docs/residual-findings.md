@@ -28101,6 +28101,12 @@ between a plan and its apply and reads the refusal.
 **Not on the board bar.** Reachability unmeasured, and the precedent it
 follows is documented.
 
+**Narrowed 2026-09-24, on `relay/202` (R-691).** The database routing verb
+now reads the declaration once, in `route_inbox`, and carries it on the plan
+to `apply_inbox`, so the second read after the gate is gone for that verb.
+The per item reads in the workers and the resort's second read stand, and
+no digest covers the declaration yet.
+
 ---
 
 ## R-691. The database route inbox gate shows the intake files and no destination, because that path's plan is the file list and the routing is decided after the answer
@@ -28123,6 +28129,30 @@ digest is taken over them, with a test reading a destination off the gate's
 
 **Not on the board bar.** The write is still held behind the gate, and the
 path is reached only once a tree has cut over.
+
+**Closed 2026-09-24 on `relay/202`, issue #202.** `plan_inbox` in
+`write/routing_cli.py` decides every placement before the gate, by the calls
+the write made after it: `read_truth` per file, `declared_membership`
+through the registry's source for each tree that has cut over, once per
+source, and `routing_pass.destination` for the display names, the export
+path's own naming. Each item carries `path`, `name`, `destination` and
+`vocal`, the digest is taken over them, and a reading that moves a
+placement moves the digest over one unchanged folder. The gate's facts are
+counted off the items as the export gate's are: the intake folder, tracks,
+routed, vocal, the trees the write goes into, the dimensions not derived
+and the planner's warnings. `apply_inbox` consumes the plan it is handed,
+the placements, the declaration and the registry, and derives nothing a
+second time, so the row lands under the folder and playlist the screen
+named and the declaration is read once per verb, which narrows R-690 for
+this verb. A library with nothing native reads no file and no calibration,
+lists its files with no destination, and carries the export remedy on the
+gate and on the declined and empty answers alike; the apply still answers
+`no-native-tree`. What the path writes is unchanged. The review drove the
+calibration read back under the native check, since the first draft refused
+a library that could not use the cut, and put the planner's warnings on
+every answer. Mutation table `docs/mutation/r691.md`, sixteen rows, all
+killed. The route-the-library skill says the gate shows the plan. R-698
+records what moving the derivation before the gate left at its edge.
 
 ---
 
@@ -28265,3 +28295,50 @@ and counts only the second, or the verb refuses a file that carries rows
 its intake has not seen imported, with a test either way.
 
 **Not on the board bar.** Reachability unmeasured.
+
+---
+
+## R-698. The database inbox plan refuses an intake folder the declaration places nowhere with the rebuild's remedy, which names a music directory the plan never read
+
+**Found:** by the built in review on `relay/202`, 2026-09-24, while R-691
+was closed. `plan_inbox` derives through `declared_membership`, which
+refuses `rebuild-derivation-empty` when the readings place nothing, and its
+steps and detail name the library's music directory, because that refusal
+was written for the rebuild's walk of the music directory. The inbox path
+hands it the intake folder's readings instead. Before R-691 the same call
+sat in `apply_inbox` after the gate, so the refusal is not new; it is now
+before the answer, which is where the export path puts its refusals. The
+export path lists the same file with an empty destination and refuses
+nothing, so the two media disagree about whether the plan is offered.
+
+**Measured cost:** not driven on a library. It needs an active taxonomy
+whose fallback bucket has no sink for an untagged file, which the shipped
+template does not have and an edited active copy (R-685) could. A person
+there is told to check a directory the verb did not read.
+
+**Closes when:** the inbox path refuses with steps that name the intake
+folder and the declaration, or lists the files with no destination and a
+warning the way the export path does, with a test either way.
+
+**Not on the board bar.** Reachability unmeasured, and the write is held.
+
+---
+
+## R-699. The route-the-library skill still says `route inbox --export` rates the intake, which R-688 stopped
+
+**Found:** on `relay/202`, 2026-09-24, reading the skill to record R-691.
+The unplaced sweep's section ends "Ratings are not set here; `route inbox
+--export` rates the intake." R-688 stopped the export sweep planning any
+rating, since an import keeps the database's rating on every row an export
+holds, and the skill's inbox section was not read at that merge.
+
+**Measured cost:** one false sentence in a shipped skill. A person reading
+it expects stars the sweep no longer writes, the expectation R-688's warning
+exists to correct.
+
+**Closes when:** the sentence says no sweep sets a rating and names the
+`rating-not-landable` warning, with the skill's tests pinning it if any pin
+that section.
+
+**Not on the board bar.** Wording, and the product's own warning already
+says the true thing.
