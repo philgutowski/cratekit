@@ -98,3 +98,35 @@ invisible from the test, so nothing at the call site suggests `undo()` is
 reaching outside the test's own arrangement. And the failure it produces reads as
 a bug in the code under test, since the assertion is about product state and the
 product state it compares against is real.
+
+## Since R-658, 2026-09-23
+
+The root conftest no longer shares the instance. Each isolation fixture holds
+its own `pytest.MonkeyPatch.context()` and requests no `monkeypatch`, so a body
+`undo()` cannot reach the state roots, the keychain, the library root or the
+refusals. **Do not give one of those fixtures the `monkeypatch` argument back**,
+not even to patch one more thing. Requesting it sets the shared instance up
+before the fixture and tears it down after, so a body patch of a redirected
+variable would be restored last, to the temp value, and the real one would be
+lost for the rest of the worker.
+
+The rule above still stands, and now a test enforces it:
+`tests/test_isolation_survives_undo.py` refuses any `monkeypatch.undo()` under
+`tests/`. Module level autouse fixtures still ride the shared instance, a
+stubbed process list or a refused subprocess, and an undo would still remove
+them. The supported way to reverse one patch is a scoped instance around the
+call it is for:
+
+```python
+with pytest.MonkeyPatch.context() as full_disk:
+    full_disk.setattr(restore, "_replace_file", _explode)
+    with pytest.raises(CratekitError):
+        restore.run(first, cfg, held=held)
+```
+
+The off switch above is still right for a patch the test wants installed while
+it reads through the same seam afterwards.
+
+To reverse a patch a FIXTURE made, which a context cannot scope, capture the
+real value at import and set it back on the shared instance. That is what
+`tests/intake/test_repair_apply.py` does with `_REAL_RECORDED`.

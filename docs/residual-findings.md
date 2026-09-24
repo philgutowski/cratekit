@@ -26709,6 +26709,30 @@ by a write and shows it land in the temp root.
 
 **On the board bar under (a).** Files were damaged, and demonstrably. Issue filed after the merge that carries this entry.
 
+**Closed 2026-09-23 on `relay/191`, on its first condition and with the guard
+the second one lacked.** Neither route the brief offered. The tripwire was
+declined again because it detects the write after it happens, and the scoped
+route alone fixes eleven instances and not the class. So the six root conftest
+fixtures that isolate the machine (state roots, keychain, provider client,
+recognition transport, mix fetcher, library root and mount check) each hold
+their own `pytest.MonkeyPatch.context()` and request no `monkeypatch`. That
+keeps them set up before the body's instance and torn down after it, so a body
+`undo()` reverts the body's patches and nothing of theirs. All eleven sites are
+now scoped patches around the one call each was for. Two of them were leaning
+on the wider revert: the restore retry lost its own "nothing is running" stub,
+and repair apply rebuilt the library root and `config.load` by hand after
+throwing them away. The built in review found the class one file over, about
+two dozen module level autouse guards still on the shared instance, so a new
+test walks `tests/` and refuses any `monkeypatch.undo()`, exempting only the
+guard file by exact path. `tests/test_isolation_survives_undo.py` undoes a body
+patch, then resolves the platformdirs and product config and state paths, the
+keychain, the library root and the refusals. It asserts each is inside the
+test's temp root before writing, so the four undo tests fail against `main`'s
+conftest without writing. Tables `docs/mutation/r658-a.md` to `r658-d.md`, read
+in `r658-notes.md`: 22 rows, 20 killed, S4's zero paired with a composite that
+kills, and one maintainer zero. The real state directory was fingerprinted
+before and after two full battery runs, 2446 entries, unchanged.
+
 ---
 
 ## R-659. The driver's guard watches two roots while its sandbox redirects eight variables

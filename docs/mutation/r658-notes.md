@@ -1,13 +1,22 @@
 # R-658, mutation notes
 
-Three tables, twenty rows, one pass. The author's own table, so every zero reads
-as "the author could not kill it".
+Four tables, twenty two rows, one pass. The author's own table, so every zero
+reads as "the author could not kill it".
 
 | Table | Rows | Killed | Zero |
 |---|---|---|---|
 | `r658-a`, the conftest guards | 7 | 7 | 0 |
 | `r658-b`, the eleven sites | 12 | 10 | 2 |
 | `r658-c`, the composite for S4 | 1 | 1 | 0 |
+| `r658-d`, the undo ban | 2 | 2 | 0 |
+
+**Tables A to C were measured before the review round, D after it.** The
+review folded the two conftest helpers back into their fixtures and rewrote the
+zone test, so A's and S11's `old` text no longer matches the tree. A was not
+re-run as a table. The reshaped guard file was run by hand against `main`'s
+conftest once more: the four undo tests fail, the two ban tests pass because no
+body undo is left anywhere, and the config test fails at its resolution check,
+before any write.
 
 **Table A.** C1 to C6 each put one isolation fixture's patches back on the
 shared `monkeypatch`, which is the tree before R-658. Every one is killed by
@@ -28,8 +37,12 @@ the same way. S4c puts the old branch back, a dataless file answered as
 unreadable in `_look_at`, and that one test kills it. The scoped patch still
 reaches the branch it was written to catch.
 
-**S11, maintainer facing, zero promoted to 10133.** It drops the scoped `undo()`
-before `time.tzset()` in the zone test, so the worker keeps New York's zone
-state after the test. No other test in the suite depends on the process zone,
-so nothing dies. The `undo()` is kept because it is what makes the `tzset()`
-restore the zone the process had.
+**S11, maintainer facing, zero promoted to 10133.** It dropped the scoped
+`undo()` before `time.tzset()` in the zone test, so the worker kept New York's
+zone state after the test, and no other test depends on the process zone. The
+review then removed that inner `undo()` altogether: the `try` now sits outside
+the context, whose exit restores TZ before the `tzset()` in `finally` runs.
+
+**Table D.** D1 puts a body `monkeypatch.undo()` back into the restore retry
+test and the ban names it. D2 loosens the ban to match a method called
+`undone`, and `test_the_ban_sees_an_undo` kills it.
