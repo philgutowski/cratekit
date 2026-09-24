@@ -2599,6 +2599,19 @@ def test_the_offered_plan_names_no_rating_and_says_which_are_owed(
     assert not _routed(export).exists()
 
 
+def test_a_declined_run_still_says_which_ratings_are_owed(configured, tagged, tmp_path):
+    """The abort answer is how a person reads a plan without applying it, so
+    its envelope carries the owed count the gate showed."""
+    export = _rating_export(configured, tmp_path / "exports")
+    code, envelope = _drive(
+        ["-d", "route.inbox.apply=abort", "route", "inbox", "--export", str(export)]
+    )
+    assert code == int(ExitCode.OK), envelope
+    (message,) = _owed(envelope)
+    assert message.startswith("2 intake row(s) are owed a star rating"), message
+    assert not _routed(export).exists()
+
+
 def test_a_row_with_no_rating_attribute_is_not_counted_as_owed(configured, tagged, tmp_path):
     """No ``Rating`` attribute is not "nobody rated this", so no warning."""
     export = _write_export(configured, tmp_path / "exports")
