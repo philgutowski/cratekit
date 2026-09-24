@@ -1,0 +1,181 @@
+name = "r692"
+pass_kind = "light"
+
+# R-692: the export route gate names each track by artist and title beside the
+# fields the digest covers, and the gate screen quotes a value that would
+# break its k=v line. A rendering on a gate that still holds the write, so the
+# table is scoped to the branch's own new lines. Author's table, no
+# independent verifier (METHOD, 2026-09-07).
+
+[[rows]]
+id = "N1_gate_shows_unnamed_items"
+description = "The export gate shows the plan without _named, the defect R-692 recorded"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    option = _apply_gate(ctx, offered, _shown(_named(offered, names), **facts))
+'''
+new = '''
+    option = _apply_gate(ctx, offered, _shown(offered, **facts))
+'''
+
+[[rows]]
+id = "N2_names_trail_the_item"
+description = "The names follow the digest's fields, so the screen line still leads with the export id"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            {**names.get(item["track_id"], {"artist": "", "title": ""}), **item}
+'''
+new = '''
+            {**item, **names.get(item["track_id"], {"artist": "", "title": ""})}
+'''
+
+[[rows]]
+id = "N3_title_reads_the_artist"
+description = "The title is read from the row's Artist attribute rather than its Name"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            "title": by_id[item["track_id"]].get("Name", ""),
+'''
+new = '''
+            "title": by_id[item["track_id"]].get("Artist", ""),
+'''
+
+[[rows]]
+id = "N4_artist_reads_the_title"
+description = "The artist is read from the row's Name attribute rather than its Artist"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            "artist": by_id[item["track_id"]].get("Artist", ""),
+'''
+new = '''
+            "artist": by_id[item["track_id"]].get("Name", ""),
+'''
+
+[[rows]]
+id = "N5_long_track_outside_intake_unnamed"
+description = "Only intake keys are named, so a long track outside the intake shows its id alone"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        for item in items
+        if item["track_id"] in by_id
+    }
+'''
+new = '''
+        for item in items
+        if item["track_id"] in by_id and item["track_id"] in intake
+    }
+'''
+
+[[rows]]
+id = "N6_names_leak_into_the_declined_items"
+description = "The declined envelope's data.items carry the names, which the ledger says stay as they are"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            data=_plan(items, kind="inbox-export", applied=False),
+'''
+new = '''
+            data=_named(_plan(items, kind="inbox-export", applied=False), names),
+'''
+
+[[rows]]
+id = "N7_digest_taken_over_the_names"
+description = "The offered digest is taken over the named items, so the gate's digest parts from the declined run's"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    offered = _plan(items, kind="inbox-export")
+'''
+new = '''
+    offered = _plan(_named({"items": items}, names)["items"], kind="inbox-export")
+'''
+
+[[rows]]
+id = "N8_row_with_no_track_loses_its_columns"
+description = "A row with no name gets no artist or title column rather than empty ones"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            {**names.get(item["track_id"], {"artist": "", "title": ""}), **item}
+'''
+new = '''
+            {**names.get(item["track_id"], {}), **item}
+'''
+
+[[rows]]
+id = "Q1_comma_not_a_breaker"
+description = "A comma no longer quotes a value, so an artist pair reads as two fields"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_routing_workers.py"]
+old = '''
+_FIELD_BREAKERS = (",", "=", "\n", "\r")
+'''
+new = '''
+_FIELD_BREAKERS = ("=", "\n", "\r")
+'''
+
+[[rows]]
+id = "Q2_equals_not_a_breaker"
+description = "An equals sign no longer quotes a value, so a title can print what looks like a field"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_routing_workers.py"]
+old = '''
+_FIELD_BREAKERS = (",", "=", "\n", "\r")
+'''
+new = '''
+_FIELD_BREAKERS = (",", "\n", "\r")
+'''
+
+[[rows]]
+id = "Q3_carriage_return_not_a_breaker"
+description = "A carriage return no longer quotes a value, so it reaches the screen raw"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_routing_workers.py"]
+old = '''
+_FIELD_BREAKERS = (",", "=", "\n", "\r")
+'''
+new = '''
+_FIELD_BREAKERS = (",", "=", "\n")
+'''
+
+[[rows]]
+id = "Q4_quoted_value_escapes_its_letters"
+description = "A quoted value is ASCII escaped, so a non English artist prints as escape codes"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_routing_workers.py"]
+old = '''
+        return json.dumps(value, ensure_ascii=False)
+'''
+new = '''
+        return json.dumps(value, ensure_ascii=True)
+'''
+
+[[rows]]
+id = "Q5_item_line_uses_the_plain_value"
+description = "The item line prints every value plain again, the quoting never reached"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_routing_workers.py"]
+old = '''
+                        "    " + ", ".join(f"{k}={_item_value(v)}" for k, v in item.items())
+'''
+new = '''
+                        "    " + ", ".join(f"{k}={_shown_value(v)}" for k, v in item.items())
+'''
