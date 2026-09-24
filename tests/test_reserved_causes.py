@@ -3222,7 +3222,7 @@ def test_a_status_with_a_conversion_round_it_still_reaches_the_shell():
     ]
 
 
-def test_the_derivation_refuses_to_answer_from_an_incomplete_walk(monkeypatch):
+def test_the_derivation_refuses_to_answer_from_an_incomplete_walk():
     """The sixth entry of the residual
     "One check in this unit is unreachable", driven by making the walk
     incomplete.
@@ -3234,14 +3234,14 @@ def test_the_derivation_refuses_to_answer_from_an_incomplete_walk(monkeypatch):
     short answer as a complete one, and the only way to show that is to hand the
     caller a short answer.
     """
-    monkeypatch.setitem(
-        globals(),
-        "imported_package_modules",
-        lambda: ([], {"cratekit.modules.tools.backup": "No module named 'boto3'"}),
-    )
-    with pytest.raises(AssertionError, match="invisible to the completeness"):
-        structured_refusal_causes()
-    monkeypatch.undo()
+    with pytest.MonkeyPatch.context() as short_walk:
+        short_walk.setitem(
+            globals(),
+            "imported_package_modules",
+            lambda: ([], {"cratekit.modules.tools.backup": "No module named 'boto3'"}),
+        )
+        with pytest.raises(AssertionError, match="invisible to the completeness"):
+            structured_refusal_causes()
     assert structured_refusal_causes(), "the walk did not come back after the swap"
 
 
@@ -7201,19 +7201,19 @@ def test_the_module_and_the_class_are_named_once_each(monkeypatch):
     is to move the thing it derives from and watch the answer follow. Hard coding
     either leaf back makes this fail.
     """
-    monkeypatch.setattr(_guards, "EXIT_CODE_MODULE", "cratekit.core.statuses")
-    moved = """
+    with pytest.MonkeyPatch.context() as moved_module:
+        moved_module.setattr(_guards, "EXIT_CODE_MODULE", "cratekit.core.statuses")
+        moved = """
 from cratekit.core import statuses
 
 CODES = {"rclone-missing": statuses.ExitCode.PRECONDITION}
 """
-    assert reserved_code_tables(moved, CAUSES, RANGE) == [
-        "line 4: 'rclone-missing' -> statuses.ExitCode.PRECONDITION"
-    ]
-    assert (
-        reserved_code_tables(EVASION_A_SIBLING_BOUND_AS_A_MODULE, CAUSES, RANGE) == []
-    ), "the module moved and the binding did not follow it"
-    monkeypatch.undo()
+        assert reserved_code_tables(moved, CAUSES, RANGE) == [
+            "line 4: 'rclone-missing' -> statuses.ExitCode.PRECONDITION"
+        ]
+        assert (
+            reserved_code_tables(EVASION_A_SIBLING_BOUND_AS_A_MODULE, CAUSES, RANGE) == []
+        ), "the module moved and the binding did not follow it"
 
     monkeypatch.setattr(_guards, "EXIT_CODE_CLASS", "Status")
     renamed = """

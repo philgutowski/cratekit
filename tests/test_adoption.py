@@ -3716,7 +3716,7 @@ def test_a_digest_recorded_with_no_size_is_still_compared_rather_than_refused(
 
 
 def test_a_file_that_cannot_be_READ_is_not_reported_as_somebody_elses_bytes(
-    cfg, tmp_path, monkeypatch
+    cfg, tmp_path
 ):
     """An input output error is not a verdict about the file's content.
 
@@ -3733,10 +3733,9 @@ def test_a_file_that_cannot_be_READ_is_not_reported_as_somebody_elses_bytes(
         cfg, path, field="genre", written="Adopted", entry_id="e1"
     )
     key = (str(path), "genre")
-    monkeypatch.setattr(adopt_revert, "digest_of", lambda _p: "")
-
-    report = adopt_revert.revert_tags(cfg)
-    monkeypatch.undo()
+    with pytest.MonkeyPatch.context() as unreadable:
+        unreadable.setattr(adopt_revert, "digest_of", lambda _p: "")
+        report = adopt_revert.revert_tags(cfg)
     assert list(report.failed) == [key]
     assert "its bytes cannot be read here to compare" in report.failed[key], (
         report.failed[key]
@@ -3937,7 +3936,7 @@ def test_an_UNSTAMPED_record_is_still_spendable_with_force(cfg, tmp_path):
     assert adopt_revert.read(cfg).snapshots == ()
 
 
-def test_a_stamping_read_that_FAILS_is_recorded_as_its_own_state(cfg, tmp_path, monkeypatch):
+def test_a_stamping_read_that_FAILS_is_recorded_as_its_own_state(cfg, tmp_path):
     """"The digest could not be computed" and "no digest exists" are two facts.
 
     ``digest_of`` answered the empty string on any ``OSError`` and ``_stamped``
@@ -3954,11 +3953,11 @@ def test_a_stamping_read_that_FAILS_is_recorded_as_its_own_state(cfg, tmp_path, 
     path = _synth(tmp_path, ".flac")
     tags.write_genre(path, "Original A")
 
-    monkeypatch.setattr(adopt_revert, "digest_of", lambda _p: "")
-    record, landed = adopt_revert.write_tag_with_record(
-        cfg, path, field="genre", written="Adopted", entry_id="e1"
-    )
-    monkeypatch.undo()
+    with pytest.MonkeyPatch.context() as unreadable:
+        unreadable.setattr(adopt_revert, "digest_of", lambda _p: "")
+        record, landed = adopt_revert.write_tag_with_record(
+            cfg, path, field="genre", written="Adopted", entry_id="e1"
+        )
     assert landed
 
     assert record.digest_state is adopt_revert.DigestState.UNREADABLE
@@ -4032,7 +4031,7 @@ def test_the_stamping_read_is_RETRIED_before_the_record_gives_up(cfg, tmp_path):
 
 
 def test_a_stamping_STAT_that_fails_records_the_state_rather_than_asserting_it_cannot(
-    cfg, tmp_path, monkeypatch
+    cfg, tmp_path
 ):
     """The branch that carried ``pragma: no cover`` on a claim that does not follow.
 
@@ -4057,12 +4056,12 @@ def test_a_stamping_STAT_that_fails_records_the_state_rather_than_asserting_it_c
         written["done"] = True
         return landed
 
-    monkeypatch.setattr(Path, "stat", stat_fails_after_the_write)
-    record, landed = adopt_revert.write_tag_with_record(
-        cfg, path, field="genre", written="Adopted", entry_id="e1",
-        write_field=write_then_break,
-    )
-    monkeypatch.undo()
+    with pytest.MonkeyPatch.context() as failing:
+        failing.setattr(Path, "stat", stat_fails_after_the_write)
+        record, landed = adopt_revert.write_tag_with_record(
+            cfg, path, field="genre", written="Adopted", entry_id="e1",
+            write_field=write_then_break,
+        )
 
     assert landed
     assert record.digest_state is adopt_revert.DigestState.UNREADABLE
@@ -4142,7 +4141,7 @@ def test_a_record_with_no_digest_refuses_INSTEAD_OF_falling_back_to_the_metadata
 
 
 def test_a_cloud_EVICTED_file_IS_read_because_the_restore_fetches_it_anyway(
-    cfg, tmp_path, monkeypatch
+    cfg, tmp_path
 ):
     """The shortcut that skipped the only unforgeable evidence to save nothing.
 
@@ -4192,15 +4191,15 @@ def test_a_cloud_EVICTED_file_IS_read_because_the_restore_fetches_it_anyway(
 
     reads: list[Path] = []
     real_digest = adopt_revert.digest_of
-    monkeypatch.setattr(
-        adopt_revert, "digest_of", lambda p: (reads.append(p), real_digest(p))[1]
-    )
-    monkeypatch.setattr(Path, "stat", evicted_stat)
+    with pytest.MonkeyPatch.context() as evicted:
+        evicted.setattr(
+            adopt_revert, "digest_of", lambda p: (reads.append(p), real_digest(p))[1]
+        )
+        evicted.setattr(Path, "stat", evicted_stat)
 
-    # THE REAL WRITER, which is the whole difference from the version this
-    # replaces: the restore below opens the file with mutagen and rewrites it.
-    report = adopt_revert.revert_tags(cfg)
-    monkeypatch.undo()
+        # THE REAL WRITER, which is the whole difference from the version this
+        # replaces: the restore below opens the file with mutagen and rewrites it.
+        report = adopt_revert.revert_tags(cfg)
 
     assert report.failed == {}, report.failed
     assert report.restored == ((str(path), "genre"),)
@@ -4329,7 +4328,7 @@ def test_TWO_RECORDS_for_ONE_FILE_refuse_and_are_not_offered_a_force(cfg, tmp_pa
 
 
 def test_a_REWRITE_INSIDE_ONE_TICK_that_moves_no_stat_field_is_still_caught(
-    cfg, tmp_path, monkeypatch
+    cfg, tmp_path
 ):
     """The window a metadata-decided acceptance left in front of the byte-decided one.
 
@@ -4381,9 +4380,9 @@ def test_a_REWRITE_INSIDE_ONE_TICK_that_moves_no_stat_field_is_still_caught(
             os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
         return answer
 
-    monkeypatch.setattr(adopt_revert, "digest_of", swap_the_bytes_after_the_first_read)
-    report = adopt_revert.revert_tags(cfg)
-    monkeypatch.undo()
+    with pytest.MonkeyPatch.context() as swapping:
+        swapping.setattr(adopt_revert, "digest_of", swap_the_bytes_after_the_first_read)
+        report = adopt_revert.revert_tags(cfg)
 
     after = path.stat()
     assert (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) == (

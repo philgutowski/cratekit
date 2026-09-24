@@ -4432,7 +4432,7 @@ def test_round7_an_unreadable_staging_directory_still_refuses_the_same_way(cfg, 
     ), "the live log was moved anyway"
 
 
-def test_round6_a_retry_after_a_partial_failure_still_runs(cfg, held, monkeypatch):
+def test_round6_a_retry_after_a_partial_failure_still_runs(cfg, held):
     """A restore that refuses to run is as bad as one that half runs.
 
     The new refusal sits on a destructive path's preflight, so the failure mode it
@@ -4451,15 +4451,15 @@ def test_round6_a_retry_after_a_partial_failure_still_runs(cfg, held, monkeypatc
     def _explode(_source, _target):
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr(restore, "_replace_file", _explode)
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(first, cfg, held=held)
+    with pytest.MonkeyPatch.context() as full_disk:
+        full_disk.setattr(restore, "_replace_file", _explode)
+        with pytest.raises(CratekitError) as excinfo:
+            restore.run(first, cfg, held=held)
     assert excinfo.value.cause.reason == "restore-step-failed"
     stranded = first.pre_restore_root / log.name
     assert stranded.read_bytes() == b"the first attempt's log"
 
     # Put right what the error named, then do what the refusal said.
-    monkeypatch.undo()
     log.write_bytes(b"the second attempt's log")
     second = restore.plan(cfg, record.session_id, held=held)
     outcome = restore.run(second, cfg, held=held)

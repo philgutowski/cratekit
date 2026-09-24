@@ -369,18 +369,18 @@ def test_a_credited_deletion_is_one_write_and_so_is_lifting_it(cfg, monkeypatch)
     assert live(cfg) == []
 
 
-def test_a_record_that_cannot_be_written_leaves_neither_half(cfg, monkeypatch):
+def test_a_record_that_cannot_be_written_leaves_neither_half(cfg):
     from cratekit.core import review
 
     def refuses(self, recorded):
         raise OSError("the disk is full")
 
-    monkeypatch.setattr(review.DecisionStore, "_write", refuses)
-    with pytest.raises(OSError):
-        stores.record_tombstone(
-            cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
-        )
-    monkeypatch.undo()
+    with pytest.MonkeyPatch.context() as full_disk:
+        full_disk.setattr(review.DecisionStore, "_write", refuses)
+        with pytest.raises(OSError):
+            stores.record_tombstone(
+                cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
+            )
     assert stores.list_tombstones(cfg, include_revoked=True) == ()
 
 
