@@ -10157,6 +10157,23 @@ the file surfaces are repairable on demand with `name.apply`.
 the result to the live library, or the decision is revisited and the planner
 is deleted with its tests.
 
+**Read 2026-09-24 at the eleventh attended sitting, A3, issue #176, and the
+decline upheld.** `plan_title_padding` was run plan only over a disposable copy
+of the live database, rekordbox and rekordboxAgent both gone, from the attended
+worktree at `a5b30cf`, with the template the naming verb builds. Of 9,998 rows
+not soft deleted, 9,756 titles carry a head and **13 are unpadded**, every one
+a single digit key, and every proposed change touched the key span alone, so
+`pad_head`'s edge is clean on the real data. Thirteen rows do not earn a
+database write verb with its gates, tests and mutation table. **Decided by
+Phillip:** the thirteen Names are left as they are for now, since a
+thirteen row sort quirk is not worth a sitting's time, the write time default
+keeps every row Cratekit names padded from here on, and the drift stops
+at cutover when the source system's landing path retires. The planner and its
+tests stay, since they are the only code that could pad these rows later
+without hand edits, and this entry stays open with today's count. No card is
+filed. The copy was deleted after
+the read and nothing was written.
+
 ## R-166. The CUT.md reconciliation has no guard against drifting back apart
 
 **Found by** the independent adversarial review of U39, 2026-08-25.
@@ -19761,6 +19778,25 @@ disposable copy, which is attended.
 and its test agree with it, or ratings are written through the export medium
 only, where the taxonomy's scale is already the right one.
 
+**Read 2026-09-24 at the eleventh attended sitting, A4, issue #177, and
+narrowed to its planner half.** The live database was copied once, rekordbox
+and rekordboxAgent both gone, from the configured library database, the path
+`rb_writer.live_db_path` resolves, with its wal and shm sidecars into a fresh
+temporary directory, 281,153,536 bytes, and the copy was opened through `rb_writer.open_db` from the attended
+worktree at `a5b30cf`. The distinct `Rating` values on the rows not soft
+deleted, with their counts: 0 on 539, 1 on 1,659, 2 on 996, 3 on 2,994, 4 on
+1,434, 5 on 2,376. Six values, 0 to 5, and no 51, 102, 153, 204 or 255
+anywhere. **The database stores stars.** The belief above is confirmed, so
+`plan_rating_backfill` would write 255 into a field whose largest value is 5,
+and `tests/test_metadata_policy.py` pins that wrong number. The second arm of
+the closing condition is gone since R-688: an export cannot rate an owned row,
+so the database path is the only one that can land a rating, and the planner
+has to agree with the scale before #212 applies one. **What remains is the
+planner and its test on the 0 to 5 scale**, filed for the feeder as this
+residual's own card. The taxonomy's cut values stay on the export scale for
+the export writer, and where the conversion lives is that card's decision.
+The live file was not opened and the copy was deleted after the read.
+
 ---
 
 ## R-415. R-400 names a hand typed text list as the workaround, and `acquire download` refuses one
@@ -28465,3 +28501,93 @@ beside them, and a test reads the files off the blocked envelope's `shown`.
 
 **Not on the board bar.** A rendering, the write is still held and the
 declined run reads the plan.
+
+---
+
+## R-703. The vendored downloader swallows the provider's error and the adapter reports only that no file came back
+
+**Found:** 2026-09-24 at the eleventh attended sitting, A5 line 6. Nineteen
+downloads across three lists failed with `unavailable-transient: the
+downloader reported no file`, on tracks the provider reports available,
+streamable and lossless. The cause was found only by repeating the
+downloader's own lookup, `session.track(id, with_album=True)`, outside it: the
+album read answered `TooManyRequests`. `_validate_and_prepare_media` in the
+vendored `tidal_dl_ng/download.py` catches every exception and returns
+`None` without logging it, `item` turns that into `(False, "")`, and
+`landed_file` in `acquire/vendored.py` can only say no file came back. The
+adapter also hands the tool `_discard_tool_logging`, so even the causes the
+tool does log are dropped.
+
+**Measured cost:** one sitting's diagnosis. Every download failed for about
+fifteen minutes, and the printed remedy, retry later, was right by accident.
+Nothing on the screen or in the job named a rate limit, so the obvious reading
+was a broken downloader or a delisted track.
+
+**Closes when:** a failed item's cause names the provider's own error, a rate
+limit reads as a rate limit, and a test drives a lookup that raises through the
+adapter and reads the exception's name off the item cause.
+
+**Not on the board bar by itself**, and filed for the feeder because it cost a
+sitting and will cost the next one.
+
+---
+
+## R-704. The labels sync records a provider rate limit as a permanent failure, so resuming the job cannot retry it
+
+**Found:** 2026-09-24 at the eleventh attended sitting, A7. `crate sync labels`
+over the 47 label registry settled 27 labels and failed 20, every failure
+`sync-source-lookups-failed` over `TooManyRequests: Album unavailable`, and the
+job recorded all 20 as `permanent_failed`, with "every failure is permanent so
+resuming this job cannot succeed". A rate limit clears on its own; the same
+lookups answered about ten minutes later.
+
+**Measured cost:** 20 of 47 labels not swept, among them the five whose 43
+review rows still carry an object address (R-389), and the only way to retry
+them is a whole new sweep, which spends the calls on the 27 that succeeded
+again and meets the same limit.
+
+**Closes when:** a rate limit answer from the catalogue is a retryable item
+cause, `crate job resume` re-arms exactly those items, and a test drives a
+`TooManyRequests` through one label's listing and resumes it.
+
+---
+
+## R-705. Nothing keeps a label sweep and a download from sharing one rate limited account
+
+**Found:** 2026-09-24 at the eleventh attended sitting. The label sweep and
+three `acquire download` runs ran in the same half hour on one provider
+account, and the sweep's catalogue crawl drove the account into rate limiting,
+which failed every download (R-703) and 20 of the sweep's own labels (R-704).
+Each verb runs its own driver and neither knows the other is spending the same
+allowance.
+
+**Measured cost:** the whole download batch of a sitting and 20 labels. A full
+`crate sync all`, which queues a labels job beside the playlist intakes it then
+downloads, is the same shape on a larger scale.
+
+**Closes when:** provider calls from concurrent drivers share one pacing
+decision, or a second provider driver waits while one holds the account, and a
+test runs two drivers against one fake that rate limits.
+
+---
+
+## R-706. A set longer than the recognition bound cannot be identified whole, and a split set lands as unrelated parts
+
+**Found:** 2026-09-24 at the eleventh attended sitting, A5 line 6. `crate
+intake set` on a mix URL of 5 hours 5 minutes refused before any call,
+`intake-recognition-spend-bound`, 732 calls against the fixed per run bound of
+400 in `intake/acrcloud.py`. The refusal was right to spend nothing. The only
+way through was by hand: the recording was fetched, split into two even halves
+with ffmpeg, and each half identified as its own set, 366 calls each, 24 and
+28 tracks.
+
+**Measured cost:** a sitting's hand work, and two intake jobs for one set whose
+tracks then land as two batches named Part A and Part B. A long live recording
+is an ordinary input for this author, so the next one costs the same.
+
+**Closes when:** a set over the bound is split into even parts each under it,
+each part is identified, and the parts' tracks resolve and land as one batch
+under the set's own name, with the whole spend checked against the monthly
+bound before the first call. Decided by Phillip 2026-09-24: joined back into
+one playlist where that is not new building, else the parts named Part A, Part
+B and Part C.
