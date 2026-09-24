@@ -36,6 +36,7 @@ Four properties, each answering a defect in the source system:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import importlib
 import sys
 from dataclasses import dataclass
@@ -45,7 +46,7 @@ from cratekit import __version__
 from cratekit.cli import gates, output, registry, render
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.registry import Entry
-from cratekit.core import config, profiles
+from cratekit.core import config, profiles, provider_gate
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -352,6 +353,48 @@ def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
     return gates.new_run(entry)
 
 
+#: The warning code every run that reached the streaming provider carries,
+#: with its call count and how many answers were a rate limit (R-705). A
+#: WARNING rather than a payload field, because every declared surface is
+#: closed and the spend belongs to the run, not to any one verb's answer; and
+#: because a heavy crawl is exactly the thing a person should see before it
+#: becomes a block.
+PROVIDER_SPEND = "provider-spend"
+
+
+def _provider_spend() -> provider_gate.Spend:
+    """The gate's running totals, or zero when the state cannot be read.
+
+    Asked at the boundary rather than inside any verb, so the count covers
+    every verb and every process that wrote the shared file while this one
+    ran, and a verb that reaches the provider through a seam it does not know
+    about is still reported. It never refuses: a count that cannot be read is
+    a run with nothing to report, not a run that cannot be made.
+    """
+    try:
+        return provider_gate.spend()
+    except (OSError, ValueError):
+        return provider_gate.Spend()
+
+
+def _with_provider_spend(envelope: Envelope, before: provider_gate.Spend) -> Envelope:
+    """The envelope with one spend line added when this run reached the provider."""
+    spent = _provider_spend().since(before)
+    if spent.calls == 0:
+        return envelope
+    calls = "1 call" if spent.calls == 1 else f"{spent.calls} calls"
+    limited = (
+        "none answered with a rate limit"
+        if spent.rate_limited == 0
+        else f"{spent.rate_limited} answered with a rate limit"
+    )
+    entry = {
+        "code": PROVIDER_SPEND,
+        "message": f"{calls} to the streaming provider this run, {limited}",
+    }
+    return dataclasses.replace(envelope, warnings=(*envelope.warnings, entry))
+
+
 def _unhandled_cause(exc: BaseException) -> Cause:
     """The cause for anything that reached the boundary unconverted.
 
@@ -422,6 +465,7 @@ def run(argv: list[str], *, stdout, stderr) -> int:
     started = output.timestamp()
     as_json = args.output == "json"
     state: gates.RunState | None = None
+    spent_before = _provider_spend()
 
     try:
         stub = getattr(args, "_stub", None)
@@ -525,6 +569,9 @@ def run(argv: list[str], *, stdout, stderr) -> int:
             cause=_unhandled_cause(exc),
         )
 
+    # AFTER EVERY BRANCH ABOVE, the refusals included: the sitting's failed
+    # downloads spent calls into a live limit and nothing on the screen said so.
+    envelope = _with_provider_spend(envelope, spent_before)
     _emit(envelope, as_json=as_json, stdout=stdout, stderr=stderr)
     return int(envelope.exit_code)
 

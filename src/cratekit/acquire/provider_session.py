@@ -51,6 +51,7 @@ import tomli_w
 
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken, AdapterError, Remedy
 from cratekit.core import config, provider_gate, secrets
+from cratekit.core.cause import CratekitError
 
 #: Fields that make a session blob usable. A write-back missing all of them is a
 #: truncated or empty file rather than a refreshed session, and replacing a good
@@ -263,6 +264,14 @@ def client_session(
                 stored.get("expiry_time"),
                 is_pkce=True,
             )
+        except CratekitError:
+            # THE GATE'S OWN REFUSAL PASSES THROUGH (R-705). The login is a
+            # paced call like any other, and a rate limit answered to it that
+            # trips the breaker is the park, which must reach the engine as
+            # itself: read as "could not be reached" it would be retried into
+            # the cooldown, and read as rejected it would send a person to log
+            # in again over a session that is fine.
+            raise
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
             if _rejected(exc):
                 raise AdapterAuthFailed(

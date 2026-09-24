@@ -58,6 +58,7 @@ from cratekit.acquire.adapter import (
     verify_applied,
 )
 from cratekit.core import binaries, provider_gate
+from cratekit.core.cause import CratekitError
 
 #: Cratekit's quality vocabulary to the wrapped tool's. The tool takes the
 #: streaming client's own enum VALUE as a string, and its factory default is the
@@ -363,6 +364,13 @@ class _VendoredSource:
 
         try:
             authorised = tidal.login_token(do_pkce=True)
+        except CratekitError:
+            # THE GATE'S OWN REFUSAL PASSES THROUGH (R-705). A rate limit
+            # answered to the login that trips the breaker is the park, and
+            # read as a rejected session it would park the job under
+            # credential-missing and send a person to log in again over a
+            # session that is fine.
+            raise
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
             raise AdapterAuthFailed(
                 f"the provider rejected the stored session ({exc})",

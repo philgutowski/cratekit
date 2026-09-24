@@ -5749,8 +5749,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # distinct, non-keys UNCHANGED at 324. The two that joined are
     # provider-cooldown and provider-gate-held, both keys in cause.REASONS,
     # both raised by core/provider_gate.py, which is why only the distinct
-    # half moves.
-    assert (len(literals), len(literals - set(causes))) == (504, 324), (
+    # half moves. Then 504 to 505 distinct, non-keys 324 to 325, for
+    # provider-spend, a warning code and NOT a key, spelled once as
+    # `PROVIDER_SPEND` in `cli/__init__.py`, which the dispatcher puts on
+    # every envelope whose run reached the streaming provider, with the call
+    # count and the rate limit answers. Nothing refuses with it, which is why
+    # both halves move by one.
+    assert (len(literals), len(literals - set(causes))) == (505, 325), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

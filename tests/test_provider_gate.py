@@ -1037,6 +1037,64 @@ def test_the_vendored_adapter_refuses_inside_the_cooldown_before_touching_the_to
     assert session.request_session.calls == []
 
 
+def test_a_rate_limited_login_comes_out_of_client_session_as_the_park(paths, clock, monkeypatch):
+    """The login is a paced call like any other. Translated with the rest of
+    the login's failures it would read as an outage to wait out, or worse as
+    a rejected session to log in again over."""
+    client = _LoginClient(Transport(rate_limited("900")))
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+
+    with pytest.raises(jobs.Parked) as caught:
+        provider_session.client_session(gate=make_gate(paths, clock))
+
+    assert caught.value.cause.reason == COOLDOWN
+
+
+def test_a_rate_limited_login_comes_out_of_the_vendored_adapter_as_the_park(
+    tmp_path, paths, clock, monkeypatch
+):
+    """The tool's login is wrapped in the same translation as the client's,
+    and a park read as a rejected session would park the job under
+    credential-missing. The tool's two classes are the smallest doubles the
+    real ``authenticate`` path accepts, since nothing offline drives it
+    otherwise; the gate is attached before the login, so the login is the one
+    counted call and the one rate limited answer."""
+    import cratekit._vendor.tidal_dl_ng.config as tool_config
+
+    source = _vendored(tmp_path, paths, clock)
+    gate = source._gate
+    session = _ToolSession(Transport(rate_limited("900")))
+
+    class Settings:
+        def __init__(self) -> None:
+            self.data = SimpleNamespace()
+
+    class Tidal:
+        def __init__(self, _settings: Any) -> None:
+            self.session = session
+            self.data = SimpleNamespace(is_pkce=True)
+            self.file_path = self.path_base = ""
+            self.token_from_storage = False
+
+        def read(self, _path: str) -> bool:
+            return True
+
+        def login_token(self, do_pkce: bool = False) -> bool:
+            self.session.request_session.request("POST", "https://auth.invalid/token")
+            return True
+
+    monkeypatch.setattr(tool_config, "Settings", Settings)
+    monkeypatch.setattr(tool_config, "Tidal", Tidal)
+
+    with pytest.raises(jobs.Parked) as caught:
+        source.authenticate()
+
+    assert caught.value.cause.reason == COOLDOWN
+    assert session.request_session._cratekit_gate is gate
+    assert (gate.calls, gate.rate_limited) == (1, 1)
+
+
 def test_a_trip_the_tool_swallowed_during_a_download_comes_out_of_fetch_as_the_park(
     tmp_path, paths, clock
 ):
@@ -1111,3 +1169,112 @@ def test_acquire_one_still_softens_an_ordinary_failure(tmp_path):
     result = adapter_module.acquire_one(source, TrackRequest(key="x"), settings)
 
     assert result.outcome is not TrackOutcome.ACQUIRED
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5, continued. Every run that reached the provider says what it spent
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+import io  # noqa: E402 - the dispatcher section
+
+from cratekit import cli  # noqa: E402
+from cratekit.cli import PROVIDER_SPEND  # noqa: E402
+from tests.cli_drive import drive  # noqa: E402
+
+
+@pytest.fixture
+def installed(tmp_path, monkeypatch):
+    """A machine the real dispatcher can load, with every module on."""
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True, exist_ok=True)
+    (root / "db").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    # A short interval, because these runs go through a REAL gate on the real
+    # clock, and the login is one paced call among the few each test makes.
+    built = config.from_dict(_config_data(tmp_path, provider={"min_interval_s": 0.01}))
+    config.save(built)
+    config.reset_cache()
+    return built
+
+
+def _spend_warnings(envelope: dict) -> list[str]:
+    return [w["message"] for w in envelope.get("warnings", ()) if w.get("code") == PROVIDER_SPEND]
+
+
+def test_a_run_that_reached_the_provider_reports_its_calls(installed, monkeypatch):
+    """Driven through the REAL dispatcher and the real catalogue opener: the
+    only fake is the client, whose login goes out through its transport, so
+    the one call this run makes is the login the gate paced."""
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+
+    code, envelope = drive(["label", "harvest", "https://example.invalid/playlist/harvest"])
+
+    assert code != int(ExitCode.OK), "the fake client cannot serve a playlist"
+    assert _spend_warnings(envelope) == [
+        "1 call to the streaming provider this run, none answered with a rate limit"
+    ]
+
+
+def test_the_spend_line_reaches_a_person_on_the_human_output(installed, monkeypatch):
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    out, err = io.StringIO(), io.StringIO()
+
+    cli.run(["label", "harvest", "https://example.invalid/playlist/harvest"], stdout=out, stderr=err)
+
+    shown = out.getvalue() + err.getvalue()
+    assert f"warning [{PROVIDER_SPEND}]: 1 call to the streaming provider this run" in shown
+
+
+def test_rate_limit_answers_are_named_in_the_spend_line(installed, monkeypatch):
+    """The counts come off the shared file, so answers any process received
+    while this verb ran are in the line."""
+    client = _LoginClient(Transport(rate_limited(), Response()))
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    original = tidal_catalogue.open_catalogue
+
+    def opening(cfg=None):
+        catalogue_over_client = original(cfg)
+        # Two more calls the verb did not make itself, one of them rate
+        # limited. The transport is already gated, so these are plain requests
+        # on it; a gated call made from INSIDE a gated call would wait on the
+        # lock it already holds, which is what the wrap exists to make
+        # impossible for the client's own code to do.
+        client.request_session.request("GET", "https://api.invalid/a")
+        client.request_session.request("GET", "https://api.invalid/b")
+        return catalogue_over_client
+
+    monkeypatch.setattr(tidal_catalogue, "open_catalogue", opening)
+
+    _, envelope = drive(["label", "harvest", "https://example.invalid/playlist/harvest"])
+
+    assert _spend_warnings(envelope) == [
+        "3 calls to the streaming provider this run, 1 answered with a rate limit"
+    ]
+
+
+def test_a_run_that_never_reached_the_provider_carries_no_spend_line(installed):
+    code, envelope = drive(["label", "registry", "add", "Hotflush Recordings"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert _spend_warnings(envelope) == []
+
+
+def test_the_spend_line_survives_a_refusal(installed, monkeypatch):
+    """The sitting's failed downloads spent calls into a live limit and the
+    screen said nothing; a refused run reports what it cost as well."""
+    client = _LoginClient(Transport(rate_limited("900")))
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+
+    code, envelope = drive(["label", "harvest", "https://example.invalid/playlist/harvest"])
+
+    assert envelope["cause"]["reason"] == COOLDOWN
+    assert _spend_warnings(envelope) == [
+        "1 call to the streaming provider this run, 1 answered with a rate limit"
+    ]
