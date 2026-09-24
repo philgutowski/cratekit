@@ -1,0 +1,23 @@
+name = "r658-c"
+pass_kind = "light"
+
+[[rows]]
+id = "S4c_dataless_skip_returns"
+description = "Composite for S4, run as its own table: put back a skip that refuses to read a dataless file, which only the scoped evicted stat can reach"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    if recorded_size is not None and info.st_size != recorded_size:
+        return _Looked(ByteRead.A_DIFFERENT_SIZE)
+    try:
+        found = digest_of(target)
+'''
+new = '''
+    if recorded_size is not None and info.st_size != recorded_size:
+        return _Looked(ByteRead.A_DIFFERENT_SIZE)
+    if getattr(info, "st_flags", 0) & 0x40000000:
+        return _Looked(ByteRead.UNREADABLE)
+    try:
+        found = digest_of(target)
+'''

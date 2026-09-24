@@ -1,0 +1,246 @@
+{
+  "name": "r658-a",
+  "pass_kind": "light",
+  "branch": "relay/191",
+  "head": "d4c61b0",
+  "when": "2026-09-24 01:12 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10133,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "state_guarded": "~/Library/Application Support/cratekit (2446 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to tests/conftest.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "tests/conftest.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a4d578a82cc79440",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10133,
+    "baseline_collected": 10133,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_state_roots_shared",
+      "description": "State roots recorded on the shared monkeypatch again, so a body undo restores the real HOME, XDG and overrides",
+      "file": "tests/conftest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "22fa44be606fbf49",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 4,
+      "baseline_collected": 4,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_a_body_patch_of_a_redirected_value_undoes_to_the_redirect",
+        "tests/test_isolation_survives_undo.py::test_a_write_to_the_platformdirs_config_after_an_undo_lands_in_the_temp_root"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "def _isolate_state_roots(tmp_path_factory):\n    \"\"\"Redirect installation-scoped state to a temp tree for every test.\n\n    HOME and the XDG variables are the inputs platformdirs uses on every platform\n    it supports, so setting them here covers the config directory, the state\n    directory, the cache directory, and anything else resolved the same way,\n    including code that has not been written yet.\n\n    The CRATEKIT_* overrides are set alongside them belt-and-braces, so an\n    explicit override path is exercised as well as the derived one.\n    \"\"\"\n    with _own_patch() as monkeypatch:\n        yield _redirect_state_roots(tmp_path_factory.mktemp(\"state_roots\"), monkeypatch)\n",
+      "new": "def _isolate_state_roots(tmp_path_factory, monkeypatch):\n    \"\"\"Redirect installation-scoped state to a temp tree for every test.\n\n    HOME and the XDG variables are the inputs platformdirs uses on every platform\n    it supports, so setting them here covers the config directory, the state\n    directory, the cache directory, and anything else resolved the same way,\n    including code that has not been written yet.\n\n    The CRATEKIT_* overrides are set alongside them belt-and-braces, so an\n    explicit override path is exercised as well as the derived one.\n    \"\"\"\n    yield _redirect_state_roots(tmp_path_factory.mktemp(\"state_roots\"), monkeypatch)\n"
+    },
+    {
+      "id": "C2_keychain_shared",
+      "description": "Keychain stub recorded on the shared monkeypatch again, so a body undo restores the real keychain",
+      "file": "tests/conftest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9d41754b5ba94294",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 4,
+      "baseline_collected": 4,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_the_keychain_is_still_the_stub_after_an_undo"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "def _isolate_keychain():\n    \"\"\"Swap the OS keychain for an in-memory dictionary.\n\n    keyring resolves a platform backend at import time. Replacing the two\n    module-level functions the rest of the codebase calls is enough, and is far\n    less fragile than installing a backend object, because it does not depend on\n    keyring's internal backend protocol staying still across versions.\n\n    Without this a credential test on macOS pops a real authorization dialog,\n    which in a headless run means the suite hangs rather than fails.\n    \"\"\"\n    try:\n        import keyring\n    except ImportError:  # pragma: no cover - keyring is a core dependency\n        yield {}\n        return\n\n    store: dict[tuple[str, str], str] = {}\n\n    def _set(service: str, username: str, password: str) -> None:\n        store[(service, username)] = password\n\n    def _get(service: str, username: str):\n        return store.get((service, username))\n\n    def _delete(service: str, username: str) -> None:\n        store.pop((service, username), None)\n\n    with _own_patch() as monkeypatch:\n        monkeypatch.setattr(keyring, \"set_password\", _set)\n        monkeypatch.setattr(keyring, \"get_password\", _get)\n        monkeypatch.setattr(keyring, \"delete_password\", _delete)\n        yield store\n",
+      "new": "def _isolate_keychain(monkeypatch):\n    \"\"\"Swap the OS keychain for an in-memory dictionary.\n\n    keyring resolves a platform backend at import time. Replacing the two\n    module-level functions the rest of the codebase calls is enough, and is far\n    less fragile than installing a backend object, because it does not depend on\n    keyring's internal backend protocol staying still across versions.\n\n    Without this a credential test on macOS pops a real authorization dialog,\n    which in a headless run means the suite hangs rather than fails.\n    \"\"\"\n    try:\n        import keyring\n    except ImportError:  # pragma: no cover - keyring is a core dependency\n        yield {}\n        return\n\n    store: dict[tuple[str, str], str] = {}\n\n    def _set(service: str, username: str, password: str) -> None:\n        store[(service, username)] = password\n\n    def _get(service: str, username: str):\n        return store.get((service, username))\n\n    def _delete(service: str, username: str) -> None:\n        store.pop((service, username), None)\n\n    monkeypatch.setattr(keyring, \"set_password\", _set)\n    monkeypatch.setattr(keyring, \"get_password\", _get)\n    monkeypatch.setattr(keyring, \"delete_password\", _delete)\n    yield store\n"
+    },
+    {
+      "id": "C3_provider_shared",
+      "description": "Provider client refusal on the shared monkeypatch again",
+      "file": "tests/conftest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a318fd48cfb750d7",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 4,
+      "baseline_collected": 4,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_the_library_root_and_the_refusals_survive_an_undo"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "def _no_live_provider_client():\n    \"\"\"Refuse the live provider client in every test, structurally.\n\n    U62 bound the label catalogue, so a test that records a provider session in\n    the isolated keychain and asks ``catalogue.resolve`` for a catalogue would\n    otherwise log a real client in against the real provider with the battery\n    green. A test that wants a client replaces ``CLIENT_FACTORY`` itself.\n    \"\"\"\n    from cratekit.acquire import provider_session\n\n    def refused():\n        raise AssertionError(\n            \"a test reached the live provider client; set \"\n            \"provider_session.CLIENT_FACTORY to a fake\"\n        )\n\n    # U63: the outbound seam holds the account it opened for the life of the\n    # process, so an adapter one test opened over its fake client would answer\n    # the next test's resolve. Dropped on both sides of every test.\n    from cratekit.modules.outbound import account\n\n    account.forget()\n    with _own_patch() as monkeypatch:\n        monkeypatch.setattr(provider_session, \"CLIENT_FACTORY\", refused)\n        yield\n",
+      "new": "def _no_live_provider_client(monkeypatch):\n    \"\"\"Refuse the live provider client in every test, structurally.\n\n    U62 bound the label catalogue, so a test that records a provider session in\n    the isolated keychain and asks ``catalogue.resolve`` for a catalogue would\n    otherwise log a real client in against the real provider with the battery\n    green. A test that wants a client replaces ``CLIENT_FACTORY`` itself.\n    \"\"\"\n    from cratekit.acquire import provider_session\n\n    def refused():\n        raise AssertionError(\n            \"a test reached the live provider client; set \"\n            \"provider_session.CLIENT_FACTORY to a fake\"\n        )\n\n    # U63: the outbound seam holds the account it opened for the life of the\n    # process, so an adapter one test opened over its fake client would answer\n    # the next test's resolve. Dropped on both sides of every test.\n    from cratekit.modules.outbound import account\n\n    account.forget()\n    monkeypatch.setattr(provider_session, \"CLIENT_FACTORY\", refused)\n    yield\n"
+    },
+    {
+      "id": "C4_recognition_shared",
+      "description": "Recognition transport refusal on the shared monkeypatch again",
+      "file": "tests/conftest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "66f4e1730c3aef7d",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 4,
+      "baseline_collected": 4,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_the_library_root_and_the_refusals_survive_an_undo"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "def _no_paid_recognition():\n    \"\"\"Refuse the live recognition transport in every test, structurally.\n\n    Until U57 the suite could not spend by construction: ``recognize.identify``\n    refused whenever no identifier was injected. Now the seam binds the\n    ACRCloud identifier, whose transport is looked up on the module at call\n    time, so a test that records both recognition keys in the isolated\n    keychain and has ffmpeg on PATH would post real chunks to a real host with\n    the battery green. This puts the guarantee back where it was: the shipped\n    transport is replaced with one that fails the test, and a test that wants\n    a transport injects its own, which every one of them already does.\n    \"\"\"\n    from cratekit.intake import acrcloud\n\n    def refused(request):\n        raise AssertionError(\n            \"a test reached the live recognition transport; inject a fake one\"\n        )\n\n    with _own_patch() as monkeypatch:\n        monkeypatch.setattr(acrcloud, \"http_transport\", refused)\n        yield\n",
+      "new": "def _no_paid_recognition(monkeypatch):\n    \"\"\"Refuse the live recognition transport in every test, structurally.\n\n    Until U57 the suite could not spend by construction: ``recognize.identify``\n    refused whenever no identifier was injected. Now the seam binds the\n    ACRCloud identifier, whose transport is looked up on the module at call\n    time, so a test that records both recognition keys in the isolated\n    keychain and has ffmpeg on PATH would post real chunks to a real host with\n    the battery green. This puts the guarantee back where it was: the shipped\n    transport is replaced with one that fails the test, and a test that wants\n    a transport injects its own, which every one of them already does.\n    \"\"\"\n    from cratekit.intake import acrcloud\n\n    def refused(request):\n        raise AssertionError(\n            \"a test reached the live recognition transport; inject a fake one\"\n        )\n\n    monkeypatch.setattr(acrcloud, \"http_transport\", refused)\n    yield\n"
+    },
+    {
+      "id": "C5_fetcher_shared",
+      "description": "Mix fetcher refusal on the shared monkeypatch again",
+      "file": "tests/conftest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5f5857692d680afe",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 4,
+      "baseline_collected": 4,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_the_library_root_and_the_refusals_survive_an_undo"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "def _no_real_mix_download():\n    \"\"\"Refuse the shipped mix fetcher in every test, structurally.\n\n    U104 taught ``intake set`` and ``intake identify`` to fetch a mix URL, and\n    the seam is looked up on the module at call time. A machine with ``yt-dlp``\n    installed would otherwise download a real upload from a test that passed\n    an address and forgot to inject a fetcher, with the battery green. A test\n    that wants a download replaces ``fetch.fetcher`` itself.\n    \"\"\"\n    from cratekit.intake import fetch\n\n    def refused():\n        raise AssertionError(\n            \"a test reached the shipped mix fetcher; set fetch.fetcher to a fake\"\n        )\n\n    with _own_patch() as monkeypatch:\n        monkeypatch.setattr(fetch, \"fetcher\", refused)\n        yield\n",
+      "new": "def _no_real_mix_download(monkeypatch):\n    \"\"\"Refuse the shipped mix fetcher in every test, structurally.\n\n    U104 taught ``intake set`` and ``intake identify`` to fetch a mix URL, and\n    the seam is looked up on the module at call time. A machine with ``yt-dlp``\n    installed would otherwise download a real upload from a test that passed\n    an address and forgot to inject a fetcher, with the battery green. A test\n    that wants a download replaces ``fetch.fetcher`` itself.\n    \"\"\"\n    from cratekit.intake import fetch\n\n    def refused():\n        raise AssertionError(\n            \"a test reached the shipped mix fetcher; set fetch.fetcher to a fake\"\n        )\n\n    monkeypatch.setattr(fetch, \"fetcher\", refused)\n    yield\n"
+    },
+    {
+      "id": "C6_library_shared",
+      "description": "Library root and mount stub on the shared monkeypatch again",
+      "file": "tests/conftest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "40122011a55b84b9",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 4,
+      "baseline_collected": 4,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_the_library_root_and_the_refusals_survive_an_undo"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "def _block_real_library_paths(request, tmp_path_factory):\n    \"\"\"Point the library root at a temp directory and disarm the mount check.\n\n    Two separate concerns, one fixture, because they are the same risk:\n\n    * The library root names real audio files and the real rekordbox database.\n      Any test that resolves it must resolve it into a temp tree.\n    * The mount precondition samples real on-disk paths, so tests built on\n      synthetic locations would fail on the precondition rather than on the thing\n      they are testing. The precondition's OWN behaviour is covered directly by\n      the preflight tests, which is why they are excluded here by exact module\n      name rather than by a substring: a substring exclusion silently exempts any\n      future file whose name happens to contain it, and that class of over-broad\n      exclusion is precisely what the portability guard was widened to remove.\n\n    The redirected root gets its OWN temp directory rather than a subdirectory of\n    the test's ``tmp_path``. That is not tidiness. A test that builds a synthetic\n    tree in ``tmp_path`` and then walks it would otherwise find this fixture's\n    directory sitting in its input, and the resulting failure points at the test\n    rather than at the fixture that caused it.\n    \"\"\"\n    with _own_patch() as monkeypatch:\n        yield _redirect_library_root(\n            request, tmp_path_factory.mktemp(\"library\"), monkeypatch\n        )\n",
+      "new": "def _block_real_library_paths(request, tmp_path_factory, monkeypatch):\n    \"\"\"Point the library root at a temp directory and disarm the mount check.\n\n    Two separate concerns, one fixture, because they are the same risk:\n\n    * The library root names real audio files and the real rekordbox database.\n      Any test that resolves it must resolve it into a temp tree.\n    * The mount precondition samples real on-disk paths, so tests built on\n      synthetic locations would fail on the precondition rather than on the thing\n      they are testing. The precondition's OWN behaviour is covered directly by\n      the preflight tests, which is why they are excluded here by exact module\n      name rather than by a substring: a substring exclusion silently exempts any\n      future file whose name happens to contain it, and that class of over-broad\n      exclusion is precisely what the portability guard was widened to remove.\n\n    The redirected root gets its OWN temp directory rather than a subdirectory of\n    the test's ``tmp_path``. That is not tidiness. A test that builds a synthetic\n    tree in ``tmp_path`` and then walks it would otherwise find this fixture's\n    directory sitting in its input, and the resulting failure points at the test\n    rather than at the fixture that caused it.\n    \"\"\"\n    yield _redirect_library_root(\n        request, tmp_path_factory.mktemp(\"library\"), monkeypatch\n    )\n"
+    },
+    {
+      "id": "C7_state_roots_not_redirected",
+      "description": "Composite for C1: the state roots fixture sets no HOME, so the platformdirs config resolves to the process home",
+      "file": "tests/conftest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": "C1_state_roots_shared",
+      "fingerprint": "b80a502a22dd3027",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 4,
+      "baseline_collected": 4,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_a_body_patch_of_a_redirected_value_undoes_to_the_redirect"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    monkeypatch.setenv(\"HOME\", str(home))\n",
+      "new": ""
+    }
+  ],
+  "dropped": []
+}
