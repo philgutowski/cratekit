@@ -139,9 +139,50 @@ def _inbox_items(cfg: config.Config) -> list[dict[str, str]]:
     return items
 
 
-def _apply_gate(ctx, plan: dict) -> str:
+def _shown(plan: dict, **facts: Any) -> dict[str, Any]:
+    """What the apply gate puts in front of the person (R-686).
+
+    The facts the caller names, then the digest, the count and EVERY ITEM the
+    digest was taken over, unchanged, so the screen is the plan a person
+    approves and a JSON reader can compare it with the declined run's items.
+    Without this the gate carried the question and the options and not one
+    item, and a person answered a routing plan they could not read. There is
+    no bound: the digest covers every item, and a list cut short would ask for
+    approval of items nobody was shown.
+    """
+    return {
+        **facts,
+        "digest": plan["digest"],
+        "count": plan["totals"]["count"],
+        "items": plan["items"],
+    }
+
+
+def _export_facts(
+    items: list[dict[str, str]], export: Path, gaps: tuple[str, ...]
+) -> dict[str, Any]:
+    """The export gate's totals, counted off the items it lists.
+
+    Counted from the items rather than from the planner's own structures, so
+    a total cannot disagree with the list printed under it. ``not derived``
+    rides too, because an empty vocal column on an uncalibrated library means
+    the dimension was not read, not that no track is vocal.
+    """
+    tracks = [item for item in items if item["track_id"]]
+    return {
+        "export": str(export),
+        "routed": sum(1 for item in tracks if item["destination"]),
+        "vocal": sum(1 for item in tracks if item["vocal"]),
+        "rated": sum(1 for item in tracks if item["rating"]),
+        "long tracks": sum(1 for item in tracks if item["long_track"]),
+        "vocal subs created": len(items) - len(tracks),
+        "not derived": list(gaps),
+    }
+
+
+def _apply_gate(ctx, plan: dict, shown: dict[str, Any]) -> str:
     spec = ctx.entry.gates[0]
-    return ctx.gate.require(spec, digest=plan["digest"])
+    return ctx.gate.require(spec, digest=plan["digest"], context=shown)
 
 
 def _close_run(record, cfg: config.Config):
@@ -1072,7 +1113,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         cfg, export, declared=declared
     )
     offered = _plan(items, kind="inbox-export")
-    option = _apply_gate(ctx, offered)
+    option = _apply_gate(ctx, offered, _shown(offered, **_export_facts(items, export, gaps)))
     if option != "apply":
         return ctx.envelope(
             data=_plan(items, kind="inbox-export", applied=False),
@@ -1161,7 +1202,7 @@ def route_inbox(ctx) -> Envelope:
         return route_inbox_export(ctx, cfg, Path(ctx.args.export))
     items = _inbox_items(cfg)
     plan = _plan(items, kind="inbox")
-    option = _apply_gate(ctx, plan)
+    option = _apply_gate(ctx, plan, _shown(plan))
     if option != "apply":
         return ctx.envelope(data=_plan(items, kind="inbox", applied=False), outcome=Outcome.NO_OP)
     if not items:
