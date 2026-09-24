@@ -1,0 +1,403 @@
+{
+  "name": "r686",
+  "pass_kind": "light",
+  "branch": "relay/199",
+  "head": "f50157b",
+  "when": "2026-09-24 15:21 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10154,
+  "baseline_exit": 0,
+  "pytest_runs": 16,
+  "state_guarded": "~/Library/Application Support/cratekit (2892 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/routing_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/routing_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d24071f8a3353ece",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10154,
+    "baseline_collected": 10154,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_gate_passes_no_context",
+      "description": "The apply gate drops its context, the defect R-686 recorded",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "50f4a30404e47390",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_database_inbox_gate_shows_its_items",
+        "tests/test_routing_workers.py::test_the_export_gate_names_the_vocal_dimension_it_did_not_read",
+        "tests/test_routing_workers.py::test_the_export_gate_prints_the_plan_in_the_default_mode",
+        "tests/test_routing_workers.py::test_the_export_gate_says_why_an_intake_track_goes_nowhere",
+        "tests/test_routing_workers.py::test_the_export_gate_shows_every_item_the_digest_was_taken_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return ctx.gate.require(spec, digest=plan[\"digest\"], context=shown)\n",
+      "new": "    return ctx.gate.require(spec, digest=plan[\"digest\"])\n"
+    },
+    {
+      "id": "S1_items_cut_to_the_first",
+      "description": "The screen lists only the first item, a bound the digest does not have",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3477f427ea60e462",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_export_gate_prints_the_plan_in_the_default_mode",
+        "tests/test_routing_workers.py::test_the_export_gate_says_why_an_intake_track_goes_nowhere",
+        "tests/test_routing_workers.py::test_the_export_gate_shows_every_item_the_digest_was_taken_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"items\": plan[\"items\"],\n    }\n",
+      "new": "        \"items\": plan[\"items\"][:1],\n    }\n"
+    },
+    {
+      "id": "S2_digest_not_shown",
+      "description": "The digest is left off the screen, so a person cannot tie the answer to the plan",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9cdfa148e3aa43e3",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_database_inbox_gate_shows_its_items",
+        "tests/test_routing_workers.py::test_the_export_gate_prints_the_plan_in_the_default_mode",
+        "tests/test_routing_workers.py::test_the_export_gate_shows_every_item_the_digest_was_taken_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"digest\": plan[\"digest\"],\n        \"count\": plan[\"totals\"][\"count\"],\n",
+      "new": "        \"count\": plan[\"totals\"][\"count\"],\n"
+    },
+    {
+      "id": "E1_tracks_counts_every_item",
+      "description": "tracks counts created playlists as tracks",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "66bbbe71fb800c7f",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_export_gate_shows_every_item_the_digest_was_taken_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"tracks\": len(tracks),\n",
+      "new": "        \"tracks\": len(items),\n"
+    },
+    {
+      "id": "E2_routed_counts_vocal",
+      "description": "routed is counted off the vocal column instead of the destination",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "138779cb2c1b3d50",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_export_gate_names_the_vocal_dimension_it_did_not_read",
+        "tests/test_routing_workers.py::test_the_export_gate_prints_the_plan_in_the_default_mode",
+        "tests/test_routing_workers.py::test_the_export_gate_says_why_an_intake_track_goes_nowhere",
+        "tests/test_routing_workers.py::test_the_export_gate_shows_every_item_the_digest_was_taken_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"routed\": sum(1 for item in tracks if item[\"destination\"]),\n",
+      "new": "        \"routed\": sum(1 for item in tracks if item[\"vocal\"]),\n"
+    },
+    {
+      "id": "E3_rated_counts_every_track",
+      "description": "rated counts every track whether the plan rates it or not",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8bf48b111bf49bb0",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_export_gate_shows_every_item_the_digest_was_taken_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"rated\": sum(1 for item in tracks if item[\"rating\"]),\n",
+      "new": "        \"rated\": len(tracks),\n"
+    },
+    {
+      "id": "E4_long_tracks_intake_only",
+      "description": "long tracks counts only the first track's membership",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "85dd6910c5484707",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_export_gate_prints_the_plan_in_the_default_mode",
+        "tests/test_routing_workers.py::test_the_export_gate_shows_every_item_the_digest_was_taken_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"long tracks\": sum(1 for item in tracks if item[\"long_track\"]),\n",
+      "new": "        \"long tracks\": sum(1 for item in tracks[:1] if item[\"long_track\"]),\n"
+    },
+    {
+      "id": "E5_warnings_dropped",
+      "description": "The planner's warnings stay off the screen",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8aa327a6bff368a7",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_export_gate_says_why_an_intake_track_goes_nowhere"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"warnings\": [warning[\"message\"] for warning in warnings],\n",
+      "new": "        \"warnings\": [],\n"
+    },
+    {
+      "id": "E6_gaps_dropped",
+      "description": "The dimensions not derived stay off the screen",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f629a8e4c7273bda",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_export_gate_names_the_vocal_dimension_it_did_not_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"not derived\": list(gaps),\n",
+      "new": "        \"not derived\": [],\n"
+    },
+    {
+      "id": "E7_subs_not_named",
+      "description": "The created vocal subs are left off the screen",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d51a26454be43296",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_export_gate_shows_every_item_the_digest_was_taken_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"vocal subs created\": list(vox_created),\n",
+      "new": "        \"vocal subs created\": [],\n"
+    },
+    {
+      "id": "D1_database_path_blind",
+      "description": "The database path's gate is given an empty context",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a9091d09abfee115",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 170,
+      "baseline_collected": 170,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_database_inbox_gate_shows_its_items"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    option = _apply_gate(ctx, plan, _shown(plan))\n",
+      "new": "    option = _apply_gate(ctx, plan, {})\n"
+    },
+    {
+      "id": "R1_empty_list_bare_header",
+      "description": "An empty collection in a gate's context renders as a bare header again",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f16ad6c928d851c6",
+      "subset": [
+        "tests/test_routing_workers.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 802,
+      "baseline_collected": 802,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_the_export_gate_prints_the_plan_in_the_default_mode"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(value, (Mapping, list, tuple)) and not value:\n",
+      "new": "        if False:\n"
+    }
+  ],
+  "dropped": []
+}
