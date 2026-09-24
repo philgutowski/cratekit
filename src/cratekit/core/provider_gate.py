@@ -1,0 +1,505 @@
+"""One gate for every call the product makes to the streaming provider (R-705).
+
+WHAT WENT WRONG. At the eleventh attended sitting a label sweep over 47 labels
+drove the author's account into rate limiting, and three download runs beside
+it failed the same way. Nothing spaced the calls, nothing stopped the sweep
+once the provider had said no, and nothing told the four drivers they were
+spending one allowance. The account cleared about ten minutes after the last
+caller stopped. That account must never be pushed into a block, so this module
+is the safety seam, and every other provider concern sits above it.
+
+THE SEAM IS THE TRANSPORT, NOT THE CLIENT. The provider's own library keeps a
+``requests.Session`` on each client as ``request_session`` and every call it
+makes, a search, a page of releases, a login, a token refresh, and the reads
+the model objects make on their own, ends in that object's ``request`` method.
+:meth:`Gate.attach` replaces that one method on the instance, so the gate sees
+the raw status and the ``Retry-After`` header before the client turns them into
+its own exception and before any caller above can swallow them. The product
+builds a client at exactly two sites, the catalogue and account opener in
+``acquire/provider_session.py`` and the vendored downloader's own session in
+``acquire/vendored.py``, and both attach here; a test walks the package and
+refuses a third.
+
+FOUR PROPERTIES, EACH ONE OF THE THREE FAILURES ABOVE OR THE ONE THAT WOULD
+FOLLOW FROM FIXING THEM ALONE:
+
+* **Pacing.** A minimum interval between consecutive calls, measured from the
+  last call ANY process made, read from and written to one state file under one
+  lock. Conservative by default and set in ``[provider]`` of the configuration.
+* **A breaker.** A rate limit answer that survives the retry ladder trips the
+  gate: :data:`TRIP_AFTER` consecutive rate limit answers is what one spent
+  ladder costs, and a ``Retry-After`` at or above the cooldown is the provider
+  asking for the cooldown outright. A trip is raised as the job engine's own
+  ``Parked``, so an item in flight goes back to pending and the driver claims
+  nothing further, which is the one thing a breaker exists to guarantee.
+* **A cooldown that outlives the process.** The trip is written to the state
+  file with the time it lifts, and every opener asks :meth:`Gate.assert_open`
+  before it logs in, so a verb started from another shell inside the window
+  refuses with the reason and the time, and makes no call.
+* **One driver at a time.** The lock is held for the whole of one call, the
+  wait for the interval included, so two processes never have a request in
+  flight together and a second driver waits its turn rather than doubling the
+  rate. A wait past :data:`LOCK_WAIT_S` refuses with a named reason rather than
+  hanging, because a lock nobody releases is a hang nobody diagnoses.
+
+WHAT IT COUNTS. Every call and every rate limit answer, in the state file as
+running totals across processes and on the instance for this process, so a
+verb can report what a run spent. The count is written BEFORE the request is
+sent: a crash mid request is still a call the account saw.
+
+WHAT IT DOES NOT COVER. The vendored downloader fetches media segments through
+its own session against a content delivery host. Those are not calls to the
+provider's API and are not paced here.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+from typing import Any
+
+from cratekit.core import config
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
+from cratekit.core.exit_codes import Remedy
+
+#: The two declared state entries. Installation scoped, because the allowance
+#: belongs to the account and not to a library: two libraries swept on one
+#: account share one limit, so one file beside the credential is the only
+#: placement that can tell the truth.
+STATE_KEY = "provider_gate"
+LOCK_KEY = "provider_gate_lock"
+
+#: The interval when ``[provider]`` leaves it unset. One call a second is well
+#: under any published music API allowance and is what makes a 47 label sweep
+#: take under two hours rather than trip in ten minutes; ``docs/mutation/
+#: r705-notes.md`` carries the arithmetic. A DEFAULT, not a second knob: the
+#: configuration declares ``provider.min_interval_s`` and this is its value.
+DEFAULT_MIN_INTERVAL_S = 1.0
+
+#: How long a trip holds, when the configuration leaves it unset. Fifteen
+#: minutes, because the sitting's limit cleared in about ten and a window
+#: shorter than the clearing time is a second trip.
+DEFAULT_COOLDOWN_S = 900
+
+#: Consecutive rate limit answers that trip the breaker. Six is one initial
+#: attempt plus the five retries ``acquire.listing.fetch_with_retry`` makes, so
+#: "survived the ladder" and "tripped" are the same count, and a test pins the
+#: two together since this module cannot import that one.
+TRIP_AFTER = 6
+
+#: How long one call waits for the driver lock before refusing. A call holds
+#: the lock for one request and at most one interval, so a wait this long means
+#: the holder is not making progress.
+LOCK_WAIT_S = 120.0
+
+#: How often a waiting call asks for the lock again.
+LOCK_POLL_S = 0.05
+
+#: The provider's rate limit status.
+RATE_LIMIT_STATUS = 429
+
+#: The two reasons this module refuses with. Both declared in ``cause.REASONS``.
+COOLDOWN = "provider-cooldown"
+HELD = "provider-gate-held"
+
+
+@dataclass(frozen=True, slots=True)
+class GateSettings:
+    """The two numbers the configuration owns, frozen with a job like the rest."""
+
+    min_interval_s: float = DEFAULT_MIN_INTERVAL_S
+    cooldown_s: float = DEFAULT_COOLDOWN_S
+
+    @classmethod
+    def from_config(cls, cfg: Any) -> GateSettings:
+        """Read the ``[provider]`` section off a loaded configuration.
+
+        Takes the config as a PARAMETER rather than loading it, on the rule the
+        adapter settings state: a job runs against the configuration frozen
+        when it was queued, and a constructor that loads one cannot be
+        exercised against two policies in one process.
+        """
+        provider = cfg.provider
+        return cls(
+            min_interval_s=float(provider.min_interval_s),
+            cooldown_s=float(provider.cooldown_s),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Spend:
+    """Calls made and rate limit answers received, as running totals."""
+
+    calls: int = 0
+    rate_limited: int = 0
+
+    def since(self, earlier: Spend) -> Spend:
+        """What was spent between ``earlier`` and this snapshot."""
+        return Spend(
+            calls=max(0, self.calls - earlier.calls),
+            rate_limited=max(0, self.rate_limited - earlier.rate_limited),
+        )
+
+
+@dataclass
+class _State:
+    """The state file's contents. Epoch seconds throughout, because the file is
+    read by every process on the machine and compared against a wall clock."""
+
+    last_call: float = 0.0
+    not_before: float = 0.0
+    consecutive: int = 0
+    tripped_at: float | None = None
+    lifts_at: float | None = None
+    calls: int = 0
+    rate_limited: int = 0
+    trips: int = 0
+
+    def cooling(self, now: float) -> bool:
+        return self.lifts_at is not None and now < self.lifts_at
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "last_call": self.last_call,
+            "not_before": self.not_before,
+            "consecutive": self.consecutive,
+            "tripped_at": self.tripped_at,
+            "lifts_at": self.lifts_at,
+            "calls": self.calls,
+            "rate_limited": self.rate_limited,
+            "trips": self.trips,
+        }
+
+    @classmethod
+    def from_json(cls, data: Any) -> _State:
+        if not isinstance(data, dict):
+            return cls()
+        state = cls()
+        for name in ("last_call", "not_before"):
+            setattr(state, name, _as_float(data.get(name), 0.0))
+        for name in ("consecutive", "calls", "rate_limited", "trips"):
+            setattr(state, name, _as_int(data.get(name)))
+        for name in ("tripped_at", "lifts_at"):
+            value = data.get(name)
+            setattr(state, name, None if value is None else _as_float(value, None))
+        return state
+
+
+def _as_float(value: Any, fallback: Any) -> Any:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _as_int(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _iso(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _retry_after_seconds(response: Any, now: float) -> float:
+    """The ``Retry-After`` header as seconds from ``now``, or zero.
+
+    Both spellings the header allows, a count of seconds and an HTTP date. A
+    header that cannot be read is zero rather than a guess, because the count
+    of consecutive answers still trips the breaker without it.
+    """
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return 0.0
+    try:
+        raw = headers.get("Retry-After")
+    except (AttributeError, TypeError):
+        return 0.0
+    if raw is None:
+        return 0.0
+    text = str(raw).strip()
+    try:
+        return max(0.0, float(text))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(text)
+    except (TypeError, ValueError, IndexError):
+        return 0.0
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, when.timestamp() - now)
+
+
+class Gate:
+    """The pacing gate over one provider account, shared across processes.
+
+    ``clock`` and ``sleep`` are injectable so a suite drives every schedule
+    without waiting it out; the two process tests use the real ones, because a
+    lock the kernel holds cannot be faked.
+    """
+
+    def __init__(
+        self,
+        settings: GateSettings | None = None,
+        *,
+        path: Path | None = None,
+        lock_path: Path | None = None,
+        clock: Callable[[], float] = time.time,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self.settings = settings or GateSettings()
+        self.path = path if path is not None else config.state_path(STATE_KEY)
+        self.lock_path = lock_path if lock_path is not None else config.state_path(LOCK_KEY)
+        self._clock = clock
+        self._sleep = sleep
+        #: This process's own spend, for a report that cannot read the file.
+        self.calls = 0
+        self.rate_limited = 0
+
+    # ── the state file ────────────────────────────────────────────────────
+
+    def _read(self) -> _State:
+        """A state file that cannot be read counts as fresh rather than
+        refusing, because a corrupt counter must not lock the provider out.
+        A trip that was lost this way costs one more ladder, not an account."""
+        try:
+            return _State.from_json(json.loads(self.path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            return _State()
+
+    def _write(self, state: _State) -> None:
+        config._mkdir_private(self.path.parent)
+        payload = json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n"
+        config.atomic_write_bytes(payload.encode("utf-8"), self.path)
+
+    def spend(self) -> Spend:
+        """The running totals across every process, off the state file."""
+        state = self._read()
+        return Spend(calls=state.calls, rate_limited=state.rate_limited)
+
+    # ── the lock ──────────────────────────────────────────────────────────
+
+    @contextmanager
+    def _held(self) -> Iterator[None]:
+        """Hold the one call at a time lock, or refuse naming the wait.
+
+        Polled with ``LOCK_NB`` rather than taken blocking, so the wait has an
+        end this module chose and a test can drive it with a fake clock. THE
+        FILE IS NEVER UNLINKED, for the reason the job driver lock gives: one
+        holder unlinking the name while another creates a fresh file at it is
+        how two processes each hold "the" lock.
+        """
+        config._mkdir_private(self.lock_path.parent)
+        fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE)
+        try:
+            try:
+                import fcntl  # noqa: PLC0415 - POSIX only, see the except
+            except ImportError:  # pragma: no cover - no advisory locks here
+                fcntl = None
+            if fcntl is not None:
+                started = self._clock()
+                polls = 0
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        polls += 1
+                        waited = self._clock() - started
+                        if waited >= LOCK_WAIT_S or polls >= LOCK_WAIT_S / LOCK_POLL_S:
+                            raise self._held_refusal(waited) from None
+                        self._sleep(LOCK_POLL_S)
+                os.ftruncate(fd, 0)
+                os.write(fd, json.dumps({"pid": os.getpid()}).encode("utf-8"))
+            yield
+        finally:
+            os.close(fd)  # closing the descriptor releases the lock; the file stays
+
+    # ── the refusals ──────────────────────────────────────────────────────
+
+    def _held_refusal(self, waited: float) -> CratekitError:
+        return CratekitError(
+            Cause(
+                reason=HELD,
+                message=(
+                    f"another driver has held the streaming provider for "
+                    f"{waited:.0f} seconds without finishing a call; one call at a "
+                    f"time per account, so this one was not made"
+                ),
+                remediation=Remediation(remedy=Remedy.WAIT_FOR_HOLDER),
+                scope=Scope.RUN,
+                retryable=True,
+                origin=("provider_gate",),
+                detail={"lock": str(self.lock_path), "waited_s": round(waited, 3)},
+            )
+        )
+
+    def _cooldown_cause(self, state: _State, now: float, *, tripped_now: bool) -> Cause:
+        lifts = float(state.lifts_at or now)
+        remaining = max(0, int(round(lifts - now)))
+        if tripped_now:
+            opening = (
+                f"the streaming provider answered rate limited {TRIP_AFTER} calls in "
+                f"a row, so this run stopped without asking it anything further"
+            )
+        else:
+            opening = (
+                f"the streaming provider rate limited this account at "
+                f"{_iso(float(state.tripped_at or now))} and the cooldown has not "
+                f"lifted, so nothing was asked of it"
+            )
+        return Cause(
+            reason=COOLDOWN,
+            message=(
+                f"{opening}; every provider call is refused until {_iso(lifts)}, "
+                f"{remaining} seconds from now, and the remaining items stay queued"
+            ),
+            remediation=Remediation(
+                remedy=Remedy.RETRY_LATER,
+                steps=(
+                    f"wait until {_iso(lifts)}",
+                    "then resume the job, or run the verb again",
+                ),
+            ),
+            scope=Scope.RUN,
+            retryable=False,
+            origin=("provider_gate",),
+            detail={
+                "tripped_at": _iso(float(state.tripped_at or now)),
+                "lifts_at": _iso(lifts),
+                "remaining_s": remaining,
+                "cooldown_s": self.settings.cooldown_s,
+                "rate_limited": state.rate_limited,
+            },
+        )
+
+    def _stopped(self, cause: Cause) -> CratekitError:
+        """The trip as the job engine's own park, so an item in flight is
+        released rather than failed and the driver claims nothing further.
+
+        Imported here rather than at the top because the engine imports the
+        CLI package for its envelope and this module is imported by the
+        adapters the CLI loads, which is a cycle at module scope.
+        """
+        from cratekit.core.jobs import Parked  # noqa: PLC0415 - see docstring
+
+        return Parked(cause)
+
+    # ── the public surface ────────────────────────────────────────────────
+
+    def assert_open(self) -> None:
+        """Refuse, naming the lift time, when a trip is still cooling.
+
+        Asked by every opener BEFORE it builds a client and logs in, so a verb
+        started inside the window makes no call at all, and by the vendored
+        adapter AFTER a download, because that tool swallows every exception
+        and the trip would otherwise read as no file came back.
+        """
+        state = self._read()
+        now = self._clock()
+        if state.cooling(now):
+            raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
+
+    def call(self, send: Callable[[], Any]) -> Any:
+        """Make one provider call under the lock, paced, counted and watched.
+
+        ``send`` returns the transport's response; the status is read off it.
+        An exception out of ``send`` is the caller's to classify and is not a
+        rate limit answer, so it neither counts as one nor breaks a run of them.
+        """
+        with self._held():
+            state = self._read()
+            now = self._clock()
+            if state.cooling(now):
+                raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
+            due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+            if due > now:
+                self._sleep(due - now)
+                now = max(self._clock(), due)
+            state.last_call = now
+            state.calls += 1
+            self.calls += 1
+            self._write(state)
+
+            response = send()
+
+            if getattr(response, "status_code", None) == RATE_LIMIT_STATUS:
+                now = self._clock()
+                self.rate_limited += 1
+                state.rate_limited += 1
+                state.consecutive += 1
+                retry_after = _retry_after_seconds(response, now)
+                if retry_after > 0:
+                    state.not_before = max(state.not_before, now + retry_after)
+                if state.consecutive >= TRIP_AFTER or retry_after >= self.settings.cooldown_s:
+                    state.tripped_at = now
+                    state.lifts_at = now + max(self.settings.cooldown_s, retry_after)
+                    state.consecutive = 0
+                    state.trips += 1
+                    self._write(state)
+                    raise self._stopped(self._cooldown_cause(state, now, tripped_now=True))
+                self._write(state)
+                return response
+
+            state.consecutive = 0
+            state.not_before = 0.0
+            self._write(state)
+            return response
+
+    def attach(self, client: Any) -> bool:
+        """Route every request the client's transport makes through this gate.
+
+        The transport is the ``requests.Session`` the provider's library keeps as
+        ``request_session``; its ``request`` method is replaced ON THE INSTANCE,
+        so ``get`` and ``post`` and the library's own helper all land here.
+        Idempotent: attaching twice wraps the original once, so the vendored
+        tool, which is a singleton and is built once per process, is not paced
+        twice. Returns False for a client with no such transport, which is what
+        a method level fake in the suite is; the two build sites in the product
+        always hand over a real one, and a test walks the package for a third.
+        """
+        transport = getattr(client, "request_session", None)
+        if transport is None or not callable(getattr(transport, "request", None)):
+            return False
+        original = getattr(transport, "_cratekit_unpaced_request", None) or transport.request
+
+        def gated(method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
+            return self.call(lambda: original(method, url, *args, **kwargs))
+
+        transport._cratekit_unpaced_request = original
+        transport._cratekit_gate = self
+        transport.request = gated
+        return True
+
+
+def spend(path: Path | None = None) -> Spend:
+    """The running totals off the state file, for a report that holds no gate."""
+    return Gate(path=path).spend()
+
+
+__all__ = [
+    "COOLDOWN",
+    "DEFAULT_COOLDOWN_S",
+    "DEFAULT_MIN_INTERVAL_S",
+    "HELD",
+    "LOCK_KEY",
+    "LOCK_POLL_S",
+    "LOCK_WAIT_S",
+    "RATE_LIMIT_STATUS",
+    "STATE_KEY",
+    "TRIP_AFTER",
+    "Gate",
+    "GateSettings",
+    "Spend",
+    "spend",
+]
