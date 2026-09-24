@@ -711,7 +711,7 @@ def _asked_again(
     # asked it and the worker asked under the job's.
     asked: dict[str, list[int]] = {}
     for n, one in enumerate(now):
-        if one.state is match.MatchState.NEEDS_REVIEW:
+        if match_cli.touches_the_queue(one):
             asked.setdefault(origins[n].handler_key, []).append(n)
     if asked:
         with review.open_store(cfg) as items:
@@ -1087,7 +1087,7 @@ def _missing_for_list(ctx, given: str) -> Envelope:
         )
     index, suppresses, identify = match_cli.library_view(cfg)
     resolved = match.resolve_all(wanted, index, suppresses=suppresses, suppression_id=identify)
-    if resolved.of(match.MatchState.NEEDS_REVIEW):
+    if any(match_cli.touches_the_queue(one) for one in resolved.matches):
         with review.open_store(cfg) as items:
             resolved = match_cli.adjudicate(
                 items,

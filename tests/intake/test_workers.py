@@ -33,6 +33,7 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import acrcloud, recognize
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
+from tests._containers import tagged_container
 from tests.cli_drive import drive
 from tests.intake.test_recognition import FakeCarver, FakeTransport, hit, miss
 from tests.label_fakes import (
@@ -937,6 +938,48 @@ def test_a_resume_that_redoes_an_offered_item_asks_nothing_twice(cfg, library, r
     with review.open_store(cfg) as items:
         page = review.list_items(items, queue=str(review.Queue.VERSION_MATCH))
     assert len(page.items) == 1
+
+
+def test_an_intake_job_that_owns_a_row_by_isrc_retires_the_question_an_earlier_job_asked(
+    cfg, library, tmp_path
+):
+    """THE PATH THAT FILED THE LIVE ITEMS. The 85 stale version questions the
+    residual titled "A review item outlives its question" measured were asked
+    by intake jobs, and the job that later owned their rows by ISRC was an
+    intake job too. The per item worker used to open the review store only for
+    a question, so the owning job would have retired none of them."""
+    owned(library, "04A - 126 - Malive - Burning (Radio Edit).flac")
+    line = match.read_row(
+        {"id": "301", "artist": {"name": "Malive"}, "title": "Burning (Extended Mix)",
+         "isrc": "USNRS2644532"},
+        origin=match.TIDAL, position=1,
+    )
+    with jobs.open_store() as store:
+        earlier = jobs.enqueue(
+            store, handler_key=PLAYLIST_KEY, payload={intake_cli.SOURCE: "x"}, cfg=cfg
+        )
+        later = jobs.enqueue(
+            store, handler_key=PLAYLIST_KEY, payload={intake_cli.SOURCE: "y"}, cfg=cfg
+        )
+
+    asked = intake_cli.resolve_track(line, earlier, cfg)
+    assert (asked.state, asked.why) == (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS)
+    with review.open_store(cfg) as items:
+        assert [one.item_id for one in review.list_items(items)] == [asked.item_id]
+
+    tagged_container(
+        tmp_path, library / "Music" / "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Extended Mix).flac",
+        artist="Malive, Tito Azevedo, MRQZ", title="04A - 126 - Burning (Extended Mix)",
+        isrc="USNRS2644532",
+    )
+    intake_cli.reset_cache()
+    settled = intake_cli.resolve_track(line, later, cfg)
+    assert (settled.state, settled.why) == (match.MatchState.MATCHED, match.Why.ISRC_EXACT)
+    with review.open_store(cfg) as items:
+        assert [one.item_id for one in review.list_items(items)] == []
+        retired = review.get(items, asked.item_id)
+    assert retired.verdict is review.Verdict.SUPERSEDED
+    assert retired.actor == "isrc-exact"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

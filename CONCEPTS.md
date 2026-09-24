@@ -1014,6 +1014,17 @@ The stored decision on a review item: for an offered candidate, or against every
 candidate. A later act that moves files or settles work reads this store. It does
 not infer the decision from some other confirmation.
 
+A third value, `superseded`, is not a person's decision. It records that a later
+resolution owned the row the item asked about under a rule that never consults
+the queue, the ISRC rule or the credited rule or an exact hold, so the question
+stopped being one. The item's actor names the rule. It leaves the open list, is
+not a suppression, cannot be typed at `crate review resolve`, and `clear` revokes
+it like any verdict. When the row becomes a question again, because the file the
+rule owned it by is gone and another cut is held, the next resolution revokes it
+itself and asks. A row that goes missing instead keeps the verdict until it is a
+question again; there is nothing to ask about a missing row, and an open item
+about one is the shape the third verdict exists to end.
+
 ### Confirm gate
 A recorded act that this invocation may proceed. It is not a verdict. Honouring
 the gate confirms the run. It does not accept any review item.

@@ -1,0 +1,168 @@
+name = "r679-b"
+pass_kind = "light"
+
+# Table B: the engine's write site, the reopen path, the positive rule set,
+# the shapes, and the call sites that gate on the shared predicate.
+
+[[rows]]
+id = "B1_no_retirement"
+description = "adjudicate: never retire, so an owned row leaves its question open"
+file = "src/cratekit/acquire/match_cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''        if owned_by_a_rule(found):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B2_any_matched_row_is_owned_by_a_rule"
+description = "owned_by_a_rule: any matched row counts, a person's applied acceptance included"
+file = "src/cratekit/acquire/match_cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''    return found.state is match.MatchState.MATCHED and found.why in match.OWNING_RULES'''
+new = '''    return found.state is match.MatchState.MATCHED'''
+
+[[rows]]
+id = "B3_no_reopen"
+description = "adjudicate: leave a superseded item standing when its row asks again"
+file = "src/cratekit/acquire/match_cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''        if held is not None and held.verdict is review.Verdict.SUPERSEDED:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B4_machine_verdict_read_as_an_answer"
+description = "adjudicate: read any verdict as an answer, the code before this unit, under the reopen layer"
+file = "src/cratekit/acquire/match_cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''            if held.verdict not in review.PERSON_VERDICTS'''
+new = '''            if held.verdict is None'''
+
+[[rows]]
+id = "B4c_both_layers"
+description = "What B4 holds without B3: no reopen and any verdict read as an answer, so a superseded row reads as rejected"
+file = "src/cratekit/acquire/match_cli.py"
+surface = "user"
+pairs_with = "B4_machine_verdict_read_as_an_answer"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''        if held is not None and held.verdict is review.Verdict.SUPERSEDED:
+            # THE RULE THAT RETIRED THIS QUESTION NO LONGER OWNS THE ROW: the
+            # file carrying the ISRC is gone, or the exact copy was, and the
+            # line is a question again. The machine's verdict is revoked by the
+            # machine, since the fact it recorded has stopped being true, and
+            # the question is put back in front of a person by the re-offer
+            # below. Left standing, the verdict would reach ``apply_verdict``
+            # as "not accepted", which reads as a rejection nobody made and
+            # sends acquisition after a record that may be owned.
+            held = review.clear(items, held.item_id, actor=handler_key)
+        if held is None or not held.resolved:
+            held = review.offer(
+                items,
+                queue=QUEUE,
+                kind=match.QUESTION_KIND,
+                identity=identity,
+                payload=found.to_json(),
+                options=_options(found),
+                handler_key=handler_key,
+            )
+        # THREE ANSWERS. A verdict this build cannot read coerces to None, which
+        # leaves the track a question rather than freezing it into a state
+        # nobody can reach to correct. Only a PERSON'S verdict is an answer at
+        # all, which is the layer under the clear above: a verdict the product
+        # wrote, and any it may write later, is never read as a rejection.
+        accepted = (
+            None
+            if held.verdict not in review.PERSON_VERDICTS'''
+new = '''        if False:
+            held = review.clear(items, held.item_id, actor=handler_key)
+        if held is None or not held.resolved:
+            held = review.offer(
+                items,
+                queue=QUEUE,
+                kind=match.QUESTION_KIND,
+                identity=identity,
+                payload=found.to_json(),
+                options=_options(found),
+                handler_key=handler_key,
+            )
+        accepted = (
+            None
+            if held.verdict is None'''
+
+[[rows]]
+id = "B5_rule_not_recorded"
+description = "retire_questions: record a fixed rule instead of the why that owned the row"
+file = "src/cratekit/acquire/match_cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''        rule=str(found.why),'''
+new = '''        rule="exact",'''
+
+[[rows]]
+id = "B6_one_shape_only"
+description = "retire_questions: ask about the first shape only, so a version question is never retired"
+file = "src/cratekit/acquire/match_cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''            for identity in found.wanted.questions()'''
+new = '''            for identity in found.wanted.questions()[:1]'''
+
+[[rows]]
+id = "C1_credited_rule_not_owning"
+description = "OWNING_RULES: leave the credited rule out, so its 4 items stay open"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''OWNING_RULES: frozenset[Why] = frozenset({Why.EXACT, Why.ISRC_EXACT, Why.CREDITED_EXACT})'''
+new = '''OWNING_RULES: frozenset[Why] = frozenset({Why.EXACT, Why.ISRC_EXACT})'''
+
+[[rows]]
+id = "C2_reading_shape_missing"
+description = "QUESTION_SHAPES: leave the reading shape out, so a reading question is never retired"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''    ASKS_ABOUT_RECORDING,
+    ASKS_ABOUT_READING,
+)'''
+new = '''    ASKS_ABOUT_RECORDING,
+)'''
+
+[[rows]]
+id = "D1_intake_gate_on_question_alone"
+description = "intake worker: gate the store on the needs-review state alone, the code before the fix round"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''    if not match_cli.touches_the_queue(found):'''
+new = '''    if found.state is not match.MatchState.NEEDS_REVIEW:'''
+
+[[rows]]
+id = "D2_fallback_gate_on_question_alone"
+description = "fallback pass: gate the store on the needs-review state alone"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''    if any(match_cli.touches_the_queue(one) for one in resolved.matches):'''
+new = '''    if any(one.state is match.MatchState.NEEDS_REVIEW for one in resolved.matches):'''
+
+[[rows]]
+id = "D5_missing_per_row_gate_on_question_alone"
+description = "missing pass, per row grouping: gate on the needs-review state alone while the other call site still names the predicate"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '''        if match_cli.touches_the_queue(one):'''
+new = '''        if one.state is match.MatchState.NEEDS_REVIEW:'''
+
+[[dropped]]
+id = "D3_approved_gate"
+description = "label sweep: gate the store on the needs-review state alone"
+reason = "same shape as D2 and held by the same structural guard; ranked below the cap"
+
+[[dropped]]
+id = "D4_missing_whole_list_gate"
+description = "missing pass, whole list: gate the store on the needs-review state alone"
+reason = "same shape as D2 and held by the same structural guard; D5 measures the per row site in the same module, which is the one the count guard exists for"

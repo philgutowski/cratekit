@@ -171,16 +171,39 @@ class Queue(StrEnum):
 
 
 class Verdict(StrEnum):
-    """What a person decided. Two answers, and the second one is the new half.
+    """How an item was settled. Two of these a person writes, and one the product.
 
     ACCEPTED means the item is settled in favour of a candidate. REJECTED means
     the item is settled AGAINST every candidate, and it suppresses the item until
     somebody explicitly clears it. The source system has no representation for the
     second at all, which is the whole reason its unresolved items roll forward.
+
+    SUPERSEDED means the question was never answered because it stopped being
+    one: a later resolution owned the row the item asked about under a rule that
+    never consults the queue, so there is nothing left for a person to decide.
+    R-679 is the shape it retires. 85 of 88 open version questions on the live
+    library asked about rows the ISRC and credited rules had since settled, and
+    the vocabulary had no honest way to say so: ``rejected`` records a decision
+    against every candidate that nobody made, and reads as exactly wrong when the
+    candidate is the very file the rule now owns. So it is a third value, NOT a
+    suppression, since :attr:`Item.suppressed` stays a rejection alone, and
+    revocable by ``clear`` like any verdict. It is written by :func:`supersede`
+    and nothing a person types: ``PERSON_VERDICTS`` is the command line's
+    vocabulary, because a person recording "a rule settled this" would be
+    recording something that did not happen.
     """
 
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
+#: The verdicts a PERSON records. The command line offers these and no other,
+#: so the machine's verdict cannot be typed by hand. Derived as a subtraction
+#: rather than spelled, so a fourth person verdict is added in one place.
+PERSON_VERDICTS: tuple[Verdict, ...] = tuple(
+    member for member in Verdict if member is not Verdict.SUPERSEDED
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1295,6 +1318,20 @@ def resolve(
     candidate that was never on the list is a decision about something nobody
     showed the person.
     """
+    if verdict not in PERSON_VERDICTS:
+        # The machine's verdict has its own writer with its own invariants: no
+        # option, only over an empty column, the rule named. Letting it in here
+        # would let a batch or an import land it with a candidate and a person
+        # as actor, and nothing downstream could tell that from a rule that ran.
+        raise refuse(
+            "review-selection-invalid",
+            f"{verdict} is not a verdict a person records; it is written by the "
+            f"resolution that owns a row, through its own path",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.ITEM,
+            origin=("review",),
+            detail={"item_id": item_id, "verdict": str(verdict)},
+        )
     current = get(store, item_id)
     if current.resolved:
         raise refuse(
@@ -1379,6 +1416,82 @@ def clear(store: ReviewStore, item_id: str, *, actor: str) -> Item:
             (actor, timestamp(), item_id),
         )
     return get(store, item_id)
+
+
+def supersede(store: ReviewStore, item_ids: Sequence[str], *, rule: str) -> tuple[Item, ...]:
+    """Retire the OPEN items among these, whose question a later resolution has
+    answered by owning the row, recording the rule that did. R-679.
+
+    The verdict written is :attr:`Verdict.SUPERSEDED` and the ``actor`` column
+    carries ``rule``, the resolution slug that owned the row, because the rule is
+    what decided and the column is where a reader looks for who did. ``option``
+    stays empty: the rule owned the row on its own evidence and did not choose
+    among the candidates the item offered, and writing one would claim it had.
+
+    ONLY OVER AN EMPTY COLUMN, which is narrower than ``resolve``'s condition
+    and on purpose. ``resolve`` writes over a verdict this build cannot read,
+    because a person answering a question they were shown must be able to land
+    the answer. This is not a person: it runs on every resolution, and a value a
+    newer build wrote on the shared queue is a decision somebody made on a build
+    that could represent it. Overwriting it here would discard that decision
+    silently, so the raw column has to be NULL, and an ``accepted``, a
+    ``rejected`` or an unreadable verdict all stand.
+
+    NEVER A REFUSAL for an item that is settled or unknown, which is the other
+    difference from ``resolve``. The producer is a resolution walking a list of
+    two hundred rows, asking about every question each row COULD have been
+    asked under: most were never filed, and one a person answered before the
+    rule existed is the expected case, not an error on its path.
+
+    Several at once because that is how the producer asks: one read finds
+    which of the four identities are open, and one guarded write inside one
+    transaction retires them, so a queue where nothing is open costs one read
+    and takes no write lock. Returns the items retired HERE, read back by the
+    stamp this call wrote, so a caller counts what it did and not what it
+    tried, and an item a person settled between the read and the write is
+    theirs.
+    """
+    if not rule:
+        raise refuse(
+            "review-selection-invalid",
+            "a superseded item names the rule that owned its row; an empty one "
+            "would record that something settled the question and not what",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.ITEM,
+            origin=("review",),
+            detail={"item_ids": list(item_ids)},
+        )
+    wanted = tuple(dict.fromkeys(str(item_id) for item_id in item_ids))
+    if not wanted:
+        return ()
+    marks = ", ".join("?" for _ in wanted)
+    open_ids = tuple(
+        row["item_id"]
+        for row in store.conn.execute(
+            f"SELECT item_id FROM review_items WHERE item_id IN ({marks}) "
+            f"AND verdict IS NULL ORDER BY ordinal",
+            wanted,
+        )
+    )
+    if not open_ids:
+        return ()
+    now = timestamp()
+    marks = ", ".join("?" for _ in open_ids)
+    with store.immediate() as conn:
+        conn.execute(
+            f"UPDATE review_items SET verdict = ?, option = NULL, actor = ?, decided = ?, "
+            f"updated = ? WHERE item_id IN ({marks}) AND verdict IS NULL",
+            (str(Verdict.SUPERSEDED), rule, now, now, *open_ids),
+        )
+        retired = tuple(
+            row["item_id"]
+            for row in conn.execute(
+                f"SELECT item_id FROM review_items WHERE item_id IN ({marks}) "
+                f"AND verdict = ? AND actor = ? AND decided = ? ORDER BY ordinal",
+                (*open_ids, str(Verdict.SUPERSEDED), rule, now),
+            )
+        )
+    return tuple(get(store, item_id) for item_id in retired)
 
 
 def resolve_where(
@@ -1640,6 +1753,12 @@ def _apply_incoming(
     the ninety-nine items after it in the file, so neither may end the import.
     """
     try:
+        if verdict is Verdict.SUPERSEDED:
+            # The machine's verdict travels under the machine's rules: the
+            # document's actor is the rule, an option it carries is dropped
+            # since a rule chooses no candidate, and an empty rule is refused
+            # by the writer and reported here as not applied.
+            return bool(supersede(store, (item_id,), rule=str(raw.get("actor") or "")))
         resolve(
             store,
             item_id,
@@ -2190,9 +2309,11 @@ __all__ = [
     "Queue",
     "ReviewStore",
     "Surface",
+    "PERSON_VERDICTS",
     "Verdict",
     "adjudicated_queues",
     "clear",
+    "supersede",
     "count_unresolved",
     "decision_store_keys",
     "suppression_id_for",

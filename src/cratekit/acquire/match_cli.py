@@ -414,6 +414,51 @@ def _item(items: review.ReviewStore, item_id: str) -> review.Item | None:
     return review.find(items, item_id)
 
 
+def owned_by_a_rule(found: match.TrackMatch) -> bool:
+    """Whether resolution owned this row on its own evidence, consulting no
+    queue and no person. A matched row under a person's applied acceptance is
+    not one, and ``OWNING_RULES`` is the positive list."""
+    return found.state is match.MatchState.MATCHED and found.why in match.OWNING_RULES
+
+
+def touches_the_queue(found: match.TrackMatch) -> bool:
+    """Whether ``adjudicate`` has anything to do with this row.
+
+    A question is offered or read back, and a row a rule owns retires the
+    question an earlier run asked about it. EVERY CALLER GATES ON THIS and not
+    on the needs-review state alone. Four of the five used to, opening the
+    store "only for a question", and the retirement was unreachable from every
+    verb but ``match run``: the intake worker, the missing pass, the label
+    sweep and the fallback pass, which between them filed the 85 stale items
+    the residual measured, would have re-resolved the owning job and retired
+    none of them. A row that is owned or missing with no question in its batch
+    still costs no store open.
+    """
+    return found.state is match.MatchState.NEEDS_REVIEW or owned_by_a_rule(found)
+
+
+def retire_questions(
+    items: review.ReviewStore, found: match.TrackMatch
+) -> tuple[review.Item, ...]:
+    """Supersede every OPEN question about a row resolution now owns.
+
+    A line can have been asked about under any of the four question shapes, and
+    the retiring side has no why to derive one from, so it asks about all of
+    them in one call. ``supersede`` reads which are open once, writes only
+    over an empty column, and reports what it retired, so a row nobody ever
+    asked about costs one read, and a question a person answered before the
+    rule existed is left exactly as they left it.
+    """
+    return review.supersede(
+        items,
+        tuple(
+            review.item_id_for(QUEUE, match.QUESTION_KIND, identity)
+            for identity in found.wanted.questions()
+        ),
+        rule=str(found.why),
+    )
+
+
 def adjudicate(
     items: review.ReviewStore,
     result: match.MatchResult,
@@ -436,6 +481,19 @@ def adjudicate(
     """
     settled: list[match.TrackMatch] = []
     for found in result.matches:
+        if owned_by_a_rule(found):
+            # RESOLUTION OWNED THIS ROW on its own evidence, under a rule that
+            # never consults the queue. Any question an earlier run filed about
+            # the same line is no longer one, so it is retired here, naming the
+            # rule, rather than left open for ever. The residual titled "A review
+            # item outlives its question: a later resolution that owns the row
+            # leaves the version-match item open, and no verdict or predicate
+            # can retire it honestly" measured 85 of the 88 open version
+            # questions on the live library asking about rows the ISRC and
+            # credited rules had since settled, and nothing withdrew them.
+            retire_questions(items, found)
+            settled.append(found)
+            continue
         if found.state is not match.MatchState.NEEDS_REVIEW:
             settled.append(found)
             continue
@@ -446,6 +504,16 @@ def adjudicate(
         # a question about the key.
         identity = found.question_identity
         held = _item(items, review.item_id_for(QUEUE, match.QUESTION_KIND, identity))
+        if held is not None and held.verdict is review.Verdict.SUPERSEDED:
+            # THE RULE THAT RETIRED THIS QUESTION NO LONGER OWNS THE ROW: the
+            # file carrying the ISRC is gone, or the exact copy was, and the
+            # line is a question again. The machine's verdict is revoked by the
+            # machine, since the fact it recorded has stopped being true, and
+            # the question is put back in front of a person by the re-offer
+            # below. Left standing, the verdict would reach ``apply_verdict``
+            # as "not accepted", which reads as a rejection nobody made and
+            # sends acquisition after a record that may be owned.
+            held = review.clear(items, held.item_id, actor=handler_key)
         if held is None or not held.resolved:
             held = review.offer(
                 items,
@@ -458,9 +526,13 @@ def adjudicate(
             )
         # THREE ANSWERS. A verdict this build cannot read coerces to None, which
         # leaves the track a question rather than freezing it into a state
-        # nobody can reach to correct.
+        # nobody can reach to correct. Only a PERSON'S verdict is an answer at
+        # all, which is the layer under the clear above: a verdict the product
+        # wrote, and any it may write later, is never read as a rejection.
         accepted = (
-            None if held.verdict is None else held.verdict is review.Verdict.ACCEPTED
+            None
+            if held.verdict not in review.PERSON_VERDICTS
+            else held.verdict is review.Verdict.ACCEPTED
         )
         settled.append(
             match.apply_verdict(
