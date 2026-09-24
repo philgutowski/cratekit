@@ -23,7 +23,7 @@ import pytest
 
 from cratekit import cli
 from cratekit.acquire import listdoc
-from cratekit.cli import output, registry
+from cratekit.cli import gates, output, registry
 from cratekit.core import config, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
@@ -528,6 +528,217 @@ def test_the_list_passed_where_the_manifest_belongs_is_refused_before_the_gate(
     assert refused["cause"]["reason"] == "intake-list-unusable", refused
     assert "not a manifest" in refused["cause"]["message"]
     assert code == int(ExitCode.PRECONDITION)
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+# ---------------------------------------------------------------------------
+# The engine's pre-move checks are asked before the gate (R-677)
+# ---------------------------------------------------------------------------
+
+
+def _assert_refused_before_the_gate(
+    cfg: config.Config,
+    code: int,
+    envelope: dict,
+    reason: str = "library-export-unusable",
+    exit_code: ExitCode = ExitCode.PRECONDITION,
+) -> None:
+    """Refused with no gate offered, no run left to resume, and nothing moved."""
+    assert envelope["cause"]["reason"] == reason, envelope
+    assert code == int(exit_code)
+    assert "gate" not in (envelope["cause"].get("detail") or {})
+    assert envelope["outcome"] != "blocked"
+    assert not gates.run_path(envelope["run_id"]).exists()
+    assert _staged_names(cfg) == ["One.flac"]
+    assert not _music(cfg, BATCH).exists()
+
+
+def _spy_preflight(monkeypatch) -> list[dict]:
+    """Every call the verb makes to the engine's preflight, by keyword."""
+    asked: list[dict] = []
+    real = landing.preflight
+
+    def spied(plan, **kwargs):
+        asked.append(kwargs)
+        return real(plan, **kwargs)
+
+    monkeypatch.setattr(landing, "preflight", spied)
+    return asked
+
+
+def test_a_plan_over_an_export_that_is_not_there_refuses_before_the_gate(
+    cfg, silence, tmp_path
+):
+    """The eighth sitting's order, the verb run before the export was written."""
+    _stage(cfg, silence, "One.flac")
+
+    code, envelope = _drive(_land(tmp_path / "absent.xml", "--name", BATCH))
+
+    _assert_refused_before_the_gate(cfg, code, envelope)
+    assert str(tmp_path / "absent.xml") in envelope["cause"]["message"]
+    assert not _intake(cfg, BATCH).exists()
+
+
+def test_a_plan_over_an_export_that_is_not_a_collection_refuses_before_the_gate(
+    cfg, silence, tmp_path
+):
+    _stage(cfg, silence, "One.flac")
+    notes = tmp_path / "notes.xml"
+    notes.write_bytes(b'<?xml version="1.0"?><NOTES>not a rekordbox export</NOTES>\n')
+
+    code, envelope = _drive(_land(notes, "--name", BATCH))
+
+    _assert_refused_before_the_gate(cfg, code, envelope)
+    assert "COLLECTION" in envelope["cause"]["message"]
+
+
+def test_a_plan_over_an_export_without_the_intake_folder_refuses_before_the_gate(
+    cfg, silence, tmp_path
+):
+    """A collection the intake playlist cannot be written into, which only the
+    engine's trial splice on a copy can see, refuses on the plan read as well."""
+    _stage(cfg, silence, "One.flac")
+    bare = tmp_path / "bare.xml"
+    bare.write_bytes(_fresh_xml().replace(b'Name="INBOX"', b'Name="ELSEWHERE"'))
+
+    code, envelope = _drive(_land(bare, "--name", BATCH))
+
+    _assert_refused_before_the_gate(cfg, code, envelope)
+    assert "intake playlist" in envelope["cause"]["message"]
+
+
+def test_an_unmounted_library_is_named_as_the_library_and_not_as_the_export(
+    cfg, silence, tmp_path
+):
+    """The engine asks the library before the export, and so does the plan read.
+    An export on the unmounted volume is missing too, and the person is sent to
+    mount the drive, not to export again."""
+    _stage(cfg, silence, "One.flac")
+    root = Path(cfg.library.root)
+    shutil.rmtree(root)
+
+    code, envelope = _drive(_land(root / "export.xml", "--name", BATCH))
+
+    _assert_refused_before_the_gate(
+        cfg, code, envelope, "library-root-unreachable", ExitCode.LIBRARY_UNAVAILABLE
+    )
+
+
+def test_an_intake_file_already_there_refuses_before_the_gate(cfg, silence, export):
+    """The same shape one check over. The engine never overwrites the intake
+    file, so a plan that would write one already there is refused on the read."""
+    _stage(cfg, silence, "One.flac")
+    _intake(cfg, BATCH).write_bytes(b"<DJ_PLAYLISTS/>")
+
+    code, envelope = _drive(_land(export, "--name", BATCH))
+
+    _assert_refused_before_the_gate(cfg, code, envelope, "output-exists")
+    assert _intake(cfg, BATCH).read_bytes() == b"<DJ_PLAYLISTS/>"
+
+
+def test_a_plan_over_a_usable_export_reaches_the_gate_with_the_digest_it_had_before(
+    cfg, silence, export, monkeypatch
+):
+    """The check adds a refusal and nothing else. The digest offered with it is
+    the one offered with the check taken out, so an answer recorded before the
+    check existed is not made stale by it."""
+    _stage(cfg, silence, "One.flac")
+    asked = _spy_preflight(monkeypatch)
+    code, refused = _drive(_land(export, "--name", BATCH))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == GATE
+    assert [call["export"] for call in asked] == [export]
+    offered = gates.load(refused["run_id"]).offers[GATE]
+
+    monkeypatch.setattr(landing, "preflight", lambda *args, **kwargs: None)
+    code, without = _drive(_land(export, "--name", BATCH))
+    assert code == int(ExitCode.DECISION_REQUIRED), without
+    assert gates.load(without["run_id"]).offers[GATE] == offered
+
+
+def test_the_plan_read_hands_the_engine_the_manifest_rows_the_gate_will_show(
+    cfg, silence, export, tmp_path, monkeypatch
+):
+    """The label tree check is part of the engine's export check, so a label
+    layout the export cannot take refuses on the plan read too."""
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
+    asked = _spy_preflight(monkeypatch)
+
+    code, refused = _drive(_land(export, "--name", BATCH, "--manifest", str(manifest)))
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert len(asked) == 1
+    rows = asked[0]["label_rows"]
+    assert [(row.provenance.label_name, row.provenance.year) for row in rows] == [
+        ("Kompakt", 2025)
+    ]
+
+
+def test_a_plan_of_nothing_asks_nothing_of_the_export(cfg, tmp_path):
+    """Empty staging is a plan of nothing on the name apply precedent, and a
+    plan of nothing splices nothing, so it is not refused over the export."""
+    code, refused = _drive(_land(tmp_path / "absent.xml", "--name", BATCH))
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["count"] == 0
+
+
+def test_a_recorded_abort_is_honored_over_an_export_that_went_missing(cfg, silence, export):
+    """An answer given before the export went bad is honored as it was before
+    the check existed. The person cancelling is not sent to export again."""
+    _stage(cfg, silence, "One.flac")
+    code, refused = _drive(_land(export, "--name", BATCH))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
+    export.unlink()
+
+    code, envelope = _drive(["--run", run_id, *_land(export, "--name", BATCH)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_a_stale_answer_stays_stale_over_an_export_that_is_not_there(cfg, silence, export, tmp_path):
+    """Only the refusal that asks for an answer gives way to the preflight. An
+    answer given against another plan is the gate's own verdict, and the
+    person is told the plan moved, not only that the new export is missing."""
+    _stage(cfg, silence, "One.flac")
+    code, refused = _drive(_land(export, "--name", BATCH))
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+
+    code, envelope = _drive(["--run", run_id, *_land(tmp_path / "absent.xml", "--name", BATCH)])
+
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_a_recorded_apply_over_an_export_that_went_missing_is_the_engine_s_refusal(
+    cfg, silence, export, monkeypatch
+):
+    """An answered apply reaches the engine, which asks its own checks again
+    under the batch lock, so the refusal is the one it always was."""
+    _stage(cfg, silence, "One.flac")
+    code, refused = _drive(_land(export, "--name", BATCH))
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    export.unlink()
+    reached: list[str] = []
+    real = landing.apply
+
+    def watched(plan, **kwargs):
+        reached.append("apply")
+        return real(plan, **kwargs)
+
+    monkeypatch.setattr(landing, "apply", watched)
+
+    code, envelope = _drive(["--run", run_id, *_land(export, "--name", BATCH)])
+
+    assert envelope["cause"]["reason"] == "library-export-unusable", envelope
+    assert reached == ["apply"]
     assert _staged_names(cfg) == ["One.flac"]
 
 

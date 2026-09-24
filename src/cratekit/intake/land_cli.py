@@ -43,7 +43,7 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config
-from cratekit.core.cause import Outcome
+from cratekit.core.cause import CratekitError, Outcome, Remedy
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import ingest, landing
@@ -273,15 +273,43 @@ def intake_land(ctx) -> Envelope:
     planned = _planned(folder, cfg, batch)
     target = landing.target_dir(cfg, batch)
     destination = intake_file(cfg, batch)
+    # THE ENGINE'S PRE-MOVE CHECKS ARE ASKED BEFORE THE GATE TOO (R-677), for
+    # the manifest's reason. A plan over an export that is not there, or not a
+    # collection, or a library that is not mounted, could never run, and the
+    # engine says so without moving anything. Only when something would move,
+    # since a plan of nothing splices nothing.
+    unusable: CratekitError | None = None
+    if planned.items:
+        try:
+            landing.preflight(
+                planned,
+                cfg=cfg,
+                export=export,
+                destination=destination,
+                label_rows=manifest.rows if manifest is not None else (),
+            )
+        except CratekitError as exc:
+            unusable = exc
     payload = _payload(
         planned, target=target, destination=destination, export=export, manifest=manifest
     )
     spec = ctx.entry.gates[0]
-    option = ctx.gate.require(
-        spec,
-        digest=payload["digest"],
-        context=_shown(planned, target=target, destination=destination, manifest=manifest),
-    )
+    try:
+        option = ctx.gate.require(
+            spec,
+            digest=payload["digest"],
+            context=_shown(planned, target=target, destination=destination, manifest=manifest),
+        )
+    except CratekitError as exc:
+        # THE REFUSAL TAKES THE PLACE OF AN UNANSWERED GATE ONLY, the refusal
+        # whose remedy is to answer it. An answer already given is honored
+        # exactly as it was before the check existed, so an abort still ends in
+        # nothing done, and an apply reaches the engine, which asks the same
+        # checks again before its first move. Read off the remedy because this
+        # layer cannot import the gate's own class.
+        if unusable is not None and exc.cause.remediation.remedy is Remedy.ANSWER_DECISION:
+            raise unusable from None
+        raise
     if option != "apply" or not planned.items:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     # The engine lists the folder again and refuses a fingerprint that moved,

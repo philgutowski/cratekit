@@ -466,6 +466,44 @@ def _check_export(
         ) from exc
 
 
+def preflight(
+    plan: Plan,
+    *,
+    cfg: config.Config,
+    export: Path,
+    destination: Path,
+    label_rows: tuple[listdoc.ManifestRow, ...] = (),
+) -> tree_registry.Registry:
+    """Every check :func:`apply` makes before its first move, in its order.
+
+    ONE PLACE HOLDS THE ORDER, because a caller asks these before its gate
+    (R-677) and :func:`apply` asks them again before the moves, and two copies
+    of the order would disagree about which refusal a person is told. The
+    library is asked before the export, so an unmounted volume holding both is
+    named as the volume and not as a missing export.
+
+    Reads and refuses, and moves nothing. The registry it read is returned for
+    :func:`apply` to hand to the label writer, so the check and the write are
+    asked of one read.
+    """
+    _check_batch(plan.batch)
+    _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))
+    if destination.exists():
+        raise refuse(
+            "output-exists",
+            f"{destination} already exists and is never overwritten, so nothing "
+            f"was moved",
+            origin=_ORIGIN,
+            detail={"path": str(destination)},
+        )
+    # READ ONCE, BEFORE THE FIRST MOVE, and handed to both the check and the
+    # write. A registry that cannot be read refuses here, with nothing moved,
+    # and cannot refuse after the moves because nothing reads it again.
+    registry = tree_registry.read(cfg)
+    _check_export(export, destination, registry, label_rows)
+    return registry
+
+
 def _label_of(row: listdoc.ManifestRow) -> str:
     return (row.provenance.label_name or "").strip()
 
@@ -824,17 +862,6 @@ def apply(
             origin=_ORIGIN,
             detail={"folder": str(plan.folder)},
         )
-    target = target_dir(cfg, plan.batch)
-    _check_batch(plan.batch)
-    _check_library(cfg, plan.folder, target)
-    if destination.exists():
-        raise refuse(
-            "output-exists",
-            f"{destination} already exists and is never overwritten, so nothing "
-            f"was moved",
-            origin=_ORIGIN,
-            detail={"path": str(destination)},
-        )
     label_rows: tuple[listdoc.ManifestRow, ...] = ()
     if manifest is not None:
         read = read_label_manifest(manifest)
@@ -846,11 +873,10 @@ def apply(
                 detail={"manifest": str(manifest)},
             )
         label_rows = read.rows
-    # READ ONCE, BEFORE THE FIRST MOVE, and handed to both the check and the
-    # write. A registry that cannot be read refuses here, with nothing moved,
-    # and cannot refuse after the moves because nothing reads it again.
-    registry = tree_registry.read(cfg)
-    _check_export(export, destination, registry, label_rows)
+    registry = preflight(
+        plan, cfg=cfg, export=export, destination=destination, label_rows=label_rows
+    )
+    target = target_dir(cfg, plan.batch)
 
     refused: list[Refused] = []
     movable: list[Path] = []

@@ -277,7 +277,12 @@ first one then lands, the name is taken, so give the second another. Staging has
 volume as the library, because a move there is a rename and a copy is refused. The
 run ends waiting on you, naming the file to import.
 
-Once you have imported it, export your collection again and run
+Take the export before you run `intake land`. An export that is not there, or is
+not a collection the landed files can be spliced into, is refused before the plan
+reaches its gate, and so is an unmounted library or an importable file already
+written under that name, so no answer is spent on a landing that could never run.
+
+Once you have imported the landed file, export your collection again and run
 `crate intake imported --export` with that new export. It looks for every landed
 file in the export. When they are all there, the import is proven: the importable
 file is renamed to `NAME_inboxed.xml.imported`, which you can delete whenever you
