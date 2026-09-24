@@ -2125,12 +2125,27 @@ def _apply_export(export: Path) -> tuple[int, dict]:
     return _drive(["-d", "route.inbox.apply=apply", "route", "inbox", "--export", str(export)])
 
 
+#: The review warning an export sweep gives for nested membership no import
+#: can land (R-694), spelled out rather than imported from the module under test.
+ROUTING_NOT_LANDABLE = "routing-not-landable"
+
+
+def _not_landable(envelope: dict) -> list[str]:
+    """The messages of every review warning an envelope carries."""
+    return [w["message"] for w in envelope["warnings"] if w["code"] == ROUTING_NOT_LANDABLE]
+
+
+def _others(envelope: dict) -> list[dict]:
+    """Every warning but the review warning, for a test reading the rest exactly."""
+    return [w for w in envelope["warnings"] if w["code"] != ROUTING_NOT_LANDABLE]
+
+
 def test_an_export_inbox_lands_each_track_in_its_declared_sub(configured, tagged, tmp_path):
     """Three tracks, three subs, and the file that comes out parses."""
     export = _write_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
-    assert envelope["outcome"] == str(Outcome.PENDING)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.OK)
     totals = envelope["data"]["totals"]
     assert totals["applied"] is True
     assert totals["inserted"] == 3
@@ -2146,27 +2161,19 @@ def test_an_export_inbox_lands_each_track_in_its_declared_sub(configured, tagged
         item["track_id"]: item["destination"] for item in envelope["data"]["items"]
     } == {tid: f"{folder}/{sub}" for tid, (*_, (folder, sub)) in EXPORT_TRACKS.items()}
 
-    pending = envelope["pending_human_action"]
-    assert pending["kind"] == "rekordbox_import"
-    assert pending["artifact"] == str(_routed(export))
-    assert pending["verify_verb"] == "route.inbox", (
-        "the import check is not the verb that proves it by inserting nothing"
-    )
-    # R-687, measured at the tenth attended sitting: the bridge lands a root
-    # playlist and nothing nested, so the steps name no import of the tree.
-    assert pending["steps"] == [
-        f"import {_routed(export)} into rekordbox as a rekordbox xml library and "
-        "import from it, one at a time, any root playlist this run added tracks "
-        "to, and nothing else",
-        "leave the routing tree's folders and playlists unimported: a nested "
-        "playlist imported from the file lands at the playlist root as a new "
-        "playlist, and a folder imported from it keeps every playlist it held and "
-        "adds a second copy of each, so the routed memberships cannot land from "
-        "this file; this build writes nested membership only to a tree that has "
-        "cut over to the database",
-        "then export the collection again and run route inbox --export with that "
-        "file, which adds nothing to a root playlist once its import has landed "
-        "and plans the routing again, since the bridge cannot land it",
+    # R-694: every change in this file is nested membership, which the bridge
+    # never lands (R-687), so it is a review and owes no import, and the
+    # warning says why in the words the pending steps used to.
+    assert envelope["pending_human_action"] is None
+    assert _not_landable(envelope) == [
+        f"3 membership(s) routed under the routing tree in {_routed(export).name} "
+        "are a review that no import can land: a nested playlist imported from "
+        "the file lands at the playlist root as a new playlist, and a folder "
+        "imported from it keeps every playlist it held and adds a second copy of "
+        "each; file the intake tracks into the subs this review names by hand in "
+        "rekordbox; until they are filed, route inbox --export plans the same "
+        "routing on every fresh export, and this build writes nested membership "
+        "only to a tree that has cut over to the database",
     ]
 
 
@@ -2176,7 +2183,7 @@ def test_an_export_sub_that_does_not_exist_is_a_warning_and_nothing_is_created(
     """The non creating writer: a curated tree gains no playlist it never had."""
     export = _write_export(configured, tmp_path / "exports", subs=("Low", "Med"))
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     totals = envelope["data"]["totals"]
     assert totals["created"] == []
     assert totals["inserted"] == 2
@@ -2242,7 +2249,7 @@ def test_an_export_track_whose_file_is_not_there_is_a_warning_and_not_routed(
     would file a track by the one fact nobody measured."""
     export = _write_export(configured, tmp_path / "exports", missing_file="12")
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["inserted"] == 2
     codes = [warning["code"] for warning in envelope["warnings"]]
     assert "track-file-unreadable" in codes, envelope["warnings"]
@@ -2261,7 +2268,7 @@ def test_an_export_track_whose_file_is_not_there_is_a_warning_and_not_routed(
 def test_an_export_intake_key_with_no_collection_row_is_a_warning(configured, tagged, tmp_path):
     export = _write_export(configured, tmp_path / "exports", inbox=("11", "99"))
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["inserted"] == 1
     assert "track-row-absent" in [warning["code"] for warning in envelope["warnings"]]
 
@@ -2332,9 +2339,9 @@ def test_an_export_location_under_a_retired_volume_name_resolves_through_the_pre
     assert live not in export.read_bytes()
 
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["inserted"] == 3
-    assert envelope["warnings"] == []
+    assert _others(envelope) == []
 
 
 def test_a_native_routing_tree_refuses_before_the_plan_is_offered(
@@ -2508,20 +2515,20 @@ def test_the_star_values_the_rating_tests_expect_are_the_shipped_curve():
 
 def test_an_owed_star_rating_is_not_written_into_the_export(configured, tagged, tmp_path):
     """R-688. Every row keeps the export's own rating, the two owed ones are
-    counted in a warning, and neither the totals nor the pending text claims a
-    rating that the import would never land."""
+    counted in a warning, and neither the totals nor the review warning claims
+    a rating that the import would never land. No root playlist gained a track,
+    so no import is owed at all (R-694)."""
     export = _rating_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     written = _ratings_of(_routed(export).read_bytes())
     assert written == {"21": "0", "22": "", "23": "102", "24": "0", "25": "0"}
     (message,) = _owed(envelope)
     assert message.startswith("2 intake row(s) are owed a star rating"), message
     assert "rated" not in envelope["data"]["totals"]
-    pending = envelope["pending_human_action"]
-    # The steps name the written file, whose tmp path carries this test's name.
-    texts = [pending["summary"], *(s.replace(pending["artifact"], "") for s in pending["steps"])]
-    assert all("rating" not in text for text in texts), texts
+    assert envelope["pending_human_action"] is None
+    (review,) = _not_landable(envelope)
+    assert "rating" not in review, review
 
 
 def _alone(cfg: config.Config, folder: Path, tid: str, rating: str) -> Path:
@@ -2537,7 +2544,7 @@ def test_a_lone_unrated_track_with_energy_is_owed_one_rating(configured, tagged,
     single row shape, so their empty answer is the rule's and not the shape's."""
     export = _alone(configured, tmp_path / "exports", "21", "0")
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     (message,) = _owed(envelope)
     assert message.startswith("1 intake row(s) are owed a star rating"), message
 
@@ -2616,7 +2623,7 @@ def test_a_row_with_no_rating_attribute_is_not_counted_as_owed(configured, tagge
     """No ``Rating`` attribute is not "nobody rated this", so no warning."""
     export = _write_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert _owed(envelope) == []
 
 
@@ -2789,12 +2796,72 @@ def test_a_long_track_alone_is_a_change_and_writes_a_file(configured, tagged, tm
     totals = envelope["data"]["totals"]
     assert (totals["inserted"], totals["long_added"]) == (0, 2)
     assert _long_members(_routed(export).read_bytes()) == ("11", "31")
+    # Nothing nested was written, so there is no review to warn about (R-694).
+    assert _not_landable(envelope) == []
+
+
+def test_an_export_run_owes_the_import_of_the_root_playlist_it_added_to_alone(
+    configured, tagged, tmp_path
+):
+    """R-694. The long track playlist is the one root playlist the sweep writes
+    and the one thing the bridge lands, so it is the whole of the import owed.
+    The routing beside it is the review warning's, not the pending action's."""
+    export = _long_export(configured, tmp_path / "exports")
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["outcome"] == str(Outcome.PENDING)
+    pending = envelope["pending_human_action"]
+    assert pending["kind"] == "rekordbox_import"
+    assert pending["artifact"] == str(_routed(export))
+    assert pending["verify_verb"] == "route.inbox"
+    assert pending["summary"] == (
+        f"2 long track(s) were added to the root playlist '{LONG_PLAYLIST}' in "
+        f"{_routed(export).name}, which rekordbox has not imported yet"
+    )
+    assert pending["steps"] == [
+        f"import {_routed(export)} into rekordbox as a rekordbox xml library and "
+        f"import from it the '{LONG_PLAYLIST}' playlist alone, and nothing else",
+        "leave the routing tree's folders and playlists unimported: a nested "
+        "playlist imported from the file lands at the playlist root as a new "
+        "playlist, and a folder imported from it keeps every playlist it held and "
+        "adds a second copy of each",
+        "then export the collection again and run route inbox --export with that "
+        "file, which owes no import once the playlist's import has landed, and "
+        "whose routing is a review, since the bridge cannot land it",
+    ]
+    (review,) = _not_landable(envelope)
+    assert review.startswith("3 membership(s) routed under the routing tree"), review
+
+
+def test_the_check_run_after_the_playlist_import_owes_no_import(
+    configured, tagged, tmp_path
+):
+    """R-694, the tenth sitting's shape: the long track playlist landed and the
+    routing did not, so the check run plans the same routing again. Before, it
+    ended pending on every run and its own check never answered. Now the
+    routing is a review and no import is owed, which is the answer."""
+    landed = (
+        f'      <NODE Name="{LONG_PLAYLIST}" Type="1" KeyType="0" Entries="2">',
+        '        <TRACK Key="11"/>',
+        '        <TRACK Key="31"/>',
+        "      </NODE>",
+    )
+    export = _long_export(configured, tmp_path / "exports", root_extra=landed)
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.OK)
+    assert envelope["pending_human_action"] is None
+    totals = envelope["data"]["totals"]
+    assert (totals["inserted"], totals["long_added"]) == (3, 0)
+    assert totals["output"] == str(_routed(export))
+    (review,) = _not_landable(envelope)
+    assert review.startswith("3 membership(s) routed under the routing tree"), review
 
 
 def test_no_long_track_builds_no_empty_playlist(configured, tagged, tmp_path):
     export = _long_export(configured, tmp_path / "exports", lengths={"31": "300"})
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["long_added"] == 0
     assert _long_members(_routed(export).read_bytes()) is None
 
@@ -2848,7 +2915,7 @@ def test_a_root_folder_of_that_name_is_a_warning_and_is_not_replaced(
     )
     export = _long_export(configured, tmp_path / "exports", root_extra=folder)
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["long_added"] == 0
     skipped = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
     assert any(LONG_PLAYLIST in message for message in skipped), envelope["warnings"]
@@ -2903,7 +2970,7 @@ def test_a_template_declaring_no_long_track_playlist_builds_none(configured, tag
     write_active(configured, shipped_without("long_tracks"))
     export = _long_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["long_added"] == 0
     assert _long_members(_routed(export).read_bytes()) is None
     assert all(item["long_track"] == "" for item in envelope["data"]["items"])
@@ -3202,7 +3269,7 @@ def test_a_calibrated_export_files_over_the_cut_and_not_under_it(configured, voi
     voiced["Mid Track.flac"] = 4
     export = _write_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     totals = envelope["data"]["totals"]
     assert totals["not_derived"] == []
     assert totals["vox_created"] == [f"Deep House/{_vox_display()}", f"Tech House/{_vox_display()}"]
@@ -3221,7 +3288,10 @@ def test_a_calibrated_export_files_over_the_cut_and_not_under_it(configured, voi
     }
     created = [item["destination"] for item in envelope["data"]["items"] if not item["track_id"]]
     assert created == totals["vox_created"]
-    assert "vocal sub-playlist" in envelope["pending_human_action"]["summary"]
+    # R-694: the subs are nested, so the review names them and no import is owed.
+    assert envelope["pending_human_action"] is None
+    (review,) = _not_landable(envelope)
+    assert "and 2 sub-playlist(s) created" in review, review
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3565,7 +3635,7 @@ def test_an_uncalibrated_export_creates_no_vocal_sub_and_names_the_gap(
     voiced["Low Track.flac"] = 60
     export = _write_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     totals = envelope["data"]["totals"]
     assert totals["not_derived"] == [rebuild.VOCAL_DIMENSION]
     assert totals["vox_created"] == []
@@ -3615,10 +3685,14 @@ def test_vocal_subs_alone_are_a_change_and_write_a_file(configured, voiced, tmp_
     bare.parent.mkdir()
     bare.write_bytes(without)
     code, envelope = _apply_export(bare)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["inserted"] == 0
     assert len(envelope["data"]["totals"]["vox_created"]) == 2
     assert _routed(bare).is_file()
+    # R-694: a created sub is nested too, so a file of subs alone is a review.
+    assert envelope["pending_human_action"] is None
+    (review,) = _not_landable(envelope)
+    assert review.startswith("0 membership(s) routed and 2 sub-playlist(s) created"), review
 
 
 def test_a_calibrated_export_with_no_routing_tree_warns_rather_than_crashing(
@@ -3648,7 +3722,7 @@ def test_a_calibrated_export_over_a_taxonomy_with_no_vocal_sub_creates_none(
     voiced["Low Track.flac"] = 6
     export = _write_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["vox_created"] == []
     assert envelope["data"]["totals"]["not_derived"] == []
     # Spelled, because the narrowed taxonomy no longer declares the name.
@@ -3672,7 +3746,7 @@ def test_a_folder_the_vocal_writer_cannot_serve_is_a_warning_and_the_rest_are_se
         export.read_bytes().replace(f'Name="{vox}" Type="1"'.encode(), f'Name="{vox}" Type="0"'.encode())
     )
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["vox_created"] == [f"Tech House/{vox}"]
     messages = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
     assert any(vox in m for m in messages), messages
@@ -3774,8 +3848,8 @@ def test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created(
     """The creating writer: Tech House has no High, so the sweep makes one."""
     export = _unplaced_export(configured, tmp_path / "exports")
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
-    assert envelope["outcome"] == str(Outcome.PENDING)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == str(Outcome.OK)
     totals = envelope["data"]["totals"]
     assert totals["applied"] is True
     assert totals["inserted"] == 3
@@ -3791,26 +3865,44 @@ def test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created(
         item["track_id"]: item["destination"] for item in envelope["data"]["items"]
     } == {tid: f"{folder}/{sub}" for tid, (*_, (folder, sub)) in EXPORT_TRACKS.items()}
 
-    pending = envelope["pending_human_action"]
-    assert pending["kind"] == "rekordbox_import"
-    assert pending["artifact"] == str(_placed(export))
-    assert pending["verify_verb"] == "route.unplaced"
-    assert "1 sub-playlist(s) were created" in pending["summary"]
-    # R-687: every placement is nested membership, which the bridge never lands,
-    # so the steps name no import at all.
-    assert pending["steps"] == [
-        f"read {_placed(export)} as the review of what the placements would be, "
-        "and import nothing from it",
-        "leave the routing tree's folders and playlists unimported: a nested "
-        "playlist imported from the file lands at the playlist root as a new "
-        "playlist, and a folder imported from it keeps every playlist it held and "
-        "adds a second copy of each, so the placements cannot land from this "
-        "file, and route unplaced without --export only reports",
-        "file the tracks this review names by hand in rekordbox; until they are "
-        "filed, route unplaced --export plans the same placements on every fresh "
-        "export",
+    # R-694: every placement is nested membership, which the bridge never
+    # lands (R-687), so no import is owed and the review warning carries the
+    # step a person takes instead.
+    assert envelope["pending_human_action"] is None
+    assert _not_landable(envelope) == [
+        f"3 membership(s) routed and 1 sub-playlist(s) created under the routing "
+        f"tree in {_placed(export).name} are a review that no import can land: a "
+        "nested playlist imported from the file lands at the playlist root as a "
+        "new playlist, and a folder imported from it keeps every playlist it held "
+        "and adds a second copy of each; file the tracks this review names by "
+        "hand in rekordbox, and route unplaced without --export only reports; "
+        "until they are filed, route unplaced --export plans the same placements "
+        "on every fresh export",
     ]
     assert export.read_bytes() != written, "the export itself was the file written"
+
+
+def test_the_unplaced_check_run_owes_no_import_before_the_tracks_are_filed(
+    configured, tagged, tmp_path
+):
+    """R-694. A fresh export taken after a person read the review and filed one
+    of its three tracks by hand plans the other two again, since none of the
+    placements could land from the file. The answer is the same review with no
+    import owed, not a pending import whose own check could never answer."""
+    code, first = _sweep(_unplaced_export(configured, tmp_path / "before"))
+    assert code == int(ExitCode.OK), first
+    assert first["pending_human_action"] is None
+    later = _unplaced_export(
+        configured, tmp_path / "after", held={("Deep House", "Low"): ("11",)}
+    )
+    code, again = _sweep(later)
+    assert code == int(ExitCode.OK), again
+    assert again["outcome"] == str(Outcome.OK)
+    assert again["pending_human_action"] is None
+    assert [item["track_id"] for item in again["data"]["items"]] == ["12", "13"]
+    assert again["data"]["totals"]["inserted"] == 2
+    (review,) = _not_landable(again)
+    assert review.startswith("2 membership(s) routed and 1 sub-playlist(s) created"), review
 
 
 def test_a_placed_track_is_untouched_even_where_the_declaration_would_not_put_it(
@@ -3825,7 +3917,7 @@ def test_a_placed_track_is_untouched_even_where_the_declaration_would_not_put_it
         configured, tmp_path / "exports", held={("Deep House", "Med"): ("11",)}
     )
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["inserted"] == 2
     assert [item["track_id"] for item in envelope["data"]["items"]] == ["12", "13"]
     written = _placed(export).read_bytes()
@@ -3843,7 +3935,7 @@ def test_a_track_held_only_in_a_vocal_sub_is_placed(configured, tagged, tmp_path
         held={("Tech House", vox): ("13",)},
     )
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert "13" not in {item["track_id"] for item in envelope["data"]["items"]}
     assert envelope["data"]["totals"]["created"] == []
     assert b'Name="High"' not in _placed(export).read_bytes()
@@ -3863,7 +3955,7 @@ def test_a_track_held_only_outside_the_tree_is_unplaced(configured, tagged, tmp_
         held={("Tech House", "Low"): ("13",)},
     )
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert [item["track_id"] for item in envelope["data"]["items"]] == ["11", "12"]
     written = _placed(export).read_bytes()
     assert _sub_keys(written, "Deep House", "Low") == ("11",)
@@ -3891,7 +3983,7 @@ def test_no_tempo_or_bpm_attribute_differs_after_the_sweep(configured, tagged, t
 
     export = _unplaced_export(configured, tmp_path / "exports")
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     grid = re.compile(rb'<TEMPO[^>]*>|\b(?:AverageBpm|Bpm|Inizio|Metro|Battito)="[^"]*"')
     before = grid.findall(export.read_bytes())
     assert before, "the fixture carries no grid, so this compares nothing"
@@ -3919,9 +4011,9 @@ def test_an_unreadable_track_is_a_warning_and_the_rest_are_placed(
 ):
     export = _unplaced_export(configured, tmp_path / "exports", missing_file="13")
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["inserted"] == 2
-    assert [w["code"] for w in envelope["warnings"]] == ["track-file-unreadable"]
+    assert [w["code"] for w in _others(envelope)] == ["track-file-unreadable"]
     assert b'Name="High"' not in _placed(export).read_bytes()
 
 
@@ -3949,7 +4041,7 @@ def test_a_missing_genre_folder_is_a_skipped_write_and_no_folder_is_invented(
         configured, tmp_path / "exports", folders=(("Deep House", ("Low", "Med")),)
     )
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["inserted"] == 2
     messages = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
     assert any("Tech House" in message for message in messages), messages
@@ -4011,7 +4103,7 @@ def test_the_sweep_runs_with_rekordbox_open_and_opens_no_database(
     monkeypatch.setattr(rb_writer, "open_db", no_open)
     export = _unplaced_export(configured, tmp_path / "exports")
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert not session.lock_path(configured).exists()
 
 
@@ -4029,7 +4121,7 @@ def test_a_calibrated_vocal_track_lands_in_a_vocal_sub_the_sweep_creates(
         folders=(("Deep House", ("Low", "Med")), ("Tech House", ("Low", "Med", "High"))),
     )
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["created"] == [f"Tech House/{vox}"]
     written = _placed(export).read_bytes()
     assert _sub_keys(written, "Tech House", "High") == ("13",)
@@ -4054,7 +4146,7 @@ def test_a_bare_lf_before_a_folder_close_is_a_skipped_create_and_the_file_parses
     export.write_bytes(document[:at] + last_sub.replace(b"\r\n", b"\n") + document[at + len(last_sub):])
 
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["created"] == []
     messages = [w["message"] for w in envelope["warnings"] if w["code"] == "route-write-skipped"]
     assert any("Tech House" in m and "CRLF" in m for m in messages), messages
@@ -4110,7 +4202,7 @@ def test_a_namesake_genre_folder_outside_the_routing_tree_takes_nothing(
     export.write_bytes(document.replace(opening, opening + namesake))
 
     code, envelope = _sweep(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["created"] == ["Tech House/High"]
     written = _placed(export).read_bytes()
     assert _sub_keys(written, "Tech House", "High") == ("13",)
@@ -4124,5 +4216,5 @@ def test_an_intake_key_with_no_row_warns_once_and_only_as_row_absent(
     one warning naming the row, not a second one about a file (U91's P1 row)."""
     export = _write_export(configured, tmp_path / "exports", inbox=("11", "99"))
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
-    assert [w["code"] for w in envelope["warnings"]] == ["track-row-absent"]
+    assert code == int(ExitCode.OK), envelope
+    assert [w["code"] for w in _others(envelope)] == ["track-row-absent"]

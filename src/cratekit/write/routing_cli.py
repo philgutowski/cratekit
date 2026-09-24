@@ -733,14 +733,44 @@ PENDING_REMEDY = (
 )
 
 #: Why an export routing's file cannot deliver the routing tree, shared by both
-#: sweeps' pending steps. Measured at the tenth attended sitting (R-687), and
+#: sweeps' review warning. Measured at the tenth attended sitting (R-687), and
 #: the folder half is the source system's paid for learning on the label tree.
-ROUTING_TREE_UNIMPORTABLE = (
-    "leave the routing tree's folders and playlists unimported: a nested "
-    "playlist imported from the file lands at the playlist root as a new "
-    "playlist, and a folder imported from it keeps every playlist it held and "
-    "adds a second copy of each"
+NESTED_UNLANDABLE = (
+    "a nested playlist imported from the file lands at the playlist root as a "
+    "new playlist, and a folder imported from it keeps every playlist it held "
+    "and adds a second copy of each"
 )
+#: The same reason as the step the inbox sweep's pending import gives, since a
+#: person importing the root playlist has the routing tree in front of them.
+ROUTING_TREE_UNIMPORTABLE = (
+    "leave the routing tree's folders and playlists unimported: " + NESTED_UNLANDABLE
+)
+
+#: The warning an export sweep gives for the nested membership it wrote into
+#: a file no import can land it from (R-694). It stands in for a pending
+#: import, since a pending action whose own check could never answer told a
+#: person who had done every step the same thing as one who had done none.
+ROUTING_NOT_LANDABLE = "routing-not-landable"
+
+
+def _routing_not_landable(
+    destination: Path, inserted: int, created: int, remedy: str
+) -> list[dict[str, str]]:
+    """The review warning, as a list so a file with no nested change adds nothing.
+
+    ``inserted`` counts the memberships under the routing tree and ``created``
+    the sub-playlists made there, both nested, so neither lands through the
+    file. ``remedy`` is the step a person takes instead, which differs by verb.
+    """
+    if not inserted and not created:
+        return []
+    made = f" and {created} sub-playlist(s) created" if created else ""
+    return [{
+        "code": ROUTING_NOT_LANDABLE,
+        "message": f"{inserted} membership(s) routed{made} under the routing tree "
+        f"in {destination.name} are a review that no import can land: "
+        f"{NESTED_UNLANDABLE}; {remedy}",
+    }]
 
 
 def _export_refusal(reason: str, message: str, export: Path, **extra: Any) -> CratekitError:
@@ -936,7 +966,8 @@ def _long_tracks(
     A FOLDER of the playlist's name under the root is a warning and nothing is
     planned. The writer would refuse it anyway, and planning over it would offer
     a write that cannot happen. The warning keeps the run from answering
-    ``nothing-to-route``, the answer the import check reads as done.
+    ``nothing-to-route``, which says the library is filed, over a playlist it
+    could not build.
     """
     long_tracks = declared.long_tracks
     if long_tracks is None:
@@ -1223,10 +1254,10 @@ def apply_export(
     carries, so a patched ``Rating`` is a write that never lands.
 
     NOTHING CHANGED IS NOTHING WRITTEN. A file identical in every routed byte
-    to the export would still be a file somebody is told to import. A long
+    to the export would still be a file somebody is told to read. A long
     track the playlist lacks is a change, and so is a vocal sub-playlist
-    ``content`` already gained from :func:`_vox_subs`, which is the new node
-    this file exists to carry into rekordbox.
+    ``content`` already gained from :func:`_vox_subs`, which the review names
+    though no import can land it, since it is nested (R-694).
 
     THE LONG TRACK PLAYLIST IS WRITTEN LAST and ONCE, add only, as the source
     system wrote it last. It is a direct child of the playlist
@@ -1253,48 +1284,40 @@ def apply_export(
 
 
 def _export_pending(
-    run_id: str,
-    verb: str,
-    destination: Path,
-    inserted: int,
-    lengthened: int = 0,
-    playlist: str = "",
-    vox_created: int = 0,
+    run_id: str, verb: str, destination: Path, lengthened: int, playlist: str
 ) -> PendingHumanAction:
-    added = (
-        f", and {lengthened} long track(s) were added to the {playlist!r} playlist"
-        if lengthened
-        else ""
-    )
-    if vox_created:
-        added += f", and {vox_created} vocal sub-playlist(s) were created"
+    """The import an inbox sweep owes, which is the root playlist it added to alone.
+
+    ONLY A ROOT PLAYLIST LANDS through the file (R-687), and the long track
+    playlist is the one root playlist this sweep writes, so the caller asks for
+    this only when that playlist gained tracks (R-694). The nested routing the
+    same file carries is a review, and :func:`_routing_not_landable` says so
+    beside this rather than inside a promise no import can keep.
+    """
     return PendingHumanAction(
         kind="rekordbox_import",
         id=new_pending_id(run_id),
         # NO RATING IS CLAIMED (R-688): this file carries none, since an
         # import keeps the database's rating on every row an export holds.
         summary=(
-            f"{inserted} track(s) were routed{added} in {destination.name}, which "
-            f"rekordbox has not imported yet"
+            f"{lengthened} long track(s) were added to the root playlist "
+            f"{playlist!r} in {destination.name}, which rekordbox has not imported yet"
         ),
-        # THIS VERB IS ITS OWN CHECK, for what the bridge can land. Over a fresh
-        # export taken after the import, a second run adds nothing to a root
-        # playlist; the routing it plans again, since nested membership never
-        # lands through the file (R-687). Named by the caller from its registry
-        # entry, because this layer may not spell a verb (KTD23).
+        # THIS VERB IS ITS OWN CHECK, and since R-694 it can answer. Over a
+        # fresh export taken after the import the playlist holds its tracks, so
+        # a second run adds none and owes no import; the routing it plans
+        # again is a review, since nested membership never lands through the
+        # file (R-687). Named by the caller from its registry entry, because
+        # this layer may not spell a verb (KTD23).
         verify_verb=verb,
         artifact=str(destination),
         steps=(
             f"import {destination} into rekordbox as a rekordbox xml library and "
-            f"import from it, one at a time, any root playlist this run added "
-            f"tracks to, and nothing else",
-            ROUTING_TREE_UNIMPORTABLE
-            + ", so the routed memberships cannot land from this file; this "
-            "build writes nested membership only to a tree that has cut over to "
-            "the database",
+            f"import from it the {playlist!r} playlist alone, and nothing else",
+            ROUTING_TREE_UNIMPORTABLE,
             "then export the collection again and run route inbox --export with "
-            "that file, which adds nothing to a root playlist once its import "
-            "has landed and plans the routing again, since the bridge cannot "
+            "that file, which owes no import once the playlist's import has "
+            "landed, and whose routing is a review, since the bridge cannot "
             "land it",
         ),
     )
@@ -1376,10 +1399,10 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             else []
         ),
     ]
-    # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND. It is the answer the
-    # pending action names as proof an import landed, so a run whose every write
-    # was skipped, or whose every track could not be read, must not give it:
-    # that is a run that could not route, not a library already filed. The owed
+    # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND. It says the library
+    # is filed, so a run whose every write was skipped, or whose every track
+    # could not be read, must not give it: that is a run that could not route,
+    # not a library already filed. The owed
     # ratings are not in ``warnings`` yet: no run of this medium can ever land
     # one (R-688), so counting them would answer route-blocked over a library
     # already filed, every time. They join the warnings after the answer.
@@ -1408,6 +1431,22 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     )
     if destination is None:
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
+    warnings += _routing_not_landable(
+        destination,
+        report.inserted,
+        len(vox_created),
+        "file the intake tracks into the subs this review names by hand in "
+        "rekordbox; until they are filed, route inbox --export plans the same "
+        "routing on every fresh export, and this build writes nested membership "
+        "only to a tree that has cut over to the database",
+    )
+    # A PENDING IMPORT ONLY FOR WHAT AN IMPORT CAN LAND (R-694). The long track
+    # playlist is the one root playlist this sweep writes, so a file that added
+    # nothing to it owes no import: it is a review, and ends ok. Before this,
+    # every run with a routing ended pending, and so did the check run a person
+    # makes after importing, since the routing never lands and plans again.
+    if not lengthened or declared.long_tracks is None:
+        return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
     return ctx.envelope(
         data=data,
         outcome=Outcome.PENDING,
@@ -1416,10 +1455,8 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             ctx.run.run_id,
             ctx.entry.name,
             destination,
-            report.inserted,
             lengthened,
-            declared.long_tracks.display if declared.long_tracks else "",
-            len(vox_created),
+            declared.long_tracks.display,
         ),
         warnings=warnings,
     )
@@ -1629,8 +1666,8 @@ def plan_unplaced_export(
     content = _read_export(export)
     if declared is None:
         # ONE READ PER VERB (R-685): the verb passes the declaration it
-        # checked the bridge with, so the plan, the write and the pending
-        # action are one declaration. A caller that has none reads it here.
+        # checked the bridge with, so the plan, the write and the review
+        # warning are one declaration. A caller that has none reads it here.
         declared = active_taxonomy.load(cfg)
     tree_node = _routing_tree_node(content, declared, export)
     by_id = {
@@ -1672,12 +1709,12 @@ def apply_unplaced_export(
     behind the refusal the caller already made by name.
 
     NOTHING INSERTED IS NOTHING WRITTEN. A file identical to the export would
-    still be a file somebody is told to import.
+    still be a review somebody is told to read.
     """
     if declared is None:
         # ONE READ PER VERB (R-685): the verb passes the declaration it
-        # checked the bridge with, so the plan, the write and the pending
-        # action are one declaration. A caller that has none reads it here.
+        # checked the bridge with, so the plan, the write and the review
+        # warning are one declaration. A caller that has none reads it here.
         declared = active_taxonomy.load(cfg)
     tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
     buffer = bytearray(content)
@@ -1689,46 +1726,18 @@ def apply_unplaced_export(
     return destination, report
 
 
-def _unplaced_pending(
-    run_id: str, verb: str, destination: Path, inserted: int, created: int
-) -> PendingHumanAction:
-    made = f", and {created} sub-playlist(s) were created" if created else ""
-    return PendingHumanAction(
-        kind="rekordbox_import",
-        id=new_pending_id(run_id),
-        summary=(
-            f"{inserted} unplaced track(s) were placed{made} in {destination.name}, "
-            f"which rekordbox has not imported yet"
-        ),
-        # THIS VERB IS ITS OWN CHECK: a run over a fresh export places nothing
-        # once the tree holds the tracks. Every placement here is nested
-        # membership, which never lands through the file, so the steps name no
-        # import at all rather than one that strands or doubles the tree
-        # (R-687), and the check answers only once a person has filed the
-        # tracks by hand. Named by the caller from its registry entry, because
-        # this layer may not spell a verb (KTD23).
-        verify_verb=verb,
-        artifact=str(destination),
-        steps=(
-            f"read {destination} as the review of what the placements would be, "
-            f"and import nothing from it",
-            ROUTING_TREE_UNIMPORTABLE
-            + ", so the placements cannot land from this file, and route "
-            "unplaced without --export only reports",
-            "file the tracks this review names by hand in rekordbox; until they "
-            "are filed, route unplaced --export plans the same placements on "
-            "every fresh export",
-        ),
-    )
-
-
 def route_unplaced_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     """Place every track a fresh export's routing tree does not hold, into a new file.
 
     NO GATE, and that is the brief's decision (U91). The export and the
-    database are never written; the file lands beside the export and reaches
-    rekordbox only when a person imports it, which is the review. The report
-    without ``--export`` is unchanged.
+    database are never written; the file lands beside the export as a review.
+    The report without ``--export`` is unchanged.
+
+    NO PENDING IMPORT, EVER (R-694). Every placement is nested membership
+    under the routing tree, which never lands through the file (R-687), so a
+    written file ends ok with a :data:`ROUTING_NOT_LANDABLE` warning naming the
+    step a person takes instead. A pending import here could never be proven,
+    since the check run plans the same placements until they are filed by hand.
     """
     declared = active_taxonomy.load(cfg)
     _refuse_off_the_bridge(
@@ -1742,8 +1751,7 @@ def route_unplaced_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         *({"code": "route-write-skipped", "message": text} for text in report.warnings),
     ]
     # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND, the inbox sweep's
-    # rule and for its reason: it is the answer the pending action reads as
-    # proof the import landed.
+    # rule and for its reason: it says the tree already holds every track.
     if destination is not None:
         reason = None
     elif warnings:
@@ -1762,19 +1770,15 @@ def route_unplaced_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     )
     if destination is None:
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
-    return ctx.envelope(
-        data=data,
-        outcome=Outcome.PENDING,
-        code=ExitCode.PENDING_HUMAN,
-        pending=_unplaced_pending(
-            ctx.run.run_id,
-            ctx.entry.name,
-            destination,
-            report.inserted,
-            len(report.created),
-        ),
-        warnings=warnings,
+    warnings += _routing_not_landable(
+        destination,
+        report.inserted,
+        len(report.created),
+        "file the tracks this review names by hand in rekordbox, and route "
+        "unplaced without --export only reports; until they are filed, route "
+        "unplaced --export plans the same placements on every fresh export",
     )
+    return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
 
 
 def route_unplaced(ctx) -> Envelope:

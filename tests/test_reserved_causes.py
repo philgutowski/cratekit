@@ -5726,7 +5726,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # `RATING_NOT_LANDABLE` in `write/routing_cli.py`, which the export sweep
     # gives for the star ratings it no longer writes. Nothing refuses with it,
     # which is why both halves move by one, and nothing left.
-    assert (len(literals), len(literals - set(causes))) == (501, 323), (
+    # Re-pinned on the residual finding "The export sweeps end pending on every
+    # run while the bridge cannot land nested membership, so their own check
+    # never answers", 2026-09-24: 501 to 502 distinct, non-keys 323 to 324. The
+    # one that joined is routing-not-landable, a warning code and NOT a key,
+    # spelled once as `ROUTING_NOT_LANDABLE` in `write/routing_cli.py`, which
+    # both export sweeps give for the nested membership their file cannot land.
+    # Nothing refuses with it, which is why both halves move by one, and
+    # nothing left.
+    assert (len(literals), len(literals - set(causes))) == (502, 324), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

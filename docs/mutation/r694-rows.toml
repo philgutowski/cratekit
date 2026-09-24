@@ -1,0 +1,269 @@
+name = "r694"
+pass_kind = "light"
+
+# R-694: the export sweeps owe a rekordbox import only for a root playlist
+# they added to. route inbox --export ends pending only when the long track
+# playlist gained tracks, route unplaced --export never does, and both carry a
+# routing-not-landable review warning for the nested membership their file
+# cannot land. Scoped to the new branch, the new warning and the new pending
+# text. Author's table, no independent verifier (METHOD, 2026-09-07).
+
+[[rows]]
+id = "B1_inbox_pending_on_every_write"
+description = "the inbox sweep ends pending whenever it writes a file, the defect R-694 recorded: the check run after the import ends pending again"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not lengthened or declared.long_tracks is None:
+        return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
+'''
+new = '''
+    if declared.long_tracks is None:
+        return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
+'''
+
+[[rows]]
+id = "B2_inbox_never_pending"
+description = "the inbox sweep never owes an import, so the long track playlist it added to is never named for import"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not lengthened or declared.long_tracks is None:
+        return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
+'''
+new = '''
+    if True:
+        return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
+'''
+
+[[rows]]
+id = "B3_no_declaration_half_removed"
+description = "the branch drops its long track declaration check, a layer only a declared playlist with no declaration could reach"
+file = "src/cratekit/write/routing_cli.py"
+surface = "maintainer"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not lengthened or declared.long_tracks is None:
+        return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
+'''
+new = '''
+    if not lengthened:
+        return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
+'''
+
+[[rows]]
+id = "B4_inbox_review_ends_no_op"
+description = "an inbox file of nested routing alone ends no_op, which reads as nothing routed over a file that was written"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not lengthened or declared.long_tracks is None:
+        return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
+'''
+new = '''
+    if not lengthened or declared.long_tracks is None:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
+'''
+
+[[rows]]
+id = "W1_inbox_warning_dropped"
+description = "the inbox sweep writes nested routing and says nothing about it being a review no import can land"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    warnings += _routing_not_landable(
+        destination,
+        report.inserted,
+        len(vox_created),
+'''
+new = '''
+    warnings += [] and _routing_not_landable(
+        destination,
+        report.inserted,
+        len(vox_created),
+'''
+
+[[rows]]
+id = "W2_inbox_remedy_names_no_step"
+description = "the inbox warning's remedy stops naming the hand filing step, the review's first finding"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "file the intake tracks into the subs this review names by hand in "
+        "rekordbox; until they are filed, route inbox --export plans the same "
+        "routing on every fresh export, and this build writes nested membership "
+'''
+new = '''
+        "this build writes nested membership "
+'''
+
+[[rows]]
+id = "W3_inbox_counts_created_subs_as_routed"
+description = "the inbox warning counts the created vocal subs as nothing, so a file of subs alone says nothing"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        report.inserted,
+        len(vox_created),
+        "file the intake tracks
+'''
+new = '''
+        report.inserted,
+        0,
+        "file the intake tracks
+'''
+
+[[rows]]
+id = "W4_unplaced_warning_dropped"
+description = "the unplaced sweep writes its review and says nothing about the placements being unlandable or the hand filing step"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    warnings += _routing_not_landable(
+        destination,
+        report.inserted,
+        len(report.created),
+'''
+new = '''
+    warnings += [] and _routing_not_landable(
+        destination,
+        report.inserted,
+        len(report.created),
+'''
+
+[[rows]]
+id = "W5_unplaced_review_ends_no_op"
+description = "the unplaced sweep's written review ends no_op, which reads as nothing placed"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        "unplaced --export plans the same placements on every fresh export",
+    )
+    return ctx.envelope(data=data, outcome=Outcome.OK, warnings=warnings)
+'''
+new = '''
+        "unplaced --export plans the same placements on every fresh export",
+    )
+    return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
+'''
+
+[[rows]]
+id = "H1_helper_ignores_created"
+description = "the helper warns only when a membership was routed, so a file of created subs alone carries no review warning"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not inserted and not created:
+        return []
+'''
+new = '''
+    if not inserted:
+        return []
+'''
+
+[[rows]]
+id = "H2_helper_never_empty"
+description = "the helper warns over a file with no nested change at all"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    if not inserted and not created:
+        return []
+'''
+new = '''
+    if False:
+        return []
+'''
+
+[[rows]]
+id = "H3_helper_drops_the_created_count"
+description = "the warning stops naming the sub-playlists it created"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+    made = f" and {created} sub-playlist(s) created" if created else ""
+'''
+new = '''
+    made = ""
+'''
+
+[[rows]]
+id = "H4_helper_drops_the_reason"
+description = "the warning stops saying why nested membership cannot land from the file"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+        f"{NESTED_UNLANDABLE}; {remedy}",
+'''
+new = '''
+        f"{remedy}",
+'''
+
+[[rows]]
+id = "P1_pending_names_every_root_playlist"
+description = "the pending import's first step goes back to any root playlist, rather than the one playlist the sweep added to"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            f"import from it the {playlist!r} playlist alone, and nothing else",
+'''
+new = '''
+            f"import from it, one at a time, any root playlist this run added "
+            f"tracks to, and nothing else",
+'''
+
+[[rows]]
+id = "P2_pending_drops_the_tree_step"
+description = "the pending import stops telling a person to leave the routing tree unimported, which doubles every sub"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            ROUTING_TREE_UNIMPORTABLE,
+            "then export the collection again
+'''
+new = '''
+            "then export the collection again
+'''
+
+[[rows]]
+id = "P3_pending_check_promises_nothing_planned"
+description = "the check step goes back to promising a run that plans nothing, which the routing can never deliver"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            "that file, which owes no import once the playlist's import has "
+            "landed, and whose routing is a review, since the bridge cannot "
+            "land it",
+'''
+new = '''
+            "that file, which routes and adds nothing once the import has "
+            "landed",
+'''
+
+[[rows]]
+id = "P4_pending_summary_claims_the_routing"
+description = "the pending summary claims the routed tracks as part of the import, which cannot land them"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''
+            f"{lengthened} long track(s) were added to the root playlist "
+'''
+new = '''
+            f"tracks were routed, and {lengthened} long track(s) were added to the root playlist "
+'''

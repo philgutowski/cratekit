@@ -4,7 +4,28 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-689, issue #205, `relay/205`, 2026-09-24.** A stale active
+**Last merged: R-694, issue #206, `relay/206`, 2026-09-24.** The export
+sweeps owe an import only for what an import can land. `route inbox --export`
+ends `PENDING_HUMAN` with a `rekordbox_import` action only when the long track
+playlist, the one root playlist it writes, gained tracks, and the action names
+that playlist alone. A file of nested routing or created vocal subs alone ends
+`ok`, exit 0, no pending. `route unplaced --export` never owes an import, and
+a written review ends `ok`. Both give one `routing-not-landable` warning,
+`ROUTING_NOT_LANDABLE` through `_routing_not_landable` in
+`write/routing_cli.py`, naming the nested memberships as a review no import can
+land and the hand filing step. So the check run after the playlist import
+answers, where before every run ended pending. `NESTED_UNLANDABLE` is the
+reason, shared with `ROUTING_TREE_UNIMPORTABLE`. The skill says when each sweep
+ends waiting. The kebab literal pin in `tests/test_reserved_causes.py` is 502
+and 324. **The numbers:** 10,208 collected, 10,207 passed and 1 skipped.
+**The mutation table was NOT measured:** seventeen rows in
+`docs/mutation/r694-rows.toml`, and `r694-notes.md` says why, the installed
+copy's `analyze vocals` job `2026-09-24T21:04:27Z-fbe8` was still running and
+the leak guard halted the baseline. Run those rows with no cratekit job
+running. R-695 narrowed to its two remedies. No residual filed. **Main's
+highest residual number is R-707.**
+
+**Merged before it: R-689, issue #205, `relay/205`, 2026-09-24.** A stale active
 taxonomy copy is told from an edited one. Setup writes
 `coupled/taxonomy.origin.toml` beside the copy, the template's short name and a
 sha256 of the shipped text it copied, a new COUPLED state file
