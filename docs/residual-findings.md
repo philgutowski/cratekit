@@ -27684,6 +27684,15 @@ it needs the owning job re-resolved against the live library, which a session
 does not touch, so it is stated here as owed and not as done. R-680 and R-681
 record what the review found at its edges.
 
+**CLOSED live 2026-09-24, at the tenth attended sitting.** A fresh favourites
+listing on the pipx install at `40daec7`, job `2026-09-24T11:49:23Z-c3ca`,
+207 hearts served, resolved in 10 seconds and `crate review list --limit 500`
+dropped from **190 to 105**: the three live `version-match` items, the 98
+`label-release` rows and the 4 `harvested-label` rows. `--all` still lists
+190, with **85 `superseded`, 81 by `isrc-exact` and 4 by `credited-exact`**,
+the numbers the sitting 9 join predicted. Record in `docs/cutover.md`,
+sitting 10.
+
 ## R-680. A superseded verdict outlives its rule when the row goes missing rather than back to a question
 
 **Found:** 2026-09-23, on `relay/197`, by the built in review, then driven on
@@ -27819,3 +27828,123 @@ a test that counts the reads on an answered apply.
 
 **Not on the board bar.** Efficiency only, nothing false said, nothing at
 risk.
+
+---
+
+## R-685. Every verb reads the shipped taxonomy template, and the active copy on the volume is written by setup and read by doctor alone
+
+**Found:** at the tenth attended sitting, 2026-09-24, when the plan only read
+of `route inbox --export` offered 21 tracks for a `Sets and Long Tracks`
+playlist that `.cratekit/coupled/taxonomy.toml` does not declare.
+`taxonomy.default_taxonomy` returns the shipped template, and its docstring
+says the active template "is read by the caller and passed to
+`load_taxonomy` as text". No caller does. 34 call sites in 12 modules,
+routing, rebuild, trees, ingest, tagging, adopt, the set builder, the label
+approval and the reports, call `default_taxonomy()` and nothing in the
+package loads the active file. `doctor` reads it for `taxonomy.active` and
+`setup` writes it, so the declaration a person is told is theirs, and is
+told to edit, changes nothing any verb does.
+
+**Measured cost:** on this library the two differ by one section,
+`[long_tracks]`, added to the shipped template by U88 on 2026-09-18, two days
+after setup copied it, so the sitting's routing run built a playlist the
+active declaration never asked for. Every bucket agrees, so nothing was
+misfiled. The day the active file is edited, a bucket renamed or a sub added,
+the edit is silent.
+
+**Closes when:** one loader returns the library's active taxonomy from the
+path `doctor` checks, falling back to the shipped template only when the
+configuration names one and no active copy exists, every verb reads through
+it, and a test edits the active copy and reads the change in a routing plan.
+Whether a stale active copy is a doctor finding is a second decision.
+
+**Not on the board bar.** No write held, nothing misfiled today. Issue #198, filed after the tenth sitting
+for the Relay feeder.
+
+---
+
+## R-686. The route.inbox.apply gate shows no plan in either output mode, so a person answers a routing plan they cannot read
+
+**Found:** at the tenth attended sitting, 2026-09-24. `crate route inbox
+--export` stopped at `route.inbox.apply` with the prompt "Apply this routing
+plan to the library?", the two options and the answer command, and nothing
+else: no item, no count, no digest. In json mode the gate envelope carries
+`checks: []` and `summary: {}`. `run show` on the held run lists the open
+gate and no plan. The only way to read the plan is to answer abort and read
+the no-op envelope, then start a second run and answer apply, comparing the
+two digests by hand. R-670 closed the same shape on `name.apply.confirm`,
+whose gate prints every planned name.
+
+**Measured cost:** two runs per apply, three plan only runs spent to learn
+this, and a person who answers the gate as it stands approves 281 items
+blind.
+
+**Closes when:** the gate prints the plan the digest was taken over, at least
+each track's destination, vocal sub, rating and long track membership with
+the totals, in the default human mode, the way R-670's fix did, and the json
+gate envelope carries the same items.
+
+**Not on the board bar.** A rendering, the write is still held. Issue #199, filed after the tenth sitting
+for the Relay feeder.
+
+---
+
+## R-687. A playlist imported from the rekordbox xml bridge lands at the playlist root whatever folder the file put it in, so the landing's batch playlist and the routing pass's nested subs both miss their folder and the pending steps say otherwise
+
+**Found:** at the tenth attended sitting, 2026-09-24, twice. First on
+`Music/9-23-export-3.xml`: the two batch playlists sitting 8 and 9 landed
+"under INBOX" in their intake files read as direct children of the playlist
+root, where rekordbox's Import Playlist put them, so `route inbox --export`
+would have routed none of the 61 rows until the author dragged both into
+INBOX by hand and exported again. Then on `Music/9-24-export-2.xml`, after
+the author imported the 13 changed subs of `BY GENRE + ENERGY` one node at a
+time, as the source system's Invariant 3 requires: each landed at the root as
+a new playlist, same named ones replacing each other there, leaving three
+strays, `Unsorted`, `High` and `Soul / R&B`, and every sub inside the tree
+exactly as it was. The one root playlist, `Sets and Long Tracks`, landed. The
+routing verb's pending text says "import the routing tree", which per the
+source system's own paid for learning doubles every child of a folder that
+already exists, and the landing's says "import the file", which leaves the
+batch outside the folder the routing pass reads.
+
+**Measured cost:** one rekordbox round trip at sitting 10 for the batches,
+and a routing run whose 63 memberships did not land at all. The 61 rows sit
+in their INBOX playlists, unrouted. Nothing lost, nothing doubled: 9998
+entries and 501 playlist paths, 498 plus the three strays.
+
+**Closes when:** the pending steps of `intake land` tell a person to drag
+the imported batch playlist into the intake folder, and the pending steps of
+`route inbox --export` stop naming an import that cannot land nested
+membership. The membership itself lands when the tree cuts over to the
+database and `route inbox` writes it without an export, which is U29's per
+workflow cutover and not a wording fix. A test pins each step text.
+
+**Not on the board bar.** The wording half is a session's, the mechanism is
+attended. Issue #200, filed after the tenth sitting for the Relay feeder, scoped to the wording.
+
+---
+
+## R-688. A star rating written into an export does not land on a row rekordbox already owns
+
+**Found:** at the tenth attended sitting, 2026-09-24. `route inbox --export`
+set `Rating` on four collection rows in `9-24-export_routed.xml`, 51, 153,
+204 and 255, each on a track the library already held and the author had
+never rated. After the import and a fresh export, all four read `Rating="0"`.
+rekordbox takes a row's attributes from the xml only for a row it creates on
+that import; an owned row keeps its database values, the same rule the
+source system's A2 spike found for `Location` matching. The pending text
+says "import the tracks' ratings", and the proof run planned the same four
+ratings again.
+
+**Measured cost:** four ratings not set, and a pending text that promises a
+result the medium cannot deliver. The screen may have shown a star on one of
+the four; the author could not say, and the export is the reading recorded.
+
+**Closes when:** the rating write moves to a medium that reaches an owned
+row, the database path behind the session gates, or the export path stops
+planning ratings for owned rows and its pending text stops claiming them,
+with a test that pins whichever the record decides.
+
+**Not on the board bar.** Nothing false in what was computed, the medium
+cannot carry it. Issue #201, filed after the tenth sitting for the Relay feeder, scoped to the
+decision and the text.
