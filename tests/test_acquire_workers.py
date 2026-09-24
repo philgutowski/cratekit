@@ -21,6 +21,7 @@ jittered seconds per item, and the KTD9 test reads the recorder.
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 
 import pytest
@@ -52,7 +53,7 @@ from tests.acquire_fakes import (
     text_list,
     tidal_list,
 )
-from tests.cli_drive import drive
+from tests.cli_drive import drive, drive_human
 from tests.test_config import valid_data
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1035,3 +1036,24 @@ def test_a_track_result_that_is_acquired_is_the_only_one_committed():
     assert TrackResult(key="k", outcome=TrackOutcome.UNAVAILABLE_TRANSIENT).outcome in (
         acquire_cli._ITEM_REASONS
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-678: the queueing half names the job it queued
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_queueing_a_download_names_the_job_and_the_command_that_drives_it(cfg, library):
+    """Sitting 9: ``ok`` in under a second, and the identifier nowhere a person reads."""
+    path = listed(library, [("10", "A", "T1"), ("20", "B", "T2")])
+
+    code, text = drive_human(["acquire", "download", str(path)])
+
+    assert code == int(ExitCode.OK), text
+    with jobs.open_store() as store:
+        (job,) = jobs.list_jobs(store)
+    lines = text.splitlines()
+    assert f"  job: {job.job_id}, queued" in lines, text
+    drives = shlex.join(["crate", "acquire", "download", str(path.absolute()), "--job", job.job_id])
+    assert f"  drive it with: {drives}" in lines, text
+    assert "  items: 0 of 2 settled" in lines, text

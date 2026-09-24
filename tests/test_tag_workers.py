@@ -31,6 +31,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import shlex
 from pathlib import Path
 
 import pytest
@@ -44,7 +45,7 @@ from cratekit.tagging import artifacts, retag, retag_cli, searchers, shell, tag
 from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import SearchHit
 from tests._containers import synth_container
-from tests.cli_drive import approve_and_queue, drive
+from tests.cli_drive import approve_and_queue, drive, drive_human
 from tests.test_config import valid_data
 from tests.test_handlers import _drive_calls
 
@@ -2176,3 +2177,32 @@ def test_the_retag_resume_argv_carries_the_gate_run_before_the_verb_path(
     argv = resume_argv(job_id)
 
     assert argv == ["--run", gate_run, "tag", "retag", str(folder), "--job", job_id]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-678: the queueing half names the job it queued
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_queueing_a_folder_names_the_job_and_the_command_that_drives_it(
+    cfg, folder, silence
+):
+    """Sitting 9: ``ok`` in under a second, and the identifier nowhere a person reads."""
+    place(folder, silence, "a")
+
+    code, text = drive_human(["tag", "folder", str(folder)])
+
+    assert code == int(ExitCode.OK), text
+    job = tag_job()
+    lines = text.splitlines()
+    assert f"  job: {job.job_id}, queued" in lines, text
+    drives = shlex.join(["crate", "tag", "folder", str(folder.absolute()), "--job", job.job_id])
+    assert f"  drive it with: {drives}" in lines, text
+
+
+def test_a_folder_with_nothing_to_tag_names_no_job(cfg, folder):
+    code, text = drive_human(["tag", "folder", str(folder)])
+
+    assert code == int(ExitCode.OK), text
+    assert text.splitlines()[0] == "tag.folder: no_op", text
+    assert "  job:" not in text, text

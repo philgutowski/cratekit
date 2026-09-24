@@ -71,4 +71,17 @@ def approve_and_queue(verb: list[str], gate: str) -> tuple[str, str]:
     return run_id, queued["data"]["job_id"]
 
 
-__all__ = ["approve_and_queue", "drive"]
+def drive_human(argv: list[str]) -> tuple[int, str]:
+    """Run one invocation in the DEFAULT output mode and return what a person reads.
+
+    ``drive`` always requests json, which is why a verb can keep a green suite
+    over a human answer that says only ``ok`` and a run id (R-378, R-678). A
+    success is written to standard output and a refusal to standard error, so
+    whichever one holds text is the answer.
+    """
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(list(argv), stdout=out, stderr=err)
+    return code, out.getvalue() or err.getvalue()
+
+
+__all__ = ["approve_and_queue", "drive", "drive_human"]

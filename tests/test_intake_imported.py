@@ -30,6 +30,7 @@ from cratekit.intake import collection_xml, imported_cli, ingest, land_cli, pipe
 from cratekit.sync import mark_cli
 from cratekit.write import routing_cli, routing_pass
 from tests._containers import synth_container
+from tests.cli_drive import drive_human
 from tests.test_config import valid_data
 from tests.xml_fixtures import _fresh_xml
 
@@ -873,3 +874,52 @@ def test_an_intake_file_no_waiting_run_names_is_still_refused_as_the_export(
     (record,) = session.records(cfg)
     assert record.state is session.SessionState.AWAITING_IMPORT
     assert _intake_file(cfg).is_file()
+
+
+# ── R-678: what a person reads without asking for json ──
+
+
+def test_the_proof_names_the_tracks_it_proved_and_the_file_it_retired(
+    cfg, silence, export, tmp_path
+):
+    """54 proven rows and a retired intake file printed ``intake.imported: ok``."""
+    _land(cfg, silence, export, "One.flac", "Two.flac", batch="first")
+    after = _export_after_import(tmp_path, _intake_file(cfg, "first"))
+    (waiting,) = [r for r in session.records(cfg) if r.workflow == ingest.INTAKE_WORKFLOW]
+
+    code, text = drive_human(["intake", "imported", "--export", str(after)])
+
+    assert code == int(ExitCode.OK), text
+    lines = text.splitlines()
+    retired = f"first_inboxed.xml{land_cli.RETIRED_SUFFIX}"
+    assert any(
+        line.startswith(f"  run {waiting.session_id}: proven imported, 2 track(s); ")
+        and f"intake file retired to {retired}" in line
+        for line in lines
+    ), text
+    assert "  proven: 1 run(s), 2 track(s); retired: 1 intake file(s)" in lines, text
+
+
+def test_a_run_the_export_does_not_prove_is_named_beside_the_one_it_does(
+    cfg, silence, export, tmp_path
+):
+    _land(cfg, silence, export, "One.flac", batch="first")
+    after_first = _export_after_import(tmp_path, _intake_file(cfg, "first"))
+    _land(cfg, silence, export, "Two.flac", batch="second")
+
+    code, text = drive_human(["intake", "imported", "--export", str(after_first)])
+
+    assert code == int(ExitCode.PENDING_HUMAN), text
+    lines = text.splitlines()
+    assert any(
+        line.endswith(": not imported, 1 of 1 landed track(s) not in the export") for line in lines
+    ), text
+    assert "  proven: 1 run(s), 1 track(s); retired: 1 intake file(s)" in lines, text
+
+
+def test_nothing_waiting_prints_no_proof_lines(cfg, export):
+    code, text = drive_human(["intake", "imported", "--export", str(export)])
+
+    assert code == int(ExitCode.OK), text
+    assert text.splitlines()[0] == "intake.imported: no_op", text
+    assert "proven:" not in text, text
