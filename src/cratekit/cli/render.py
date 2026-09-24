@@ -16,7 +16,9 @@ anything.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import shlex
+from collections.abc import Mapping, Sequence
+from pathlib import PurePath
 from types import MappingProxyType
 from typing import Any
 
@@ -364,6 +366,134 @@ def render_review_set(envelope: Envelope) -> list[str]:
     return lines if len(lines) > 1 else []
 
 
+#: The verbs whose ``job_state`` progress carries a resolution counted in the
+#: intake words, and the command that lists what a finished one left missing.
+#: Spelled as registry names rather than imported, because this layer renders
+#: payloads and must not load a feature module to do it.
+_RESOLVING_VERBS: frozenset[str] = frozenset({"intake.playlist", "intake.set"})
+
+#: The intake resolution's four words, each with the sentence ``intake missing``
+#: already puts beside the same count, so the two verbs read as one vocabulary.
+_RESOLUTION_WORDS: tuple[tuple[str, str], ...] = (
+    ("owned", "already in the library"),
+    ("offered", "held in another version, offered for review; see: crate review list"),
+    ("missing", "not in the library"),
+    ("suppressed", "deleted on purpose"),
+)
+
+
+def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) -> list[str]:
+    """The job a verb queued or drove, or nothing at all.
+
+    A queueing verb answers with ``job_state`` and, without a case here, the
+    default output was the verb, the outcome and a run id: the identifier the
+    person needs to drive the job was only in the json. Gated on the schema, the
+    rule every case in this file follows, and on a job identifier, because a
+    queue that correctly held nothing and a listing both carry an empty one.
+
+    ``drive`` IS THE ONE THING NOT READ FROM THE ENVELOPE. A job is driven by its
+    own verb's command line rebuilt from the frozen payload, and the payload is
+    in the queue rather than the envelope, so the dispatcher looks it up and
+    hands it here. It is None for every envelope but the one from the verb that
+    queued the job, because ``job resume`` answers with a queued job too, after
+    spawning the child that drives it, and a second drive command there would
+    invite two drivers onto one job.
+    """
+    if not envelope.schema.startswith("job_state/"):
+        return []
+    data = envelope.data
+    job_id = data.get("job_id")
+    if not isinstance(job_id, str) or not job_id:
+        return []
+    state = str(data.get("state", "?"))
+    lines = ["", f"  job: {job_id}, {state}"]
+    if state == "queued" and drive:
+        lines.append(f"  drive it with: {shlex.join(['crate', *drive])}")
+    progress = data.get("progress")
+    if not isinstance(progress, Mapping):
+        return lines
+    total, settled = progress.get("total"), progress.get("settled")
+    if isinstance(total, int) and isinstance(settled, int):
+        lines.append(f"  items: {settled} of {total} settled")
+    if envelope.verb in _RESOLVING_VERBS and state != "queued":
+        lines += _resolution_lines(job_id, progress)
+    return lines
+
+
+def _resolution_lines(job_id: str, progress: Mapping[str, Any]) -> list[str]:
+    """An intake job's resolution, counted by state, then what to run next.
+
+    Only the words the progress actually carries. A resolution from a build that
+    did not count one of them says nothing about it, rather than a zero that
+    reads as counted.
+    """
+    lines = [
+        f"  {word}: {progress[word]} {said}"
+        for word, said in _RESOLUTION_WORDS
+        if isinstance(progress.get(word), int)
+    ]
+    if isinstance(progress.get("missing"), int) and progress["missing"]:
+        lines.append(f"  next: crate intake missing --job {job_id}")
+    return lines
+
+
+def _proof_line(item: Mapping[str, Any]) -> str:
+    """One run of an import proof, worded by the action ``intake imported`` marked it.
+
+    The action slugs are spelled here rather than imported from the verb, for
+    the reason :data:`_RESOLVING_VERBS` gives. An action this table does not
+    know keeps its own fields rather than being dropped.
+    """
+    run = f"run {item.get('session_id', '?')}"
+    action = item.get("action")
+    retired = item.get("retired_to")
+    filed = f"intake file retired to {PurePath(str(retired)).name}" if retired else None
+    closed = "run closed" if item.get("closed") is True else None
+    if action == "imported":
+        said = [f"proven imported, {_shown_value(item.get('count'))} track(s)"]
+        said.append(filed or "no intake file to retire")
+    elif action == "not-imported":
+        said = [
+            f"not imported, {_shown_value(item.get('missing'))} of "
+            f"{_shown_value(item.get('count'))} landed track(s) not in the export"
+        ]
+    elif action == "unverifiable":
+        said = [f"not verifiable, {_shown_value(item.get('why'))}"]
+    elif action == "retired":
+        said = ["proven earlier"] + ([filed] if filed else [])
+    else:
+        return ", ".join(f"{k}={_shown_value(v)}" for k, v in item.items())
+    if closed:
+        said.append(closed)
+    return f"{run}: " + "; ".join(said)
+
+
+def render_import_proof(envelope: Envelope) -> list[str]:
+    """What ``intake imported`` proved and retired, or nothing at all.
+
+    The ``plan`` surface's items are shaped by the verb that plans, so this case
+    is gated on the verb as well as the schema: another planning verb's items
+    carry no ``action`` and would be rendered in a shape never designed for them.
+    """
+    if not envelope.schema.startswith("plan/") or envelope.verb != "intake.imported":
+        return []
+    items = envelope.data.get("items")
+    if not isinstance(items, (list, tuple)) or not items:
+        return []
+    lines = [""]
+    for item in items:
+        lines.append(f"  {_proof_line(item) if isinstance(item, Mapping) else _shown_value(item)}")
+    proven = [
+        item for item in items if isinstance(item, Mapping) and item.get("action") == "imported"
+    ]
+    tracks = sum(item["count"] for item in proven if isinstance(item.get("count"), int))
+    retired = sum(1 for item in items if isinstance(item, Mapping) and item.get("retired_to"))
+    lines.append(
+        f"  proven: {len(proven)} run(s), {tracks} track(s); retired: {retired} intake file(s)"
+    )
+    return lines
+
+
 def _review_item_line(item: Any) -> str:
     """One review item as a person should read it."""
     if not isinstance(item, Mapping):
@@ -374,12 +504,16 @@ def _review_item_line(item: Any) -> str:
     return ", ".join(f"{k}={_shown_value(v)}" for k, v in item.items())
 
 
-def render(envelope: Envelope) -> str:
+def render(envelope: Envelope, *, drive: Sequence[str] | None = None) -> str:
     """The default human output for any verb's result.
 
     Deliberately terse and deliberately ordered: what happened, what a person
     still has to do, then the failure detail. A user reading a refusal wants the
     remedy before the diagnosis.
+
+    ``drive`` is the command line that continues a job this invocation queued,
+    looked up by the dispatcher because the envelope does not carry it; see
+    :func:`render_job_state`.
     """
     lines: list[str] = []
     if envelope.exit_code is ExitCode.OK:
@@ -406,6 +540,8 @@ def render(envelope: Envelope) -> str:
         lines += render_cause(envelope.cause, summary_only=bool(checks))
     lines += checks
     lines += review_set
+    lines += render_job_state(envelope, drive=drive)
+    lines += render_import_proof(envelope)
 
     for warning in envelope.warnings:
         lines.append(f"warning [{warning.get('code', '?')}]: {warning.get('message', '')}")
@@ -514,5 +650,7 @@ __all__ = [
     "render_cause",
     "render_checks",
     "render_gate",
+    "render_import_proof",
+    "render_job_state",
     "render_review_set",
 ]
