@@ -5719,7 +5719,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # `acquire/match.py`, spelled once there and read through the enum
     # everywhere else. Nothing left: the tree was differenced against main with
     # the vendored directory excluded on both sides.
-    assert (len(literals), len(literals - set(causes))) == (500, 322), (
+    # Re-pinned on the residual finding "A star rating written into an export
+    # does not land on a row rekordbox already owns", 2026-09-24: 500 to 501
+    # distinct, non-keys 322 to 323. The one that joined is
+    # rating-not-landable, a warning code and NOT a key, spelled once as
+    # `RATING_NOT_LANDABLE` in `write/routing_cli.py`, which the export sweep
+    # gives for the star ratings it no longer writes. Nothing refuses with it,
+    # which is why both halves move by one, and nothing left.
+    assert (len(literals), len(literals - set(causes))) == (501, 323), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

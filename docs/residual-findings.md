@@ -28017,6 +28017,33 @@ with a test that pins whichever the record decides.
 cannot carry it. Issue #201, filed after the tenth sitting for the Relay feeder, scoped to the
 decision and the text.
 
+**CLOSED in code 2026-09-24, on `relay/201`, issue #201.** Decided: the export
+path stops planning ratings, and it stops for every row. The brief's shape
+kept a rating for rows the export creates, and that set is empty by
+construction. The verb's input is a collection export taken from rekordbox,
+so every row in it is one rekordbox holds. The xml rating writer only
+patches a row in place and never adds one. `plan_export` in
+`write/routing_cli.py` now counts, in `_owed_ratings`, the unrated rows the
+source system's sort would have rated, by the same rules: a placed track, a
+bucket that rates, an energy reading, and a `Rating` of empty or zero. It
+returns only the count. The verb gives that count as one
+`rating-not-landable` warning, on the gate's screen, on a declined run and on
+an applied one. The warning says the import keeps the database's rating on
+such a row and that this build writes no rating to the database. The items
+lose their `rating` field, and the gate and the totals lose `rated`.
+`apply_export` writes no rating. The pending summary claims none. A run
+whose only change was a rating writes no file. The count joins the warnings
+after the reason is decided, because no run of this medium can land it,
+so counting it would answer `route-blocked` over a library already filed.
+Tests in `tests/test_routing_workers.py` pin the written file's ratings
+byte for byte, the count, each counting rule on a one row export, the
+declined and gate warnings, and `nothing-to-route` on a re-run that still
+owes ratings. The mutation table `docs/mutation/r688.md` has fifteen rows and
+all fifteen were killed. The rating itself lands only when a database path
+writes it. `write/metadata.plan_rating_backfill` is a FILL IF EMPTY planner
+for that write and has no caller, so this is the cutover's. R-696 and R-697
+record what this decision left at its edges.
+
 ---
 
 ## R-689. Nothing records which shipped template an active copy was made from, so a copy that fell behind the shipped template cannot be told from one a person edited
@@ -28119,6 +28146,9 @@ star count off the gate's `shown`.
 **Not on the board bar.** A rendering, the plan is readable and the write is
 held.
 
+**Narrowed 2026-09-24, on `relay/201` (R-688).** The items no longer carry a
+rating, so the byte scale half is gone. The export id half stands.
+
 ---
 
 ## R-693. Seven other digest bound gates still show no plan, so R-670 and R-686 are one class closed one verb at a time
@@ -28189,3 +28219,49 @@ review of the routing and a root playlist the inbox sweep adds to, and the
 two docstrings match, with a test pinning each remedy's text.
 
 **Not on the board bar.** A wording fix.
+
+---
+
+## R-696. The xml star rating writer has no caller since R-688 and keeps its ungoverned exemption
+
+**Found:** by the built in review on `relay/201`, 2026-09-24, closing R-688.
+`trees.apply_rating_changes` and `rbxml.apply_rating_changes` were called
+only by the export sweep, which no longer rates. The rbxml writer is still
+named in `UNGOVERNED_WRITERS`, and three test files still pin it
+(`test_rbxml.py`, `test_tree_registry.py`, `test_xml_splice_golden.py`).
+
+**Measured cost:** none at runtime. A future caller can patch a `Rating`
+onto a row an export carries, which is the write R-688 found never lands,
+with no guard in the way. The removal was not made on `relay/201` because
+it reaches into the guarded writer registry and three test files that
+belong to other units.
+
+**Closes when:** the writer and its exemption are deleted with the tests
+that pin only it, or a docstring on the writer says it may be called only
+for a row the file creates, with a test that holds the rule.
+
+**Not on the board bar.** Maintainer facing, nothing is written.
+
+---
+
+## R-697. An intake splice routed before its import has rows the import creates, and the owed rating warning calls every row one rekordbox holds
+
+**Found:** deciding R-688 on `relay/201`, 2026-09-24. `intake` splices new
+rows into a fresh export under the intake folder, with synthetic TrackIDs
+from `collection_xml.SYNTHETIC_TID_BASE` up. If that file goes to
+`route inbox --export` before it is imported, its new rows are ones the
+import would create, and a rating there would land. The sweep now counts
+them as owed and says every row is one rekordbox already holds. The TrackID
+floor is not an identity: rekordbox's own ids are not bounded below it.
+
+**Measured cost:** not driven. The emitter already writes a rating from
+energy on every row it creates, so only a row that had no energy reading at
+intake and has one at routing is affected, and the warning's reason is
+wrong for it. No run is known to have routed an unimported splice.
+
+**Closes when:** the sweep can tell a row the import creates from one
+rekordbox holds, from a record intake keeps rather than from the TrackID,
+and counts only the second, or the verb refuses a file that carries rows
+its intake has not seen imported, with a test either way.
+
+**Not on the board bar.** Reachability unmeasured.
