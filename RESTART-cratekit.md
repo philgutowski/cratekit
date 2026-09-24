@@ -4,7 +4,23 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-679, issue #197, `relay/197`, 2026-09-23.** A third review
+**Last merged: R-658, issue #191, `relay/191`, 2026-09-23.** A test body's
+`monkeypatch.undo()` can no longer reach the real machine. The six root
+conftest fixtures that isolate it each hold their own
+`pytest.MonkeyPatch.context()` and request no `monkeypatch`, the eleven
+`undo()` sites are scoped patches around the one call each was for, and a test
+refuses any new `monkeypatch.undo()` under `tests/`, since module level
+autouse guards still share the instance. `tests/test_isolation_survives_undo.py`
+undoes and then resolves the config and state paths, the keychain, the library
+root and the refusals, asserting each before it writes. **The numbers:** 10,135
+collected, 10,134 passed and 1 skipped; four mutation tables,
+`docs/mutation/r658-a.md` to `r658-d.md`, 22 rows, 20 killed, the zeros read
+in `r658-notes.md`. The real state directory's fingerprint, 2446 entries, held
+across two full battery runs. No residual filed. **Main's highest residual
+number is R-684**, filed by `relay/195` (R-677), which merged before this and
+whose record is in the ledger.
+
+**Merged before it: R-679, issue #197, `relay/197`, 2026-09-23.** A third review
 verdict, `superseded`. The match engine's `adjudicate` writes it on every open
 `version-match` item about a row resolution owns under `exact`, `isrc-exact`
 or `credited-exact`, the actor carrying the rule; the item leaves the open
@@ -22,7 +38,7 @@ live library should drop from 190 to the three live items plus the 102 label
 rows once the owning job is re-resolved, and that is the attended sitting's to
 do and to write into `docs/cutover.md`. R-680 and R-681 filed, both driven,
 neither on the board bar. A solutions entry records the call site trap.
-**Main's highest residual number is R-681.**
+Main's highest residual number was R-681 at that merge.
 
 **Next: the attended sitting re-resolves job `c645` on the pipx install and
 measures the open list**, then "Take #178" line 3. R-680's fix, whatever the

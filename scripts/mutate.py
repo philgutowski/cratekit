@@ -251,11 +251,14 @@ SCRUBBED_ENV = {
 #:
 #: On 2026-09-20 a child of this driver overwrote the real configuration with a
 #: test fixture one, destroying what four attended sittings had established. The
-#: conftest already redirects all of these, but it does so with ``monkeypatch``,
-#: and ``monkeypatch.undo()`` inside a test rolls the autouse isolation back with
-#: everything else it undoes. What ``undo()`` restores is the value the PROCESS
-#: started with, so the fix is to make the process start in a sandbox: after
-#: that, an undo lands in the sandbox rather than on the real machine.
+#: conftest redirects all of these, and at the time it did so on the shared
+#: ``monkeypatch``, so ``monkeypatch.undo()`` inside a test rolled the autouse
+#: isolation back with everything else it undid. What ``undo()`` restores is the
+#: value the PROCESS started with, so the fix is to make the process start in a
+#: sandbox: after that, an undo lands in the sandbox rather than on the real
+#: machine. R-658 has since moved the conftest's isolation onto instances of its
+#: own that no body can undo, and banned the body ``undo()``. The sandbox stays,
+#: because a mutated tree is exactly where a guard in ``tests/`` can be defeated.
 #:
 #: The app name is duplicated from ``cratekit.core.config`` on purpose. Importing
 #: that module here would make the guard depend on a mutation target, and a guard

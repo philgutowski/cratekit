@@ -36,6 +36,10 @@ OTHER_SHORT = "05A - 120 - Tune - Band.flac"
 #: ``repair`` is a feature module, and the slim profile switches its verbs off.
 FULL = {"name": "full"}
 
+#: The collection read, taken at import before ``configured`` stubs it, so a
+#: test about the read can put back that one patch and nothing else.
+_REAL_RECORDED = naming_cli._recorded
+
 
 @pytest.fixture
 def library(tmp_path, monkeypatch):
@@ -479,10 +483,8 @@ def test_an_unreadable_collection_refuses_and_renames_nothing(configured, monkey
     path = _audio(folder, LONG)
     _scan(folder)
     _accept(configured, path)
-    monkeypatch.undo()
     # No database was ever built under this library, so the read fails for real.
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(Path(configured.library.root)))
-    monkeypatch.setattr(config, "load", lambda *args, **kwargs: configured)
+    monkeypatch.setattr(naming_cli, "_recorded", _REAL_RECORDED)
 
     code, envelope = _answer("apply")
 

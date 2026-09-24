@@ -1,0 +1,157 @@
+name = "r658-b"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_adoption_unreadable_revert"
+description = "Drop the scoped unreadable digest around revert_tags; the refusal it pins must not be produced"
+file = "tests/test_adoption.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+        unreadable.setattr(adopt_revert, "digest_of", lambda _p: "")
+        report = adopt_revert.revert_tags(cfg)
+'''
+new = '''
+        report = adopt_revert.revert_tags(cfg)
+'''
+
+[[rows]]
+id = "S2_adoption_unreadable_stamp"
+description = "Drop the scoped unreadable digest around the stamping write"
+file = "tests/test_adoption.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+        unreadable.setattr(adopt_revert, "digest_of", lambda _p: "")
+        record, landed = adopt_revert.write_tag_with_record(
+'''
+new = '''
+        record, landed = adopt_revert.write_tag_with_record(
+'''
+
+[[rows]]
+id = "S3_adoption_failing_stat"
+description = "Drop the scoped failing stat around the stamping write"
+file = "tests/test_adoption.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+        failing.setattr(Path, "stat", stat_fails_after_the_write)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "S4_adoption_evicted_stat"
+description = "Drop the scoped evicted stat around revert_tags, leaving the read counter"
+file = "tests/test_adoption.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+        evicted.setattr(Path, "stat", evicted_stat)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "S5_adoption_swap"
+description = "Drop the scoped byte swap between the two reads"
+file = "tests/test_adoption.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+        swapping.setattr(adopt_revert, "digest_of", swap_the_bytes_after_the_first_read)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "S6_restore_full_disk"
+description = "Drop the scoped full disk around the first restore run"
+file = "tests/test_restore.py"
+surface = "user"
+tests = ["tests/test_restore.py"]
+old = '''
+        full_disk.setattr(restore, "_replace_file", _explode)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "S7_tombstone_full_disk"
+description = "Drop the scoped refusing store write"
+file = "tests/test_uncredited_tombstone.py"
+surface = "user"
+tests = ["tests/test_uncredited_tombstone.py"]
+old = '''
+        full_disk.setattr(review.DecisionStore, "_write", refuses)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "S8_reserved_short_walk"
+description = "Drop the scoped short walk handed to structured_refusal_causes"
+file = "tests/test_reserved_causes.py"
+surface = "user"
+tests = ["tests/test_reserved_causes.py"]
+old = '''
+        short_walk.setitem(
+            globals(),
+            "imported_package_modules",
+            lambda: ([], {"cratekit.modules.tools.backup": "No module named 'boto3'"}),
+        )
+'''
+new = '''
+'''
+
+[[rows]]
+id = "S9_reserved_moved_module"
+description = "Drop the scoped EXIT_CODE_MODULE move"
+file = "tests/test_reserved_causes.py"
+surface = "user"
+tests = ["tests/test_reserved_causes.py"]
+old = '''
+        moved_module.setattr(_guards, "EXIT_CODE_MODULE", "cratekit.core.statuses")
+'''
+new = '''
+'''
+
+[[rows]]
+id = "S10_outbound_zone"
+description = "Scope the zone to UTC instead of New York, which is the defect this test pins"
+file = "tests/test_outbound_workers.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '''
+        zone.setenv("TZ", "America/New_York")
+'''
+new = '''
+        zone.setenv("TZ", "UTC")
+'''
+
+[[rows]]
+id = "S11_outbound_zone_undo"
+description = "Drop the scoped undo before tzset, so the process keeps New York after the test"
+file = "tests/test_outbound_workers.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_workers.py"]
+old = '''
+            zone.undo()
+            time.tzset()
+'''
+new = '''
+            time.tzset()
+'''
+
+[[rows]]
+id = "S12_repair_real_read"
+description = "Drop the one patch the repair test puts back, so the configured fixture's empty collection read stands"
+file = "tests/intake/test_repair_apply.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py"]
+old = '''
+    monkeypatch.setattr(naming_cli, "_recorded", _REAL_RECORDED)
+'''
+new = '''
+'''

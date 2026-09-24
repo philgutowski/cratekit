@@ -1,0 +1,31 @@
+name = "r658-d"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_an_undo_comes_back"
+description = "Put a body monkeypatch.undo() back into the restore retry test; the ban must name it"
+file = "tests/test_restore.py"
+surface = "maintainer"
+tests = ["tests/test_isolation_survives_undo.py"]
+old = '''
+    # Put right what the error named, then do what the refusal said.
+    log.write_bytes(b"the second attempt's log")
+'''
+new = '''
+    # Put right what the error named, then do what the refusal said.
+    monkeypatch.undo()
+    log.write_bytes(b"the second attempt's log")
+'''
+
+[[rows]]
+id = "D2_the_ban_looks_for_another_name"
+description = "The ban matches a method named undone rather than undo, so it sees nothing"
+file = "tests/test_isolation_survives_undo.py"
+surface = "maintainer"
+tests = ["tests/test_isolation_survives_undo.py"]
+old = '''
+        and node.func.attr == "undo"
+'''
+new = '''
+        and node.func.attr == "undone"
+'''
