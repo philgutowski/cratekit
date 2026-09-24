@@ -202,13 +202,17 @@ def test_the_proven_run_count_is_the_verbs_own_total():
 
 
 def test_a_shown_item_value_that_would_break_its_line_is_quoted():
-    """R-692: an artist with a comma, a title with an equals sign or a line
-    break, would otherwise read as a field of its own or split the item. A
-    plain value and a non string one print as they always did."""
+    """R-692: an artist with a comma, a title with an equals sign, or a value
+    holding either line break would otherwise read as a field of its own or
+    split the item. Each breaker is alone in its value, so dropping one from
+    the set is seen. A quoted value keeps its letters, and a plain value and a
+    non string one print as they always did."""
     (header, line) = render._shown_lines({
         "items": [{
-            "artist": "Kerri Chandler, Jerome Sydenham",
-            "title": "Dub=Mix\nPart 2",
+            "artist": "\u00c2me, Dixon",
+            "title": "Dub=Mix",
+            "note": "Part\n2",
+            "also": "Part\r3",
             "track_id": "11",
             "vocal": "",
             "count": 3,
@@ -216,6 +220,6 @@ def test_a_shown_item_value_that_would_break_its_line_is_quoted():
     })
     assert header == "  items:"
     assert line == (
-        '    artist="Kerri Chandler, Jerome Sydenham", title="Dub=Mix\\nPart 2", '
-        "track_id=11, vocal=, count=3"
+        '    artist="\u00c2me, Dixon", title="Dub=Mix", note="Part\\n2", '
+        'also="Part\\r3", track_id=11, vocal=, count=3'
     )
