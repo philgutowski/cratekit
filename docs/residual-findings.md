@@ -10157,6 +10157,21 @@ the file surfaces are repairable on demand with `name.apply`.
 the result to the live library, or the decision is revisited and the planner
 is deleted with its tests.
 
+**Read 2026-09-24 at the eleventh attended sitting, A3, issue #176, and the
+decline upheld.** `plan_title_padding` was run plan only over a disposable copy
+of the live database, rekordbox and rekordboxAgent both gone, from the attended
+worktree at `a5b30cf`, with the template the naming verb builds. Of 9,998 rows
+not soft deleted, 9,756 titles carry a head and **13 are unpadded**, every one
+a single digit key, and every proposed change touched the key span alone, so
+`pad_head`'s edge is clean on the real data. Thirteen rows do not earn a
+database write verb with its gates, tests and mutation table. **Decided by
+Phillip:** the thirteen Names are padded by hand in rekordbox, the write time
+default keeps every row Cratekit names padded from here on, and the drift stops
+at cutover when the source system's landing path retires. The planner and its
+tests are deleted as the caller less code this entry names, filed for the
+feeder as this residual's own card, which closes it. The copy was deleted after
+the read and nothing was written.
+
 ## R-166. The CUT.md reconciliation has no guard against drifting back apart
 
 **Found by** the independent adversarial review of U39, 2026-08-25.
