@@ -2359,10 +2359,10 @@ def test_the_export_writer_itself_refuses_a_routing_tree_that_has_cut_over(
     from cratekit.write import routing_cli
 
     export = _write_export(configured, tmp_path / "exports")
-    _content, plan, ratings, *_rest = routing_cli.plan_export(configured, export)
+    _content, plan, *_rest = routing_cli.plan_export(configured, export)
     _cut_over_routing_tree(configured)
     with pytest.raises(tree_registry.TreeModeRefused):
-        routing_cli.apply_export(configured, export, export.read_bytes(), plan, ratings)
+        routing_cli.apply_export(configured, export, export.read_bytes(), plan)
     assert not _routed(export).exists()
 
 
@@ -2452,13 +2452,20 @@ def test_without_export_a_library_with_no_native_tree_names_the_export_remedy(st
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# U87: the export filing pass fills an empty star rating from energy
+# U87, reversed by R-688: the export sweep plans no star rating
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # Every source system sort set a rating from energy on a track whose rating was
-# still zero, in the same pass as the filing. Every expected value below is a
-# literal, never the taxonomy asked through the code that writes it, and every
-# test reads the OUTPUT FILE with a real XML parser.
+# still zero, in the same pass as the filing, and U87 wrote it into the export.
+# The tenth sitting imported four such ratings and read all four back as zero:
+# every row of a collection export is one rekordbox already holds, and an import
+# keeps the database's rating on such a row. So the sweep now writes none, and
+# counts the ones it would have written into one warning. Every expected value
+# below is a literal, never the taxonomy asked through the code that writes it,
+# and every test reads the OUTPUT FILE with a real XML parser.
+
+#: The warning code, spelled out rather than imported from the module under test.
+RATING_NOT_LANDABLE = "rating-not-landable"
 
 
 def _ratings_of(document: bytes) -> dict[str, str | None]:
@@ -2480,6 +2487,11 @@ def _rating_export(cfg: config.Config, folder: Path, **overrides) -> Path:
     return _write_export(cfg, folder, **(options | overrides))
 
 
+def _owed(envelope: dict) -> list[str]:
+    """The messages of every owed rating warning an envelope carries."""
+    return [w["message"] for w in envelope["warnings"] if w["code"] == RATING_NOT_LANDABLE]
+
+
 def test_the_star_values_the_rating_tests_expect_are_the_shipped_curve():
     """The literals above against the template's own TOML, read raw, so the
     expectation is the fixture and not the loader or the planner."""
@@ -2494,18 +2506,22 @@ def test_the_star_values_the_rating_tests_expect_are_the_shipped_curve():
     assert str(cuts[0]["rating"]) == ONE_STAR and cuts[0]["max"] >= 1
 
 
-def test_an_unrated_export_track_takes_its_star_rating_from_energy(
-    configured, tagged, tmp_path
-):
-    """Top of the curve five stars, bottom one star, zero and empty both filled."""
+def test_an_owed_star_rating_is_not_written_into_the_export(configured, tagged, tmp_path):
+    """R-688. Every row keeps the export's own rating, the two owed ones are
+    counted in a warning, and neither the totals nor the pending text claims a
+    rating that the import would never land."""
     export = _rating_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     written = _ratings_of(_routed(export).read_bytes())
-    assert written["21"] == FIVE_STARS, "a zero rated top energy track was not five stars"
-    assert written["22"] == ONE_STAR, "an empty rated bottom energy track was not one star"
-    assert envelope["data"]["totals"]["rated"] == 2
-    assert "2 unrated track(s)" in envelope["pending_human_action"]["summary"]
+    assert written == {"21": "0", "22": "", "23": "102", "24": "0", "25": "0"}
+    (message,) = _owed(envelope)
+    assert message.startswith("2 intake track(s) are owed a star rating"), message
+    assert "rated" not in envelope["data"]["totals"]
+    pending = envelope["pending_human_action"]
+    # The steps name the written file, whose tmp path carries this test's name.
+    texts = [pending["summary"], *(s.replace(pending["artifact"], "") for s in pending["steps"])]
+    assert all("rating" not in text for text in texts), texts
 
 
 def test_a_hand_rated_export_track_is_never_overwritten(configured, tagged, tmp_path):
@@ -2537,9 +2553,11 @@ def test_a_track_with_no_energy_reading_is_filed_and_left_unrated(
     assert _ratings_of(written)["25"] == "0", "a track with no energy was rated"
 
 
-def test_a_second_export_run_over_its_own_rated_output_changes_nothing(
-    configured, tagged, tmp_path
-):
+def test_a_second_run_still_owing_ratings_is_nothing_to_route(configured, tagged, tmp_path):
+    """Every track is filed and the two ratings are still owed. No run of this
+    medium can land them, so they write no file and do not turn the answer the
+    import check reads as done into route-blocked, and the warning still says
+    they are owed."""
     export = _rating_export(configured, tmp_path / "exports")
     _apply_export(export)
     first = _routed(export)
@@ -2548,74 +2566,56 @@ def test_a_second_export_run_over_its_own_rated_output_changes_nothing(
     code, envelope = _apply_export(first)
     assert code == int(ExitCode.OK), envelope
     totals = envelope["data"]["totals"]
-    assert (totals["inserted"], totals["rated"]) == (0, 0)
+    assert totals["inserted"] == 0
     assert totals["reason"] == "nothing-to-route"
-    assert all(item["rating"] == "" for item in envelope["data"]["items"])
+    assert [w["code"] for w in envelope["warnings"]] == [RATING_NOT_LANDABLE]
     assert sorted(path.name for path in first.parent.iterdir()) == before
 
 
-def test_a_filed_track_still_unrated_is_rated_in_a_file_of_its_own(
+def test_the_offered_plan_names_no_rating_and_says_which_are_owed(
     configured, tagged, tmp_path
 ):
-    """Nothing to insert is not nothing to write while a rating is owed, and a
-    re-run that answered nothing-to-route here would pass the import check
-    over a track the pass never rated."""
+    """The gate is where a person reads what the run will do, so the owed
+    count is on it before the answer, and no item offers a rating."""
     export = _rating_export(configured, tmp_path / "exports")
-    _apply_export(export)
-    first = _routed(export)
-    first.write_bytes(first.read_bytes().replace(f'Rating="{FIVE_STARS}"'.encode(), b'Rating="0"'))
-
-    code, envelope = _apply_export(first)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
-    totals = envelope["data"]["totals"]
-    assert (totals["inserted"], totals["rated"]) == (0, 1)
-    assert _ratings_of(_routed(first).read_bytes())["21"] == FIVE_STARS
-
-
-def test_the_offered_plan_names_each_rating_before_anything_is_written(
-    configured, tagged, tmp_path
-):
-    """The rating rides the items, so it is inside the digest a person approves."""
-    export = _rating_export(configured, tmp_path / "exports")
-    code, envelope = _drive(
-        ["-d", "route.inbox.apply=abort", "route", "inbox", "--export", str(export)]
-    )
-    assert code == int(ExitCode.OK), envelope
-    offered = {item["track_id"]: item["rating"] for item in envelope["data"]["items"]}
-    assert offered == {"21": FIVE_STARS, "22": ONE_STAR, "23": "", "24": "", "25": ""}
+    shown = _blocked_export(export)["cause"]["detail"]["shown"]
+    assert all("rating" not in item for item in shown["items"])
+    assert "rated" not in shown
+    (warning,) = shown["warnings"]
+    assert warning.startswith("2 intake track(s) are owed a star rating"), warning
     assert not _routed(export).exists()
 
 
-def test_a_row_with_no_rating_attribute_is_not_planned(configured, tagged, tmp_path):
-    """The writer patches a value in place and cannot add one, so planning a
-    rating there would declare a write the run never performs."""
+def test_a_row_with_no_rating_attribute_is_not_counted_as_owed(configured, tagged, tmp_path):
+    """No ``Rating`` attribute is not "nobody rated this", so no warning."""
     export = _write_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
-    assert envelope["data"]["totals"]["rated"] == 0
-    assert all(item["rating"] == "" for item in envelope["data"]["items"])
+    assert _owed(envelope) == []
 
 
-def test_a_run_whose_every_filing_was_skipped_still_rates_and_is_not_already_filed(
+def test_a_run_whose_every_filing_was_skipped_is_blocked_and_not_rated(
     configured, tagged, tmp_path
 ):
-    """A rating is an attribute of a track, so a missing routing tree does not
-    un-rate it, and the skipped writes still ride as warnings rather than the
-    answer the import check reads as done."""
+    """With no routing tree nothing is filed, and an owed rating is no longer
+    a change of its own, so no file is written and the skipped writes answer
+    route-blocked rather than the answer the import check reads as done."""
     export = _rating_export(configured, tmp_path / "exports")
     display = taxonomy.default_taxonomy().tree.display
     export.write_bytes(export.read_bytes().replace(f'Name="{display}"'.encode(), b'Name="Other"'))
     code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert code == int(ExitCode.OK), envelope
     totals = envelope["data"]["totals"]
-    assert (totals["inserted"], totals["rated"]) == (0, 2)
-    assert totals["reason"] != "nothing-to-route"
-    assert "route-write-skipped" in [w["code"] for w in envelope["warnings"]]
+    assert (totals["inserted"], totals["applied"]) == (0, False)
+    assert totals["reason"] == "route-blocked"
+    codes = [w["code"] for w in envelope["warnings"]]
+    assert "route-write-skipped" in codes and RATING_NOT_LANDABLE in codes
+    assert not _routed(export).exists()
 
 
-def test_a_rating_pass_never_changes_a_tempo_or_bpm(configured, tagged, tmp_path):
-    """R17 on the rated element itself: track 21 is analysed AND rated, so the
-    patch lands in the one open tag whose track carries a tempo child."""
+def test_an_analysed_track_keeps_its_rating_and_its_grid(configured, tagged, tmp_path):
+    """R17 on the element U87 used to patch: track 21 is analysed and owed a
+    rating, so the written file must carry its grid and its rating unchanged."""
     import xml.etree.ElementTree as ET
 
     export = _rating_export(configured, tmp_path / "exports", analyzed=("21",))
@@ -2623,7 +2623,7 @@ def test_a_rating_pass_never_changes_a_tempo_or_bpm(configured, tagged, tmp_path
     _apply_export(export)
     written = _routed(export).read_bytes()
     after = ET.fromstring(written).find("COLLECTION")
-    assert _ratings_of(written)["21"] == FIVE_STARS, "the analysed track was not rated"
+    assert _ratings_of(written)["21"] == "0", "the analysed track was rated"
 
     def tempo(collection):
         return {
@@ -2638,19 +2638,22 @@ def test_a_rating_pass_never_changes_a_tempo_or_bpm(configured, tagged, tmp_path
     assert tempo(before)["21"][1], "the analysed track has no tempo child, so this proves nothing"
 
 
-def test_two_rows_naming_one_file_are_both_rated(configured, tagged, tmp_path):
+def test_two_rows_naming_one_file_are_both_counted_as_owed(configured, tagged, tmp_path):
     """rekordbox can hold one file under two ids, and the pass reads the file
-    once; each row it files is a row the rating is owed on."""
+    once; each row it files is a row a rating is owed on, and neither is
+    written."""
     tracks = RATING_TRACKS | {"26": RATING_TRACKS["21"]}
     ratings = {tid: "0" for tid in tracks}
     export = _write_export(
         configured, tmp_path / "exports", tracks=tracks, ratings=ratings, folders=RATING_FOLDERS
     )
-    _apply_export(export)
+    _code, envelope = _apply_export(export)
     written = _routed(export).read_bytes()
     assert set(_sub_keys(written, "Tech House", "High")) == {"21", "23", "26"}
     rated = _ratings_of(written)
-    assert (rated["21"], rated["26"]) == (FIVE_STARS, FIVE_STARS)
+    assert (rated["21"], rated["26"]) == ("0", "0")
+    (message,) = _owed(envelope)
+    assert message.startswith("4 intake track(s) are owed a star rating"), message
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2895,7 +2898,7 @@ def test_an_edit_to_the_active_copy_is_the_playlist_the_routing_plan_names(
     export = _long_export(configured, tmp_path / "exports")
 
     planned = routing_cli.plan_export(configured, export)
-    long_plan, items = planned[3], planned[4]
+    long_plan, items = planned[2], planned[3]
     assert long_plan.keys
     assert {item["long_track"] for item in items} - {""} == {"Long Sets By Hand"}
 
@@ -3208,7 +3211,8 @@ def _blocked_export(export: Path) -> dict:
 
 def _gate_export(configured, voiced, tmp_path) -> Path:
     """One export whose plan carries every column: a routed track, a vocal
-    track, a rating, a long track in and out of the intake, and two new subs."""
+    track, a long track in and out of the intake, and two new subs, plus one
+    owed rating the plan does not carry (R-688)."""
     _calibrated(configured)
     voiced["Low Track.flac"] = 6
     return _long_export(configured, tmp_path / "exports", ratings={"12": "0"})
@@ -3230,18 +3234,13 @@ def test_the_export_gate_shows_every_item_the_digest_was_taken_over(
     assert shown["digest"] == declined["data"]["digest"]
     assert shown["count"] == 6
     assert shown["export"] == str(export)
-    counted = (
-        shown["tracks"],
-        shown["routed"],
-        shown["vocal"],
-        shown["rated"],
-        shown["long tracks"],
-    )
-    assert counted == (4, 3, 1, 1, 2)
+    counted = (shown["tracks"], shown["routed"], shown["vocal"], shown["long tracks"])
+    assert counted == (4, 3, 1, 2)
     vox = _vox_display()
     assert shown["vocal subs created"] == [f"Deep House/{vox}", f"Tech House/{vox}"]
     assert shown["not derived"] == []
-    assert shown["warnings"] == []
+    (warning,) = shown["warnings"]
+    assert warning.startswith("1 intake track(s) are owed a star rating"), warning
     assert not _routed(export).exists()
 
 
@@ -3282,12 +3281,14 @@ def test_the_export_gate_prints_the_plan_in_the_default_mode(configured, voiced,
     assert f"digest: {digest}" in screen
     assert "routed: 3" in screen and "long tracks: 2" in screen
     # An empty list says none, rather than a header with nothing under it.
-    assert "  warnings: none" in screen and "  not derived: none" in screen
+    assert "  not derived: none" in screen
+    assert "are owed a star rating" in screen, "the owed rating never reached the screen"
     vox = _vox_display()
     assert (
         f"track_id=11, destination=Deep House/Low, vocal=Deep House/{vox}, "
-        f"rating=" in screen
+        f"long_track=" in screen
     )
+    assert "rating=" not in screen
     assert f"long_track={LONG_PLAYLIST}" in screen
     assert f"track_id=, destination=Tech House/{vox}," in screen
 

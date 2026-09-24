@@ -80,6 +80,21 @@ RESORT_WORKFLOW = "route-resort"
 #: runs that loses: the one a partial failure ends, and the one that died.
 RESORT_ARTIFACTS = artifacts.Location(final="resort-artifacts", staging="resort-staging")
 
+#: The warning an export sweep gives for the star ratings it did not plan
+#: (R-688). Every row of a collection export is one rekordbox already holds,
+#: and an import keeps the database's rating on such a row, so the sitting
+#: that wrote four ratings into a file read all four back as zero.
+RATING_NOT_LANDABLE = "rating-not-landable"
+
+
+def _rating_not_landable(count: int) -> str:
+    return (
+        f"{count} intake track(s) are owed a star rating from energy and none was "
+        f"planned: every row of a collection export is one rekordbox already "
+        f"holds, an import keeps the database's rating on such a row, and this "
+        f"build writes no rating to the database"
+    )
+
 
 def _load() -> config.Config:
     try:
@@ -183,7 +198,6 @@ def _export_facts(
         "tracks": len(tracks),
         "routed": sum(1 for item in tracks if item["destination"]),
         "vocal": sum(1 for item in tracks if item["vocal"]),
-        "rated": sum(1 for item in tracks if item["rating"]),
         "long tracks": sum(1 for item in tracks if item["long_track"]),
         "vocal subs created": list(vox_created),
         "not derived": list(gaps),
@@ -665,7 +679,7 @@ def _ratings(
     files: dict[str, list[str]],
     by_id: dict[str, dict[str, str]],
 ) -> dict[str, int]:
-    """The star rating each unrated intake track takes from its energy.
+    """The star rating each unrated intake track is owed from its energy.
 
     THE SOURCE SYSTEM'S RULE, IN THE SAME PASS AS THE FILING: every sort set a
     rating from energy on a track whose rating was still zero. The energy is the
@@ -673,6 +687,11 @@ def _ratings(
     which track is which level, and the curve and the bucket flag are
     :func:`cratekit.core.routing.energy_rating` and
     :func:`cratekit.core.routing.rates`, called rather than restated.
+
+    OWED, NOT PLANNED (R-688). Every row of a collection export is one
+    rekordbox already holds, and an import keeps the database's rating on such
+    a row, so a rating written into the file never lands. The export sweep
+    counts these into :data:`RATING_NOT_LANDABLE` and writes none of them.
 
     THE EXPORT SCALE, which is the taxonomy's own. The cuts are written as 51 to
     255, the values an export carries, so nothing is converted here, and the
@@ -886,7 +905,6 @@ def plan_export(
 ) -> tuple[
     bytes,
     dict[tuple[str, str], list[str]],
-    dict[str, int],
     LongPlan,
     list[dict[str, str]],
     list[dict[str, str]],
@@ -895,11 +913,15 @@ def plan_export(
 ]:
     """Read one fresh export and decide where each intake track goes.
 
-    Returns the bytes to write into, the plan the bridge writer takes, the star
-    ratings to fill, the long track additions, the items a person is shown, the
-    warnings, the dimensions not derived, and the vocal sub-playlists created.
-    The bytes are the export's with any vocal sub-playlist already added, which
-    is why they are returned rather than read again.
+    Returns the bytes to write into, the plan the bridge writer takes, the long
+    track additions, the items a person is shown, the warnings, the dimensions
+    not derived, and the vocal sub-playlists created. The bytes are the
+    export's with any vocal sub-playlist already added, which is why they are
+    returned rather than read again.
+
+    NO STAR RATING IS PLANNED (R-688). The ratings the source system's sort
+    would have set are counted into one :data:`RATING_NOT_LANDABLE` warning,
+    because the medium cannot carry them: see :func:`_ratings`.
 
     THE ROUTING DECISION IS THE NATIVE PATH'S, called rather than restated. The
     readings come from :func:`cratekit.write.rebuild.read_truth`, the placements
@@ -943,39 +965,38 @@ def plan_export(
     decision = _decide(cfg, declared, rows, threshold, warnings)
     plan, destined, vocal = decision.plan, decision.destined, decision.vocal
     gaps = decision.gaps
-    ratings = _ratings(
-        declared, decision.placements, decision.readings, decision.files, by_id
-    )
+    owed = _ratings(declared, decision.placements, decision.readings, decision.files, by_id)
+    if owed:
+        warnings.append({"code": RATING_NOT_LANDABLE, "message": _rating_not_landable(len(owed))})
     long_plan = _long_tracks(declared, content, by_id, warnings)
     lengthy = set(long_plan.keys)
     playlist = declared.long_tracks.display if declared.long_tracks else ""
-    # The rating and the long track playlist ride the item, so both are inside
-    # the digest a person approves: a write nobody was shown is a write nobody
-    # agreed to. A long track outside the intake gets an item of its own, and so
-    # does each vocal sub-playlist this run creates, with no track and the new
-    # playlist as its destination. A vocal track's second placement rides as
-    # ``vocal``, beside the energy sub it also files into.
+    # The long track playlist rides the item, so it is inside the digest a
+    # person approves: a write nobody was shown is a write nobody agreed to. A
+    # long track outside the intake gets an item of its own, and so does each
+    # vocal sub-playlist this run creates, with no track and the new playlist
+    # as its destination. A vocal track's second placement rides as ``vocal``,
+    # beside the energy sub it also files into.
     items = [
         {
             "track_id": key,
             "destination": destined.get(key, ""),
             "vocal": vocal.get(key, ""),
-            "rating": str(ratings[key]) if key in ratings else "",
             "long_track": playlist if key in lengthy else "",
         }
         for key in keys
     ]
     intake = set(keys)
     items += [
-        {"track_id": key, "destination": "", "vocal": "", "rating": "", "long_track": playlist}
+        {"track_id": key, "destination": "", "vocal": "", "long_track": playlist}
         for key in long_plan.keys
         if key not in intake
     ]
     items += [
-        {"track_id": "", "destination": created, "vocal": "", "rating": "", "long_track": ""}
+        {"track_id": "", "destination": created, "vocal": "", "long_track": ""}
         for created in vox_created
     ]
-    return content, plan, ratings, long_plan, items, warnings, gaps, vox_created
+    return content, plan, long_plan, items, warnings, gaps, vox_created
 
 
 def apply_export(
@@ -983,18 +1004,16 @@ def apply_export(
     export: Path,
     content: bytes,
     plan: dict[tuple[str, str], list[str]],
-    ratings: dict[str, int],
     long_plan: LongPlan = LongPlan(),
     vox_created: tuple[str, ...] = (),
     *,
     declared: taxonomy.Taxonomy | None = None,
-) -> tuple[Path | None, trees.RouteReport, int, int, str | None]:
+) -> tuple[Path | None, trees.RouteReport, int, str | None]:
     """Write the plan into a copy of the export, beside it, never in place.
 
-    Returns the file written or None, the membership report, how many star
-    ratings the writer actually set, how many tracks the long track playlist
-    gained, and the warning its writer gave. Both counts are the writers' and
-    not the plan's.
+    Returns the file written or None, the membership report, how many tracks
+    the long track playlist gained, and the warning its writer gave. The count
+    is the writer's and not the plan's.
 
     THE MEDIUM FOLLOWS THE REGISTRY. The tree is the governed routing tree, so
     the emitter guard in :func:`cratekit.write.rbxml.splice_into_subplaylist`
@@ -1005,19 +1024,18 @@ def apply_export(
     curated: a sub that is not there is a warning naming the bucket, never a
     playlist invented in somebody's library.
 
-    THE RATINGS GO INTO THE SAME BYTES, after the membership, as the source
-    system applied them. A rating is an attribute of a track and membership of
-    nothing, so a sub the writer skipped does not un-rate the track it held.
+    NO RATING IS WRITTEN (R-688). The source system set ratings in these
+    bytes, and an import keeps the database's rating on every row an export
+    carries, so a patched ``Rating`` is a write that never lands.
 
     NOTHING CHANGED IS NOTHING WRITTEN. A file identical in every routed byte
-    to the export would still be a file somebody is told to import. A track
-    already filed and still unrated is a change, so a pass that only rates
-    writes a file, and so is a long track the playlist lacks. So is a vocal
-    sub-playlist ``content`` already gained from :func:`_vox_subs`, which is
-    the new node this file exists to carry into rekordbox.
+    to the export would still be a file somebody is told to import. A long
+    track the playlist lacks is a change, and so is a vocal sub-playlist
+    ``content`` already gained from :func:`_vox_subs`, which is the new node
+    this file exists to carry into rekordbox.
 
     THE LONG TRACK PLAYLIST IS WRITTEN LAST and ONCE, add only, as the source
-    system wrote it after the ratings. It is a direct child of the playlist
+    system wrote it after the membership. It is a direct child of the playlist
     root and no tree, so no registry answer governs it.
     """
     if declared is None:
@@ -1028,17 +1046,16 @@ def apply_export(
     tree = rbxml.routing_tree(declared, tree_registry.read(cfg))
     buffer = bytearray(content)
     report = trees.apply_playlist_changes(plan, buffer, tree=tree)
-    rated = trees.apply_rating_changes(ratings, buffer)
     lengthened, long_warning = 0, None
     if long_plan.keys and declared.long_tracks is not None:
         lengthened, long_warning = trees.add_to_root_playlist(
             declared.long_tracks.display, long_plan.keys, buffer
         )
-    if not report.inserted and not rated and not lengthened and not vox_created:
-        return None, report, rated, lengthened, long_warning
+    if not report.inserted and not lengthened and not vox_created:
+        return None, report, lengthened, long_warning
     destination = export.with_name(export.stem + ROUTED_SUFFIX)
     config.atomic_write_bytes(bytes(buffer), destination)
-    return destination, report, rated, lengthened, long_warning
+    return destination, report, lengthened, long_warning
 
 
 def _export_pending(
@@ -1046,7 +1063,6 @@ def _export_pending(
     verb: str,
     destination: Path,
     inserted: int,
-    rated: int,
     lengthened: int = 0,
     playlist: str = "",
     vox_created: int = 0,
@@ -1061,9 +1077,10 @@ def _export_pending(
     return PendingHumanAction(
         kind="rekordbox_import",
         id=new_pending_id(run_id),
+        # NO RATING IS CLAIMED (R-688): this file carries none, since an
+        # import keeps the database's rating on every row an export holds.
         summary=(
-            f"{inserted} track(s) were routed and {rated} unrated track(s) were "
-            f"given a star rating from energy{added} in {destination.name}, which "
+            f"{inserted} track(s) were routed{added} in {destination.name}, which "
             f"rekordbox has not imported yet"
         ),
         # THIS VERB IS ITS OWN CHECK, for what the bridge can land. Over a fresh
@@ -1136,7 +1153,7 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         cfg, declared, export, instead="run route inbox without --export, which "
         "writes the database",
     )
-    content, plan, ratings, long_plan, items, warnings, gaps, vox_created = plan_export(
+    content, plan, long_plan, items, warnings, gaps, vox_created = plan_export(
         cfg, export, declared=declared
     )
     offered = _plan(items, kind="inbox-export")
@@ -1148,8 +1165,8 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             outcome=Outcome.NO_OP,
             warnings=warnings,
         )
-    destination, report, rated, lengthened, long_warning = apply_export(
-        cfg, export, content, plan, ratings, long_plan, vox_created, declared=declared
+    destination, report, lengthened, long_warning = apply_export(
+        cfg, export, content, plan, long_plan, vox_created, declared=declared
     )
     # ONE CODE FOR EVERY SKIPPED WRITE, because the writer reports a missing
     # tree, a missing genre folder and a missing sub as sentences and the
@@ -1167,12 +1184,13 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
     # "NOTHING TO ROUTE" ONLY WHEN NOTHING WAS LEFT BEHIND. It is the answer the
     # pending action names as proof an import landed, so a run whose every write
     # was skipped, or whose every track could not be read, must not give it:
-    # that is a run that could not route, not a library already filed. A run
-    # that only rated wrote a file, so it is pending like any other, and its
-    # skipped writes still ride as warnings.
+    # that is a run that could not route, not a library already filed. An owed
+    # rating does not count: no run of this medium can ever land one (R-688),
+    # so counting it would answer route-blocked over a library already filed,
+    # every time, and the warning still rides beside the answer.
     if destination is not None:
         reason = None
-    elif warnings:
+    elif any(warning["code"] != RATING_NOT_LANDABLE for warning in warnings):
         reason = "route-blocked"
     else:
         reason = "nothing-to-route"
@@ -1182,7 +1200,6 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         applied=destination is not None,
         reason=reason,
         inserted=report.inserted,
-        rated=rated,
         long_added=lengthened,
         duration_unreadable=long_plan.unreadable,
         # THE PLAN'S LIST, and the writer's too: the subs are in the bytes the
@@ -1204,7 +1221,6 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             ctx.entry.name,
             destination,
             report.inserted,
-            rated,
             lengthened,
             declared.long_tracks.display if declared.long_tracks else "",
             len(vox_created),
