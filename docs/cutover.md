@@ -259,6 +259,45 @@ answered by it after the plan matched the tags, and nothing needed a second
 invocation except to learn a count the human form withheld. Filed R-679.
 R-676 closed. R-677 and R-678 were observed again and stand.
 
+## Sitting 10, 2026-09-24, morning
+
+Machine state before: the volume mounted, rekordbox and its agent closed,
+the pipx install brought from `0832299` to `40daec7`, the R-658 merge, with
+its extras kept, `crate doctor` exit 0 with no failing check, backup ages 7
+and 7 days, 153 of 9998 active rows under no prefix rule, three runs from
+sitting 7 still holding open gates. The acknowledgment minted at 21:33Z on
+the 23rd had expired at 09:33Z and **was not re-minted, by decision**: the
+gate that reads it sits on the database, deletion, restore, adopt and backup
+paths, and nothing this sitting ran touches one. Both verbs of the sitting
+write queue state or a new file beside an export through the explicit gate
+alone. Driven as sitting 9 was: the session drove every verb from the pipx
+install and answered every gate, the author did the rekordbox work. The
+Cratekit Relay feeder was alive and idle and was stopped before the merge.
+
+First, R-679's owed measurement, then A5 line 3, inbox routing.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `intake playlist favorites`, the listing | yes | 2.0 seconds, **216 declared, 207 listed, 9 withheld**, one heart more than sitting 8, job `2026-09-24T11:49:23Z-c3ca`. R-678's rendering names the job, the drive command and the item count, so nothing was read out of JSON. | live, R-678 held |
+| `intake playlist favorites --job c3ca`, the resolution | yes | 9.8 seconds, 207 settled: **203 owned, 2 offered, 2 missing, 0 suppressed**, each count printed by the rendering with the next command. By reason, off the artifacts since the rendering has no breakdown (R-682): 198 `isrc-exact`, 4 `credited-exact`, 1 `exact`, 1 `version-differs`, 1 `title-approximate`, 2 `not-in-library`. The offered rows are sitting 8's two; the missing are `Calvin Harris :: Satisfy`, lossy only, and the new heart `R. Kelly :: Same Girl`. | live |
+| `review list`, R-679's measurement | yes | Before the resolution, `--limit 500`: 190 unresolved, 98 `label-release`, 88 `version-match`, 4 `harvested-label`, none with a verdict. After: **105 unresolved, the 3 live `version-match` items and the 102 label rows**. `--all` lists 190 with **85 `superseded`, 81 under `isrc-exact` and 4 under `credited-exact`**. The default page is 50 items, so the whole list needs `--limit`. | measured, R-679 CLOSED live |
+| `route inbox --export Music/9-23-export-3.xml`, plan only | to the gate, answered abort, three times | The gate `route.inbox.apply` prints the question and no plan, in human and json mode alike, and `run show` holds none, so the plan was read through the abort answer (R-686). 220 items, 1.2 seconds: the 199 tracks under INBOX, every one already filed, 4 ratings on old rows, **21 long tracks for a `Sets and Long Tracks` playlist the active taxonomy does not declare**, because every verb reads the shipped template (R-685), 1 streamed row unreadable. **The 61 rows of the two batches were not in the plan**: both batch playlists sat at the playlist root, where the rekordbox import had put them, not under INBOX (R-687). The author dragged both into INBOX and exported `Music/9-24-export.xml`, 9998 entries. | measured, nothing written |
+| `route inbox --export Music/9-24-export.xml`, run `2026-09-24T13:03:35Z-814c` | to the gate, then applied | Read first through an abort on run `de66`, 1.6 seconds: 281 items, 260 under INBOX, 259 with a destination. **All 61 new rows route to their genre's Unsorted sub**, none carrying an energy reading, so none gets a rating or a vocal placement; among the old rows 34 vocal placements already held, 4 ratings, 2 tracks re-filed into an energy sub. 21 long tracks, 0 vocal subs created since all 18 exist. Applied on the second run with the same digest `819c9e8dbee52322`, 4.8 seconds: **inserted 63, rated 4, long added 21**, 61 lengths unreadable at zero, `Music/9-24-export_routed.xml` written. Checked against the export: 84 memberships added across 14 playlists, the 63 and the 21, four `Rating` attributes changed, 481193 tempo elements on both sides, no average BPM moved, no duplicate row made; the four duplicate rows found were already in the export. | cut over for one file |
+| The rekordbox import | yes, by hand | 14 playlist nodes imported one at a time, never a folder, per the source system's Invariant 3, then `Music/9-24-export-2.xml`, 9998 entries, 501 playlist paths. **`Sets and Long Tracks` landed at the root with 21.** The 13 nested subs did not: each landed at the root as a new playlist, same names replacing each other, leaving `Unsorted` (8), `High` (184) and `Soul / R&B` (35) as strays and every sub inside `BY GENRE + ENERGY` unchanged (R-687). **All four ratings read 0** after the import (R-688); the screen may have shown a star on one and the author could not say. | one of three landed |
+| `route inbox --export Music/9-24-export-2.xml`, the proof | to the gate, answered abort | Plans the same 259 destinations and the same 4 ratings again, and no long track, which is the one thing that landed. Not the "routes, rates and adds nothing" the pending text promises. | measured, nothing written |
+
+Line 3 of #178 is ticked, because its record is this table and not because
+the bridge landed it: the routing pass ran correctly on a fresh export, its
+file was right byte for byte, and of the three things the line asked to see
+in rekordbox the long track playlist landed, the memberships did not and the
+ratings did not. **Decided by the author: stop, delete the three stray root
+playlists in rekordbox, keep `Sets and Long Tracks`, leave the 61 rows in
+their INBOX playlists.** The memberships wait for the tree's database
+cutover, `route inbox` without `--export`, which is the mechanism built for
+this and U29's per workflow choice. Filed R-685 to R-688, R-679 CLOSED live.
+R-678 held on both intake verbs. R-682 read again: the by reason counts still
+come off the artifacts.
+
 ## What blocks a full sync cycle, stated plainly
 
 The board is complete and the product cannot yet do its central workflow,
@@ -303,21 +342,18 @@ lists Tidal. The vendored downloader is the only Tidal facing code that runs.
 
 ## Next sitting
 
-Lines 1 and 2 are done. Line 3, inbox routing, is the natural next: `route
-inbox --export` on a fresh export, imported, with ratings and the long track
-playlist read in rekordbox, and `Music/9-23-export-3.xml` is fresh for it
-until the library changes. The 61 landed rows of the two batches sit in two
-INBOX playlists with no tempo element and an average BPM of zero, so the
-routing pass is the first thing to read them.
+Line 3 is recorded and its memberships did not land, so the next natural
+step is not line 4, which is blocked on the three seams above, but one of
+two: the routing tree's database cutover, which is U29's and attended, after
+which `route inbox` without `--export` files the 61 rows and the ratings
+through the session gates; or line 5, labels, now that `crate review list`
+reads 105 items of which 102 are the label rows it needs. Line 10, `name
+apply` plan only against the live library, is a short sitting on its own.
 
-The review queue holds 190 items and 105 of them are real: 102 label rows for
-line 5 and three `version-match` questions. The other 85 are R-679's, open
-questions about rows a later resolution owned, and a unit closes them, not a
-person. R-677, R-678 and R-679 are code residuals with no write held, and
-after this sitting each is a residual issue on the board for the Relay
-feeder to take in turn, the feeder restarted for them.
-
-The acknowledgment minted at 21:33Z on the 23rd expires at 09:33Z on the
-24th. Anything that writes after that needs a new one from a Terminal
-window, by the author and never by a session. The full library vocal pass,
-R-376, is still a separate attended choice and is still blocked on nothing.
+Before any of them: R-685 to R-688 are residual issues #198 to #201 on the
+board for the Relay feeder, R-685 and R-686 code fixes, R-687 and R-688 wording and a
+decision each. The three stray root playlists `Unsorted`, `High` and
+`Soul / R&B` are the author's to delete in rekordbox before the next export.
+The acknowledgment is expired and stays so until a verb that reads it is on
+the table; the sitting 10 record says which those are. The full library
+vocal pass, R-376, is still a separate attended choice.
