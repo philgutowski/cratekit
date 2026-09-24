@@ -156,7 +156,7 @@ def apply_profile(ctx: "Context") -> Envelope:
     # on or off, the digest they were taken over, and the profile and totals
     # in front of them, so a person adopts a profile whose change they read.
     option = ctx.gate.require(
-        spec, plan=plan, context={"profile": ctx.args.name, "totals": plan["totals"]}
+        spec, plan=plan, context={"profile": ctx.args.name, **plan["totals"]}
     )
     if option == "abort":
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)

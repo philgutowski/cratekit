@@ -306,27 +306,39 @@ def load(run_id: str) -> RunState:
     return RunState.from_json(raw)
 
 
-def shown_plan(plan: Mapping[str, Any], **facts: Any) -> dict[str, Any]:
+#: The keys :func:`shown_plan` fills from the plan. A fact under one of these
+#: names would be overwritten without a word, so it is refused instead.
+SHOWN_PLAN_KEYS = ("digest", "count", "items")
+
+
+def shown_plan(plan: Mapping[str, Any], facts: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """What a digest bound gate puts in front of the person (R-693).
 
     The facts the caller names, then the plan's digest, its count and EVERY
     ITEM the digest was taken over, so the screen is the plan a person
-    approves and a JSON reader can compare it with the declined run's items.
-    R-670 and R-686 closed this shape one verb at a time, and seven gates were
-    still passing a digest and nothing to show, so their screens carried the
-    question and not the plan; a declined run was the only way to read one.
-    This is the one body every digest bound gate shows through, and
-    :meth:`Gates.require` calls it whenever a plan is passed.
+    approves, and a JSON reader can compare it with the plan a declined run
+    returns where the verb returns one. R-670 and R-686 closed this shape one
+    verb at a time, and seven gates were still passing a digest and nothing to
+    show, so their screens carried the question and not the plan; a declined
+    run was the only way to read one. This is the one body every digest bound
+    gate shows through, and :meth:`Gates.require` calls it whenever a plan is
+    passed.
 
     THERE IS NO BOUND. The digest covers every item, and a list cut short
     would ask for approval of items nobody was shown. ``count`` is the number
     of items, which is what the digest covers, and a verb whose own totals
-    count something narrower names them in its facts.
+    count something narrower names them in its facts under their own names,
+    never under one of ``SHOWN_PLAN_KEYS``: a fact under one of those would
+    be overwritten by the plan's value without a word, so it is refused.
 
     The values must be JSON already, the rule :class:`DecisionRequired` states.
     """
+    named = dict(facts or {})
+    taken = sorted(set(named) & set(SHOWN_PLAN_KEYS))
+    if taken:
+        raise ValueError(f"shown_plan() fills {taken} from the plan; name the fact differently")
     items = list(plan["items"])
-    return {**facts, "digest": plan["digest"], "count": len(items), "items": items}
+    return {**named, "digest": plan["digest"], "count": len(items), "items": items}
 
 
 def parse_decision_flags(values: list[str]) -> dict[str, str]:
@@ -414,7 +426,7 @@ class Gates:
             if digest is not None:
                 raise TypeError("require() takes a digest or a plan, not both")
             digest = plan["digest"]
-            context = shown_plan(plan, **(context or {}))
+            context = shown_plan(plan, context)
         self.reached.append(spec.name)
 
         recorded = self.state.decisions.get(spec.name)
@@ -630,4 +642,5 @@ __all__ = [
     "run_path",
     "save",
     "shown_plan",
+    "SHOWN_PLAN_KEYS",
 ]

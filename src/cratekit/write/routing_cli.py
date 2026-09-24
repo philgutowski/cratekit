@@ -379,7 +379,8 @@ def _apply_gate(ctx, plan: dict, facts: dict[str, Any]) -> str:
 
     The gate layer shows the facts, then the digest, the count and EVERY ITEM
     the digest was taken over, so the screen is the plan a person approves and
-    a JSON reader can compare it with the declined run's items. The export
+    a JSON reader can compare it with the declined run's items, which this
+    verb returns as its no-op's data. The export
     gate hands in its plan through :func:`_named`, so each of its items also
     leads with the track's artist and title, which a reader drops to compare
     (R-692). Without this the gate carried the question and the options and

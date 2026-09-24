@@ -330,11 +330,14 @@ def _apply(ctx, cfg: config.Config) -> Envelope:
     spec = next(gate for gate in ctx.entry.gates if gate.name == "repair.paths.confirm")
     # THE PLAN IS SHOWN THROUGH THE GATE LAYER (R-693): every item with its
     # class and its reason, the digest they were taken over, and the root and
-    # totals in front of them, so a person confirms renames they have read.
+    # the totals in front of them, so a person confirms renames they have
+    # read. ``totals.count`` is the renames this plan can perform and is
+    # named ``renames`` here, the way ``name apply`` names it, because the
+    # screen's own ``count`` is every item and two lines both called count
+    # would read as a contradiction.
+    totals = {"renames" if name == "count" else name: value for name, value in plan["totals"].items()}
     option = ctx.gate.require(
-        spec,
-        plan=plan,
-        context={"root": str(root) if root is not None else None, "totals": plan["totals"]},
+        spec, plan=plan, context={"root": str(root) if root is not None else None, **totals}
     )
     if option == "abort":
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)

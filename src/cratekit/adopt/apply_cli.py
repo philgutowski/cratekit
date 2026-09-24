@@ -405,16 +405,22 @@ def _approval_gate(entry):
 def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
     """The plan as the approval gate shows it, and the facts beside it (R-693).
 
-    EVERY ENTRY, not only the applicable ones. The plan holds every scanned
-    track, its digest counts them all by disposition, and a person approving
-    the tree should read what it will not touch beside what it will. The tree,
-    the counts and the collisions are the rest of what the digest was taken
-    over, so they are the facts in front of the items. Read off the same
-    document ``adopt plan`` prints, so the two say the same thing.
+    THE ITEMS ARE THE APPLICABLE ENTRIES, because those are the entries the
+    digest lists: an approval binds to the work an apply may write, and a
+    screen listing every scanned track would move when a track the digest
+    does not name changed its recorded location, so a recorded answer would
+    stand over a screen that reads differently. What the plan will not touch
+    is on the screen as the counts per disposition, which the digest covers
+    as well, beside the tree and the collisions. Read off the same document
+    ``adopt plan`` prints, so the two say the same thing.
     """
     document = plan_engine.to_json(plan)
+    listed = {entry.entry_id for entry in plan.applicable()}
     return (
-        {"digest": document["digest"], "items": document["entries"]},
+        {
+            "digest": document["digest"],
+            "items": [entry for entry in document["entries"] if entry["id"] in listed],
+        },
         {
             "tree": document["tree"],
             "counts": document["counts"],

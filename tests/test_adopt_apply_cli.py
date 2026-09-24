@@ -974,14 +974,22 @@ def test_a_resume_reconciles_a_claim_a_dead_driver_left_behind(installed):
 
 
 def _expected_document(installed) -> dict:
-    return adopt_plan.to_json(apply_cli.current_plan(installed, taxonomy.default_taxonomy()))
+    """The plan document, with the entries the digest lists marked out."""
+    plan = apply_cli.current_plan(installed, taxonomy.default_taxonomy())
+    document = adopt_plan.to_json(plan)
+    listed = {entry.entry_id for entry in plan.applicable()}
+    document["listed"] = [entry for entry in document["entries"] if entry["id"] in listed]
+    assert 0 < len(document["listed"]) < len(document["entries"]), (
+        "the fixture needs an applicable entry and one the plan will not touch, "
+        "or the screen's choice between them cannot be seen"
+    )
+    return document
 
 
 def _shown_matches(shown: dict, document: dict) -> None:
-    assert shown["items"] == document["entries"]
-    assert shown["items"], "a plan with nothing in it proves nothing about the screen"
+    assert shown["items"] == document["listed"]
     assert shown["digest"] == document["digest"]
-    assert shown["count"] == len(document["entries"])
+    assert shown["count"] == len(document["listed"])
     assert shown["tree"] == document["tree"]
     assert shown["counts"] == document["counts"]
     assert shown["collisions"] == document["collisions"]
@@ -989,9 +997,10 @@ def _shown_matches(shown: dict, document: dict) -> None:
 
 def test_the_approval_gate_shows_every_entry_the_digest_was_taken_over(installed):
     """The gate carried the question and not one entry (R-693). Its ``shown``
-    now holds the plan document's entries, every one and not only the
-    applicable ones, with the digest, the tree, the counts and the collisions
-    the digest was taken over."""
+    now holds the entries the digest lists, the applicable ones, with the
+    digest, the tree, the counts per disposition and the collisions the digest
+    was taken over. What the plan will not touch is on the screen as a count,
+    since the digest does not name those entries."""
     document = _expected_document(installed)
     code, refused = _drive(["adopt", "apply"])
     assert code == int(ExitCode.DECISION_REQUIRED), refused

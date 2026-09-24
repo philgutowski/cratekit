@@ -56,6 +56,12 @@ EXPORT = "export"
 #: person to confirm again. The track set is what the write actually is.
 TRACKS = "tracks"
 
+#: The fact under which a gate screen names the export document's path (R-693).
+#: NOT ``EXPORT``: :func:`shown_export` already shows a block under ``export``
+#: with the document's name and age, and the resume, which may not read the
+#: document, names the frozen path beside it rather than in its place.
+EXPORT_PATH = "export path"
+
 
 def load_config(origin: str) -> config.Config:
     """The current configuration, or the refusal a person can act on.
@@ -383,7 +389,7 @@ def resume(
         option = ctx.gate.require(
             spec,
             plan={"digest": digest(playlist, exported, tracks, **extra), "items": tracks},
-            context={PLAYLIST: playlist, EXPORT: exported, **extra},
+            context={PLAYLIST: playlist, EXPORT_PATH: exported, **extra},
         )
         if option == "abort":
             return ctx.envelope(data=declined(queued.job_id), outcome=Outcome.NO_OP)
@@ -429,6 +435,7 @@ def resume(
 
 __all__ = [
     "EXPORT",
+    "EXPORT_PATH",
     "PLAYLIST",
     "TRACKS",
     "age_warnings",

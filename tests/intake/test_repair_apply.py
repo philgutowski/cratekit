@@ -721,7 +721,12 @@ def test_the_gate_shows_every_item_the_digest_was_taken_over(configured):
     assert shown["items"][0]["from"] == LONG and shown["items"][0]["to"] == SHORT
     assert shown["digest"] == declined["data"]["digest"]
     assert shown["count"] == 1
-    assert shown["totals"] == declined["data"]["totals"]
+    totals = declined["data"]["totals"]
+    assert shown["renames"] == totals["count"] == 1
+    assert "totals" not in shown, "two lines both called count would read as a contradiction"
+    for name, value in totals.items():
+        if name != "count":
+            assert shown[name] == value, name
     assert shown["root"] == str(folder)
     assert _names(folder) == {LONG}
 

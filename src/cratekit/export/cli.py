@@ -389,12 +389,25 @@ def export_playlist(ctx) -> Envelope:
         found = found.without_offer()
     said = recognition_warnings(resolved, found)
 
+    # THE TRACKS THE DIGEST COVERS ARE SHOWN (R-693), through the gate layer,
+    # beside the export's age and the remote playlist. The resume shows the
+    # same tracks off the frozen payload, so one gate has one plan on either
+    # screen; only the age, which the resume may not read, is the first ask's.
     option = ctx.gate.require(
         spec,
-        digest=confirm_digest(
-            resolved.key, str(exported), resolved.track_ids, adopts=found.adopts
-        ),
-        context={**shell.shown_export(age), **shown_playlist(found, said)},
+        plan={
+            "digest": confirm_digest(
+                resolved.key, str(exported), resolved.track_ids, adopts=found.adopts
+            ),
+            "items": list(resolved.track_ids),
+        },
+        context={
+            shell.PLAYLIST: resolved.key,
+            shell.EXPORT_PATH: str(exported),
+            ADOPTS: found.adopts,
+            **shell.shown_export(age),
+            **shown_playlist(found, said),
+        },
     )
     if option == "abort":
         # THE DECLARED SHAPE, and nothing about the playlist. See

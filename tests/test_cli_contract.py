@@ -903,7 +903,10 @@ def test_the_profile_gate_shows_the_delta_the_digest_was_taken_over(configured):
     assert shown["items"], "full to slim turns modules off, so the delta cannot be empty"
     assert shown["digest"] == declined["digest"]
     assert shown["count"] == len(declined["items"])
-    assert shown["totals"] == declined["totals"]
+    assert (shown["enabling"], shown["disabling"]) == (
+        declined["totals"]["enabling"],
+        declined["totals"]["disabling"],
+    )
     assert shown["profile"] == "slim"
 
     code, out, err = drive(["profile", "set", "slim"])

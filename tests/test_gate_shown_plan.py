@@ -48,7 +48,7 @@ def _refused(**kwargs) -> dict:
 
 
 def test_shown_plan_carries_the_facts_then_the_digest_the_count_and_every_item():
-    shown = gates.shown_plan(_plan({"a": 1}, {"a": 2}), folder="/music")
+    shown = gates.shown_plan(_plan({"a": 1}, {"a": 2}), {"folder": "/music"})
     assert list(shown) == ["folder", "digest", "count", "items"]
     assert shown["folder"] == "/music"
     assert shown["digest"] == "sha256:abc"
@@ -62,6 +62,15 @@ def test_shown_plan_counts_the_items_and_not_a_narrower_total():
     covers, since that is what the person is approving."""
     plan = {"digest": "d", "items": [{"n": 1}, {"n": 2}, {"n": 3}], "totals": {"count": 1}}
     assert gates.shown_plan(plan)["count"] == 3
+
+
+def test_shown_plan_refuses_a_fact_it_would_overwrite():
+    """A fact under digest, count or items would be replaced by the plan's
+    value without a word, so the collision is refused rather than resolved."""
+    for name in gates.SHOWN_PLAN_KEYS:
+        with pytest.raises(ValueError, match=name):
+            gates.shown_plan(_plan(), {name: "anything"})
+    assert gates.shown_plan(_plan(), {"plan": "full"})["plan"] == "full"
 
 
 def test_shown_plan_has_no_bound():
@@ -186,16 +195,60 @@ def test_the_population_this_guard_sweeps_is_the_one_the_ledger_counted():
     assert len(found) >= 19, found
 
 
-def test_every_digest_bound_gate_shows_something():
-    """R-693's class, closed: a gate that binds a decision to a digest either
-    hands the plan to the gate layer or names what it shows. A digest and
-    nothing else is the screen R-670 and R-686 each fixed once."""
-    blind = [
-        f"{path}:{line}"
-        for path, line, keywords in _require_calls()
-        if "digest" in keywords and not ({"plan", "context"} & keywords)
-    ]
-    assert blind == [], f"digest bound gates showing nothing: {blind}"
+#: Digest bound gates that show their plan through a body of their own rather
+#: than through ``plan=``, by file, with how many such calls the file holds and
+#: why each is allowed. A new call in one of these files, or in any other file,
+#: fails the guard below until it hands the gate layer its plan or is named here
+#: with a reason.
+SHOWS_ITS_OWN_WAY: dict[str, tuple[int, str]] = {
+    "src/cratekit/write/naming_cli.py": (
+        1,
+        "R-670's screen is bounded at PLAN_SHOWN by decision, because the "
+        "default root is the whole library; the gate layer's body has no bound",
+    ),
+    "src/cratekit/intake/land_cli.py": (
+        1,
+        "shows the landing's files by name with the folder, the target and the "
+        "batch, the screen R-670 was written to match",
+    ),
+    "src/cratekit/sync/mark_cli.py": (
+        2,
+        "shows each item as renamed on the account or left alone with its "
+        "reason, one line per fact",
+    ),
+    "src/cratekit/session/restore_cli.py": (
+        1,
+        "shows the off machine snapshot the restore would pull; the offer's "
+        "items are the two halves, not a list a person approves one by one",
+    ),
+    "src/cratekit/deletion/cli.py": (
+        1,
+        "shows the baseline and the offered count only, R-134's screen; the "
+        "files themselves are not listed, recorded as R-702",
+    ),
+}
+
+
+def test_every_digest_bound_gate_shows_the_plan_it_binds_to():
+    """R-693's class, closed: a gate that binds a decision to a digest hands
+    the plan to the gate layer, which shows every item the digest covers, or
+    is named above with the reason it shows its items some other way. A
+    digest and a fact or two beside it is not enough, since that is the
+    screen the outbound first asks had, an age and no track."""
+    allowed = {path: count for path, (count, _why) in SHOWS_ITS_OWN_WAY.items()}
+    seen: dict[str, int] = {}
+    blind = []
+    for path, line, keywords in _require_calls():
+        if "digest" not in keywords:
+            continue
+        seen[str(path)] = seen.get(str(path), 0) + 1
+        if str(path) not in allowed:
+            blind.append(f"{path}:{line}")
+    assert blind == [], f"digest bound gates not showing their plan: {blind}"
+    assert {path: seen.get(path, 0) for path in allowed} == allowed, (
+        "a file named in SHOWS_ITS_OWN_WAY gained or lost a digest bound gate; "
+        "hand the new one its plan or name it with a reason"
+    )
 
 
 def test_no_gate_passes_a_digest_beside_a_plan():

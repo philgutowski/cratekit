@@ -2130,10 +2130,55 @@ def test_the_resume_gate_shows_the_frozen_tracks_the_digest_covers(
     assert shown["items"] == tracks == ["1", "2", "3"]
     assert shown["count"] == 3
     assert shown[shell_module.PLAYLIST] == payload[shell_module.PLAYLIST] == outbound_fakes.CRATE
-    assert shown[shell_module.EXPORT] == payload[shell_module.EXPORT] == str(exported)
+    assert shown[shell_module.EXPORT_PATH] == payload[shell_module.EXPORT] == str(exported)
     assert shown["adopts"] == str(payload.get(export_cli.ADOPTS) or "")
     assert shown["digest"] == export_cli.confirm_digest(
-        shown[shell_module.PLAYLIST], shown[shell_module.EXPORT], tracks, adopts=shown["adopts"]
+        shown[shell_module.PLAYLIST],
+        shown[shell_module.EXPORT_PATH],
+        tracks,
+        adopts=shown["adopts"],
     )
+    assert shell_module.EXPORT not in shown, "the resume reads nothing off the export document"
     with jobs.open_store() as store:
         assert jobs.get(store, job_id).state is jobs.JobState.QUEUED
+
+
+def test_the_export_gate_shows_the_tracks_the_digest_covers_beside_the_age(
+    installed, exported, monkeypatch
+):
+    """The first ask showed the export's age and the remote playlist and not
+    one track (R-693). It now lists every track the digest covers, with the
+    playlist, the path and the adoption, and keeps the age block beside them."""
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
+    code, refused = drive(export_verb(exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["items"] == ["1", "2", "3"]
+    assert shown["count"] == 3
+    assert shown[shell_module.PLAYLIST] == outbound_fakes.CRATE
+    assert shown[shell_module.EXPORT_PATH] == str(exported)
+    assert shown[export_cli.ADOPTS] == ""
+    assert shown["digest"] == export_cli.confirm_digest(
+        outbound_fakes.CRATE, str(exported), ["1", "2", "3"], adopts=""
+    )
+    assert shown["export"]["file"] == exported.name
+    assert shown["export"]["freshness"] == "within-limit"
+    assert shown["remote_playlist"]["action"] == export_cli.ACTION_CREATE
+
+
+def test_the_favorites_gate_shows_the_tracks_the_digest_covers_beside_the_age(
+    installed, exported
+):
+    del installed
+    code, refused = drive(favorites_verb(exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    _exported, resolved = favorites_cli.resolve_sweep(str(exported), None)
+    assert shown["items"] == list(resolved.track_ids)
+    assert shown["items"], "a sweep over no favourites proves nothing about the screen"
+    assert shown["count"] == len(resolved.track_ids)
+    assert shown[shell_module.PLAYLIST] == resolved.key
+    assert shown[shell_module.EXPORT_PATH] == str(exported)
+    assert shown["digest"] == favorites_cli.sweep_digest(exported, resolved)
+    assert shown["export"]["file"] == exported.name
