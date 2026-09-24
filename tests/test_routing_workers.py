@@ -3215,14 +3215,17 @@ def test_the_export_gate_shows_every_item_the_digest_was_taken_over(
     assert shown["count"] == 6
     assert shown["export"] == str(export)
     counted = (
+        shown["tracks"],
         shown["routed"],
         shown["vocal"],
         shown["rated"],
         shown["long tracks"],
-        shown["vocal subs created"],
     )
-    assert counted == (3, 1, 1, 2, 2)
+    assert counted == (4, 3, 1, 1, 2)
+    vox = _vox_display()
+    assert shown["vocal subs created"] == [f"Deep House/{vox}", f"Tech House/{vox}"]
     assert shown["not derived"] == []
+    assert shown["warnings"] == []
     assert not _routed(export).exists()
 
 
@@ -3237,6 +3240,19 @@ def test_the_export_gate_names_the_vocal_dimension_it_did_not_read(
     assert (shown["routed"], shown["vocal"]) == (3, 0)
 
 
+def test_the_export_gate_says_why_an_intake_track_goes_nowhere(configured, voiced, tmp_path):
+    """The case the screen matters most for: a track the planner could not
+    read is listed with no destination, and its reason is on the screen before
+    the answer rather than in the envelope after it."""
+    export = _write_export(configured, tmp_path / "exports", missing_file="12")
+    shown = _blocked_export(export)["cause"]["detail"]["shown"]
+    offered = {item["track_id"]: item["destination"] for item in shown["items"]}
+    assert offered == {"11": "Deep House/Low", "12": "", "13": "Tech House/High"}
+    assert (shown["tracks"], shown["routed"]) == (3, 2)
+    (warning,) = shown["warnings"]
+    assert "track 12" in warning and "not routed" in warning
+
+
 def test_the_export_gate_prints_the_plan_in_the_default_mode(configured, voiced, tmp_path):
     """The human screen is the one a person answers from, so the plan has to
     reach it and not stop at the JSON envelope."""
@@ -3249,6 +3265,8 @@ def test_the_export_gate_prints_the_plan_in_the_default_mode(configured, voiced,
     assert "Apply this routing plan to the library?" in screen
     assert f"digest: {digest}" in screen
     assert "routed: 3" in screen and "long tracks: 2" in screen
+    # An empty list says none, rather than a header with nothing under it.
+    assert "  warnings: none" in screen and "  not derived: none" in screen
     vox = _vox_display()
     assert (
         f"track_id=11, destination=Deep House/Low, vocal=Deep House/{vox}, "

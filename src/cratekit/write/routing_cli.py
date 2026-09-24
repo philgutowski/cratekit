@@ -159,24 +159,35 @@ def _shown(plan: dict, **facts: Any) -> dict[str, Any]:
 
 
 def _export_facts(
-    items: list[dict[str, str]], export: Path, gaps: tuple[str, ...]
+    items: list[dict[str, str]],
+    export: Path,
+    gaps: tuple[str, ...],
+    vox_created: tuple[str, ...],
+    warnings: list[dict[str, str]],
 ) -> dict[str, Any]:
     """The export gate's totals, counted off the items it lists.
 
-    Counted from the items rather than from the planner's own structures, so
-    a total cannot disagree with the list printed under it. ``not derived``
-    rides too, because an empty vocal column on an uncalibrated library means
-    the dimension was not read, not that no track is vocal.
+    The track totals are counted from the items rather than from the planner's
+    own structures, so a total cannot disagree with the list printed under it.
+    ``count`` below them is every item, playlists created included, so
+    ``tracks`` says how many are tracks. The subs a run creates are named,
+    because on the list they are a row with no track. ``not derived`` rides
+    too, because an empty vocal column on an uncalibrated library means the
+    dimension was not read, not that no track is vocal. So do the planner's
+    warnings: an intake track with no destination is one it could not read,
+    and the reason exists before the question is asked.
     """
     tracks = [item for item in items if item["track_id"]]
     return {
         "export": str(export),
+        "tracks": len(tracks),
         "routed": sum(1 for item in tracks if item["destination"]),
         "vocal": sum(1 for item in tracks if item["vocal"]),
         "rated": sum(1 for item in tracks if item["rating"]),
         "long tracks": sum(1 for item in tracks if item["long_track"]),
-        "vocal subs created": len(items) - len(tracks),
+        "vocal subs created": list(vox_created),
         "not derived": list(gaps),
+        "warnings": [warning["message"] for warning in warnings],
     }
 
 
@@ -1113,7 +1124,8 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
         cfg, export, declared=declared
     )
     offered = _plan(items, kind="inbox-export")
-    option = _apply_gate(ctx, offered, _shown(offered, **_export_facts(items, export, gaps)))
+    facts = _export_facts(items, export, gaps, vox_created, warnings)
+    option = _apply_gate(ctx, offered, _shown(offered, **facts))
     if option != "apply":
         return ctx.envelope(
             data=_plan(items, kind="inbox-export", applied=False),
