@@ -1693,16 +1693,15 @@ def test_the_date_is_the_persons_own_and_not_greenwichs(tmp_path):
     document.write_text("<x/>")
     written = datetime(2026, 8, 2, 1, 0, 0, tzinfo=timezone.utc)
     os.utime(document, (written.timestamp(), written.timestamp()))
-    with pytest.MonkeyPatch.context() as zone:
-        zone.setenv("TZ", "America/New_York")
-        time.tzset()
-        try:
+    try:
+        with pytest.MonkeyPatch.context() as zone:
+            zone.setenv("TZ", "America/New_York")
+            time.tzset()
             age = source.export_age(document, limit_days=7, now=written + timedelta(days=30))
             (warning,) = shell_module.age_warnings(age)
             block = shell_module.shown_export(age)["export"]
-        finally:
-            zone.undo()
-            time.tzset()
+    finally:
+        time.tzset()
     assert "2026-08-01" in warning["message"]
     assert "2026-08-02" not in warning["message"]
     assert block["written"] == "2026-08-01T21:00:00-04:00"

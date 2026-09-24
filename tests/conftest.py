@@ -89,42 +89,38 @@ def _isolate_state_roots(tmp_path_factory):
     The CRATEKIT_* overrides are set alongside them belt-and-braces, so an
     explicit override path is exercised as well as the derived one.
     """
+    root = tmp_path_factory.mktemp("state_roots")
     with _own_patch() as monkeypatch:
-        yield _redirect_state_roots(tmp_path_factory.mktemp("state_roots"), monkeypatch)
-
-
-def _redirect_state_roots(root, monkeypatch):
-    """The body of ``_isolate_state_roots``, on the instance it was handed."""
-    home = root / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("USERPROFILE", str(home))  # Windows equivalent
-    for var, sub in (
-        ("XDG_CONFIG_HOME", "config"),
-        ("XDG_STATE_HOME", "state"),
-        ("XDG_DATA_HOME", "data"),
-        ("XDG_CACHE_HOME", "cache"),
-    ):
-        path = root / sub
-        path.mkdir()
-        monkeypatch.setenv(var, str(path))
-
-    monkeypatch.setenv("CRATEKIT_CONFIG_DIR", str(root / "config" / "cratekit"))
-    monkeypatch.setenv("CRATEKIT_STATE_DIR", str(root / "state" / "cratekit"))
-
-    # Once config lands (U2) it may cache its resolved directories at import time.
-    # Re-point the module attributes too, so a cached value cannot outlive the
-    # environment redirection above.
-    config = _module_if_present("cratekit.core.config")
-    if config is not None:
-        for attr, path in (
-            ("CONFIG_DIR", root / "config" / "cratekit"),
-            ("STATE_DIR", root / "state" / "cratekit"),
+        home = root / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))  # Windows equivalent
+        for var, sub in (
+            ("XDG_CONFIG_HOME", "config"),
+            ("XDG_STATE_HOME", "state"),
+            ("XDG_DATA_HOME", "data"),
+            ("XDG_CACHE_HOME", "cache"),
         ):
-            if hasattr(config, attr):
-                monkeypatch.setattr(config, attr, path)
+            path = root / sub
+            path.mkdir()
+            monkeypatch.setenv(var, str(path))
 
-    return root
+        monkeypatch.setenv("CRATEKIT_CONFIG_DIR", str(root / "config" / "cratekit"))
+        monkeypatch.setenv("CRATEKIT_STATE_DIR", str(root / "state" / "cratekit"))
+
+        # Once config lands (U2) it may cache its resolved directories at import time.
+        # Re-point the module attributes too, so a cached value cannot outlive the
+        # environment redirection above.
+        config = _module_if_present("cratekit.core.config")
+        if config is not None:
+            for attr, path in (
+                ("CONFIG_DIR", root / "config" / "cratekit"),
+                ("STATE_DIR", root / "state" / "cratekit"),
+            ):
+                if hasattr(config, attr):
+                    monkeypatch.setattr(config, attr, path)
+
+        yield root
 
 
 @pytest.fixture(autouse=True)
@@ -261,25 +257,20 @@ def _block_real_library_paths(request, tmp_path_factory):
     directory sitting in its input, and the resulting failure points at the test
     rather than at the fixture that caused it.
     """
+    library = tmp_path_factory.mktemp("library")
     with _own_patch() as monkeypatch:
-        yield _redirect_library_root(
-            request, tmp_path_factory.mktemp("library"), monkeypatch
-        )
+        monkeypatch.setenv("CRATEKIT_LIBRARY_ROOT", str(library))
 
+        config = _module_if_present("cratekit.core.config")
+        if config is not None and hasattr(config, "LIBRARY_ROOT"):
+            monkeypatch.setattr(config, "LIBRARY_ROOT", library)
 
-def _redirect_library_root(request, library, monkeypatch):
-    """The body of ``_block_real_library_paths``, on the instance it was handed."""
-    monkeypatch.setenv("CRATEKIT_LIBRARY_ROOT", str(library))
+        preflight = _module_if_present("cratekit.core.preflight")
+        if (
+            request.node.path.name != "test_preflight.py"
+            and preflight is not None
+            and hasattr(preflight, "assert_library_mounted")
+        ):
+            monkeypatch.setattr(preflight, "assert_library_mounted", lambda *a, **k: None)
 
-    config = _module_if_present("cratekit.core.config")
-    if config is not None and hasattr(config, "LIBRARY_ROOT"):
-        monkeypatch.setattr(config, "LIBRARY_ROOT", library)
-
-    if request.node.path.name == "test_preflight.py":
-        return library
-
-    preflight = _module_if_present("cratekit.core.preflight")
-    if preflight is not None and hasattr(preflight, "assert_library_mounted"):
-        monkeypatch.setattr(preflight, "assert_library_mounted", lambda *a, **k: None)
-
-    return library
+        yield library
