@@ -30,6 +30,22 @@ What each fixture covers:
 
 A test that reaches real config, a real library, a real keychain, or a real
 rekordbox database is a bug, not a slow test.
+
+None of these fixtures takes the ``monkeypatch`` fixture. Each holds its own
+``pytest.MonkeyPatch`` for the life of the test, because ``monkeypatch`` is one
+instance shared by every fixture that requests it and by the test body, and
+``monkeypatch.undo()`` in a body reverts everything recorded on it. When the
+isolation shared that instance, one ``undo()`` put the test back on the real
+machine, and what it restored was whatever the PROCESS started with (R-658, and
+see ``docs/solutions/workflow-issues/``). On its own instance the isolation
+outlives any body's ``undo()``.
+
+The ordering is load bearing. These fixtures are autouse at the root, so they
+are set up before the test's ``monkeypatch`` and torn down after it. A body that
+patches an attribute these fixtures already redirected therefore records the
+REDIRECTED value as its original, puts it back first, and then this file puts
+the real one back. Requesting ``monkeypatch`` here would invert that: the body's
+teardown would run last and leave the process pointing at a deleted temp tree.
 """
 
 from __future__ import annotations
@@ -38,6 +54,11 @@ import importlib
 import importlib.util
 
 import pytest
+
+#: The one call every fixture below makes to get an instance of its own. A
+#: context manager rather than ``pytest.MonkeyPatch()`` so that an exception
+#: anywhere between the patch and the ``yield`` still undoes what was patched.
+_own_patch = pytest.MonkeyPatch.context
 
 
 def _module_if_present(dotted: str):
@@ -57,7 +78,7 @@ def _module_if_present(dotted: str):
 
 
 @pytest.fixture(autouse=True)
-def _isolate_state_roots(tmp_path_factory, monkeypatch):
+def _isolate_state_roots(tmp_path_factory):
     """Redirect installation-scoped state to a temp tree for every test.
 
     HOME and the XDG variables are the inputs platformdirs uses on every platform
@@ -68,8 +89,12 @@ def _isolate_state_roots(tmp_path_factory, monkeypatch):
     The CRATEKIT_* overrides are set alongside them belt-and-braces, so an
     explicit override path is exercised as well as the derived one.
     """
-    root = tmp_path_factory.mktemp("state_roots")
+    with _own_patch() as monkeypatch:
+        yield _redirect_state_roots(tmp_path_factory.mktemp("state_roots"), monkeypatch)
 
+
+def _redirect_state_roots(root, monkeypatch):
+    """The body of ``_isolate_state_roots``, on the instance it was handed."""
     home = root / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -103,7 +128,7 @@ def _isolate_state_roots(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _isolate_keychain(monkeypatch):
+def _isolate_keychain():
     """Swap the OS keychain for an in-memory dictionary.
 
     keyring resolves a platform backend at import time. Replacing the two
@@ -117,7 +142,8 @@ def _isolate_keychain(monkeypatch):
     try:
         import keyring
     except ImportError:  # pragma: no cover - keyring is a core dependency
-        return {}
+        yield {}
+        return
 
     store: dict[tuple[str, str], str] = {}
 
@@ -130,14 +156,15 @@ def _isolate_keychain(monkeypatch):
     def _delete(service: str, username: str) -> None:
         store.pop((service, username), None)
 
-    monkeypatch.setattr(keyring, "set_password", _set)
-    monkeypatch.setattr(keyring, "get_password", _get)
-    monkeypatch.setattr(keyring, "delete_password", _delete)
-    return store
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(keyring, "set_password", _set)
+        monkeypatch.setattr(keyring, "get_password", _get)
+        monkeypatch.setattr(keyring, "delete_password", _delete)
+        yield store
 
 
 @pytest.fixture(autouse=True)
-def _no_live_provider_client(monkeypatch):
+def _no_live_provider_client():
     """Refuse the live provider client in every test, structurally.
 
     U62 bound the label catalogue, so a test that records a provider session in
@@ -153,20 +180,20 @@ def _no_live_provider_client(monkeypatch):
             "provider_session.CLIENT_FACTORY to a fake"
         )
 
-    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", refused)
-
     # U63: the outbound seam holds the account it opened for the life of the
     # process, so an adapter one test opened over its fake client would answer
     # the next test's resolve. Dropped on both sides of every test.
     from cratekit.modules.outbound import account
 
     account.forget()
-    yield
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(provider_session, "CLIENT_FACTORY", refused)
+        yield
     account.forget()
 
 
 @pytest.fixture(autouse=True)
-def _no_paid_recognition(monkeypatch):
+def _no_paid_recognition():
     """Refuse the live recognition transport in every test, structurally.
 
     Until U57 the suite could not spend by construction: ``recognize.identify``
@@ -185,11 +212,13 @@ def _no_paid_recognition(monkeypatch):
             "a test reached the live recognition transport; inject a fake one"
         )
 
-    monkeypatch.setattr(acrcloud, "http_transport", refused)
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(acrcloud, "http_transport", refused)
+        yield
 
 
 @pytest.fixture(autouse=True)
-def _no_real_mix_download(monkeypatch):
+def _no_real_mix_download():
     """Refuse the shipped mix fetcher in every test, structurally.
 
     U104 taught ``intake set`` and ``intake identify`` to fetch a mix URL, and
@@ -205,11 +234,13 @@ def _no_real_mix_download(monkeypatch):
             "a test reached the shipped mix fetcher; set fetch.fetcher to a fake"
         )
 
-    monkeypatch.setattr(fetch, "fetcher", refused)
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(fetch, "fetcher", refused)
+        yield
 
 
 @pytest.fixture(autouse=True)
-def _block_real_library_paths(request, tmp_path_factory, monkeypatch):
+def _block_real_library_paths(request, tmp_path_factory):
     """Point the library root at a temp directory and disarm the mount check.
 
     Two separate concerns, one fixture, because they are the same risk:
@@ -230,7 +261,14 @@ def _block_real_library_paths(request, tmp_path_factory, monkeypatch):
     directory sitting in its input, and the resulting failure points at the test
     rather than at the fixture that caused it.
     """
-    library = tmp_path_factory.mktemp("library")
+    with _own_patch() as monkeypatch:
+        yield _redirect_library_root(
+            request, tmp_path_factory.mktemp("library"), monkeypatch
+        )
+
+
+def _redirect_library_root(request, library, monkeypatch):
+    """The body of ``_block_real_library_paths``, on the instance it was handed."""
     monkeypatch.setenv("CRATEKIT_LIBRARY_ROOT", str(library))
 
     config = _module_if_present("cratekit.core.config")
