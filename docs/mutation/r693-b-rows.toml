@@ -1,0 +1,105 @@
+name = "r693-b"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_retag_digest_only"
+description = "tag retag: ask the gate over the digest alone, the shape the ledger recorded"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_gate_shown_plan.py"]
+old = '''    option = ctx.gate.require(_plan_gate(ctx), plan=plan, context={FOLDER_KEY: folder})'''
+new = '''    option = ctx.gate.require(_plan_gate(ctx), digest=plan["digest"])'''
+
+[[rows]]
+id = "T2_retag_resume_shows_a_fresh_walk"
+description = "tag retag --job: show the rows a fresh walk of the folder would take, not the frozen rows the digest covers"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_gate_shown_plan.py"]
+old = '''            plan={"digest": digest_for(folder, rows), "items": rows},'''
+new = '''            plan={"digest": digest_for(folder, rows), "items": plan_for(folder, active_taxonomy.load(cfg))["items"]},'''
+
+[[rows]]
+id = "O1_outbound_resume_digest_only"
+description = "queued outbound resume: ask the gate over the digest alone, the shape the ledger recorded"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_gate_shown_plan.py"]
+old = '''            plan={"digest": digest(playlist, exported, tracks, **extra), "items": tracks},
+            context={PLAYLIST: playlist, EXPORT_PATH: exported, **extra},'''
+new = '''            digest=digest(playlist, exported, tracks, **extra),'''
+
+[[rows]]
+id = "O2_outbound_resume_drops_the_extra"
+description = "queued outbound resume: show the playlist and the path but not the frozen adoption the digest covers"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_gate_shown_plan.py"]
+old = '''            context={PLAYLIST: playlist, EXPORT_PATH: exported, **extra},'''
+new = '''            context={PLAYLIST: playlist, EXPORT_PATH: exported},'''
+
+[[rows]]
+id = "E1_export_first_ask_no_tracks"
+description = "export playlist: show the age and the remote playlist and not one track, the screen before this unit"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_gate_shown_plan.py"]
+old = '''        plan={
+            "digest": confirm_digest(
+                resolved.key, str(exported), resolved.track_ids, adopts=found.adopts
+            ),
+            "items": list(resolved.track_ids),
+        },
+        context={
+            shell.PLAYLIST: resolved.key,
+            shell.EXPORT_PATH: str(exported),
+            ADOPTS: found.adopts,
+            **shell.shown_export(age),
+            **shown_playlist(found, said),
+        },'''
+new = '''        digest=confirm_digest(
+            resolved.key, str(exported), resolved.track_ids, adopts=found.adopts
+        ),
+        context={**shell.shown_export(age), **shown_playlist(found, said)},'''
+
+[[rows]]
+id = "F1_favorites_first_ask_no_tracks"
+description = "sync favorites: show the age and not one track, the screen before this unit"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_gate_shown_plan.py"]
+old = '''        plan={"digest": sweep_digest(exported, resolved), "items": list(resolved.track_ids)},
+        context={
+            shell.PLAYLIST: resolved.key,
+            shell.EXPORT_PATH: str(exported),
+            **shell.shown_export(age),
+        },'''
+new = '''        digest=sweep_digest(exported, resolved), context=shell.shown_export(age)'''
+
+[[rows]]
+id = "S1_sync_all_no_tracks"
+description = "sync all: show what would queue and the age and not one track, the screen before this unit"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_gate_shown_plan.py"]
+old = '''            plan={
+                "digest": favorites_cli.sweep_digest(exported, resolved),
+                "items": list(resolved.track_ids),
+            },
+            context={
+                **_awaiting(plans),
+                shell.PLAYLIST: resolved.key,
+                shell.EXPORT_PATH: str(exported),
+                **shell.shown_export(age),
+            },'''
+new = '''            digest=favorites_cli.sweep_digest(exported, resolved),
+            context={**_awaiting(plans), **shell.shown_export(age)},'''
+
+[[rows]]
+id = "W1_routing_digest_only"
+description = "route inbox: ask the gate over the digest alone, R-686's defect reopened one layer up"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_gate_shown_plan.py"]
+old = '''    return ctx.gate.require(spec, plan=plan, context=facts)'''
+new = '''    return ctx.gate.require(spec, digest=plan["digest"])'''
