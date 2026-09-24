@@ -579,6 +579,41 @@ def template_digest(text: str) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class Fingerprint:
+    """What doctor compares two template texts by: the digest, and the top level
+    tables and arrays of tables the text declares, so a difference can be named."""
+
+    digest: str
+    sections: frozenset[str]
+
+
+def template_fingerprint(text: str) -> Fingerprint:
+    """The fingerprint of one template's text. Text that is not TOML has no sections."""
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        sections: frozenset[str] = frozenset()
+    else:
+        sections = frozenset(
+            name for name, value in data.items() if isinstance(value, (dict, list))
+        )
+    return Fingerprint(digest=template_digest(text), sections=sections)
+
+
+def shipped_template_fingerprint(name: str) -> Fingerprint:
+    """The fingerprint of the packaged text of one template, by its short name.
+
+    THE SHIPPED TEXT STAYS IN THIS MODULE. Doctor compares a library's active copy
+    against the shipped template by this and never reads the text itself, so the
+    guard in ``tests/test_active_taxonomy.py`` can keep doctor off the list of
+    modules that read the shipped text: a module holding both that text and the
+    parser is one line from routing by a template that is not the library's.
+    Raises what :func:`shipped_template_text` raises.
+    """
+    return template_fingerprint(shipped_template_text(name))
+
+
+@dataclass(frozen=True, slots=True)
 class Origin:
     """Which shipped text an active copy was made from: the name and its digest."""
 
@@ -599,7 +634,8 @@ def origin_record_text(template: str, text: str) -> str:
 
 
 def parse_origin_record(text: str) -> Origin:
-    """Read the record back. Raises ``ValueError`` for anything but the two fields."""
+    """Read the record back. Raises ``ValueError`` when the text is not TOML or
+    either field is missing or malformed. A key it does not know is left alone."""
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:

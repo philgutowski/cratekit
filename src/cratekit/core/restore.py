@@ -923,7 +923,7 @@ def plan(
     )
     latch = reconcile.in_flight_marker(capture_stamp=captured.stamp, now=now)
 
-    # ALWAYS, never `if markers:`. Seven of the twelve coupled entries declare
+    # ALWAYS, never `if markers:`. Most of the coupled entries declare
     # RollbackEffect.NONE, so a restore whose window touched only those derives no
     # effect markers at all, and a capture taken after every cutover derives no
     # tree markers either. Emitting this step conditionally meant precisely those
