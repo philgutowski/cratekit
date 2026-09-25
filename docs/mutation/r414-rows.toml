@@ -1,0 +1,132 @@
+name = "r414"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_planner_writes_the_byte"
+description = "The planner writes the cut's export value instead of the folded star, which is R-414 itself"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''        stars = curve[rating]'''
+new = '''        stars = rating'''
+
+[[rows]]
+id = "M2_fold_returns_the_byte"
+description = "database_stars returns the value it was given instead of the star it folds to"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''    return stars
+
+
+def _database_curve('''
+new = '''    return value
+
+
+def _database_curve('''
+
+[[rows]]
+id = "M3_unknown_value_not_refused"
+description = "Drop the refusal for a value on neither scale, so database_stars returns None"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''    if stars is None:
+        raise _scale_unknown('''
+new = '''    if False:
+        raise _scale_unknown('''
+
+[[rows]]
+id = "M4_star_passthrough_dropped"
+description = "A value already on the star scale is no longer passed through, so a star curve refuses"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''    if value == 0 or value in _DATABASE_STARS:'''
+new = '''    if value == 0:'''
+
+[[rows]]
+id = "M5_zero_passthrough_dropped"
+description = "Zero is no longer answered as zero, so a curve with an unrated band refuses the whole plan"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''    if value == 0 or value in _DATABASE_STARS:'''
+new = '''    if value in _DATABASE_STARS:'''
+
+[[rows]]
+id = "M6_mixed_scale_not_refused"
+description = "Drop the mixed scale refusal in _database_curve"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''    if bytes_ and stars:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M7_mixed_scale_needs_two_stars"
+description = "Nearby value, a mix is refused only when two or more star values sit beside the bytes"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''    if bytes_ and stars:'''
+new = '''    if bytes_ and len(stars) > 1:'''
+
+[[rows]]
+id = "M8_curve_checked_lazily"
+description = "The curve is folded only over values it recognises, so a bad cut refuses only the rows landing in it, not the plan"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''    curve = _database_curve(cuts)'''
+new = '''    curve = _database_curve(
+        [c for c in cuts if c.rating == 0 or c.rating in _DATABASE_STARS or c.rating in _EXPORT_BYTE_STARS]
+    )'''
+
+[[rows]]
+id = "M9_zero_band_planned"
+description = "Drop the level-unrated skip, so a zero cut plans a zero rating as a change"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''        if stars == 0:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M10_skip_reason_reworded"
+description = "Reword the zero band's skip reason to the uncut reason"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''"level-unrated"'''
+new = '''"level-uncut"'''
+
+[[rows]]
+id = "M11_byte_table_off_by_one"
+description = "Realistic nearby value in the byte table, 204 folds to three stars"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''204: 4,'''
+new = '''204: 3,'''
+
+[[rows]]
+id = "M12_detail_key_renamed"
+description = "The refusal detail names the offending value under a different key"
+file = "src/cratekit/write/metadata.py"
+surface = "maintainer"
+old = '''            {"rating": value},'''
+new = '''            {"value": value},'''
+
+[[rows]]
+id = "M13_remedy_swapped"
+description = "The refusal carries the doctor token instead of the configuration token"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+old = '''        remedy=Remedy.FIX_CONFIG_VALUES,
+        scope=Scope.RUN,
+        origin=("write", "metadata"),
+        detail=dict(detail),'''
+new = '''        remedy=Remedy.RUN_DOCTOR,
+        scope=Scope.RUN,
+        origin=("write", "metadata"),
+        detail=dict(detail),'''
+
+[[rows]]
+id = "M14_reason_unregistered"
+description = "Remove rating-scale-unknown from REASONS, so the refusal cannot be built"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_metadata_policy.py", "tests/test_cli_contract.py"]
+old = '''        "rating-scale-unknown": ExitCode.PRECONDITION,
+'''
+new = ""
