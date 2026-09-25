@@ -29250,3 +29250,57 @@ remote, or the decision to keep asking for the flag is recorded here.
 
 **Not on the board bar.** Maintainer facing: a recovery path whose fix line
 names the flag, nothing lost, nothing false.
+
+---
+
+## R-722. Adoption files every track as if it had no energy reading, and the library's files carry one
+
+**Found:** at the twelfth attended sitting, 2026-09-25, driving #212 plan only
+on a disposable copy of the live database. `adopt scan` then `adopt apply` to
+the gate `adopt.apply.approve`, answered abort, tree `genre_energy`: 7,773 to
+route, 2,058 needing a genre, 167 excluded, 153 unmapped, no collisions.
+**7,401 of the 7,773 route to their bucket's Unsorted sub** and none to an
+energy sub; the rest go to the per bucket exceptions, chill and the non
+electronic subs. `adopt/plan.py` `_sub_for` passes a level of None to
+`routing.energy_sub` on purpose, its docstring saying adoption "has no analysis
+of its own". But the energy reading the routing tree files by is a tag in each
+file, which `rebuild.read_truth` already reads for the export path, and
+`tags.read_energy_from_file` over the 7,773 planned files answers **7,726 with
+a reading and 47 without**, 0 missing, in under nine seconds.
+
+**Measured cost.** Adoption is the one way door a tree takes to the database,
+and it is additive: approved as planned, 7,401 tracks would be added to an
+Unsorted sub beside whatever energy sub they already sit in on the live tree,
+and the record would say the tree was adopted. Nothing was written; the gate
+was answered abort on the copy.
+
+**Closes when:** the adoption plan reads each file's energy through the same
+reader the routing pass uses and files by it, leaving None only for a file
+that carries no reading, with a test that a tagged file lands in its energy
+sub and an untagged one in Unsorted. Then #212 drives adoption plan only again
+and the Unsorted count is read against the 47.
+
+**On the board bar.** It blocks #212, and through it line 4 of #178 and #29.
+
+---
+
+## R-723. The database route inbox reads an intake folder this library does not have, and answers zero tracks without saying so
+
+**Found:** at the twelfth attended sitting, 2026-09-25, on the same copy.
+`route inbox` without `--export` planned **0 tracks** from intake
+`<library root>/INBOX`, which does not exist on the volume, and the
+gate shows `tracks: 0` with only the no native tree warning. `_inbox_files`
+returns an empty list for a missing folder. The 61 rows sitting 10 left sit in
+batch playlists under the rekordbox INBOX playlist, which this path never
+reads: it files files in a folder, and a row already in the collection that no
+governed tree places is `route unplaced`'s, after a tree has cut over. #212's
+brief assumed the opposite.
+
+**Measured cost.** One gate that plans nothing and reads as though the inbox
+were empty. Nothing is written or lost.
+
+**Closes when:** a missing intake folder is refused or reported by name
+rather than read as empty, or the decision that it is empty is recorded here.
+
+**Not on the board bar.** Nothing written, nothing false beyond a zero whose
+reason is not shown.

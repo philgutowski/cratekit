@@ -323,6 +323,34 @@ search and download; tagging, naming and landing the 18 wait for rekordbox to
 be free after the vocal pass. Line 10 is ticked with the plan above. Filed
 R-703 to R-706.
 
+## Sitting 12, 2026-09-25, morning
+
+Machine state before: the volume mounted, rekordbox and its agent closed, the
+overnight vocal job `fbe8` succeeded, 9,929 settled, 4,153 scored, 5,762
+unchanged, 14 inactive, 10 too large and 4 undecodable. The pipx install
+brought from `40daec7` to `1fb3132`, so #202's gate and #214's star fold are
+in it; `crate doctor` exit 0, backup ages 8 and 8 days. The author deleted the
+three stray root playlists, kept `Sets and Long Tracks` and took a fresh
+export. No acknowledgment was minted: nothing this sitting wrote the database.
+Driven on a disposable copy of `master.db`, taken with rekordbox closed and no
+wal beside it, through a temporary config and state directory, the copy's
+config carrying `db_outside_root_acknowledged_on` since the copy sits off the
+volume.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| #212, `route inbox` plan only | to the gate, answered abort | Run `082e`: intake `<library root>/INBOX`, **0 tracks**, trees none, the no native tree warning. The folder does not exist, and the path files files in a folder, never rows in the rekordbox INBOX playlist, so **the 61 rows are not this verb's** (R-723). A row in the collection no tree places is `route unplaced`'s, after a cutover. | measured, nothing written |
+| `route unplaced`, plan only | yes | `no_op`, `no-native-tree`: no tree has cut over. | measured |
+| `adopt scan`, the census | yes, job `08c6` | 9,998 rows settled in 25 seconds. | measured |
+| `adopt apply` plan only | to the gate, answered abort | Run `b78a`, tree `genre_energy`: 7,773 route, 2,058 need a genre, 167 excluded, 153 unmapped, 14 not a path, no collisions, digest `52efe350cfdf9bb8`. **7,401 of the 7,773 route to their bucket's Unsorted sub, none to an energy sub.** Adoption passes no energy by design, and `tags.read_energy_from_file` over the same 7,773 files reads **7,726 with a reading, 47 without** (R-722). | measured, nothing written |
+
+**Decided by the author: no live write, diagnose, then file.** #212 cannot
+run as its brief was written. The database path reaches the 61 rows only
+through adoption, then `route unplaced`, and adoption as it stands would add
+7,401 tracks to Unsorted beside their energy subs through a one way door.
+Filed R-722, on the board bar, and R-723. #212's brief rewritten around
+adoption, waiting on R-722.
+
 ## What blocks a full sync cycle, stated plainly
 
 Corrected at sitting 11. This section once said the three Tidal seams, U62
@@ -333,19 +361,21 @@ closed R-144, so none of them blocks anything.
 **The blocker is #212**, the routing tree's database cutover. Sitting 10
 proved the rekordbox xml bridge cannot land nested membership (R-687) or a
 rating on an owned row (R-688), so a full sync cycle's routing has to land
-through the database. #212 runs without ratings by the author's decision of
-sitting 11, and ratings follow once the R-414 planner card lands. Line 4 of
-#178, the full sync cycle, comes after #212.
+through the database. Sitting 12 found the database path reaches the tree only
+through adoption, and adoption files by no energy reading (R-722), so #212
+waits on R-722. Ratings can ride with it now #214 has landed. Line 4 of #178,
+the full sync cycle, comes after #212.
 
 ## Next sitting
 
-**#212 first**, once the overnight vocal job has finished and rekordbox can be
-opened: delete the three stray root playlists sitting 10 left, keep `Sets and
-Long Tracks`, take a fresh export, then `route inbox` without `--export`
-through the session gates, no ratings. Then line 4, the full sync cycle.
+**#212 waits on R-722.** Once adoption reads each file's energy, drive
+`adopt apply` plan only on a disposable copy and read the Unsorted count
+against the 47 untagged files, then adopt live through the session gates,
+then `route unplaced` for the 61 rows and `route pending` for the two open
+sessions doctor names. Then line 4, the full sync cycle.
 
 Also owed: the 18 downloads from sitting 11 tagged, named and landed; a second
 `sync labels` for the 20 labels the rate limit stopped, **run with no download
 beside it** (R-705), after which the 43 addressed rows are read again and #213
 closes; the 1,799 label rows reviewed for line 5; the vocal calibration and
-filing pass for line 7, after #212.
+filing pass for line 7, after #212, now its scores are in.
