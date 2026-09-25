@@ -1509,6 +1509,194 @@ def test_a_skip_reported_through_the_seam_still_raises(settings, tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# R-703: a failed download names the provider's own error
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class _AlbumReadSession:
+    """The eleventh sitting's shape: the track answers, its album read raises.
+
+    The offer asks ``track(key)`` and is answered, so ``acquire_one`` reaches
+    the download. The tool's own lookup asks ``track(key, with_album=True)``,
+    which reads the album too, and that is what the provider refused.
+    """
+
+    def __init__(self, error: BaseException) -> None:
+        self.error = error
+        self.audio_quality = "LOSSLESS"
+
+    def track(self, key: str, with_album: bool = False):
+        if with_album:
+            raise self.error
+        return _ToolTrack("LOSSLESS")
+
+
+def _real_download(session):
+    """The REAL vendored ``Download``, with its constructor skipped.
+
+    The constructor reads the tool's own settings file from a home directory,
+    and nothing the lookup path uses comes from it, so the four attributes
+    ``item`` reads before the lookup are set from what ``fetch`` passed. The
+    lookup and its swallow are the vendored code's own, which is the point: a
+    fake that does not swallow proves a tool that does not exist.
+    """
+    from cratekit._vendor.tidal_dl_ng.download import Download
+
+    def build(**kwargs):
+        download = Download.__new__(Download)
+        download.session = session
+        download.fn_logger = kwargs["fn_logger"]
+        download.event_abort = kwargs["event_abort"]
+        download.event_run = kwargs["event_run"]
+        return download
+
+    return build
+
+
+def _through_the_real_tool(settings, tmp_path, error):
+    from cratekit.acquire.adapter import acquire_one
+
+    session = _AlbumReadSession(error)
+    source = vendored._VendoredSource(
+        settings, tmp_path / "token.json", session=session, downloader=_real_download(session)
+    )
+    return acquire_one(source, TrackRequest(key="1234"), settings)
+
+
+def test_a_rate_limited_album_read_reaches_the_item_cause_by_name(settings, tmp_path):
+    """The Closes when line of R-703, driven through the vendored tool itself.
+
+    ``_validate_and_prepare_media`` catches the error and returns None without
+    logging it, and ``item`` answers ``(False, "")``. Nineteen downloads at the
+    eleventh sitting said only that no file came back.
+    """
+    from tidalapi.exceptions import TooManyRequests
+
+    result = _through_the_real_tool(settings, tmp_path, TooManyRequests("Album unavailable"))
+
+    assert result.outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
+    assert result.remedy is Remedy.RETRY_LATER
+    assert "TooManyRequests: Album unavailable" in result.detail
+    assert "rate limited" in result.detail
+    assert result.detail.startswith("the downloader reported no file for 1234; ")
+
+
+def test_a_not_found_album_read_is_named_and_stays_transient(settings, tmp_path):
+    """The carried words must not decide permanence.
+
+    The client's not found text is "Object not found", and the classifier
+    reads "not found" in text as permanent, which is quarantine for ever. The
+    offer found this track a moment earlier, so what the album read says is
+    reported and not judged.
+    """
+    from tidalapi.exceptions import ObjectNotFound
+
+    result = _through_the_real_tool(settings, tmp_path, ObjectNotFound("Object not found"))
+
+    assert result.outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
+    assert "ObjectNotFound: Object not found" in result.detail
+    assert "rate limited" not in result.detail
+
+
+def test_the_real_downloader_takes_its_session_from_the_tool_object():
+    """What ``observe_session`` stands in for, read off the vendored source.
+
+    ``_real_download`` sets the attribute itself, so this is the half that says
+    the real constructor does too.
+    """
+    import inspect
+
+    from cratekit._vendor.tidal_dl_ng.download import Download
+
+    assert "self.session = tidal_obj.session" in inspect.getsource(Download.__init__)
+
+
+class _LoggingDownload:
+    """A downloader that fails the way ``_get_stream_info`` does: logs, then swallows."""
+
+    def __init__(self, *, fn_logger, **_kwargs):
+        self.fn_logger = fn_logger
+        fn_logger.error("FFmpeg path is not set.")
+
+    def item(self, **_kwargs):
+        from tidalapi.exceptions import TooManyRequests
+
+        try:
+            raise TooManyRequests("URL unavailable")
+        except TooManyRequests:
+            self.fn_logger.exception("Too many requests against TIDAL backend.")
+            return False, ""
+
+
+class _MessageOnlyDownload(_LoggingDownload):
+    def item(self, **_kwargs):
+        self.fn_logger.error("Failed to restore normal session for track: %s", "1234")
+        return False, ""
+
+
+class _SilentDownload(_LoggingDownload):
+    def item(self, **_kwargs):
+        return False, ""
+
+
+def _fetch_failure(settings, tmp_path, downloader) -> str:
+    source = vendored._VendoredSource(
+        settings, tmp_path / "token.json", session=_ToolSession({}), downloader=downloader
+    )
+    with pytest.raises(RuntimeError) as caught:
+        source.fetch(TrackRequest(key="1234"), settings.download_staging)
+    assert classify_unavailable(caught.value) is TrackOutcome.UNAVAILABLE_TRANSIENT
+    return str(caught.value)
+
+
+def test_an_error_the_tool_logs_from_its_except_is_the_cause(settings, tmp_path):
+    detail = _fetch_failure(settings, tmp_path, _LoggingDownload)
+    assert "TooManyRequests: URL unavailable" in detail
+    assert "rate limited" in detail
+
+
+def test_a_failure_message_with_no_exception_is_the_cause(settings, tmp_path):
+    detail = _fetch_failure(settings, tmp_path, _MessageOnlyDownload)
+    assert "Failed to restore normal session for track: 1234" in detail
+
+
+def test_what_the_constructor_logged_is_never_the_items_cause(settings, tmp_path):
+    """The tool warns about ffmpeg at construction on every run without it."""
+    assert _fetch_failure(settings, tmp_path, _SilentDownload) == (
+        "the downloader reported no file for 1234"
+    )
+
+
+def test_the_observed_session_writes_through_and_raises_what_it_notes():
+    """The tool sets ``audio_quality`` on its session and must set the real one."""
+    from tidalapi.exceptions import TooManyRequests
+
+    real = _AlbumReadSession(TooManyRequests("Album unavailable"))
+    log = vendored._ToolLogging()
+    holder = types.SimpleNamespace(session=real)
+    vendored.observe_session(holder, log)
+    vendored.observe_session(holder, log)
+
+    holder.session.audio_quality = "HI_RES_LOSSLESS"
+    assert real.audio_quality == "HI_RES_LOSSLESS"
+    assert holder.session.track("1234").audio_quality == "LOSSLESS"
+    assert log.cause is None
+    with pytest.raises(TooManyRequests):
+        holder.session.track("1234", with_album=True)
+    assert log.cause is real.error
+    assert holder.session._session is real, "observed twice must not wrap twice"
+
+
+def test_a_bare_http_429_reads_as_a_rate_limit():
+    response = types.SimpleNamespace(status_code=429)
+    error = RuntimeError("429 Client Error")
+    error.response = response
+    assert vendored.is_rate_limit(error)
+    response.status_code = 404
+    assert not vendored.is_rate_limit(error)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Scenario: the lossless rule is enforced at the FILE, not only at the setting
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1918,7 +2106,7 @@ def test_the_logger_handed_to_the_vendored_tool_has_every_method_the_tool_calls(
     used = _attributes_the_tool_uses_on_its_logger()
     assert used, "the vendored tree stopped using fn_logger; this guard is stale"
     assert {"info", "debug", "error", "exception"} <= set(used)
-    logger = vendored._discard_tool_logging
+    logger = vendored._ToolLogging()
     missing = sorted(name for name in used if not callable(getattr(logger, name, None)))
     assert not missing, f"the adapter's logger lacks {missing}, used in {[used[m] for m in missing]}"
     for name in used:

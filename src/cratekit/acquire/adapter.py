@@ -148,6 +148,19 @@ class LosslessRefused(AdapterError):
     remedy = Remedy.RELAX_LOSSLESS_POLICY
 
 
+class NoFileLanded(RuntimeError):
+    """The downloader answered with no file, carrying whatever cause it swallowed.
+
+    TRANSIENT BY TYPE, whatever its words say (R-703). The message names the
+    provider's own error so a rate limit reads as a rate limit, and that error
+    can be ``ObjectNotFound: Object not found`` from the album read a download
+    makes after the offer has just found the track. ``classify_unavailable``
+    reads text, so without this type the carried words would quarantine a live
+    track for ever. A ``RuntimeError`` so every reader of the old plain error
+    still matches it.
+    """
+
+
 # ---------------------------------------------------------------------------
 # The two outcome vocabularies
 # ---------------------------------------------------------------------------
@@ -486,7 +499,13 @@ def classify_unavailable(exc: BaseException) -> TrackOutcome:
     classification question: an invocation whose session died reports AUTH_FAILED
     and classifies nothing. Treating them as transient is the safe reading if one
     slips through, since transient is re-queueable and costs a retry.
+
+    A ``NoFileLanded`` is transient before any reading of its text, because its
+    text is a swallowed cause quoted for a person to read, not the answer to
+    this track's lookup (R-703).
     """
+    if isinstance(exc, NoFileLanded):
+        return TrackOutcome.UNAVAILABLE_TRANSIENT
     text = str(exc).lower()
     if any(marker in text for marker in TRANSIENT_MARKERS):
         return TrackOutcome.UNAVAILABLE_TRANSIENT
@@ -1029,6 +1048,7 @@ __all__ = [
     "InvocationResult",
     "LosslessPolicy",
     "LosslessRefused",
+    "NoFileLanded",
     "Offer",
     "PolicyDecision",
     "Remedy",
