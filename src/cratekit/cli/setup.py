@@ -818,6 +818,13 @@ def _replace_a_remote_rclone_lacks(
     alone and validation refuses with the flag named. The lookup is the one
     doctor makes for the same name, through the same probes, so what setup
     replaces is what doctor would have failed.
+
+    AND ONLY TOWARD A NAME RCLONE HAS. An empty dump is a read configuration
+    too, on a machine whose rclone has no config file or reads another one,
+    and there it lacks every name: a right remote beside mistyped destinations
+    would be swapped for the typo. Requiring the destinations' remote to be
+    known makes the replacement a choice between a name nothing can write to
+    and one that exists, never a guess between two unknowns.
     """
     disagreement = config.backup_remote_disagreement(document)
     if disagreement is None:
@@ -825,7 +832,7 @@ def _replace_a_remote_rclone_lacks(
     spelled, expected = disagreement
     rclone = machine.find_binary("rclone")
     remotes = machine.rclone_remotes(rclone) if rclone is not None else None
-    if remotes is None or spelled.split(":", 1)[0] in remotes:
+    if remotes is None or spelled.split(":", 1)[0] in remotes or expected not in remotes:
         return
     _put(document, "backup.remote", expected)
     wizard.note(
@@ -849,21 +856,23 @@ def _answers_remediation(document: Mapping[str, Any], problems: Sequence[str]) -
     reproduces this refusal, and the fix line pointed back at the command that
     had just refused. There the first step names the flag that does replace it,
     and no token is carried, because the rendered fix line takes the token's
-    words over the step's.
+    words over the step's. Beside other problems the token stays, since those
+    need answers too, and the flag leads the steps instead.
     """
     disagreement = config.backup_remote_disagreement(document)
     if disagreement is None:
         return Remediation(remedy=Remedy.RUN_SETUP, steps=tuple(problems))
     spelled, expected = disagreement
-    return Remediation(
-        steps=(
-            f"re-run crate setup with --backup-remote {expected} to record the remote "
-            f"the destinations name, or give --backup-dest, --backup-archive-root "
-            f"and --backup-db-dest-root under {spelled.split(':', 1)[0]!r} if that "
-            f"is the remote meant",
-            *problems,
-        )
+    steps = (
+        f"re-run crate setup with --backup-remote {expected} to record the remote "
+        f"the destinations name, or give --backup-dest, --backup-archive-root "
+        f"and --backup-db-dest-root under {spelled.split(':', 1)[0]!r} if that "
+        f"is the remote meant",
+        *problems,
     )
+    if len(problems) > 1:
+        return Remediation(remedy=Remedy.RUN_SETUP, steps=steps)
+    return Remediation(steps=steps)
 
 
 def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) -> None:

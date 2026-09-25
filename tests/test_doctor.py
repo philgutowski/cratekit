@@ -1792,6 +1792,8 @@ def test_a_spelled_remote_rclone_lacks_is_replaced_by_the_destinations_remote(co
             {"rclone_remotes": lambda _r: {"remote": {}, "gdrive": {}}}, id="rclone-knows-it"
         ),
         pytest.param({"rclone_remotes": lambda _r: None}, id="rclone-unreadable"),
+        # An empty dump lacks every name, so the destinations may be the typo.
+        pytest.param({"rclone_remotes": lambda _r: {}}, id="rclone-knows-neither"),
         pytest.param({"find_binary": lambda _name: None}, id="rclone-absent"),
     ],
 )
@@ -1868,6 +1870,7 @@ def test_the_disagreeing_remote_refusal_names_the_flag_and_the_flag_repairs_it(
     assert "config-unusable" in err
     assert "fix: re-run crate setup with --backup-remote gdrive" in err, err
     assert "fix: crate setup\n" not in err
+    assert "Setup's --backup-remote replaces the spelled one" in err
 
     code, out, err = drive(["--output", "json", "setup", "--backup-remote", "gdrive"])
 
@@ -1878,6 +1881,22 @@ def test_the_disagreeing_remote_refusal_names_the_flag_and_the_flag_repairs_it(
     config.reset_cache()
     assert config.load().backup.remote == "gdrive"
     assert tomllib.loads(config.config_path().read_text())["backup"]["remote"] == "gdrive"
+
+
+def test_the_setup_token_stays_when_the_disagreement_is_not_the_only_problem(configured):
+    """Beside other problems the fix is still more answers, so the run-setup
+    token is kept and the flag leads the steps rather than replacing them."""
+    document = _spelled_remote_document(configured)
+    only = config.validate(document)
+    alone = setup_verb._answers_remediation(document, only)
+    assert alone.remedy is None
+    assert alone.steps[0].startswith("re-run crate setup with --backup-remote gdrive")
+
+    several = [*only, "library.root is not set"]
+    beside = setup_verb._answers_remediation(document, several)
+    assert beside.remedy is Remedy.RUN_SETUP
+    assert beside.steps[0].startswith("re-run crate setup with --backup-remote gdrive")
+    assert list(beside.steps[1:]) == several
 
 
 def test_a_re_run_repairs_a_spelled_remote_rclone_does_not_know(configured, monkeypatch):

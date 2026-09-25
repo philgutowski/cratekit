@@ -2571,7 +2571,8 @@ def _validate_backup_destinations(data: Mapping) -> list[str]:
             f"name {expected!r}. Doctor checks the remote it is told against "
             f"rclone's configuration, and the transfers use the one in the "
             f"destinations, so the two must agree or the check reports on a "
-            f"remote nothing writes to."
+            f"remote nothing writes to. Setup's --backup-remote replaces the "
+            f"spelled one (R-662)."
         )
     return problems
 
