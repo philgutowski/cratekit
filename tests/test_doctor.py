@@ -1810,6 +1810,21 @@ def test_a_spelled_remote_is_kept_unless_rclone_was_read_and_lacks_it(configured
     assert len(problems) == 1 and "backup.remote names 'remote'" in problems[0], problems
 
 
+def test_no_disagreement_is_read_where_there_is_nothing_to_compare(configured):
+    """A blank spelled remote is unset, and destinations naming several remotes
+    give no one name to compare against. Neither is a disagreement, so neither
+    reaches the repair or adds a second problem naming an arbitrary remote
+    beside the several-remotes one validation already reports."""
+    blank = _spelled_remote_document(configured, spelled="  ")
+    assert config.backup_remote_disagreement(blank) is None
+
+    several = _spelled_remote_document(configured)
+    several["backup"]["archive_root"] = "dropbox:archive"
+    assert config.backup_remote_disagreement(several) is None
+    problems = config.validate(several)
+    assert len(problems) == 1 and "name several" in problems[0], problems
+
+
 def test_the_backup_remote_flag_replaces_a_spelled_remote_rclone_knows(configured):
     """The explicit answer: a flag replaces the recorded value whatever rclone
     says, which is the repair the refusal's fix line now names."""

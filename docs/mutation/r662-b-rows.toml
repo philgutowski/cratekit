@@ -1,0 +1,155 @@
+name = "r662-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M10_absent_rclone_asked_anyway"
+description = "a missing rclone binary no longer short circuits the lookup, so the probe is asked with None"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    remotes = machine.rclone_remotes(rclone) if rclone is not None else None'''
+new = '''    remotes = machine.rclone_remotes(rclone)'''
+
+[[rows]]
+id = "M10_composite_with_M9"
+description = "M10 and M9 together, what the absent binary guard holds once the known destination guard is gone"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+pairs_with = "M10_absent_rclone_asked_anyway"
+tests = ["tests/test_doctor.py"]
+old = '''    remotes = machine.rclone_remotes(rclone) if rclone is not None else None
+    if remotes is None or spelled.split(":", 1)[0] in remotes or expected not in remotes:'''
+new = '''    remotes = machine.rclone_remotes(rclone)
+    if remotes is None or spelled.split(":", 1)[0] in remotes:'''
+
+[[rows]]
+id = "M11_replacement_silent"
+description = "the replacement is made and no note says so"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    _put(document, "backup.remote", expected)
+    wizard.note(
+        "setup.backup.remote",
+        "backup remote",
+        doctor.Status.INFO,
+        (
+            f"backup.remote was {spelled!r}, which rclone has no remote by, and "
+            f"every backup destination names {expected!r}, so it was replaced "
+            f"with {expected!r}"
+        ),
+    )'''
+new = '''    _put(document, "backup.remote", expected)'''
+
+[[rows]]
+id = "M12_replacement_not_written"
+description = "the note is made and the document keeps the spelled remote"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    _put(document, "backup.remote", expected)
+    wizard.note('''
+new = '''    wizard.note('''
+
+[[rows]]
+id = "M13_fix_line_back_to_setup"
+description = "the refusal's remediation reverts to the run-setup token for every problem, the pre R-662 fix line"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    disagreement = config.backup_remote_disagreement(document)
+    if disagreement is None:
+        return Remediation(remedy=Remedy.RUN_SETUP, steps=tuple(problems))'''
+new = '''    disagreement = config.backup_remote_disagreement(document)
+    if True:
+        return Remediation(remedy=Remedy.RUN_SETUP, steps=tuple(problems))'''
+
+[[rows]]
+id = "M14_token_dropped_beside_others"
+description = "the token is dropped whenever the disagreement is present, even beside other problems"
+file = "src/cratekit/cli/setup.py"
+surface = "maintainer"
+tests = ["tests/test_doctor.py"]
+old = '''    if len(problems) > 1:
+        return Remediation(remedy=Remedy.RUN_SETUP, steps=steps)'''
+new = '''    if len(problems) > 2:
+        return Remediation(remedy=Remedy.RUN_SETUP, steps=steps)'''
+
+[[rows]]
+id = "M15_advice_names_spelled_remote"
+description = "the flag step recommends the spelled name, the one already refused, instead of the destinations' name"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''        f"re-run crate setup with --backup-remote {expected} to record the remote "'''
+new = '''        f"re-run crate setup with --backup-remote {spelled} to record the remote "'''
+
+[[rows]]
+id = "M16_flag_not_declared"
+description = "the parser no longer declares --backup-remote"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_cli_contract.py"]
+old = '''    parser.add_argument(
+        "--backup-remote",
+        help="the rclone remote the three destinations name, replacing a recorded one",
+    )'''
+new = ""
+
+[[rows]]
+id = "M17_repair_runs_despite_flag"
+description = "the rclone repair runs even when the flag was given"
+file = "src/cratekit/cli/setup.py"
+surface = "maintainer"
+tests = ["tests/test_doctor.py"]
+old = '''    if not args.backup_remote:
+        _replace_a_remote_rclone_lacks(wizard, document, machine)'''
+new = '''    if True:
+        _replace_a_remote_rclone_lacks(wizard, document, machine)'''
+
+[[rows]]
+id = "M18_repair_never_runs"
+description = "the rclone repair is never called"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if not args.backup_remote:
+        _replace_a_remote_rclone_lacks(wizard, document, machine)'''
+new = '''    if False:
+        _replace_a_remote_rclone_lacks(wizard, document, machine)'''
+
+[[rows]]
+id = "M1b_several_remotes_compared"
+description = "M1 again after the round's test: destinations naming several remotes are compared against the spelled remote anyway"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py"]
+old = '''    if len(named) != 1:
+        return None
+    expected = next(iter(named))'''
+new = '''    if not named:
+        return None
+    expected = next(iter(named))'''
+
+[[rows]]
+id = "M3b_blank_remote_disagrees"
+description = "M3 again after the round's test: a blank spelled remote is no longer treated as unset"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_doctor.py"]
+old = '''    if not isinstance(remote, str) or not remote.strip():
+        return None
+    named = {'''
+new = '''    if not isinstance(remote, str):
+        return None
+    named = {'''
+
+[[rows]]
+id = "M7_composite_with_M9"
+description = "M7 and M9 together, what the unreadable configuration guard holds once the known destination guard is gone; batch a's M7 is the row it pairs with"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if remotes is None or spelled.split(":", 1)[0] in remotes or expected not in remotes:'''
+new = '''    remotes = remotes or {}
+    if spelled.split(":", 1)[0] in remotes:'''

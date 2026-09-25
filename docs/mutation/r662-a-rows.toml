@@ -1,0 +1,102 @@
+name = "r662-a"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_several_remotes_compared"
+description = "destinations naming several remotes are compared against the spelled remote anyway, so an arbitrary one of them is called the expected name"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py"]
+old = '''    if len(named) != 1:
+        return None
+    expected = next(iter(named))'''
+new = '''    if not named:
+        return None
+    expected = next(iter(named))'''
+
+[[rows]]
+id = "M2_spelled_path_compared_whole"
+description = "the spelled remote is compared whole rather than by its name, so gdrive: beside gdrive destinations reads as a disagreement"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py"]
+old = '''    if remote.split(":", 1)[0] == expected:
+        return None
+    return remote, expected'''
+new = '''    if remote == expected:
+        return None
+    return remote, expected'''
+
+[[rows]]
+id = "M3_blank_remote_disagrees"
+description = "a blank spelled remote is no longer treated as unset, so whitespace disagrees with every destination"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_doctor.py"]
+old = '''    if not isinstance(remote, str) or not remote.strip():
+        return None
+    named = {'''
+new = '''    if not isinstance(remote, str):
+        return None
+    named = {'''
+
+[[rows]]
+id = "M4_validator_drops_disagreement"
+description = "the validator no longer reports a spelled remote the destinations disagree with"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py"]
+old = '''    disagreement = backup_remote_disagreement(data)
+    if disagreement is not None:'''
+new = '''    disagreement = backup_remote_disagreement(data)
+    if False:'''
+
+[[rows]]
+id = "M5_validator_message_loses_flag"
+description = "the validator's problem text no longer names the flag, reworded rather than truncated"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py"]
+old = '''Setup's --backup-remote replaces the "
+            f"spelled one (R-662)."'''
+new = '''Setup can be run again to "
+            f"change it (R-662)."'''
+
+[[rows]]
+id = "M6_flag_not_recorded"
+description = "the --backup-remote flag is parsed and never written into the document"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if args.backup_remote:
+        _put('''
+new = '''    if False:
+        _put('''
+
+[[rows]]
+id = "M7_unreadable_rclone_read_as_empty"
+description = "an unreadable rclone configuration is no longer kept apart from a read one, the None guard dropped"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if remotes is None or spelled.split(":", 1)[0] in remotes or expected not in remotes:'''
+new = '''    remotes = remotes or {}
+    if spelled.split(":", 1)[0] in remotes or expected not in remotes:'''
+
+[[rows]]
+id = "M8_known_spelled_remote_replaced"
+description = "a spelled remote rclone knows is replaced anyway, which is R-345's rule broken"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if remotes is None or spelled.split(":", 1)[0] in remotes or expected not in remotes:'''
+new = '''    if remotes is None or expected not in remotes:'''
+
+[[rows]]
+id = "M9_replaced_toward_unknown_remote"
+description = "the replacement no longer requires rclone to know the destinations' remote, so an empty dump swaps a right name for a typo"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if remotes is None or spelled.split(":", 1)[0] in remotes or expected not in remotes:'''
+new = '''    if remotes is None or spelled.split(":", 1)[0] in remotes:'''
