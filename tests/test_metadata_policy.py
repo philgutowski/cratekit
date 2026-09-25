@@ -25,6 +25,7 @@ import pytest
 
 from cratekit.core import naming, rb_writer, taxonomy
 from cratekit.core.cause import CratekitError
+from cratekit.core.exit_codes import Remedy
 from cratekit.write import metadata
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
@@ -202,6 +203,9 @@ def test_a_cut_value_on_neither_scale_is_refused_at_plan_time(value):
         metadata.plan_rating_backfill([Row("1", Rating=0)], {"1": 2}, cuts=curve)
     assert excinfo.value.cause.reason == "rating-scale-unknown"
     assert excinfo.value.cause.detail["rating"] == value
+    # The fix is an edit to the taxonomy's curve, the token every other
+    # taxonomy declaration refusal carries.
+    assert excinfo.value.cause.remediation.remedy == Remedy.FIX_CONFIG_VALUES
 
 
 def test_the_export_scale_is_what_rating_for_still_answers():
