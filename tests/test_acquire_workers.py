@@ -1138,3 +1138,76 @@ def test_a_different_list_named_beside_the_job_is_refused_and_nothing_is_fetched
     assert script.fetched == []
     assert states(job_id) == {"1": jobs.ItemState.PENDING}
     assert job_of(job_id).state is jobs.JobState.QUEUED
+
+
+def test_the_frozen_list_spelled_through_a_symlink_still_drives(cfg, script, library, tmp_path):
+    """Review round: two spellings of one file are one list, as the filesystem
+    answers it. A string comparison refused ``/tmp`` against ``/private/tmp``."""
+    script.landings = landings("1")
+    path = listed(library, [("1", "A", "T")])
+    job_id = queued(path)
+    alias = tmp_path / "alias"
+    alias.symlink_to(library, target_is_directory=True)
+
+    code, envelope = drive(["acquire", "download", str(alias / "list.json"), "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert states(job_id) == {"1": jobs.ItemState.DONE}
+
+
+def test_an_empty_job_identifier_is_refused_rather_than_queueing_the_list_again(cfg, library):
+    """``--job ""`` read by truthiness fell through to the queueing path."""
+    path = listed(library, [("1", "A", "T")])
+
+    code, envelope = drive(["acquire", "download", str(path), "--job", ""])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert "empty identifier" in envelope["cause"]["message"]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_a_command_naming_nothing_is_refused_before_the_configuration_is_read(
+    cfg, library, monkeypatch
+):
+    """Argparse refused it before anything ran, and so does the verb."""
+
+    def boom():
+        raise AssertionError("the configuration was read for a command naming nothing")
+
+    monkeypatch.setattr(acquire_cli, "_load", boom)
+
+    code, envelope = drive(["acquire", "download"])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+
+
+def test_a_refused_list_leaves_a_dead_drivers_claim_for_the_resume_to_reconcile(
+    cfg, script, library, monkeypatch
+):
+    """Review round: the list is checked before ``reconcile`` touches the queue."""
+    job_id = queued(listed(library, [("1", "A", "T")]))
+    other = listed(library, [("9", "Z", "Q")], name="other.json")
+    reconciled: list[str] = []
+    monkeypatch.setattr(jobs, "reconcile", lambda store, jid: reconciled.append(jid))
+
+    code, envelope = drive(["acquire", "download", str(other), "--job", job_id])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert reconciled == []
+
+
+def test_another_verbs_job_is_not_read_as_a_frozen_download_list(tmp_path):
+    """A payload under another handler may use the same key for another thing."""
+
+    class Job:
+        job_id = "j"
+        handler_key = "some.other.verb"
+        payload = {acquire_cli.LIST: str(tmp_path / "theirs.json")}
+
+    acquire_cli._same_list_or_refuse(str(tmp_path / "mine.json"), Job(), "acquire.download")
+    with pytest.raises(CratekitError) as refused:
+        acquire_cli._same_list_or_refuse(str(tmp_path / "mine.json"), Job(), Job.handler_key)
+    assert refused.value.cause.reason == "intake-list-unusable"
