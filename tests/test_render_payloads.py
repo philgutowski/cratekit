@@ -88,6 +88,57 @@ def test_a_resolution_word_the_progress_does_not_carry_is_not_printed_as_zero():
     assert not any(line.startswith("  next:") for line in lines)
 
 
+def test_the_reasons_follow_their_count_most_rows_first_and_ties_by_slug():
+    """R-682. The order is the count's, then the slug's, so two runs print alike."""
+    progress = {
+        "owned": 6,
+        "missing": 1,
+        "by_reason": {
+            "owned": {"credited-exact": 1, "exact": 3, "isrc-exact": 1, "verdict-accepted": 1},
+            "missing": {"not-in-library": 1},
+        },
+    }
+    lines = render.render_job_state(
+        job_state(verb="intake.playlist", state="succeeded", progress=progress)
+    )
+
+    owned_at = lines.index("  owned: 6 already in the library")
+    assert lines[owned_at + 1] == (
+        "    by reason: exact 3, credited-exact 1, isrc-exact 1, verdict-accepted 1"
+    )
+    missing_at = lines.index("  missing: 1 not in the library")
+    assert lines[missing_at + 1] == "    by reason: not-in-library 1"
+
+
+@pytest.mark.parametrize(
+    "by_reason",
+    [
+        None,
+        "exact 3",
+        {"owned": ["exact"]},
+        {"owned": {}},
+        {"owned": {"exact": "3", "isrc-exact": True, "title-approximate": 0}},
+        {"missing": {"not-in-library": 1}},
+    ],
+    ids=["absent", "not-a-mapping", "state-not-a-mapping", "empty", "no-whole-count", "other-state"],
+)
+def test_reasons_an_older_or_malformed_progress_cannot_state_print_no_line(by_reason):
+    """A build before R-682 carried no ``by_reason``; nothing is printed as if counted."""
+    progress = {"owned": 3} | ({} if by_reason is None else {"by_reason": by_reason})
+    lines = render.render_job_state(
+        job_state(verb="intake.set", state="succeeded", progress=progress)
+    )
+
+    assert "  owned: 3 already in the library" in lines
+    assert not any(line.startswith("    by reason:") for line in lines)
+
+
+def test_the_reasons_belong_to_the_intake_verbs_alone():
+    progress = {"owned": 1, "by_reason": {"owned": {"exact": 1}}}
+    lines = render.render_job_state(job_state(state="succeeded", progress=progress))
+    assert not any(line.startswith("    by reason:") for line in lines)
+
+
 def test_the_import_proof_is_gated_on_the_verb_as_well_as_the_schema():
     """Every planning verb answers plan/1 and only this one's items carry an action."""
     items = [{"session_id": "s", "action": "imported", "count": 2, "retired_to": "/a/f.xml.imported"}]
