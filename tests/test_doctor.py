@@ -1517,7 +1517,9 @@ def test_the_wizard_proposes_the_installed_pin_and_records_it_only_on_a_yes(
 def _no_backup_flags():
     from types import SimpleNamespace
 
-    return SimpleNamespace(backup_dest=None, backup_archive_root=None, backup_db_dest_root=None)
+    return SimpleNamespace(
+        backup_dest=None, backup_archive_root=None, backup_db_dest_root=None, backup_remote=None
+    )
 
 
 def test_the_wizard_asks_for_the_backup_destinations_when_the_module_is_on(configured):
@@ -1532,7 +1534,7 @@ def test_the_wizard_asks_for_the_backup_destinations_when_the_module_is_on(confi
     wizard = setup_verb._Wizard(
         document, Scripted(["yes", "gdrive:mirror", "gdrive:archive", "gdrive:db"])
     )
-    setup_verb._resolve_backup(wizard, document, _no_backup_flags())
+    setup_verb._resolve_backup(wizard, document, _no_backup_flags(), probes())
     assert document["backup"] == {
         "dest": "gdrive:mirror",
         "archive_root": "gdrive:archive",
@@ -1554,7 +1556,7 @@ def test_the_wizard_records_nothing_for_backup_when_the_offer_goes_unanswered(co
     """
     document = dict(configured.to_toml_dict())
     wizard = setup_verb._Wizard(document, silent())
-    setup_verb._resolve_backup(wizard, document, _no_backup_flags())
+    setup_verb._resolve_backup(wizard, document, _no_backup_flags(), probes())
     assert "backup" not in document
     assert wizard.asked == []
     note = next(n for n in wizard.notes if n.key == "setup.backup")
@@ -1572,7 +1574,7 @@ def test_the_wizard_asks_nothing_about_backup_when_the_module_is_off(configured)
         document,
         prompt.Prompter(read_line=lambda: "yes\n", read_secret=lambda _q: "", write=written.append),
     )
-    setup_verb._resolve_backup(wizard, document, _no_backup_flags())
+    setup_verb._resolve_backup(wizard, document, _no_backup_flags(), probes())
     assert written == []
     assert "backup" not in document
     note = next(n for n in wizard.notes if n.key == "setup.backup")
@@ -1595,7 +1597,9 @@ def test_backup_flags_are_recorded_even_when_the_module_is_off(configured):
             backup_dest="gdrive:mirror",
             backup_archive_root="gdrive:archive",
             backup_db_dest_root="gdrive:db",
+            backup_remote=None,
         ),
+        probes(),
     )
     assert document["backup"] == {
         "dest": "gdrive:mirror",
@@ -1619,8 +1623,12 @@ def test_a_declined_offer_still_records_the_flags_that_were_given(configured):
         wizard,
         document,
         SimpleNamespace(
-            backup_dest="gdrive:mirror", backup_archive_root="gdrive:archive", backup_db_dest_root=None
+            backup_dest="gdrive:mirror",
+            backup_archive_root="gdrive:archive",
+            backup_db_dest_root=None,
+            backup_remote=None,
         ),
+        probes(),
     )
     assert document["backup"] == {
         "dest": "gdrive:mirror",
@@ -1670,7 +1678,7 @@ def test_the_wizard_keeps_recorded_backup_destinations_without_asking(configured
         document,
         prompt.Prompter(read_line=lambda: "yes\n", read_secret=lambda _q: "", write=written.append),
     )
-    setup_verb._resolve_backup(wizard, document, _no_backup_flags())
+    setup_verb._resolve_backup(wizard, document, _no_backup_flags(), probes())
     assert written == []
     assert wizard.asked == []
     assert document == before
@@ -1746,6 +1754,151 @@ def test_a_bare_folder_name_is_refused_by_the_wizard_however_it_arrives(
     assert "backup.dest" in problems[0] and "'MusicBackup'" in problems[0]
     config.reset_cache()
     assert config.load().backup.dest is None, "the refused answer reached the file"
+
+
+def _spelled_remote_document(configured, spelled="remote"):
+    document = dict(configured.to_toml_dict())
+    document["backup"] = {
+        "remote": spelled,
+        "dest": "gdrive:mirror",
+        "archive_root": "gdrive:archive",
+        "db_dest_root": "gdrive:db",
+    }
+    return document
+
+
+def test_a_spelled_remote_rclone_lacks_is_replaced_by_the_destinations_remote(configured):
+    """R-662's producer at the wizard: the file spells a remote nothing can write
+    to and the destinations agree on another. rclone's configuration was READ
+    and lacks the spelled name, so a re-run repairs it and says so."""
+    document = _spelled_remote_document(configured)
+    wizard = setup_verb._Wizard(document, silent())
+    setup_verb._resolve_backup(
+        wizard,
+        document,
+        _no_backup_flags(),
+        probes(rclone_remotes=lambda _rclone: {"gdrive": {"type": "sftp"}}),
+    )
+    assert document["backup"]["remote"] == "gdrive"
+    note = next(n for n in wizard.notes if n.key == "setup.backup.remote")
+    assert "'remote'" in note.detail and "replaced with 'gdrive'" in note.detail
+    assert config.validate(document) == []
+
+
+@pytest.mark.parametrize(
+    "machine",
+    [
+        pytest.param(
+            {"rclone_remotes": lambda _r: {"remote": {}, "gdrive": {}}}, id="rclone-knows-it"
+        ),
+        pytest.param({"rclone_remotes": lambda _r: None}, id="rclone-unreadable"),
+        pytest.param({"find_binary": lambda _name: None}, id="rclone-absent"),
+    ],
+)
+def test_a_spelled_remote_is_kept_unless_rclone_was_read_and_lacks_it(configured, machine):
+    """R-345's rule stands where rclone knows the spelled remote, and where
+    rclone could not be asked, since a machine that could not say is not one
+    that said no. Nothing is replaced and validation still refuses."""
+    document = _spelled_remote_document(configured)
+    wizard = setup_verb._Wizard(document, silent())
+    setup_verb._resolve_backup(wizard, document, _no_backup_flags(), probes(**machine))
+    assert document["backup"]["remote"] == "remote"
+    assert not any(n.key == "setup.backup.remote" for n in wizard.notes)
+    problems = config.validate(document)
+    assert len(problems) == 1 and "backup.remote names 'remote'" in problems[0], problems
+
+
+def test_the_backup_remote_flag_replaces_a_spelled_remote_rclone_knows(configured):
+    """The explicit answer: a flag replaces the recorded value whatever rclone
+    says, which is the repair the refusal's fix line now names."""
+    from types import SimpleNamespace
+
+    document = _spelled_remote_document(configured)
+    wizard = setup_verb._Wizard(document, silent())
+    setup_verb._resolve_backup(
+        wizard,
+        document,
+        SimpleNamespace(
+            backup_dest=None,
+            backup_archive_root=None,
+            backup_db_dest_root=None,
+            backup_remote="gdrive",
+        ),
+        probes(rclone_remotes=lambda _r: {"remote": {}, "gdrive": {}}),
+    )
+    assert document["backup"]["remote"] == "gdrive"
+    assert "backup.remote (from the command line)" in wizard.asked
+    assert config.validate(document) == []
+
+
+def _spell_the_backup_remote(name: str) -> None:
+    path = config.config_path()
+    path.write_text(path.read_text() + f'\n[backup]\nremote = "{name}"\n')
+    config.reset_cache()
+
+
+_GDRIVE_DESTINATIONS = [
+    "--backup-dest", "gdrive:mirror",
+    "--backup-archive-root", "gdrive:archive",
+    "--backup-db-dest-root", "gdrive:db",
+]
+
+
+def test_the_disagreeing_remote_refusal_names_the_flag_and_the_flag_repairs_it(
+    configured, monkeypatch
+):
+    """Sitting 5 through the real dispatcher. The file spells ``remote``, rclone
+    knows a remote by that name so nothing is guessed, and the destinations on
+    the command line name ``gdrive``. The refusal's fix line used to be
+    ``crate setup``, the command that had just refused; it names the flag now,
+    and running what it names writes the file."""
+    seed_taxonomy(configured)
+    _spell_the_backup_remote("remote")
+    monkeypatch.setattr(
+        doctor,
+        "Probes",
+        lambda: probes(
+            rclone_remotes=lambda _r: {"remote": {"type": "sftp"}, "gdrive": {"type": "sftp"}}
+        ),
+    )
+
+    code, _out, err = drive(["setup", *_GDRIVE_DESTINATIONS])
+
+    assert code != int(ExitCode.OK), err
+    assert "config-unusable" in err
+    assert "fix: re-run crate setup with --backup-remote gdrive" in err, err
+    assert "fix: crate setup\n" not in err
+
+    code, out, err = drive(["--output", "json", "setup", "--backup-remote", "gdrive"])
+
+    assert code == int(ExitCode.OK), err
+    assert "backup.remote (from the command line)" in json.loads(out)["data"]["summary"][
+        "answered"
+    ]
+    config.reset_cache()
+    assert config.load().backup.remote == "gdrive"
+    assert tomllib.loads(config.config_path().read_text())["backup"]["remote"] == "gdrive"
+
+
+def test_a_re_run_repairs_a_spelled_remote_rclone_does_not_know(configured, monkeypatch):
+    """The other half of R-662 end to end: the spelled name is not among
+    rclone's, so the destinations given on the command line settle it with no
+    fourth flag and no hand move of the file."""
+    seed_taxonomy(configured)
+    _spell_the_backup_remote("remote")
+    monkeypatch.setattr(
+        doctor,
+        "Probes",
+        lambda: probes(rclone_remotes=lambda _r: {"gdrive": {"type": "sftp"}}),
+    )
+
+    code, out, err = drive(["--output", "json", "setup", *_GDRIVE_DESTINATIONS])
+
+    assert code == int(ExitCode.OK), err
+    checks = json.loads(out)["data"]["checks"]
+    assert any(c["key"] == "setup.backup.remote" for c in checks), checks
+    config.reset_cache()
+    assert config.load().backup.remote == "gdrive"
 
 
 def test_the_wizard_refuses_a_required_answer_it_cannot_obtain(tmp_path, monkeypatch):

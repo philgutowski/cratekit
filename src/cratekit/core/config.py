@@ -2563,21 +2563,49 @@ def _validate_backup_destinations(data: Mapping) -> list[str]:
             f"database snapshots are read back together, so they live under "
             f"one remote."
         )
-    remote = _dig(data, "backup.remote")
-    if isinstance(remote, str) and remote.strip() and len(set(named.values())) == 1:
-        expected = next(iter(named.values()))
-        # ``remote`` may be spelled bare, ``gdrive``, or as ``gdrive:`` or
-        # ``gdrive:path``; the name is what is compared, which is also what
-        # doctor looks up in rclone's configuration.
-        if remote.split(":", 1)[0] != expected:
-            problems.append(
-                f"backup.remote names {remote!r} and the backup destinations "
-                f"name {expected!r}. Doctor checks the remote it is told against "
-                f"rclone's configuration, and the transfers use the one in the "
-                f"destinations, so the two must agree or the check reports on a "
-                f"remote nothing writes to."
-            )
+    disagreement = backup_remote_disagreement(data)
+    if disagreement is not None:
+        remote, expected = disagreement
+        problems.append(
+            f"backup.remote names {remote!r} and the backup destinations "
+            f"name {expected!r}. Doctor checks the remote it is told against "
+            f"rclone's configuration, and the transfers use the one in the "
+            f"destinations, so the two must agree or the check reports on a "
+            f"remote nothing writes to."
+        )
     return problems
+
+
+def backup_remote_disagreement(data: Mapping) -> tuple[str, str] | None:
+    """The spelled ``backup.remote`` and the one remote the destinations name,
+    when the two differ; None otherwise.
+
+    None when no remote is spelled, and None when the set destinations do not
+    name exactly one remote, since destinations that disagree among themselves
+    are their own problem and give nothing to compare against. ``remote`` may be
+    spelled bare, ``gdrive``, or as ``gdrive:`` or ``gdrive:path``; the name is
+    what is compared, which is also what doctor looks up in rclone's
+    configuration.
+
+    Public because the wizard asks the same question to decide whether a re-run
+    may repair the remote and what its refusal tells a person to type (R-662).
+    One rule in one place, so the refusal and the repair cannot disagree about
+    whether there is a disagreement.
+    """
+    remote = _dig(data, "backup.remote")
+    if not isinstance(remote, str) or not remote.strip():
+        return None
+    named = {
+        name
+        for name in (backup_remote_name(_dig(data, key)) for key in BACKUP_DESTINATION_KEYS)
+        if name is not None
+    }
+    if len(named) != 1:
+        return None
+    expected = next(iter(named))
+    if remote.split(":", 1)[0] == expected:
+        return None
+    return remote, expected
 
 
 #: The intake ages the source system wrote into its own module as constants.
@@ -4203,6 +4231,7 @@ __all__ = [
     "StateRoot",
     "TaxonomyConfig",
     "atomic_write_bytes",
+    "backup_remote_disagreement",
     "backup_remote_name",
     "derived_backup_remote",
     "config_dir",
