@@ -1183,3 +1183,33 @@ def test_the_crawl_probes_exactly_the_methods_the_listing_reads_by_default():
     from cratekit.label import crawl
 
     assert crawl.LISTING_METHODS == listing.RELEASE_METHODS == ("get_albums", "get_ep_singles")
+
+
+def test_a_rate_limit_is_recognized_through_the_errors_it_was_declared_from():
+    """R-704. The sweep asks the error and every ``raise X from`` behind it.
+
+    A client that wraps the provider's answer still carries it, so a wrapped
+    ``TooManyRequests`` is a rate limit; an implicit context is not a cause
+    and is not read, and neither is an error that is not a rate limit.
+    """
+    from tidalapi.exceptions import TooManyRequests
+
+    from cratekit.label import sweep
+
+    limit = TooManyRequests("Album unavailable")
+    assert sweep._lookup_failure("m", limit).rate_limited is True
+
+    wrapped = RuntimeError("the client gave up")
+    wrapped.__cause__ = limit
+    assert sweep._lookup_failure("m", wrapped).rate_limited is True
+
+    implicit = RuntimeError("raised while handling one")
+    implicit.__context__ = limit
+    assert sweep._lookup_failure("m", implicit).rate_limited is False
+
+    assert sweep._lookup_failure("m", RuntimeError("provider 503")).rate_limited is False
+
+    looped = RuntimeError("names itself")
+    looped.__cause__ = looped
+    assert sweep._lookup_failure("m", looped).rate_limited is False
+    assert str(sweep._lookup_failure("the words", limit)) == "the words"

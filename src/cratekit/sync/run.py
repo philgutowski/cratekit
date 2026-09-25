@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Container, ContextManager, Protocol, Sequence
 
 from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.exit_codes import Remedy
 from cratekit.sync import artifacts, scope
 from cratekit.sync.watermarks import WatermarkStore
 
@@ -23,7 +24,18 @@ DEFAULT_LIMIT = 100
 
 
 class LookupFailure(Exception):
-    """Every listing call for this source failed. Distinct from a verified empty."""
+    """Every listing call for this source failed. Distinct from a verified empty.
+
+    ``rate_limited`` says the provider refused the listing for spending its
+    allowance too fast, and the source that caught the provider's error is the
+    one that knows (R-704). A rate limit clears on its own, so the refusal
+    :func:`increment` raises over one is retryable; every other failure keeps
+    the permanent reading this refusal always had.
+    """
+
+    def __init__(self, message: str = "", *, rate_limited: bool = False) -> None:
+        super().__init__(message)
+        self.rate_limited = rate_limited
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +157,22 @@ def increment(
         try:
             listed = list(source.list_recent(limit))
         except LookupFailure as exc:
+            if exc.rate_limited:
+                # R-704. The sitting's sweep recorded twenty rate limited labels
+                # as permanent, told the person resuming could not succeed, and
+                # the same lookups answered ten minutes later. The item is the
+                # retry unit, so the item cause carries the flag and the job's
+                # verdict and ``jobs.retry`` follow it.
+                raise refuse(
+                    "sync-source-lookups-failed",
+                    f"the provider rate limited the listing for {source.id} "
+                    f"({exc}); nothing was read, which is not a verified empty "
+                    f"catalogue, and the limit clears on its own",
+                    remedy=Remedy.RESUME_JOB,
+                    retryable=True,
+                    origin=("sync.run",),
+                    detail={"source_id": source.id, "rate_limited": True},
+                ) from exc
             raise refuse(
                 "sync-source-lookups-failed",
                 f"every listing call for {source.id} failed ({exc}); "

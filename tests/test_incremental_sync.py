@@ -21,6 +21,7 @@ import pytest
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError
+from cratekit.core.exit_codes import Remedy
 from cratekit.sync import artifacts, marks, run, scope, sources, watermarks
 
 
@@ -252,6 +253,45 @@ def test_every_lookup_failing_raises_and_does_not_advance(cfg):
 
     assert excinfo.value.cause.reason == "sync-source-lookups-failed"
     assert store.read("favorites") is None
+
+
+def test_a_lookup_failure_is_permanent_unless_the_source_says_rate_limited(cfg):
+    """R-704. The source that caught the provider's error decides, the increment relays.
+
+    The default keeps the permanent reading every lookup failure had, word for
+    word; a rate limit is retryable, names the resume, and says it was one.
+    """
+
+    def refusal(failure: run.LookupFailure):
+        with pytest.raises(CratekitError) as excinfo:
+            run.increment(
+                FakeSource("labels", lookup_error=failure),
+                owned=set(),
+                limit=10,
+                watermarks=watermarks.WatermarkStore(cfg),
+                artifacts=artifacts.ArtifactRegistry(cfg),
+                run_id="run-r704",
+                staging=Path(cfg.paths.download_staging),
+            )
+        return excinfo.value
+
+    plain = refusal(run.LookupFailure("labels down")).cause
+    assert plain.reason == "sync-source-lookups-failed"
+    assert plain.retryable is False
+    assert plain.remediation.steps == ("retry this source when the provider is reachable",)
+    assert "rate_limited" not in plain.detail
+
+    failure = run.LookupFailure("TooManyRequests: Album unavailable", rate_limited=True)
+    limited = refusal(failure)
+    assert limited.__cause__ is failure
+    cause = limited.cause
+    assert cause.reason == "sync-source-lookups-failed"
+    assert cause.retryable is True
+    assert cause.remediation.remedy is Remedy.RESUME_JOB
+    assert cause.detail == {"source_id": "labels", "rate_limited": True}
+    assert "rate limited" in cause.message
+    assert "TooManyRequests: Album unavailable" in cause.message
+    assert watermarks.WatermarkStore(cfg).read("labels") is None
 
 
 def test_one_source_failing_does_not_block_the_other(cfg):
