@@ -1,0 +1,102 @@
+{
+  "name": "r668-b",
+  "pass_kind": "light",
+  "branch": "relay/208",
+  "head": "94df6af",
+  "when": "2026-09-25 02:59 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10357,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "state_guarded": "/var/folders/04/3rzlk_9500jcdqrhfrkb8p380000gn/T/tmp.3ULrTh390F (0 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d36491790cbf0276",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10357,
+    "baseline_collected": 10357,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M8_named_not_absolutised",
+      "description": "the named list is compared without the freeze's absolutising, so a relative spelling from the queueing directory is refused",
+      "file": "src/cratekit/acquire/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6823265bc68f3e27",
+      "subset": [
+        "tests/test_acquire_workers.py",
+        "tests/test_acquire_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 85,
+      "baseline_collected": 85,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_workers.py::test_a_deleted_frozen_list_named_relative_from_where_it_was_queued_still_drives"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        given = Path(named).expanduser().absolute()\n    except RuntimeError:",
+      "new": "        given = Path(named).expanduser()\n    except RuntimeError:"
+    },
+    {
+      "id": "M12_home_expansion_raises",
+      "description": "a named list under a home directory that cannot be expanded raises instead of being compared as typed",
+      "file": "src/cratekit/acquire/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b6dc8cb8b99b89f8",
+      "subset": [
+        "tests/test_acquire_workers.py",
+        "tests/test_acquire_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 85,
+      "baseline_collected": 85,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_workers.py::test_a_list_under_a_home_that_cannot_be_expanded_is_refused_by_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except RuntimeError:\n        given = Path(named).absolute()",
+      "new": "    except RuntimeError:\n        raise"
+    }
+  ],
+  "dropped": []
+}

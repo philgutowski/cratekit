@@ -1,0 +1,24 @@
+name = "r668-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M8_named_not_absolutised"
+description = "the named list is compared without the freeze's absolutising, so a relative spelling from the queueing directory is refused"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''        given = Path(named).expanduser().absolute()
+    except RuntimeError:'''
+new = '''        given = Path(named).expanduser()
+    except RuntimeError:'''
+
+[[rows]]
+id = "M12_home_expansion_raises"
+description = "a named list under a home directory that cannot be expanded raises instead of being compared as typed"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''    except RuntimeError:
+        given = Path(named).absolute()'''
+new = '''    except RuntimeError:
+        raise'''

@@ -1,0 +1,160 @@
+name = "r668-a"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_list_required_again"
+description = "the list positional is required again, so --job alone is argparse's usage error, the defect sitting 7 hit"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''        "list",
+        nargs="?",
+        default=None,
+'''
+new = '''        "list",
+'''
+
+[[rows]]
+id = "M2_resume_argv_carries_the_list"
+description = "the resume argv and the drive it with line name the frozen list again"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''    return ["acquire", "download", "--job", job.job_id]'''
+new = '''    return ["acquire", "download", str((job.payload or {}).get(LIST) or ""), "--job", job.job_id]'''
+
+[[rows]]
+id = "M3_no_empty_job_guard"
+description = "an empty --job identifier is not refused, so it falls through to the queueing path and queues the list a second time"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''    if ctx.args.job is not None and not ctx.args.job.strip():
+        raise _unusable('''
+new = '''    if False:
+        raise _unusable('''
+
+[[rows]]
+id = "M4_no_missing_list_guard"
+description = "a command naming neither a list nor a job is not refused by the verb, and reads a list called None"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''    if ctx.args.list is None and ctx.args.job is None:
+        raise _unusable('''
+new = '''    if False:
+        raise _unusable('''
+
+[[rows]]
+id = "M5_missing_list_guard_after_load"
+description = "the missing list refusal runs after the configuration is read, so a command naming nothing has side effects first"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''    if ctx.args.list is None and ctx.args.job is None:
+        raise _unusable(
+            "no list was named and no job was given, so there is nothing to acquire",
+            "name the list of tracks to acquire",
+            "or continue an acquisition already queued with --job JOB_ID",
+        )
+    cfg = _load()
+'''
+new = '''    cfg = _load()
+    if ctx.args.list is None and ctx.args.job is None:
+        raise _unusable(
+            "no list was named and no job was given, so there is nothing to acquire",
+            "name the list of tracks to acquire",
+            "or continue an acquisition already queued with --job JOB_ID",
+        )
+'''
+
+[[rows]]
+id = "M6_no_list_check_on_resume"
+description = "a list named beside --job is never compared with the frozen one, so a different list is silently ignored and the job driven"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''            _same_list_or_refuse(
+                ctx.args.list, jobs.get(store, ctx.args.job), ctx.entry.handler_key
+            )
+'''
+new = '''            pass
+'''
+
+[[rows]]
+id = "M7_list_compared_as_strings"
+description = "the named and frozen lists are compared as strings, so a symlinked or /private spelling of the frozen list is refused"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''    if preflight._names_one_path(given, Path(frozen)):'''
+new = '''    if str(given) == frozen:'''
+
+[[rows]]
+id = "M8_named_not_absolutised"
+description = "the named list is compared without the freeze's absolutising, so a relative spelling from the queueing directory is refused"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''        given = Path(named).expanduser().absolute()
+    except RuntimeError:'''
+new = '''        given = Path(named).expanduser()
+    except RuntimeError:'''
+
+[[rows]]
+id = "M9_other_verbs_job_read"
+description = "another verb's job payload is read as a frozen download list"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''    if named is None or job.handler_key != handler_key:'''
+new = '''    if named is None:'''
+
+[[rows]]
+id = "M10_check_after_reconcile"
+description = "the list check runs after the sweep and the reconcile, so a refused command has already changed the queue"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''        if ctx.args.job:
+            # CHECKED BEFORE THE SWEEP AND THE RECONCILE, so a refused command
+            # leaves the queue exactly as it found it.
+            _same_list_or_refuse(
+                ctx.args.list, jobs.get(store, ctx.args.job), ctx.entry.handler_key
+            )
+        sweep_staging(Path(cfg.paths.download_staging), store)
+        if ctx.args.job:
+            # RECONCILE FIRST. A resume arrives after something stopped, and a
+            # claim left behind by a driver that died is state the queue cannot
+            # see for itself.
+            job = jobs.reconcile(store, ctx.args.job)
+'''
+new = '''        sweep_staging(Path(cfg.paths.download_staging), store)
+        if ctx.args.job:
+            job = jobs.reconcile(store, ctx.args.job)
+            _same_list_or_refuse(
+                ctx.args.list, jobs.get(store, ctx.args.job), ctx.entry.handler_key
+            )
+'''
+
+[[rows]]
+id = "M11_no_frozen_list_skip"
+description = "a job whose payload names no list is compared against an empty path and refuses any list named beside it"
+file = "src/cratekit/acquire/cli.py"
+surface = "maintainer"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''    if not frozen:
+        return
+    try:'''
+new = '''    try:'''
+
+[[rows]]
+id = "M12_home_expansion_raises"
+description = "a named list under a home directory that cannot be expanded raises instead of being compared as typed"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''    except RuntimeError:
+        given = Path(named).absolute()'''
+new = '''    except RuntimeError:
+        raise'''
