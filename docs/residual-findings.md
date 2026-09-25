@@ -26929,6 +26929,29 @@ size and the path rather than the table, and doctor reports the same.
 **Not on the board bar.** Maintainer facing: the wrong path was the author's,
 and the product refused rather than proceeding.
 
+**Closed 2026-09-25 on `relay/210`, issue #210.** `rb_writer.read_only_copy`
+refuses a copy that is empty BEFORE the open, and a copy whose canary read
+failed and whose own schema lists neither `agentRegistry` nor `djmdContent`,
+both under a new slug, `library-database-not-rekordbox`, at the
+`LIBRARY_UNAVAILABLE` code beside `library-database-missing`. The message
+names the configured path and the copy's size, "is empty, 0 bytes" or "is N
+bytes and holds none of the tables a rekordbox library keeps", never the
+table, and the remedy is `run-setup` with a step naming `--db-path` and the
+one master.db that is not empty. A copy holding one of the two tables stays
+`canary-read-failed`, since that is drift, and so does a file whose tables
+could not be listed, and a refusal raised before the canary keeps its own
+slug. Setup's `_refuse_a_database_that_is_not_one` takes the copy after the
+answers validate and before the pin, the drive rule and the save, and stops
+on that one slug, so nothing is recorded; a missing file, a running
+rekordbox, and any other refusal are left to the notes and doctor as before.
+Doctor's `library.paths_resolved` carries the same cause and remedy through.
+The review's two declined findings, kept here so they are not re-raised:
+setup now copies the database once more per run, which was kept rather than
+threading one copy through the drive rule, whose early return on a recorded
+map would skip the check; and the refusal lands after every question rather
+than at the path question, because the copy is opened under the pins the
+whole answer set describes. Filed R-719 and R-720.
+
 ---
 
 ## R-664. The index takes the title tag with its head on, so no processed file resolves owned and every heart is offered or missing
@@ -29132,3 +29155,53 @@ verb builds for itself carries the path, so nothing automated is affected.
 `acquire download`, or its help says the path is required either way.
 
 **Not on the board bar.** A wording and shape fix, no data at risk.
+
+---
+
+## R-719. A wrong database path is still named as a missing table where no copy is taken
+
+**Found:** on `relay/210`, 2026-09-25, by the built in review of R-663's fix.
+R-663's refusal lives in `rb_writer.read_only_copy`, so it answers only where
+a copy is taken. Setup takes none while rekordbox or its agent is running,
+and records the path it was given; and every verb that opens the configured
+path through `open_db` directly, the writers and the snapshot, still reports
+an empty or foreign file as `canary-read-failed` with the full statement and
+the `restore-from-snapshot` remedy.
+
+**Measured cost:** unmeasured. Not driven at a sitting. Setup under a running
+rekordbox also ends on doctor's `library.paths_resolved` refusing with
+`quit-rekordbox`, and the next run after quitting refuses under the new slug,
+so the wrong path is caught one run later rather than never.
+
+**Closes when:** setup refuses an empty path under a running rekordbox by a
+means that takes no copy under the live application and reads nothing from
+the live file, or records that it could not check; and `open_db` names a file
+that is not a library under the same slug on every surface, with a test per
+surface.
+
+**Not on the board bar.** Maintainer facing for the reason R-663 gives: the
+path is the person's, and the product refuses rather than proceeding.
+
+---
+
+## R-720. open_db leaves its handle open when the canary or the schema pin refuses
+
+**Found:** on `relay/210`, 2026-09-25, by the built in review of R-663's fix.
+`rb_writer.open_db` constructs the binding, then runs the canary and the
+schema pin, and a refusal from either propagates with the handle never
+passed to `close_db`. Under `read_only_copy` the temporary directory is then
+removed with the engine's pooled connection still open on it, which
+`close_db`'s own docstring describes as the condition that breaks a later
+read of the same files. R-663's listing opens and closes its own handle and
+does not add to it.
+
+**Measured cost:** unmeasured. Not driven. On macOS an open file unlinks, so
+the directory goes; a filesystem that refuses to unlink an open file would
+leave a `cratekit-copy-` directory behind, since the removal ignores errors.
+
+**Closes when:** `open_db` closes the handle it built on every refusal after
+the construction, with a test that counts open connections after a canary
+refusal.
+
+**Not on the board bar.** Maintainer facing: no row, file or report is
+affected on the platform the product runs on.

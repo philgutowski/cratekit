@@ -4,7 +4,29 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-682, issue #209, `relay/209`, 2026-09-24.** The intake
+**Last merged: R-663, issue #210, `relay/210`, 2026-09-25.** A database path
+whose file is not a library is refused by its size and its path.
+`rb_writer.read_only_copy` refuses an empty copy before the open, and a copy
+whose canary failed and whose schema lists neither `agentRegistry` nor
+`djmdContent`, under `library-database-not-rekordbox` at the
+`LIBRARY_UNAVAILABLE` code, naming the configured path and the size with a
+`run-setup` step naming `--db-path`. One canary table present, an unlistable
+file, and a refusal raised before the canary keep their own slugs. Setup's
+`_refuse_a_database_that_is_not_one` takes the copy before the pin, the drive
+rule and the save and stops on that slug, so nothing is recorded; doctor's
+`library.paths_resolved` carries the same cause. The built in review found an
+empty file answered by any refusal ahead of the canary, and a table listing
+the opener's spy could not see. **The numbers:** 10,385 collected, 10,384
+passed and 1 skipped, ruff clean, `scan_repo.py` exit 0. **The mutation table
+was MEASURED:** fifteen rows in `docs/mutation/r663-a-rows.toml` and
+`r663-b-rows.toml`, one user facing zero that got a test and was killed in
+`r663-b`, one maintainer facing zero logged in `r663-notes.md`, the leak
+guard watching empty temporary roots. Filed **R-719** (a wrong path is still
+named as a missing table where no copy is taken) and **R-720** (`open_db`
+leaves its handle open on a canary refusal), neither on the board bar.
+**Main's highest residual number is R-720.**
+
+**Merged before it: R-682, issue #209, `relay/209`, 2026-09-24.** The intake
 resolution counts each state by reason. `intake.cli._summary` adds
 `by_reason` under `progress`, keyed by state word and then by the
 `match.Why` slug each committed report carries, every state word a key and a

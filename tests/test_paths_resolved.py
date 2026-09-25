@@ -776,3 +776,247 @@ def test_the_read_only_copy_refuses_under_a_running_application_on_its_own(bench
         with rb_writer.read_only_copy(bench.db_path, cfg=bench.cfg):
             pass
     assert caught.value.cause.reason == "rekordbox-running"
+
+
+# ---------------------------------------------------------------------------
+# A path whose file is not a library (R-663)
+# ---------------------------------------------------------------------------
+
+
+def _empty(path: Path) -> Path:
+    """The file sitting 5 was given: zero bytes, beside where a library would be."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+    return path
+
+
+def _foreign(path: Path, tables: tuple[str, ...] = ("manage_tbl",)) -> Path:
+    """A real SQLite file holding tables, none of them the ones the canary reads.
+
+    rekordbox keeps several of these beside its own database, so a search for
+    a database file finds them too.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    for table in tables:
+        conn.execute(f"CREATE TABLE {table} (ID TEXT, value TEXT)")
+    conn.execute(f"INSERT INTO {tables[0]} VALUES ('1', 'x')")
+    conn.commit()
+    conn.close()
+    return path
+
+
+def _refusal_from_the_copy(path: Path, cfg: config.Config) -> CratekitError:
+    with pytest.raises(CratekitError) as caught:
+        with rb_writer.read_only_copy(path, cfg=cfg):
+            pass
+    return caught.value
+
+
+def test_the_copy_names_an_empty_file_by_its_size_and_its_configured_path(
+    bench, opened, monkeypatch
+):
+    _empty(bench.db_path)
+    measured: list[Path] = []
+    real = rb_writer._not_a_library
+
+    def spy(source, copied):
+        measured.append(Path(copied))
+        return real(source, copied)
+
+    monkeypatch.setattr(rb_writer, "_not_a_library", spy)
+
+    cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
+
+    assert cause.reason == "library-database-not-rekordbox"
+    assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    assert str(bench.db_path) in cause.message
+    assert "is empty, 0 bytes" in cause.message
+    # The size and the path, NOT the table the canary tripped on.
+    assert "no such table" not in cause.message
+    assert "agentRegistry" not in cause.message
+    assert cause.remediation.remedy is Remedy.RUN_SETUP
+    assert any("--db-path" in step for step in cause.remediation.steps)
+    assert cause.detail["path"] == str(bench.db_path)
+    assert cause.detail["size"] == 0
+    assert bench.db_path.read_bytes() == b""
+    # Measured on the copy, and refused before anything was opened at all.
+    assert len(measured) == 1
+    assert measured[0].parent.name.startswith("cratekit-copy-"), measured
+    assert not measured[0].exists()
+    assert opened == []
+
+
+def test_the_copy_names_a_file_holding_none_of_the_canary_tables(bench, opened):
+    bench.db_path.unlink()
+    _foreign(bench.db_path)
+    size = bench.db_path.stat().st_size
+    before = bench.digest()
+
+    cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
+
+    assert cause.reason == "library-database-not-rekordbox"
+    assert f"{size} bytes" in cause.message
+    assert "holds none of the tables" in cause.message
+    assert str(bench.db_path) in cause.message
+    assert "no such table" not in cause.message
+    assert cause.detail["size"] == size
+    assert cause.remediation.remedy is Remedy.RUN_SETUP
+    assert bench.digest() == before
+    _never_the_live_path(opened, bench.db_path)
+
+
+@pytest.mark.parametrize("present", rb_writer.CANARY_TABLES)
+def test_a_file_holding_one_canary_table_is_drift_and_keeps_the_canarys_refusal(
+    bench, present
+):
+    bench.db_path.unlink()
+    _foreign(bench.db_path, tables=(present,))
+
+    cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
+
+    assert cause.reason == "canary-read-failed"
+
+
+def test_a_file_that_is_not_sqlite_at_all_keeps_the_canarys_refusal(bench):
+    bench.db_path.write_bytes(b"not a database at all, and long enough to matter" * 40)
+
+    cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
+
+    assert cause.reason == "canary-read-failed"
+
+
+@pytest.mark.parametrize("make", [_empty, _foreign], ids=["empty", "foreign"])
+def test_setup_refuses_a_database_path_that_is_not_a_library_and_records_nothing(
+    bench, opened, monkeypatch, make
+):
+    """Sitting 5 through the real dispatcher: the wrong file one directory over."""
+    wrong = make(bench.root / "PIONEER" / "rekordbox" / "master.db")
+    live_bytes = bench.db_path.read_bytes()
+    asked: list[str] = []
+
+    def read_line() -> str:
+        asked.append("asked")
+        return "no\n"
+
+    monkeypatch.setattr(
+        prompt,
+        "Prompter",
+        lambda: _RealPrompter(read_line=read_line, read_secret=lambda _q: "", write=lambda _t: None),
+    )
+
+    code, envelope = drive(["setup", "--db-path", str(wrong)])
+
+    assert code == int(ExitCode.LIBRARY_UNAVAILABLE), envelope
+    assert envelope["cause"]["reason"] == "library-database-not-rekordbox"
+    assert str(wrong) in envelope["cause"]["message"]
+    assert "bytes" in envelope["cause"]["message"]
+    config.reset_cache()
+    assert Path(config.load().library.db_path) == bench.db_path
+    # Refused before the pin and the drive rule were offered: the one answer
+    # read is the backup offer that comes ahead of the validation.
+    assert len(asked) <= 1
+    assert bench.db_path.read_bytes() == live_bytes
+    # An empty copy is refused before any open; a foreign one is opened, and
+    # only ever as a copy.
+    assert (opened == []) is (make is _empty)
+    assert wrong not in opened
+    for path in opened:
+        assert path.parent.name.startswith("cratekit-copy-"), path
+
+
+def test_setup_leaves_a_missing_file_to_the_notes_and_takes_no_copy(bench, opened):
+    bench.db_path.unlink()
+    setup_verb._refuse_a_database_that_is_not_one(bench.cfg)
+    assert opened == []
+
+
+def test_setup_takes_no_copy_of_a_wrong_file_while_rekordbox_is_running(
+    bench, opened, monkeypatch
+):
+    _empty(bench.db_path)
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    setup_verb._refuse_a_database_that_is_not_one(bench.cfg)
+    assert opened == []
+
+
+def test_setup_leaves_a_damaged_library_to_the_notes_and_doctor(bench, opened):
+    bench.db_path.write_bytes(b"not a database at all, and long enough to matter" * 40)
+    assert setup_verb._refuse_a_database_that_is_not_one(bench.cfg) is None
+    _never_the_live_path(opened, bench.db_path)
+
+
+@pytest.mark.parametrize("make", [_empty, _foreign], ids=["empty", "foreign"])
+def test_the_file_whose_tables_are_listed_is_only_ever_a_copy(bench, monkeypatch, make):
+    """The table listing opens its own handle, beside ``open_db`` rather than
+    through it, so the spy on the opener cannot see it and this one can."""
+    bench.db_path.unlink()
+    make(bench.db_path)
+    listed: list[Path] = []
+    real = rb_writer._copy_tables
+
+    def spy(copied):
+        listed.append(Path(copied))
+        return real(copied)
+
+    monkeypatch.setattr(rb_writer, "_copy_tables", spy)
+    from pyrekordbox import Rekordbox6Database
+
+    constructed: list[Path] = []
+
+    class Watched(Rekordbox6Database):
+        def __init__(self, *args, path=None, **kwargs):
+            constructed.append(Path(path))
+            super().__init__(*args, path=path, **kwargs)
+
+    import pyrekordbox
+
+    monkeypatch.setattr(pyrekordbox, "Rekordbox6Database", Watched)
+
+    _refusal_from_the_copy(bench.db_path, bench.cfg)
+
+    assert (constructed == []) is (make is _empty)
+    assert bench.db_path not in constructed
+    assert bench.db_path not in listed
+    for path in constructed + listed:
+        assert path.parent.name.startswith("cratekit-copy-"), path
+    # An empty copy is refused before any open at all; a foreign one is listed.
+    assert (listed == []) is (make is _empty)
+
+
+def test_doctor_reports_an_empty_database_path_under_the_same_cause(bench, opened):
+    _empty(bench.db_path)
+
+    finding = next(
+        f
+        for f in doctor.run(bench.cfg, probes=_real_survey()).findings
+        if f.key == "library.paths_resolved"
+    )
+
+    assert finding.status is doctor.Status.FAIL
+    assert finding.cause is not None
+    assert finding.cause.reason == "library-database-not-rekordbox"
+    assert finding.remedy is Remedy.RUN_SETUP
+    assert "is empty, 0 bytes" in finding.detail
+    assert str(bench.db_path) in finding.detail
+    assert "no such table" not in finding.detail
+    assert opened == []
+
+
+def test_a_refusal_on_the_way_in_is_not_reclassified_as_a_wrong_path(bench, monkeypatch):
+    """Only the canary's own failure is asked whether the copy is a library.
+
+    A binding pin that refuses is a fact about this installation, true of every
+    file, and a foreign file behind it must still be answered with the pin.
+    """
+    bench.db_path.unlink()
+    _foreign(bench.db_path)
+
+    def drifted(_cfg=None):
+        raise rb_writer._unavailable("pyrekordbox-pin-drift", "the binding is not the pinned one")
+
+    monkeypatch.setattr(rb_writer, "assert_binding_version", drifted)
+
+    cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
+
+    assert cause.reason == "pyrekordbox-pin-drift"

@@ -5086,7 +5086,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # curve mixes the two. It is the planner's own, in cause.REASONS beside
     # config-unusable and not in the reserved table. Population 181 to 182,
     # non-reserved 153 to 154, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (182, 154, 28)
+    # Re-pinned on the residual finding "Setup accepts a zero byte database
+    # path and reports it as a missing table on the copy", 2026-09-24. ONE
+    # slug, named rather than counted: library-database-not-rekordbox, which
+    # the read only copy refuses with when the canary fails on a copy that is
+    # empty or holds none of the tables the canary reads, and which setup
+    # stops on before it saves. It is the copy's own, in cause.REASONS beside
+    # library-database-missing and not in the reserved table. Population 182
+    # to 183, non-reserved 154 to 155, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (183, 155, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5779,7 +5787,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # in even parts, a warning and not a cause because the set still queues
     # as one job. The refusal over the parts ceiling reuses
     # intake-recognition-spend-bound and its per-run kind.
-    assert (len(literals), len(literals - set(causes))) == (508, 327), (
+    # Re-pinned on the residual finding "Setup accepts a zero byte database
+    # path and reports it as a missing table on the copy", 2026-09-24: 508 to
+    # 509 distinct, non-keys UNCHANGED at 327. The one that joined is
+    # library-database-not-rekordbox, a key in cause.REASONS raised by
+    # core/rb_writer.py and compared against in cli/setup.py.
+    assert (len(literals), len(literals - set(causes))) == (509, 327), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

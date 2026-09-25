@@ -1012,6 +1012,41 @@ def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) 
     )
 
 
+def _refuse_a_database_that_is_not_one(cfg: config.Config) -> None:
+    """Refuse, writing nothing, a database path whose copy is not a library (R-663).
+
+    Sitting 5 gave this verb a zero byte ``master.db`` one directory over from
+    the live one, and setup recorded it. Every read of its copy then failed on a
+    missing table, twice in the one run, and nothing said the file was empty.
+    The judgement is ``rb_writer.read_only_copy``'s, taken on a COPY, so the
+    live file is never opened; this step only decides that its one refusal for
+    "this file is not a library" stops the verb before the save.
+
+    EVERY OTHER ANSWER LEAVES THE PATH TO THE NOTES AND TO DOCTOR, exactly as
+    before. No file at the path is a library not made yet. rekordbox running
+    means no whole copy can be taken, so nothing about the file is known. Any
+    other refusal from the copy is a library that may be damaged rather than a
+    wrong path, and the prefix rule's note and doctor's own check report it
+    under its own cause.
+    """
+    source = Path(cfg.library.db_path)
+    try:
+        if not source.is_file():
+            return
+    except OSError:
+        return
+    if rb_writer.rekordbox_processes_running():
+        return
+    try:
+        with rb_writer.read_only_copy(source, cfg=cfg):
+            pass
+    except CratekitError as exc:
+        if exc.cause.reason == "library-database-not-rekordbox":
+            raise
+    except OSError:
+        pass
+
+
 def _propose_pin(wizard: _Wizard, document: dict[str, Any], cfg: config.Config) -> bool:
     """Read the installed rekordbox version and OFFER it. Return whether it was taken.
 
@@ -1469,6 +1504,9 @@ def setup(ctx: "Context") -> Envelope:
         )
 
     cfg = config.from_dict(document)
+    # Before anything is proposed or saved, so a path that is not a library is
+    # refused with nothing recorded against it (R-663).
+    _refuse_a_database_that_is_not_one(cfg)
     # The pin is proposed against the configuration the answers describe and is
     # written back through the same document, so the file is saved once. Saving
     # twice would leave a window in which a config exists with the pin missing
