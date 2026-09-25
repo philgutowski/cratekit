@@ -27854,6 +27854,24 @@ renderer prints it.
 
 **Not on the board bar.** A missing line in a rendering, nothing false said.
 
+**Closed 2026-09-24 on `relay/209`, issue #209.** It belongs, decided here.
+`progress.by_reason` is keyed by the state word first and then by the
+`match.Why` slug, `{"owned": {"exact": 190, "isrc-exact": 16}, "offered":
+{...}, "missing": {...}, "suppressed": {}}`. Keyed by state because one reason
+lands rows in more than one state, `title-approximate` among them, so a flat
+count by reason could not say which count it explains, and keyed this way each
+state's reasons sum to its own count. Every state word is a key, as every count
+is; a reason is a key only when some row carries it. A report whose `why` is
+absent, empty or not a string counts in its state and under no reason. The
+json addition sits under `progress`, which the schema types as an open object,
+so no consumer generated from it fails. `render._resolution_lines` prints each
+state's reasons on the line under its count, `    by reason: exact 2`, most
+rows first and ties by slug, and names a shortfall last as `unstated N` rather
+than letting a partial breakdown read as complete. A progress with no
+`by_reason`, from a build before this one, prints no line. Driven through
+`intake playlist favorites --job` in both modes. Mutation table
+`docs/mutation/r682-a`, 15 rows, every row killed.
+
 ---
 
 ## R-683. The drive command is found by reading the job back and comparing verb names
