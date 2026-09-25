@@ -369,18 +369,33 @@ def _summary(cfg: config.Config, job) -> dict[str, Any]:
     report reaches for that number first and an absent field reads as "not
     yet counted" rather than as "this verb does not do that". What the set
     cost to identify rides along, from the payload that froze it.
+
+    ``by_reason`` IS KEYED BY STATE FIRST, then by the ``match.Why`` slug the
+    report carries, decided by R-682. A flat count by reason could not say
+    which state it explains, because one reason lands rows in more than one
+    state: ``title-approximate`` is offered or missing depending on what the
+    library holds. Every state word is a key, as every count is; a reason is
+    a key only when some row carries it, since sixteen zeros per state bury
+    the two that happened. A report with no ``why``, or one that is not a
+    string, is counted in its state and under no reason, so the reasons fall
+    short of the count rather than inventing one.
     """
     counts = {word: 0 for word in _STATE_WORDS.values()}
+    by_reason: dict[str, dict[str, int]] = {word: {} for word in counts}
     reports = artifacts.committed(ARTIFACTS, cfg, job.job_id)
     for report in reports:
         word = str(report.get("state") or "")
         if word in counts:
             counts[word] += 1
+            why = report.get("why")
+            if isinstance(why, str) and why:
+                by_reason[word][why] = by_reason[word].get(why, 0) + 1
     payload = job.payload or {}
     return {
         "reported": len(reports),
         "acquired": 0,
         **counts,
+        "by_reason": by_reason,
         "calls": int(payload.get(CALLS) or 0),
         "unreached": int(payload.get(UNREACHED) or 0),
         "parts": int(payload.get(PARTS) or 1),

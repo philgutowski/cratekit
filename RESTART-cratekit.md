@@ -4,7 +4,25 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-668, issue #208, `relay/208`, 2026-09-24.** `crate acquire
+**Last merged: R-682, issue #209, `relay/209`, 2026-09-24.** The intake
+resolution counts each state by reason. `intake.cli._summary` adds
+`by_reason` under `progress`, keyed by state word and then by the
+`match.Why` slug each committed report carries, every state word a key and a
+reason only when some row has it; a `why` absent, empty or not a string
+counts in its state and under no reason. The shape is decided in the ledger
+entry. The human rendering of `intake playlist` and `intake set` prints each
+state's reasons under its count, most rows first, ties by slug, a shortfall
+named last as `unstated N`, and nothing for a progress without the field. The
+built in review found the shortfall reading as complete, a bool passing the
+count check, and a non string `why` becoming a slug. **The numbers:**
+10,371 collected, 10,370 passed and 1 skipped,
+ruff clean, `scan_repo.py` exit 0. **The mutation table was MEASURED:** fifteen rows in
+`docs/mutation/r682-a-rows.toml`, every row killed, the leak guard watching an
+empty temporary root because the installed copy's `analyze vocals` job was
+still writing the real one; `r682-notes.md` says so. No residual filed.
+**Main's highest residual number is R-718.**
+
+**Merged before it: R-668, issue #208, `relay/208`, 2026-09-24.** `crate acquire
 download --job <id>` drives the queued job alone. The `list` positional is
 optional, and `download_argv` is `acquire download --job <id>`, so the
 respawned child and the "drive it with" line both name the job alone. A list

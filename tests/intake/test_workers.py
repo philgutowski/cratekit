@@ -732,6 +732,12 @@ def test_a_set_job_runs_pending_to_done_and_reports_owned_offered_and_missing(
     assert progress["reported"] == 3
     assert (progress["owned"], progress["offered"], progress["missing"]) == (1, 1, 1)
     assert progress["acquired"] == 0
+    assert progress["by_reason"] == {
+        "owned": {"exact": 1},
+        "offered": {"version-differs": 1},
+        "missing": {"not-in-library": 1},
+        "suppressed": {},
+    }
     for item in items_of(job_id):
         assert item.artifact and Path(item.artifact).is_file()
         assert json.loads(Path(item.artifact).read_text())["item_id"] == item.item_id
@@ -1441,6 +1447,79 @@ def test_the_resolution_names_owned_offered_and_missing_and_the_next_command(
     assert "  suppressed: 0 deleted on purpose" in lines, text
     assert f"  next: crate intake missing --job {job_id}" in lines, text
     assert not any(line.startswith("  drive it with:") for line in lines), text
+
+
+def test_each_resolution_count_is_followed_by_its_reasons(cfg, library, monkeypatch):
+    """R-682: sittings 8 and 10 read the reasons off the artifacts because nothing
+    printed them. Each count's reasons sit on the line under it, and a state no
+    row reached prints none."""
+    job_id, _ = queued_hearts(cfg, library, monkeypatch)
+
+    code, text = drive_human(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), text
+    lines = text.splitlines()
+    owned_at = lines.index("  owned: 2 already in the library")
+    assert lines[owned_at + 1] == "    by reason: exact 2", text
+    offered_at = lines.index(
+        "  offered: 1 held in another version, offered for review; see: crate review list"
+    )
+    assert lines[offered_at + 1] == "    by reason: version-differs 1", text
+    missing_at = lines.index("  missing: 2 not in the library")
+    assert lines[missing_at + 1] == "    by reason: not-in-library 2", text
+    suppressed_at = lines.index("  suppressed: 0 deleted on purpose")
+    assert lines[suppressed_at + 1] == f"  next: crate intake missing --job {job_id}", text
+    assert sum(line.startswith("    by reason:") for line in lines) == 3, text
+
+
+def test_the_reasons_are_read_back_from_the_reports_on_every_resume(cfg, library, monkeypatch):
+    """A second resume over a finished job counts the same reasons, because they are
+    read from the committed artifacts rather than kept by the process that ran them."""
+    job_id, _ = queued_hearts(cfg, library, monkeypatch)
+    code, first = drive(resume_argv(job_id))
+    assert code == int(ExitCode.OK), first
+
+    code, again = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), again
+    reasons = again["data"]["progress"]["by_reason"]
+    assert reasons == first["data"]["progress"]["by_reason"]
+    assert reasons == {
+        "owned": {"exact": 2},
+        "offered": {"version-differs": 1},
+        "missing": {"not-in-library": 2},
+        "suppressed": {},
+    }
+
+
+def test_a_report_without_a_reason_counts_in_its_state_and_under_no_reason(cfg, monkeypatch):
+    """Reports no worker writes today, read the way ``_summary`` reads any: a missing
+    ``why`` is not given one, and a state word the counts do not know is not counted
+    under any state, reason or no reason."""
+    reports = [
+        {"state": "owned", "why": "exact"},
+        {"state": "owned", "why": "isrc-exact"},
+        {"state": "owned"},
+        {"state": "owned", "why": ""},
+        {"state": "owned", "why": 3},
+        {"state": "misplaced", "why": "exact"},
+    ]
+    monkeypatch.setattr(intake_cli.artifacts, "committed", lambda *args: reports)
+
+    class Job:
+        job_id = "j-1"
+        payload: dict = {}
+
+    summary = intake_cli._summary(cfg, Job())
+
+    assert summary["owned"] == 5
+    assert summary["reported"] == 6
+    assert summary["by_reason"] == {
+        "owned": {"exact": 1, "isrc-exact": 1},
+        "offered": {},
+        "missing": {},
+        "suppressed": {},
+    }
 
 
 def test_a_resolution_with_nothing_missing_names_no_next_command(cfg, library, monkeypatch):

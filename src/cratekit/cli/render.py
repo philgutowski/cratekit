@@ -427,17 +427,56 @@ def _resolution_lines(job_id: str, state: str, progress: Mapping[str, Any]) -> l
 
     Only the words the progress actually carries. A resolution from a build that
     did not count one of them says nothing about it, rather than a zero that
-    reads as counted.
+    reads as counted. Each count is followed by its reasons when the progress
+    carries ``by_reason`` for that word (R-682). A bool is not a count, though
+    Python calls it an int.
     """
-    lines = [
-        f"  {word}: {progress[word]} {said}"
-        for word, said in _RESOLUTION_WORDS
-        if isinstance(progress.get(word), int)
-    ]
-    if state == "succeeded" and isinstance(progress.get("missing"), int) and progress["missing"]:
+    lines = []
+    for word, said in _RESOLUTION_WORDS:
+        count = progress.get(word)
+        if not _whole(count):
+            continue
+        lines.append(f"  {word}: {count} {said}")
+        reasons = _reasons_for(progress, word, count)
+        if reasons:
+            lines.append(f"    by reason: {reasons}")
+    if state == "succeeded" and _whole(progress.get("missing")) and progress["missing"]:
         # ONLY A SUCCEEDED JOB, because ``intake missing`` refuses every other.
         lines.append(f"  next: crate intake missing --job {job_id}")
     return lines
+
+
+def _whole(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _reasons_for(progress: Mapping[str, Any], word: str, count: int) -> str:
+    """One state's reasons as ``slug count`` pairs, most rows first, or empty.
+
+    The slugs are printed as the report spells them rather than as sentences,
+    because they are the identifiers a person greps the artifacts for. A count
+    that is not a whole number is skipped rather than guessed at, and a
+    resolution from a build that did not count reasons prints no line at all.
+
+    ROWS NO REASON EXPLAINS ARE SAID, as ``unstated N`` last, when the state's
+    breakdown is present and falls short of its count. Without it a partial
+    breakdown reads as a complete one, and a reader cannot tell a report that
+    carried no reason from arithmetic that went wrong.
+    """
+    by_reason = progress.get("by_reason")
+    if not isinstance(by_reason, Mapping):
+        return ""
+    reasons = by_reason.get(word)
+    if not isinstance(reasons, Mapping):
+        return ""
+    counted = [
+        (str(why), n) for why, n in reasons.items() if _whole(n) and n > 0
+    ]
+    counted.sort(key=lambda pair: (-pair[1], pair[0]))
+    unstated = count - sum(n for _, n in counted)
+    if unstated > 0:
+        counted.append(("unstated", unstated))
+    return ", ".join(f"{why} {n}" for why, n in counted)
 
 
 def _proof_line(item: Mapping[str, Any]) -> str:
