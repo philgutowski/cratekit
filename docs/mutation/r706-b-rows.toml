@@ -1,0 +1,50 @@
+name = "r706-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_partition_front_loads_the_remainder"
+description = "The remainder goes to the first part whole instead of one chunk to each of the first parts, so a cut is uneven and can exceed the bound"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''        size = base + (1 if index < extra else 0)'''
+new = '''        size = base + (extra if index == 0 else 0)'''
+
+[[rows]]
+id = "B2_parts_needed_floors"
+description = "parts_needed floors instead of ceiling, so 732 chunks is one part of 732"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    return -(-planned // per_run)'''
+new = '''    return max(1, planned // per_run)'''
+
+[[rows]]
+id = "B3_partition_drops_the_remainder"
+description = "Every part is cut to the base size, so the remainder chunks fall out of the grid"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''        parts.append(tuple(offsets[start : start + size]))'''
+new = '''        parts.append(tuple(offsets[start : start + base]))'''
+
+[[rows]]
+id = "B4_parts_reported_as_one"
+description = "The result says one part whatever the cut"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''        parts=len(parts),'''
+new = '''        parts=1,'''
+
+[[rows]]
+id = "B5_chunks_count_the_first_part"
+description = "The walked grid is rebuilt from the first part only, so chunks and cached count one part"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    offsets = tuple(offset for part in parts for offset in part)'''
+new = '''    offsets = tuple(parts[0]) if parts else ()'''
+
+[[rows]]
+id = "B6_grid_not_partitioned"
+description = "identify hands the whole grid over as one part, so the run guard meets a 5 hour mix"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+old = '''    parts = partition(offsets, per_run=spend.per_run)'''
+new = '''    parts = (offsets,)'''
