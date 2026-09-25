@@ -2456,3 +2456,55 @@ def test_a_listing_failure_that_is_not_a_rate_limit_stays_permanent(
     assert cause.retryable is False
     assert "rate_limited" not in cause.detail
     assert "rate limited" not in cause.message
+
+
+class RateLimitedResolve(FakeCatalogue):
+    """The artist resolve answers rate limited, before any listing is asked."""
+
+    def artist_for(self, entry):
+        self.asked_for.append(str(getattr(entry, "label_id", entry)))
+        raise TooManyRequests("Artist unavailable")
+
+
+class RateLimitedProbe:
+    """An artist whose listing attribute is a lazy read the provider refuses.
+
+    ``crawl.can_list`` reads the attribute with ``getattr`` and a default,
+    which swallows only ``AttributeError``, so the provider's own error
+    reaches the sweep's probe boundary rather than the listing's.
+    """
+
+    @property
+    def get_albums(self):
+        raise TooManyRequests("Artist unavailable")
+
+
+@pytest.mark.parametrize(
+    "fake",
+    [
+        pytest.param(lambda: RateLimitedResolve(), id="artist-resolve"),
+        pytest.param(
+            lambda: FakeCatalogue(artists={SLUGS[0]: RateLimitedProbe()}), id="listing-probe"
+        ),
+    ],
+)
+def test_a_rate_limit_at_every_other_sweep_boundary_is_retryable(
+    installed, monkeypatch, fake
+):
+    """R-704. The sweep has four provider boundaries and each asks the question.
+
+    The listing and the verifier are driven above; these are the other two,
+    the resolve of the label's artist and the probe of its listing methods.
+    """
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, fake())
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    cause = item_cause(job_id, SLUGS[0])
+    assert cause.reason == "sync-source-lookups-failed"
+    assert cause.retryable is True
+    assert "TooManyRequests: Artist unavailable" in cause.message
