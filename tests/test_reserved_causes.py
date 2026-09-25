@@ -5068,7 +5068,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # engine's own, in cause.REASONS and not in the reserved table, as
     # job-unknown and no-evidence beside them are. Population 177 to 179,
     # non-reserved 149 to 151, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (179, 151, 28)
+    # Re-pinned on the residual finding "Nothing keeps a label sweep and a
+    # download from sharing one rate limited account", 2026-09-24. TWO slugs,
+    # named rather than counted: provider-cooldown, which the provider gate
+    # raises when a rate limit survives the retry ladder and which every
+    # provider opener refuses with inside the cooldown that follows, and
+    # provider-gate-held, which one call refuses with when another driver has
+    # held the one call at a time lock for longer than a call can take. Both
+    # are the gate's own, in cause.REASONS beside provider-blocked and
+    # job-driver-held, and not in the reserved table. Population 179 to 181,
+    # non-reserved 151 to 153, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (181, 153, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5734,7 +5744,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # both export sweeps give for the nested membership their file cannot land.
     # Nothing refuses with it, which is why both halves move by one, and
     # nothing left.
-    assert (len(literals), len(literals - set(causes))) == (502, 324), (
+    # Re-pinned on the residual finding "Nothing keeps a label sweep and a
+    # download from sharing one rate limited account", 2026-09-24: 502 to 504
+    # distinct, non-keys UNCHANGED at 324. The two that joined are
+    # provider-cooldown and provider-gate-held, both keys in cause.REASONS,
+    # both raised by core/provider_gate.py, which is why only the distinct
+    # half moves. Then 504 to 505 distinct, non-keys 324 to 325, for
+    # provider-spend, a warning code and NOT a key, spelled once as
+    # `PROVIDER_SPEND` in `cli/__init__.py`, which the dispatcher puts on
+    # every envelope whose run reached the streaming provider, with the call
+    # count and the rate limit answers. Nothing refuses with it, which is why
+    # both halves move by one.
+    assert (len(literals), len(literals - set(causes))) == (505, 325), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -5831,7 +5852,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # resolving to the cause `cause.py` declares, and raises through
     # `cause.refuse` with an explicit remedy, so the plan, the apply and the
     # doctor check spell the slug from one place. It holds no in-range integer.
-    assert (len(without), len(with_own), len(both)) == (10, 24, 13), (
+    #
+    # Re-pinned on the residual finding "Nothing keeps a label sweep and a
+    # download from sharing one rate limited account", 2026-09-24: without-own
+    # 10 to 11, with-own 24 to 25, the integer half unchanged at 13. Named from
+    # this derivation's own output: `core/provider_gate.py` joined, and it
+    # joined the without-own half for the searcher's reason above. It names its
+    # two slugs once each, as `COOLDOWN` and `HELD`, resolving to the causes
+    # `cause.py` declares, and builds each cause in one place, so the trip, the
+    # refusal at every opener and the lock wait spell the slug from one line.
+    # It holds no in-range integer: 429, 120, 900 and 6 are a status, a wait,
+    # a cooldown and a count, none near a code.
+    assert (len(without), len(with_own), len(both)) == (11, 25, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -6282,7 +6314,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refusals of the one loader for a library's active taxonomy, and holds no
     # integer at all. Measured by this pair moving by one on the holders side
     # and by nothing on the other.
-    assert (len(literal_holders), len(literal_both)) == (104, 24), (
+    # Re-pinned on the residual finding "Nothing keeps a label sweep and a
+    # download from sharing one rate limited account", 2026-09-24: holders move
+    # 104 to 105, and the also-holds-an-integer half is UNCHANGED at 24. ONE
+    # module joined and none left, and it is a new file. core/provider_gate.py
+    # names provider-cooldown and provider-gate-held as its two constants and
+    # builds each cause once, and its integers, 429, 120, 900 and 6, are a
+    # status, a wait, a cooldown and a count, none in the reserved range.
+    # Measured by this pair moving by one on the holders side and by nothing
+    # on the other.
+    assert (len(literal_holders), len(literal_both)) == (105, 24), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

@@ -95,6 +95,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import math
 import os
 import re
 import tempfile
@@ -783,6 +784,35 @@ STATE_FILES: tuple[StateFile, ...] = (
             "beside it. It follows its file to the same root by necessity: a lock "
             "under a different root than the thing it protects is a lock two "
             "processes can each hold while both edit the same file."
+        ),
+    ),
+    StateFile(
+        key="provider_gate",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="provider_gate.json",
+        why=(
+            "The streaming provider's pacing state (R-705): when the last call "
+            "went out, how many rate limit answers came back in a row, when the "
+            "breaker tripped and when its cooldown lifts, and the running call "
+            "totals. It describes the ACCOUNT's allowance, not a library: two "
+            "libraries swept on one account share one limit, so one file beside "
+            "the credential is the only placement that can tell the truth."
+        ),
+    ),
+    StateFile(
+        key="provider_gate_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="provider_gate.lock",
+        why=(
+            "The one call at a time lock over the streaming provider, held for "
+            "the whole of each call so two drivers never have a request in "
+            "flight together. It follows its file to the same root by necessity: "
+            "a lock under a different root than the state it protects is a lock "
+            "two processes can each hold while both pace off the same account."
         ),
     ),
     StateFile(
@@ -2654,6 +2684,38 @@ class RecognitionConfig:
     monthly_calls: int = DEFAULT_RECOGNITION_MONTHLY_CALLS
 
 
+#: The least time between two consecutive calls to the streaming provider, from
+#: any process on this machine. One a second is well under any published music
+#: API allowance; the eleventh sitting's sweep, unpaced, tripped the account in
+#: minutes. Named here as well as on the field for the reason the intake ages
+#: give: ``slots=True`` hides a field default from the validator.
+DEFAULT_PROVIDER_MIN_INTERVAL_S = 1.0
+
+#: How long every provider call is refused after the breaker trips. Fifteen
+#: minutes, because the sitting's limit cleared in about ten and a window
+#: shorter than the clearing time is a second trip.
+DEFAULT_PROVIDER_COOLDOWN_S = 900
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderConfig:
+    """How the streaming provider's account is protected from this machine (R-705).
+
+    ``min_interval_s`` is the pacing every call goes through, in
+    ``core.provider_gate``, measured from the last call ANY process made.
+    ``cooldown_s`` is how long the breaker holds once a rate limit has survived
+    the retry ladder. Both are refusals and never warnings: a call inside the
+    cooldown is not made, and the refusal names this section.
+
+    Both live in the user's file rather than as constants in the module, on the
+    rule ``ReportsConfig`` states, and both are frozen with a queued job like
+    everything else the job reads. There is no value that switches either off.
+    """
+
+    min_interval_s: float = DEFAULT_PROVIDER_MIN_INTERVAL_S
+    cooldown_s: int = DEFAULT_PROVIDER_COOLDOWN_S
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     """The whole validated configuration, frozen.
@@ -2683,6 +2745,7 @@ class Config:
     reports: ReportsConfig = field(default_factory=ReportsConfig)
     outbound: OutboundConfig = field(default_factory=OutboundConfig)
     recognition: RecognitionConfig = field(default_factory=RecognitionConfig)
+    provider: ProviderConfig = field(default_factory=ProviderConfig)
 
     # -- derived views -----------------------------------------------------
 
@@ -3006,7 +3069,43 @@ def validate(data: Mapping) -> list[str]:
     problems += _validate_aging_thresholds(data)
     problems += _validate_export_staleness(data)
     problems += _validate_recognition(data)
+    problems += _validate_provider(data)
 
+    return problems
+
+
+def _validate_provider(data: Mapping) -> list[str]:
+    """The pacing interval and the breaker's cooldown (R-705).
+
+    Checked here for the reason the recognition bound is: a wrong value in a
+    file is a problem with a key name attached, and a wrong interval reaching
+    the gate is an account rate limited with a clean configuration.
+    """
+    problems: list[str] = []
+    key = "provider.min_interval_s"
+    interval = _dig(data, key)
+    if interval is not None and (
+        isinstance(interval, bool)
+        or not isinstance(interval, (int, float))
+        or not math.isfinite(interval)
+        or interval <= 0
+    ):
+        problems.append(
+            f"{key} must be a positive number of seconds between two calls to the "
+            f"streaming provider, found {interval!r}. There is no value that "
+            f"switches pacing off; a person who wants it faster writes a smaller "
+            f"number."
+        )
+    key = "provider.cooldown_s"
+    cooldown = _dig(data, key)
+    if cooldown is not None and (
+        not isinstance(cooldown, int) or isinstance(cooldown, bool) or cooldown < 1
+    ):
+        problems.append(
+            f"{key} must be a positive whole number of seconds the breaker holds "
+            f"after the provider rate limits a run, found {cooldown!r}. There is "
+            f"no value that switches the cooldown off."
+        )
     return problems
 
 
@@ -3409,6 +3508,7 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         reports=_build(ReportsConfig, data.get("reports") or {}),
         outbound=_build(OutboundConfig, data.get("outbound") or {}),
         recognition=_build(RecognitionConfig, data.get("recognition") or {}),
+        provider=_build(ProviderConfig, data.get("provider") or {}),
     )
 
 

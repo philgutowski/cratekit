@@ -148,6 +148,23 @@ A match also carries the cover URL off the same catalogue row as its genre,
 never off another row, because the artist and title gate that picks the genre
 is the only thing that says the picture belongs to this track.
 
+### Provider gate
+The one seam every call to the streaming provider passes, `core/provider_gate`,
+attached to the transport of each client the product builds so nothing above
+it can bypass it. It paces calls to a minimum interval measured from the last
+call any process on the machine made, honours a `Retry-After` the provider
+sends, counts every call and every rate limit answer, and holds one lock for
+the whole of each call so two drivers never have a request in flight together.
+Its numbers are the `[provider]` section of the configuration.
+
+A **trip** is the gate stopping a run: six consecutive rate limit answers,
+the count one spent retry ladder costs, or a `Retry-After` at or above the
+cooldown. A trip is raised as the job engine's park, so the item in flight goes
+back to pending and the driver claims nothing further. The **cooldown** is the
+window after a trip, written to the gate's state file with the time it lifts,
+during which every opener refuses before it logs in, from any shell, naming
+that time. Neither is a warning; both are refusals.
+
 ### Active taxonomy
 The copy of a taxonomy template that setup puts beside the database, under
 `.cratekit/coupled/taxonomy.toml` on the library volume, and the one declaration

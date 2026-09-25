@@ -439,7 +439,9 @@ def resolve(cfg: config.Config) -> Catalogue:
     that does not import is this build's own gap, and authenticating again would
     not move it.
     """
-    del cfg  # the credential is installation scoped; the library does not pick it
+    # The credential is installation scoped and the library does not pick it;
+    # the configuration is still handed on, because the pacing gate reads its
+    # interval and cooldown off the FROZEN one a job carries (R-705).
     if not secrets.exists(str(secrets.Credential.PROVIDER_SESSION)):
         raise refuse(
             "credential-missing",
@@ -455,7 +457,7 @@ def resolve(cfg: config.Config) -> Catalogue:
     except ImportError as exc:
         raise _unbound(exc) from exc
     try:
-        return tidal_catalogue.open_catalogue()
+        return tidal_catalogue.open_catalogue(cfg)
     except ProviderUnavailable as exc:
         raise refuse(
             "unavailable-transient",

@@ -1,0 +1,188 @@
+name = "r705-a"
+pass_kind = "light"
+
+# R-705: the provider gate. Part A of two, thirteen rows on the gate module
+# itself, core/provider_gate.py: the interval, the Retry-After hold, the trip
+# count and its two triggers, the cooldown record and its two checks, the
+# long wait outside the lock, the lock limit, the remembered park and the
+# process counter. Part B is the seams. Split so each batch stays under the
+# harness ceiling in the foreground. Author's table, no independent verifier
+# (METHOD, 2026-09-07).
+
+[[rows]]
+id = "G1_interval_halved"
+description = "the shared interval is halved, so consecutive calls wait half of what the configuration says"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''
+                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "G2_last_call_ignored"
+description = "the interval is measured from now rather than from the last call any process made, so a second gate never waits on the first"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''
+                due = max(now, state.not_before)
+'''
+
+[[rows]]
+id = "G3_retry_after_ignored"
+description = "a Retry-After the provider sends no longer holds the next call"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+                state.not_before = max(state.not_before, now + retry_after)
+'''
+new = '''
+                state.not_before = state.not_before
+'''
+
+[[rows]]
+id = "G4_trip_after_off_by_one"
+description = "the breaker trips one answer late, after seven rather than the six a spent ladder costs"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+TRIP_AFTER = 6
+'''
+new = '''
+TRIP_AFTER = 7
+'''
+
+[[rows]]
+id = "G5_no_trip_on_long_retry_after"
+description = "a Retry-After at or above the cooldown no longer trips at once"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+            if state.consecutive >= TRIP_AFTER or retry_after >= self.settings.cooldown_s:
+'''
+new = '''
+            if state.consecutive >= TRIP_AFTER:
+'''
+
+[[rows]]
+id = "G6_cooldown_not_recorded"
+description = "the trip lifts at once, so no later verb is refused"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+                state.lifts_at = now + max(self.settings.cooldown_s, retry_after)
+'''
+new = '''
+                state.lifts_at = now
+'''
+
+[[rows]]
+id = "G7_success_keeps_the_run"
+description = "a successful answer no longer breaks the run of rate limit answers, so six spread over a day trip the breaker"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        state.consecutive = 0
+        state.not_before = 0.0
+        self._last_park = None
+'''
+new = '''
+        state.not_before = 0.0
+        self._last_park = None
+'''
+
+[[rows]]
+id = "G8_call_ignores_the_cooldown"
+description = "a call inside the cooldown is made anyway"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+                if state.cooling(now):
+                    raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
+'''
+new = '''
+                if False:
+                    raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
+'''
+
+[[rows]]
+id = "G9_assert_open_ignores_the_cooldown"
+description = "an opener asking the gate inside the cooldown is told to go ahead"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        if state.cooling(now):
+            raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
+'''
+new = '''
+        if False:
+            raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
+'''
+
+[[rows]]
+id = "G10_long_wait_under_the_lock"
+description = "a Retry-After wait is slept holding the lock, so a second driver waits on the holder"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+                if due - now > self.settings.min_interval_s:
+'''
+new = '''
+                if False:
+'''
+
+[[rows]]
+id = "G11_lock_limit_without_the_interval"
+description = "the lock wait limit drops the one interval a holder may sleep under it"
+file = "src/cratekit/core/provider_gate.py"
+surface = "maintainer"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+                limit = LOCK_WAIT_S + self.settings.min_interval_s
+'''
+new = '''
+                limit = LOCK_WAIT_S
+'''
+
+[[rows]]
+id = "G12_park_forgotten"
+description = "a park the tool swallowed is not remembered, so the vendored adapter reads it as no file"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        if self._last_park is not None:
+            raise self._last_park
+'''
+new = '''
+        if False:
+            raise self._last_park
+'''
+
+[[rows]]
+id = "G13_process_calls_not_counted"
+description = "this process's call counter never moves, so the spend line reports nothing"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        _PROCESS_CALLS += 1
+'''
+new = '''
+        _PROCESS_CALLS += 0
+'''

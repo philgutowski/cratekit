@@ -50,7 +50,8 @@ from typing import Any
 import tomli_w
 
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken, AdapterError, Remedy
-from cratekit.core import config, secrets
+from cratekit.core import config, provider_gate, secrets
+from cratekit.core.cause import CratekitError
 
 #: Fields that make a session blob usable. A write-back missing all of them is a
 #: truncated or empty file rather than a refreshed session, and replacing a good
@@ -209,7 +210,11 @@ def _epoch(value: Any) -> Any:
     return value
 
 
-def client_session(name: str = secrets.Credential.PROVIDER_SESSION) -> Any:
+def client_session(
+    name: str = secrets.Credential.PROVIDER_SESSION,
+    *,
+    gate: provider_gate.Gate | None = None,
+) -> Any:
     """An authenticated provider client, built from the stored session.
 
     THE ONE PLACE A CATALOGUE OR ACCOUNT READS AND WRITES BACK THE TOKEN, and it
@@ -217,6 +222,13 @@ def client_session(name: str = secrets.Credential.PROVIDER_SESSION) -> Any:
     stays true: the downloader and the catalogue then read the same stored blob
     through the same scope, and a refresh the login performed goes back to the
     keychain through the same validated :func:`write_back`.
+
+    THE GATE IS ASKED BEFORE THE CLIENT IS BUILT AND ATTACHED BEFORE IT LOGS IN
+    (R-705). A verb started inside the cooldown a rate limited run left behind
+    refuses here, naming the time it lifts, and makes no call; and the login
+    itself is the first paced call of the run, since the transport is wrapped
+    before it goes out. A caller with no configuration gets a gate at the
+    defaults, which is still a gate: there is no way to open a client past it.
 
     PKCE ALWAYS, matching the downloader's ``login_token(do_pkce=True)``, because
     that is the path the attended sitting proved against the live provider. A
@@ -233,6 +245,8 @@ def client_session(name: str = secrets.Credential.PROVIDER_SESSION) -> Any:
     could not be asked at all, and lets :func:`materialised_session`'s own
     translation of a keychain failure through unchanged.
     """
+    gate = gate or provider_gate.Gate()
+    gate.assert_open()
     with materialised_session(name) as scope:
         stored = JSON.loads(scope.path.read_text(encoding="utf-8"))
         if not isinstance(stored, dict) or not stored.get("access_token"):
@@ -241,6 +255,7 @@ def client_session(name: str = secrets.Credential.PROVIDER_SESSION) -> Any:
                 remedy=Remedy.REAUTHENTICATE_PROVIDER,
             )
         client = CLIENT_FACTORY()
+        gate.attach(client)
         try:
             authorised = client.load_oauth_session(
                 stored.get("token_type") or "Bearer",
@@ -249,6 +264,14 @@ def client_session(name: str = secrets.Credential.PROVIDER_SESSION) -> Any:
                 stored.get("expiry_time"),
                 is_pkce=True,
             )
+        except CratekitError:
+            # THE GATE'S OWN REFUSAL PASSES THROUGH (R-705). The login is a
+            # paced call like any other, and a rate limit answered to it that
+            # trips the breaker is the park, which must reach the engine as
+            # itself: read as "could not be reached" it would be retried into
+            # the cooldown, and read as rejected it would send a person to log
+            # in again over a session that is fine.
+            raise
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
             if _rejected(exc):
                 raise AdapterAuthFailed(

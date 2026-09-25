@@ -37,6 +37,7 @@ from typing import Any
 import tidalapi
 
 from cratekit.acquire import listing, provider_session
+from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError
 from cratekit.label import harvest, registry
 from cratekit.label import verify as label_verify
@@ -434,6 +435,12 @@ class TidalCatalogue:
         identifier = playlist_id(reference)
         try:
             playlist = self._session.playlist(identifier)
+        except CratekitError:
+            # The gate's park passes through unchanged (R-705), as it does at
+            # the other seam boundaries in this module: wrapped into an
+            # unresolvable playlist it would lose the lift time and the engine
+            # would read a cooldown as an unreadable playlist.
+            raise
         except Exception as exc:
             raise PlaylistUnresolvable(
                 f"the provider could not resolve the playlist {identifier!r} ({exc})"
@@ -640,9 +647,17 @@ class TidalCatalogue:
         return tuple(_results(found, "tracks"))
 
 
-def open_catalogue() -> TidalCatalogue:
-    """A catalogue over a freshly logged in client, from the stored session."""
-    return TidalCatalogue(provider_session.client_session())
+def open_catalogue(cfg: Any = None) -> TidalCatalogue:
+    """A catalogue over a freshly logged in client, from the stored session.
+
+    The configuration is what the pacing gate reads its interval and cooldown
+    off (R-705), the FROZEN one a job carries rather than a fresh load. None
+    means the gate's own defaults, which are still a gate.
+    """
+    gate = provider_gate.Gate(
+        provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
+    )
+    return TidalCatalogue(provider_session.client_session(gate=gate))
 
 
 __all__ = [

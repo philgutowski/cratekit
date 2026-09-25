@@ -1,0 +1,180 @@
+name = "r705-b"
+pass_kind = "light"
+
+# R-705: the provider gate. Part B of two, twelve rows on the seams: the
+# client opener's ask and attach, the vendored adapter's ask before the login,
+# its attach to the tool's session, its two asks after the tool returns, the
+# two pass throughs in acquire_one, the catalogue's playlist read, the
+# configuration's finiteness check, and the dispatcher's spend line at both
+# ends. Part A is the gate module. Author's table, no independent verifier
+# (METHOD, 2026-09-07).
+
+[[rows]]
+id = "S1_client_session_never_asks"
+description = "the catalogue and account opener builds a client inside the cooldown"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+    gate.assert_open()
+    with materialised_session(name) as scope:
+'''
+new = '''
+    with materialised_session(name) as scope:
+'''
+
+[[rows]]
+id = "S2_client_session_never_attaches"
+description = "the catalogue and account client's transport is not gated, so nothing it does is paced or counted"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        client = CLIENT_FACTORY()
+        gate.attach(client)
+'''
+new = '''
+        client = CLIENT_FACTORY()
+'''
+
+[[rows]]
+id = "S3_vendored_never_asks_before_login"
+description = "a download started inside the cooldown builds the tool and logs in"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        self._gate.assert_open()
+        if self._session is not None:
+'''
+new = '''
+        if self._session is not None:
+'''
+
+[[rows]]
+id = "S4_vendored_never_attaches_to_the_tool"
+description = "the tool's own session is not gated, so its login and every download lookup go out unpaced"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        self._gate.attach(tidal.session)
+'''
+new = '''
+        pass
+'''
+
+[[rows]]
+id = "S5_vendored_never_asks_after_login"
+description = "a park the tool swallowed inside its login reads as a rejected session"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        self._gate.raise_if_parked()
+        if not authorised:
+'''
+new = '''
+        if not authorised:
+'''
+
+[[rows]]
+id = "S6_vendored_never_asks_after_download"
+description = "a park the tool swallowed inside a download reads as no file came back"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        self._gate.raise_if_parked()
+        return landed_file(ok, landed, request.key, policy=self._settings.lossless_policy)
+'''
+new = '''
+        return landed_file(ok, landed, request.key, policy=self._settings.lossless_policy)
+'''
+
+[[rows]]
+id = "S7_acquire_one_softens_the_park_at_the_lookup"
+description = "a park raised at the offer is one unavailable track and the driver claims the next"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        offer = source.offer(request)
+    except (AdapterAuthFailed, AdapterBroken, Parked):
+'''
+new = '''
+        offer = source.offer(request)
+    except (AdapterAuthFailed, AdapterBroken):
+'''
+
+[[rows]]
+id = "S8_acquire_one_softens_the_park_at_the_fetch"
+description = "a park raised at the fetch is one unavailable track and the driver claims the next"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        path = source.fetch(request, settings.download_staging)
+    except (AdapterAuthFailed, AdapterBroken, Parked):
+'''
+new = '''
+        path = source.fetch(request, settings.download_staging)
+    except (AdapterAuthFailed, AdapterBroken):
+'''
+
+[[rows]]
+id = "S9_playlist_read_wraps_the_park"
+description = "the playlist read wraps the park into an unresolvable playlist again"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+            playlist = self._session.playlist(identifier)
+        except CratekitError:
+'''
+new = '''
+            playlist = self._session.playlist(identifier)
+        except ValueError:
+'''
+
+[[rows]]
+id = "S10_infinite_interval_accepted"
+description = "an infinite interval passes validation and reaches time.sleep"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        or not math.isfinite(interval)
+        or interval <= 0
+'''
+new = '''
+        or interval <= 0
+'''
+
+[[rows]]
+id = "S11_spend_line_always_suppressed"
+description = "the spend line is never put on the envelope"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+    if spent.calls == 0:
+        return envelope
+'''
+new = '''
+    if spent.calls >= 0:
+        return envelope
+'''
+
+[[rows]]
+id = "S12_dispatcher_never_adds_the_spend"
+description = "the dispatcher emits the verb's envelope without the spend"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+    envelope = _with_provider_spend(envelope, spent_before)
+'''
+new = '''
+    envelope = envelope
+'''

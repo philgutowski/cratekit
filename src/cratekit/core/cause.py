@@ -728,6 +728,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the holder" in all three cases, and what differs is WHAT is held, which
         # is the only thing that helps a person work out how long to wait.
         "job-driver-held": ExitCode.LIBRARY_BUSY,
+        # R-705. The one call at a time lock over the streaming provider was
+        # held by another driver for longer than a call can take. A fourth slug
+        # on this code, for the reason the third gives: the remedy is still
+        # "wait for the holder", and what is held is the account.
+        "provider-gate-held": ExitCode.LIBRARY_BUSY,
         "rekordbox-running": ExitCode.REKORDBOX_OPEN,
         "library-volume-unmounted": ExitCode.LIBRARY_UNAVAILABLE,
         # U27. Some directory on the way to the configured library root cannot be
@@ -877,6 +882,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # of the class where an automated retry is the harm, so a cause built for
         # it carries explicit steps and ``retryable=False``.
         "provider-blocked": ExitCode.UPSTREAM_UNAVAILABLE,
+        # R-705. The streaming provider rate limited this account past the retry
+        # ladder, or a verb started while that cooldown still holds. The same
+        # code as the block above, because the account said no, and its own slug
+        # because the act differs: a block is checked at the account, and a
+        # cooldown lifts at a named time the cause carries. Every provider
+        # opener asks the gate before it logs in, so the refusal makes no call.
+        "provider-cooldown": ExitCode.UPSTREAM_UNAVAILABLE,
         # U56. No public catalogue could be READ, which is a different fact from
         # no catalogue carrying the track, and the slug is the only place that
         # difference survives. The tagging searcher declines when a source

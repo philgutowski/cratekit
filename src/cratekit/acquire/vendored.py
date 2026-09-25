@@ -57,7 +57,7 @@ from cratekit.acquire.adapter import (
     TrackSource,
     verify_applied,
 )
-from cratekit.core import binaries
+from cratekit.core import binaries, provider_gate
 
 #: Cratekit's quality vocabulary to the wrapped tool's. The tool takes the
 #: streaming client's own enum VALUE as a string, and its factory default is the
@@ -303,18 +303,28 @@ class _VendoredSource:
         self._session: Any = session
         self._tool: Any = tool
         self._tidal: Any = None
+        #: The provider gate over the tool's own session (R-705), on the same
+        #: interval and cooldown the catalogue and the account pace with, read
+        #: off the frozen configuration the settings came from.
+        self._gate = provider_gate.Gate(settings.gate)
         #: The downloader CLASS, injectable so the construction R-197 got wrong is
         #: provable without an account. Only the deferred import below is left
         #: unreachable offline, instead of the whole of ``fetch``.
         self._downloader: Any = downloader
 
     def authenticate(self) -> None:
+        # THE GATE IS ASKED BEFORE ANYTHING IS BUILT OR LOGGED IN (R-705). A
+        # download started inside the cooldown a rate limited sweep left behind
+        # refuses here, naming the time it lifts, and makes no call; the worker
+        # above turns that into a park, so the item stays queued.
+        self._gate.assert_open()
         if self._session is not None:
             # An injected session is already authorised. The settings still get
             # pushed and verified when a tool object came with it, so the KTD20
             # half of authenticate is exercised rather than skipped.
             if self._tool is not None:
                 apply_settings(self._tool.data, self._settings)
+            self._gate.attach(self._session)
             return
 
         try:
@@ -330,6 +340,12 @@ class _VendoredSource:
         apply_settings(self._tool.data, self._settings)
 
         tidal = Tidal(self._tool)
+        # THE GATE IS ATTACHED BEFORE THE LOGIN, so the login is the first paced
+        # call of the run and the tool's own retries on a rate limit, which it
+        # would otherwise make as fast as it can, wait their turn. The tool is
+        # a singleton, so on a second build in one process this wraps the same
+        # session again, which ``attach`` makes a no-op.
+        self._gate.attach(tidal.session)
         # Point the tool at the private, short-lived session file instead of the
         # plaintext one it would otherwise write into the user's config directory.
         # Both attributes are set: one is where it READS, the other is the base
@@ -352,6 +368,16 @@ class _VendoredSource:
                 f"the provider rejected the stored session ({exc})",
                 remedy=Remedy.REAUTHENTICATE_PROVIDER,
             ) from exc
+        # THE GATE IS ASKED AGAIN AFTER THE LOGIN (R-705), and this is the
+        # check that can fire, not an except above: the tool catches every
+        # exception inside ``login_token``, deletes the session file and
+        # answers False, so a rate limit answered to the login that tripped
+        # the breaker, or a lock held past its wait, would read as a rejected
+        # session and park the job under credential-missing, sending a person
+        # to log in again over a session that is fine. The gate remembers the
+        # park it raised, and asking it here turns the tool's False back into
+        # the park.
+        self._gate.raise_if_parked()
         if not authorised:
             raise AdapterAuthFailed(
                 "the stored provider session is no longer valid",
@@ -399,6 +425,13 @@ class _VendoredSource:
         except Exception as exc:
             raise_if_session_dead(exc)
             raise
+        # ASKED AGAIN AFTER THE TOOL RETURNS (R-705). The wrapped tool catches
+        # every exception inside its download and answers "no file", so a trip
+        # or a held lock the gate raised mid download would otherwise read as
+        # one unavailable track and the worker would claim the next one. The
+        # gate remembers the park it raised, and asking it here turns that
+        # answer back into the park.
+        self._gate.raise_if_parked()
         return landed_file(ok, landed, request.key, policy=self._settings.lossless_policy)
 
 

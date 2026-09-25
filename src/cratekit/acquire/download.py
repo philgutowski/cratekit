@@ -61,11 +61,10 @@ import random
 import re
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import Executor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 from enum import StrEnum
 
 from cratekit.acquire.adapter import (
@@ -82,6 +81,7 @@ from cratekit.acquire.adapter import (
     TrackSource,
     acquire_one,
 )
+from cratekit.core import provider_gate
 from cratekit.core.cause import Cause, Remediation, Scope
 
 # ---------------------------------------------------------------------------
@@ -238,61 +238,19 @@ def classify_signal(exc: BaseException) -> ProviderSignal:
     return ProviderSignal.NONE
 
 
-def _header(headers: object, name: str) -> object | None:
-    """Read one header without assuming the container preserves case.
-
-    ``requests`` returns a case-insensitive mapping and a hand-rolled client
-    returns a plain dictionary, so a single ``headers[name]`` works against one
-    of them and silently returns nothing against the other. Silently returning
-    nothing here means falling back to our own backoff and ignoring a wait the
-    provider explicitly asked for.
-    """
-    get = getattr(headers, "get", None)
-    if get is None:
-        return None
-    for candidate in (name, name.lower(), name.upper()):
-        value = get(candidate)
-        if value is not None:
-            return value
-    if isinstance(headers, Mapping):
-        wanted = name.lower()
-        for key, value in headers.items():
-            if isinstance(key, str) and key.lower() == wanted:
-                return value
-    return None
+#: Read one header without assuming the container preserves case. The parser
+#: lives in ``core.provider_gate`` since R-705, because the gate reads the same
+#: header off the raw response and two parsers of one header can disagree.
+_header = provider_gate.header_value
 
 
 def _as_seconds(value: object, now: datetime) -> float | None:
     """Coerce a retry hint to seconds, accepting both forms the header allows.
 
-    HTTP permits ``Retry-After`` as delta-seconds OR as a date, and the date form
-    is parsed rather than dropped. Dropping it would fall back to our own
-    backoff, which is capped, so a provider asking for an hour would be asked
-    again in minutes. That is the retry-into-a-ban failure arriving through a
-    parsing shortcut.
+    Delegates to the ONE parser of ``Retry-After`` in the tree, the gate's,
+    with this module's datetime reference turned into the epoch it reads.
     """
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value) if value >= 0 else None
-    if not isinstance(value, str):
-        return None
-    text = value.strip()
-    try:
-        seconds = float(text)
-    except ValueError:
-        pass
-    else:
-        return seconds if seconds >= 0 else None
-    try:
-        when = parsedate_to_datetime(text)
-    except (TypeError, ValueError):
-        return None
-    if when is None:
-        return None
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return max(0.0, (when - now).total_seconds())
+    return provider_gate.retry_after_seconds(value, now.timestamp())
 
 
 def retry_hint_seconds(exc: BaseException, *, now: datetime | None = None) -> float | None:

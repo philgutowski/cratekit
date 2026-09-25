@@ -28654,9 +28654,37 @@ allowance.
 `crate sync all`, which queues a labels job beside the playlist intakes it then
 downloads, is the same shape on a larger scale.
 
-**Closes when:** provider calls from concurrent drivers share one pacing
-decision, or a second provider driver waits while one holds the account, and a
-test runs two drivers against one fake that rate limits.
+**Closes when:** every provider call the product makes goes through one
+pacing gate with a configured minimum interval; a rate limit that survives the
+retry ladder stops the whole run with the remaining items pending and a
+`Retry-After` honoured; the trip is recorded in a state file so every verb
+that calls the provider refuses inside a cooldown of at least fifteen minutes,
+naming the reason and the lift time; one driver holds the account at a time
+across processes and a second waits or refuses with a named reason; every run
+that called the provider reports its call count and rate limit answers; and
+tests against a fake that rate limits drive each of those. Widened by Phillip
+on 2026-09-24 to the Tidal call safety card, issue #217.
+
+**Closed 2026-09-24 on `relay/217`, issue #217.** `core/provider_gate.py` is
+the gate, attached to the `requests` session the provider's library keeps on
+each client at the two sites the product builds one, `provider_session.
+client_session` for the catalogue and the account and the vendored adapter's
+own tool session, so logins, refreshes and the model objects' own reads all
+pass it; a test walks the package and refuses a third site. It paces to
+`[provider] min_interval_s`, one second by default, measured from the last
+call any process made, under one lock held for the whole of each call and
+released for a `Retry-After` wait longer than the interval. Six consecutive
+rate limit answers, one spent ladder, or a `Retry-After` at or above
+`cooldown_s`, fifteen minutes by default, trip it: the trip is raised as the
+engine's `Parked`, so the item in flight returns to pending and the driver
+claims nothing further, and it is written to `provider_gate.json` with the
+lift time, which every opener asks before it logs in. A lock held past two
+minutes plus one interval is refused the same way, `provider-gate-held`. The
+dispatcher puts one `provider-spend` warning on every envelope whose run made
+calls. Twenty five mutation rows, every one killed; the notes carry the
+sweep's arithmetic, about 6,300 calls for the 47 label registry, one hour
+and forty five minutes at the default interval. R-703 and R-704 stay open;
+#216 was held behind this and is released by it.
 
 ---
 
@@ -28708,3 +28736,30 @@ reads the record, and on a differing one and reads the refusal.
 
 **Not on the board bar.** Maintainer facing, nothing false is said and no
 write is held.
+
+---
+
+## R-708. The vendored downloader's media segment fetches go to the content host outside the provider gate
+
+**Found:** on `relay/217`, 2026-09-24, closing R-705. The gate wraps the
+`requests` session the provider's library keeps on each client, which is
+every call to the provider's API, the login and the model objects' own reads
+included. The vendored downloader fetches the audio itself, the segment list
+and the segments, through a second `requests` session of its own against the
+content delivery host, `_vendor/tidal_dl_ng/download.py` around line 464 and
+the bare `requests.get` calls beside it, with urllib3's own five retries. Those
+fetches are not paced, not counted and not watched for a rate limit answer.
+
+**Measured cost:** unmeasured. Whether the content host counts against the
+same allowance as the API, or has one of its own, is not published, and the
+eleventh sitting's failures were all API answers, `TooManyRequests` on
+`albums/<id>` and on `track(id, with_album=True)`. Nothing in that sitting
+shows a segment fetch refused.
+
+**Closes when:** a live download run reports whether segment fetches ever
+answer a rate limit, and if they do, the tool's media session is attached to
+the same gate, which is one more `attach` at the site the downloader builds
+that session.
+
+**Not on the board bar.** No false report and no write is held; a scope
+boundary the gate's own docstring states.

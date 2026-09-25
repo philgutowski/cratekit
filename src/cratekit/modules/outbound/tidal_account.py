@@ -59,6 +59,7 @@ import tidalapi  # noqa: F401
 
 from cratekit.acquire import listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
+from cratekit.core import provider_gate
 from cratekit.core.cause import Scope, refuse
 from cratekit.modules.outbound import account
 
@@ -547,9 +548,17 @@ class TidalAccount:
             )
 
 
-def open_account() -> TidalAccount:
-    """An account over a freshly logged in client, from the stored session."""
-    return TidalAccount(provider_session.client_session())
+def open_account(cfg: Any = None) -> TidalAccount:
+    """An account over a freshly logged in client, from the stored session.
+
+    The configuration is what the pacing gate reads its interval and cooldown
+    off (R-705), the FROZEN one a job carries rather than a fresh load. None
+    means the gate's own defaults, which are still a gate.
+    """
+    gate = provider_gate.Gate(
+        provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
+    )
+    return TidalAccount(provider_session.client_session(gate=gate))
 
 
 __all__ = [

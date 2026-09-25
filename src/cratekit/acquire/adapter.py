@@ -51,6 +51,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from cratekit.core.provider_gate import GateSettings
+
 # ---------------------------------------------------------------------------
 # Remediation vocabulary
 # ---------------------------------------------------------------------------
@@ -603,6 +605,11 @@ class AdapterSettings:
     #: second cap anywhere, which is the whole point of KTD20 moving the setting
     #: off the wrapped tool's shared settings file.
     concurrency: int = 1
+    #: The provider gate's two numbers (R-705), read off ``[provider]``. Carried
+    #: here so the vendored adapter, which builds the tool's session itself,
+    #: paces it with the same interval the catalogue and the account use, off
+    #: the same frozen configuration.
+    gate: GateSettings = GateSettings()
 
     def __post_init__(self) -> None:
         if self.concurrency < 1:
@@ -627,6 +634,7 @@ class AdapterSettings:
             lossless_policy=LosslessPolicy(acquisition.lossless_policy),
             pacing_delay_s=acquisition.pacing_delay_s,
             concurrency=acquisition.concurrency,
+            gate=GateSettings.from_config(cfg),
         )
 
 
@@ -814,9 +822,16 @@ def acquire_one(
     different ways, so the concurrent driver reuses this one and varies only what
     surrounds it.
     """
+    # THE GATE'S TRIP PASSES THROUGH BOTH CATCHES BELOW (R-705). It is the job
+    # engine's own park, and a park read as one dead track would fail the item
+    # and let the driver claim the next one, which is the second request into a
+    # block that the pacing layer exists to never make. Imported here because
+    # the engine imports the CLI package, which imports this module.
+    from cratekit.core.jobs import Parked  # noqa: PLC0415 - see the comment above
+
     try:
         offer = source.offer(request)
-    except (AdapterAuthFailed, AdapterBroken):
+    except (AdapterAuthFailed, AdapterBroken, Parked):
         raise
     except Exception as exc:  # noqa: BLE001 - one dead track never sinks the run
         raise_if_defect(exc)
@@ -833,7 +848,7 @@ def acquire_one(
 
     try:
         path = source.fetch(request, settings.download_staging)
-    except (AdapterAuthFailed, AdapterBroken):
+    except (AdapterAuthFailed, AdapterBroken, Parked):
         raise
     except LosslessRefused as exc:
         # A file landed and it is the wrong kind. Not a missing track and not a
