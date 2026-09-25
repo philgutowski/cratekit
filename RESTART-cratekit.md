@@ -4,7 +4,37 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-414, issue #214, `relay/214`, 2026-09-24.** The rating
+**Last merged: R-706, issue #218, `relay/218`, 2026-09-24.** A set longer
+than one recognition run is identified in even parts as one set. A part is
+a place in the chunk grid and never a file, because the carver reads any
+offset of the recording: `acrcloud.partition` cuts the grid into the fewest
+even contiguous parts each at or under `MAX_CALLS_PER_RUN`, still 400, and
+`identify` walks them in one pass and folds once, so a record playing across
+the cut is one row. `assert_run_within` is asked of every part and
+`assert_month_within` once over the whole owed spend, both before the first
+call of any part; `assert_one_set` keeps the not one set refusal at a
+ceiling of `MAX_PARTS`, three, with the same `intake-recognition-spend-bound`
+cause and `per-run` kind plus `parts` and `ceiling` in the detail.
+`assert_within` is gone. `Identified` and `IdentifyResult` carry `parts`;
+`intake set` freezes `PARTS` beside `CALLS` and reports it on the queue turn
+and every resume; both verbs add a `recognition-in-parts` note that says
+what the split means for that verb. The eleventh sitting's shape, 732
+chunks in two parts of 366, is pinned. `CONCEPTS.md` gains Part, the GUIDE
+says what a long recording does, and the kebab literal population is
+re-pinned for the one warning code. **The numbers:** 10,319 collected,
+10,318 passed and 1 skipped, ruff clean, `scan_repo.py` exit 0. **The
+mutation table was MEASURED:** seventeen rows in `docs/mutation/r706-a-rows.toml`,
+`r706-b-rows.toml` and `r706-c-rows.toml`, every row killed, one row dropped
+as unobservable and filed, with the leak guard watching an empty temporary
+root because the installed copy's `analyze vocals` job
+`2026-09-24T21:04:27Z-fbe8` was still writing the real one; `r706-notes.md`
+says what stood in for it. Filed **R-712** (the run guard's owed count is a
+layer nothing reaches), **R-713** (the ceiling of three is a reading of the
+decision, not the decision) and **R-714** (a U103 mutation row names a
+property the tree no longer has), none on the board bar. **Main's highest
+residual number is R-714.**
+
+**Merged before it: R-414, issue #214, `relay/214`, 2026-09-24.** The rating
 planner writes a database star, never an export byte. The database stores 0
 to 5, read off a real library at the eleventh attended sitting, and the
 taxonomy's `[energy.rating]` cuts stay on the export scale, 51 to 255, for the

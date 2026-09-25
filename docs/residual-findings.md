@@ -28729,6 +28729,24 @@ bound before the first call. Decided by Phillip 2026-09-24: joined back into
 one playlist where that is not new building, else the parts named Part A, Part
 B and Part C.
 
+**Closed 2026-09-24 on `relay/218`, issue #218.** A part is a place in the
+chunk grid and never a file: the carver reads any offset of the recording,
+so `acrcloud.partition` cuts the grid into the fewest even contiguous parts
+each at or under `MAX_CALLS_PER_RUN`, which stays at 400, and `identify`
+walks them in one pass. Every part is asked of the run bound,
+`assert_run_within`, and the month is asked once over the whole owed spend,
+`assert_month_within`, both before the first call of any part. The
+refusal the run bound was written for is kept at a ceiling of `MAX_PARTS`,
+three, `assert_one_set`, with the same cause and `per-run` kind: a file over
+about eight hours and twenty minutes is still refused as not one set. The
+answers fold once across the cut, so a record playing across it is one row,
+which the sitting's two hand made halves could not give. The set queues as
+one job with `parts` frozen beside `calls`, so it lands as one batch under
+its own name and neither the playlist join nor the Part A, B and C names
+was needed; both verbs say `recognition-in-parts`. The eleventh sitting's
+shape, 732 chunks in two parts of 366, is pinned. Seventeen mutation rows in
+three batches, every one killed. R-712 to R-714 filed from it.
+
 ---
 
 ## R-707. A copy made before the origin record existed has no way to gain one, so every library set up before R-689 reads as unrecorded for life
@@ -28859,3 +28877,80 @@ gate is shown to keep the interval under load with the test's tolerance
 widened, or a gate defect is filed from it.
 
 **Not on the board bar.** Maintainer facing, a test and not a verb.
+
+---
+
+## R-712. The run guard's owed count is a layer nothing can reach behind the partition
+
+**Found:** on `relay/218`, 2026-09-24, closing R-706, choosing the mutation
+rows. `assert_run_within` is asked of each part with the count of chunks the
+part still OWES, not the part's whole size. Every part `partition` builds is
+at or under the bound whether or not any of it is kept, so counting the
+whole part would refuse nothing the owed count admits, and a row mutating
+one into the other kills nothing. Logged as the dropped row A8 in
+`docs/mutation/r706-a-rows.toml` rather than measured, so the table does not
+carry a zero that reads as an untested guard.
+
+**Measured cost:** none to a person. A guard covered by another guard, which
+METHOD's driver rules name as a guard nothing covers: if `partition` ever
+handed back an oversize part that was mostly kept, the owed count would let
+it through where the whole count would not, and the guard test in
+`tests/intake/test_recognition.py` pins only the all owed case.
+
+**Closes when:** the guard reads the part's whole size, which is the bound
+the constant names, and the test drives an oversize part that is partly
+kept; or the owed reading is kept on purpose with a test that says why.
+
+**Not on the board bar.** Maintainer facing, reachable only through a
+partition defect the same session's rows show the suite catches.
+
+---
+
+## R-713. The parts ceiling of three is a session's reading of the decision, not the decision
+
+**Found:** on `relay/218`, 2026-09-24, closing R-706. The ledger entry's
+decision names Part A, Part B and Part C, and the session read three as the
+ceiling, `MAX_PARTS`, so a recording over three runs, about eight hours and
+twenty minutes on the shipped grid, is still refused before the first call
+as not one set, exactly as every recording over one run was before. The
+decision did not state a ceiling, and the sitting's five hour mix needed
+two parts, so the number was not exercised by the case that raised it.
+
+**Measured cost:** a marathon recording, nine hours say, meets the same
+refusal and the same hand split the eleventh sitting paid for. Not driven
+on a real recording, the shape is the 1,296 chunk test in
+`tests/intake/test_recognition.py`, which is refused with `ceiling` 1,200
+in its detail.
+
+**Closes when:** Phillip says whether three is the ceiling or a naming
+convention, and if the latter, the constant moves with the letters, which
+one line and one test carry.
+
+**Not on the board bar.** Closes only at an attended sitting, and the
+refusal is the pre R-706 behaviour with its message intact.
+
+---
+
+## R-714. A U103 mutation row names a property the code no longer has
+
+**Found:** on `relay/218`, 2026-09-24, at the review. `docs/mutation/u103-a.md`
+row `A16_per_run_bound_reads_the_grid`, "drop the per run bound over the
+whole grid", was killed by the test then named
+`test_the_monthly_bound_reads_what_is_owed_and_the_per_run_bound_reads_the_grid`.
+R-706 made that mutant the shipped behaviour: the per run bound now reads
+what a part owes and it is the parts ceiling, `assert_one_set`, that reads
+the whole grid. The test is renamed to say so and its docstring names the
+row, and R-706's own table measures the ceiling in its place, rows A1 to A3.
+The U103 table itself is unchanged, since a measured table is a record of
+the tree it measured.
+
+**Measured cost:** a reader of the U103 table who takes A16 as still true
+believes a guard the tree no longer has. No product behaviour is wrong.
+
+**Closes when:** a reader of an old mutation table has a way to see that a
+row's property was later reversed, a note in the table's own notes file or
+a sweep that checks row descriptions against the tree; or the convention
+that tables are records of their tree and never amended is written into
+METHOD's mutation section, which makes this entry the answer.
+
+**Not on the board bar.** A count in a document.
