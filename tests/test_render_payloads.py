@@ -116,11 +116,9 @@ def test_the_reasons_follow_their_count_most_rows_first_and_ties_by_slug():
         None,
         "exact 3",
         {"owned": ["exact"]},
-        {"owned": {}},
-        {"owned": {"exact": "3", "isrc-exact": True, "title-approximate": 0}},
         {"missing": {"not-in-library": 1}},
     ],
-    ids=["absent", "not-a-mapping", "state-not-a-mapping", "empty", "no-whole-count", "other-state"],
+    ids=["absent", "not-a-mapping", "state-not-a-mapping", "other-state"],
 )
 def test_reasons_an_older_or_malformed_progress_cannot_state_print_no_line(by_reason):
     """A build before R-682 carried no ``by_reason``; nothing is printed as if counted."""
@@ -130,6 +128,36 @@ def test_reasons_an_older_or_malformed_progress_cannot_state_print_no_line(by_re
     )
 
     assert "  owned: 3 already in the library" in lines
+    assert not any(line.startswith("    by reason:") for line in lines)
+
+
+@pytest.mark.parametrize(
+    ("reasons", "said"),
+    [
+        ({"exact": 1, "isrc-exact": 1}, "    by reason: exact 1, isrc-exact 1, unstated 2"),
+        ({}, "    by reason: unstated 4"),
+        ({"exact": "3", "isrc-exact": True, "title-approximate": 0}, "    by reason: unstated 4"),
+        ({"exact": 4}, "    by reason: exact 4"),
+    ],
+    ids=["partial", "empty", "no-whole-count", "complete"],
+)
+def test_rows_no_reason_explains_are_said_rather_than_read_as_complete(reasons, said):
+    """A breakdown that falls short of its count names the shortfall last."""
+    progress = {"owned": 4, "by_reason": {"owned": reasons}}
+    lines = render.render_job_state(
+        job_state(verb="intake.set", state="succeeded", progress=progress)
+    )
+
+    assert said in lines
+
+
+def test_a_bool_is_not_a_count_in_the_resolution():
+    progress = {"owned": True, "missing": True, "by_reason": {"owned": {"exact": 1}}}
+    lines = render.render_job_state(
+        job_state(verb="intake.set", state="succeeded", progress=progress)
+    )
+
+    assert not any(line.startswith(("  owned:", "  missing:", "  next:")) for line in lines)
     assert not any(line.startswith("    by reason:") for line in lines)
 
 

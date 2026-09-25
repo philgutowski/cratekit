@@ -1461,11 +1461,15 @@ def test_each_resolution_count_is_followed_by_its_reasons(cfg, library, monkeypa
     lines = text.splitlines()
     owned_at = lines.index("  owned: 2 already in the library")
     assert lines[owned_at + 1] == "    by reason: exact 2", text
+    offered_at = lines.index(
+        "  offered: 1 held in another version, offered for review; see: crate review list"
+    )
+    assert lines[offered_at + 1] == "    by reason: version-differs 1", text
     missing_at = lines.index("  missing: 2 not in the library")
     assert lines[missing_at + 1] == "    by reason: not-in-library 2", text
     suppressed_at = lines.index("  suppressed: 0 deleted on purpose")
-    following = lines[suppressed_at + 1 : suppressed_at + 2]
-    assert not any(line.startswith("    by reason:") for line in following), text
+    assert lines[suppressed_at + 1] == f"  next: crate intake missing --job {job_id}", text
+    assert sum(line.startswith("    by reason:") for line in lines) == 3, text
 
 
 def test_the_reasons_are_read_back_from_the_reports_on_every_resume(cfg, library, monkeypatch):
@@ -1480,13 +1484,12 @@ def test_the_reasons_are_read_back_from_the_reports_on_every_resume(cfg, library
     assert code == int(ExitCode.OK), again
     reasons = again["data"]["progress"]["by_reason"]
     assert reasons == first["data"]["progress"]["by_reason"]
-    assert reasons["owned"] == {"exact": 2}
-    assert reasons["offered"] == {"version-differs": 1}
-    found = by_title(cfg, job_id)
-    assert {report["why"] for report in found.values() if report["state"] == "missing"} == {
-        "not-in-library"
+    assert reasons == {
+        "owned": {"exact": 2},
+        "offered": {"version-differs": 1},
+        "missing": {"not-in-library": 2},
+        "suppressed": {},
     }
-    assert reasons["missing"] == {"not-in-library": 2}
 
 
 def test_a_report_without_a_reason_counts_in_its_state_and_under_no_reason(cfg, monkeypatch):
@@ -1498,6 +1501,7 @@ def test_a_report_without_a_reason_counts_in_its_state_and_under_no_reason(cfg, 
         {"state": "owned", "why": "isrc-exact"},
         {"state": "owned"},
         {"state": "owned", "why": ""},
+        {"state": "owned", "why": 3},
         {"state": "misplaced", "why": "exact"},
     ]
     monkeypatch.setattr(intake_cli.artifacts, "committed", lambda *args: reports)
@@ -1508,8 +1512,8 @@ def test_a_report_without_a_reason_counts_in_its_state_and_under_no_reason(cfg, 
 
     summary = intake_cli._summary(cfg, Job())
 
-    assert summary["owned"] == 4
-    assert summary["reported"] == 5
+    assert summary["owned"] == 5
+    assert summary["reported"] == 6
     assert summary["by_reason"] == {
         "owned": {"exact": 1, "isrc-exact": 1},
         "offered": {},

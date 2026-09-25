@@ -376,9 +376,9 @@ def _summary(cfg: config.Config, job) -> dict[str, Any]:
     state: ``title-approximate`` is offered or missing depending on what the
     library holds. Every state word is a key, as every count is; a reason is
     a key only when some row carries it, since sixteen zeros per state bury
-    the two that happened. A report with no ``why`` is counted in its state
-    and under no reason, so the reasons fall short of the count rather than
-    inventing one.
+    the two that happened. A report with no ``why``, or one that is not a
+    string, is counted in its state and under no reason, so the reasons fall
+    short of the count rather than inventing one.
     """
     counts = {word: 0 for word in _STATE_WORDS.values()}
     by_reason: dict[str, dict[str, int]] = {word: {} for word in counts}
@@ -387,8 +387,8 @@ def _summary(cfg: config.Config, job) -> dict[str, Any]:
         word = str(report.get("state") or "")
         if word in counts:
             counts[word] += 1
-            why = str(report.get("why") or "")
-            if why:
+            why = report.get("why")
+            if isinstance(why, str) and why:
                 by_reason[word][why] = by_reason[word].get(why, 0) + 1
     payload = job.payload or {}
     return {
