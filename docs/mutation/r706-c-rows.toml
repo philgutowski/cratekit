@@ -1,0 +1,45 @@
+name = "r706-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_parts_note_never_said"
+description = "The recognition-in-parts note is never added"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''    if result.parts <= 1:
+        return ()
+    still = ('''
+new = '''    if result.parts >= 1:
+        return ()
+    still = ('''
+
+[[rows]]
+id = "C2_parts_not_frozen"
+description = "The job freezes one part whatever was identified, so a resume forgets the split"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''                        PARTS: result.parts,'''
+new = '''                        PARTS: 1,'''
+
+[[rows]]
+id = "C3_summary_ignores_the_payload"
+description = "The resume summary reports one part rather than reading the frozen count"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''        "parts": int(payload.get(PARTS) or 1),'''
+new = '''        "parts": 1,'''
+
+[[rows]]
+id = "C4_pipeline_drops_parts"
+description = "identify_only does not carry parts through, so every verb sees one"
+file = "src/cratekit/intake/pipeline.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''        digest=found.digest,
+        parts=found.parts,
+    )'''
+new = '''        digest=found.digest,
+    )'''

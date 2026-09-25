@@ -43,6 +43,7 @@ class IdentifyResult:
     cached: int = 0
     cache_unwritten: str = ""
     digest: str = ""
+    parts: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +76,7 @@ def identify_only(
         cached=found.cached,
         cache_unwritten=found.cache_unwritten,
         digest=found.digest,
+        parts=found.parts,
     )
 
 

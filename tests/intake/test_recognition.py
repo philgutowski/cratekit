@@ -222,9 +222,14 @@ def test_no_chunk_is_ever_taken_past_the_point_where_a_whole_one_fits():
             assert offset + acrcloud.CHUNK_S <= max(whole, acrcloud.CHUNK_S)
 
 
-def test_a_two_hour_set_fits_under_the_per_run_bound_and_a_four_hour_file_does_not():
+def test_a_two_hour_set_is_one_run_a_five_hour_mix_is_two_parts_and_nine_hours_is_over_the_ceiling():
+    """R-706. The eleventh sitting's mix was 5 hours 5 minutes, 732 calls."""
     assert len(acrcloud.sample_offsets(2 * 3600.0)) <= acrcloud.MAX_CALLS_PER_RUN
-    assert len(acrcloud.sample_offsets(4 * 3600.0)) > acrcloud.MAX_CALLS_PER_RUN
+    five_hours_five = 5 * 3600.0 + 5 * 60
+    assert acrcloud.planned_calls(five_hours_five) == 732
+    assert acrcloud.parts_needed(732) == 2
+    assert acrcloud.parts_needed(acrcloud.planned_calls(9 * 3600.0)) > acrcloud.MAX_PARTS
+    assert acrcloud.MAX_PARTS == 3, "Phillip's decision names Part A, Part B and Part C"
 
 
 # ---------------------------------------------------------------------------
@@ -1134,18 +1139,28 @@ def test_a_pass_that_paid_for_nothing_writes_nothing_and_reports_nothing_unwritt
     assert cached_run(FakeTransport(), source, cache, ledger).cache_unwritten == ""
 
 
-def test_the_monthly_bound_reads_what_is_owed_and_the_per_run_bound_reads_the_grid(
+def test_the_monthly_bound_reads_what_is_owed_and_the_parts_ceiling_reads_the_grid(
     tmp_path, cache, ledger
 ):
+    """Renamed on R-706: the per run bound read the whole grid until then, and
+    `docs/mutation/u103-a.md` row A16 names the old property. The ceiling
+    reads the grid now, and the run bound reads only what a part owes."""
     source = real_recording(tmp_path)
     cached_run(FakeTransport(*three_answers()), source, cache, ledger)
     spent = Budget(monthly=3)
     # The month is used up and the recording is fully kept: nothing is owed.
     assert cached_run(FakeTransport(), source, cache, ledger, budget=spent).cached == 3
-    # The per run bound still refuses a grid this size, kept or not.
+    # A grid under the parts ceiling is served kept whatever the run bound
+    # (R-706), and the ceiling still refuses a grid over it before anything
+    # is read, kept or not.
+    served = cached_run(FakeTransport(), source, cache, ledger, budget=Budget(per_run=1))
+    assert (served.cached, served.parts, served.calls) == (3, 3, 0)
     with pytest.raises(CratekitError) as refused:
-        cached_run(FakeTransport(), source, cache, ledger, budget=Budget(per_run=2))
+        cached_run(
+            FakeTransport(), source, cache, ledger, budget=Budget(per_run=1), duration_s=100.0
+        )
     assert refused.value.cause.detail["kind"] == "per-run"
+    assert refused.value.cause.detail["ceiling"] == 3
     # And a recording that owes calls into a spent month is refused for them.
     other = real_recording(tmp_path, b"another recording", name="other.mp3")
     with pytest.raises(CratekitError) as monthly:
@@ -1183,3 +1198,194 @@ def test_the_bound_identifier_hands_the_cache_through(tmp_path, cache, ledger):
     secrets.set(str(secrets.Credential.IDENTIFY_SIGNING_KEY), "s-1")
     assert identifier(source).calls == 3
     assert identifier(source).calls == 0
+
+
+# ---------------------------------------------------------------------------
+# R-706: a set longer than one run is identified in even parts, as one set
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "count, per_run, sizes",
+    [
+        (0, 400, ()),
+        (1, 400, (1,)),
+        (400, 400, (400,)),
+        (401, 400, (201, 200)),
+        (732, 400, (366, 366)),
+        (1200, 400, (400, 400, 400)),
+        (5, 2, (2, 2, 1)),
+        (7, 3, (3, 2, 2)),
+    ],
+)
+def test_partition_cuts_the_grid_into_the_fewest_even_parts_under_the_bound(count, per_run, sizes):
+    grid = tuple(range(0, count * acrcloud.INTERVAL_S, acrcloud.INTERVAL_S))
+    parts = acrcloud.partition(grid, per_run=per_run)
+    assert tuple(len(part) for part in parts) == sizes
+    assert tuple(offset for part in parts for offset in part) == grid, "a cut lost or moved a chunk"
+    assert all(len(part) <= per_run for part in parts)
+    assert len(parts) == acrcloud.parts_needed(count, per_run=per_run)
+
+
+def test_a_five_hour_mix_is_identified_in_two_even_parts_as_one_set(ledger):
+    """The eleventh sitting's shape: 732 chunks, two halves of 366. One pass,
+    one result, and a record playing across the cut is one row and not two,
+    which two hand made halves could not give."""
+    five_hours_five = 5 * 3600.0 + 5 * 60
+    grid = acrcloud.sample_offsets(five_hours_five)
+    assert len(grid) == 732
+    answers: list[dict] = [miss()] * 732
+    answers[0] = hit("Aurora Bloom", "Sun Path", isrc="X1")
+    answers[365] = hit("Nova Reef", "Tide", isrc="X2")
+    answers[366] = hit("Nova Reef", "Tide", isrc="X2")
+    answers[731] = hit("Mira Vale", "Glass Hour", isrc="X3")
+    transport = FakeTransport(*answers)
+    carver = FakeCarver(five_hours_five)
+
+    result = acrcloud.identify(
+        Path("set.mp3"),
+        transport=transport,
+        carver=carver,
+        credentials=fixed_credentials,
+        budget=Budget(),
+        host=HOST,
+        ledger=ledger,
+        month="2026-09",
+    )
+
+    assert result.parts == 2
+    assert (result.calls, result.chunks, result.unreached) == (732, 732, 0)
+    assert carver.carved == list(grid), "the parts were not walked in grid order, once each"
+    assert ledger.used("2026-09") == 732
+    assert [(row.artist, row.title) for row in result.rows] == [
+        ("Aurora Bloom", "Sun Path"),
+        ("Nova Reef", "Tide"),
+        ("Mira Vale", "Glass Hour"),
+    ], "the record across the cut folded to one row"
+
+
+def test_a_set_that_fits_one_run_is_one_part(ledger):
+    assert run(FakeTransport(miss(), miss()), duration_s=40.0, ledger=ledger).parts == 1
+
+
+def test_a_recording_over_the_parts_ceiling_is_refused_before_any_carve_call_or_credential(ledger):
+    transport = FakeTransport()
+    credentials = counted_credentials()
+    carver = FakeCarver(9 * 3600.0)
+    with pytest.raises(CratekitError) as excinfo:
+        acrcloud.identify(
+            Path("set.mp3"),
+            transport=transport,
+            carver=carver,
+            credentials=credentials,
+            budget=Budget(),
+            host=HOST,
+            ledger=ledger,
+            month="2026-09",
+        )
+    cause = excinfo.value.cause
+    assert cause.reason == "intake-recognition-spend-bound"
+    assert cause.detail == {
+        "planned": acrcloud.planned_calls(9 * 3600.0),
+        "bound": acrcloud.MAX_CALLS_PER_RUN,
+        "parts": acrcloud.MAX_PARTS,
+        "ceiling": acrcloud.MAX_CALLS_PER_RUN * acrcloud.MAX_PARTS,
+        "kind": "per-run",
+    }
+    assert f"more than {acrcloud.MAX_PARTS} parts" in cause.message
+    assert "not one set" in cause.message
+    assert transport.requests == []
+    assert carver.carved == []
+    assert credentials.asked == []
+    assert ledger.used("2026-09") == 0
+
+
+def test_the_month_is_asked_once_over_the_whole_set_before_the_first_part(ledger):
+    """A 100 second recording is four chunks, two parts of two under a run
+    bound of two. Two calls already spent and a month of five cannot afford
+    the four, and a check per part would have let the first part through."""
+    ledger.record(2, "2026-09")
+    transport = FakeTransport()
+    with pytest.raises(CratekitError) as excinfo:
+        run(transport, duration_s=100.0, budget=Budget(per_run=2, monthly=5), ledger=ledger)
+    cause = excinfo.value.cause
+    assert cause.detail["kind"] == "monthly"
+    assert cause.detail["planned"] == 4, "the month was asked about one part, not the set"
+    assert transport.requests == []
+    assert ledger.used("2026-09") == 2
+    # One call fewer spent and the whole set fits, so all four parts' chunks go.
+    fits = Ledger(path=ledger.path.with_name("fits.json"), lock_path=ledger.lock_path)
+    fits.record(1, "2026-09")
+    result = run(
+        FakeTransport(miss(), miss(), miss(), miss()),
+        duration_s=100.0,
+        budget=Budget(per_run=2, monthly=5),
+        ledger=fits,
+    )
+    assert (result.parts, result.calls) == (2, 4)
+    assert fits.used("2026-09") == 5
+
+
+@pytest.mark.parametrize(
+    "cut",
+    [
+        lambda offsets: (tuple(offsets),),
+        lambda offsets: (tuple(offsets[:1]), tuple(offsets[1:])),
+    ],
+    ids=["one-oversize-part", "oversize-second-part"],
+)
+def test_a_partition_that_hands_back_an_oversize_part_is_refused_before_any_call(
+    ledger, monkeypatch, cut
+):
+    """The run bound is a property of the spend, not of the cut. A partition
+    that returned an oversize part, first or LAST, meets the guard before the
+    transport, so the parts before it are not paid for either."""
+    monkeypatch.setattr(acrcloud, "partition", lambda offsets, *, per_run: cut(offsets))
+    transport = FakeTransport()
+    carver = FakeCarver(100.0)
+    with pytest.raises(CratekitError) as excinfo:
+        acrcloud.identify(
+            Path("set.mp3"),
+            transport=transport,
+            carver=carver,
+            credentials=fixed_credentials,
+            budget=Budget(per_run=2),
+            host=HOST,
+            ledger=ledger,
+            month="2026-09",
+        )
+    cause = excinfo.value.cause
+    assert cause.reason == "intake-recognition-spend-bound"
+    assert (cause.detail["bound"], cause.detail["kind"]) == (2, "per-run")
+    assert cause.detail["planned"] in (3, 4)
+    assert "this run would take" in cause.message
+    assert transport.requests == []
+    assert carver.carved == []
+    assert ledger.used("2026-09") == 0
+
+
+def test_a_split_set_is_served_from_the_cache_as_one_plan(tmp_path, cache, ledger):
+    """One chunk plan for the whole grid, so a second pass over a split set
+    pays for nothing and still says how many parts it is."""
+    source = real_recording(tmp_path)
+    first = cached_run(
+        FakeTransport(miss(), miss(), miss(), miss()),
+        source, cache, ledger, duration_s=100.0, budget=Budget(per_run=2),
+    )
+    assert (first.parts, first.calls) == (2, 4)
+    second = cached_run(FakeTransport(), source, cache, ledger, duration_s=100.0, budget=Budget(per_run=2))
+    assert (second.parts, second.calls, second.cached) == (2, 0, 4)
+
+
+def test_a_split_set_that_owes_only_a_gap_meets_the_run_bound_on_what_is_owed(
+    tmp_path, cache, ledger
+):
+    source = real_recording(tmp_path)
+    cached_run(
+        FakeTransport(miss(), ConnectionError("down"), ConnectionError("down"), miss()),
+        source, cache, ledger, duration_s=100.0, budget=Budget(per_run=2),
+    )
+    fill = FakeTransport(miss(), miss())
+    result = cached_run(fill, source, cache, ledger, duration_s=100.0, budget=Budget(per_run=2))
+    assert (result.parts, result.calls, result.cached) == (2, 2, 2)
+    assert len(fill.requests) == 2

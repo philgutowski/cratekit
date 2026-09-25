@@ -89,13 +89,21 @@ CHUNK_S = 12
 INTERVAL_S = 25
 SAMPLE_RATE = 16000
 
-#: The most calls one recording may cost. A two hour set on the grid above is
-#: 288 calls, so this admits any set a person would play and refuses a file
-#: that is not a set at all before the first call rather than after the
-#: three hundredth. A run needing more is refused, never trimmed: a recording
-#: identified for its first three hours and silently not for its fourth is a
-#: report over audio nothing looked at.
+#: The most calls one RUN may cost. A two hour set on the grid above is 288
+#: calls, so one run admits any set a person would play. A recording that
+#: needs more is not trimmed: a recording identified for its first three hours
+#: and silently not for its fourth is a report over audio nothing looked at.
+#: Since R-706 it is identified in PARTS instead, see :data:`MAX_PARTS`.
 MAX_CALLS_PER_RUN = 400
+
+#: The most even parts one recording is identified in, each a run under the
+#: bound above. A live recording longer than one run is an ordinary input for
+#: this author, the eleventh sitting met a five hour mix, and Phillip decided
+#: on 2026-09-24 that such a set is split into even parts named Part A, Part B
+#: and Part C at most. Three parts is over eight hours of audio, and a file
+#: needing more is refused before the first call as not one set, which is the
+#: refusal the per run bound was written for.
+MAX_PARTS = 3
 
 #: How many attempts in a row may get no answer before the run stops. An
 #: answer this build cannot read, an HTTP status that is not 200, a transport
@@ -355,6 +363,42 @@ def sample_offsets(
     return tuple(offset * interval_s for offset in range(count))
 
 
+def parts_needed(planned: int, *, per_run: int = MAX_CALLS_PER_RUN) -> int:
+    """How many runs a grid of ``planned`` chunks takes, without building it.
+
+    Arithmetic for the same reason :func:`planned_calls` is: the ceiling on
+    parts is checked against this number before any grid exists.
+    """
+    if planned <= 0:
+        return 0
+    return -(-planned // per_run)
+
+
+def partition(
+    offsets: tuple[int, ...], *, per_run: int = MAX_CALLS_PER_RUN
+) -> tuple[tuple[int, ...], ...]:
+    """The grid as the fewest EVEN, contiguous parts each at or under ``per_run``.
+
+    A grid that fits one run is one part, itself. A longer one is cut into
+    :func:`parts_needed` slices whose sizes differ by at most one, in grid
+    order, so the parts of a five hour mix are two halves and not a full run
+    and a remainder. Even parts are what the eleventh sitting cut by hand, and
+    they are what keeps every part a set's worth of audio rather than one of
+    them a sliver. An empty grid is no parts at all.
+    """
+    count = parts_needed(len(offsets), per_run=per_run)
+    if count == 0:
+        return ()
+    base, extra = divmod(len(offsets), count)
+    parts: list[tuple[int, ...]] = []
+    start = 0
+    for index in range(count):
+        size = base + (1 if index < extra else 0)
+        parts.append(tuple(offsets[start : start + size]))
+        start += size
+    return tuple(parts)
+
+
 # ---------------------------------------------------------------------------
 # The ledger and the budget
 # ---------------------------------------------------------------------------
@@ -453,17 +497,54 @@ class Budget:
 MONTHLY_KEY = "recognition.monthly_calls"
 
 
-def assert_within(budget: Budget, *, planned: int, used_this_month: int) -> None:
-    """Refuse BEFORE the first call when the plan exceeds either bound."""
+def assert_one_set(budget: Budget, *, planned: int) -> None:
+    """Refuse a recording that would take more than :data:`MAX_PARTS` runs.
+
+    THE REFUSAL THE PER RUN BOUND WAS WRITTEN FOR, kept at the ceiling rather
+    than at one run: a file that is not a set at all is refused before the
+    first call, and a long set is not. Same cause and same ``per-run`` kind as
+    before R-706, so a reader of the detail tells this build's own bound from
+    the service's quota answer as they always could; ``parts`` and ``ceiling``
+    say how far the bound now stretches.
+    """
+    ceiling = budget.per_run * MAX_PARTS
+    if planned > ceiling:
+        raise refuse(
+            "intake-recognition-spend-bound",
+            f"this recording would take {planned} recognition calls, which is more "
+            f"than {MAX_PARTS} parts of the per run bound of {budget.per_run}; "
+            f"nothing was sent. A file this long is not one set, so split it "
+            f"rather than raising the bound",
+            origin=("intake.acrcloud",),
+            detail={
+                "planned": planned,
+                "bound": budget.per_run,
+                "parts": MAX_PARTS,
+                "ceiling": ceiling,
+                "kind": "per-run",
+            },
+        )
+
+
+def assert_run_within(budget: Budget, *, planned: int) -> None:
+    """Refuse a RUN that would exceed the per run bound.
+
+    Asked of every part before the first call of any. By construction a part
+    is at or under the bound, so this is the guard that makes that a property
+    of the spend rather than of the partition that happened to be built.
+    """
     if planned > budget.per_run:
         raise refuse(
             "intake-recognition-spend-bound",
-            f"this recording would take {planned} recognition calls and the per "
-            f"run bound is {budget.per_run}; nothing was sent. A file this long "
-            f"is not one set, so split it rather than raising the bound",
+            f"this run would take {planned} recognition calls and the per run "
+            f"bound is {budget.per_run}; nothing was sent for it",
             origin=("intake.acrcloud",),
             detail={"planned": planned, "bound": budget.per_run, "kind": "per-run"},
         )
+
+
+def assert_month_within(budget: Budget, *, planned: int, used_this_month: int) -> None:
+    """Refuse BEFORE the first call when the month cannot afford the plan."""
     if budget.monthly is not None and used_this_month + planned > budget.monthly:
         raise refuse(
             "intake-recognition-spend-bound",
@@ -859,10 +940,10 @@ def identify(
     recording whose every chunk is kept never RETRIEVES a credential, so the
     second of ``intake identify`` then ``intake set`` spends nothing. The
     presence gate in :mod:`cratekit.intake.recognize` still runs first, so a
-    machine with no key recorded is refused there whatever is kept. The per
-    run bound still reads the WHOLE grid, because it is what refuses a file
-    that is not a set; the monthly bound reads only what is owed, because it
-    is a bound on spend.
+    machine with no key recorded is refused there whatever is kept. The parts
+    ceiling, :func:`assert_one_set`, still reads the WHOLE grid, because it is
+    what refuses a file that is not a set; the run bound and the monthly bound
+    read only what is owed, because they are bounds on spend.
 
     A MISS IS KEPT UNTIL SOMEBODY ASKS AGAIN. The service's catalogue grows,
     so a chunk it could not name last season may be one it can name now, and
@@ -880,6 +961,19 @@ def identify(
     shipped path came to bound no month and ask one region: nothing passed
     them, so nothing was chosen. :func:`bound_identifier` builds both from the
     configuration's recognition section.
+
+    A SET LONGER THAN ONE RUN IS IDENTIFIED IN PARTS, NOT REFUSED (R-706). The
+    grid is cut by :func:`partition` into even contiguous slices each at or
+    under the per run bound, and every slice is a run: the run bound is asked
+    of every part before the first call of any, so an oversize part is
+    refused with nothing spent. The month's bound is asked ONCE, over everything
+    the whole set owes, before the first call of the first part, so a set the
+    month cannot afford spends nothing rather than its first part. One pass
+    walks the parts in grid order and folds the answers once, so a record
+    playing across the cut is one row and not two, and the caller receives
+    one result for one set. The parts are never files: the carver reads any
+    offset of the recording, so the cut is a place in the grid, and nothing
+    is written to disk to make it. ``parts`` on the result says how many.
     """
     spend = budget
     counter = ledger or Ledger()
@@ -899,8 +993,9 @@ def identify(
             f"nothing was sent",
             source=str(source),
         )
-    assert_within(Budget(per_run=spend.per_run), planned=planned, used_this_month=0)
+    assert_one_set(spend, planned=planned)
     offsets = sample_offsets(duration_s)
+    parts = partition(offsets, per_run=spend.per_run)
     plan, unkept = _plan_for(source, offsets, host=host)
     kept = kept_in.read(plan) if plan is not None and not refresh else {}
     owed = [offset for offset in offsets if offset not in kept]
@@ -908,7 +1003,7 @@ def identify(
     try:
         result = _identified(
             source,
-            offsets=offsets,
+            parts=parts,
             kept=kept,
             owed=owed,
             paid=paid,
@@ -940,7 +1035,7 @@ def identify(
 def _identified(
     source: Path,
     *,
-    offsets: tuple[int, ...],
+    parts: tuple[tuple[int, ...], ...],
     kept: Mapping[int, Mapping[str, Any]],
     owed: list[int],
     paid: dict[int, Mapping[str, Any]],
@@ -953,77 +1048,39 @@ def _identified(
     month: str | None,
 ) -> Identified:
     """The pass itself. ``paid`` is the caller's, filled as each answer arrives,
-    so the caller can keep it whether this returns or raises."""
+    so the caller can keep it whether this returns or raises.
+
+    ``parts`` is the grid, cut. Every part is asked of the run bound and the
+    month is asked once over ``owed``, the whole set's, BEFORE any part
+    starts, so a partition that handed back an oversize part, first or last,
+    is refused with nothing spent rather than after the parts before it.
+    """
+    still_owed = frozenset(owed)
+    for part in parts:
+        assert_run_within(spend, planned=sum(1 for offset in part if offset in still_owed))
+    keys = ("", "")
     if owed:
-        assert_within(spend, planned=len(owed), used_this_month=counter.used(month))
-        access_key, signing_key = credentials()
+        assert_month_within(spend, planned=len(owed), used_this_month=counter.used(month))
+        keys = credentials()
 
     found: list[Match] = []
     calls = misses = unreached = streak = 0
-    for offset in offsets:
-        if offset in kept:
-            parsed = _heard(kept[offset], offset_s=offset)
-            if parsed is None:
-                misses += 1
-            else:
-                found.append(parsed)
-            continue
-        try:
-            sample = carver.carve(source, offset, CHUNK_S)
-        except (RuntimeError, OSError, binaries.BinaryNotFound) as exc:
-            raise _failed(
-                f"{source.name} could not be carved at {offset}s after {calls} call(s): {exc}",
-                source=str(source),
-                offset_s=offset,
-                calls=calls,
-            ) from exc
-        request = request_for(
-            sample, access_key=access_key, signing_key=signing_key, host=host
-        )
-        calls += 1
-        try:
-            counter.record(1, month)
-        except (config.ConfigLockUnavailable, OSError) as exc:
-            raise _failed(
-                f"the recognition ledger could not record a call ({exc}), so the "
-                f"call was not made; {calls - 1} call(s) were made before it",
-                calls=calls - 1,
-            ) from exc
-        outcome, code, message, payload = _answer(transport, request)
-        if outcome in _KEPT_OUTCOMES:
-            streak = 0
-            paid[offset] = payload or {}
-            parsed = _heard(payload or {}, offset_s=offset)
-            if parsed is None:
-                misses += 1
-            else:
-                found.append(parsed)
-        elif outcome is Outcome.QUOTA:
-            raise _quota_refusal(code, message, calls=calls)
-        elif outcome is Outcome.AUTH:
-            raise _auth_refusal(code, message)
-        elif outcome is Outcome.TRANSIENT:
-            unreached += 1
-            streak += 1
-            if streak >= UNREACHED_STOP:
-                raise _failed(
-                    f"{streak} calls in a row for {source.name} got no usable answer, the "
-                    f"last one {message}, so the run stopped after {calls} call(s) rather "
-                    f"than paying the rest of the set into a service it cannot reach; "
-                    f"the calls were counted",
-                    source=str(source),
-                    calls=calls,
-                    unreached=unreached,
-                )
-        else:
-            raise _failed(
-                f"the recognition service answered {source.name} at {offset}s with code "
-                f"{code} ({message or 'no message'}), which this build cannot classify, "
-                f"so the run stopped after {calls} call(s) rather than paying into an "
-                f"answer it does not understand",
-                code=code,
-                offset_s=offset,
-                calls=calls,
+    offsets = tuple(offset for part in parts for offset in part)
+    for part in parts:
+        for offset in part:
+            calls, misses, unreached, streak = _one_chunk(
+                source,
+                offset,
+                kept=kept,
+                paid=paid,
+                found=found,
+                transport=transport,
+                carver=carver,
+                keys=keys,
+                counter=counter,
+                host=host,
+                month=month,
+                counts=(calls, misses, unreached, streak),
             )
     if unreached and unreached == len(offsets):
         raise _failed(
@@ -1040,7 +1097,93 @@ def _identified(
         misses=misses,
         unreached=unreached,
         cached=len(offsets) - len(owed),
+        parts=len(parts),
     )
+
+
+def _one_chunk(
+    source: Path,
+    offset: int,
+    *,
+    kept: Mapping[int, Mapping[str, Any]],
+    paid: dict[int, Mapping[str, Any]],
+    found: list[Match],
+    transport: Transport,
+    carver: Carver,
+    keys: tuple[str, str],
+    counter: Ledger,
+    host: str,
+    month: str | None,
+    counts: tuple[int, int, int, int],
+) -> tuple[int, int, int, int]:
+    """One chunk of the pass: served from what is kept, or carved, counted and
+    sent. Returns the running ``(calls, misses, unreached, streak)``, and
+    raises the three answers that end the run."""
+    calls, misses, unreached, streak = counts
+    access_key, signing_key = keys
+    if offset in kept:
+        parsed = _heard(kept[offset], offset_s=offset)
+        if parsed is None:
+            misses += 1
+        else:
+            found.append(parsed)
+        return calls, misses, unreached, streak
+    try:
+        sample = carver.carve(source, offset, CHUNK_S)
+    except (RuntimeError, OSError, binaries.BinaryNotFound) as exc:
+        raise _failed(
+            f"{source.name} could not be carved at {offset}s after {calls} call(s): {exc}",
+            source=str(source),
+            offset_s=offset,
+            calls=calls,
+        ) from exc
+    request = request_for(sample, access_key=access_key, signing_key=signing_key, host=host)
+    calls += 1
+    try:
+        counter.record(1, month)
+    except (config.ConfigLockUnavailable, OSError) as exc:
+        raise _failed(
+            f"the recognition ledger could not record a call ({exc}), so the "
+            f"call was not made; {calls - 1} call(s) were made before it",
+            calls=calls - 1,
+        ) from exc
+    outcome, code, message, payload = _answer(transport, request)
+    if outcome in _KEPT_OUTCOMES:
+        streak = 0
+        paid[offset] = payload or {}
+        parsed = _heard(payload or {}, offset_s=offset)
+        if parsed is None:
+            misses += 1
+        else:
+            found.append(parsed)
+    elif outcome is Outcome.QUOTA:
+        raise _quota_refusal(code, message, calls=calls)
+    elif outcome is Outcome.AUTH:
+        raise _auth_refusal(code, message)
+    elif outcome is Outcome.TRANSIENT:
+        unreached += 1
+        streak += 1
+        if streak >= UNREACHED_STOP:
+            raise _failed(
+                f"{streak} calls in a row for {source.name} got no usable answer, the "
+                f"last one {message}, so the run stopped after {calls} call(s) rather "
+                f"than paying the rest of the set into a service it cannot reach; "
+                f"the calls were counted",
+                source=str(source),
+                calls=calls,
+                unreached=unreached,
+            )
+    else:
+        raise _failed(
+            f"the recognition service answered {source.name} at {offset}s with code "
+            f"{code} ({message or 'no message'}), which this build cannot classify, "
+            f"so the run stopped after {calls} call(s) rather than paying into an "
+            f"answer it does not understand",
+            code=code,
+            offset_s=offset,
+            calls=calls,
+        )
+    return calls, misses, unreached, streak
 
 
 def _plan_for(
@@ -1116,6 +1259,7 @@ __all__ = [
     "LEDGER_KEY",
     "LEDGER_LOCK_KEY",
     "MAX_CALLS_PER_RUN",
+    "MAX_PARTS",
     "MONTHLY_KEY",
     "SAMPLE_RATE",
     "UNREACHED_STOP",
@@ -1130,7 +1274,9 @@ __all__ = [
     "Request",
     "Response",
     "Transport",
-    "assert_within",
+    "assert_month_within",
+    "assert_one_set",
+    "assert_run_within",
     "bound_identifier",
     "classify",
     "content_digest",
@@ -1140,6 +1286,8 @@ __all__ = [
     "identify",
     "keychain_credentials",
     "parse_match",
+    "partition",
+    "parts_needed",
     "planned_calls",
     "request_for",
     "sample_offsets",

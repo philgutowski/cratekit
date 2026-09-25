@@ -52,7 +52,10 @@ class Identified:
     the next one over the same recording will pay again, which a person is
     owed the chance to know before it happens. ``digest`` is the sha256 of the
     recording's bytes when they could be read, which is the one name two
-    recordings that share a file name do not share.
+    recordings that share a file name do not share. ``parts`` is how many
+    runs the recording was identified in, one for any set that fits the per
+    run bound and more for a set longer than it (R-706); the rows are still
+    one set's, folded once across the parts.
     """
 
     rows: tuple[Wanted, ...]
@@ -63,6 +66,7 @@ class Identified:
     cached: int = 0
     cache_unwritten: str = ""
     digest: str = ""
+    parts: int = 1
 
 
 #: An identifier answers with an :class:`Identified`, or with the bare rows

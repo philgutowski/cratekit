@@ -5769,7 +5769,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # in cause.REASONS raised by write/metadata.py, and level-unrated, a skip
     # reason and NOT a key, which the rating planner gives for a row whose cut
     # declares zero stars. Only the skip reason moves the non-key half.
-    assert (len(literals), len(literals - set(causes))) == (507, 326), (
+    # Re-pinned on the residual finding "A set longer than the recognition
+    # bound cannot be identified whole, and a split set lands as unrelated
+    # parts", 2026-09-24: 507 to 508 distinct, non-keys 326 to 327. ONE
+    # literal joined and NOTHING left, differenced over the branch's diff of
+    # `src` against `main` with `git grep` on `main` for each. It is not a
+    # cause: recognition-in-parts is the WARNING code the two recognition
+    # verbs add when a recording longer than one run's bound was identified
+    # in even parts, a warning and not a cause because the set still queues
+    # as one job. The refusal over the parts ceiling reuses
+    # intake-recognition-spend-bound and its per-run kind.
+    assert (len(literals), len(literals - set(causes))) == (508, 327), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

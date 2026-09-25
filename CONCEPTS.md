@@ -316,6 +316,17 @@ or another regional host is a different plan and misses. A path, a size and a
 modification time are deliberately not in it, because none is unique to the
 audio.
 
+### Part
+One run's worth of a recording longer than the per run recognition bound,
+since R-706. The chunk grid is cut into the fewest even contiguous slices each
+at or under the bound, at most three, and each slice is a run: the run bound
+is asked of every part before the first call of any. A part is a place in the
+grid and never a
+file, because the carver reads any offset of the recording. The month's bound
+is asked once over the whole set, the answers fold once across the cut, and
+the set queues as one job, so the parts are visible only as spend and as the
+`recognition-in-parts` note.
+
 ### Companion
 The second record the deletion pass writes beside the tombstone of a library row
 whose title carried a featured credit: the same deleted version, addressed with
