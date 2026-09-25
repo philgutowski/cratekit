@@ -1,0 +1,102 @@
+{
+  "name": "r703-c",
+  "pass_kind": "light",
+  "branch": "relay/215",
+  "head": "fb0ea84",
+  "when": "2026-09-25 01:59 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10337,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "state_guarded": "/var/folders/04/3rzlk_9500jcdqrhfrkb8p380000gn/T/r703-config.x3zxG5yWJP (0 entries); /var/folders/04/3rzlk_9500jcdqrhfrkb8p380000gn/T/r703-state.apUVMIQVs5 (0 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/vendored.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/vendored.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "47c672b56900093c",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10337,
+    "baseline_collected": 10337,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_last_exception_wins",
+      "description": "Batch B's L2 again after its test: a later exception overwrites the first",
+      "file": "src/cratekit/acquire/vendored.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e062a377aee325db",
+      "subset": [
+        "tests/test_adapter_contract.py",
+        "tests/test_provider_gate.py"
+      ],
+      "subset_reason": "test files importing cratekit.acquire.vendored",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 235,
+      "baseline_collected": 235,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adapter_contract.py::test_the_first_exception_the_tool_logs_is_the_cause_not_its_consequence"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if self._exception is None:\n            self._exception = exc",
+      "new": "        self._exception = exc"
+    },
+    {
+      "id": "C2_message_outranks_exception",
+      "description": "Batch B's L3 again after its test: the cause prefers the tool's message over the provider's exception",
+      "file": "src/cratekit/acquire/vendored.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "812d5509fc2dd805",
+      "subset": [
+        "tests/test_adapter_contract.py",
+        "tests/test_provider_gate.py"
+      ],
+      "subset_reason": "test files importing cratekit.acquire.vendored",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 235,
+      "baseline_collected": 235,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adapter_contract.py::test_the_providers_exception_outranks_a_message_the_tool_logged_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return self._exception if self._exception is not None else self._message",
+      "new": "        return self._message if self._message is not None else self._exception"
+    }
+  ],
+  "dropped": []
+}
