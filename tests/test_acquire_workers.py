@@ -1211,3 +1211,35 @@ def test_another_verbs_job_is_not_read_as_a_frozen_download_list(tmp_path):
     with pytest.raises(CratekitError) as refused:
         acquire_cli._same_list_or_refuse(str(tmp_path / "mine.json"), Job(), Job.handler_key)
     assert refused.value.cause.reason == "intake-list-unusable"
+
+
+def test_a_deleted_frozen_list_named_relative_from_where_it_was_queued_still_drives(
+    cfg, script, library, monkeypatch
+):
+    """The job froze every track, so a list deleted since still resumes, and the
+    filesystem cannot answer for a file that is gone: the freeze's own
+    absolutising is what makes the two spellings agree."""
+    monkeypatch.chdir(library)
+    script.landings = landings("1")
+    path = listed(library, [("1", "A", "T")])
+    job_id = queued(Path("list.json"))
+    path.unlink()
+
+    code, envelope = drive(["acquire", "download", "list.json", "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert states(job_id) == {"1": jobs.ItemState.DONE}
+
+
+def test_a_list_under_a_home_that_cannot_be_expanded_is_refused_by_name(cfg, library):
+    """``expanduser`` raises for an unknown user; the resume still answers with
+    the list refusal rather than an internal error."""
+    job_id = queued(listed(library, [("1", "A", "T")]))
+
+    code, envelope = drive(
+        ["acquire", "download", "~no-such-user-r668/list.json", "--job", job_id]
+    )
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert states(job_id) == {"1": jobs.ItemState.PENDING}
