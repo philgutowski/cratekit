@@ -149,6 +149,12 @@ crate match run /path/to/tracklist.txt
 - `intake identify` names the tracks in a recording and stops. It calls a paid
   recognition service, so it refuses before the first call if the recognition
   keys are not recorded.
+- A recording longer than one recognition run's bound, about two hours and
+  forty minutes, is identified in even parts, up to three, and is still one
+  set: one tracklist, one job, one batch. Both verbs say so with a
+  `recognition-in-parts` note. The month's bound is checked over the whole
+  recording before the first call, and a file longer than three parts is
+  refused as not one set.
 - `match run` takes lines of `Artist - Title` and sorts each into matched,
   needs review or missing. Needs review means a different version of the track
   exists, such as a remix or an edit, and only you can say if it counts. Those

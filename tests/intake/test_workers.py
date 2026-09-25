@@ -1490,3 +1490,74 @@ def test_json_mode_never_reaches_the_human_cases(cfg, library, monkeypatch):
 
     assert code == int(ExitCode.OK), envelope
     assert set(envelope["data"]) == {"job_id", "state", "cause", "progress"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-706: a set longer than one run is identified in parts and lands as one
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_set_longer_than_one_run_is_queued_as_one_job_with_the_parts_said(
+    cfg, library, recognised, monkeypatch
+):
+    """Three chunks under a run bound of two is two parts. One job, one item
+    per track in set order, and the note says the split was the spend's and
+    not the set's."""
+    monkeypatch.setattr(acrcloud, "MAX_CALLS_PER_RUN", 2)
+    three_tracks(recognised)
+    path = recording(library)
+
+    job_id, envelope = queued_set(path)
+
+    assert envelope["data"]["progress"]["parts"] == 2
+    assert envelope["data"]["progress"]["calls"] == 3
+    assert len(recognised.requests) == 3
+    assert [w["code"] for w in envelope["warnings"]] == [intake_cli.IN_PARTS]
+    note = envelope["warnings"][0]["message"]
+    assert "2 even parts" in note and "bound of 2 calls" in note and "one batch" in note
+    with jobs.open_store() as store:
+        assert len(jobs.list_jobs(store)) == 1, "a split set queued more than one job"
+    frozen = job_of(job_id).payload[intake_cli.TRACKS]
+    assert [said["title"] for said in frozen.values()] == ["Sun Path", "Tide", "Glass Hour"]
+    assert [item.item_id for item in items_of(job_id)] == list(frozen), "item order is the set order"
+
+
+def test_identify_only_says_the_same_parts_note(cfg, library, recognised, monkeypatch):
+    monkeypatch.setattr(acrcloud, "MAX_CALLS_PER_RUN", 2)
+    three_tracks(recognised)
+    code, envelope = drive(["intake", "identify", str(recording(library))])
+    assert code in (int(ExitCode.OK), int(ExitCode.PENDING_HUMAN)), envelope
+    assert [w["code"] for w in envelope["warnings"]] == [
+        intake_cli.TRACKLIST_WRITTEN,
+        intake_cli.IN_PARTS,
+    ]
+    assert [row["title"] for row in envelope["data"]["missing"]] == ["Sun Path", "Tide", "Glass Hour"]
+
+
+def test_a_set_that_fits_one_run_carries_no_parts_note(cfg, library, recognised):
+    three_tracks(recognised)
+    _, envelope = queued_set(recording(library))
+    assert envelope["warnings"] == []
+    assert envelope["data"]["progress"]["parts"] == 1
+
+
+def test_a_recording_over_the_parts_ceiling_is_refused_at_the_queue_and_queues_nothing(
+    cfg, library, recognised, monkeypatch
+):
+    """Four chunks under a run bound of one is four parts, one over the
+    ceiling of three, so it is refused as not one set before any call."""
+    monkeypatch.setattr(acrcloud, "MAX_CALLS_PER_RUN", 1)
+    monkeypatch.setattr(acrcloud, "FfmpegCarver", lambda: FakeCarver(100.0))
+    three_tracks(recognised)
+
+    code, envelope = drive(["intake", "set", str(recording(library))])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert envelope["cause"]["reason"] == "intake-recognition-spend-bound"
+    detail = envelope["cause"]["detail"]
+    assert (detail["kind"], detail["parts"], detail["ceiling"], detail["planned"]) == (
+        "per-run", acrcloud.MAX_PARTS, 3, 4
+    )
+    assert recognised.requests == []
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()

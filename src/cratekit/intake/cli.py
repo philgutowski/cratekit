@@ -53,7 +53,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import artifacts, binaries, binary_refusal, config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.intake import fetch, ingest, normalize, pipeline, recognize
+from cratekit.intake import acrcloud, fetch, ingest, normalize, pipeline, recognize
 from cratekit.label import catalogue
 from cratekit.label import cli as label_cli
 
@@ -704,7 +704,11 @@ def intake_set(ctx) -> Envelope:
             result = pipeline.identify_only(
                 held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
             )
-            warnings = _coverage_or_refuse(result, held) + _cache_notes(result)
+            warnings = (
+                _coverage_or_refuse(result, held)
+                + _cache_notes(result)
+                + _parts_notes(result)
+            )
             tracks = frozen_rows(result.rows)
             if tracks:
                 job = jobs.enqueue(
@@ -733,7 +737,13 @@ def intake_set(ctx) -> Envelope:
             )
         return ctx.envelope(
             data=_reported(
-                store, job, extra={"calls": result.calls, "unreached": result.unreached}
+                store,
+                job,
+                extra={
+                    "calls": result.calls,
+                    "unreached": result.unreached,
+                    "parts": result.parts,
+                },
             ),
             warnings=warnings,
         )
@@ -756,6 +766,29 @@ TRACKLIST_DIGEST_CHARS = 12
 TRACKLIST_WRITTEN = "tracklist-written"
 CACHE_UNWRITTEN = "recognition-cache-unwritten"
 CACHE_SERVED = "recognition-cached"
+
+#: The note a set longer than one run's bound carries (R-706). It was
+#: identified in even parts and is still one set: one tracklist, one job, one
+#: batch, so a person is told the split happened and that nothing of theirs
+#: is split by it.
+IN_PARTS = "recognition-in-parts"
+
+
+def _parts_notes(result: pipeline.IdentifyResult) -> tuple[dict[str, str], ...]:
+    """Said when the recording was identified in more than one run."""
+    if result.parts <= 1:
+        return ()
+    return (
+        {
+            "code": IN_PARTS,
+            "message": (
+                f"this recording is longer than one recognition run's bound of "
+                f"{acrcloud.MAX_CALLS_PER_RUN} calls, so it was identified in "
+                f"{result.parts} even parts, {result.chunks} chunk(s) in all; it "
+                f"is still one set, and its tracks are listed and land as one batch"
+            ),
+        },
+    )
 
 
 def _cache_notes(result: pipeline.IdentifyResult) -> tuple[dict[str, str], ...]:
@@ -941,7 +974,9 @@ def intake_identify(ctx) -> Envelope:
         result = pipeline.identify_only(
             held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
         )
-        warnings = _coverage_or_refuse(result, held) + _cache_notes(result)
+        warnings = (
+            _coverage_or_refuse(result, held) + _cache_notes(result) + _parts_notes(result)
+        )
         if result.rows:
             written = _tracklist_written(out, held, result)
     warnings += _fetch_notes(held)
