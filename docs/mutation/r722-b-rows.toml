@@ -1,0 +1,32 @@
+name = "r722-b"
+pass_kind = "light"
+
+[[rows]]
+id = "T2_unrecognised_is_absent"
+description = "A container mutagen does not recognise reads as absent in the checked reader, rerun after the fix round"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''        if strict:
+            raise TagReadFailed("not a container the tag library recognises")
+        return absent'''
+new = '''        return absent'''
+
+[[rows]]
+id = "T6_field_failure_swallowed"
+description = "An undecodable field reads as absent in the checked reader, rerun after the fix round"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''            if strict:
+                raise TagReadFailed(f"{key}: {type(exc).__name__}: {exc}") from exc
+            log.debug("tag read failed for %s %s: %s", path, key, exc)'''
+new = '''            log.debug("tag read failed for %s %s: %s", path, key, exc)'''
+
+[[rows]]
+id = "T7_lenient_field_raises"
+description = "The lenient reader raises on one undecodable field instead of reading it as None, rerun after the fix round"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''            if strict:
+                raise TagReadFailed(f"{key}: {type(exc).__name__}: {exc}") from exc
+            log.debug("tag read failed for %s %s: %s", path, key, exc)'''
+new = '''            raise TagReadFailed(f"{key}: {type(exc).__name__}: {exc}") from exc'''
