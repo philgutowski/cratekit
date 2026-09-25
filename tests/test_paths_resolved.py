@@ -1001,3 +1001,22 @@ def test_doctor_reports_an_empty_database_path_under_the_same_cause(bench, opene
     assert str(bench.db_path) in finding.detail
     assert "no such table" not in finding.detail
     assert opened == []
+
+
+def test_a_refusal_on_the_way_in_is_not_reclassified_as_a_wrong_path(bench, monkeypatch):
+    """Only the canary's own failure is asked whether the copy is a library.
+
+    A binding pin that refuses is a fact about this installation, true of every
+    file, and a foreign file behind it must still be answered with the pin.
+    """
+    bench.db_path.unlink()
+    _foreign(bench.db_path)
+
+    def drifted(_cfg=None):
+        raise rb_writer._unavailable("pyrekordbox-pin-drift", "the binding is not the pinned one")
+
+    monkeypatch.setattr(rb_writer, "assert_binding_version", drifted)
+
+    cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
+
+    assert cause.reason == "pyrekordbox-pin-drift"

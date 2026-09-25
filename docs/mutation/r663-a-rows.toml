@@ -1,0 +1,154 @@
+name = "r663-a"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_empty_not_refused_before_open"
+description = "the size of the copy is no longer asked before the open, so an empty copy reaches the binding and is classified only if the canary is what fails"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        refusal = None if copied.stat().st_size else _not_a_library(Path(source), copied)
+'''
+new = '''        refusal = None
+'''
+
+[[rows]]
+id = "M2_every_open_refusal_classified"
+description = "the canary reason gate is removed, so any refusal on the way in, a pin or a failed open, is also asked whether the copy is a library"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''            if exc.cause.reason != "canary-read-failed":
+                raise
+            refusal = _not_a_library(Path(source), copied)'''
+new = '''            refusal = _not_a_library(Path(source), copied)'''
+
+[[rows]]
+id = "M3_unlistable_read_as_empty"
+description = "a copy whose tables could not be listed is no longer kept apart from one with none, so the None check is dropped"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        if tables is None or tables.intersection(CANARY_TABLES):'''
+new = '''        if tables and tables.intersection(CANARY_TABLES):'''
+
+[[rows]]
+id = "M4_one_canary_table_not_enough"
+description = "a copy holding one of the two canary tables is classified as not a library, so schema drift is sent to setup"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        if tables is None or tables.intersection(CANARY_TABLES):'''
+new = '''        if tables is None or tables.issuperset(CANARY_TABLES):'''
+
+[[rows]]
+id = "M5_failed_listing_returns_empty_set"
+description = "a table listing whose query fails answers an empty set rather than None, so a file that could not be read is reported as holding nothing"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        return {str(row[0]) for row in rows}
+    except Exception:  # noqa: BLE001 - an unlistable file keeps the canary's refusal
+        return None'''
+new = '''        return {str(row[0]) for row in rows}
+    except Exception:  # noqa: BLE001 - an unlistable file keeps the canary's refusal
+        return set()'''
+
+[[rows]]
+id = "M6_listing_opened_with_the_key_always"
+description = "the table listing opens every copy with the key rather than asking the header, so a plain foreign file cannot be listed"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        db = Rekordbox6Database(path=str(copied), unlock=unlock_needed(copied))'''
+new = '''        db = Rekordbox6Database(path=str(copied), unlock=True)'''
+
+[[rows]]
+id = "M7_message_drops_the_size"
+description = "the empty file's message no longer names the size"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        what = "is empty, 0 bytes"'''
+new = '''        what = "is not a database"'''
+
+[[rows]]
+id = "M8_message_names_the_copy"
+description = "the message names the temporary copy rather than the configured path"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        f"the file configured as the rekordbox database, {source}, {what}, so it "'''
+new = '''        f"the file configured as the rekordbox database, {copied}, {what}, so it "'''
+
+[[rows]]
+id = "M9_remedy_restore"
+description = "the refusal carries the snapshot restore remedy instead of setup"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        remedy=Remedy.RUN_SETUP,'''
+new = '''        remedy=Remedy.RESTORE_FROM_SNAPSHOT,'''
+
+[[rows]]
+id = "M10_detail_size_pinned"
+description = "the detail's size is written as zero whatever the copy measured"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        detail={"path": str(source), "size": size, "tables_read": list(CANARY_TABLES)},'''
+new = '''        detail={"path": str(source), "size": 0, "tables_read": list(CANARY_TABLES)},'''
+
+[[rows]]
+id = "M11_setup_never_checks"
+description = "setup no longer asks before it saves, so the wrong file is recorded"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''    _refuse_a_database_that_is_not_one(cfg)
+'''
+new = ''''''
+
+[[rows]]
+id = "M12_setup_stops_on_every_refusal"
+description = "setup's reason gate is removed, so a damaged library stops the verb rather than going to the notes and doctor"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''        if exc.cause.reason == "library-database-not-rekordbox":
+            raise
+'''
+new = '''        raise
+'''
+
+[[rows]]
+id = "M13_setup_running_gate"
+description = "setup no longer asks whether rekordbox is running before it copies"
+file = "src/cratekit/cli/setup.py"
+surface = "maintainer"
+tests = ["tests/test_paths_resolved.py"]
+old = '''    if rb_writer.rekordbox_processes_running():
+        return
+    try:
+        with rb_writer.read_only_copy(source, cfg=cfg):'''
+new = '''    try:
+        with rb_writer.read_only_copy(source, cfg=cfg):'''
+
+[[rows]]
+id = "M14_setup_missing_file_gate"
+description = "setup no longer skips a path with no file before it copies"
+file = "src/cratekit/cli/setup.py"
+surface = "maintainer"
+tests = ["tests/test_paths_resolved.py"]
+old = '''    try:
+        if not source.is_file():
+            return
+    except OSError:
+        return
+    if rb_writer.rekordbox_processes_running():'''
+new = '''    if rb_writer.rekordbox_processes_running():'''
+
+[[dropped]]
+id = "D1_registration"
+description = "remove library-database-not-rekordbox from cause.REASONS"
+reason = "not a guard: refuse raises UnknownReason on an undeclared slug, so the row measures the registry's own refusal, which the reserved causes suite already pins by count"
