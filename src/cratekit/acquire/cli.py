@@ -134,7 +134,16 @@ def _reported(store, job) -> dict:
 def build(parser, entry) -> None:
     """Declare the surface. ``entry`` is untyped so this layer does not name it."""
     del entry
-    parser.add_argument("list", help="the list of tracks to acquire")
+    # OPTIONAL, because a resume has no use for it (R-668). The job froze the
+    # list's absolute path and every track the list named, so the list on disk
+    # is read once, at the queue, and never again. Requiring it on ``--job``
+    # made a person continuing a job by hand type the path a second time.
+    parser.add_argument(
+        "list",
+        nargs="?",
+        default=None,
+        help="the list of tracks to acquire; omit it with --job, which froze it",
+    )
     parser.add_argument(
         "--job",
         default=None,
@@ -151,10 +160,12 @@ def download_argv(job) -> list[str]:
     flag exists to carry a frozen gate run back into the respawned child, and this
     verb declares no gate, so there is nothing to carry. The module docstring says
     why it declares none.
+
+    NO LIST EITHER, since R-668. The resume reads the job and nothing else, and
+    this argv is also the "drive it with" line a person is shown when the job is
+    queued, so a list here would teach them to type a path the verb ignores.
     """
-    payload = job.payload or {}
-    wanted = str(payload.get(LIST) or "")
-    return ["acquire", "download", wanted, "--job", job.job_id]
+    return ["acquire", "download", "--job", job.job_id]
 
 
 #: Payload keys. ``LIST`` is the frozen list path the resume argv is rebuilt from.
@@ -264,6 +275,41 @@ def _no_op(state: str) -> dict[str, Any]:
     return {"job_id": "", "state": state, "cause": None, "progress": {}}
 
 
+def _same_list_or_refuse(named: str | None, job) -> None:
+    """Refuse a resume that names a list other than the one the job froze.
+
+    A list named beside ``--job`` is read by nothing, since the job carries every
+    track it will acquire. Accepting the SAME list keeps the form every build
+    before R-668 required, and a command line somebody saved still drives. A
+    DIFFERENT one is refused rather than ignored, for the reason ``review
+    resolve`` refuses an item and a predicate together: the person asked for two
+    things that disagree, and driving the job would tell them their list was
+    acquired when a different one was.
+
+    Compared after the same ``expanduser().absolute()`` the queue froze the path
+    with, so a relative path typed from the directory it was queued in agrees. A
+    job whose payload names no list has nothing to disagree with, and the resume
+    path's zero item rule already answers for the only jobs shaped that way.
+    """
+    if named is None:
+        return
+    frozen = str((job.payload or {}).get(LIST) or "")
+    if not frozen:
+        return
+    given = str(Path(named).expanduser().absolute())
+    if given == frozen:
+        return
+    raise _unusable(
+        f"job {job.job_id} acquires the list it froze, {frozen}, and this command "
+        f"names {given}, so driving the job would not acquire the list named here",
+        f"drop the list and run it with --job {job.job_id} alone",
+        "or queue the other list as a job of its own by naming it without --job",
+        job_id=job.job_id,
+        frozen=frozen,
+        named=given,
+    )
+
+
 def acquire_download(ctx) -> Envelope:
     """Read the list, freeze it, and queue one item per track. Or drive the job.
 
@@ -295,6 +341,7 @@ def acquire_download(ctx) -> Envelope:
             # claim left behind by a driver that died is state the queue cannot
             # see for itself.
             job = jobs.reconcile(store, ctx.args.job)
+            _same_list_or_refuse(ctx.args.list, job)
             warnings: tuple[dict[str, str], ...] = ()
             if job.is_open():
                 if not jobs.items(store, job.job_id):
@@ -331,6 +378,15 @@ def acquire_download(ctx) -> Envelope:
         # under the working directory, which that guard cannot see. Absolutising
         # before the read swapped the sentence telling somebody to fetch the
         # playlist into a list document for a file-not-found over a mangled path.
+        if ctx.args.list is None:
+            # Argparse used to say this, as a usage error naming only the list.
+            # The list is optional now, so the queueing path says it itself, and
+            # names the resume form a person may have meant.
+            raise _unusable(
+                "no list was named and no job was given, so there is nothing to acquire",
+                "name the list of tracks to acquire",
+                "or continue an acquisition already queued with --job JOB_ID",
+            )
         given = Path(str(ctx.args.list))
         wanted = match_cli.read_list(given)
         # ABSOLUTE, for the reason ``master`` freezes its recording absolute: the

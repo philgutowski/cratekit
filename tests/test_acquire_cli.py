@@ -156,9 +156,9 @@ def test_download_argv_round_trips_the_frozen_payload_and_carries_no_run(configu
         job = jobs.get(store, job_id)
     argv = acquire_cli.download_argv(job)
 
-    assert argv[:2] == ["acquire", "download"]
-    assert argv[2] == str(listed)
-    assert argv[-2:] == ["--job", job_id]
+    # R-668: the job froze the list, so the command that continues it names
+    # the job and nothing else.
+    assert argv == ["acquire", "download", "--job", job_id]
     assert "--run" not in argv
 
 

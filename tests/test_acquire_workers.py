@@ -1054,6 +1054,87 @@ def test_queueing_a_download_names_the_job_and_the_command_that_drives_it(cfg, l
         (job,) = jobs.list_jobs(store)
     lines = text.splitlines()
     assert f"  job: {job.job_id}, queued" in lines, text
-    drives = shlex.join(["crate", "acquire", "download", str(path.absolute()), "--job", job.job_id])
+    drives = shlex.join(["crate", "acquire", "download", "--job", job.job_id])
     assert f"  drive it with: {drives}" in lines, text
     assert "  items: 0 of 2 settled" in lines, text
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-668: the resume needs the job and not the list
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_job_alone_drives_the_queued_acquisition(cfg, script, library):
+    """Sitting 7: ``--job`` alone was a usage error demanding the list again.
+
+    Typed out rather than taken from ``resume_argv``, so this holds even if the
+    argv builder goes back to carrying the list."""
+    script.landings = landings("1", "2")
+    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
+
+    code, envelope = drive(["acquire", "download", "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["state"] == "succeeded"
+    assert states(job_id) == {"1": jobs.ItemState.DONE, "2": jobs.ItemState.DONE}
+
+
+def test_neither_a_list_nor_a_job_is_refused_by_the_verb_and_queues_nothing(cfg, library):
+    """Argparse said this before the list went optional; the verb says it now,
+    naming both forms, and not as a usage error the verb cannot produce."""
+    code, envelope = drive(["acquire", "download"])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    steps = " ".join(envelope["cause"]["remediation"]["steps"])
+    assert "--job" in steps
+    assert "list" in steps
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_the_frozen_list_named_beside_the_job_still_drives(cfg, script, library):
+    """The form every build before R-668 required, so a saved command still works."""
+    script.landings = landings("1")
+    path = listed(library, [("1", "A", "T")])
+    job_id = queued(path)
+
+    code, envelope = drive(["acquire", "download", str(path), "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert states(job_id) == {"1": jobs.ItemState.DONE}
+
+
+def test_the_frozen_list_named_relative_from_where_it_was_queued_still_drives(
+    cfg, script, library, monkeypatch
+):
+    """Compared after the freeze's own absolutising, so the same words agree."""
+    monkeypatch.chdir(library)
+    script.landings = landings("1")
+    listed(library, [("1", "A", "T")])
+    job_id = queued(Path("list.json"))
+
+    code, envelope = drive(["acquire", "download", "list.json", "--job", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert states(job_id) == {"1": jobs.ItemState.DONE}
+
+
+def test_a_different_list_named_beside_the_job_is_refused_and_nothing_is_fetched(
+    cfg, script, library
+):
+    """Driving the job would report the named list acquired when another one was."""
+    script.landings = landings("1")
+    job_id = queued(listed(library, [("1", "A", "T")]))
+    other = listed(library, [("9", "Z", "Q")], name="other.json")
+
+    code, envelope = drive(["acquire", "download", str(other), "--job", job_id])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert envelope["cause"]["detail"]["named"] == str(other)
+    assert envelope["cause"]["detail"]["frozen"] == str(library / "list.json")
+    assert f"--job {job_id} alone" in " ".join(envelope["cause"]["remediation"]["steps"])
+    assert script.fetched == []
+    assert states(job_id) == {"1": jobs.ItemState.PENDING}
+    assert job_of(job_id).state is jobs.JobState.QUEUED
