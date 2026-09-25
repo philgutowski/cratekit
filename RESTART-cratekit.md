@@ -4,7 +4,28 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-663, issue #210, `relay/210`, 2026-09-25.** A database path
+**Last merged: R-662, issue #211, `relay/211`, 2026-09-25.** A setup re-run
+repairs a spelled backup remote the destinations disagree with. Setup takes
+`--backup-remote`; without it, `_replace_a_remote_rclone_lacks` replaces the
+spelled name with the destinations' one only when rclone's configuration was
+read, lacks the spelled name and has the destinations' one, and says so in a
+`setup.backup.remote` note. Otherwise R-345's rule stands and validation
+refuses, and when that disagreement is the only problem the refusal carries no
+`run-setup` token, so its fix line names `--backup-remote <name>`. The
+validator's problem text names the flag for every verb. The agreement rule is
+`config.backup_remote_disagreement`, one function for the validator, the
+repair and the refusal. The built in review found the swap toward a remote
+rclone also lacks, the token dropped beside other problems, and the flag
+missing from other verbs' refusals. **The numbers:** 10,395 collected, 10,394
+passed and 1 skipped, ruff clean, `scan_repo.py` exit 0. **The mutation table
+was MEASURED:** 22 rows in `docs/mutation/r662-a-rows.toml` and
+`r662-b-rows.toml`, two zeros that got a test and were killed in `r662-b`, two
+user facing zeros held by composites, one maintainer facing zero logged in
+`r662-notes.md`, the leak guard watching empty temporary roots. Filed
+**R-721** (re-pointing every destination by flag still refuses on the derived
+remote), not on the board bar. **Main's highest residual number is R-721.**
+
+**Merged before it: R-663, issue #210, `relay/210`, 2026-09-25.** A database path
 whose file is not a library is refused by its size and its path.
 `rb_writer.read_only_copy` refuses an empty copy before the open, and a copy
 whose canary failed and whose schema lists neither `agentRegistry` nor
