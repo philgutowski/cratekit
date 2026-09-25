@@ -39,6 +39,7 @@ import io
 from dataclasses import replace
 
 import pytest
+from tidalapi.exceptions import TooManyRequests
 
 from cratekit import cli
 from cratekit.cli import handlers, output, registry, render
@@ -2219,3 +2220,291 @@ def test_a_track_read_that_succeeds_breaks_the_run_of_failed_reads(
 
     assert code == int(ExitCode.OK), resumed
     assert len(fake.releases_asked_for) == 7, fake.releases_asked_for
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 13. A rate limit is retryable, and resuming retries exactly those labels. R-704.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class Limit:
+    """Whether the provider is answering rate limited, shared by every fake below."""
+
+    def __init__(self) -> None:
+        self.on = True
+        self.answered = 0
+
+
+class RateLimitedArtist(FakePagedArtist):
+    """A label listing the provider refuses with its own ``TooManyRequests``.
+
+    The class is the client's, not a stand in, because the sweep's question is
+    asked of the provider's own type and a fake spelling of it would prove only
+    that the fake was recognized.
+    """
+
+    def __init__(self, releases: list[FakeRelease], limit: Limit) -> None:
+        super().__init__(releases)
+        self.limit = limit
+
+    def get_albums(self, limit: int | None = None, offset: int = 0) -> list[FakeRelease]:
+        if self.limit.on:
+            self.limit.answered += 1
+            raise TooManyRequests("Album unavailable")
+        return super().get_albums(limit=limit, offset=offset)
+
+
+class RateLimitedVerification(FakeCatalogue):
+    """Every verification call answers rate limited while the limit is on."""
+
+    def __init__(self, *args, limit: Limit, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.limit = limit
+
+    def search_release(self, claimed: str, release) -> dict:
+        if self.limit.on:
+            self.limit.answered += 1
+            raise TooManyRequests("Album unavailable")
+        return super().search_release(claimed, release)
+
+
+def _ladder_without_waiting(monkeypatch) -> list[float]:
+    """The crawl's real retry ladder, every rung climbed, none of it slept.
+
+    ``listing.fetch_with_retry`` sleeps 31 real seconds before re-raising, and
+    ``list_for_label`` exposes no seam for it. Only the sleep is replaced: the
+    retry count, the pagination wrapper and the re-raise all run as shipped,
+    so the provider's error reaches the sweep as the ladder re-raises it.
+
+    NOT THE WHOLE LIVE PATH, and the difference is the provider gate. These
+    fakes make no HTTP call, so the gate never sees an answer. Live, six 429s
+    in a row on one ladder trip it and the item parks before the sweep sees
+    the error; what reaches the sweep's boundary is a limit that did not trip
+    it, the sitting's single album read among them, which the verification
+    test below drives.
+    """
+    from cratekit.label import crawl
+
+    real = crawl.releases
+    waits: list[float] = []
+
+    def patient(artist, **kwargs):
+        kwargs.setdefault("sleep", waits.append)
+        return real(artist, **kwargs)
+
+    monkeypatch.setattr(crawl, "releases", patient)
+    return waits
+
+
+def _one_label_rate_limited(monkeypatch) -> tuple[FakeCatalogue, Limit]:
+    """Two labels: the first lists, the second's listing answers rate limited."""
+    limit = Limit()
+    fake = FakeCatalogue(
+        artists={
+            SLUGS[0]: FakePagedArtist([FakeRelease(one) for one in RELEASES[SLUGS[0]]]),
+            SLUGS[1]: RateLimitedArtist(
+                [FakeRelease(one) for one in RELEASES[SLUGS[1]]], limit
+            ),
+        }
+    )
+    return bind(monkeypatch, fake), limit
+
+
+def item_cause(job_id: str, item_id: str):
+    with jobs.open_store() as store:
+        for item in jobs.items(store, job_id):
+            if item.item_id == item_id:
+                return item.cause
+    raise AssertionError(f"job {job_id} has no item {item_id}")
+
+
+def test_a_rate_limited_listing_fails_its_item_as_retryable_and_the_job_says_resume(
+    installed, monkeypatch
+):
+    """R-704, the eleventh sitting's shape: one label settled, one rate limited.
+
+    The sitting recorded every rate limited label ``permanent_failed`` and the
+    job said resuming could not succeed. The listing climbed the whole ladder,
+    so the error the sweep sees is the one the provider raised last.
+    """
+    del installed
+    register(*LABELS[:2])
+    waits = _ladder_without_waiting(monkeypatch)
+    _, limit = _one_label_rate_limited(monkeypatch)
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    assert limit.answered == 6 and len(waits) == 5, (limit.answered, waits)
+    assert item_states(job_id) == {
+        SLUGS[0]: str(jobs.ItemState.DONE),
+        SLUGS[1]: str(jobs.ItemState.FAILED),
+    }
+    cause = item_cause(job_id, SLUGS[1])
+    assert cause.reason == "sync-source-lookups-failed"
+    assert cause.retryable is True
+    assert cause.remediation.remedy is Remedy.RESUME_JOB
+    assert cause.detail["rate_limited"] is True
+    assert "rate limited" in cause.message
+    assert "TooManyRequests: Album unavailable" in cause.message
+
+    job = failed["cause"]
+    assert job["reason"] == "unavailable-transient"
+    assert job["retryable"] is True
+    assert job["remediation"]["remedy"] == "resume-job"
+    assert job["detail"]["retryable_failed"] == 1
+    assert job["detail"]["permanent_failed"] == 0
+    assert "every failure is permanent" not in job["message"]
+
+
+def test_a_resumed_job_rearms_the_rate_limited_label_and_not_the_settled_one(
+    installed, monkeypatch
+):
+    """R-704's Closes when: ``crate job resume`` re-arms exactly those items.
+
+    The resume verb re-arms and spawns a child; the child is the argument list
+    it was handed, driven here in process so the second pass is observable.
+    The settled label is not listed again, which is the spend the sitting's
+    only remedy, a whole new sweep, paid on the 27 labels that had succeeded.
+    """
+    register(*LABELS[:2])
+    _ladder_without_waiting(monkeypatch)
+    fake, limit = _one_label_rate_limited(monkeypatch)
+    job_id = queued_job(["sync", "labels"])
+    assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
+    assert fake.asked_for == [SLUGS[0], SLUGS[1]]
+
+    spawned: list[list[str]] = []
+
+    def recorded(store, job, argv, **kwargs):
+        del store, job, kwargs
+        spawned.append(list(argv))
+        return 4242
+
+    monkeypatch.setattr(jobs, "spawn", recorded)
+    code, resumed = drive(["job", "resume", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert item_states(job_id) == {
+        SLUGS[0]: str(jobs.ItemState.DONE),
+        SLUGS[1]: str(jobs.ItemState.PENDING),
+    }
+    assert len(spawned) == 1 and spawned[0][:4] == ["sync", "labels", "--job", job_id]
+
+    limit.on = False
+    code, finished = drive(spawned[0])
+
+    assert code == int(ExitCode.OK), finished
+    assert finished["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert item_states(job_id) == {slug: str(jobs.ItemState.DONE) for slug in SLUGS[:2]}
+    assert fake.asked_for == [SLUGS[0], SLUGS[1], SLUGS[1]]
+    assert offers(installed) == {
+        "hf-1": SLUGS[0],
+        "hf-2": SLUGS[0],
+        "ot-1": SLUGS[1],
+    }
+
+
+def test_a_rate_limited_verification_is_retryable_too(installed, monkeypatch):
+    """The sitting's error was an album read, and verification is one with no ladder.
+
+    Every provider boundary in the sweep asks the same question, so a limit
+    met by the verifier rather than the listing is the same retryable cause.
+    """
+    del installed
+    register(LABELS[0])
+    limit = Limit()
+    bind(
+        monkeypatch,
+        RateLimitedVerification(
+            artists={
+                SLUGS[0]: FakePagedArtist([FakeRelease(one) for one in RELEASES[SLUGS[0]]])
+            },
+            limit=limit,
+        ),
+    )
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    assert limit.answered == 1
+    cause = item_cause(job_id, SLUGS[0])
+    assert cause.reason == "sync-source-lookups-failed"
+    assert cause.retryable is True
+    assert failed["cause"]["retryable"] is True
+    assert failed["cause"]["inner"]["retryable"] is True
+
+
+def test_a_listing_failure_that_is_not_a_rate_limit_stays_permanent(
+    installed, monkeypatch
+):
+    """The split is a rate limit against everything else, not a blanket retry.
+
+    The same catalogue error the suite has always driven, an outage spelled as
+    a plain ``RuntimeError``, keeps the permanent reading and its own sentence.
+    """
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, UnreadableCatalogue())
+    job_id = queued_job(["sync", "labels"])
+
+    drive(["sync", "labels", "--job", job_id])
+
+    cause = item_cause(job_id, SLUGS[0])
+    assert cause.reason == "sync-source-lookups-failed"
+    assert cause.retryable is False
+    assert "rate_limited" not in cause.detail
+    assert "rate limited" not in cause.message
+
+
+class RateLimitedResolve(FakeCatalogue):
+    """The artist resolve answers rate limited, before any listing is asked."""
+
+    def artist_for(self, entry):
+        self.asked_for.append(str(getattr(entry, "label_id", entry)))
+        raise TooManyRequests("Artist unavailable")
+
+
+class RateLimitedProbe:
+    """An artist whose listing attribute is a lazy read the provider refuses.
+
+    ``crawl.can_list`` reads the attribute with ``getattr`` and a default,
+    which swallows only ``AttributeError``, so the provider's own error
+    reaches the sweep's probe boundary rather than the listing's.
+    """
+
+    @property
+    def get_albums(self):
+        raise TooManyRequests("Artist unavailable")
+
+
+@pytest.mark.parametrize(
+    "fake",
+    [
+        pytest.param(lambda: RateLimitedResolve(), id="artist-resolve"),
+        pytest.param(
+            lambda: FakeCatalogue(artists={SLUGS[0]: RateLimitedProbe()}), id="listing-probe"
+        ),
+    ],
+)
+def test_a_rate_limit_at_every_other_sweep_boundary_is_retryable(
+    installed, monkeypatch, fake
+):
+    """R-704. The sweep has four provider boundaries and each asks the question.
+
+    The listing and the verifier are driven above; these are the other two,
+    the resolve of the label's artist and the probe of its listing methods.
+    """
+    del installed
+    register(LABELS[0])
+    bind(monkeypatch, fake())
+    job_id = queued_job(["sync", "labels"])
+
+    code, failed = drive(["sync", "labels", "--job", job_id])
+
+    assert code != int(ExitCode.OK), failed
+    cause = item_cause(job_id, SLUGS[0])
+    assert cause.reason == "sync-source-lookups-failed"
+    assert cause.retryable is True
+    assert "TooManyRequests: Artist unavailable" in cause.message

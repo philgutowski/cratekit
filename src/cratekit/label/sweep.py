@@ -13,11 +13,13 @@ R-135 is what happens when those two answers share a shape.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Container, Mapping
+from collections.abc import Callable, Container, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from cratekit.acquire import match, match_cli
+from cratekit.acquire.download import RATE_LIMIT_STATUSES, status_of
+from cratekit.acquire.vendored import is_rate_limit
 from cratekit.core import config, review, tombstone
 from cratekit.core.cause import CratekitError
 from cratekit.core.review import DecisionStore, Queue
@@ -168,6 +170,53 @@ def _candidate(entry: registry.LabelEntry, release: Any) -> run.Candidate:
     )
 
 
+def _lookup_failure(message: str, exc: BaseException) -> run.LookupFailure:
+    """``message`` as a lookup failure, marked rate limited when the provider said so.
+
+    R-704. The eleventh sitting's sweep failed 20 of 47 labels over
+    ``TooManyRequests: Album unavailable`` and recorded every one permanent,
+    so resuming could not retry what a wait would have cleared. The question
+    is asked of the error and of every error it was declared from, ``raise X
+    from exc``, because a client that wraps the provider's answer still carries
+    it. The classifier is the one R-703's download adapter uses, so the two
+    readers of one answer cannot disagree.
+
+    AN IMPLICIT ``__context__`` COUNTS ONLY WHEN IT CARRIES THE STATUS ITSELF.
+    ``core.cause._chain`` does not follow context, because "raised while
+    handling" is not "is", and a guess from a context's type or words would be
+    exactly that. The provider's structured 429 is not a guess. The client
+    translates an HTTP error by reading the response body as JSON first, so a
+    429 whose body is not JSON, a gateway's page, arrives as a decode error
+    raised while handling the 429 and names the limit nowhere else; the 429
+    sits two contexts down, under the standard library's own decode error.
+
+    Six rate limit answers in a row trip the provider gate (R-705), which
+    parks the item as ``Parked``, a ``CratekitError`` that passes every
+    boundary here unchanged. What reaches this helper is a limit that did not
+    trip it, most often on a call with no retry ladder of its own,
+    verification or the artist resolve.
+    """
+    if any(is_rate_limit(link) for link in _linked(exc, "__cause__")):
+        return run.LookupFailure(message, rate_limited=True)
+    if any(status_of(link) in RATE_LIMIT_STATUSES for link in _linked(exc, "__context__")):
+        return run.LookupFailure(message, rate_limited=True)
+    return run.LookupFailure(message)
+
+
+def _linked(exc: BaseException, attribute: str) -> Iterator[BaseException]:
+    """``exc`` and every error one link attribute leads to, once each.
+
+    The ``seen`` set is ``core.cause._chain``'s: both links are assignable, so
+    two errors can name each other and the walk would never end.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = getattr(current, attribute, None)
+
+
 def _crawl_or_refuse(
     entry: registry.LabelEntry, artist: Any
 ) -> tuple[list[Any], tuple[Unread, ...]]:
@@ -221,10 +270,11 @@ def _crawl_or_refuse(
     except CratekitError:
         raise
     except Exception as exc:
-        raise run.LookupFailure(
+        raise _lookup_failure(
             f"the catalogue object for {entry.name!r} could not be examined "
             f"({type(exc).__name__}: {exc}), so its releases were never read; "
-            f"that is not an empty catalogue"
+            f"that is not an empty catalogue",
+            exc,
         ) from exc
     if not listable:
         raise run.LookupFailure(
@@ -239,9 +289,10 @@ def _crawl_or_refuse(
     except CratekitError:
         raise
     except Exception as exc:
-        raise run.LookupFailure(
+        raise _lookup_failure(
             f"the catalogue listing for {entry.name!r} could not be read "
-            f"({type(exc).__name__}: {exc}); that is not an empty catalogue"
+            f"({type(exc).__name__}: {exc}); that is not an empty catalogue",
+            exc,
         ) from exc
     return releases, (*built, *(missing_listing(artist, method) for method in skipped))
 
@@ -587,10 +638,11 @@ class LabelSource:
             except CratekitError:
                 raise
             except Exception as exc:
-                raise run.LookupFailure(
+                raise _lookup_failure(
                     f"the catalogue could not resolve an artist for the label "
                     f"{entry.name!r} ({type(exc).__name__}: {exc}); its releases "
-                    f"were never listed"
+                    f"were never listed",
+                    exc,
                 ) from exc
         raise run.LookupFailure(
             f"no catalogue object was available for the registered label "
@@ -644,11 +696,12 @@ class LabelSource:
                 except CratekitError:
                     raise
                 except Exception as exc:
-                    raise run.LookupFailure(
+                    raise _lookup_failure(
                         f"the catalogue could not confirm who is credited on a "
                         f"release ({type(exc).__name__}: {exc}); the releases "
                         f"this sweep listed were never verified, and an "
-                        f"unverified release is not a release with no match"
+                        f"unverified release is not a release with no match",
+                        exc,
                     ) from exc
 
             return verified

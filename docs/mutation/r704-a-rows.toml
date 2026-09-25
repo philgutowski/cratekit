@@ -1,0 +1,176 @@
+name = "r704-a"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_no_cause_chain_check"
+description = "the sweep never asks whether the error or its declared causes are a rate limit, so the sitting's TooManyRequests is permanent again"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    if any(is_rate_limit(link) for link in _linked(exc, "__cause__")):
+        return run.LookupFailure(message, rate_limited=True)
+'''
+new = ""
+
+[[rows]]
+id = "S2_cause_walk_reads_only_the_error"
+description = "the declared cause chain is not walked, so a client error raised from a TooManyRequests reads as permanent"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    if any(is_rate_limit(link) for link in _linked(exc, "__cause__")):'''
+new = '''    if any(is_rate_limit(link) for link in (exc,)):'''
+
+[[rows]]
+id = "S3_no_context_status_check"
+description = "a non JSON 429 whose status sits only in the implicit context is read as permanent"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    if any(status_of(link) in RATE_LIMIT_STATUSES for link in _linked(exc, "__context__")):
+        return run.LookupFailure(message, rate_limited=True)
+'''
+new = ""
+
+[[rows]]
+id = "S4_context_walk_one_level"
+description = "the context walk stops one level down, above the 429 the client's translation leaves two contexts deep"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    if any(status_of(link) in RATE_LIMIT_STATUSES for link in _linked(exc, "__context__")):'''
+new = '''    if any(status_of(link) in RATE_LIMIT_STATUSES for link in (exc, exc.__context__)):'''
+
+[[rows]]
+id = "S5_context_read_by_type"
+description = "an implicit context is read by its type as well as its status, so an unrelated error raised while handling a rate limit is called one"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    if any(status_of(link) in RATE_LIMIT_STATUSES for link in _linked(exc, "__context__")):'''
+new = '''    if any(is_rate_limit(link) for link in _linked(exc, "__context__")):'''
+
+[[rows]]
+id = "S6_status_coefficient"
+description = "the context check asks for a 503 rather than the rate limit statuses"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''    if any(status_of(link) in RATE_LIMIT_STATUSES for link in _linked(exc, "__context__")):'''
+new = '''    if any(status_of(link) in {503} for link in _linked(exc, "__context__")):'''
+
+[[rows]]
+id = "S7_probe_unclassified"
+description = "the listing probe boundary hands the classifier a plain error, so a rate limit on a lazy listing attribute is permanent"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''            f"that is not an empty catalogue",
+            exc,
+        ) from exc
+    if not listable:'''
+new = '''            f"that is not an empty catalogue",
+            RuntimeError(),
+        ) from exc
+    if not listable:'''
+
+[[rows]]
+id = "S8_crawl_unclassified"
+description = "the crawl boundary hands the classifier a plain error, the listing's spent ladder is permanent again"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''            f"({type(exc).__name__}: {exc}); that is not an empty catalogue",
+            exc,
+        ) from exc'''
+new = '''            f"({type(exc).__name__}: {exc}); that is not an empty catalogue",
+            RuntimeError(),
+        ) from exc'''
+
+[[rows]]
+id = "S9_resolve_unclassified"
+description = "the artist resolve boundary hands the classifier a plain error"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''                    f"were never listed",
+                    exc,
+                ) from exc'''
+new = '''                    f"were never listed",
+                    RuntimeError(),
+                ) from exc'''
+
+[[rows]]
+id = "S10_verifier_unclassified"
+description = "the verification boundary hands the classifier a plain error, the sitting's own album read shape"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''                        f"unverified release is not a release with no match",
+                        exc,
+                    ) from exc'''
+new = '''                        f"unverified release is not a release with no match",
+                        RuntimeError(),
+                    ) from exc'''
+
+[[rows]]
+id = "R1_increment_ignores_the_flag"
+description = "the increment never takes the rate limited branch, every lookup failure is permanent as before R-704"
+file = "src/cratekit/sync/run.py"
+surface = "user"
+old = '''            if exc.rate_limited:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "R2_rate_limit_not_retryable"
+description = "the rate limited refusal says resume and records the item permanent, so the job verdict and jobs.retry still refuse"
+file = "src/cratekit/sync/run.py"
+surface = "user"
+old = '''                    retryable=True,
+                    origin=("sync.run",),'''
+new = '''                    retryable=False,
+                    origin=("sync.run",),'''
+
+[[rows]]
+id = "R3_remedy_retry_later"
+description = "the rate limited refusal names retry later rather than resuming the job"
+file = "src/cratekit/sync/run.py"
+surface = "user"
+old = '''                    remedy=Remedy.RESUME_JOB,'''
+new = '''                    remedy=Remedy.RETRY_LATER,'''
+
+[[rows]]
+id = "R4_detail_unmarked"
+description = "the refusal's detail no longer says rate limited, so a machine reader cannot tell it from an outage"
+file = "src/cratekit/sync/run.py"
+surface = "user"
+old = '''                    detail={"source_id": source.id, "rate_limited": True},'''
+new = '''                    detail={"source_id": source.id},'''
+
+[[rows]]
+id = "R5_flag_not_stored"
+description = "LookupFailure drops the flag it was handed"
+file = "src/cratekit/sync/run.py"
+surface = "user"
+old = '''        self.rate_limited = rate_limited'''
+new = '''        self.rate_limited = False'''
+
+[[rows]]
+id = "R6_sentence_reworded"
+description = "the refusal no longer says the provider rate limited the lookup"
+file = "src/cratekit/sync/run.py"
+surface = "user"
+old = '''                    f"the provider rate limited a lookup {source.id} needed "'''
+new = '''                    f"the provider throttled a lookup {source.id} needed "'''
+
+[[rows]]
+id = "E1_verifier_flattens_refusals"
+description = "existing guard sample: the verifier's refusal pass through is removed, so a gate's Parked or an expired session is flattened into a lookup failure"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+old = '''                try:
+                    return catalogue.search_release(claimed, release)
+                except CratekitError:
+                    raise
+'''
+new = '''                try:
+                    return catalogue.search_release(claimed, release)
+'''
+
+[[rows]]
+id = "E2_job_verdict_needs_every_item_retryable"
+description = "existing guard sample: the job verdict is transient only when every failure is, so a mixed job reads permanent"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+old = '''    if not failed or any(cause.retryable for cause in failed):'''
+new = '''    if not failed or all(cause.retryable for cause in failed):'''

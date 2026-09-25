@@ -1183,3 +1183,59 @@ def test_the_crawl_probes_exactly_the_methods_the_listing_reads_by_default():
     from cratekit.label import crawl
 
     assert crawl.LISTING_METHODS == listing.RELEASE_METHODS == ("get_albums", "get_ep_singles")
+
+
+def test_a_rate_limit_is_recognized_through_the_errors_it_was_declared_from():
+    """R-704. The sweep asks the error and every ``raise X from`` behind it.
+
+    A client that wraps the provider's answer still carries it, so a wrapped
+    ``TooManyRequests`` is a rate limit. An implicit context is read only for
+    a structured 429 status, never for its type, and an error that is not a
+    rate limit is not one.
+    """
+    from tidalapi.exceptions import TooManyRequests
+
+    from cratekit.label import sweep
+
+    limit = TooManyRequests("Album unavailable")
+    assert sweep._lookup_failure("m", limit).rate_limited is True
+
+    wrapped = RuntimeError("the client gave up")
+    wrapped.__cause__ = limit
+    assert sweep._lookup_failure("m", wrapped).rate_limited is True
+
+    assert sweep._lookup_failure("m", RuntimeError("provider 503")).rate_limited is False
+
+    # The client reads a 429's body as JSON before it builds its own error, so
+    # a gateway's non JSON 429 arrives as a decode error raised while handling
+    # it. The context counts because it carries the status itself.
+    # Driven through the client's own translation rather than built by hand.
+    import requests
+    from tidalapi.exceptions import http_error_to_tidal_error
+
+    def translated(status: int) -> BaseException:
+        answered = requests.Response()
+        answered.status_code = status
+        answered._content = b"<html>slow down</html>"
+        try:
+            try:
+                raise requests.HTTPError(f"{status} Client Error", response=answered)
+            except requests.HTTPError as http:
+                http_error_to_tidal_error(http)
+        except Exception as undecoded:  # noqa: BLE001 - the error under test
+            return undecoded
+        raise AssertionError("the client read a non JSON body as JSON")
+
+    assert sweep._lookup_failure("m", translated(429)).rate_limited is True
+    assert sweep._lookup_failure("m", translated(503)).rate_limited is False
+
+    # A context is read for the status and never for the type.
+    words = RuntimeError("raised while handling one")
+    words.__context__ = TooManyRequests("Album unavailable")
+    assert sweep._lookup_failure("m", words).rate_limited is False
+
+    looped = RuntimeError("names itself")
+    looped.__cause__ = looped
+    looped.__context__ = looped
+    assert sweep._lookup_failure("m", looped).rate_limited is False
+    assert str(sweep._lookup_failure("the words", limit)) == "the words"

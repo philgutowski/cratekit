@@ -28681,6 +28681,29 @@ again and meets the same limit.
 cause, `crate job resume` re-arms exactly those items, and a test drives a
 `TooManyRequests` through one label's listing and resumes it.
 
+**Closed 2026-09-25 on `relay/216`, issue #216, after R-705's gate.**
+`sync.run.LookupFailure` carries `rate_limited`, and `run.increment` turns
+one so marked into `sync-source-lookups-failed` with `retryable` true, the
+`resume-job` remedy, `rate_limited` in its detail and a sentence saying the
+provider rate limited a lookup the source needed. Every other lookup failure
+keeps its permanent reading word for word. The labels source sets the flag
+at all four of its provider boundaries, the listing probe, the crawl, the
+artist resolve and the verifier, through `sweep._lookup_failure`, which asks
+R-703's `vendored.is_rate_limit` of the error and its declared causes, and
+reads the implicit context chain for a structured 429 status only, since the
+client reads a 429's body as JSON first and a non JSON 429 arrives as a
+decode error two contexts above it. The item cause carries the flag, so the
+job verdict is `unavailable-transient` and `jobs.retry` re-arms with no
+engine change. The Closes when test fails one of two labels on a
+`TooManyRequests` listing, the whole ladder climbed, resumes through `crate
+job resume`, and reads the settled label not listed again and the limited
+one finished. Live, a listing limited through its whole ladder trips the gate
+and parks first, so the sitting's own shape, one album read with no ladder,
+is driven at the verifier too. Eighteen mutation rows, every one killed,
+`docs/mutation/r704-notes.md`. "Exactly those items" holds when every failure
+is a rate limit, the sitting's case; a job that also holds a permanent
+failure re-arms it too, R-716. R-717 filed beside it.
+
 ---
 
 ## R-705. Nothing keeps a label sweep and a download from sharing one rate limited account
@@ -29002,3 +29025,53 @@ tree, and a test drives one through the real `Download`.
 **Not on the board bar.** Nothing false is said, the cause is only absent,
 and the item stays transient and re-queueable.
 
+---
+
+## R-716. A resumed job re-arms its permanent failures beside its retryable ones
+
+**Found:** on `relay/216`, 2026-09-25, by the built in review of R-704. Read,
+not driven. `jobs.retry` refuses a job whose verdict is permanent (R-390) and
+otherwise re-arms every FAILED item, reading no item's own `retryable`. Since
+R-704 a labels job can hold both kinds: twenty labels rate limited and one
+the registry no longer holds, say. Resuming it re-runs the permanent item,
+which fails again with the same cause. Leaving that item FAILED is not a
+one line change: `jobs.drive` settles a job from the items it drove in this
+pass, so a resumed job whose re-armed items all finish would be recorded
+SUCCEEDED over an item still failed, a clean report over state it did not
+read.
+
+**Measured cost:** unmeasured. The eleventh sitting's twenty failures were
+all rate limits, which re-arm exactly as the Closes when of R-704 asks. A
+permanent item re-run costs its own calls, one attempt each, and says the
+same true thing it said before.
+
+**Closes when:** `jobs.retry` re-arms only failed items whose cause is
+retryable or absent, and `jobs.drive` settles a job from every item row
+rather than from the pass, with a test driving a mixed job through a resume
+that leaves the permanent item failed and the job FAILED.
+
+**Not on the board bar.** Nothing false is said and nothing is lost; an
+engine change across every verb, and the case that raised it is covered.
+
+---
+
+## R-717. A labels sweep that meets an outage other than a rate limit is still recorded permanent
+
+**Found:** on `relay/216`, 2026-09-25, scoping R-704. R-704 splits a rate
+limit from everything else and leaves everything else as it was: a dropped
+connection, a timeout, or a 5xx that outlasted the crawl's ladder is still
+`sync-source-lookups-failed` with `retryable` false, so the job says resuming
+cannot succeed and `crate job resume` refuses, while the refusal's own step
+reads "retry this source when the provider is reachable". The brief named the
+rate limit only, and a transport error's type does not say whether waiting
+changes it the way a 429 does.
+
+**Measured cost:** unmeasured. The eleventh sitting's failures were all rate
+limits. The person's way through is the one R-704 described, queueing the
+sweep again, which re-lists every label that succeeded.
+
+**Closes when:** a decision says which transport failures a resume should
+retry, and `sweep._lookup_failure` marks those the way it marks a rate limit,
+with a test per kind; or the refusal's step stops saying retry.
+
+**Not on the board bar.** Not driven, and the work can be queued again.
