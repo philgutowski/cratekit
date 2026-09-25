@@ -1,0 +1,160 @@
+{
+  "name": "r706-c",
+  "pass_kind": "light",
+  "branch": "relay/218",
+  "head": "33066ed",
+  "when": "2026-09-25 01:11 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10319,
+  "baseline_exit": 0,
+  "pytest_runs": 7,
+  "state_guarded": "/tmp/r706-state.uhuS/config (0 entries); /tmp/r706-state.uhuS/state (0 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "1a228b5361604712",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10319,
+    "baseline_collected": 10319,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_parts_note_never_said",
+      "description": "The recognition-in-parts note is never added",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "10c82701c9ddf6b4",
+      "subset": [
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 86,
+      "baseline_collected": 86,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_workers.py::test_a_set_longer_than_one_run_is_queued_as_one_job_with_the_parts_said",
+        "tests/intake/test_workers.py::test_identify_only_says_the_same_parts_note"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if result.parts <= 1:\n        return ()\n    still = (",
+      "new": "    if result.parts >= 1:\n        return ()\n    still = ("
+    },
+    {
+      "id": "C2_parts_not_frozen",
+      "description": "The job freezes one part whatever was identified, so a resume forgets the split",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0e67674a515dc34e",
+      "subset": [
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 86,
+      "baseline_collected": 86,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_workers.py::test_a_set_longer_than_one_run_is_queued_as_one_job_with_the_parts_said"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        PARTS: result.parts,",
+      "new": "                        PARTS: 1,"
+    },
+    {
+      "id": "C3_summary_ignores_the_payload",
+      "description": "The resume summary reports one part rather than reading the frozen count",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "15c3816f7dcdbb6d",
+      "subset": [
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 86,
+      "baseline_collected": 86,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_workers.py::test_a_set_longer_than_one_run_is_queued_as_one_job_with_the_parts_said"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"parts\": int(payload.get(PARTS) or 1),",
+      "new": "        \"parts\": 1,"
+    },
+    {
+      "id": "C4_pipeline_drops_parts",
+      "description": "identify_only does not carry parts through, so every verb sees one",
+      "file": "src/cratekit/intake/pipeline.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2e6f4141f7bd906a",
+      "subset": [
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 86,
+      "baseline_collected": 86,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_workers.py::test_a_set_longer_than_one_run_is_queued_as_one_job_with_the_parts_said",
+        "tests/intake/test_workers.py::test_identify_only_says_the_same_parts_note"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        digest=found.digest,\n        parts=found.parts,\n    )",
+      "new": "        digest=found.digest,\n    )"
+    }
+  ],
+  "dropped": []
+}
