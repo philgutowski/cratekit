@@ -1509,6 +1509,280 @@ def test_a_skip_reported_through_the_seam_still_raises(settings, tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# R-703: a failed download names the provider's own error
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class _AlbumReadSession:
+    """The eleventh sitting's shape: the track answers, its album read raises.
+
+    The offer asks ``track(key)`` and is answered, so ``acquire_one`` reaches
+    the download. The tool's own lookup asks ``track(key, with_album=True)``,
+    which reads the album too, and that is what the provider refused.
+    """
+
+    def __init__(self, error: BaseException) -> None:
+        self.error = error
+        self.audio_quality = "LOSSLESS"
+
+    def track(self, key: str, with_album: bool = False):
+        if with_album:
+            raise self.error
+        return _ToolTrack("LOSSLESS")
+
+
+def _through_the_real_tool(settings, tmp_path, monkeypatch, error):
+    """``acquire_one`` over the REAL vendored ``Download``, constructor included.
+
+    Only the tool's own settings singleton is replaced, because its real one
+    reads and writes a file under a home directory fixed at import. The
+    constructor, the lookup through ``self.session`` and the swallow are the
+    vendored code's own, which is the point: a fake that does not swallow
+    proves a tool that does not exist, and a revendor that stops looking media
+    up through the attribute ``observe_session`` stands in fails here.
+    """
+    from cratekit._vendor.tidal_dl_ng import download as tool_download
+    from cratekit.acquire.adapter import acquire_one
+
+    tool_settings = types.SimpleNamespace(
+        data=types.SimpleNamespace(
+            path_binary_ffmpeg="ffmpeg", video_convert_mp4=False, extract_flac=False
+        )
+    )
+    monkeypatch.setattr(tool_download, "Settings", lambda: tool_settings)
+    session = _AlbumReadSession(error)
+    source = vendored._VendoredSource(
+        settings, tmp_path / "token.json", session=session, downloader=tool_download.Download
+    )
+    source._tidal = types.SimpleNamespace(session=session)
+    return acquire_one(source, TrackRequest(key="1234"), settings)
+
+
+def test_a_rate_limited_album_read_reaches_the_item_cause_by_name(settings, tmp_path, monkeypatch):
+    """The Closes when line of R-703, driven through the vendored tool itself.
+
+    ``_validate_and_prepare_media`` catches the error and returns None without
+    logging it, and ``item`` answers ``(False, "")``. Nineteen downloads at the
+    eleventh sitting said only that no file came back.
+    """
+    from tidalapi.exceptions import TooManyRequests
+
+    result = _through_the_real_tool(
+        settings, tmp_path, monkeypatch, TooManyRequests("Album unavailable")
+    )
+
+    assert result.outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
+    assert result.remedy is Remedy.RETRY_LATER
+    assert "TooManyRequests: Album unavailable" in result.detail
+    assert "rate limited" in result.detail
+    assert result.detail.startswith("the downloader reported no file for 1234; ")
+
+
+def test_a_not_found_album_read_is_named_and_stays_transient(settings, tmp_path, monkeypatch):
+    """The carried words must not decide permanence.
+
+    The client's not found text is "Object not found", and the classifier
+    reads "not found" in text as permanent, which is quarantine for ever. The
+    offer found this track a moment earlier, so what the album read says is
+    reported and not judged.
+    """
+    from tidalapi.exceptions import ObjectNotFound
+
+    result = _through_the_real_tool(
+        settings, tmp_path, monkeypatch, ObjectNotFound("Object not found")
+    )
+
+    assert result.outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
+    assert "the provider answered ObjectNotFound: Object not found" in result.detail
+    assert "rate limited" not in result.detail
+
+
+def test_a_session_the_tool_saw_rejected_is_an_invocation_auth_failure(
+    settings, tmp_path, monkeypatch
+):
+    """AE9 holds through the swallow: a dead session is not a pile of missing tracks."""
+    from tidalapi.exceptions import AuthenticationError
+
+    with pytest.raises(AdapterAuthFailed):
+        _through_the_real_tool(
+            settings, tmp_path, monkeypatch, AuthenticationError("401 OAuth token expired")
+        )
+
+
+def test_a_defect_the_tool_swallowed_breaks_the_adapter(settings, tmp_path, monkeypatch):
+    """R-348 holds through the swallow: a defect class is not retried for ever."""
+    with pytest.raises(AdapterBroken, match="AttributeError"):
+        _through_the_real_tool(
+            settings, tmp_path, monkeypatch, AttributeError("'NoneType' object has no attribute 'id'")
+        )
+
+
+@pytest.mark.parametrize(
+    "carried",
+    ["Forbidden Fruit. File is corrupt!", "403 Client Error", "Retry-After: 900", "429"],
+)
+def test_the_paced_pool_reads_no_pacing_signal_off_the_carried_words(carried):
+    """The words are for a person. One "forbidden" in a title must not stop a run."""
+    from cratekit.acquire import download as pool
+
+    error = vendored.NoFileLanded(f"the downloader reported no file for 1; {carried}")
+    assert pool.classify_signal(error) is pool.ProviderSignal.NONE
+
+
+def test_the_tools_own_control_flow_is_not_called_the_providers_answer():
+    from cratekit._vendor.tidal_dl_ng.helper.exceptions import MediaMissing
+
+    assert vendored.describe_cause(MediaMissing()) == "the downloader failed on MediaMissing"
+
+
+def _logged_inside(log, method, error):
+    try:
+        raise error
+    except type(error):
+        getattr(log, method)("the tool's reading")
+
+
+def test_the_first_exception_the_tool_logs_is_the_cause_not_its_consequence():
+    """The rate limit, not the corrupt merge the rate limit left behind."""
+    from tidalapi.exceptions import TooManyRequests
+
+    log = vendored._ToolLogging()
+    first = TooManyRequests("Album unavailable")
+    _logged_inside(log, "exception", first)
+    _logged_inside(log, "error", OSError("File is corrupt"))
+    assert log.cause is first
+
+
+def test_the_providers_exception_outranks_a_message_the_tool_logged_first():
+    """A message is the tool's reading, the exception is the provider's answer."""
+    from tidalapi.exceptions import TooManyRequests
+
+    log = vendored._ToolLogging()
+    log.error("Failed to restore normal session for track: 1234")
+    answer = TooManyRequests("URL unavailable")
+    _logged_inside(log, "exception", answer)
+    assert log.cause is answer
+
+
+def test_a_mapping_argument_renders_the_way_logging_would():
+    log = vendored._ToolLogging()
+    log.error("failed %(id)s", {"id": 1234})
+    assert log.cause == "failed 1234"
+
+
+class _LoggingDownload:
+    """A downloader that fails the way ``_get_stream_info`` does: logs, then swallows."""
+
+    def __init__(self, *, fn_logger, **_kwargs):
+        self.fn_logger = fn_logger
+        fn_logger.error("FFmpeg path is not set.")
+
+    def item(self, **_kwargs):
+        from tidalapi.exceptions import TooManyRequests
+
+        try:
+            raise TooManyRequests("URL unavailable")
+        except TooManyRequests:
+            self.fn_logger.exception("Too many requests against TIDAL backend.")
+            return False, ""
+
+
+class _MessageOnlyDownload(_LoggingDownload):
+    def item(self, **_kwargs):
+        self.fn_logger.error("Failed to restore normal session for track: %s", "1234")
+        return False, ""
+
+
+class _SilentDownload(_LoggingDownload):
+    def item(self, **_kwargs):
+        return False, ""
+
+
+def _fetch_failure(settings, tmp_path, downloader) -> str:
+    source = vendored._VendoredSource(
+        settings, tmp_path / "token.json", session=_ToolSession({}), downloader=downloader
+    )
+    with pytest.raises(RuntimeError) as caught:
+        source.fetch(TrackRequest(key="1234"), settings.download_staging)
+    assert classify_unavailable(caught.value) is TrackOutcome.UNAVAILABLE_TRANSIENT
+    return str(caught.value)
+
+
+def test_an_error_the_tool_logs_from_its_except_is_the_cause(settings, tmp_path):
+    detail = _fetch_failure(settings, tmp_path, _LoggingDownload)
+    assert "TooManyRequests: URL unavailable" in detail
+    assert "rate limited" in detail
+
+
+def test_a_failure_message_with_no_exception_is_the_cause(settings, tmp_path):
+    detail = _fetch_failure(settings, tmp_path, _MessageOnlyDownload)
+    assert "Failed to restore normal session for track: 1234" in detail
+
+
+class _SurvivingDownload(_LoggingDownload):
+    """The tool logs a rejected call from inside its except and still lands a file."""
+
+    landed = ""
+
+    def item(self, **_kwargs):
+        from tidalapi.exceptions import AuthenticationError
+
+        try:
+            raise AuthenticationError("401 OAuth token expired")
+        except AuthenticationError:
+            self.fn_logger.exception("Could not retrieve lyrics.")
+        return True, type(self).landed
+
+
+def test_an_error_the_tool_survived_does_not_fail_a_landed_item(settings, tmp_path):
+    """The escalation is asked of a failed item only. A good download stays good."""
+    _SurvivingDownload.landed = str(synth_container(tmp_path, ".flac"))
+    source = vendored._VendoredSource(
+        settings, tmp_path / "token.json", session=_ToolSession({}), downloader=_SurvivingDownload
+    )
+    landed = source.fetch(TrackRequest(key="1234"), settings.download_staging)
+    assert landed == Path(_SurvivingDownload.landed)
+
+
+def test_what_the_constructor_logged_is_never_the_items_cause(settings, tmp_path):
+    """The tool warns about ffmpeg at construction on every run without it."""
+    assert _fetch_failure(settings, tmp_path, _SilentDownload) == (
+        "the downloader reported no file for 1234"
+    )
+
+
+def test_the_observed_session_writes_through_and_raises_what_it_notes():
+    """The tool sets ``audio_quality`` on its session and must set the real one."""
+    from tidalapi.exceptions import TooManyRequests
+
+    real = _AlbumReadSession(TooManyRequests("Album unavailable"))
+    log = vendored._ToolLogging()
+    holder = types.SimpleNamespace(session=real)
+    vendored.observe_session(holder, log)
+    vendored.observe_session(holder, log)
+
+    holder.session.audio_quality = "HI_RES_LOSSLESS"
+    assert real.audio_quality == "HI_RES_LOSSLESS"
+    assert holder.session.track("1234").audio_quality == "LOSSLESS"
+    assert log.cause is None
+    with pytest.raises(TooManyRequests):
+        holder.session.track("1234", with_album=True)
+    assert log.cause is real.error
+    assert holder.session._session is real, "observed twice must not wrap twice"
+    real.helper = _ToolTrack("LOSSLESS")
+    assert holder.session.helper is real.helper, "only methods are wrapped"
+
+
+def test_a_bare_http_429_reads_as_a_rate_limit():
+    response = types.SimpleNamespace(status_code=429)
+    error = RuntimeError("429 Client Error")
+    error.response = response
+    assert vendored.is_rate_limit(error)
+    response.status_code = 404
+    assert not vendored.is_rate_limit(error)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Scenario: the lossless rule is enforced at the FILE, not only at the setting
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1918,7 +2192,7 @@ def test_the_logger_handed_to_the_vendored_tool_has_every_method_the_tool_calls(
     used = _attributes_the_tool_uses_on_its_logger()
     assert used, "the vendored tree stopped using fn_logger; this guard is stale"
     assert {"info", "debug", "error", "exception"} <= set(used)
-    logger = vendored._discard_tool_logging
+    logger = vendored._ToolLogging()
     missing = sorted(name for name in used if not callable(getattr(logger, name, None)))
     assert not missing, f"the adapter's logger lacks {missing}, used in {[used[m] for m in missing]}"
     for name in used:

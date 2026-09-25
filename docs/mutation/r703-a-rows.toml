@@ -1,0 +1,93 @@
+name = "r703-a"
+pass_kind = "light"
+
+[[rows]]
+id = "V1_no_observed_session"
+description = "fetch no longer stands the observed session in the downloader, so the unlogged lookup error is lost again"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        observe_session(downloader, tool_log)
+'''
+new = ""
+
+[[rows]]
+id = "V2_no_forget"
+description = "fetch keeps what the constructor logged, so the ffmpeg warning can stand as the item's cause"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        tool_log.forget()
+'''
+new = ""
+
+[[rows]]
+id = "V3_cause_not_passed"
+description = "fetch hands landed_file no cause, the eleventh sitting's plain no file answer"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''            cause=cause,
+        )'''
+new = '''            cause=None,
+        )'''
+
+[[rows]]
+id = "V4_no_escalation"
+description = "a carried exception is no longer judged for a dead session or a defect"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        if not ok and isinstance(cause, BaseException):
+            raise_if_session_dead(cause)
+'''
+new = ""
+
+[[rows]]
+id = "V5_escalate_when_ok"
+description = "the escalation is asked on a landed item too, so an error the tool survived could abort a good download"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        if not ok and isinstance(cause, BaseException):'''
+new = '''        if isinstance(cause, BaseException):'''
+
+[[rows]]
+id = "V6_sample_no_park_check"
+description = "Sample of an existing guard: fetch no longer asks the gate for a park it raised inside the tool (R-705)"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        self._gate.raise_if_parked()
+        # THE SWALLOWED ERROR'''
+new = '''        # THE SWALLOWED ERROR'''
+
+[[rows]]
+id = "LF1_plain_runtime_error"
+description = "landed_file raises a plain RuntimeError, so the classifier reads the carried words"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        raise NoFileLanded(message, cause=cause) from ('''
+new = '''        raise RuntimeError(message) from ('''
+
+[[rows]]
+id = "LF2_cause_not_worded"
+description = "landed_file drops the cause from the message"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''            message = f"{message}; {describe_cause(cause)}"'''
+new = '''            message = f"{message}"'''
+
+[[rows]]
+id = "A1_classifier_reads_text"
+description = "classify_unavailable no longer holds NoFileLanded transient by type"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+old = '''    if isinstance(exc, NoFileLanded):
+        return TrackOutcome.UNAVAILABLE_TRANSIENT
+'''
+new = ""
+
+[[rows]]
+id = "D1_pool_reads_text"
+description = "classify_signal reads a NoFileLanded's carried words for block and rate limit markers"
+file = "src/cratekit/acquire/download.py"
+surface = "user"
+old = '''    if isinstance(exc, NoFileLanded):
+        return ProviderSignal.NONE
+'''
+new = ""

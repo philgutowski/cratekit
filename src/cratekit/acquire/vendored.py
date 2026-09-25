@@ -37,7 +37,10 @@ lifetime, and the error translation, all of which are pure or injectable.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import functools
+import inspect
+import sys
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
 from threading import Event
@@ -51,6 +54,7 @@ from cratekit.acquire.adapter import (
     BaseAdapter,
     LosslessPolicy,
     LosslessRefused,
+    NoFileLanded,
     Offer,
     Remedy,
     TrackRequest,
@@ -407,15 +411,24 @@ class _VendoredSource:
         event_abort, event_run = download_events()
         progress, progress_overall = disabled_progress()
         downloader_class = self._downloader or _vendored_downloader()
+        # ONE LOG PER FETCH, never a shared one (R-703): the paced pool runs
+        # fetches side by side, and a cause noted by one must not be read as
+        # another's.
+        tool_log = _ToolLogging()
         downloader = downloader_class(
             tidal_obj=self._tidal,
             path_base=str(destination),
-            fn_logger=_discard_tool_logging,
+            fn_logger=tool_log,
             event_abort=event_abort,
             event_run=event_run,
             progress=progress,
             progress_overall=progress_overall,
         )
+        # What the constructor logged is about the tool's configuration, its
+        # missing ffmpeg warning among them, and never about this track, so it
+        # must not stand as the cause of this item's failure.
+        tool_log.forget()
+        observe_session(downloader, tool_log)
         try:
             ok, landed = downloader.item(
                 file_template=STAGING_TEMPLATE,
@@ -432,7 +445,22 @@ class _VendoredSource:
         # gate remembers the park it raised, and asking it here turns that
         # answer back into the park.
         self._gate.raise_if_parked()
-        return landed_file(ok, landed, request.key, policy=self._settings.lossless_policy)
+        # THE SWALLOWED ERROR IS JUDGED AS IF IT HAD ESCAPED, for the two
+        # escalations only (R-703). A session the provider rejected inside the
+        # tool is an invocation's AUTH_FAILED (AE9), and a Python error class no
+        # provider raises is a defect (R-348), not one more transient track
+        # retried for ever. Asked only on a failed item: what the tool survived
+        # on the way to a file is not this item's cause.
+        cause = tool_log.cause
+        if not ok and isinstance(cause, BaseException):
+            raise_if_session_dead(cause)
+        return landed_file(
+            ok,
+            landed,
+            request.key,
+            policy=self._settings.lossless_policy,
+            cause=cause,
+        )
 
 
 def _vendored_downloader() -> Any:  # pragma: no cover - needs the vendored tree's deps
@@ -536,6 +564,7 @@ def landed_file(
     *,
     policy: LosslessPolicy = LosslessPolicy.STRICT,
     probe: Callable[[Path], tuple[str, bool | None]] = codec_of,
+    cause: BaseException | str | None = None,
 ) -> Path:
     """Turn the tool's ``(succeeded, path)`` pair into a file or an exception.
 
@@ -568,9 +597,20 @@ def landed_file(
     The refused file is left where it landed. Deleting a file on the strength of
     a probe is a destructive act, and that file is the evidence somebody
     diagnosing the next demotion will want.
+
+    ``cause`` is what the tool swallowed on the way to its False, as the
+    adapter's log caught it (R-703). The eleventh sitting read nineteen of these
+    as "no file" while every one was the provider's rate limit on the album
+    read, so the no file answer names that error when there is one, and the
+    raise is ``NoFileLanded``, which stays transient whatever the error says.
     """
     if not ok:
-        raise RuntimeError(f"the downloader reported no file for {key}")
+        message = f"the downloader reported no file for {key}"
+        if cause is not None:
+            message = f"{message}; {describe_cause(cause)}"
+        raise NoFileLanded(message, cause=cause) from (
+            cause if isinstance(cause, BaseException) else None
+        )
     path = Path(str(landed))
     if policy is not LosslessPolicy.STRICT:
         return path
@@ -596,8 +636,118 @@ def landed_file(
     return path
 
 
-class _DiscardedToolLogging:
-    """Absorb the wrapped tool's logging: every method it calls, writing nothing.
+def _provider_errors() -> tuple[type[BaseException], ...]:
+    """The classes a provider answer arrives as: the client's own, and HTTP's.
+
+    Deferred for the same reason as the vendored tree's import (KTD7).
+    """
+    try:
+        from requests import RequestException  # noqa: PLC0415
+        from tidalapi.exceptions import TidalAPIError  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - needs the core deps absent
+        return ()
+    return (TidalAPIError, RequestException)
+
+
+def is_rate_limit(exc: BaseException) -> bool:
+    """Whether the provider refused a call for spending its allowance too fast.
+
+    The client's own class, or any exception carrying a rate limit status,
+    read by the paced pool's own ``status_of`` so the two readers of one
+    exception cannot disagree about where a status lives.
+    """
+    from cratekit.acquire.download import RATE_LIMIT_STATUSES, status_of  # noqa: PLC0415
+
+    try:
+        from tidalapi.exceptions import TooManyRequests  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - needs the core deps absent
+        TooManyRequests = ()  # noqa: N806 - an empty isinstance tuple matches nothing
+    return isinstance(exc, TooManyRequests) or status_of(exc) in RATE_LIMIT_STATUSES
+
+
+def describe_cause(cause: BaseException | str) -> str:
+    """The swallowed cause in words: a rate limit said as one, the error named.
+
+    "The provider answered" only for a class a provider answer arrives as. The
+    tool also swallows its own control flow, ``MediaMissing`` among it, and
+    naming that as the provider's answer sends a person to the wrong place.
+    """
+    if isinstance(cause, str):
+        return f"the downloader logged {cause!r}"
+    named = f"{type(cause).__name__}: {cause}" if str(cause) else type(cause).__name__
+    if is_rate_limit(cause):
+        return f"the provider rate limited the lookup ({named}), retry after the limit lifts"
+    if isinstance(cause, _provider_errors()):
+        return f"the provider answered {named}"
+    return f"the downloader failed on {named}"
+
+
+class _ObservedSession:
+    """The tool's session, noting every exception a call on it raises, then raising it.
+
+    The tool's media lookup, ``_validate_and_prepare_media``, catches every
+    exception and returns None WITHOUT LOGGING, so the logger alone cannot see
+    the error the eleventh sitting lost (R-703). The lookup is a call on the
+    downloader's ``session``, and this stands in that attribute so the error is
+    noted on its way out. Nothing is changed: the call is the real one, the
+    error is raised on unchanged, and the tool swallows it exactly as before.
+
+    Only METHOD calls made on this object are seen. Every other attribute, a
+    helper object such as ``request`` included, is handed out as the real one,
+    so nothing reached through it loses an attribute. A model object a call
+    returns keeps the real session, so the client's own reads inside it are
+    untouched. Writes go to the real session, because the tool sets
+    ``audio_quality`` on it.
+    """
+
+    def __init__(self, session: Any, log: _ToolLogging) -> None:
+        object.__setattr__(self, "_session", session)
+        object.__setattr__(self, "_log", log)
+
+    def __getattr__(self, name: str) -> Any:
+        value = getattr(self._session, name)
+        if not inspect.ismethod(value):
+            return value
+        log = self._log
+
+        @functools.wraps(value)
+        def observed(*args: object, **kwargs: object) -> Any:
+            try:
+                return value(*args, **kwargs)
+            except Exception as exc:
+                log.note(exc)
+                raise
+
+        return observed
+
+    def __setattr__(self, name: str, value: object) -> None:
+        setattr(self._session, name, value)
+
+
+def observe_session(downloader: Any, log: _ToolLogging) -> None:
+    """Stand an observed session in the downloader's ``session`` attribute.
+
+    A downloader with no session attribute is left alone. The real one sets it
+    in its constructor, and ``tests/test_adapter_contract.py`` drives the real
+    ``Download.item`` through this, so a revendor that stops looking media up
+    through ``self.session`` fails there rather than here.
+    """
+    session = getattr(downloader, "session", None)
+    if session is not None and not isinstance(session, _ObservedSession):
+        downloader.session = _ObservedSession(session, log)
+
+
+class _ToolLogging:
+    """Absorb the wrapped tool's logging, writing nothing and keeping its first failure.
+
+    THE CAUSE IS KEPT, NOT WRITTEN (R-703). ``error``, ``exception`` and
+    ``critical`` note the exception being handled when they are called, which
+    is the provider's own error when the tool logs from inside its except, or
+    the message when there is none. ``_ObservedSession`` notes into the same
+    log. An exception outranks a message, since a message is the tool's reading
+    and the exception is the provider's answer, and the FIRST of each is kept,
+    since what follows a failure is usually its consequence. ``debug``, ``info``
+    and ``warning`` are chatter and note nothing.
 
     THE TOOL SAYS CALLABLE AND USES A LOGGER. Its ``fn_logger`` parameter is
     annotated ``Callable`` and its body never calls the value; it calls
@@ -617,6 +767,33 @@ class _DiscardedToolLogging:
     fails the suite instead of the next real download.
     """
 
+    def __init__(self) -> None:
+        self._exception: BaseException | None = None
+        self._message: str | None = None
+
+    @property
+    def cause(self) -> BaseException | str | None:
+        """The first exception noted, else the first failure message, else None."""
+        return self._exception if self._exception is not None else self._message
+
+    def note(self, exc: BaseException) -> None:
+        if self._exception is None:
+            self._exception = exc
+
+    def forget(self) -> None:
+        self._exception = None
+        self._message = None
+
+    def _failure(self, args: tuple[object, ...]) -> None:
+        # Asked of the interpreter rather than of an ``exc_info`` keyword: the
+        # tool logs from inside its except clauses without passing one, and the
+        # exception being handled there is the provider's answer.
+        active = sys.exc_info()[1]
+        if active is not None:
+            self.note(active)
+        elif self._message is None and args:
+            self._message = _render(args)
+
     def __call__(self, *_args: object, **_kwargs: object) -> None:
         return None
 
@@ -629,19 +806,29 @@ class _DiscardedToolLogging:
     def warning(self, *_args: object, **_kwargs: object) -> None:
         return None
 
-    def error(self, *_args: object, **_kwargs: object) -> None:
-        return None
+    def error(self, *args: object, **_kwargs: object) -> None:
+        self._failure(args)
 
-    def exception(self, *_args: object, **_kwargs: object) -> None:
-        return None
+    def exception(self, *args: object, **_kwargs: object) -> None:
+        self._failure(args)
 
-    def critical(self, *_args: object, **_kwargs: object) -> None:
-        return None
+    def critical(self, *args: object, **_kwargs: object) -> None:
+        self._failure(args)
 
 
-#: The one instance the adapter hands the tool. A name rather than a class so the
-#: construction site reads as before and a test can ask the same object.
-_discard_tool_logging = _DiscardedToolLogging()
+def _render(args: tuple[object, ...]) -> str:
+    """A logging call's message, formatted the way ``logging`` would, never raising."""
+    message, *rest = args
+    text = str(message)
+    if rest:
+        # ``logging`` formats one mapping argument by name, and every other
+        # shape positionally.
+        values = rest[0] if len(rest) == 1 and isinstance(rest[0], Mapping) else tuple(rest)
+        try:
+            text = text % values
+        except (TypeError, ValueError):
+            text = " ".join([text, *map(str, rest)])
+    return text
 
 
 class VendoredAdapter(BaseAdapter):
@@ -673,11 +860,14 @@ __all__ = [
     "VendoredAdapter",
     "apply_settings",
     "codec_of",
+    "describe_cause",
     "disabled_progress",
     "download_events",
     "is_authentication_failure",
+    "is_rate_limit",
     "landed_file",
     "login_mode",
+    "observe_session",
     "raise_if_session_dead",
     "tool_settings",
 ]

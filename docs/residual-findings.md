@@ -28639,6 +28639,28 @@ adapter and reads the exception's name off the item cause.
 **Not on the board bar by itself**, and filed for the feeder because it cost a
 sitting and will cost the next one.
 
+**Closed 2026-09-24 on `relay/215`, issue 215, built on R-705's gate.** The
+vendored tree is unchanged. `acquire/vendored.py` hands the tool a fresh
+`_ToolLogging` per fetch in place of `_discard_tool_logging`, which still
+writes nothing and now keeps the first failure the tool logs from inside an
+except, read off the interpreter, and stands an `_ObservedSession` in the
+downloader's `session` attribute, which notes an exception on its way out of
+any method call, because `_validate_and_prepare_media` swallows without
+logging. `landed_file` names that cause on the no file answer, a rate limit
+as "the provider rate limited the lookup (TooManyRequests: Album
+unavailable)", and raises `NoFileLanded` with the cause as an attribute. The
+words are for a person: `classify_unavailable` holds the error transient by
+type, since tidalapi's "Object not found" from the album read would
+otherwise quarantine a track the offer had just found, and the paced pool's
+`classify_signal` reads it as no pacing signal, since a carried "forbidden"
+would park the run as an account block. A carried exception is asked
+`raise_if_session_dead`, so a session rejected inside the tool is AUTH_FAILED
+and a defect class is AdapterBroken. The Closes when test drives the real
+`Download` constructor and `item` with a session whose album read raises
+`TooManyRequests`. Twenty three mutation rows in three batches: two user
+facing zeros got a test each and were killed on re-measure, and O2 is a
+maintainer facing zero, `docs/mutation/r703-notes.md`. R-715 filed from it.
+
 ---
 
 ## R-704. The labels sync records a provider rate limit as a permanent failure, so resuming the job cannot retry it
@@ -28954,3 +28976,29 @@ that tables are records of their tree and never amended is written into
 METHOD's mutation section, which makes this entry the answer.
 
 **Not on the board bar.** A count in a document.
+
+---
+
+## R-715. A download that fails in the media fetch half still names no cause
+
+**Found:** on `relay/215`, 2026-09-24, closing R-703. R-703 carries the
+error the tool swallows in its media lookup and in `_get_stream_info`, which
+logs from inside its except. The fetch half after those, `_download` in
+`_vendor/tidal_dl_ng/download.py`, swallows three more without logging:
+`_get_media_urls`, `_setup_progress`, and each segment request inside the
+worker pool, which only sets its result False. None of those calls is made on
+the downloader's `session`, so the observed session cannot see them either.
+A failure there reads "the downloader reported no file" with no cause, or
+with the tool's own "File is corrupt!" message when the merge logs one.
+
+**Measured cost:** unmeasured. The eleventh sitting's nineteen failures were
+all the lookup's, which R-703 covers. Whether the content host ever refuses a
+segment is R-708's open question.
+
+**Closes when:** a segment or manifest failure in a download carries its
+exception to the item cause, through the adapter rather than the vendored
+tree, and a test drives one through the real `Download`.
+
+**Not on the board bar.** Nothing false is said, the cause is only absent,
+and the item stays transient and re-queueable.
+

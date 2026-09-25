@@ -1,0 +1,19 @@
+name = "r703-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_last_exception_wins"
+description = "Batch B's L2 again after its test: a later exception overwrites the first"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        if self._exception is None:
+            self._exception = exc'''
+new = '''        self._exception = exc'''
+
+[[rows]]
+id = "C2_message_outranks_exception"
+description = "Batch B's L3 again after its test: the cause prefers the tool's message over the provider's exception"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        return self._exception if self._exception is not None else self._message'''
+new = '''        return self._message if self._message is not None else self._exception'''

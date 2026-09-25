@@ -4,7 +4,36 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-706, issue #218, `relay/218`, 2026-09-24.** A set longer
+**Last merged: R-703, issue #215, `relay/215`, 2026-09-24.** A failed download
+names the provider's own error. The vendored tree is unchanged. The adapter
+hands the tool a fresh `vendored._ToolLogging` per fetch, which writes nothing
+and keeps the first failure the tool logs from inside an except, read off
+the interpreter, and stands a `vendored._ObservedSession` in the downloader's
+`session` attribute, which notes an exception on its way out of any method
+call, because the tool's media lookup swallows without logging. Anything
+logged during construction is cleared first. `landed_file` names the cause on
+the no file answer, a rate limit as "the provider rate limited the lookup
+(TooManyRequests: Album unavailable)", the tool's own control flow as "the
+downloader failed on", and raises `adapter.NoFileLanded`, a `RuntimeError`
+carrying the cause as an attribute. The words are for a person:
+`classify_unavailable` holds it transient by type, and the paced pool's
+`classify_signal` reads it as no pacing signal. A carried exception on a
+failed item is asked `raise_if_session_dead`, which asks `raise_if_defect`
+first. The Closes when test drives the real `Download` constructor and
+`item`, with only the tool's settings singleton replaced. The built in review
+found the pool reading the carried text for block markers in the first
+draft. **The numbers:** 10,337 collected, 10,336 passed and 1 skipped, ruff
+clean, `scan_repo.py` exit 0. **The mutation table was MEASURED:** twenty
+three rows in `docs/mutation/r703-a-rows.toml`, `r703-b-rows.toml` and
+`r703-c-rows.toml`. Two user facing zeros got a test each and were killed on
+re-measure, and O2 is a maintainer facing zero. The leak guard watched empty
+temporary roots because the installed copy's `analyze vocals` job
+`2026-09-24T21:04:27Z-fbe8` was still writing the real one, and the real root
+outside `jobs/` hashed identical before and after; `r703-notes.md` says so.
+Filed **R-715** (the media fetch half still swallows with no cause to carry),
+not on the board bar. **Main's highest residual number is R-715.**
+
+**Merged before it: R-706, issue #218, `relay/218`, 2026-09-24.** A set longer
 than one recognition run is identified in even parts as one set. A part is
 a place in the chunk grid and never a file, because the carver reads any
 offset of the recording: `acrcloud.partition` cuts the grid into the fewest

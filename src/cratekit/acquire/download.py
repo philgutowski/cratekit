@@ -74,6 +74,7 @@ from cratekit.acquire.adapter import (
     BaseAdapter,
     InvocationOutcome,
     InvocationResult,
+    NoFileLanded,
     Remedy,
     TrackOutcome,
     TrackRequest,
@@ -221,7 +222,15 @@ def classify_signal(exc: BaseException) -> ProviderSignal:
     3. **Failing both, no signal.** Silence here does not mean the request
        succeeded; it means nothing about PACING was said, and the per-track
        classifier in the contract still has its own answer.
+
+    A ``NoFileLanded`` says nothing about pacing, before any reading. Its text
+    quotes what the downloader swallowed for a person to read (R-703), a
+    track title or a tool message among it, and one "forbidden" there would
+    stop every worker and park the run as an account block. The provider gate
+    already counted any rate limit answer behind it at the transport.
     """
+    if isinstance(exc, NoFileLanded):
+        return ProviderSignal.NONE
     status = status_of(exc)
     if status is not None:
         if status in BLOCKED_STATUSES:
