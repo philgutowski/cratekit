@@ -27211,6 +27211,24 @@ path off the job, or the help says the list is required either way.
 
 **Not on the board bar.** A wording and shape fix, no data at risk.
 
+**Closed 2026-09-24 on `relay/208`, issue 208.** `--job` alone drives the
+queued job. The `list` positional of `acquire download` is optional and its
+help says to omit it with `--job`, which froze it. The resume never read the
+list: the job carries the frozen path and every track. `download_argv` is now
+`acquire download --job <id>`, so the respawned child and the "drive it with"
+line R-678 prints both name the job alone. A list named beside `--job` is
+checked against the frozen path, after the freeze's own absolutising and then
+`preflight._names_one_path`. The same file still drives, so a saved command in
+the old two argument form works. A different one is refused as
+`intake-list-unusable`, before the sweep and the reconcile, because driving
+the job would report the named list acquired when another was. A command
+naming neither, and an empty `--job ""`, are refused at the head of the verb
+before the configuration is read. The empty identifier used to fall through to
+the queueing path and queue the list again. Tests in
+`tests/test_acquire_workers.py` under the R-668 heading. The mutation table
+`docs/mutation/r668-a` and `r668-b`, twelve rows, every one killed. The same
+shape one file over is R-718.
+
 ## R-669. An acquired file is named for its provider identifier and no verb ever names it, so a landed batch is fifty four numbers
 
 **Found:** at the seventh attended sitting, 2026-09-23, on the first `crate
@@ -29075,3 +29093,24 @@ retry, and `sweep._lookup_failure` marks those the way it marks a rate limit,
 with a test per kind; or the refusal's step stops saying retry.
 
 **Not on the board bar.** Not driven, and the work can be queued again.
+
+---
+
+## R-718. Three more resumable verbs require a positional their resume never reads
+
+**Found:** on `relay/208`, 2026-09-24, looking one file over after R-668.
+`acquire fallback-fetch` declares `list` required, and its `--job` branch in
+`acquire/fallback_cli.py` returns before the list is read; its `fetch_argv`
+still carries the frozen list. `analyze run` and `analyze restamp` declare
+`folder` required, and both hand `--job` to `_resume` in `analysis/cli.py`
+before the folder is read. So a person continuing any of the three by hand
+types the path a second time, which is R-668's shape, and a different path
+typed there is ignored without a word.
+
+**Measured cost:** unmeasured. Not driven at a sitting. The resume argv each
+verb builds for itself carries the path, so nothing automated is affected.
+
+**Closes when:** each of the three drives from `--job` alone, as R-668 did for
+`acquire download`, or its help says the path is required either way.
+
+**Not on the board bar.** A wording and shape fix, no data at risk.
