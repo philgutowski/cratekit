@@ -4,7 +4,31 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-705, issue #217, `relay/217`, 2026-09-24.** The Tidal call
+**Last merged: R-414, issue #214, `relay/214`, 2026-09-24.** The rating
+planner writes a database star, never an export byte. The database stores 0
+to 5, read off a real library at the eleventh attended sitting, and the
+taxonomy's `[energy.rating]` cuts stay on the export scale, 51 to 255, for the
+export writer, which is untouched. `write/metadata.database_stars`, beside
+`rating_for`, is the one home of the conversion: 51, 102, 153, 204 and 255
+fold to one through five, a star passes through, zero answers zero, and
+anything else is refused as `rating-scale-unknown`, a new slug in
+`cause.REASONS` beside `config-unusable` carrying `FIX_CONFIG_VALUES`.
+`plan_rating_backfill` folds the whole curve before planning any row, refuses
+a curve mixing the two scales, and skips a zero cut's rows as
+`level-unrated`. The planner still has no caller; #212 is the first to bind
+it. `tests/test_reserved_causes.py` re-pins three populations for the slug,
+each named. **The numbers:** 10,299 collected, 10,298 passed and 1 skipped,
+ruff clean, `scan_repo.py` exit 0. **The mutation table was MEASURED:**
+fourteen rows in `docs/mutation/r414-rows.toml`, every row killed, with the
+leak guard watching an empty temporary root because the installed copy's
+`analyze vocals` job `2026-09-24T21:04:27Z-fbe8` was still writing the real
+one; `r414-notes.md` says what stood in for it. Filed **R-709** (the loader
+accepts a curve the planner refuses), **R-710** (two lookups of one curve
+disagree above the last cut) and **R-711** (the provider gate's two process
+timing test fails under load, which refused two of four driver baselines),
+none on the board bar. **Main's highest residual number is R-711.**
+
+**Merged before it: R-705, issue #217, `relay/217`, 2026-09-24.** The Tidal call
 safety card. `core/provider_gate.py` is one gate for every call to the
 streaming provider, attached to the `requests` session the provider's library
 keeps on each client at the two sites the product builds one,

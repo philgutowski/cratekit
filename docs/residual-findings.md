@@ -19797,6 +19797,26 @@ residual's own card. The taxonomy's cut values stay on the export scale for
 the export writer, and where the conversion lives is that card's decision.
 The live file was not opened and the copy was deleted after the read.
 
+**CLOSED 2026-09-24 on `relay/214`, issue #214, the planner half.** The
+closing condition's first arm holds: the scale was read off a real library
+above, and the planner and its test now agree with it.
+`write/metadata.py` gains `database_stars` beside `rating_for`, the one home
+of the conversion. It folds 51, 102, 153, 204 and 255 to one through five,
+passes a value already on the star scale through, answers zero for zero, and
+refuses anything else as `rating-scale-unknown` with the configuration token.
+`plan_rating_backfill` folds the whole curve once before planning any row,
+refuses a curve that mixes the two scales with the same reason, and skips a
+row whose cut declares zero as `level-unrated`. The template's cuts and the
+export writer are untouched, by Phillip's decision on the card.
+`tests/test_metadata_policy.py` pins star 5 where it pinned 255, reads the
+shipped curve from the template and derives each expected star from the
+template's own byte, and drives the refusal over five values on neither
+scale and over a mixed curve. Mutation table `docs/mutation/r414.md`,
+fourteen rows, all killed, read in `r414-notes.md`. Filed from the review
+round: R-709 (the loader accepts a curve the planner refuses), R-710 (two
+lookups of one curve disagree above the last cut), and R-711 (the provider
+gate's two process timing test fails under load).
+
 ---
 
 ## R-415. R-400 names a hand typed text list as the workaround, and `acquire download` refuses one
@@ -28763,3 +28783,79 @@ that session.
 
 **Not on the board bar.** No false report and no write is held; a scope
 boundary the gate's own docstring states.
+
+---
+
+## R-709. The taxonomy loader accepts a rating curve the database planner refuses, and the export writer writes it as declared
+
+**Found:** on `relay/214`, 2026-09-24, by the built in review of R-414. Read,
+not driven. `core/taxonomy.py` loads `[energy.rating]` cuts as any integers
+and checks only that their maxima increase and end at `scale_max`. Since
+R-414, `write/metadata.py` refuses a cut that is neither an export byte nor a
+star count, and a curve that mixes the two, but only at plan time and only on
+the database path. The export writer, `intake/collection_xml._rating_for`
+through `routing.energy_rating`, writes the cut value as it stands, so a
+curve declared in stars, which the planner accepts, exports `Rating="5"`,
+under one star on the xml's 0 to 255 scale, and a curve holding 20 exports
+20. `crate doctor` reads no rating curve, so the `FIX_CONFIG_VALUES` token
+the planner's refusal carries sends the user to a check that passes.
+
+**Measured cost:** unmeasured. The shipped template is on the export scale
+and the active copies on the volume carry it (R-685, R-689), so the input is
+a hand edited template, and no producer of one was driven.
+
+**Closes when:** the loader refuses a curve on neither scale, and either
+refuses a star curve or the export writer folds one to bytes, with doctor
+reporting the loader's answer. That is a change to the export writer, which
+R-414's card kept out of scope.
+
+**Not on the board bar.** No shipped verb reads a curve the template does not
+ship, and the database planner has no caller yet.
+
+---
+
+## R-710. Two lookups of one rating curve disagree above the last cut
+
+**Found:** on `relay/214`, 2026-09-24, by the built in review of R-414. Read,
+not driven. `write/metadata.rating_for` sorts the cuts and returns None above
+the last cut's max, which the planner reports as `level-uncut`.
+`core/routing.energy_rating`, which the export writer uses, walks the cuts in
+declared order and falls back to the last cut's rating. So one level above
+the declared scale is unrated on the database path and top rated in the
+export.
+
+**Measured cost:** unmeasured. The loader requires the last cut to end at
+`scale_max`, so only a level above `scale_max` reaches the difference, and
+no producer of one was driven.
+
+**Closes when:** one lookup serves both paths, or a test pins that the two
+answer the same for every level the loader admits and names what each does
+above it.
+
+**Not on the board bar.** Maintainer facing; no shipped verb is shown to
+produce a level above the scale.
+
+---
+
+## R-711. The provider gate's two process timing test fails under load
+
+**Found:** on `relay/214`, 2026-09-24, running R-414's mutation table.
+Driven.
+`tests/test_provider_gate.py::test_two_processes_never_call_at_once_and_keep_the_interval`
+failed in two of four `scripts/mutate.py` full baselines with the load
+average at 11.5 on 11 cores, while the installed copy's `analyze vocals` job
+ran over the whole library. It passed five of five times alone, in the
+branch's own full suite, and in the other two baselines. Which of its four
+assertions failed was not captured, since the driver reports only the node
+id. The test spawns two children against a fifty millisecond interval with a
+tolerance of ten percent on each gap between call starts.
+
+**Measured cost:** a mutation driver refuses its whole batch on a red
+baseline, so on a loaded machine this test costs a table run each time it
+fails, about three minutes here. No product behaviour is shown wrong.
+
+**Closes when:** the failing assertion is captured under load, and either the
+gate is shown to keep the interval under load with the test's tolerance
+widened, or a gate defect is filed from it.
+
+**Not on the board bar.** Maintainer facing, a test and not a verb.

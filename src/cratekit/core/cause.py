@@ -792,6 +792,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # from corrupt from too-new from invalid from locked, and a cause built
         # from one of those carries its token through unchanged.
         "config-unusable": ExitCode.PRECONDITION,
+        # R-414. A taxonomy rating cut that is neither an export byte (51 to
+        # 255 in fifths) nor a database star (1 to 5), so the rating planner
+        # cannot say how many stars it means. Refused at plan time because the
+        # database stores stars and a value it does not recognise would land in
+        # that field as written. A curve mixing the two scales is the same
+        # refusal, since it does not say which one it is on.
+        "rating-scale-unknown": ExitCode.PRECONDITION,
         "module-extras-missing": ExitCode.MODULE_UNAVAILABLE,
         "credential-missing": ExitCode.PRECONDITION,
         # Item 4 of the residual finding "Five places where "I could not look"

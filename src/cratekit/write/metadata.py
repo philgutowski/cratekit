@@ -55,7 +55,7 @@ from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
 from cratekit.core import naming, rb_writer, taxonomy
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 
 logger = logging.getLogger(__name__)
@@ -410,16 +410,91 @@ def rating_for(level: int, cuts: Sequence[taxonomy.RatingCut]) -> int | None:
     return None
 
 
+#: The export byte rekordbox spells for each star count, one to five.
+_EXPORT_BYTE_STARS = MappingProxyType({51: 1, 102: 2, 153: 3, 204: 4, 255: 5})
+_DATABASE_STARS = frozenset(_EXPORT_BYTE_STARS.values())
+
+
+def _scale_unknown(message: str, detail: Mapping[str, Any]) -> CratekitError:
+    return refuse(
+        "rating-scale-unknown",
+        message,
+        remedy=Remedy.FIX_CONFIG_VALUES,
+        scope=Scope.RUN,
+        origin=("write", "metadata"),
+        detail=dict(detail),
+    )
+
+
+def database_stars(value: int) -> int:
+    """The star count the database stores for a taxonomy rating value (R-414).
+
+    TWO SCALES, ONE HOME FOR THE CONVERSION. A rekordbox xml spells five stars
+    255, and the taxonomy's cuts are written on that scale because the export
+    writer consumes them as they stand. The database stores 0 to 5, read off a
+    real library at the eleventh attended sitting: six distinct values and no
+    byte anywhere. So a cut value crosses into the database here and nowhere
+    else, and the export path never calls this.
+
+    A value already on the star scale passes through, so a taxonomy that
+    declares stars directly means what it says. Zero is unrated on both scales
+    and comes back as zero. Anything else is refused rather than guessed at,
+    because the only alternative is writing it as it stands into a field whose
+    largest value is 5.
+    """
+    if value == 0 or value in _DATABASE_STARS:
+        return value
+    stars = _EXPORT_BYTE_STARS.get(value)
+    if stars is None:
+        raise _scale_unknown(
+            f"the taxonomy's [energy.rating] curve holds {value}, which is neither "
+            f"an export byte (51, 102, 153, 204, 255) nor a star count (1 to 5), "
+            f"so there is no star rating to write for it",
+            {"rating": value},
+        )
+    return stars
+
+
+def _database_curve(cuts: Sequence[taxonomy.RatingCut]) -> dict[int, int]:
+    """Every cut value folded to its star count, or a refusal naming the curve.
+
+    A curve is on ONE scale. Each value folding on its own is not enough: cuts
+    of 51 and 3 both fold, to one star and three, and the database path would
+    plan something plausible from a curve the export writer spells as nearly
+    unrated at the top. A mix is a typo in the template, so it is refused here
+    rather than resolved in either direction. Zero belongs to both scales.
+    """
+    folded = {cut.rating: database_stars(cut.rating) for cut in cuts}
+    bytes_ = sorted(v for v in folded if v in _EXPORT_BYTE_STARS)
+    stars = sorted(v for v in folded if v in _DATABASE_STARS)
+    if bytes_ and stars:
+        raise _scale_unknown(
+            f"the taxonomy's [energy.rating] curve mixes export bytes {bytes_} "
+            f"with star counts {stars}, so it does not say which scale it is on",
+            {"ratings": sorted(folded)},
+        )
+    return folded
+
+
 def plan_rating_backfill(
     rows: Iterable[Any], levels: Mapping[str, int], *, cuts: Sequence[taxonomy.RatingCut]
 ) -> Plan:
     """Fill a star rating from an energy level, on rows that carry no rating.
+
+    The rating planned is a database star, 1 to 5, folded from the taxonomy's
+    export scale by :func:`database_stars`. The whole curve is folded BEFORE any
+    row is planned, so a curve holding one value that means nothing refuses the
+    whole plan rather than the rows that happen to land in that cut. A partial
+    plan over a misdeclared curve would read as a sweep that worked. A cut that
+    declares zero leaves its band unrated on purpose, so its rows are skipped as
+    ``level-unrated`` and the rest of the plan stands.
 
     Fill-if-empty is enforced by the policy rather than by a check written here.
     A row whose rating a person set reaches :func:`rb_writer.metadata_decision`
     and comes back ``skip_present``, which is the same answer this function would
     have produced and one fewer place for the two to disagree (P2).
     """
+    curve = _database_curve(cuts)
     changes: list[Change] = []
     skipped: list[Skipped] = []
     for row in rows:
@@ -431,13 +506,17 @@ def plan_rating_backfill(
         if rating is None:
             skipped.append(Skipped(content_id, "level-uncut", str(level)))
             continue
+        stars = curve[rating]
+        if stars == 0:
+            skipped.append(Skipped(content_id, "level-unrated", str(level)))
+            continue
         changes.append(
             Change(
                 content_id,
                 RATING_BACKFILL,
                 "Rating",
                 getattr(row, "Rating", None),
-                rating,
+                stars,
             )
         )
     return Plan(RATING_BACKFILL, tuple(changes), tuple(skipped))
@@ -516,6 +595,7 @@ __all__ = [
     "Skipped",
     "write_plan",
     "assert_within_policy",
+    "database_stars",
     "enable",
     "plan_genre_retag",
     "plan_rating_backfill",

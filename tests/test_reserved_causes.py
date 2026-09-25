@@ -5078,7 +5078,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # are the gate's own, in cause.REASONS beside provider-blocked and
     # job-driver-held, and not in the reserved table. Population 179 to 181,
     # non-reserved 151 to 153, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (181, 153, 28)
+    # Re-pinned on the residual finding "The rating planner puts an export
+    # scale value into a database field", 2026-09-24. ONE slug, named rather
+    # than counted:
+    # rating-scale-unknown, which the rating planner refuses with when a
+    # taxonomy rating cut is neither an export byte nor a star count, or the
+    # curve mixes the two. It is the planner's own, in cause.REASONS beside
+    # config-unusable and not in the reserved table. Population 181 to 182,
+    # non-reserved 153 to 154, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (182, 154, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5755,7 +5763,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # every envelope whose run reached the streaming provider, with the call
     # count and the rate limit answers. Nothing refuses with it, which is why
     # both halves move by one.
-    assert (len(literals), len(literals - set(causes))) == (505, 325), (
+    # Re-pinned on the residual finding "The rating planner puts an export
+    # scale value into a database field", 2026-09-24: 505 to 507 distinct,
+    # non-keys 325 to 326. The two that joined are rating-scale-unknown, a key
+    # in cause.REASONS raised by write/metadata.py, and level-unrated, a skip
+    # reason and NOT a key, which the rating planner gives for a row whose cut
+    # declares zero stars. Only the skip reason moves the non-key half.
+    assert (len(literals), len(literals - set(causes))) == (507, 326), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6323,7 +6337,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # status, a wait, a cooldown and a count, none in the reserved range.
     # Measured by this pair moving by one on the holders side and by nothing
     # on the other.
-    assert (len(literal_holders), len(literal_both)) == (105, 24), (
+    # Re-pinned on the residual finding "The rating planner puts an export
+    # scale value into a database field", 2026-09-24: holders UNCHANGED at 105,
+    # and the also-holds-an-integer half moves 24 to 25. No module joined the
+    # holders, since write/metadata.py named its refusals on main already. ONE
+    # holder gained an in-range integer: the fold table that module adds maps
+    # the export bytes 51, 102, 153, 204 and 255 to star counts, and 51 is one
+    # star in rekordbox's xml spelling, a rating and never an exit status.
+    # Measured by this pair moving by one and not by more.
+    assert (len(literal_holders), len(literal_both)) == (105, 25), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
