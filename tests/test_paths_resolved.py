@@ -813,8 +813,18 @@ def _refusal_from_the_copy(path: Path, cfg: config.Config) -> CratekitError:
     return caught.value
 
 
-def test_the_copy_names_an_empty_file_by_its_size_and_its_configured_path(bench, opened):
+def test_the_copy_names_an_empty_file_by_its_size_and_its_configured_path(
+    bench, opened, monkeypatch
+):
     _empty(bench.db_path)
+    measured: list[Path] = []
+    real = rb_writer._not_a_library
+
+    def spy(source, copied):
+        measured.append(Path(copied))
+        return real(source, copied)
+
+    monkeypatch.setattr(rb_writer, "_not_a_library", spy)
 
     cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
 
@@ -830,7 +840,11 @@ def test_the_copy_names_an_empty_file_by_its_size_and_its_configured_path(bench,
     assert cause.detail["path"] == str(bench.db_path)
     assert cause.detail["size"] == 0
     assert bench.db_path.read_bytes() == b""
-    _never_the_live_path(opened, bench.db_path)
+    # Measured on the copy, and refused before anything was opened at all.
+    assert len(measured) == 1
+    assert measured[0].parent.name.startswith("cratekit-copy-"), measured
+    assert not measured[0].exists()
+    assert opened == []
 
 
 def test_the_copy_names_a_file_holding_none_of_the_canary_tables(bench, opened):
@@ -903,7 +917,9 @@ def test_setup_refuses_a_database_path_that_is_not_a_library_and_records_nothing
     # read is the backup offer that comes ahead of the validation.
     assert len(asked) <= 1
     assert bench.db_path.read_bytes() == live_bytes
-    assert opened, "the refusal was not taken off a copy"
+    # An empty copy is refused before any open; a foreign one is opened, and
+    # only ever as a copy.
+    assert (opened == []) is (make is _empty)
     assert wrong not in opened
     for path in opened:
         assert path.parent.name.startswith("cratekit-copy-"), path
@@ -926,8 +942,46 @@ def test_setup_takes_no_copy_of_a_wrong_file_while_rekordbox_is_running(
 
 def test_setup_leaves_a_damaged_library_to_the_notes_and_doctor(bench, opened):
     bench.db_path.write_bytes(b"not a database at all, and long enough to matter" * 40)
-    setup_verb._refuse_a_database_that_is_not_one(bench.cfg)
+    assert setup_verb._refuse_a_database_that_is_not_one(bench.cfg) is None
     _never_the_live_path(opened, bench.db_path)
+
+
+@pytest.mark.parametrize("make", [_empty, _foreign], ids=["empty", "foreign"])
+def test_the_file_whose_tables_are_listed_is_only_ever_a_copy(bench, monkeypatch, make):
+    """The table listing opens its own handle, beside ``open_db`` rather than
+    through it, so the spy on the opener cannot see it and this one can."""
+    bench.db_path.unlink()
+    make(bench.db_path)
+    listed: list[Path] = []
+    real = rb_writer._copy_tables
+
+    def spy(copied):
+        listed.append(Path(copied))
+        return real(copied)
+
+    monkeypatch.setattr(rb_writer, "_copy_tables", spy)
+    from pyrekordbox import Rekordbox6Database
+
+    constructed: list[Path] = []
+
+    class Watched(Rekordbox6Database):
+        def __init__(self, *args, path=None, **kwargs):
+            constructed.append(Path(path))
+            super().__init__(*args, path=path, **kwargs)
+
+    import pyrekordbox
+
+    monkeypatch.setattr(pyrekordbox, "Rekordbox6Database", Watched)
+
+    _refusal_from_the_copy(bench.db_path, bench.cfg)
+
+    assert (constructed == []) is (make is _empty)
+    assert bench.db_path not in constructed
+    assert bench.db_path not in listed
+    for path in constructed + listed:
+        assert path.parent.name.startswith("cratekit-copy-"), path
+    # An empty copy is refused before any open at all; a foreign one is listed.
+    assert (listed == []) is (make is _empty)
 
 
 def test_doctor_reports_an_empty_database_path_under_the_same_cause(bench, opened):
@@ -946,4 +1000,4 @@ def test_doctor_reports_an_empty_database_path_under_the_same_cause(bench, opene
     assert "is empty, 0 bytes" in finding.detail
     assert str(bench.db_path) in finding.detail
     assert "no such table" not in finding.detail
-    _never_the_live_path(opened, bench.db_path)
+    assert opened == []

@@ -1299,12 +1299,18 @@ def read_only_copy(source: Path | str, *, cfg: config.Config | None = None) -> I
     a damaged library and names a snapshot restore. When the canary fails on a
     copy that is empty, or that holds none of the tables the canary reads, the
     refusal names the CONFIGURED path and the copy's size instead, under a slug
-    whose remedy is setup. Asked only after the canary failed, so a library
-    that opens is never read a second time, and asked of the copy, never of
-    ``source``.
+    whose remedy is setup. An empty copy is refused BEFORE the open, so no
+    earlier refusal on the way in, a pin or an open that fails on a header that
+    is not there, can answer for it; SQLite discards a log beside a file of zero
+    pages, so an empty copy is empty whatever travelled with it. The tables are
+    asked only after the canary failed, so a library that opens is never read a
+    second time. Both are asked of the copy, never of ``source``.
     """
     assert_rekordbox_closed("copying the database for a read only look")
     with disposable_copy(source) as copied:
+        refusal = None if copied.stat().st_size else _not_a_library(Path(source), copied)
+        if refusal is not None:
+            raise refusal
         try:
             db = open_db(copied, check_app_version=False, cfg=cfg)
         except RekordboxUnavailable as exc:
