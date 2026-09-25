@@ -123,25 +123,72 @@ def test_enabling_only_one_operation_widens_the_column_set_by_exactly_its_fields
 # ---------------------------------------------------------------------------
 
 
-def test_a_rating_backfill_fills_an_empty_rating():
+def test_a_rating_backfill_fills_an_empty_rating_with_a_star_not_a_byte():
+    """R-414. The database stores 0 to 5, read off a real library, so the cut's
+    export byte 255 lands as five stars. Pinning 255 here was the test agreeing
+    with the defect."""
     metadata.enable()
     row = Row("1", Rating=0)
     plan = metadata.plan_rating_backfill([row], {"1": 8}, cuts=CUTS)
     report = metadata.write_plan(plan, {"1": row})
     assert report.totals["write"] == 1
-    assert row.Rating == 255
+    assert row.Rating == 5
 
 
 def test_a_rating_backfill_never_overwrites_a_rating_a_person_set():
     """The case that matters. Afterwards, a wrong overwrite is indistinguishable
     from a right one, because the evidence it destroyed was the disagreement."""
     metadata.enable()
-    row = Row("1", Rating=51)
+    row = Row("1", Rating=1)
     plan = metadata.plan_rating_backfill([row], {"1": 9}, cuts=CUTS)
     report = metadata.write_plan(plan, {"1": row})
     assert report.totals["skip_present"] == 1
     assert report.totals["write"] == 0
-    assert row.Rating == 51
+    assert row.Rating == 1
+
+
+def test_the_shipped_curve_plans_one_to_five_stars_for_the_database():
+    """The curve is read from the shipped template, whose cuts stay on the export
+    scale for the export writer, and every value planned for the database is a
+    star. The expected stars are the template's own bytes over 51, derived here
+    from the export spelling rather than from the function under test."""
+    cuts = taxonomy.default_taxonomy().energy.rating_cuts
+    assert {cut.rating for cut in cuts} <= {51, 102, 153, 204, 255}
+    rows = [Row(str(level), Rating=0) for level in range(1, 11)]
+    levels = {str(level): level for level in range(1, 11)}
+    plan = metadata.plan_rating_backfill(rows, levels, cuts=cuts)
+    planned = {c.content_id: c.new for c in plan.changes}
+    assert len(planned) == 10
+    for level in range(1, 11):
+        byte = metadata.rating_for(level, cuts)
+        assert planned[str(level)] == byte // 51
+    assert set(planned.values()) == {1, 2, 3, 4, 5}
+
+
+def test_a_curve_already_on_the_star_scale_passes_through():
+    stars = (taxonomy.RatingCut(max=5, rating=2), taxonomy.RatingCut(max=10, rating=4))
+    rows = [Row("1", Rating=0), Row("2", Rating=0)]
+    plan = metadata.plan_rating_backfill(rows, {"1": 3, "2": 9}, cuts=stars)
+    assert [c.new for c in plan.changes] == [2, 4]
+
+
+@pytest.mark.parametrize("value", [0, 20, 50, 256, 6, -1])
+def test_a_cut_value_on_neither_scale_is_refused_at_plan_time(value):
+    """Refused before any row is planned, even a row that lands in a good cut,
+    so a misdeclared curve never produces a partial plan that reads as a sweep
+    that worked."""
+    curve = (taxonomy.RatingCut(max=5, rating=255), taxonomy.RatingCut(max=10, rating=value))
+    with pytest.raises(CratekitError) as excinfo:
+        metadata.plan_rating_backfill([Row("1", Rating=0)], {"1": 2}, cuts=curve)
+    assert excinfo.value.cause.reason == "rating-scale-unknown"
+    assert excinfo.value.cause.detail["rating"] == value
+
+
+def test_the_export_scale_is_what_rating_for_still_answers():
+    """The conversion lives at the database boundary only. ``rating_for`` reads
+    the curve as declared, which is what the export writer's scale needs."""
+    assert metadata.rating_for(8, CUTS) == 255
+    assert metadata.database_stars(255) == 5
 
 
 def test_the_rating_curve_is_read_from_the_taxonomy_not_hardcoded():

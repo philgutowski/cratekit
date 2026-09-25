@@ -410,16 +410,63 @@ def rating_for(level: int, cuts: Sequence[taxonomy.RatingCut]) -> int | None:
     return None
 
 
+#: The export byte rekordbox spells for each star count, one to five.
+_EXPORT_BYTE_STARS = MappingProxyType({51: 1, 102: 2, 153: 3, 204: 4, 255: 5})
+_DATABASE_STARS = frozenset(_EXPORT_BYTE_STARS.values())
+
+
+def database_stars(value: int) -> int:
+    """The star count the database stores for a taxonomy rating value (R-414).
+
+    TWO SCALES, ONE HOME FOR THE CONVERSION. A rekordbox xml spells five stars
+    255, and the taxonomy's cuts are written on that scale because the export
+    writer consumes them as they stand. The database stores 0 to 5, read off a
+    real library at the eleventh attended sitting: six distinct values and no
+    byte anywhere. So a cut value crosses into the database here and nowhere
+    else, and the export path never calls this.
+
+    A value already on the star scale passes through, so a taxonomy that
+    declares stars directly means what it says. Anything else is refused rather
+    than guessed at, because the only alternative is writing it as it stands
+    into a field whose largest value is 5. Zero is refused as well: a backfill
+    that plans "no stars" into an empty rating writes nothing a person could
+    tell from a skip.
+    """
+    if value in _DATABASE_STARS:
+        return value
+    stars = _EXPORT_BYTE_STARS.get(value)
+    if stars is None:
+        raise refuse(
+            "rating-scale-unknown",
+            f"the taxonomy's [energy.rating] curve holds {value}, which is neither "
+            f"an export byte (51, 102, 153, 204, 255) nor a star count (1 to 5), "
+            f"so there is no star rating to write for it",
+            remedy=Remedy.FIX_CONFIG_VALUES,
+            scope=Scope.RUN,
+            origin=("write", "metadata"),
+            detail={"rating": value},
+        )
+    return stars
+
+
 def plan_rating_backfill(
     rows: Iterable[Any], levels: Mapping[str, int], *, cuts: Sequence[taxonomy.RatingCut]
 ) -> Plan:
     """Fill a star rating from an energy level, on rows that carry no rating.
+
+    The rating planned is a database star, 1 to 5, folded from the taxonomy's
+    export scale by :func:`database_stars`. Every cut is folded BEFORE any row
+    is planned, so a curve holding one value that means nothing refuses the
+    whole plan rather than the rows that happen to land in that cut. A partial
+    plan over a misdeclared curve would read as a sweep that worked.
 
     Fill-if-empty is enforced by the policy rather than by a check written here.
     A row whose rating a person set reaches :func:`rb_writer.metadata_decision`
     and comes back ``skip_present``, which is the same answer this function would
     have produced and one fewer place for the two to disagree (P2).
     """
+    for cut in cuts:
+        database_stars(cut.rating)
     changes: list[Change] = []
     skipped: list[Skipped] = []
     for row in rows:
@@ -437,7 +484,7 @@ def plan_rating_backfill(
                 RATING_BACKFILL,
                 "Rating",
                 getattr(row, "Rating", None),
-                rating,
+                database_stars(rating),
             )
         )
     return Plan(RATING_BACKFILL, tuple(changes), tuple(skipped))
@@ -516,6 +563,7 @@ __all__ = [
     "Skipped",
     "write_plan",
     "assert_within_policy",
+    "database_stars",
     "enable",
     "plan_genre_retag",
     "plan_rating_backfill",

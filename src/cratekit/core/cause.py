@@ -784,6 +784,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # they declare the tree in the template, so a cause built here carries
         # the configuration token instead.
         "catalog-tree-undeclared": ExitCode.LIBRARY_PREREQUISITE,
+        # R-414. A taxonomy rating cut that is neither an export byte (51 to
+        # 255 in fifths) nor a database star (1 to 5), so the rating planner
+        # cannot say how many stars it means. Refused at plan time because the
+        # database stores stars and a value it does not recognise would land in
+        # that field as written.
+        "rating-scale-unknown": ExitCode.PRECONDITION,
         # ── This installation ───────────────────────────────────────────────
         "doctor-check-failed": ExitCode.PRECONDITION,
         # One slug for every way configuration can be unusable, because the
