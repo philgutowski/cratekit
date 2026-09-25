@@ -753,6 +753,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "mapped-volume-mismatch": ExitCode.LIBRARY_UNAVAILABLE,
         "library-directory-missing": ExitCode.LIBRARY_UNAVAILABLE,
         "library-database-missing": ExitCode.LIBRARY_UNAVAILABLE,
+        # R-663. There IS a file at the configured path, and a copy of it is
+        # empty or holds none of the tables the canary reads, so it is not a
+        # rekordbox library at all. Its own slug rather than the canary's,
+        # because the canary's band says the library is damaged and names a
+        # snapshot restore, and nothing here is damaged: the path is wrong, and
+        # the act that helps is setup with the right one.
+        "library-database-not-rekordbox": ExitCode.LIBRARY_UNAVAILABLE,
         "pyrekordbox-pin-drift": ExitCode.VERSION_PIN,
         "db-schema-pin-drift": ExitCode.VERSION_PIN,
         "app-version-pin-drift": ExitCode.VERSION_PIN,

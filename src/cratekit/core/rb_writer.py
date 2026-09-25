@@ -1292,14 +1292,92 @@ def read_only_copy(source: Path | str, *, cfg: config.Config | None = None) -> I
     refuse with, because a copy taken under a live application is incomplete
     and a reading off it is a reading of a database that does not exist. The
     backup feature holds the same rule for the same reason.
+
+    A FILE THAT IS NOT A LIBRARY IS NAMED AS ONE (R-663). A zero byte file one
+    directory over from the live database was given to setup, and every read
+    of its copy said ``no such table`` with the full statement, which reads as
+    a damaged library and names a snapshot restore. When the canary fails on a
+    copy that is empty, or that holds none of the tables the canary reads, the
+    refusal names the CONFIGURED path and the copy's size instead, under a slug
+    whose remedy is setup. Asked only after the canary failed, so a library
+    that opens is never read a second time, and asked of the copy, never of
+    ``source``.
     """
     assert_rekordbox_closed("copying the database for a read only look")
     with disposable_copy(source) as copied:
-        db = open_db(copied, check_app_version=False, cfg=cfg)
+        try:
+            db = open_db(copied, check_app_version=False, cfg=cfg)
+        except RekordboxUnavailable as exc:
+            if exc.cause.reason != "canary-read-failed":
+                raise
+            refusal = _not_a_library(Path(source), copied)
+            if refusal is None:
+                raise
+            raise refusal from exc
         try:
             yield db
         finally:
             close_db(db)
+
+
+#: The tables the canary reads, ``get_local_usn`` off the first and the first
+#: content row off the second. A file holding NEITHER is not a rekordbox
+#: library, which is a different fact from a library holding one and failing
+#: the other, which is schema drift and stays the canary's own refusal.
+CANARY_TABLES = ("agentRegistry", "djmdContent")
+
+
+def _copy_tables(copied: Path) -> set[str] | None:
+    """The table names in the copy's own schema, or None when they could not be read.
+
+    Through the binding rather than a bare connection, because a real library is
+    encrypted and only the binding holds the key. None, never an empty set, when
+    the read fails, so a file that could not be listed is never reported as a
+    file with nothing in it.
+    """
+    from pyrekordbox import Rekordbox6Database
+    from sqlalchemy import text
+
+    try:
+        db = Rekordbox6Database(path=str(copied), unlock=unlock_needed(copied))
+    except Exception:  # noqa: BLE001 - an unlistable file keeps the canary's refusal
+        return None
+    try:
+        rows = db.session.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'"))
+        return {str(row[0]) for row in rows}
+    except Exception:  # noqa: BLE001 - an unlistable file keeps the canary's refusal
+        return None
+    finally:
+        close_db(db)
+
+
+def _not_a_library(source: Path, copied: Path) -> RekordboxUnavailable | None:
+    """The refusal for a copy that is empty or holds no canary table, else None.
+
+    None hands the canary's own refusal back, which is the answer for a file
+    holding one of the two tables and for a file whose tables could not be
+    listed: neither is established to be something other than a library.
+    """
+    size = copied.stat().st_size
+    if size:
+        tables = _copy_tables(copied)
+        if tables is None or tables.intersection(CANARY_TABLES):
+            return None
+        what = f"is {size} bytes and holds none of the tables a rekordbox library keeps"
+    else:
+        what = "is empty, 0 bytes"
+    return _unavailable(
+        "library-database-not-rekordbox",
+        f"the file configured as the rekordbox database, {source}, {what}, so it "
+        f"is not a rekordbox library; read off a copy, the file itself was not opened",
+        remedy=Remedy.RUN_SETUP,
+        steps=(
+            "run setup again with --db-path naming the master.db rekordbox itself "
+            "opens; a search for master.db can find more than one file, and the "
+            "one to give is the one that is not empty",
+        ),
+        detail={"path": str(source), "size": size, "tables_read": list(CANARY_TABLES)},
+    )
 
 
 def recorded_db_drives(db: Any) -> tuple[str | None, str | None]:
