@@ -1635,6 +1635,35 @@ def test_the_tools_own_control_flow_is_not_called_the_providers_answer():
     assert vendored.describe_cause(MediaMissing()) == "the downloader failed on MediaMissing"
 
 
+def _logged_inside(log, method, error):
+    try:
+        raise error
+    except type(error):
+        getattr(log, method)("the tool's reading")
+
+
+def test_the_first_exception_the_tool_logs_is_the_cause_not_its_consequence():
+    """The rate limit, not the corrupt merge the rate limit left behind."""
+    from tidalapi.exceptions import TooManyRequests
+
+    log = vendored._ToolLogging()
+    first = TooManyRequests("Album unavailable")
+    _logged_inside(log, "exception", first)
+    _logged_inside(log, "error", OSError("File is corrupt"))
+    assert log.cause is first
+
+
+def test_the_providers_exception_outranks_a_message_the_tool_logged_first():
+    """A message is the tool's reading, the exception is the provider's answer."""
+    from tidalapi.exceptions import TooManyRequests
+
+    log = vendored._ToolLogging()
+    log.error("Failed to restore normal session for track: 1234")
+    answer = TooManyRequests("URL unavailable")
+    _logged_inside(log, "exception", answer)
+    assert log.cause is answer
+
+
 def test_a_mapping_argument_renders_the_way_logging_would():
     log = vendored._ToolLogging()
     log.error("failed %(id)s", {"id": 1234})
