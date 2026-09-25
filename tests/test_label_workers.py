@@ -2274,7 +2274,14 @@ def _ladder_without_waiting(monkeypatch) -> list[float]:
     ``listing.fetch_with_retry`` sleeps 31 real seconds before re-raising, and
     ``list_for_label`` exposes no seam for it. Only the sleep is replaced: the
     retry count, the pagination wrapper and the re-raise all run as shipped,
-    so the provider's error reaches the sweep exactly as it would live.
+    so the provider's error reaches the sweep as the ladder re-raises it.
+
+    NOT THE WHOLE LIVE PATH, and the difference is the provider gate. These
+    fakes make no HTTP call, so the gate never sees an answer. Live, six 429s
+    in a row on one ladder trip it and the item parks before the sweep sees
+    the error; what reaches the sweep's boundary is a limit that did not trip
+    it, the sitting's single album read among them, which the verification
+    test below drives.
     """
     from cratekit.label import crawl
 

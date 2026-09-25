@@ -13,11 +13,12 @@ R-135 is what happens when those two answers share a shape.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Container, Mapping
+from collections.abc import Callable, Container, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from cratekit.acquire import match, match_cli
+from cratekit.acquire.download import RATE_LIMIT_STATUSES, status_of
 from cratekit.acquire.vendored import is_rate_limit
 from cratekit.core import config, review, tombstone
 from cratekit.core.cause import CratekitError
@@ -177,9 +178,17 @@ def _lookup_failure(message: str, exc: BaseException) -> run.LookupFailure:
     so resuming could not retry what a wait would have cleared. The question
     is asked of the error and of every error it was declared from, ``raise X
     from exc``, because a client that wraps the provider's answer still carries
-    it; the implicit ``__context__`` is not followed, on
-    ``core.cause._chain``'s argument. The classifier is the one R-703's
-    download adapter uses, so the two readers of one answer cannot disagree.
+    it. The classifier is the one R-703's download adapter uses, so the two
+    readers of one answer cannot disagree.
+
+    AN IMPLICIT ``__context__`` COUNTS ONLY WHEN IT CARRIES THE STATUS ITSELF.
+    ``core.cause._chain`` does not follow context, because "raised while
+    handling" is not "is", and a guess from a context's type or words would be
+    exactly that. The provider's structured 429 is not a guess. The client
+    translates an HTTP error by reading the response body as JSON first, so a
+    429 whose body is not JSON, a gateway's page, arrives as a decode error
+    raised while handling the 429 and names the limit nowhere else; the 429
+    sits two contexts down, under the standard library's own decode error.
 
     Six rate limit answers in a row trip the provider gate (R-705), which
     parks the item as ``Parked``, a ``CratekitError`` that passes every
@@ -187,14 +196,25 @@ def _lookup_failure(message: str, exc: BaseException) -> run.LookupFailure:
     trip it, most often on a call with no retry ladder of its own,
     verification or the artist resolve.
     """
+    if any(is_rate_limit(link) for link in _linked(exc, "__cause__")):
+        return run.LookupFailure(message, rate_limited=True)
+    if any(status_of(link) in RATE_LIMIT_STATUSES for link in _linked(exc, "__context__")):
+        return run.LookupFailure(message, rate_limited=True)
+    return run.LookupFailure(message)
+
+
+def _linked(exc: BaseException, attribute: str) -> Iterator[BaseException]:
+    """``exc`` and every error one link attribute leads to, once each.
+
+    The ``seen`` set is ``core.cause._chain``'s: both links are assignable, so
+    two errors can name each other and the walk would never end.
+    """
     seen: set[int] = set()
     current: BaseException | None = exc
     while current is not None and id(current) not in seen:
-        if is_rate_limit(current):
-            return run.LookupFailure(message, rate_limited=True)
         seen.add(id(current))
-        current = current.__cause__
-    return run.LookupFailure(message)
+        yield current
+        current = getattr(current, attribute, None)
 
 
 def _crawl_or_refuse(

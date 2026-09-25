@@ -165,9 +165,9 @@ def increment(
                 # verdict and ``jobs.retry`` follow it.
                 raise refuse(
                     "sync-source-lookups-failed",
-                    f"the provider rate limited the listing for {source.id} "
-                    f"({exc}); nothing was read, which is not a verified empty "
-                    f"catalogue, and the limit clears on its own",
+                    f"the provider rate limited a lookup {source.id} needed "
+                    f"({exc}); the source was not read in full, which is not a "
+                    f"verified empty catalogue, and the limit clears on its own",
                     remedy=Remedy.RESUME_JOB,
                     retryable=True,
                     origin=("sync.run",),
