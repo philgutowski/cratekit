@@ -95,6 +95,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import math
 import os
 import re
 import tempfile
@@ -3086,7 +3087,7 @@ def _validate_provider(data: Mapping) -> list[str]:
     if interval is not None and (
         isinstance(interval, bool)
         or not isinstance(interval, (int, float))
-        or interval != interval
+        or not math.isfinite(interval)
         or interval <= 0
     ):
         problems.append(

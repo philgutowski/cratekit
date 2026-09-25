@@ -435,6 +435,12 @@ class TidalCatalogue:
         identifier = playlist_id(reference)
         try:
             playlist = self._session.playlist(identifier)
+        except CratekitError:
+            # The gate's park passes through unchanged (R-705), as it does at
+            # the other seam boundaries in this module: wrapped into an
+            # unresolvable playlist it would lose the lift time and the engine
+            # would read a cooldown as an unreadable playlist.
+            raise
         except Exception as exc:
             raise PlaylistUnresolvable(
                 f"the provider could not resolve the playlist {identifier!r} ({exc})"

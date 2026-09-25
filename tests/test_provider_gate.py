@@ -568,16 +568,18 @@ def test_a_lock_held_past_the_wait_is_refused_with_the_holder_named(paths, clock
     fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
     transport = Transport()
     try:
-        with pytest.raises(CratekitError) as caught:
+        with pytest.raises(jobs.Parked) as caught:
             send_through(gate, transport)
     finally:
         os.close(holder)
 
     assert caught.value.cause.reason == HELD
-    assert caught.value.cause.retryable is True
+    assert caught.value.cause.retryable is False, "a held account is not a track to retry"
     assert transport.calls == []
-    # The poll count cap and the time cap agree to within one poll.
-    assert sum(clock.slept) >= LOCK_WAIT_S - provider_gate.LOCK_POLL_S
+    # The limit is the wait plus one interval, since a holder may sleep one
+    # interval under the lock; the poll count cap and the time cap agree to
+    # within one poll.
+    assert sum(clock.slept) >= LOCK_WAIT_S + 1.0 - provider_gate.LOCK_POLL_S
 
 
 def test_the_lock_file_is_never_unlinked(paths, clock):
@@ -785,7 +787,7 @@ def test_the_provider_section_round_trips_through_the_file(tmp_path):
     assert GateSettings.from_config(again) == GateSettings(min_interval_s=0.5, cooldown_s=1800.0)
 
 
-@pytest.mark.parametrize("value", [0, -1, 0.0, True, "1", float("nan")])
+@pytest.mark.parametrize("value", [0, -1, 0.0, True, "1", float("nan"), float("inf")])
 def test_a_non_positive_interval_is_refused_naming_the_key(tmp_path, value):
     problems = config.validate(_config_data(tmp_path, provider={"min_interval_s": value}))
     assert len(problems) == 1
@@ -1081,7 +1083,12 @@ def test_a_rate_limited_login_comes_out_of_the_vendored_adapter_as_the_park(
             return True
 
         def login_token(self, do_pkce: bool = False) -> bool:
-            self.session.request_session.request("POST", "https://auth.invalid/token")
+            # What the real tool does: every exception inside the login is
+            # caught, the session file is deleted, and the answer is False.
+            try:
+                self.session.request_session.request("POST", "https://auth.invalid/token")
+            except Exception:  # noqa: BLE001 - the tool's own shape
+                return False
             return True
 
     monkeypatch.setattr(tool_config, "Settings", Settings)
@@ -1312,3 +1319,171 @@ def test_one_offered_release_costs_two_calls_on_the_catalogue():
     assert (len(rows), year) == (3, 2024)
     assert len(reads) == 2, reads
     assert reads[0] == "album r1" and reads[1].startswith("tracks ")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# What the review found, each driven
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_wait_the_provider_asked_for_is_taken_with_the_lock_released(paths, clock):
+    """A Retry-After longer than the interval is slept OUTSIDE the lock, so a
+    second driver waits on the same not_before off the file rather than on
+    the holder, and the lock is never held past one request and one interval.
+    The sleep callback tries the lock while the gate sleeps and records
+    whether it got it."""
+    state, lock = paths
+    gate = make_gate(paths, clock, min_interval_s=1.0)
+    taken_while_sleeping: list[tuple[float, bool]] = []
+
+    def sleeping(seconds: float) -> None:
+        probe = os.open(lock, os.O_RDWR)
+        try:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            taken_while_sleeping.append((seconds, True))
+            fcntl.flock(probe, fcntl.LOCK_UN)
+        except BlockingIOError:
+            taken_while_sleeping.append((seconds, False))
+        finally:
+            os.close(probe)
+        clock.now += seconds
+
+    gate._sleep = sleeping
+    transport = Transport(rate_limited("300"), Response(), Response())
+
+    send_through(gate, transport)  # 429, Retry-After 300
+    send_through(gate, transport)  # sleeps 300 with the lock released
+    send_through(gate, transport)  # sleeps one interval, under the lock
+
+    assert taken_while_sleeping == [(300.0, True), (1.0, False)]
+    assert len(transport.calls) == 3
+
+
+def test_a_held_lock_the_tool_swallowed_during_a_download_comes_out_of_fetch(
+    tmp_path, paths, clock
+):
+    """The held refusal is a park too, and the tool swallows it like any
+    other exception; fetch asks the gate afterwards and gets it back."""
+    state, lock = paths
+    session = _ToolSession()
+    source = _vendored(tmp_path, paths, clock, session=session)
+    source.authenticate()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    holder = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    class SwallowingDownload:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def item(self, **_kwargs: Any) -> tuple[bool, str]:
+            try:
+                session.request_session.request("GET", "https://api.invalid/stream")
+            except Exception:  # noqa: BLE001 - what the tool does
+                pass
+            return False, ""
+
+    source._downloader = SwallowingDownload
+    source._tidal = object()
+    try:
+        with pytest.raises(jobs.Parked) as caught:
+            source.fetch(TrackRequest(key="x"), tmp_path / "staging")
+    finally:
+        os.close(holder)
+
+    assert caught.value.cause.reason == HELD
+
+
+def test_a_successful_call_clears_the_remembered_park(paths, clock):
+    gate = make_gate(paths, clock, cooldown_s=900.0)
+    trip(gate)
+    clock.now += 900.0
+
+    send_through(gate, Transport())
+    gate.raise_if_parked()
+
+
+def test_the_download_pacing_reads_retry_after_through_the_gates_parser(clock):
+    """One parser of the header in the tree: the download probe's reading of
+    an exception's Retry-After equals the gate's reading of the same value."""
+    from datetime import datetime, timezone
+    from email.utils import formatdate
+
+    from cratekit.acquire import download
+
+    reference = datetime.fromtimestamp(clock.now, tz=timezone.utc)
+    dated = formatdate(clock.now + 90.0, usegmt=True)
+    for raw in ("45", dated):
+        exc = RuntimeError("throttled")
+        exc.response = SimpleNamespace(headers={"retry-after": raw})  # type: ignore[attr-defined]
+        assert download.retry_hint_seconds(exc, now=reference) == provider_gate.retry_after_seconds(
+            raw, clock.now
+        )
+    assert download._as_seconds("nonsense", reference) is None
+    assert provider_gate.retry_after_seconds("nonsense", clock.now) is None
+
+
+def test_the_gates_defaults_are_the_configurations(monkeypatch):
+    """One owner of the two numbers, read when a settings object is built and
+    not bound at import, so a gate built with no settings and one built off
+    the file agree, and a changed default is seen without a reload."""
+    assert GateSettings() == GateSettings(
+        min_interval_s=config.DEFAULT_PROVIDER_MIN_INTERVAL_S,
+        cooldown_s=config.DEFAULT_PROVIDER_COOLDOWN_S,
+    )
+    monkeypatch.setattr(config, "DEFAULT_PROVIDER_MIN_INTERVAL_S", 4.0)
+    assert GateSettings().min_interval_s == 4.0
+
+
+def test_the_playlist_read_lets_the_park_through(paths, clock):
+    """The one catch in the catalogue that wrapped every exception; the
+    sibling seam boundaries already passed a CratekitError through."""
+    parked = trip(make_gate(paths, clock))
+
+    class Client:
+        def playlist(self, identifier: str) -> Any:
+            raise parked
+
+    with pytest.raises(jobs.Parked) as caught:
+        tidal_catalogue.TidalCatalogue(Client()).playlist_for(
+            "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0"
+        )
+
+    assert caught.value is parked
+
+
+def test_process_spend_is_this_process_alone(paths, clock):
+    before = provider_gate.process_spend()
+    gate = make_gate(paths, clock)
+    transport = Transport(rate_limited(), Response())
+
+    send_through(gate, transport)
+    send_through(gate, transport)
+
+    assert provider_gate.process_spend().since(before) == Spend(calls=2, rate_limited=1)
+
+
+def test_calls_another_process_made_are_not_reported_as_this_runs(installed, monkeypatch):
+    """The shared file moves while this verb runs, as it does under a Relay
+    sweep; the line reports what THIS process spent, one login."""
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    original = tidal_catalogue.open_catalogue
+
+    def opening(cfg=None):
+        opened = original(cfg)
+        # Another process: forty calls written straight into the shared file.
+        state_path = config.state_path(provider_gate.STATE_KEY)
+        written = json.loads(state_path.read_text())
+        written["calls"] += 40
+        state_path.write_text(json.dumps(written))
+        return opened
+
+    monkeypatch.setattr(tidal_catalogue, "open_catalogue", opening)
+
+    _, envelope = drive(["label", "harvest", "https://example.invalid/playlist/harvest"])
+
+    assert _spend_warnings(envelope) == [
+        "1 call to the streaming provider this run, none answered with a rate limit"
+    ]

@@ -363,18 +363,17 @@ PROVIDER_SPEND = "provider-spend"
 
 
 def _provider_spend() -> provider_gate.Spend:
-    """The gate's running totals, or zero when the state cannot be read.
+    """What THIS process has spent so far, across every gate it built.
 
     Asked at the boundary rather than inside any verb, so the count covers
-    every verb and every process that wrote the shared file while this one
-    ran, and a verb that reaches the provider through a seam it does not know
-    about is still reported. It never refuses: a count that cannot be read is
-    a run with nothing to report, not a run that cannot be made.
+    every verb and every seam, and a verb that reaches the provider through a
+    seam it does not know about is still reported. This process's own count
+    and not the shared file's, because the file is written by every driver on
+    the machine: a sweep another process was running would otherwise be
+    reported as this run's calls. A job this verb drives runs in this process;
+    a detached driver is its own invocation and reports its own.
     """
-    try:
-        return provider_gate.spend()
-    except (OSError, ValueError):
-        return provider_gate.Spend()
+    return provider_gate.process_spend()
 
 
 def _with_provider_spend(envelope: Envelope, before: provider_gate.Spend) -> Envelope:

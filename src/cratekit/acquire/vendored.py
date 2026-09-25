@@ -58,7 +58,6 @@ from cratekit.acquire.adapter import (
     verify_applied,
 )
 from cratekit.core import binaries, provider_gate
-from cratekit.core.cause import CratekitError
 
 #: Cratekit's quality vocabulary to the wrapped tool's. The tool takes the
 #: streaming client's own enum VALUE as a string, and its factory default is the
@@ -364,18 +363,21 @@ class _VendoredSource:
 
         try:
             authorised = tidal.login_token(do_pkce=True)
-        except CratekitError:
-            # THE GATE'S OWN REFUSAL PASSES THROUGH (R-705). A rate limit
-            # answered to the login that trips the breaker is the park, and
-            # read as a rejected session it would park the job under
-            # credential-missing and send a person to log in again over a
-            # session that is fine.
-            raise
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
             raise AdapterAuthFailed(
                 f"the provider rejected the stored session ({exc})",
                 remedy=Remedy.REAUTHENTICATE_PROVIDER,
             ) from exc
+        # THE GATE IS ASKED AGAIN AFTER THE LOGIN (R-705), and this is the
+        # check that can fire, not an except above: the tool catches every
+        # exception inside ``login_token``, deletes the session file and
+        # answers False, so a rate limit answered to the login that tripped
+        # the breaker, or a lock held past its wait, would read as a rejected
+        # session and park the job under credential-missing, sending a person
+        # to log in again over a session that is fine. The gate remembers the
+        # park it raised, and asking it here turns the tool's False back into
+        # the park.
+        self._gate.raise_if_parked()
         if not authorised:
             raise AdapterAuthFailed(
                 "the stored provider session is no longer valid",
@@ -425,10 +427,11 @@ class _VendoredSource:
             raise
         # ASKED AGAIN AFTER THE TOOL RETURNS (R-705). The wrapped tool catches
         # every exception inside its download and answers "no file", so a trip
-        # the gate raised mid download would otherwise read as one unavailable
-        # track and the worker would claim the next one. The gate remembers the
-        # trip, and asking it here turns that answer back into the park.
-        self._gate.assert_open()
+        # or a held lock the gate raised mid download would otherwise read as
+        # one unavailable track and the worker would claim the next one. The
+        # gate remembers the park it raised, and asking it here turns that
+        # answer back into the park.
+        self._gate.raise_if_parked()
         return landed_file(ok, landed, request.key, policy=self._settings.lossless_policy)
 
 
