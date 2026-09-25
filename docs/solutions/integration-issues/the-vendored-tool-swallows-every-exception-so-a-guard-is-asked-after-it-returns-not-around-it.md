@@ -59,6 +59,16 @@ a tool that does not exist. `tests/test_provider_gate.py` carries both fakes.
 
 `acquire/vendored.py` `landed_file` already treats `(False, "")` as a raise
 rather than a path, for the same reason from the other side. Any future
-guard that has to hold through the tool, an error name for R-703 among
-them, goes through the same after the return check, or through the tool's
-own logger, which the adapter currently hands `_discard_tool_logging`.
+guard that has to hold through the tool goes through the same after the
+return check.
+
+R-703 took both routes to the swallowed error itself, 2026-09-24. The
+adapter hands the tool a per fetch `_ToolLogging` that writes nothing and
+keeps the first failure logged from inside an except, and stands an
+`_ObservedSession` in the downloader's `session` attribute, because the media
+lookup swallows without logging. The cause rides on `NoFileLanded` as an
+attribute and in its words, and the words are for a person only: every
+reader that judges an error by its text, `classify_unavailable` and the paced
+pool's `classify_signal`, asks the type first. The first draft forgot the
+pool, where a carried "forbidden" would have parked the whole run as an
+account block; the built in review found it.

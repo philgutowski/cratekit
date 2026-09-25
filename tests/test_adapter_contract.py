@@ -1531,39 +1531,34 @@ class _AlbumReadSession:
         return _ToolTrack("LOSSLESS")
 
 
-def _real_download(session):
-    """The REAL vendored ``Download``, with its constructor skipped.
+def _through_the_real_tool(settings, tmp_path, monkeypatch, error):
+    """``acquire_one`` over the REAL vendored ``Download``, constructor included.
 
-    The constructor reads the tool's own settings file from a home directory,
-    and nothing the lookup path uses comes from it, so the four attributes
-    ``item`` reads before the lookup are set from what ``fetch`` passed. The
-    lookup and its swallow are the vendored code's own, which is the point: a
-    fake that does not swallow proves a tool that does not exist.
+    Only the tool's own settings singleton is replaced, because its real one
+    reads and writes a file under a home directory fixed at import. The
+    constructor, the lookup through ``self.session`` and the swallow are the
+    vendored code's own, which is the point: a fake that does not swallow
+    proves a tool that does not exist, and a revendor that stops looking media
+    up through the attribute ``observe_session`` stands in fails here.
     """
-    from cratekit._vendor.tidal_dl_ng.download import Download
-
-    def build(**kwargs):
-        download = Download.__new__(Download)
-        download.session = session
-        download.fn_logger = kwargs["fn_logger"]
-        download.event_abort = kwargs["event_abort"]
-        download.event_run = kwargs["event_run"]
-        return download
-
-    return build
-
-
-def _through_the_real_tool(settings, tmp_path, error):
+    from cratekit._vendor.tidal_dl_ng import download as tool_download
     from cratekit.acquire.adapter import acquire_one
 
+    tool_settings = types.SimpleNamespace(
+        data=types.SimpleNamespace(
+            path_binary_ffmpeg="ffmpeg", video_convert_mp4=False, extract_flac=False
+        )
+    )
+    monkeypatch.setattr(tool_download, "Settings", lambda: tool_settings)
     session = _AlbumReadSession(error)
     source = vendored._VendoredSource(
-        settings, tmp_path / "token.json", session=session, downloader=_real_download(session)
+        settings, tmp_path / "token.json", session=session, downloader=tool_download.Download
     )
+    source._tidal = types.SimpleNamespace(session=session)
     return acquire_one(source, TrackRequest(key="1234"), settings)
 
 
-def test_a_rate_limited_album_read_reaches_the_item_cause_by_name(settings, tmp_path):
+def test_a_rate_limited_album_read_reaches_the_item_cause_by_name(settings, tmp_path, monkeypatch):
     """The Closes when line of R-703, driven through the vendored tool itself.
 
     ``_validate_and_prepare_media`` catches the error and returns None without
@@ -1572,7 +1567,9 @@ def test_a_rate_limited_album_read_reaches_the_item_cause_by_name(settings, tmp_
     """
     from tidalapi.exceptions import TooManyRequests
 
-    result = _through_the_real_tool(settings, tmp_path, TooManyRequests("Album unavailable"))
+    result = _through_the_real_tool(
+        settings, tmp_path, monkeypatch, TooManyRequests("Album unavailable")
+    )
 
     assert result.outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
     assert result.remedy is Remedy.RETRY_LATER
@@ -1581,7 +1578,7 @@ def test_a_rate_limited_album_read_reaches_the_item_cause_by_name(settings, tmp_
     assert result.detail.startswith("the downloader reported no file for 1234; ")
 
 
-def test_a_not_found_album_read_is_named_and_stays_transient(settings, tmp_path):
+def test_a_not_found_album_read_is_named_and_stays_transient(settings, tmp_path, monkeypatch):
     """The carried words must not decide permanence.
 
     The client's not found text is "Object not found", and the classifier
@@ -1591,24 +1588,57 @@ def test_a_not_found_album_read_is_named_and_stays_transient(settings, tmp_path)
     """
     from tidalapi.exceptions import ObjectNotFound
 
-    result = _through_the_real_tool(settings, tmp_path, ObjectNotFound("Object not found"))
+    result = _through_the_real_tool(
+        settings, tmp_path, monkeypatch, ObjectNotFound("Object not found")
+    )
 
     assert result.outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
-    assert "ObjectNotFound: Object not found" in result.detail
+    assert "the provider answered ObjectNotFound: Object not found" in result.detail
     assert "rate limited" not in result.detail
 
 
-def test_the_real_downloader_takes_its_session_from_the_tool_object():
-    """What ``observe_session`` stands in for, read off the vendored source.
+def test_a_session_the_tool_saw_rejected_is_an_invocation_auth_failure(
+    settings, tmp_path, monkeypatch
+):
+    """AE9 holds through the swallow: a dead session is not a pile of missing tracks."""
+    from tidalapi.exceptions import AuthenticationError
 
-    ``_real_download`` sets the attribute itself, so this is the half that says
-    the real constructor does too.
-    """
-    import inspect
+    with pytest.raises(AdapterAuthFailed):
+        _through_the_real_tool(
+            settings, tmp_path, monkeypatch, AuthenticationError("401 OAuth token expired")
+        )
 
-    from cratekit._vendor.tidal_dl_ng.download import Download
 
-    assert "self.session = tidal_obj.session" in inspect.getsource(Download.__init__)
+def test_a_defect_the_tool_swallowed_breaks_the_adapter(settings, tmp_path, monkeypatch):
+    """R-348 holds through the swallow: a defect class is not retried for ever."""
+    with pytest.raises(AdapterBroken, match="AttributeError"):
+        _through_the_real_tool(
+            settings, tmp_path, monkeypatch, AttributeError("'NoneType' object has no attribute 'id'")
+        )
+
+
+@pytest.mark.parametrize(
+    "carried",
+    ["Forbidden Fruit. File is corrupt!", "403 Client Error", "Retry-After: 900", "429"],
+)
+def test_the_paced_pool_reads_no_pacing_signal_off_the_carried_words(carried):
+    """The words are for a person. One "forbidden" in a title must not stop a run."""
+    from cratekit.acquire import download as pool
+
+    error = vendored.NoFileLanded(f"the downloader reported no file for 1; {carried}")
+    assert pool.classify_signal(error) is pool.ProviderSignal.NONE
+
+
+def test_the_tools_own_control_flow_is_not_called_the_providers_answer():
+    from cratekit._vendor.tidal_dl_ng.helper.exceptions import MediaMissing
+
+    assert vendored.describe_cause(MediaMissing()) == "the downloader failed on MediaMissing"
+
+
+def test_a_mapping_argument_renders_the_way_logging_would():
+    log = vendored._ToolLogging()
+    log.error("failed %(id)s", {"id": 1234})
+    assert log.cause == "failed 1234"
 
 
 class _LoggingDownload:
@@ -1685,6 +1715,8 @@ def test_the_observed_session_writes_through_and_raises_what_it_notes():
         holder.session.track("1234", with_album=True)
     assert log.cause is real.error
     assert holder.session._session is real, "observed twice must not wrap twice"
+    real.helper = _ToolTrack("LOSSLESS")
+    assert holder.session.helper is real.helper, "only methods are wrapped"
 
 
 def test_a_bare_http_429_reads_as_a_rate_limit():

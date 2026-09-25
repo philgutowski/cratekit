@@ -158,7 +158,17 @@ class NoFileLanded(RuntimeError):
     reads text, so without this type the carried words would quarantine a live
     track for ever. A ``RuntimeError`` so every reader of the old plain error
     still matches it.
+
+    THE WORDS ARE FOR A PERSON, THE CAUSE IS FOR CODE. ``cause`` holds what the
+    tool swallowed, the exception or the message, and every reader that judges
+    this error by its text asks the type first: ``classify_unavailable`` here
+    and the paced pool's ``classify_signal``, which would otherwise read a
+    carried "forbidden" as an account block and stop the run.
     """
+
+    def __init__(self, message: str, *, cause: BaseException | str | None = None) -> None:
+        super().__init__(message)
+        self.cause = cause
 
 
 # ---------------------------------------------------------------------------

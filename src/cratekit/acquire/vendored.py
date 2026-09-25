@@ -38,8 +38,9 @@ lifetime, and the error translation, all of which are pure or injectable.
 from __future__ import annotations
 
 import functools
+import inspect
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
 from threading import Event
@@ -444,12 +445,21 @@ class _VendoredSource:
         # gate remembers the park it raised, and asking it here turns that
         # answer back into the park.
         self._gate.raise_if_parked()
+        # THE SWALLOWED ERROR IS JUDGED AS IF IT HAD ESCAPED, for the two
+        # escalations only (R-703). A session the provider rejected inside the
+        # tool is an invocation's AUTH_FAILED (AE9), and a Python error class no
+        # provider raises is a defect (R-348), not one more transient track
+        # retried for ever. Asked only on a failed item: what the tool survived
+        # on the way to a file is not this item's cause.
+        cause = tool_log.cause
+        if not ok and isinstance(cause, BaseException):
+            raise_if_session_dead(cause)
         return landed_file(
             ok,
             landed,
             request.key,
             policy=self._settings.lossless_policy,
-            cause=tool_log.cause,
+            cause=cause,
         )
 
 
@@ -598,7 +608,9 @@ def landed_file(
         message = f"the downloader reported no file for {key}"
         if cause is not None:
             message = f"{message}; {describe_cause(cause)}"
-        raise NoFileLanded(message) from (cause if isinstance(cause, BaseException) else None)
+        raise NoFileLanded(message, cause=cause) from (
+            cause if isinstance(cause, BaseException) else None
+        )
     path = Path(str(landed))
     if policy is not LosslessPolicy.STRICT:
         return path
@@ -624,31 +636,50 @@ def landed_file(
     return path
 
 
+def _provider_errors() -> tuple[type[BaseException], ...]:
+    """The classes a provider answer arrives as: the client's own, and HTTP's.
+
+    Deferred for the same reason as the vendored tree's import (KTD7).
+    """
+    try:
+        from requests import RequestException  # noqa: PLC0415
+        from tidalapi.exceptions import TidalAPIError  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - needs the core deps absent
+        return ()
+    return (TidalAPIError, RequestException)
+
+
 def is_rate_limit(exc: BaseException) -> bool:
     """Whether the provider refused a call for spending its allowance too fast.
 
-    The client's own class, or a bare HTTP error carrying the status, which the
-    client re-raises when it does not translate one. The import is deferred for
-    the same reason as the vendored tree's (KTD7).
+    The client's own class, or any exception carrying a rate limit status,
+    read by the paced pool's own ``status_of`` so the two readers of one
+    exception cannot disagree about where a status lives.
     """
+    from cratekit.acquire.download import RATE_LIMIT_STATUSES, status_of  # noqa: PLC0415
+
     try:
         from tidalapi.exceptions import TooManyRequests  # noqa: PLC0415
     except ImportError:  # pragma: no cover - needs the core deps absent
         TooManyRequests = ()  # noqa: N806 - an empty isinstance tuple matches nothing
-    if isinstance(exc, TooManyRequests):
-        return True
-    status = getattr(getattr(exc, "response", None), "status_code", None)
-    return status == provider_gate.RATE_LIMIT_STATUS
+    return isinstance(exc, TooManyRequests) or status_of(exc) in RATE_LIMIT_STATUSES
 
 
 def describe_cause(cause: BaseException | str) -> str:
-    """The swallowed cause in words: a rate limit said as one, the error named."""
+    """The swallowed cause in words: a rate limit said as one, the error named.
+
+    "The provider answered" only for a class a provider answer arrives as. The
+    tool also swallows its own control flow, ``MediaMissing`` among it, and
+    naming that as the provider's answer sends a person to the wrong place.
+    """
     if isinstance(cause, str):
         return f"the downloader logged {cause!r}"
     named = f"{type(cause).__name__}: {cause}" if str(cause) else type(cause).__name__
     if is_rate_limit(cause):
         return f"the provider rate limited the lookup ({named}), retry after the limit lifts"
-    return f"the provider answered {named}"
+    if isinstance(cause, _provider_errors()):
+        return f"the provider answered {named}"
+    return f"the downloader failed on {named}"
 
 
 class _ObservedSession:
@@ -661,10 +692,12 @@ class _ObservedSession:
     noted on its way out. Nothing is changed: the call is the real one, the
     error is raised on unchanged, and the tool swallows it exactly as before.
 
-    Only calls MADE ON THIS OBJECT are seen. A model object the call returns
-    keeps the real session, so the tool's own ``isinstance`` and identity
-    reads inside the client are untouched. Writes go to the real session,
-    because the tool sets ``audio_quality`` on it.
+    Only METHOD calls made on this object are seen. Every other attribute, a
+    helper object such as ``request`` included, is handed out as the real one,
+    so nothing reached through it loses an attribute. A model object a call
+    returns keeps the real session, so the client's own reads inside it are
+    untouched. Writes go to the real session, because the tool sets
+    ``audio_quality`` on it.
     """
 
     def __init__(self, session: Any, log: _ToolLogging) -> None:
@@ -673,7 +706,7 @@ class _ObservedSession:
 
     def __getattr__(self, name: str) -> Any:
         value = getattr(self._session, name)
-        if not callable(value):
+        if not inspect.ismethod(value):
             return value
         log = self._log
 
@@ -788,8 +821,11 @@ def _render(args: tuple[object, ...]) -> str:
     message, *rest = args
     text = str(message)
     if rest:
+        # ``logging`` formats one mapping argument by name, and every other
+        # shape positionally.
+        values = rest[0] if len(rest) == 1 and isinstance(rest[0], Mapping) else tuple(rest)
         try:
-            text = text % tuple(rest)
+            text = text % values
         except (TypeError, ValueError):
             text = " ".join([text, *map(str, rest)])
     return text
