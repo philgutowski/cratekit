@@ -4,7 +4,29 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-704, issue #216, `relay/216`, 2026-09-25.** A rate limit met
+**Last merged: R-668, issue #208, `relay/208`, 2026-09-24.** `crate acquire
+download --job <id>` drives the queued job alone. The `list` positional is
+optional, and `download_argv` is `acquire download --job <id>`, so the
+respawned child and the "drive it with" line both name the job alone. A list
+named beside `--job` is checked against the frozen path through the freeze's
+absolutising and `preflight._names_one_path`: the same file drives, a
+different one is refused as `intake-list-unusable` before the sweep and the
+reconcile. A command naming neither, and an empty `--job ""`, are refused at
+the head of the verb before the configuration is read. The built in review
+found the string comparison, the refusals' side effects, the empty
+identifier falling through to a second queue, and another verb's payload
+being read. **The numbers:** 10,357 collected, 10,356 passed and 1 skipped,
+ruff clean, `scan_repo.py` exit 0. **The mutation table was MEASURED:**
+twelve rows in `docs/mutation/r668-a-rows.toml`, two zeros that each got a
+test and were killed in `r668-b`. The leak guard watched an empty temporary
+root because the installed copy's `analyze vocals` job
+`2026-09-24T21:04:27Z-fbe8` was still writing the real one, and the real root
+outside that job's paths fingerprinted the same before and after;
+`r668-notes.md` says so. Filed **R-718** (three more resumable verbs require
+a positional their resume never reads), not on the board bar. **Main's
+highest residual number is R-718.**
+
+**Merged before it: R-704, issue #216, `relay/216`, 2026-09-25.** A rate limit met
 by a labels sweep is a retryable item failure. `sync.run.LookupFailure`
 carries `rate_limited`, and `run.increment` refuses one so marked as
 `sync-source-lookups-failed` with `retryable` true, the `resume-job` remedy
