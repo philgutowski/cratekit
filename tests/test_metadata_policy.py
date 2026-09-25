@@ -172,7 +172,27 @@ def test_a_curve_already_on_the_star_scale_passes_through():
     assert [c.new for c in plan.changes] == [2, 4]
 
 
-@pytest.mark.parametrize("value", [0, 20, 50, 256, 6, -1])
+def test_a_cut_that_declares_zero_skips_its_band_and_keeps_the_rest():
+    """Zero is unrated on both scales. A curve that leaves the lowest band
+    unrated on purpose still rates every other band."""
+    curve = (taxonomy.RatingCut(max=2, rating=0), taxonomy.RatingCut(max=10, rating=204))
+    rows = [Row("1", Rating=0), Row("2", Rating=0)]
+    plan = metadata.plan_rating_backfill(rows, {"1": 1, "2": 7}, cuts=curve)
+    assert [(c.content_id, c.new) for c in plan.changes] == [("2", 4)]
+    assert [(s.content_id, s.reason) for s in plan.skipped] == [("1", "level-unrated")]
+
+
+def test_a_curve_mixing_the_two_scales_is_refused_at_plan_time():
+    """51 and 3 each fold on their own, to one star and three. The export writer
+    would spell the top band as nearly unrated, so the mix is a typo, refused."""
+    curve = (taxonomy.RatingCut(max=5, rating=51), taxonomy.RatingCut(max=10, rating=3))
+    with pytest.raises(CratekitError) as excinfo:
+        metadata.plan_rating_backfill([Row("1", Rating=0)], {"1": 2}, cuts=curve)
+    assert excinfo.value.cause.reason == "rating-scale-unknown"
+    assert excinfo.value.cause.detail["ratings"] == [3, 51]
+
+
+@pytest.mark.parametrize("value", [20, 50, 256, 6, -1])
 def test_a_cut_value_on_neither_scale_is_refused_at_plan_time(value):
     """Refused before any row is planned, even a row that lands in a good cut,
     so a misdeclared curve never produces a partial plan that reads as a sweep
