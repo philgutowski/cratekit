@@ -1,0 +1,71 @@
+{
+  "name": "r663-b",
+  "pass_kind": "light",
+  "branch": "relay/210",
+  "head": "1fcd3c9",
+  "when": "2026-09-25 03:51 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10385,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "state_guarded": "/tmp/r663-config.VbnF (0 entries); /tmp/r663-state.wliH (0 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/rb_writer.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/rb_writer.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "cd821bfa633ee07b",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10385,
+    "baseline_collected": 10385,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M2_every_open_refusal_classified",
+      "description": "the canary reason gate is removed, so any refusal on the way in, a pin or a failed open, is also asked whether the copy is a library",
+      "file": "src/cratekit/core/rb_writer.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0531f08e9513a953",
+      "subset": [
+        "tests/test_paths_resolved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 49,
+      "baseline_collected": 49,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_a_refusal_on_the_way_in_is_not_reclassified_as_a_wrong_path"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if exc.cause.reason != \"canary-read-failed\":\n                raise\n            refusal = _not_a_library(Path(source), copied)",
+      "new": "            refusal = _not_a_library(Path(source), copied)"
+    }
+  ],
+  "dropped": []
+}

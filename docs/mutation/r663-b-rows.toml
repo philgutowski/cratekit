@@ -1,0 +1,14 @@
+name = "r663-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M2_every_open_refusal_classified"
+description = "the canary reason gate is removed, so any refusal on the way in, a pin or a failed open, is also asked whether the copy is a library"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '''            if exc.cause.reason != "canary-read-failed":
+                raise
+            refusal = _not_a_library(Path(source), copied)'''
+new = '''            refusal = _not_a_library(Path(source), copied)'''
+
