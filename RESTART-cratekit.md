@@ -15,7 +15,8 @@ state's reasons under its count, most rows first, ties by slug, a shortfall
 named last as `unstated N`, and nothing for a progress without the field. The
 built in review found the shortfall reading as complete, a bool passing the
 count check, and a non string `why` becoming a slug. **The numbers:**
-NUMBERS_PENDING. **The mutation table was MEASURED:** fifteen rows in
+10,371 collected, 10,370 passed and 1 skipped,
+ruff clean, `scan_repo.py` exit 0. **The mutation table was MEASURED:** fifteen rows in
 `docs/mutation/r682-a-rows.toml`, every row killed, the leak guard watching an
 empty temporary root because the installed copy's `analyze vocals` job was
 still writing the real one; `r682-notes.md` says so. No residual filed.
