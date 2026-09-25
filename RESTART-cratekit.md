@@ -2863,7 +2863,8 @@ offset, only for a match or a miss, and the same rule is applied again on the
 way back in; a document that is unreadable, of another version or carrying
 another plan is a miss. A kept chunk skips the carve, the ledger and the
 transport, and a fully kept recording never RETRIEVES a credential, though the
-presence gate still runs. The per run bound reads the whole grid and the
+presence gate still runs. The per run bound reads the whole grid (until R-706,
+which moved that reading to the parts ceiling, `assert_one_set`) and the
 monthly bound reads only what is owed. The write is a locked merge under a
 sibling `.lock`, and it runs in a `finally`, so a pass that RAISED keeps what
 it paid for; a process that dies does not, which is what R-304 still holds.

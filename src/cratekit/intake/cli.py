@@ -53,7 +53,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import artifacts, binaries, binary_refusal, config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.intake import acrcloud, fetch, ingest, normalize, pipeline, recognize
+from cratekit.intake import fetch, ingest, normalize, pipeline, recognize
 from cratekit.label import catalogue
 from cratekit.label import cli as label_cli
 
@@ -62,11 +62,14 @@ from cratekit.label import cli as label_cli
 #: identifier, so the worker reads nothing but the job. ``CALLS`` is what
 #: identifying the set cost and ``UNREACHED`` how many of its chunks never got
 #: an answer; both are recorded on the job because the money is spent whether
-#: or not anything ran, and both are reported back on every resume.
+#: or not anything ran, and both are reported back on every resume. ``PARTS``
+#: is how many runs the set was identified in (R-706), frozen for the same
+#: reason: a resume reports the split the queue turn reported.
 SOURCE = "source"
 TRACKS = "tracks"
 CALLS = "calls"
 UNREACHED = "unreached"
+PARTS = "parts"
 
 #: The two handler keys one worker serves. A resume is refused for any other,
 #: because the driver resolves the worker from the job row and not from the
@@ -380,6 +383,7 @@ def _summary(cfg: config.Config, job) -> dict[str, Any]:
         **counts,
         "calls": int(payload.get(CALLS) or 0),
         "unreached": int(payload.get(UNREACHED) or 0),
+        "parts": int(payload.get(PARTS) or 1),
     }
 
 
@@ -707,7 +711,7 @@ def intake_set(ctx) -> Envelope:
             warnings = (
                 _coverage_or_refuse(result, held)
                 + _cache_notes(result)
-                + _parts_notes(result)
+                + _parts_notes(result, queued=True)
             )
             tracks = frozen_rows(result.rows)
             if tracks:
@@ -719,6 +723,7 @@ def intake_set(ctx) -> Envelope:
                         TRACKS: tracks,
                         CALLS: result.calls,
                         UNREACHED: result.unreached,
+                        PARTS: result.parts,
                     },
                     cfg=cfg,
                     item_ids=tuple(tracks),
@@ -774,18 +779,30 @@ CACHE_SERVED = "recognition-cached"
 IN_PARTS = "recognition-in-parts"
 
 
-def _parts_notes(result: pipeline.IdentifyResult) -> tuple[dict[str, str], ...]:
-    """Said when the recording was identified in more than one run."""
+def _parts_notes(
+    result: pipeline.IdentifyResult, *, queued: bool
+) -> tuple[dict[str, str], ...]:
+    """Said when the recording was identified in more than one run.
+
+    The bound is not quoted, because the identifier's budget is the one place
+    that knows it and a number copied here would be a second one. What the
+    split means for the person depends on the verb: ``intake set`` queues the
+    tracks and they land as one batch, ``intake identify`` writes one list.
+    """
     if result.parts <= 1:
         return ()
+    still = (
+        "its tracks queue as one job and land as one batch"
+        if queued
+        else "its tracklist is one list"
+    )
     return (
         {
             "code": IN_PARTS,
             "message": (
-                f"this recording is longer than one recognition run's bound of "
-                f"{acrcloud.MAX_CALLS_PER_RUN} calls, so it was identified in "
-                f"{result.parts} even parts, {result.chunks} chunk(s) in all; it "
-                f"is still one set, and its tracks are listed and land as one batch"
+                f"this recording is longer than one recognition run's bound, so it "
+                f"was identified in {result.parts} even parts, {result.chunks} "
+                f"chunk(s) in all; it is still one set, and {still}"
             ),
         },
     )
@@ -975,7 +992,9 @@ def intake_identify(ctx) -> Envelope:
             held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
         )
         warnings = (
-            _coverage_or_refuse(result, held) + _cache_notes(result) + _parts_notes(result)
+            _coverage_or_refuse(result, held)
+            + _cache_notes(result)
+            + _parts_notes(result, queued=False)
         )
         if result.rows:
             written = _tracklist_written(out, held, result)
@@ -1325,6 +1344,8 @@ __all__ = [
     "CACHE_SERVED",
     "CACHE_UNWRITTEN",
     "CALLS",
+    "IN_PARTS",
+    "PARTS",
     "FAVORITES",
     "FAVORITES_SOURCE_ID",
     "HEARTS_WITHHELD",

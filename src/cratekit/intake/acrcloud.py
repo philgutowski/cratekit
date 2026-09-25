@@ -497,18 +497,6 @@ class Budget:
 MONTHLY_KEY = "recognition.monthly_calls"
 
 
-def assert_within(budget: Budget, *, planned: int, used_this_month: int) -> None:
-    """Refuse BEFORE the first call when the plan exceeds either bound.
-
-    The two checks together, for a plan that is one run. :func:`identify`
-    asks them separately since R-706, because a recording identified in parts
-    meets the run bound once per part and the month's bound once over the
-    whole of what is owed.
-    """
-    assert_run_within(budget, planned=planned)
-    assert_month_within(budget, planned=planned, used_this_month=used_this_month)
-
-
 def assert_one_set(budget: Budget, *, planned: int) -> None:
     """Refuse a recording that would take more than :data:`MAX_PARTS` runs.
 
@@ -541,9 +529,9 @@ def assert_one_set(budget: Budget, *, planned: int) -> None:
 def assert_run_within(budget: Budget, *, planned: int) -> None:
     """Refuse a RUN that would exceed the per run bound.
 
-    Asked of every part before its first call. By construction a part is
-    under the bound, so this is the guard that makes that a property of the
-    spend rather than of the partition that happened to be built.
+    Asked of every part before the first call of any. By construction a part
+    is at or under the bound, so this is the guard that makes that a property
+    of the spend rather than of the partition that happened to be built.
     """
     if planned > budget.per_run:
         raise refuse(
@@ -952,10 +940,10 @@ def identify(
     recording whose every chunk is kept never RETRIEVES a credential, so the
     second of ``intake identify`` then ``intake set`` spends nothing. The
     presence gate in :mod:`cratekit.intake.recognize` still runs first, so a
-    machine with no key recorded is refused there whatever is kept. The per
-    run bound still reads the WHOLE grid, because it is what refuses a file
-    that is not a set; the monthly bound reads only what is owed, because it
-    is a bound on spend.
+    machine with no key recorded is refused there whatever is kept. The parts
+    ceiling, :func:`assert_one_set`, still reads the WHOLE grid, because it is
+    what refuses a file that is not a set; the run bound and the monthly bound
+    read only what is owed, because they are bounds on spend.
 
     A MISS IS KEPT UNTIL SOMEBODY ASKS AGAIN. The service's catalogue grows,
     so a chunk it could not name last season may be one it can name now, and
@@ -975,9 +963,10 @@ def identify(
     configuration's recognition section.
 
     A SET LONGER THAN ONE RUN IS IDENTIFIED IN PARTS, NOT REFUSED (R-706). The
-    grid is cut by :func:`partition` into even contiguous slices each under
-    the per run bound, and every slice is a run: the run bound is asked of it
-    before its first call. The month's bound is asked ONCE, over everything
+    grid is cut by :func:`partition` into even contiguous slices each at or
+    under the per run bound, and every slice is a run: the run bound is asked
+    of every part before the first call of any, so an oversize part is
+    refused with nothing spent. The month's bound is asked ONCE, over everything
     the whole set owes, before the first call of the first part, so a set the
     month cannot afford spends nothing rather than its first part. One pass
     walks the parts in grid order and folds the answers once, so a record
@@ -1061,12 +1050,14 @@ def _identified(
     """The pass itself. ``paid`` is the caller's, filled as each answer arrives,
     so the caller can keep it whether this returns or raises.
 
-    ``parts`` is the grid, cut. The month is asked once over ``owed``, the
-    whole set's, before any part starts; each part is asked of the run bound
-    before its own first call, so a partition that handed back an oversize
-    part is refused there rather than paid for.
+    ``parts`` is the grid, cut. Every part is asked of the run bound and the
+    month is asked once over ``owed``, the whole set's, BEFORE any part
+    starts, so a partition that handed back an oversize part, first or last,
+    is refused with nothing spent rather than after the parts before it.
     """
     still_owed = frozenset(owed)
+    for part in parts:
+        assert_run_within(spend, planned=sum(1 for offset in part if offset in still_owed))
     keys = ("", "")
     if owed:
         assert_month_within(spend, planned=len(owed), used_this_month=counter.used(month))
@@ -1076,7 +1067,6 @@ def _identified(
     calls = misses = unreached = streak = 0
     offsets = tuple(offset for part in parts for offset in part)
     for part in parts:
-        assert_run_within(spend, planned=sum(1 for offset in part if offset in still_owed))
         for offset in part:
             calls, misses, unreached, streak = _one_chunk(
                 source,
@@ -1287,7 +1277,6 @@ __all__ = [
     "assert_month_within",
     "assert_one_set",
     "assert_run_within",
-    "assert_within",
     "bound_identifier",
     "classify",
     "content_digest",

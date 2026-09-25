@@ -1139,9 +1139,12 @@ def test_a_pass_that_paid_for_nothing_writes_nothing_and_reports_nothing_unwritt
     assert cached_run(FakeTransport(), source, cache, ledger).cache_unwritten == ""
 
 
-def test_the_monthly_bound_reads_what_is_owed_and_the_per_run_bound_reads_the_grid(
+def test_the_monthly_bound_reads_what_is_owed_and_the_parts_ceiling_reads_the_grid(
     tmp_path, cache, ledger
 ):
+    """Renamed on R-706: the per run bound read the whole grid until then, and
+    `docs/mutation/u103-a.md` row A16 names the old property. The ceiling
+    reads the grid now, and the run bound reads only what a part owes."""
     source = real_recording(tmp_path)
     cached_run(FakeTransport(*three_answers()), source, cache, ledger)
     spent = Budget(monthly=3)
@@ -1323,12 +1326,21 @@ def test_the_month_is_asked_once_over_the_whole_set_before_the_first_part(ledger
     assert fits.used("2026-09") == 5
 
 
-def test_a_partition_that_hands_back_an_oversize_part_is_refused_before_its_first_call(
-    ledger, monkeypatch
+@pytest.mark.parametrize(
+    "cut",
+    [
+        lambda offsets: (tuple(offsets),),
+        lambda offsets: (tuple(offsets[:1]), tuple(offsets[1:])),
+    ],
+    ids=["one-oversize-part", "oversize-second-part"],
+)
+def test_a_partition_that_hands_back_an_oversize_part_is_refused_before_any_call(
+    ledger, monkeypatch, cut
 ):
     """The run bound is a property of the spend, not of the cut. A partition
-    that returned the whole grid as one part meets the guard, not the transport."""
-    monkeypatch.setattr(acrcloud, "partition", lambda offsets, *, per_run: (tuple(offsets),))
+    that returned an oversize part, first or LAST, meets the guard before the
+    transport, so the parts before it are not paid for either."""
+    monkeypatch.setattr(acrcloud, "partition", lambda offsets, *, per_run: cut(offsets))
     transport = FakeTransport()
     carver = FakeCarver(100.0)
     with pytest.raises(CratekitError) as excinfo:
@@ -1344,8 +1356,9 @@ def test_a_partition_that_hands_back_an_oversize_part_is_refused_before_its_firs
         )
     cause = excinfo.value.cause
     assert cause.reason == "intake-recognition-spend-bound"
-    assert cause.detail == {"planned": 4, "bound": 2, "kind": "per-run"}
-    assert "this run would take 4" in cause.message
+    assert (cause.detail["bound"], cause.detail["kind"]) == (2, "per-run")
+    assert cause.detail["planned"] in (3, 4)
+    assert "this run would take" in cause.message
     assert transport.requests == []
     assert carver.carved == []
     assert ledger.used("2026-09") == 0
