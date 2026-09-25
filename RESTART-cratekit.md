@@ -4,7 +4,30 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-703, issue #215, `relay/215`, 2026-09-24.** A failed download
+**Last merged: R-704, issue #216, `relay/216`, 2026-09-25.** A rate limit met
+by a labels sweep is a retryable item failure. `sync.run.LookupFailure`
+carries `rate_limited`, and `run.increment` refuses one so marked as
+`sync-source-lookups-failed` with `retryable` true, the `resume-job` remedy
+and `rate_limited` in the detail; every other lookup failure is unchanged.
+`label/sweep._lookup_failure` sets the flag at the sweep's four provider
+boundaries, asking `vendored.is_rate_limit` of the error and its declared
+causes and the implicit context chain for a structured 429 status only, which
+is how the client's non JSON 429 arrives. The item cause carries the flag, so
+the job verdict and `jobs.retry` follow it with no engine change. The Closes
+when test resumes a two label job through `crate job resume` and reads the
+settled label not listed again. The built in review found the non JSON 429
+and a sentence that said "nothing was read" over a verification limit.
+**The numbers:** 10,345 collected, 10,344 passed and 1 skipped, ruff clean,
+`scan_repo.py` exit 0. **The mutation table was MEASURED:** eighteen rows in
+`docs/mutation/r704-a-rows.toml`, every row killed, the leak guard watching
+an empty temporary root because the installed copy's `analyze vocals` job
+`2026-09-24T21:04:27Z-fbe8` was still writing the real one;
+`r704-notes.md` says so. Filed **R-716** (a resumed mixed job re-arms its
+permanent failures) and **R-717** (an outage other than a rate limit is
+still permanent), neither on the board bar. **Main's highest residual number
+is R-717.**
+
+**Merged before it: R-703, issue #215, `relay/215`, 2026-09-24.** A failed download
 names the provider's own error. The vendored tree is unchanged. The adapter
 hands the tool a fresh `vendored._ToolLogging` per fetch, which writes nothing
 and keeps the first failure the tool logs from inside an except, read off
