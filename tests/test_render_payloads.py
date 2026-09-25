@@ -94,7 +94,8 @@ def test_the_reasons_follow_their_count_most_rows_first_and_ties_by_slug():
         "owned": 6,
         "missing": 1,
         "by_reason": {
-            "owned": {"credited-exact": 1, "exact": 3, "isrc-exact": 1, "verdict-accepted": 1},
+            # Inserted out of slug order, so a sort that drops the tie break shows.
+            "owned": {"verdict-accepted": 1, "isrc-exact": 1, "exact": 3, "credited-exact": 1},
             "missing": {"not-in-library": 1},
         },
     }

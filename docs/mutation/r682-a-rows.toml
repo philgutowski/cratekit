@@ -1,0 +1,156 @@
+name = "r682-a"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_no_by_reason_in_summary"
+description = "the intake summary no longer carries by_reason, so the json and the rendering both lose the breakdown"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_render_payloads.py"]
+old = '''        "by_reason": by_reason,
+'''
+new = ''''''
+
+[[rows]]
+id = "M2_non_string_why_counted"
+description = "a why that is not a string is counted under its own value as a slug"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''            if isinstance(why, str) and why:'''
+new = '''            if why:'''
+
+[[rows]]
+id = "M3_empty_why_counted"
+description = "an empty why is counted under the empty string as a reason"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''            if isinstance(why, str) and why:'''
+new = '''            if isinstance(why, str):'''
+
+[[rows]]
+id = "M4_state_keys_not_seeded"
+description = "by_reason carries only the states some row reached, so suppressed with no rows is absent rather than an empty mapping"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''        "by_reason": by_reason,
+'''
+new = '''        "by_reason": {word: reasons for word, reasons in by_reason.items() if reasons},
+'''
+
+[[rows]]
+id = "M5_reason_counted_twice"
+description = "each row adds two to its reason, a realistic nearby coefficient"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''                by_reason[word][why] = by_reason[word].get(why, 0) + 1'''
+new = '''                by_reason[word][why] = by_reason[word].get(why, 0) + 2'''
+
+[[rows]]
+id = "M6_reason_counted_outside_state_guard"
+description = "a reason is counted before the state word is checked, so a row in a state the counts do not know is counted under it"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''        if word in counts:
+            counts[word] += 1
+            why = report.get("why")
+            if isinstance(why, str) and why:
+                by_reason[word][why] = by_reason[word].get(why, 0) + 1'''
+new = '''        why = report.get("why")
+        if isinstance(why, str) and why:
+            by_reason.setdefault(word, {})[why] = by_reason.get(word, {}).get(why, 0) + 1
+        if word in counts:
+            counts[word] += 1'''
+
+[[rows]]
+id = "M7_reason_line_not_printed"
+description = "the rendering computes the reasons and never prints the line"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''        if reasons:
+            lines.append(f"    by reason: {reasons}")'''
+new = '''        if False:
+            lines.append(f"    by reason: {reasons}")'''
+
+[[rows]]
+id = "M8_sorted_by_slug_only"
+description = "the reasons print in slug order rather than most rows first"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    counted.sort(key=lambda pair: (-pair[1], pair[0]))'''
+new = '''    counted.sort(key=lambda pair: pair[0])'''
+
+[[rows]]
+id = "M9_no_tie_break"
+description = "reasons with the same count keep the order the mapping held them in rather than slug order"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    counted.sort(key=lambda pair: (-pair[1], pair[0]))'''
+new = '''    counted.sort(key=lambda pair: -pair[1])'''
+
+[[rows]]
+id = "M10_unstated_never_said"
+description = "a breakdown that falls short of its count prints no unstated entry and reads as complete"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    if unstated > 0:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M11_unstated_bound_inclusive"
+description = "a complete breakdown prints unstated 0"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    if unstated > 0:'''
+new = '''    if unstated >= 0:'''
+
+[[rows]]
+id = "M12_bool_is_a_count"
+description = "a bool passes the whole number test, so True prints as a count and as a reason"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    return isinstance(value, int) and not isinstance(value, bool)'''
+new = '''    return isinstance(value, int)'''
+
+[[rows]]
+id = "M13_zero_reason_printed"
+description = "a reason with a zero count is printed beside the others"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''        (str(why), n) for why, n in reasons.items() if _whole(n) and n > 0'''
+new = '''        (str(why), n) for why, n in reasons.items() if _whole(n)'''
+
+[[rows]]
+id = "M14_no_breakdown_mapping_gate"
+description = "a by_reason that is not a mapping is read as one"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    by_reason = progress.get("by_reason")
+    if not isinstance(by_reason, Mapping):
+        return ""'''
+new = '''    by_reason = progress.get("by_reason") or {}'''
+
+[[rows]]
+id = "M15_no_state_mapping_gate"
+description = "a state's reasons that are not a mapping are read as one"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    reasons = by_reason.get(word)
+    if not isinstance(reasons, Mapping):
+        return ""'''
+new = '''    reasons = by_reason.get(word)
+    if reasons is None:
+        return ""'''
