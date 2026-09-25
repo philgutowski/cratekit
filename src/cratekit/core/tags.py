@@ -520,6 +520,43 @@ def read_tags(path: Path, fields: Sequence[str]) -> dict[str, str | None]:
     :func:`read_tag` refuses it, so a misspelled field name in a four field
     read cannot be answered as absent.
     """
+    return _read_tags(path, fields, strict=False)
+
+
+class TagReadFailed(Exception):
+    """The file's tags could not be read, which is not the same as it holding none.
+
+    Raised only by the checked readers. Every other reader here folds it into
+    None, for the reason the note above :func:`read_tag` gives.
+    """
+
+
+def read_tags_checked(path: Path, fields: Sequence[str]) -> dict[str, str | None]:
+    """:func:`read_tags` with a failed read kept apart from an absent field.
+
+    ONE BODY WITH :func:`read_tags`, which folds each failure into None where
+    this raises it, so the two cannot disagree about a value both read. A caller that routes a whole library on one field needs to tell "the
+    file holds no value" from "the file could not be read", because the first is
+    a fact about the track and the second is a fact about the read, and filing
+    both into the same fallback reports a damaged file as an untagged one. The
+    residual titled "Adoption files every track as if it had no energy reading,
+    and the library's files carry one" is the caller that needed it.
+
+    None for a field still means absent. :class:`TagReadFailed` means the
+    container is one this module does not read, mutagen could not open it or
+    did not recognise it, or a stored value could not be decoded. A file mutagen
+    opens that carries no tag block at all holds no values, and reads as absent.
+    """
+    return _read_tags(path, fields, strict=True)
+
+
+def _read_tags(path: Path, fields: Sequence[str], *, strict: bool) -> dict[str, str | None]:
+    """The body of both readers. Not strict, every failure reads as absent.
+
+    Per field in the lenient mode, deliberately: one undecodable field reads as
+    None and its neighbours still come back, which is what :func:`read_tags`
+    has always answered.
+    """
     specs: dict[str, TagSpec] = {}
     for field in fields:
         spec = FIELDS.get(field)
@@ -528,45 +565,55 @@ def read_tags(path: Path, fields: Sequence[str]) -> dict[str, str | None]:
                 f"unknown tag field: {field!r}; known fields are {sorted(FIELDS)}"
             )
         specs[field] = spec
-    absent: dict[str, str | None] = dict.fromkeys(specs)
 
+    absent: dict[str, str | None] = dict.fromkeys(specs)
     try:
         dialect = dialect_of(path.suffix.lower())
-    except UnsupportedContainer:
+    except UnsupportedContainer as exc:
+        if strict:
+            raise TagReadFailed(str(exc)) from exc
         return absent
     try:
         import mutagen
 
         handle = mutagen.File(path)
-        if handle is None or handle.tags is None:
-            return absent
-        tags = handle.tags
     except Exception as exc:  # noqa: BLE001, see the note above read_tag
+        if strict:
+            raise TagReadFailed(f"{type(exc).__name__}: {exc}") from exc
         log.debug("tag read failed for %s: %s", path, exc)
         return absent
-    return {
-        field: _one_text(tags, spec.key_for(dialect), dialect, path)
-        for field, spec in specs.items()
-    }
+    if handle is None:
+        if strict:
+            raise TagReadFailed("not a container the tag library recognises")
+        return absent
+    if handle.tags is None:
+        return absent
+    values: dict[str, str | None] = {}
+    for field, spec in specs.items():
+        key = spec.key_for(dialect)
+        try:
+            values[field] = _one_text(handle.tags, key, dialect)
+        except Exception as exc:  # noqa: BLE001, see the note above read_tag
+            if strict:
+                raise TagReadFailed(f"{key}: {type(exc).__name__}: {exc}") from exc
+            log.debug("tag read failed for %s %s: %s", path, key, exc)
+            values[field] = None
+    return values
 
 
-def _one_text(tags: object, key: str, dialect: Dialect, path: Path) -> str | None:
-    """One stored field as stripped text, or None when absent or unreadable."""
-    try:
-        if key not in tags:  # type: ignore[operator]
-            return None
-        raw = tags[key]  # type: ignore[index]
-        if dialect is Dialect.ID3:
-            # A text frame stringifies to its joined text; TXXX likewise.
-            return str(raw).strip() or None
-        value = raw[0] if isinstance(raw, list) else raw
-        if isinstance(value, (bytes, bytearray)):
-            # An MP4 freeform atom carries bytes, not text.
-            return bytes(value).decode("utf-8").strip() or None
-        return str(value).strip() or None
-    except Exception as exc:  # noqa: BLE001, see the note above read_tag
-        log.debug("tag read failed for %s %s: %s", path, key, exc)
+def _one_text(tags: object, key: str, dialect: Dialect) -> str | None:
+    """One stored field as stripped text, or None when absent. Raises when undecodable."""
+    if key not in tags:  # type: ignore[operator]
         return None
+    raw = tags[key]  # type: ignore[index]
+    if dialect is Dialect.ID3:
+        # A text frame stringifies to its joined text; TXXX likewise.
+        return str(raw).strip() or None
+    value = raw[0] if isinstance(raw, list) else raw
+    if isinstance(value, (bytes, bytearray)):
+        # An MP4 freeform atom carries bytes, not text.
+        return bytes(value).decode("utf-8").strip() or None
+    return str(value).strip() or None
 
 
 def read_tag_values(path: Path, field: str) -> tuple[str, ...] | None:
@@ -710,7 +757,28 @@ def _read_int(path: Path, field: str) -> int | None:
 
 def read_energy_from_file(path: Path) -> int | None:
     """The stored energy rating (1 to 10), or None when absent or unreadable."""
-    return _read_int(path, "energylevel")
+    try:
+        return read_energy_checked(path)
+    except TagReadFailed as exc:
+        log.debug("energy read failed for %s: %s", path, exc)
+        return None
+
+
+def read_energy_checked(path: Path) -> int | None:
+    """The stored energy rating, None only when the file holds none.
+
+    Raises :class:`TagReadFailed` when the file cannot be read or the stored
+    value is not a number, so a caller can report a damaged file rather than
+    file it as untagged. :func:`read_energy_from_file` is this with that folded
+    into None, so the two cannot disagree about what a stored value reads as.
+    """
+    value = read_tags_checked(path, ("energylevel",))["energylevel"]
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise TagReadFailed(f"energylevel is not a number: {value!r}") from exc
 
 
 def read_genre_from_file(path: Path) -> str | None:

@@ -47,7 +47,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Sequence
 
-from cratekit.core import locations, routing, taxonomy
+from cratekit.core import locations, routing, tags, taxonomy
 
 #: The suffix a well-known consumer file synchroniser leaves beside a name whose
 #: bytes it has evicted. Recognised because the library's recorded location
@@ -150,7 +150,7 @@ class Disposition(StrEnum):
     WITHHELD = "withheld"
 
     #: The genre resolved to a bucket and the taxonomy declares no sub-playlist
-    #: under it for a track with no energy reading. Set by the plan layer rather
+    #: under it for this track's energy reading. Set by the plan layer rather
     #: than here, because it is the sub resolution that discovers it. Its own
     #: member rather than NEEDS_GENRE: the genre answered perfectly, and telling
     #: a person to fix a genre that is already right is the shape of advice
@@ -206,6 +206,15 @@ class ScannedTrack:
     #: How the router reached the bucket, kept so a report can show the share of
     #: tracks that resolved only fuzzily rather than presenting them as exact.
     match: str = ""
+    #: The energy level the file's own tag holds, or None when it holds none or
+    #: could not be read. Read here rather than in the plan because the plan
+    #: layer takes no library input, and read only for an adoptable file,
+    #: because opening an online only one is what fetches it.
+    energy: int | None = None
+    #: True when the file's tags could not be read, which is not the same fact
+    #: as a file holding no energy tag. Both land in the no reading sub, and
+    #: this is what keeps the first from landing there silently.
+    energy_unreadable: bool = False
 
 
 def probe_readability(path: Path) -> Readability:
@@ -417,6 +426,7 @@ def scan_rows(
     root: Path | str,
     prefix_map: Sequence[locations.PrefixRule] = (),
     probe: Callable[[Path], Readability] = probe_readability,
+    energy_reader: Callable[[Path], int | None] = tags.read_energy_checked,
 ) -> Iterator[ScannedTrack]:
     """Classify every row, once, in one walk.
 
@@ -439,6 +449,12 @@ def scan_rows(
     shapes a filesystem raises are caught and named here for that reason. A
     programming error in a caller's probe still surfaces, because nothing wider
     is caught.
+
+    THE ENERGY READING COMES OFF THE FILE, through the reader the routing pass
+    uses, so adoption files a track where routing would. Adoption once passed no
+    reading at all and filed 7,401 of 7,773 tracks as unsorted over a library
+    where 7,726 carried one. A reader failure is caught for the same reason a
+    probe failure is, and recorded on the track rather than read as absence.
     """
     for row in rows:
         if row.deleted:
@@ -471,6 +487,7 @@ def scan_rows(
             )
             continue
         disposition, bucket, match = classify_genre(declared, row.genre)
+        energy, unreadable = _energy_of(Path(path or ""), energy_reader)
         yield ScannedTrack(
             content_id=row.content_id,
             recorded=row.recorded,
@@ -480,7 +497,19 @@ def scan_rows(
             genre=row.genre,
             bucket=bucket,
             match=match,
+            energy=energy,
+            energy_unreadable=unreadable,
         )
+
+
+def _energy_of(
+    path: Path, reader: Callable[[Path], int | None]
+) -> tuple[int | None, bool]:
+    """The file's energy level and whether reading it failed."""
+    try:
+        return reader(path), False
+    except (tags.TagReadFailed, OSError):
+        return None, True
 
 
 def categories(scanned: Iterable[ScannedTrack]) -> dict[str, int]:

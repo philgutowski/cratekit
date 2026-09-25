@@ -424,6 +424,7 @@ def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
         {
             "tree": document["tree"],
             "counts": document["counts"],
+            "energy": document["energy"],
             "collisions": document["collisions"],
         },
     )
