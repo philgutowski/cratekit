@@ -1690,6 +1690,31 @@ def test_a_failure_message_with_no_exception_is_the_cause(settings, tmp_path):
     assert "Failed to restore normal session for track: 1234" in detail
 
 
+class _SurvivingDownload(_LoggingDownload):
+    """The tool logs a rejected call from inside its except and still lands a file."""
+
+    landed = ""
+
+    def item(self, **_kwargs):
+        from tidalapi.exceptions import AuthenticationError
+
+        try:
+            raise AuthenticationError("401 OAuth token expired")
+        except AuthenticationError:
+            self.fn_logger.exception("Could not retrieve lyrics.")
+        return True, type(self).landed
+
+
+def test_an_error_the_tool_survived_does_not_fail_a_landed_item(settings, tmp_path):
+    """The escalation is asked of a failed item only. A good download stays good."""
+    _SurvivingDownload.landed = str(synth_container(tmp_path, ".flac"))
+    source = vendored._VendoredSource(
+        settings, tmp_path / "token.json", session=_ToolSession({}), downloader=_SurvivingDownload
+    )
+    landed = source.fetch(TrackRequest(key="1234"), settings.download_staging)
+    assert landed == Path(_SurvivingDownload.landed)
+
+
 def test_what_the_constructor_logged_is_never_the_items_cause(settings, tmp_path):
     """The tool warns about ffmpeg at construction on every run without it."""
     assert _fetch_failure(settings, tmp_path, _SilentDownload) == (

@@ -1,0 +1,96 @@
+name = "r703-b"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_no_active_exception"
+description = "the tool's log ignores the exception being handled and keeps only the message"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        active = sys.exc_info()[1]'''
+new = '''        active = None'''
+
+[[rows]]
+id = "L2_last_exception_wins"
+description = "a later exception overwrites the first, so a consequence stands as the cause"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        if self._exception is None:
+            self._exception = exc'''
+new = '''        self._exception = exc'''
+
+[[rows]]
+id = "L3_message_outranks_exception"
+description = "the cause prefers the tool's message over the provider's exception"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''        return self._exception if self._exception is not None else self._message'''
+new = '''        return self._message if self._message is not None else self._exception'''
+
+[[rows]]
+id = "L4_error_notes_nothing"
+description = "error() goes back to discarding, so a message only failure has no cause"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''    def error(self, *args: object, **_kwargs: object) -> None:
+        self._failure(args)'''
+new = '''    def error(self, *args: object, **_kwargs: object) -> None:
+        return None'''
+
+[[rows]]
+id = "O1_proxy_notes_nothing"
+description = "the observed session re-raises without noting, so the unlogged lookup error is lost"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''                log.note(exc)
+                raise'''
+new = '''                raise'''
+
+[[rows]]
+id = "O2_wraps_every_callable"
+description = "the observed session wraps any callable attribute, not only methods"
+file = "src/cratekit/acquire/vendored.py"
+surface = "maintainer"
+old = '''        if not inspect.ismethod(value):'''
+new = '''        if not callable(value):'''
+
+[[rows]]
+id = "O3_writes_land_on_proxy"
+description = "attribute writes land on the proxy, so the tool's audio_quality write never reaches the real session"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''    def __setattr__(self, name: str, value: object) -> None:
+        setattr(self._session, name, value)'''
+new = '''    def __setattr__(self, name: str, value: object) -> None:
+        object.__setattr__(self, name, value)'''
+
+[[rows]]
+id = "O4_wraps_twice"
+description = "observe_session wraps an already observed session again"
+file = "src/cratekit/acquire/vendored.py"
+surface = "maintainer"
+old = '''    if session is not None and not isinstance(session, _ObservedSession):'''
+new = '''    if session is not None:'''
+
+[[rows]]
+id = "R1_status_path_dropped"
+description = "is_rate_limit reads the client's class only, so a bare 429 reads as an ordinary answer"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''    return isinstance(exc, TooManyRequests) or status_of(exc) in RATE_LIMIT_STATUSES'''
+new = '''    return isinstance(exc, TooManyRequests)'''
+
+[[rows]]
+id = "R2_everything_is_the_provider"
+description = "describe_cause calls the tool's own control flow the provider's answer"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+old = '''    if isinstance(cause, _provider_errors()):'''
+new = '''    if True:'''
+
+[[rows]]
+id = "R3_mapping_positional"
+description = "a single mapping argument is formatted positionally, not by name"
+file = "src/cratekit/acquire/vendored.py"
+surface = "maintainer"
+old = '''        values = rest[0] if len(rest) == 1 and isinstance(rest[0], Mapping) else tuple(rest)'''
+new = '''        values = tuple(rest)'''
