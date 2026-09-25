@@ -147,6 +147,10 @@ class PlanEntry:
     sub: str = ""
     ordinal: int = 0
     path: str | None = None
+    #: The census's energy reading, carried so a genre answered later resolves
+    #: its sub from the same level the census read. See :class:`ScannedTrack`.
+    energy: int | None = None
+    energy_unreadable: bool = False
 
     @property
     def applicable(self) -> bool:
@@ -214,13 +218,39 @@ class AdoptionPlan:
             counts[str(entry.category)] += 1
         return counts
 
+    def energy_readings(self) -> dict[str, int]:
+        """How many adoptable files held a reading, held none, or could not be read.
+
+        OVER THE READABLE ENTRIES ONLY, because those are the files the census
+        opened. An excluded file was never read, and counting it as holding no
+        reading would be the absence read as evidence this module exists to
+        refuse. Its own mapping rather than keys in :meth:`counts`, whose two
+        enumerations already share one namespace and whose ``unreadable`` key
+        means something else.
+        """
+        readings = {"read": 0, "absent": 0, "unreadable": 0}
+        for entry in self.entries:
+            if entry.category is not Readability.READABLE:
+                continue
+            if entry.energy_unreadable:
+                readings["unreadable"] += 1
+            elif entry.energy is None:
+                readings["absent"] += 1
+            else:
+                readings["read"] += 1
+        return readings
+
     def digest(self) -> str:
         """What an approval is recorded AGAINST, so a stale one is detectable.
 
         A canonical projection rather than the rendered plan: the identifiers of
         the work, the counts per disposition, and the collisions by node. It
         moves when the plan moves and stays put when only the wording does, which
-        is the property :func:`cratekit.cli.output.digest_of` was ported for. An
+        is the property :func:`cratekit.cli.output.digest_of` was ported for.
+        Each entry's identifier hashes its sub, so a track the energy reading
+        moves moves the digest, and the reading tally is covered too, because
+        an unreadable file lands where an untagged one does and a screen that
+        counts them differently is a different plan. An
         approval whose digest no longer matches is refused rather than applied,
         because the person approved a different plan.
         """
@@ -229,6 +259,7 @@ class AdoptionPlan:
                 "tree": self.tree,
                 "entries": [entry.entry_id for entry in self.applicable()],
                 "counts": self.counts(),
+                "energy": self.energy_readings(),
                 "collisions": sorted(
                     f"{item.bucket}:{item.node_id}" for item in self.collisions
                 ),
@@ -245,13 +276,16 @@ def covers(plan: AdoptionPlan, scanned: Sequence[ScannedTrack]) -> frozenset[str
     return frozenset(track.content_id for track in scanned) - plan.content_ids()
 
 
-def _sub_for(declared: taxonomy.Taxonomy, bucket_id: str, genre: str) -> str | None:
-    """The sub-playlist identifier a track lands in with no energy reading.
+def _sub_for(
+    declared: taxonomy.Taxonomy, bucket_id: str, genre: str, level: int | None
+) -> str | None:
+    """The sub-playlist identifier a track lands in, from its file's energy level.
 
-    Through :func:`cratekit.core.routing.energy_sub` with a level of None, which
-    is the honest input: adoption reads an existing library and has no analysis
-    of its own, and the analysis backfill R26 mentions is a separate module that
-    may not be installed. The three per-bucket exceptions that decision has to
+    Through :func:`cratekit.core.routing.energy_sub` with the level the census
+    read off the file, which is the level the routing pass reads, so adoption
+    files a track where routing would. It once passed None for every track,
+    which filed 7,401 of 7,773 tracks as unsorted over a library where 7,726
+    carried a reading. The three per-bucket exceptions that decision has to
     respect are already encoded there, in the one order that gets them right, and
     a second resolution here would be a second opinion that eventually disagrees.
 
@@ -260,7 +294,7 @@ def _sub_for(declared: taxonomy.Taxonomy, bucket_id: str, genre: str) -> str | N
     treated None as an error would reintroduce the crash the declaration exists
     to avoid.
     """
-    sub = routing.energy_sub(declared, bucket_id, None, source_genre=genre)
+    sub = routing.energy_sub(declared, bucket_id, level, source_genre=genre)
     return None if sub is None else sub.id
 
 
@@ -285,7 +319,7 @@ def build_adoption_plan(
         bucket = track.bucket
         sub = ""
         if disposition is Disposition.ROUTE:
-            resolved = _sub_for(declared, bucket, track.genre)
+            resolved = _sub_for(declared, bucket, track.genre, track.energy)
             if resolved is None:
                 disposition = Disposition.UNDECLARED
             else:
@@ -310,6 +344,8 @@ def build_adoption_plan(
                 sub=sub,
                 ordinal=ordinal,
                 path=track.path,
+                energy=track.energy,
+                energy_unreadable=track.energy_unreadable,
             )
         )
     return AdoptionPlan(
@@ -490,7 +526,7 @@ def with_verdicts(
         if chosen not in declared_ids:
             updated.append(entry)
             continue
-        sub = _sub_for(declared, chosen, entry.genre)
+        sub = _sub_for(declared, chosen, entry.genre, entry.energy)
         if sub is None:
             updated.append(replace(entry, disposition=Disposition.UNDECLARED))
             continue
@@ -568,6 +604,7 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
         "tree": plan.tree,
         "digest": plan.digest(),
         "counts": plan.counts(),
+        "energy": plan.energy_readings(),
         "entries": [
             {
                 "id": entry.entry_id,
@@ -578,6 +615,8 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
                 "category": str(entry.category),
                 "bucket": entry.bucket,
                 "sub": entry.sub,
+                "energy": entry.energy,
+                "energy_unreadable": entry.energy_unreadable,
             }
             for entry in plan.entries
         ],

@@ -4,7 +4,27 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-662, issue #211, `relay/211`, 2026-09-25.** A setup re-run
+**Last merged: R-722, issue #219, attended, 2026-09-25.** Adoption files each
+track into the energy sub its own file's tag names. The census reads the
+level through `tags.read_energy_checked` and carries it on `ScannedTrack`;
+`adopt/plan.py` `_sub_for` hands it to `routing.energy_sub`, so the per bucket
+exceptions hold and `with_verdicts` keeps the census's reading. A file whose
+tags cannot be read still lands in the no reading sub, flagged
+`energy_unreadable` and counted in `AdoptionPlan.energy_readings`, which the
+plan document, the approval gate and the digest carry. `read_tags` and
+`read_energy_from_file` are now the lenient face of the new checked readers,
+per field as before. The built in review found nothing. **The numbers:**
+10,413 collected, 10,412 passed and 1 skipped, ruff clean, `scan_repo.py`
+exit 0. **The mutation table was MEASURED:** 25 rows in
+`docs/mutation/r722-rows.toml`, three zeros, the unrecognised container and
+the undecodable field in both readers, each reachable on a real file, each
+given a test and killed in `r722-b`. Filed **R-724** (an adoption applied
+before this change keeps its Unsorted memberships), not on the board bar.
+**Next attended step:** drive `adopt apply` plan only on a disposable copy and
+read the Unsorted count against the 47 sitting 12 measured with no reading,
+before #212 goes further. **Main's highest residual number is R-724.**
+
+**Merged before it: R-662, issue #211, `relay/211`, 2026-09-25.** A setup re-run
 repairs a spelled backup remote the destinations disagree with. Setup takes
 `--backup-remote`; without it, `_replace_a_remote_rclone_lacks` replaces the
 spelled name with the destinations' one only when rclone's configuration was

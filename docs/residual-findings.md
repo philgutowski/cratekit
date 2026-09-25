@@ -29282,6 +29282,24 @@ and the Unsorted count is read against the 47.
 
 **On the board bar.** It blocks #212, and through it line 4 of #178 and #29.
 
+**Closed 2026-09-25 on `unit/issue219`, issue #219, fixed in the code, awaiting
+the attended check.** The census, `adopt/scan.py` `scan_rows`, reads each
+adoptable file's energy through `tags.read_energy_checked` and carries it on
+`ScannedTrack`, so the plan layer still takes no library input. `_sub_for`
+passes that level to `routing.energy_sub`, the resolver the routing pass uses,
+and `PlanEntry` carries it so a genre answered later lands in the band the
+census read. A file with no reading lands where it did. A file whose tags
+cannot be read, whether mutagen raises, recognises nothing, or a stored value
+does not decode or is not a number, also lands in the no reading sub but is
+flagged `energy_unreadable` on its entry and counted in
+`AdoptionPlan.energy_readings`, which `to_json`, the approval gate's facts and
+the digest all carry. The tag module gained `read_tags_checked` and
+`read_energy_checked`; `read_tags` and `read_energy_from_file` are the same
+body with each failure folded into None per field, so there is still one
+reader. Measured on fixtures only: 18 tests in `tests/test_adopt_energy.py`.
+The Unsorted count against the 47 is the next attended sitting's to read, on a
+disposable copy, before #212 goes further.
+
 ---
 
 ## R-723. The database route inbox reads an intake folder this library does not have, and answers zero tracks without saying so
@@ -29304,3 +29322,24 @@ rather than read as empty, or the decision that it is empty is recorded here.
 
 **Not on the board bar.** Nothing written, nothing false beyond a zero whose
 reason is not shown.
+
+---
+
+## R-724. An adoption applied before the energy reading re-plans its tracks as new work, and Unsorted keeps them
+
+**Found:** at the built in review of issue #219, 2026-09-25, by reading, not
+driving. `PlanEntry.entry_id` hashes the sub, so a track an earlier apply
+placed in Unsorted plans under a band sub now, the applied ledger does not
+recognise the new identifier, and an apply adds the band membership. Nothing
+in adoption removes the Unsorted one, since adoption is additive.
+
+**Measured cost.** Unmeasured. It needs a library adopted into an energy tree
+before issue #219 merged. Sitting 12 drove adoption plan only on a copy and
+answered abort, and no other apply into `genre_energy` is recorded, so no
+producer is known and none was driven.
+
+**Closes when:** an adoption applied before this change is shown not to exist,
+or a re-plan names a track it already placed elsewhere in the same tree.
+
+**Not on the board bar.** No producer driven, and nothing is lost: the extra
+membership is visible in rekordbox and removable.

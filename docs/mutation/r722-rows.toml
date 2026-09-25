@@ -1,0 +1,237 @@
+name = "r722"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_level_none"
+description = "The original defect: _sub_for resolves with a level of None for every track"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''    sub = routing.energy_sub(declared, bucket_id, level, source_genre=genre)'''
+new = '''    sub = routing.energy_sub(declared, bucket_id, None, source_genre=genre)'''
+
+[[rows]]
+id = "P2_build_drops_level"
+description = "build_adoption_plan passes None instead of the scanned track's reading"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''            resolved = _sub_for(declared, bucket, track.genre, track.energy)'''
+new = '''            resolved = _sub_for(declared, bucket, track.genre, None)'''
+
+[[rows]]
+id = "P3_verdict_drops_level"
+description = "with_verdicts resolves an answered genre with no reading"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''        sub = _sub_for(declared, chosen, entry.genre, entry.energy)'''
+new = '''        sub = _sub_for(declared, chosen, entry.genre, None)'''
+
+[[rows]]
+id = "P4_entry_drops_energy"
+description = "The plan entry does not carry the census's level"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''                energy=track.energy,
+                energy_unreadable=track.energy_unreadable,'''
+new = '''                energy_unreadable=track.energy_unreadable,'''
+
+[[rows]]
+id = "P5_entry_drops_unreadable"
+description = "The plan entry does not carry the unreadable flag"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''                energy=track.energy,
+                energy_unreadable=track.energy_unreadable,'''
+new = '''                energy=track.energy,'''
+
+[[rows]]
+id = "P6_digest_drops_tally"
+description = "The digest no longer covers the reading tally"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''                "energy": self.energy_readings(),
+                "collisions": sorted('''
+new = '''                "collisions": sorted('''
+
+[[rows]]
+id = "P7_tally_counts_excluded"
+description = "The tally counts entries the census never opened"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''            if entry.category is not Readability.READABLE:
+                continue
+            if entry.energy_unreadable:'''
+new = '''            if entry.energy_unreadable:'''
+
+[[rows]]
+id = "P8_tally_folds_unreadable"
+description = "The tally counts an unreadable file as absent"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''            if entry.energy_unreadable:
+                readings["unreadable"] += 1
+            elif entry.energy is None:'''
+new = '''            if entry.energy is None:'''
+
+[[rows]]
+id = "P9_json_drops_tally"
+description = "to_json omits the reading tally"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''        "energy": plan.energy_readings(),
+        "entries": ['''
+new = '''        "entries": ['''
+
+[[rows]]
+id = "P10_json_entry_drops_flag"
+description = "to_json entries omit the unreadable flag"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+old = '''                "energy_unreadable": entry.energy_unreadable,
+            }'''
+new = '''            }'''
+
+[[rows]]
+id = "A1_gate_drops_tally"
+description = "The approval gate's facts omit the reading tally"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            "energy": document["energy"],
+'''
+new = ''
+
+[[rows]]
+id = "S1_unreadable_folded"
+description = "The census reads a failed read as a file with no reading"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+old = '''    except (tags.TagReadFailed, OSError):
+        return None, True'''
+new = '''    except (tags.TagReadFailed, OSError):
+        return None, False'''
+
+[[rows]]
+id = "S2_track_drops_energy"
+description = "The scanned track does not carry the level it read"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+old = '''            energy=energy,
+            energy_unreadable=unreadable,'''
+new = '''            energy_unreadable=unreadable,'''
+
+[[rows]]
+id = "S3_track_drops_flag"
+description = "The scanned track does not carry the unreadable flag"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+old = '''            energy=energy,
+            energy_unreadable=unreadable,'''
+new = '''            energy=energy,'''
+
+[[rows]]
+id = "S4_default_reader_lenient"
+description = "The census's default reader is the lenient one, which folds failures into None"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+old = '''    energy_reader: Callable[[Path], int | None] = tags.read_energy_checked,'''
+new = '''    energy_reader: Callable[[Path], int | None] = tags.read_energy_from_file,'''
+
+[[rows]]
+id = "S5_catch_oserror_only"
+description = "The census catches only OSError from the reader, so a failed read ends the walk"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+old = '''    except (tags.TagReadFailed, OSError):'''
+new = '''    except OSError:'''
+
+[[rows]]
+id = "T1_checked_is_lenient"
+description = "read_tags_checked runs the lenient body"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''    return _read_tags(path, fields, strict=True)'''
+new = '''    return _read_tags(path, fields, strict=False)'''
+
+[[rows]]
+id = "T2_unrecognised_is_absent"
+description = "A container mutagen does not recognise reads as absent in the checked reader"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''        if strict:
+            raise TagReadFailed("not a container the tag library recognises")
+        return absent'''
+new = '''        return absent'''
+
+[[rows]]
+id = "T3_open_failure_is_absent"
+description = "A mutagen open failure reads as absent in the checked reader"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''        if strict:
+            raise TagReadFailed(f"{type(exc).__name__}: {exc}") from exc
+        log.debug("tag read failed for %s: %s", path, exc)'''
+new = '''        log.debug("tag read failed for %s: %s", path, exc)'''
+
+[[rows]]
+id = "T4_unsupported_is_absent"
+description = "An unsupported container reads as absent in the checked reader"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''        if strict:
+            raise TagReadFailed(str(exc)) from exc
+        return absent'''
+new = '''        return absent'''
+
+[[rows]]
+id = "T5_non_numeric_is_absent"
+description = "A non numeric energy value reads as absent in the checked reader"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''        raise TagReadFailed(f"energylevel is not a number: {value!r}") from exc'''
+new = '''        return None'''
+
+[[rows]]
+id = "T6_field_failure_swallowed"
+description = "An undecodable field reads as absent in the checked reader"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''            if strict:
+                raise TagReadFailed(f"{key}: {type(exc).__name__}: {exc}") from exc
+            log.debug("tag read failed for %s %s: %s", path, key, exc)'''
+new = '''            log.debug("tag read failed for %s %s: %s", path, key, exc)'''
+
+[[rows]]
+id = "T7_lenient_field_raises"
+description = "The lenient reader raises on one undecodable field instead of reading it as None"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''            if strict:
+                raise TagReadFailed(f"{key}: {type(exc).__name__}: {exc}") from exc
+            log.debug("tag read failed for %s %s: %s", path, key, exc)'''
+new = '''            raise TagReadFailed(f"{key}: {type(exc).__name__}: {exc}") from exc'''
+
+[[rows]]
+id = "T8_lenient_energy_raises"
+description = "read_energy_from_file stops folding a failed read into None"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''    try:
+        return read_energy_checked(path)
+    except TagReadFailed as exc:
+        log.debug("energy read failed for %s: %s", path, exc)
+        return None'''
+new = '''    return read_energy_checked(path)'''
+
+[[rows]]
+id = "T9_lenient_open_raises"
+description = "The lenient reader raises when mutagen cannot open a file"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+old = '''        if strict:
+            raise TagReadFailed(f"{type(exc).__name__}: {exc}") from exc
+        log.debug("tag read failed for %s: %s", path, exc)'''
+new = '''        raise TagReadFailed(f"{type(exc).__name__}: {exc}") from exc'''
+
+[[dropped]]
+id = "S6_read_excluded"
+description = "Read the energy of an excluded file before the adoptable check"
+reason = "a reorder rather than a line revert; held by test_an_excluded_file_is_never_opened_for_its_reading, ranked below the cap"
