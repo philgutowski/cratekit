@@ -159,6 +159,13 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
         "--backup-db-dest-root",
         help="where database snapshots go, as an rclone remote:path",
     )
+    # The fourth value is derived from the three above and never asked, but a
+    # file can SPELL one that disagrees with them, and with no flag to replace it
+    # the refusal's own advice, run setup, handed the same spelling back (R-662).
+    parser.add_argument(
+        "--backup-remote",
+        help="the rclone remote the three destinations name, replacing a recorded one",
+    )
     parser.set_defaults(_handler=setup)
 
 
@@ -685,7 +692,12 @@ def _backup_flags(args: argparse.Namespace) -> dict[str, str | None]:
     }
 
 
-def _resolve_backup(wizard: _Wizard, document: dict[str, Any], args: argparse.Namespace) -> None:
+def _resolve_backup(
+    wizard: _Wizard,
+    document: dict[str, Any],
+    args: argparse.Namespace,
+    machine: doctor.Probes,
+) -> None:
     """Ask for the three rclone destinations when the backup module is on (R-345).
 
     ``BackupConfig`` said every field was wizard supplied and the wizard never
@@ -717,6 +729,17 @@ def _resolve_backup(wizard: _Wizard, document: dict[str, Any], args: argparse.Na
     applies on load, so the file that lands says what doctor looks up. A
     spelled remote is left alone, and validation checks that it agrees.
 
+    A SPELLED REMOTE THAT DISAGREES CAN BE REPAIRED FROM HERE (R-662). Before,
+    a file spelling one name and destinations naming another refused under
+    config-unusable with ``crate setup`` as the fix, and no flag replaced the
+    spelled value, so the re-run it recommended refused again and the file was
+    moved by hand. ``--backup-remote`` is an explicit answer and replaces it.
+    Without the flag, the spelled name is replaced by the destinations' own
+    only when rclone's configuration was READ and holds no remote by that name,
+    which is a name nothing can write to. Where rclone knows the spelled remote,
+    or could not be asked, R-345's rule stands: nothing is guessed, validation
+    refuses, and the refusal names the flag.
+
     Membership is read off the DOCUMENT rather than off a ``Config``, because
     this runs before the answers have been validated into one. ``profile.name``
     was resolved against the closed set two answers up. The modules table is
@@ -729,6 +752,12 @@ def _resolve_backup(wizard: _Wizard, document: dict[str, Any], args: argparse.Na
     for key, flag in flags.items():
         if flag:
             _put(document, key, wizard.resolve(key, flag=flag, question=""))
+    if args.backup_remote:
+        _put(
+            document,
+            "backup.remote",
+            wizard.resolve("backup.remote", flag=args.backup_remote, question=""),
+        )
 
     def recorded(key: str) -> bool:
         value = _get(document, key)
@@ -770,9 +799,80 @@ def _resolve_backup(wizard: _Wizard, document: dict[str, Any], args: argparse.Na
         for key in missing:
             _put(document, key, wizard.resolve(key, flag=None, question=_BACKUP_QUESTIONS[key]))
 
+    if not args.backup_remote:
+        _replace_a_remote_rclone_lacks(wizard, document, machine)
     derived = config.derived_backup_remote(document)
     if derived is not None:
         _put(document, "backup.remote", derived)
+
+
+def _replace_a_remote_rclone_lacks(
+    wizard: _Wizard, document: dict[str, Any], machine: doctor.Probes
+) -> None:
+    """Replace a spelled remote the destinations disagree with, when rclone lacks it.
+
+    ONLY ON A READ CONFIGURATION. rclone missing, or its configuration
+    unreadable, is a machine that could not say, not one that said no, and a
+    replacement made on it would overwrite a name that may be exactly right
+    with destinations that may be the mistyped half. So those leave the file
+    alone and validation refuses with the flag named. The lookup is the one
+    doctor makes for the same name, through the same probes, so what setup
+    replaces is what doctor would have failed.
+
+    AND ONLY TOWARD A NAME RCLONE HAS. An empty dump is a read configuration
+    too, on a machine whose rclone has no config file or reads another one,
+    and there it lacks every name: a right remote beside mistyped destinations
+    would be swapped for the typo. Requiring the destinations' remote to be
+    known makes the replacement a choice between a name nothing can write to
+    and one that exists, never a guess between two unknowns.
+    """
+    disagreement = config.backup_remote_disagreement(document)
+    if disagreement is None:
+        return
+    spelled, expected = disagreement
+    rclone = machine.find_binary("rclone")
+    remotes = machine.rclone_remotes(rclone) if rclone is not None else None
+    if remotes is None or spelled.split(":", 1)[0] in remotes or expected not in remotes:
+        return
+    _put(document, "backup.remote", expected)
+    wizard.note(
+        "setup.backup.remote",
+        "backup remote",
+        doctor.Status.INFO,
+        (
+            f"backup.remote was {spelled!r}, which rclone has no remote by, and "
+            f"every backup destination names {expected!r}, so it was replaced "
+            f"with {expected!r}"
+        ),
+    )
+
+
+def _answers_remediation(document: Mapping[str, Any], problems: Sequence[str]) -> Remediation:
+    """What a refusal of this run's answers tells a person to do.
+
+    ``crate setup`` for most problems, since the fix is another answer. NOT for
+    a spelled remote the destinations disagree with (R-662): the wizard keeps a
+    recorded value it was not handed a replacement for, so ``crate setup`` alone
+    reproduces this refusal, and the fix line pointed back at the command that
+    had just refused. There the first step names the flag that does replace it,
+    and no token is carried, because the rendered fix line takes the token's
+    words over the step's. Beside other problems the token stays, since those
+    need answers too, and the flag leads the steps instead.
+    """
+    disagreement = config.backup_remote_disagreement(document)
+    if disagreement is None:
+        return Remediation(remedy=Remedy.RUN_SETUP, steps=tuple(problems))
+    spelled, expected = disagreement
+    steps = (
+        f"re-run crate setup with --backup-remote {expected} to record the remote "
+        f"the destinations name, or give --backup-dest, --backup-archive-root "
+        f"and --backup-db-dest-root under {spelled.split(':', 1)[0]!r} if that "
+        f"is the remote meant",
+        *problems,
+    )
+    if len(problems) > 1:
+        return Remediation(remedy=Remedy.RUN_SETUP, steps=steps)
+    return Remediation(steps=steps)
 
 
 def _seed_taxonomy(wizard: _Wizard, cfg: config.Config, machine: doctor.Probes) -> None:
@@ -1488,7 +1588,7 @@ def setup(ctx: "Context") -> Envelope:
             choices=shipped or None,
         ),
     )
-    _resolve_backup(wizard, document, args)
+    _resolve_backup(wizard, document, args, machine)
 
     problems = config.validate(document)
     if problems:
@@ -1496,7 +1596,7 @@ def setup(ctx: "Context") -> Envelope:
             Cause(
                 reason="config-unusable",
                 message="the answers do not make a usable configuration yet",
-                remediation=Remediation(remedy=Remedy.RUN_SETUP, steps=tuple(problems)),
+                remediation=_answers_remediation(document, problems),
                 scope=Scope.RUN,
                 origin=("cli.setup",),
                 detail={"problems": list(problems)},

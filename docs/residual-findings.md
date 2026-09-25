@@ -26900,6 +26900,29 @@ flag rather than the command that just refused.
 **Not on the board bar.** Maintainer facing: a recovery path, nothing lost,
 nothing false.
 
+**Closed 2026-09-25 on `relay/211`, issue #211.** Setup takes
+`--backup-remote`, an explicit answer that replaces a recorded remote. Without
+it, `_replace_a_remote_rclone_lacks` replaces a spelled remote the
+destinations disagree with, when the destinations agree among themselves,
+rclone's configuration was READ, rclone has no remote by the spelled name,
+and it does have the destinations' one, and a `setup.backup.remote` note says
+so. That last condition is narrower than the closing line above, on purpose:
+an empty dump lacks every name, and there a right remote beside mistyped
+destinations would be swapped for the typo. Where rclone knows the spelled
+remote, or is missing, or cannot be read, R-345's rule stands and validation
+refuses. That refusal carries no `run-setup` token when the disagreement is
+its only problem, so the fix line is the first step, "re-run crate setup with
+--backup-remote <name>", naming the destinations' remote and the other way
+out. Beside other problems the token stays and the flag leads the steps. The
+validator's own problem text names the flag too, so a refusal from any verb
+that loads the file carries it. The agreement rule is one public function,
+`config.backup_remote_disagreement`, read by the validator, the repair and
+the refusal. Sitting 5's producer, a file spelling `remote` and destinations
+naming `gdrive`, is driven through the dispatcher both ways
+(`tests/test_doctor.py`). Mutation table in `docs/mutation/r662-a.md`,
+`r662-b.md` and `r662-notes.md`, 22 rows, one maintainer facing zero. Filed
+R-721 from the review.
+
 ---
 
 ## R-663. Setup accepts a zero byte database path and reports it as a missing table on the copy
@@ -29205,3 +29228,25 @@ refusal.
 
 **Not on the board bar.** Maintainer facing: no row, file or report is
 affected on the platform the product runs on.
+
+---
+
+## R-721. Re-pointing every backup destination by flag still refuses on the remote setup derived
+
+**Found:** on `relay/211`, 2026-09-25, by the built in review of R-662's fix.
+Setup writes the remote it derives into the file (R-345), so on every later
+run that remote is a spelled one. Driven: a document recording `gdrive` as
+remote and destinations, with `--backup-dest`, `--backup-archive-root` and
+`--backup-db-dest-root` all given under `dropbox`, on a machine whose rclone
+knows both, keeps `gdrive` and refuses under config-unusable, because R-662
+keeps R-345's rule where rclone knows the spelled remote.
+
+**Measured cost.** One refused run whose fix line names `--backup-remote
+dropbox`, the one flag that settles it. Nothing is written or lost.
+
+**Closes when:** a remote setup derived is told apart from one a person
+spelled, or all three destinations given by flag in one run re-derive the
+remote, or the decision to keep asking for the flag is recorded here.
+
+**Not on the board bar.** Maintainer facing: a recovery path whose fix line
+names the flag, nothing lost, nothing false.
