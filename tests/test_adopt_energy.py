@@ -254,3 +254,40 @@ def test_the_checked_reader_tells_absent_from_unreadable(library, silence):
         with pytest.raises(tags.TagReadFailed):
             tags.read_energy_checked(path)
         assert tags.read_energy_from_file(path) is None, "the lenient reader moved"
+
+
+def test_a_container_the_tag_library_does_not_recognise_is_unreadable(cfg, declared, library):
+    """A damaged MP4 opens as nothing at all rather than raising, a second shape."""
+    path = library / "Music" / "damaged.m4a"
+    path.write_bytes(b"\x00" * 64)
+    entry = _by_id(_plan(cfg, declared, [_row(path, "Tech House", "m")]))["m"]
+
+    assert entry.energy_unreadable is True
+    assert entry.sub == declared.energy.no_energy_sub.id
+
+
+@pytest.fixture
+def undecodable(tmp_path) -> Path:
+    """A real MP4 whose energy atom holds bytes that are not text, next to a good genre."""
+    from mutagen.mp4 import MP4, MP4FreeForm
+
+    path = synth_container(tmp_path, ".m4a")
+    assert tags.write_tags(path, {"genre": "House", "energylevel": "5"}) is True
+    handle = MP4(path)
+    (key,) = [key for key in handle.tags if key.lower().endswith("energylevel")]
+    handle.tags[key] = [MP4FreeForm(b"\xff\xfe\xfa")]
+    handle.save()
+    return path
+
+
+def test_an_undecodable_field_fails_the_checked_read(undecodable):
+    with pytest.raises(tags.TagReadFailed):
+        tags.read_energy_checked(undecodable)
+
+
+def test_an_undecodable_field_reads_as_none_beside_its_neighbours(undecodable):
+    """The lenient reader answers per field, as it always has."""
+    assert tags.read_tags(undecodable, ("genre", "energylevel")) == {
+        "genre": "House",
+        "energylevel": None,
+    }
