@@ -22,9 +22,10 @@ given a test and killed in `r722-b`. Filed **R-724** (an adoption applied
 before this change keeps its Unsorted memberships), not on the board bar.
 **Sitting 13 drove that plan on a disposable copy: 45 to Unsorted, against
 7,401, and 47 with no reading, R-722 holding live.** `docs/cutover.md` sitting
-13 is the record. **Next attended step:** learn on a copy, with the library root
-redirected too, whether an approved adoption lands memberships on a tree no
-verb has cut over; then a fresh backup, job `7d21` cancelled and resumable. **Main's highest residual number is R-724.**
+13 is the record. **Next step, 2026-09-26:** #220, R-235 put on the board bar. An
+approved adoption refuses on a tree not cut over, measured 2026-09-02, and no
+shipped verb records a cutover, so #212 waits on #220, the cutover verb.
+Backup job `7d21` was resumed as run `20a7` the same day. **Main's highest residual number is R-724.**
 
 **Merged before it: R-662, issue #211, `relay/211`, 2026-09-25.** A setup re-run
 repairs a spelled backup remote the destinations disagree with. Setup takes

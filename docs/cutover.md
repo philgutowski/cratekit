@@ -389,20 +389,28 @@ closed R-144, so none of them blocks anything.
 proved the rekordbox xml bridge cannot land nested membership (R-687) or a
 rating on an owned row (R-688), so a full sync cycle's routing has to land
 through the database. Sitting 12 found the database path reaches the tree only
-through adoption, and adoption files by no energy reading (R-722), so #212
-waits on R-722. Ratings can ride with it now #214 has landed. Line 4 of #178,
-the full sync cycle, comes after #212.
+through adoption, and adoption filed by no energy reading (R-722, fixed by
+#219). Adoption's membership write also refuses any tree not cut over, and no
+shipped verb records a cutover (R-235), so #212 waits on #220. Ratings can
+ride with it now #214 has landed. Line 4 of #178, the full sync cycle, comes
+after #212.
 
 ## Next sitting
 
-**#212 waits on two things.** First, learn on a disposable copy, with the
-library root redirected as well as the config and state, whether an approved
-`adopt apply` lands memberships on a tree no verb has cut over, or refuses. If
-it refuses, file it on the board bar before anything live. Second, a fresh
-backup: resume job `7d21` with `crate job resume`, about a day of upload, or
-choose another route. Then adopt live through the session gates, `route
-unplaced` for the 61 rows and `route pending` for the two open sessions. Then
-line 4, the full sync cycle.
+**#212 waits on two things.** First, #220. Sitting 13's open question was
+already answered: R-235, found 2026-09-02, records that an approved `adopt
+apply` on a tree not cut over refuses `tree-unconverged` on its one item and
+ends failed, and
+`tests/test_adopt_workers.py::test_an_uncut_library_marks_nothing_and_the_job_stays_resumable`
+drives it. U20 landed `tree_registry.flip` with no verb over it, so #220 is
+that verb. Its own verification is the copy run sitting 13 planned, cutover
+then approved adoption, with the library root redirected as well as the config
+and state, because `tree_registry.json` is library state like the adoption
+ledger. Second, a fresh backup: job `7d21` was resumed on 2026-09-26 as run
+`20a7`, so the backup taken just before the live step sends only what changed
+since. Then adopt live through the session gates, `route unplaced` for the 61
+rows and `route pending` for the two open sessions. Then line 4, the full sync
+cycle.
 
 Also owed: the 18 downloads from sitting 11 tagged, named and landed; a second
 `sync labels` for the 20 labels the rate limit stopped, **run with no download
