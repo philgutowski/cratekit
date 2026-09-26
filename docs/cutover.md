@@ -397,6 +397,12 @@ after #212.
 
 ## Next sitting
 
+**The road from here to the first favourite filed through the database is
+`docs/plans/2026-09-26-favourites-to-rekordbox-end-to-end.md`**, written
+2026-09-26. Its step 0 is new: rekordbox was updated to 7.2.19.0342 that day
+for a security concern, the config still pins 7.2.18.0311, and doctor reads
+every database write frozen until the pin is replaced by hand.
+
 **#212 waits on two things.** First, #220. Sitting 13's open question was
 already answered: R-235, found 2026-09-02, records that an approved `adopt
 apply` on a tree not cut over refuses `tree-unconverged` on its one item and
