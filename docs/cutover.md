@@ -351,6 +351,33 @@ through adoption, then `route unplaced`, and adoption as it stands would add
 Filed R-722, on the board bar, and R-723. #212's brief rewritten around
 adoption, waiting on R-722.
 
+## Sitting 13, 2026-09-25, afternoon into the night
+
+Machine state before: the volume mounted, rekordbox and its agent closed, the
+pipx install brought from `1fb3132` to `6a45398`, so R-722 is in it; `crate
+doctor` ok, backup ages 9 and 9 days, two sessions open. No acknowledgment was
+minted: nothing this sitting wrote the database. The copy was taken with
+rekordbox closed and no wal beside it, its sha256 equal to the live file's,
+driven through a temporary config and state directory.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `adopt scan`, the census | yes, on a disposable copy, job `d45b` | 9,998 rows settled in 39 seconds. | measured |
+| `adopt apply` plan only | to the gate, answered abort, run `792b` | Tree `genre_energy`: 7,773 route, 2,058 need a genre, 167 excluded, 153 unmapped, 14 not a path, no collisions, digest `5eca58df932496a3`. The plan's energy tally over 9,831 readable files: **9,769 read, 62 absent, 0 unreadable.** Of the 7,773 routed, **45 go to an Unsorted sub**, against 7,401 at sitting 12. 47 routed files carry no reading: the 45, and 2 under `non_electronic`'s `soul_rnb`, a sub chosen by genre. That is sitting 12's 47. R-722 holds live. | measured, nothing written |
+| `backup run`, the fresh backup #212 asks for | started, cancelled | Job `2026-09-25T18:10:37Z-7d21`. After 8 hours 40 minutes the mirror had sent 7.9 GB at about 2 MB/s. **4,274 files, 196 GB, changed on the volume since the last backup**, most likely the overnight vocal job's tag writes making rclone upload each whole file again (the count is near its 4,153 scored, not matched by identity). About 26 hours remained. Cancelled by the author's decision with an interrupt to rclone; the job reads cancelled and resumable, both ages stay 9 days. | stopped, resumable |
+
+**Found while preparing the live step, not yet driven.** `adopt apply` writes
+memberships only; the verb passes no tag writer, so no audio file changes. But
+the membership writer refuses a tree still on the xml bridge through
+`tree_registry.anchored_root`, sitting 12 measured that no tree has cut over,
+and nothing in `src` calls `tree_registry.flip` or `record_cutover`. So an
+approved live adoption may pass the one way door's gate and then refuse every
+membership. Drive it before any live approval. **The adoption ledger is
+library scoped**, `adoption_ledger.json` under `.cratekit` on the volume, so an
+approval on a disposable copy with only the config and state directory
+redirected would mark the live library's entries applied. A copy run that
+approves needs the library root redirected too.
+
 ## What blocks a full sync cycle, stated plainly
 
 Corrected at sitting 11. This section once said the three Tidal seams, U62
@@ -368,11 +395,14 @@ the full sync cycle, comes after #212.
 
 ## Next sitting
 
-**#212 waits on R-722.** Once adoption reads each file's energy, drive
-`adopt apply` plan only on a disposable copy and read the Unsorted count
-against the 47 untagged files, then adopt live through the session gates,
-then `route unplaced` for the 61 rows and `route pending` for the two open
-sessions doctor names. Then line 4, the full sync cycle.
+**#212 waits on two things.** First, learn on a disposable copy, with the
+library root redirected as well as the config and state, whether an approved
+`adopt apply` lands memberships on a tree no verb has cut over, or refuses. If
+it refuses, file it on the board bar before anything live. Second, a fresh
+backup: resume job `7d21` with `crate job resume`, about a day of upload, or
+choose another route. Then adopt live through the session gates, `route
+unplaced` for the 61 rows and `route pending` for the two open sessions. Then
+line 4, the full sync cycle.
 
 Also owed: the 18 downloads from sitting 11 tagged, named and landed; a second
 `sync labels` for the 20 labels the rate limit stopped, **run with no download
