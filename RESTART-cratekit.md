@@ -20,9 +20,11 @@ exit 0. **The mutation table was MEASURED:** 25 rows in
 the undecodable field in both readers, each reachable on a real file, each
 given a test and killed in `r722-b`. Filed **R-724** (an adoption applied
 before this change keeps its Unsorted memberships), not on the board bar.
-**Next attended step:** drive `adopt apply` plan only on a disposable copy and
-read the Unsorted count against the 47 sitting 12 measured with no reading,
-before #212 goes further. **Main's highest residual number is R-724.**
+**Sitting 13 drove that plan on a disposable copy: 45 to Unsorted, against
+7,401, and 47 with no reading, R-722 holding live.** `docs/cutover.md` sitting
+13 is the record. **Next attended step:** learn on a copy, with the library root
+redirected too, whether an approved adoption lands memberships on a tree no
+verb has cut over; then a fresh backup, job `7d21` cancelled and resumable. **Main's highest residual number is R-724.**
 
 **Merged before it: R-662, issue #211, `relay/211`, 2026-09-25.** A setup re-run
 repairs a spelled backup remote the destinations disagree with. Setup takes
