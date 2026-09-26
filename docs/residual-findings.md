@@ -13114,6 +13114,12 @@ writer over `cratekit.write.rbxml` and its own unit.
 **Closes when:** a shipped verb can record a cutover, or adoption gains a bridge
 membership writer for the pre-cutover case.
 
+**On the board bar, 2026-09-26, issue #220.** Sitting 13 met this again while
+preparing #212's live step, as an open question it did not know was answered
+here. It blocks #212, and through it line 4 of #178 and #29. Sitting 10 closed
+the bridge alternative: the xml bridge cannot land nested membership (R-687),
+so the card asks for the cutover verb.
+
 ---
 
 ## R-236. `membership_plan` groups content identifiers and its consumer decodes locations
