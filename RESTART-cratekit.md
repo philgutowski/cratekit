@@ -4,7 +4,37 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last merged: R-722, issue #219, attended, 2026-09-25.** Adoption files each
+**Last merged: R-235, issue #220, `relay/220`, 2026-09-27.** A shipped verb
+records a cutover. `crate tree cutover <tree> --export <file>` finds the
+tree's root in a disposable copy of the configured database, the one folder
+of the taxonomy's display name directly under the playlist root, refuses
+`cutover-root-unresolved` on none or on more than one, and never creates one.
+An unready library refuses before the question with the precheck's own
+refusal and every check's result. A ready one is offered a plan behind the
+explicit gate `tree.cutover.approve`, and approving records through
+`tree_registry.flip`. `crate tree revert <tree>` goes back through
+`revert_cutover`, which now holds the session lock and refuses
+`cutover-native-write-taken` once the session log holds a write under the
+standing cutover, and refuses over an open run or an unreadable record.
+`record_cutover` refuses a tree already recorded. `crate doctor` answers
+`tree.registry` with every declared tree's mode and anchored root. The
+adoption refusal on an uncut library names the cutover and then a fresh
+`crate adopt apply`, since the refused job ends on a cause a resume does not
+retry. The built in review raised nine findings: six applied, the type a
+reworded refusal keeps left as `cause.rebuilt` defines it, and two recorded.
+**The numbers:** 10,480 collected, 10,479 passed and 1 skipped, ruff clean,
+`scan_repo.py` exit 0. **The mutation table was MEASURED:** 25 rows in
+`docs/mutation/r235-a-rows.toml` and `r235-b-rows.toml`, 25 killed, no zero,
+the author's. Filed **R-725** to **R-730**, none on the board bar. **Owed to
+the next attended sitting, before #212 runs live:** on a disposable copy with
+the LIBRARY ROOT redirected as well as the configuration and the database,
+cut `genre_energy` over, then approve `adopt apply` on the same copy and read
+the membership under `BY GENRE + ENERGY`. The plan names the registry file it
+writes and the database it read, so a copy run pointed at the live library's
+registry shows it on the approval screen. **Main's highest residual number is
+R-730.**
+
+**Merged before it: R-722, issue #219, attended, 2026-09-25.** Adoption files each
 track into the energy sub its own file's tag names. The census reads the
 level through `tags.read_energy_checked` and carries it on `ScannedTrack`;
 `adopt/plan.py` `_sub_for` hands it to `routing.energy_sub`, so the per bucket

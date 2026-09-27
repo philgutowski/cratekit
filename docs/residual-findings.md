@@ -13120,6 +13120,31 @@ here. It blocks #212, and through it line 4 of #178 and #29. Sitting 10 closed
 the bridge alternative: the xml bridge cannot land nested membership (R-687),
 so the card asks for the cutover verb.
 
+**Closed 2026-09-27 on `relay/220`, issue #220.** `crate tree cutover <tree>
+--export <file>` records one tree's cutover through `tree_registry.flip`, and
+`crate tree revert <tree>` puts one back through `revert_cutover`. The root is
+found and never created, read off a disposable copy of the configured database
+through `rb_writer.top_level_folders`, as the one folder of the taxonomy's
+display name directly under the playlist root, and none or more than one
+refuses `cutover-root-unresolved`. The derivation source comes off the
+taxonomy. An unready library refuses before the question with the precheck's
+own refusal, carrying every check's result. A ready one is offered a plan
+naming the tree, the root, the source, the export, the database read and the
+registry file written, behind an explicit gate, and approving records. A
+revert refuses `cutover-native-write-taken` once the session log holds a write
+to the tree under its standing cutover, and refuses over an open run or a
+record it cannot read. `record_cutover` refuses a tree already recorded, under
+its lock. `crate doctor` lists every declared tree with its mode and anchored
+root under `tree.registry`, and fails on a native record a cutover would
+refuse to create. The adoption refusal on an uncut library names the cutover
+and then a fresh apply as its steps. Driven in `tests/test_cutover_cli.py` and
+`tests/test_cutover_precheck.py`, 62 tests; mutation tables
+`docs/mutation/r235-a.md` and `r235-b.md`, 25 of 25 killing, the author's and
+not independent, read in `r235-notes.md`. Residuals R-725 to R-730 are what
+it leaves. **Owed to an attended sitting:** the cutover of `genre_energy` on a
+disposable copy with the library root redirected as well, then an approved
+adoption on the same copy, before #212 runs live.
+
 ---
 
 ## R-236. `membership_plan` groups content identifiers and its consumer decodes locations
@@ -29349,3 +29374,155 @@ or a re-plan names a track it already placed elsewhere in the same tree.
 
 **Not on the board bar.** No producer driven, and nothing is lost: the extra
 membership is visible in rekordbox and removable.
+
+---
+
+## R-725. A revert stays refused after a restore that undid the native write
+
+**Found:** at the built in review of issue #220, 2026-09-27, by reading, and
+the refusing half driven. `tree_registry.native_writes` reads the session log,
+which survives a rollback on purpose, and a restore does not record which
+session it rolled back to. So a tree that cut over, took a native write, and
+was restored to the capture that write took still has the write in its log,
+and `crate tree revert` refuses `cutover-native-write-taken` over a database
+that no longer holds the rows.
+
+**Measured cost.** The refusal is driven,
+`test_a_revert_after_a_native_write_refuses_and_the_tree_stays_native`. The
+restore in front of it was NOT driven, so that a person reaches this state is
+argued from the log's declared role and not measured. The way out exists and
+the refusal names it: the registry is coupled to the database, so restoring a
+capture taken BEFORE the cutover puts the tree back on the bridge by itself.
+What is lost is the narrower undo, rows gone and tree reverted while keeping
+whatever else happened since the cutover.
+
+**Why not fixed here.** It needs a restore to say in the log which session it
+rolled back to, which is `core.restore`'s record to change and a unit of its
+own. Guessing from timestamps would make the guard fail open.
+
+**Closes when:** a restore records the session it rolled back to and the
+revert guard leaves out a write that a later restore undid.
+
+**Not on the board bar.** A workflow still finishes, by the wider restore, and
+nothing is damaged: the guard refuses in the conservative direction.
+
+---
+
+## R-726. A membership writer that passed its registry check before a revert took the lock still writes
+
+**Found:** at the built in review of issue #220, 2026-09-27, by reading, not
+driving. `write_tree_membership` asserts `anchored_root` against the registry
+its caller read, BEFORE it opens its session. `revert_cutover` holds the
+session lock while it asks and writes, so no write is in flight during a
+revert. A writer that read the registry, then waited on that lock while a
+revert ran, opens its session afterwards and writes membership natively under
+a tree that is now on the bridge.
+
+**Measured cost.** Unmeasured, no producer driven. It needs an approved revert
+and a membership write started within the same moment, the writer between its
+registry read and its lock.
+
+**Why not fixed here.** The fix is the writer asserting again inside its
+session against the registry as it is on disk, and the writer takes its
+registry as a parameter that tests and callers build in memory, so that is a
+change to `write/trees.py`'s contract and not to this unit's verbs.
+
+**Closes when:** a database membership writer asserts the tree's medium inside
+the session it writes in.
+
+**Not on the board bar.** No producer driven.
+
+---
+
+## R-727. The cutover precheck walks the library for intake files on every invocation, twice on the approving one
+
+**Found:** at the built in review of issue #220, 2026-09-27, by reading.
+`pending_intake_xml` walks the library root and the staging directory with
+`rglob`. `crate tree cutover` runs the precheck to build its plan, and
+`tree_registry.flip` asserts it again at the moment it records, so the
+offering invocation walks once and the approving one twice.
+
+**Measured cost.** Unmeasured on the tree. On the fixture it is milliseconds.
+The live library sits inside a cloud drive mirror, where a walk of tens of
+thousands of files is known to be slow, and how slow was not measured.
+
+**Why not fixed here.** The second assertion is the requirement: the record is
+reached only through `flip` so the precheck cannot be skipped. Handing the
+first pass's results to the second would let a caller hand it anything.
+
+**Closes when:** the walk is bounded to where this product writes intake
+files, or is measured on the live library and found to cost nothing a person
+notices.
+
+**Not on the board bar.** Maintainer facing until it is measured.
+
+---
+
+## R-728. A folder rekordbox marked deleted still counts as a candidate root
+
+**Found:** during issue #220, 2026-09-27, by the soft delete guards in
+`tests/test_rb_writer_guard.py`, which refused the first draft's reading of
+the marker. `rb_writer.top_level_folders` reads no soft delete marker, as no
+playlist lookup in that module does, so a folder of the tree's name that
+rekordbox has marked deleted and not yet removed counts beside the live one
+and the cutover refuses `cutover-root-unresolved` with two found, over a
+library that shows a person one.
+
+**Measured cost.** Unmeasured. Whether rekordbox 7 leaves marked playlist rows
+behind at all was not established, and the 7.2.19 copy measured at sitting 13
+was not asked.
+
+**Why not fixed here.** Reading the marker here alone would count one root
+where the writer this anchors for sees two. It is one rule for every playlist
+lookup or none.
+
+**Closes when:** the live database is shown to hold no marked playlist rows,
+or every playlist lookup in `rb_writer` reads the marker through one reader.
+
+**Not on the board bar.** No producer known, and the failure is a refusal.
+
+---
+
+## R-729. The cutover verbs take no backup acknowledgment and assert no volume identity
+
+**Found:** during issue #220, 2026-09-27, as a decision made with nobody to
+ask. Both verbs declare no write surface and are not `destructive`, since what
+they write is this product's own registry file, so neither opens a
+destructive session and neither asks for the backup acknowledgment or asserts
+the volume identity.
+
+**The options.** (a) As built: the precheck stands in, refusing without a
+verified snapshot and a Fresh Export, behind an explicit gate. (b) Declare
+them destructive and open a session around the record, which needs the
+precheck's open run check to leave the verb's own session out, since it
+refuses over any open run. (c) Assert the volume identity alone before
+recording. **Taken: (a)**, because (b) changes what the precheck means and
+the registry file is restored with the database by any capture.
+
+**Measured cost.** None driven. The exposure is a cutover recorded against a
+library root that is a different volume than the one recorded at setup, which
+`library.identity` reports in doctor and nothing refuses here.
+
+**Closes when:** Phillip picks an option.
+
+**Not on the board bar.** A decision, not a defect a person pays for today.
+
+---
+
+## R-730. An approved cutover or revert answers a person with ok and a run id
+
+**Found:** during issue #220, 2026-09-27, by driving the default output. The
+approval screen shows the whole plan, one fact to a line. The invocation that
+records answers `tree.cutover: ok` and the run, because the renderer has no
+body for a plan payload. The JSON carries `recorded`, the day and the plan.
+This is the class R-378 and R-678 record, met on a new verb.
+
+**Measured cost.** Driven once. A person who has just gone through a one way
+door is not told what was recorded, and reads it from `crate doctor`, whose
+`tree.registry` line names the tree, the root and the day.
+
+**Closes when:** a plan payload that performed something renders what it
+performed.
+
+**Not on the board bar.** Nothing false is said, and the record is one verb
+away.
