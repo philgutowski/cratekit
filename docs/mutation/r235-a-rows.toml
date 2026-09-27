@@ -1,0 +1,138 @@
+name = "r235-a"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_unreadable_log_skipped"
+description = "the registry gates no longer refuse on a session record they cannot read, so a torn record reads as no open run and no native write"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''    parsed, unreadable = session.scan_log(cfg)
+    if unreadable:'''
+new = '''    parsed, unreadable = session.scan_log(cfg)
+    if False:'''
+
+[[rows]]
+id = "M2_margin_zero"
+description = "the native write margin is no days, so a write whose universal time date is the day before the cutover day is left out"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''NATIVE_WRITE_MARGIN = timedelta(days=1)'''
+new = '''NATIVE_WRITE_MARGIN = timedelta(days=0)'''
+
+[[rows]]
+id = "M3_margin_two_days"
+description = "the native write margin is two days, so a write two days before the cutover day still counts"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''NATIVE_WRITE_MARGIN = timedelta(days=1)'''
+new = '''NATIVE_WRITE_MARGIN = timedelta(days=2)'''
+
+[[rows]]
+id = "M4_unparseable_start_predates"
+description = "a session start nothing can parse is read as before the cutover, so its write does not count"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''    except ValueError:
+        return False
+    return began < cutover_on - NATIVE_WRITE_MARGIN'''
+new = '''    except ValueError:
+        return True
+    return began < cutover_on - NATIVE_WRITE_MARGIN'''
+
+[[rows]]
+id = "M5_updates_not_counted"
+description = "only a creation counts as a native write, an update does not"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''            change.tree == tree_id and (change.created > 0 or change.updated > 0)'''
+new = '''            change.tree == tree_id and change.created > 0'''
+
+[[rows]]
+id = "M6_any_tree_counts"
+description = "a write to any tree counts as a write to this one"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''            change.tree == tree_id and (change.created > 0 or change.updated > 0)'''
+new = '''            (change.created > 0 or change.updated > 0)'''
+
+[[rows]]
+id = "M7_zero_count_counts"
+description = "a record naming the tree with nothing added counts as a native write"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''            change.tree == tree_id and (change.created > 0 or change.updated > 0)'''
+new = '''            change.tree == tree_id'''
+
+[[rows]]
+id = "M8_open_run_reverts"
+description = "a revert no longer refuses over an open run"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''    if open_runs:
+        raise refuse(
+            "cutover-open-run",
+            f"session {open_runs[0].session_id} has not reached a terminal "'''
+new = '''    if False:
+        raise refuse(
+            "cutover-open-run",
+            f"session {open_runs[0].session_id} has not reached a terminal "'''
+
+[[rows]]
+id = "M9_library_guard_removed"
+description = "revert_cutover no longer asserts the tree is revertible, leaving only the verb's own check"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''        assert_revertible(cfg, tree_id)
+        updated = read(cfg).without_record(tree_id)'''
+new = '''        updated = read(cfg).without_record(tree_id)'''
+
+[[rows]]
+id = "M10_verb_guard_removed"
+description = "the revert verb no longer asks before the gate, leaving only the library's check after the approval"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''    tree_registry.assert_revertible(cfg, tree_id)
+    item = {**_recorded(standing), "registry": str(tree_registry.path_for(cfg))}'''
+new = '''    item = {**_recorded(standing), "registry": str(tree_registry.path_for(cfg))}'''
+
+[[rows]]
+id = "M11_session_lock_dropped"
+description = "a revert holds the registry lock and not the session lock"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''    with session.session_lock(cfg), config._exclusive_lock(lock_path(cfg)):'''
+new = '''    with config._exclusive_lock(lock_path(cfg)):'''
+
+[[rows]]
+id = "M12_second_record_replaces"
+description = "record_cutover replaces a tree already recorded native instead of refusing"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''        if standing is not None and standing.mode == Mode.DATABASE:
+            # ASKED UNDER THE LOCK, which is the only place the answer holds.'''
+new = '''        if False:
+            # ASKED UNDER THE LOCK, which is the only place the answer holds.'''
+
+[[rows]]
+id = "M13_snapshot_check_dropped"
+description = "the verified snapshot check is no longer in the precheck table"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''    ("fresh-export", _export_refusal),
+    ("verified-snapshot", _snapshot_refusal),
+)'''
+new = '''    ("fresh-export", _export_refusal),
+)'''

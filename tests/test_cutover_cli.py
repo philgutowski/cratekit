@@ -754,3 +754,26 @@ def test_doctor_fails_on_a_native_record_the_cutover_would_refuse_to_create(mach
     assert f"{DECLARED.intake.id} is recorded database native" in finding.detail
     assert "crate tree revert" in finding.detail
     assert f"{TREE} is on the XML bridge" in finding.detail
+
+
+def test_the_catalogue_tree_is_refused_as_not_rebuildable(ready):
+    """Declared, and named with its real source, so the registry's rule refuses it."""
+    cfg, export, _root_id = ready
+    assert DECLARED.catalog is not None
+    _add_folder(cfg, DECLARED.catalog.display)
+    code, refused = drive(_cutover(export, tree=DECLARED.catalog.id))
+
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "tree-unconverged"
+    assert refused["cause"]["detail"]["tree_id"] == DECLARED.catalog.id
+    assert not tree_registry.path_for(cfg).exists()
+
+
+def test_an_empty_export_is_no_export(ready):
+    cfg, export, _root_id = ready
+    export.write_bytes(b"")
+    code, refused = drive(_cutover(export))
+
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "cutover-export-missing"
+    assert not tree_registry.path_for(cfg).exists()
