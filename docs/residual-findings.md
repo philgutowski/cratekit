@@ -29526,3 +29526,83 @@ performed.
 
 **Not on the board bar.** Nothing false is said, and the record is one verb
 away.
+
+---
+
+## R-731. Adoption adds a second band sub beside the one a track already holds, and never says so
+
+**Found:** sitting 14, 2026-09-27, by approving `adopt apply` on a disposable
+copy after the `genre_energy` cutover and comparing the tree before and after.
+The plan places each track by its genre and its file's energy reading and asks
+nothing of where the track already sits. The writer is add only. So a track
+the library files under `Tech House / Med` whose file reads energy 8 is added
+to `Tech House / High` and stays in `Med`.
+
+**Measured cost.** Plan digest `5eca58df932496a3`, 7,773 routed: 7,073 already
+present, 700 added, none removed. Of the 700, **569 tracks gained a second
+band sub in a bucket where they already held one**: 331 held Med and gained
+High, 215 held Med and gained Low, 19 held High and gained Med, 4 held High
+and gained Low. 15 more gained a second style sub under `NonElectronic`, 11 to
+Jazz and 4 to Rock. 107 had no place in the tree before and 9 were added
+beside `with vox` or `Candy` alone, which is what adoption is for. The live
+database already holds 37 tracks in two bands of one bucket, so the shape is
+not new, and this would multiply it by sixteen through a one way door. The
+gate shows counts and entries and no word about an existing placement, so a
+person approving cannot see it.
+
+**Which reading is right is not decided here.** The file's energy tag and the
+sub the track sits in disagree on 569 tracks, most of them rated three stars
+and sitting in Med. Whether the tags moved after a recalibration or the tree
+was filed from another signal is the author's to say, per track or as a rule.
+
+**Closes when:** the plan reads the tree it is about to write, withholds every
+entry whose track already holds a different band sub, or a different style
+sub where the bucket has no energy dimension, in the same bucket, counts them
+on the gate under their own name, and lists them where a person can review
+them, so an approved adoption adds a track only where it holds no competing
+place.
+
+**On the board bar, 2026-09-27.** Database rows are damaged in the sense the
+bar means, a filing the library did not have and cannot shed through any
+shipped verb, and #212 cannot run live until it closes.
+
+---
+
+## R-732. A pin mismatch names a remedy no verb performs
+
+**Found:** sitting 14, 2026-09-27. rekordbox was updated to 7.2.19.0342 and
+`crate doctor` failed `rekordbox.pins` with the remedy `revalidate-pins`.
+Nothing implements it: `crate setup` reads a recorded pin and leaves it alone,
+and no other verb writes `rekordbox.pinned_app_version`.
+
+**Measured cost.** Driven once. The pin was replaced by editing the
+configuration file by hand, after a disposable copy opened under the new
+version with the key, the schema version and the integrity check all good.
+`validated_on` was left unset, since the field records a write and the check
+was a read.
+
+**Closes when:** a verb proposes the installed version against a recorded pin
+that differs, checks a disposable copy first, and records the new pin on an
+explicit yes.
+
+**Not on the board bar.** The refusal is true and the hand edit is two lines.
+
+---
+
+## R-733. An adoption gate takes an approval the session behind it cannot use
+
+**Found:** sitting 14, 2026-09-27. `adopt apply` was approved with no backup
+acknowledgment inside its window. The gate accepted the answer, the job was
+queued, and its one item failed `backup-acknowledgment-missing`, on a cause a
+resume does not retry.
+
+**Measured cost.** Driven once, on a copy. The approval was spent and a fresh
+`adopt apply` was needed after the acknowledgment. On the live library the
+approval is the one way door, so a person reads the whole plan, answers, and
+is refused by something the verb could have read first.
+
+**Closes when:** the verb reads the acknowledgment before it asks, and refuses
+with the mint as its remedy.
+
+**Not on the board bar.** Nothing is written and nothing false is said.
+
