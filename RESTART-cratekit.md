@@ -22,7 +22,7 @@ adoption refusal on an uncut library names the cutover and then a fresh
 `crate adopt apply`, since the refused job ends on a cause a resume does not
 retry. The built in review raised nine findings: six applied, the type a
 reworded refusal keeps left as `cause.rebuilt` defines it, and two recorded.
-**The numbers:** 10,480 collected, 10,479 passed and 1 skipped, ruff clean,
+**The numbers:** 10,478 collected, 10,477 passed and 1 skipped, ruff clean,
 `scan_repo.py` exit 0. **The mutation table was MEASURED:** 25 rows in
 `docs/mutation/r235-a-rows.toml` and `r235-b-rows.toml`, 25 killed, no zero,
 the author's. Filed **R-725** to **R-730**, none on the board bar. **Owed to
