@@ -71,6 +71,15 @@ hand edit of `~/Library/Application Support/cratekit/config.toml`,
 Consider filing the missing remedy as a residual: a pin mismatch names a
 fix that does not exist.
 
+**Measured 2026-09-27, items 1 and 2 done.** rekordbox and its agent closed,
+the live file 281,153,536 bytes, read through `rb_writer.read_only_copy` from
+the pipx install: the copy opened, the key decrypts under pyrekordbox 0.4.4,
+the canary passed, schema version 6000, `integrity_check` ok, 17,402 content
+rows of which 9,998 active, which is sitting 13's count, 577 playlists, 19,236
+memberships, 48 tables, library sync off. 7.2.19 moved neither the schema nor
+the key. What remains of this step is item 3, the hand edit, and it is
+Phillip's yes.
+
 ### 1. #220, the cutover verb. Session, one unit, 3 to 5 hours.
 
 Ready now with no dependencies. The brief on the issue is complete: a verb
@@ -154,7 +163,8 @@ Attended: steps 0, 2, 3, 4 and 5 at 9 to 11 hours across four or five
 sittings, the longest being #212.
 
 Calendar: at the recent cadence of one sitting a day, one to one and a half
-weeks. Two if 7.2.19 changed the database and step 0 becomes a card.
+weeks. The risk that 7.2.19 changed the database was measured away on
+2026-09-27.
 
 ## Hazards, each already paid for
 
