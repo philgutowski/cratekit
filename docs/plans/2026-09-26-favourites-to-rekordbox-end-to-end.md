@@ -64,7 +64,7 @@ hand edit of `~/Library/Application Support/cratekit/config.toml`,
    copy and confirm the key still decrypts under pyrekordbox 0.4.4. If the
    open refuses, stop: 7.2.19 changed the schema or the key, and that is a
    board card before anything else.
-3. Edit the pin to `7.2.19.0342` and add `validated_on = "2026-09-26"`. Run
+3. Edit the pin to `7.2.19.0342`. Leave `validated_on` unset until the first live write under the new version, since the field records a write and not a read. Run
    `crate doctor` and read `rekordbox.pins` ok.
 4. Record it as the first row of the next sitting.
 
