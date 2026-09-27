@@ -1465,7 +1465,7 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
     a literal one this repository would then be shipping (R1).
     """
     library = config.load().library.root
-    return {
+    sample = {
         "profile.show": [],
         "profile.set": ["slim"],
         "run.show": ["no-such-run"],
@@ -1626,7 +1626,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # and the verb ends NO_OP without listing the account or asking for a
         # credential this fixture does not have. The
         # marking path is driven in tests/test_sync_mark.py.
-        "sync.mark": [
+        #
+        # LAZY SINCE R-235, the first sample here that another sample's drive
+        # can see. Every value in this mapping is built on every call, whichever
+        # verb is being driven, and this one leaves an intake file under the
+        # library, which is exactly what the cutover precheck refuses over.
+        "sync.mark": lambda: [
             "--xml",
             str(
                 outbound_fakes.write_export(library / "landed").rename(
@@ -1779,7 +1784,52 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # into a person's actual configuration while claiming to be a test. The
         # flag exists so the destination is always somebody's choice.
         "skills.install": ["--into", str(library / "agent-skills")],
+        # R-235. The cutover is driven over a library the precheck PASSES, with
+        # exactly one root for the routing tree, because conformance 3 holds the
+        # verb to reaching its approval and to ending OK once it is given, and
+        # an unready library refuses before the question. The revert is driven
+        # over a tree already recorded native, since a tree on the bridge has
+        # nothing to revert and is answered without the question. Both are LAZY:
+        # each changes the library's own state, and built eagerly they would
+        # change it under every other verb's drive.
+        "tree.cutover": lambda: _ready_to_cut_over(),
+        "tree.revert": lambda: _already_cut_over(),
     }[entry.name]
+    return sample() if callable(sample) else sample
+
+
+def _routing_tree() -> tuple[str, str]:
+    """The routing tree this fixture's library declares: identifier, display name."""
+    from cratekit.core import active_taxonomy
+
+    declared = active_taxonomy.load(config.load())
+    return declared.tree.id, declared.tree.display
+
+
+def _ready_to_cut_over() -> list[str]:
+    from tests import cutover_fixtures
+
+    tree_id, display = _routing_tree()
+    export, _root = cutover_fixtures.ready(config.load(), display)
+    return [tree_id, "--export", str(export)]
+
+
+def _already_cut_over() -> list[str]:
+    from datetime import date
+
+    from cratekit.core import tree_registry
+
+    tree_id, _display = _routing_tree()
+    cfg = config.load()
+    if not tree_registry.read(cfg).is_database_native(tree_id):
+        tree_registry.record_cutover(
+            cfg,
+            tree_id,
+            root_id="a-root",
+            on=date(2026, 9, 27),
+            source=tree_registry.DerivationSource.TAXONOMY,
+        )
+    return [tree_id]
 
 
 def _sample_decisions(entry: registry.Entry) -> list[str]:

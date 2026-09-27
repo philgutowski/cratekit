@@ -99,6 +99,7 @@ from cratekit.acquire import adapter as adapter_contract
 from cratekit.cli import gates, output, registry, render
 from cratekit.cli.output import Envelope
 from cratekit.core import (
+    active_taxonomy,
     backup_facts,
     binaries,
     config,
@@ -2660,6 +2661,102 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
     )
 
 
+def _declared_trees(
+    cfg: config.Config,
+) -> tuple[tuple[str, ...], frozenset[str], str | None]:
+    """The trees this taxonomy declares, the ones that may cut over, and why not.
+
+    The routing tree, the intake tree, and the catalogue tree when one is
+    declared, by stable identifier. The second answer is the subset a cutover
+    may record, which is the routing tree alone: the intake tree stays on the
+    bridge by rule and the catalogue tree is not rebuildable. An unusable
+    template is ``taxonomy.active``'s failure and is reported there, so here it
+    costs the declared half of the list and a clause saying so, never the check.
+    """
+    try:
+        declared = active_taxonomy.load(cfg)
+    except CratekitError as exc:
+        return (), frozenset(), exc.cause.message
+    named = [declared.tree.id, declared.intake.id]
+    if declared.catalog is not None:
+        named.append(declared.catalog.id)
+    return tuple(named), frozenset({declared.tree.id}), None
+
+
+def _check_tree_registry(inputs: _Inputs) -> Finding:
+    """Each tree's medium and anchored root, read off the registry (R-235).
+
+    EVERY DECLARED TREE IS LISTED, recorded or not. A tree with no record is on
+    the XML bridge, and a report listing only the records would answer "which
+    trees have cut over" with silence on the library where the answer is none,
+    which is the library a person is about to cut over.
+
+    A RECORD FOR A TREE THE TAXONOMY DOES NOT DECLARE IS LISTED TOO, after the
+    declared ones, because the registry is what decides which writer runs and a
+    record nobody can see still decides it.
+
+    A NATIVE RECORD THE PRODUCT WOULD REFUSE TO CREATE IS NOT GREEN. The cutover
+    verb records the routing tree and nothing else, so a native record for the
+    intake tree, the catalogue tree or a tree nobody declares arrived by a hand
+    edit or by a template that changed after the cutover. It is a FAIL, since
+    it routes a writer today: a native intake tree refuses the splice that lands
+    new tracks. The sentence names the act, because no remedy token means
+    "revert this tree" and this is the layer that may name a verb.
+
+    AN UNREADABLE REGISTRY IS NOT ANSWERED HERE. ``tree_registry.read`` refuses
+    with its own cause and remedy, and :func:`answer` reports that refusal
+    whole. Collapsing it into "no record" would read as every tree still being
+    on the bridge.
+
+    WHAT IS REPORTED IS THE RECORD. Whether the anchored root is still in the
+    database, and whether the tree's membership matches its declaration, need
+    the database open and are the convergence report's to answer.
+    """
+    key, title = "tree.registry", "tree registry"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    unreadable = _library_state_unreadable(inputs, "the tree registry")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
+    found = tree_registry.read(inputs.cfg)
+    declared, may_cut_over, undeclared_reason = _declared_trees(inputs.cfg)
+    listed = [*declared, *(t for t in found.tree_ids() if t not in declared)]
+    described: list[str] = []
+    refused: list[str] = []
+    for tree_id in listed:
+        record = found.record(tree_id)
+        if record is None or record.mode != tree_registry.Mode.DATABASE:
+            described.append(f"{tree_id} is on the XML bridge, no cutover recorded")
+            continue
+        described.append(
+            f"{tree_id} is database native, anchored to root {record.root_id} "
+            f"since {record.cutover_on}, rebuilt from {record.source}"
+        )
+        if undeclared_reason is None and tree_id not in may_cut_over:
+            refused.append(tree_id)
+    detail = "; ".join(described) if described else "no tree is declared or recorded"
+    if undeclared_reason is not None:
+        detail += (
+            f". The declared trees could not be listed ({undeclared_reason}), so "
+            f"only recorded trees are shown and none was judged"
+        )
+    where = tree_registry.path_for(inputs.cfg)
+    if refused:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{where}: {detail}. {', '.join(refused)} is recorded database "
+                f"native and is not a tree a cutover records, only the routing "
+                f"tree is, so a writer is being routed by a record this product "
+                f"would refuse to create. Run `crate tree revert <tree>` for "
+                f"each, which refuses if the tree has taken a native write"
+            ),
+        )
+    return Finding(key=key, title=title, status=Status.OK, detail=f"{where}: {detail}")
+
+
 # ---------------------------------------------------------------------------
 # The check table
 # ---------------------------------------------------------------------------
@@ -2707,6 +2804,9 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check("backup.remote", _check_backup_remote),
     Check("session.unresolved", _check_unresolved_session),
+    # R-235. Beside the session check because both report this product's own
+    # library state, and after the taxonomy check, which it lists trees from.
+    Check("tree.registry", _check_tree_registry),
     Check("repo.commit_hook", _check_commit_hook),
 )
 

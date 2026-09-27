@@ -48,12 +48,14 @@ WHAT IT STILL DOES NOT DO, said here rather than discovered by somebody watching
 an apply refuse. It writes NO TAG. ``apply_plan``'s ``tag_value`` is left at
 ``None``, which is the value that writes nothing, because a tag write is the one
 act no snapshot undoes and this build registers no ``adopt.revert`` verb, so a
-person could not undo one. And its membership write refuses on any library whose
-taxonomy tree has not been cut over to the database, which is every library
-adoption is actually for: nothing in ``src`` calls
-:func:`cratekit.core.tree_registry.record_cutover`, so the refusal names a remedy
-no shipped verb can perform. Both are recorded in ``docs/residual-findings.md``
-with their measured cost.
+person could not undo one. That is recorded in ``docs/residual-findings.md``
+with its measured cost.
+
+ITS MEMBERSHIP WRITE NEEDS A TREE THAT HAS CUT OVER, and until R-235 closed that
+was a remedy nobody could perform: the write refuses a tree still on the XML
+bridge, a tree with no registry record is on the bridge, and nothing under
+``src`` recorded a cutover. ``crate tree cutover`` records one now, so the
+refusal a person meets on an uncut library names that verb as its step.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.scan_cli`` gives at length: a
@@ -64,6 +66,7 @@ layering violation KTD23 refuses, and the output contract is foundation-ranked.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from cratekit.adopt import apply as apply_engine
@@ -81,7 +84,14 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import (
+    Cause,
+    CratekitError,
+    Outcome,
+    Remediation,
+    rebuilt,
+    refuse,
+)
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import trees
 from cratekit.write.routing_pass import destination
@@ -634,13 +644,15 @@ def handle(job, item, cfg) -> jobs.Produced:
     is the clean-report-over-unreadable-state cost ``docs/METHOD.md`` names. The
     artifact is committed BEFORE the raise, so what happened survives the failure.
 
-    ON A LIBRARY THAT HAS NOT BEEN CUT OVER THIS ALWAYS RAISES, and that is the
-    honest state of this build rather than a defect.
+    ON A LIBRARY THAT HAS NOT BEEN CUT OVER THIS ALWAYS RAISES.
     ``tree_registry.anchored_root`` refuses a tree still on the bridge, and an
-    unrecorded tree IS on the bridge because ``Registry.mode`` defaults to XML. No
-    shipped verb records a cutover, so on any real library today the refusal is
-    what happens, the applied ledger stays empty because nothing was marked, and
-    the job is resumable for the day the cutover exists.
+    unrecorded tree IS on the bridge because ``Registry.mode`` defaults to XML.
+    The applied ledger stays empty because nothing was marked, so nothing is
+    lost, and the job ends FAILED on a cause a resume does not retry. The way
+    on is ``crate tree cutover`` and then this verb again, which are the two
+    steps :func:`_write_memberships` puts on the refusal (R-235). Driven in
+    ``tests/test_cutover_cli.py``, which is how the second step came to name a
+    fresh apply: the first draft named a resume, and the engine refuses one.
     """
     del item
     declared = active_taxonomy.load(cfg)
@@ -822,8 +834,51 @@ def _write_memberships(
             analysis_roots=analysis_store.watch_roots(cfg),
             prefix_map=collection.prefix_rules(cfg),
         )
+    except tree_registry.TreeModeRefused as exc:
+        named = _naming_the_cutover(exc)
+        if named is None:
+            raise
+        raise named from exc
     finally:
         rb_writer.close_db(handle)
+
+
+def _naming_the_cutover(exc: tree_registry.TreeModeRefused) -> CratekitError | None:
+    """The bridge refusal, with the verb that answers it as its step (R-235).
+
+    THE REFUSAL IS RAISED IN ``core``, WHICH MAY NAME NO VERB (D2), so it arrives
+    carrying a remedy token and no act. This layer may name one, and the act
+    exists now. The slug, the sentence and the detail are the refusal's own and
+    are carried unchanged; what is added is the step and this hop in the origin.
+
+    ONLY THE DIRECTION THIS VERB CAN MEET IS REWORDED. A database write refused
+    because the tree is on the bridge is answered by a cutover. For any other
+    refusal of that type this answers None and the caller re-raises it as it
+    came.
+    """
+    if exc.attempted != tree_registry.Mode.DATABASE or exc.mode != tree_registry.Mode.XML:
+        return None
+    cause = exc.cause
+    return rebuilt(
+        exc,
+        replace(
+            cause,
+            remediation=Remediation(
+                remedy=cause.remediation.remedy,
+                steps=(
+                    f"take a Fresh Export from rekordbox, then run `crate tree "
+                    f"cutover {exc.tree_id} --export <that file>`; it names "
+                    f"anything else the library owes before a tree can cut "
+                    f"over, a snapshot or an import, and asks for approval "
+                    f"once nothing is",
+                    "once the tree has cut over, run `crate adopt apply` again "
+                    "and approve the plan; this job ended on a cause a resume "
+                    "cannot retry, and nothing it planned was marked applied",
+                ),
+            ),
+            origin=(*cause.origin, "adopt.apply_cli"),
+        ),
+    )
 
 
 class _Item:

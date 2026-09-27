@@ -1,0 +1,123 @@
+name = "r235-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M14_empty_export_accepted"
+description = "an export of no bytes passes the fresh export check"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''    if export_path.is_file() and export_path.stat().st_size != 0:'''
+new = '''    if export_path.is_file():'''
+
+[[rows]]
+id = "M15_first_of_several_roots"
+description = "more than one root no longer refuses, the first is adopted"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''    if len(roots) == 1:
+        return roots[0]'''
+new = '''    if len(roots) >= 1:
+        return roots[0]'''
+
+[[rows]]
+id = "M16_native_tree_offered_again"
+description = "the verb no longer answers a tree already native before it asks"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''    if standing is not None and standing.mode == tree_registry.Mode.DATABASE:
+        return ctx.envelope(
+            data=_digested("tree.cutover", _recorded(standing), {"recorded": False}),'''
+new = '''    if False:
+        return ctx.envelope(
+            data=_digested("tree.cutover", _recorded(standing), {"recorded": False}),'''
+
+[[rows]]
+id = "M17_intake_not_refused_by_verb"
+description = "the verb no longer asserts the tree is not the intake tree before it asks"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''    tree_registry.assert_not_intake(tree_id, declared)
+    tree_registry.assert_rebuildable(tree_id, source)'''
+new = '''    tree_registry.assert_rebuildable(tree_id, source)'''
+
+[[rows]]
+id = "M18_rebuildable_not_asked_by_verb"
+description = "the verb no longer asserts the tree is rebuildable before it asks"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''    tree_registry.assert_not_intake(tree_id, declared)
+    tree_registry.assert_rebuildable(tree_id, source)'''
+new = '''    tree_registry.assert_not_intake(tree_id, declared)'''
+
+[[rows]]
+id = "M19_unready_library_asked"
+description = "a library that fails its precheck is offered the plan instead of being refused"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''    results = tree_registry.cutover_precheck(cfg, export=export)
+    _refuse_unready(results)'''
+new = '''    results = tree_registry.cutover_precheck(cfg, export=export)'''
+
+[[rows]]
+id = "M20_refusal_without_the_table"
+description = "the precheck refusal no longer carries every check's result"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''                detail={**cause.detail, "precheck": _precheck_rows(results)},'''
+new = '''                detail=dict(cause.detail),'''
+
+[[rows]]
+id = "M21_digest_blind_to_the_plan"
+description = "the digest covers the kind of plan and not its item, so a root that changed leaves the approval standing"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''        "digest": digest_of({"kind": kind, "items": [item]}),'''
+new = '''        "digest": digest_of({"kind": kind}),'''
+
+[[rows]]
+id = "M22_nested_namesake_is_a_root"
+description = "a folder of the tree's name anywhere in the library is a candidate root"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''        if _is_folder(playlist)
+        and str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINELS'''
+new = '''        if _is_folder(playlist)'''
+
+[[rows]]
+id = "M23_playlist_is_a_root"
+description = "a playlist of the tree's name under the playlist root is a candidate root"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''        if _is_folder(playlist)
+        and str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINELS'''
+new = '''        if str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINELS'''
+
+[[rows]]
+id = "M24_doctor_green_over_a_refused_record"
+description = "doctor no longer fails on a native record for a tree a cutover would refuse to record"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py", "tests/test_doctor.py"]
+old = '''        if undeclared_reason is None and tree_id not in may_cut_over:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M25_adoption_refusal_names_no_verb"
+description = "the adoption refusal on an uncut library is re-raised as it came, with no step"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py", "tests/test_adopt_workers.py"]
+old = '''        named = _naming_the_cutover(exc)
+        if named is None:'''
+new = '''        named = None
+        if named is None:'''

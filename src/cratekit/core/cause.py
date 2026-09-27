@@ -1681,6 +1681,33 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # finding is named for. PRECONDITION: a ledger that moved under a queued
         # job is a thing that happens, not a defect to report.
         "outbound-record-moved": ExitCode.PRECONDITION,
+        # ── R-235's refusals, appended for the reason U19's block gives ──────
+        #
+        # The cutover verbs' own, beside the four U20 reserved for the precheck.
+        # PRECONDITION for all three, for the reason that block gives: the
+        # parser accepted the invocation and the state of the library is what
+        # is wrong.
+        #
+        # The tree named is one this library's taxonomy does not declare, so
+        # nothing can say where its membership would be rebuilt from.
+        "cutover-tree-undeclared": ExitCode.PRECONDITION,
+        # The database holds no folder of the tree's display name directly
+        # under the playlist root, or holds more than one. ONE SLUG over both
+        # counts, because the act is the same, make it exactly one in
+        # rekordbox, and the count travels in the detail. Refused rather than
+        # created or chosen: creating one is the silent parallel tree, and
+        # choosing one of two anchors every later write to a guess.
+        "cutover-root-unresolved": ExitCode.PRECONDITION,
+        # A revert was asked for a tree the session log says has taken a
+        # native write. The database owns the tree from that write on, and
+        # putting it back on the bridge would send the next splice at a tree
+        # that must not be imported over.
+        "cutover-native-write-taken": ExitCode.PRECONDITION,
+        # A cutover was asked to record a tree the registry already records as
+        # database native. Refused under the registry lock rather than
+        # replaced, because the second record would move the anchor or the day
+        # under a tree that may have taken writes under the first.
+        "cutover-already-recorded": ExitCode.PRECONDITION,
     }
 )
 

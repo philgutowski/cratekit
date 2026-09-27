@@ -222,6 +222,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         *(f"backup.age.{portion}" for portion in backup_facts.PORTIONS),
         "backup.remote",
         "session.unresolved",
+        "tree.registry",
         "repo.commit_hook",
     )
     assert doctor.BINARY_NAMES == (
