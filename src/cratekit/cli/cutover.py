@@ -353,21 +353,34 @@ def cutover(ctx: "Context") -> Envelope:
     display = _display(declared, tree_id)
     root = _one_root(cfg, tree_id, display)
 
+    # FLAT, so the screen reads as fields and not as the serializer's output.
+    # The gate prints an item as one line of ``k=v`` pairs and a fact as a line
+    # of its own, so everything a person has to read before the one way door is
+    # a fact below, and the item is the same values as the digest covers them.
     item = {
         "tree": tree_id,
         "display": display,
-        "root": {"id": root.root_id, "name": root.name},
+        "root_id": root.root_id,
+        "root_name": root.name,
         "source": str(source),
         "export": str(export),
         "registry": str(tree_registry.path_for(cfg)),
         "database": str(rb_writer.live_db_path(cfg)),
-        "precheck": _precheck_rows(results),
+        "precheck_passed": " ".join(result.check for result in results),
     }
     offered = _digested("tree.cutover", item, {"recorded": False})
     option = ctx.gate.require(
         _plan_gate(ctx.entry),
         plan=offered,
-        context={"tree": tree_id, "anchors_to": root.root_id, "writes": item["registry"]},
+        context={
+            "tree": tree_id,
+            "anchors_to": f"{root.name}, row {root.root_id}",
+            "rebuilt_from": str(source),
+            "fresh_export": str(export),
+            "reads": item["database"],
+            "writes": item["registry"],
+            "precheck": {result.check: "passed" for result in results},
+        },
     )
     if option == "abort":
         return ctx.envelope(data=offered, outcome=Outcome.NO_OP)

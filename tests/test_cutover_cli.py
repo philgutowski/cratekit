@@ -178,15 +178,26 @@ def test_the_plan_names_the_root_and_approval_records_that_tree_alone(ready):
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     (item,) = shown["items"]
-    assert item["tree"] == TREE
-    assert item["root"] == {"id": root_id, "name": DISPLAY}
-    assert item["source"] == str(tree_registry.DerivationSource.TAXONOMY)
-    assert item["export"] == str(export.resolve())
-    assert item["registry"] == str(tree_registry.path_for(cfg))
-    assert [row["check"] for row in item["precheck"]] == [
-        name for name, _check in tree_registry.CUTOVER_CHECKS
-    ]
-    assert all(row["passed"] for row in item["precheck"])
+    assert item == {
+        "tree": "genre_energy",
+        "display": "BY GENRE + ENERGY",
+        "root_id": root_id,
+        "root_name": "BY GENRE + ENERGY",
+        "source": "taxonomy",
+        "export": str(export.resolve()),
+        "registry": str(Path(cfg.library.root) / ".cratekit" / "coupled" / "tree_registry.json"),
+        "database": str(Path(cfg.library.root) / "db" / "master.db"),
+        "precheck_passed": "no-open-run no-pending-intake-xml fresh-export verified-snapshot",
+    }
+    assert shown["precheck"] == {
+        "no-open-run": "passed",
+        "no-pending-intake-xml": "passed",
+        "fresh-export": "passed",
+        "verified-snapshot": "passed",
+    }
+    assert shown["anchors_to"] == f"BY GENRE + ENERGY, row {root_id}"
+    assert shown["writes"] == item["registry"]
+    assert shown["reads"] == item["database"]
 
     after = tree_registry.read(cfg)
     record = after.record(TREE)
@@ -341,7 +352,7 @@ def test_each_precheck_failure_refuses_before_anything_is_recorded(ready, spoil,
     assert refused["cause"]["reason"] == reason
     failed = [row["check"] for row in refused["cause"]["detail"]["precheck"] if not row["passed"]]
     assert failed == [check], "the refusal did not carry each precheck's own result"
-    assert len(refused["cause"]["detail"]["precheck"]) == len(tree_registry.CUTOVER_CHECKS)
+    assert len(refused["cause"]["detail"]["precheck"]) == 4
     assert "gate" not in refused["cause"]["detail"], (
         "a library that cannot cut over was asked to approve a cutover"
     )
