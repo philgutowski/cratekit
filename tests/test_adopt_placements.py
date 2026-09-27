@@ -505,3 +505,34 @@ def test_the_digest_covers_every_field_the_review_list_shows():
         assert plan.digest() != base.digest(), name
     # THE REST ARE THE ENTRY'S IDENTITY, which the digest has always covered.
     assert set(row) == set(changed) | {"content_id", "bucket", "kind", "planned"}
+
+
+# ── a template whose sub class shares a band's identifier ──────────────────
+
+
+def _clashing() -> taxonomy.Taxonomy:
+    """The shipped taxonomy with a sub class added under a band's identifier.
+
+    Nothing in the shipped template does this, which is why the two guards
+    below measured zero against it. A person's own template can.
+    """
+    clash = taxonomy.SubClass(id=HIGH, display="Peak", policy=taxonomy.SubPolicy.MANUAL)
+    return replace(DECLARED, sub_classes=(*DECLARED.sub_classes, clash))
+
+
+def test_a_sub_class_is_removed_from_the_bands_by_identifier():
+    _kind, subs = routing.competing_subs(_clashing(), _energy_bucket().id)
+    assert HIGH not in subs
+    assert {LOW, MED, SINK} <= subs
+
+
+def test_a_planned_sub_outside_the_competing_set_is_never_withheld():
+    bucket = _energy_bucket().id
+    plan = adopt_plan.build_adoption_plan(
+        [_scanned("t", bucket, energy=8)],
+        _clashing(),
+        tree=TREE_ID,
+        placements=_held(bucket, t=(MED,)),
+    )
+    entry = _only(plan)
+    assert (entry.sub, entry.disposition) == (HIGH, adopt_scan.Disposition.ROUTE)
