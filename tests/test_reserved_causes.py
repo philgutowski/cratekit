@@ -5094,7 +5094,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # stops on before it saves. It is the copy's own, in cause.REASONS beside
     # library-database-missing and not in the reserved table. Population 182
     # to 183, non-reserved 154 to 155, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (183, 155, 28)
+    # Re-pinned on the residual finding "Adoption cannot write membership on a
+    # library nobody has cut over, and no verb can cut one over", 2026-09-27.
+    # THREE slugs, named rather than counted: cutover-tree-undeclared, which
+    # the cutover verb refuses with over a tree the taxonomy does not declare,
+    # cutover-root-unresolved, which it refuses with when the database holds
+    # no root folder for the tree or more than one, and
+    # cutover-native-write-taken, which the registry refuses a revert with
+    # once the session log holds a native write to the tree. All three are in
+    # cause.REASONS beside the four the precheck already had and none is in
+    # the reserved table. Population 183 to 186, non-reserved 155 to 158,
+    # reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (186, 158, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5792,7 +5803,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 509 distinct, non-keys UNCHANGED at 327. The one that joined is
     # library-database-not-rekordbox, a key in cause.REASONS raised by
     # core/rb_writer.py and compared against in cli/setup.py.
-    assert (len(literals), len(literals - set(causes))) == (509, 327), (
+    # Re-pinned on the residual finding "Adoption cannot write membership on a
+    # library nobody has cut over, and no verb can cut one over", 2026-09-27:
+    # 509 to 518 distinct, non-keys 327 to 333. NINE joined and nothing left.
+    # Three are keys in cause.REASONS and move only the distinct half:
+    # cutover-tree-undeclared and cutover-root-unresolved, raised by
+    # cli/cutover.py, and cutover-native-write-taken, raised by
+    # core/tree_registry.py. Six are not keys and nothing refuses with them.
+    # Four name the prechecks in `CUTOVER_CHECKS`, which a plan shows beside
+    # each result: no-open-run, no-pending-intake-xml, fresh-export and
+    # verified-snapshot. Two are WARNING codes on a run that recorded nothing:
+    # cutover-already-recorded and revert-nothing-recorded.
+    assert (len(literals), len(literals - set(causes))) == (518, 333), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6368,7 +6390,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the export bytes 51, 102, 153, 204 and 255 to star counts, and 51 is one
     # star in rekordbox's xml spelling, a rating and never an exit status.
     # Measured by this pair moving by one and not by more.
-    assert (len(literal_holders), len(literal_both)) == (105, 25), (
+    # Re-pinned on the residual finding "Adoption cannot write membership on a
+    # library nobody has cut over, and no verb can cut one over", 2026-09-27:
+    # holders move 105 to 106, and the also-holds-an-integer half is UNCHANGED
+    # at 25. ONE module joined and none left, and it is a new file.
+    # cli/cutover.py refuses with cutover-tree-undeclared and
+    # cutover-root-unresolved through cause.refuse and holds one integer, the
+    # 1 it compares a count of roots against, which is not in the reserved
+    # range. core/tree_registry.py named its refusals on main already.
+    # Measured by this pair moving by one on the holders side and by nothing
+    # on the other.
+    assert (len(literal_holders), len(literal_both)) == (106, 25), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

@@ -825,6 +825,68 @@ ENTRIES: tuple[Entry, ...] = (
         ),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
     ),
+    # R-235. The two verbs over ``core.tree_registry``, which held the precheck,
+    # the record and the revert since U20 with no caller under ``src``.
+    #
+    # ``writes`` IS EMPTY ON BOTH, on ``profile.set``'s precedent. What they
+    # write is this product's own registry file, which is none of the declared
+    # surfaces, and the database is only ever READ, through a disposable copy.
+    # So neither reaches the guarded writer, neither declares the cloud sync
+    # decision, and the conformance suite refuses a declared decision a verb
+    # cannot reach.
+    #
+    # NOT ``destructive``, for the same reason and with its cost stated. The
+    # destructive-session gates bind to that flag, so a cutover asks for no
+    # backup acknowledgment. What stands in their place is the precheck, which
+    # refuses without a verified snapshot and a Fresh Export, and the explicit
+    # gate, which is the per-run act by a named actor R34 asks for.
+    Entry(
+        name="tree.cutover",
+        summary="record one tree's cutover from the XML bridge to the database",
+        module="cratekit.cli.cutover",
+        builder="build",
+        handler_key="tree.cutover",
+        feature_rows=(12,),
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        # ``tree.registry`` IS NOT DECLARED, here or on the revert. That check
+        # is the REPORT of what these verbs recorded, and conformance 8 holds a
+        # declared precondition to refusing on a broken machine, where it says
+        # instead that the volume is its own checks' to report. A registry
+        # nobody can read still refuses both verbs, through the read itself.
+        doctor_checks=("library.mounted", "rekordbox.closed"),
+        gates=(
+            GateSpec(
+                name="tree.cutover.approve",
+                options=("approve", "abort"),
+                prompt="Record this tree as database native, anchored to this root?",
+                # The one way door. A revert is a complete undo only until the
+                # tree takes its first native write.
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
+        name="tree.revert",
+        summary="put a cut over tree back on the XML bridge, before its first native write",
+        module="cratekit.cli.cutover",
+        builder="build_revert",
+        handler_key="tree.revert",
+        feature_rows=(12,),
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        doctor_checks=("library.mounted",),
+        gates=(
+            GateSpec(
+                name="tree.revert.approve",
+                options=("revert", "abort"),
+                prompt="Put this tree back on the XML bridge?",
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
     # ── Jobs ────────────────────────────────────────────────────────────────
     # U10 landed these against ``cratekit.cli.jobs`` rather than the
     # ``cratekit.core.jobs_cli`` this table originally named. A verb module is a
