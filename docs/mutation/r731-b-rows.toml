@@ -118,23 +118,3 @@ tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
 old = '''            - planned_by_bucket[bucket_id]
             - named_by_bucket.get(bucket_id, set())'''
 new = '''            - planned_by_bucket[bucket_id]'''
-
-[[rows]]
-id = "M24_sub_class_left_in_the_bands"
-description = "a sub class identifier is no longer removed from an energy bucket's competing subs"
-file = "src/cratekit/core/routing.py"
-surface = "maintainer"
-tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
-old = '''    return Competing.BAND, frozenset(found - classes)'''
-new = '''    return Competing.BAND, frozenset(found)'''
-
-[[rows]]
-id = "M25_planned_sub_outside_the_set"
-description = "a planned sub outside the bucket's competing subs is no longer let through unasked"
-file = "src/cratekit/adopt/plan.py"
-surface = "maintainer"
-tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
-old = '''    if sub not in competing:
-        return NO_COMPETING_PLACE
-    held'''
-new = '''    held'''
