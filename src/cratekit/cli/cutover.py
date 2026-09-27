@@ -212,30 +212,20 @@ def _display(declared: taxonomy.Taxonomy, tree_id: str) -> str:
 
 
 def find_roots(db: Any, display: str) -> tuple[Root, ...]:
-    """Every live folder named ``display`` sitting directly under the playlist root.
+    """Every folder named ``display`` sitting directly under the playlist root.
 
-    DIRECTLY UNDER THE PLAYLIST ROOT, because that is where a tree's root is. A
-    folder of the same name nested somewhere else is a namesake and not a
-    candidate, and counting it would refuse a library whose one real root is
-    unambiguous.
+    THROUGH ``rb_writer.top_level_folders``, which owns what a top level folder
+    is, so the root this verb anchors to is found by the rule the writers'
+    lookups are written beside and not by a second spelling of it here.
 
-    THE SOFT DELETE MARKER IS NOT READ, and that is the writer's rule rather
-    than an omission. Every playlist lookup the membership writers make is by
-    name and parent with no marker filter, so a reader here that skipped a
-    marked row would count one root where the writer it anchors for sees two.
-    The cost, a marked namesake a person cannot see in rekordbox refusing the
-    cutover, is recorded in the ledger with its reachability unmeasured.
-
-    MATERIALIZED before it is filtered, for the reason ``rebuild.read_tree``
-    gives: the query is not iterated while anything else is asked of the handle.
+    THE SOFT DELETE MARKER IS NOT READ, which is that module's rule. The cost, a
+    marked namesake a person cannot see in rekordbox refusing the cutover, is
+    recorded in the ledger with its reachability unmeasured.
     """
-    found: list[Root] = []
-    for row in list(db.get_playlist(Name=display)):
-        if not rb_writer._is_folder(row):
-            continue
-        if str(getattr(row, "ParentID", "")) not in rb_writer.ROOT_PARENT_SENTINELS:
-            continue
-        found.append(Root(root_id=str(row.ID), name=str(row.Name)))
+    found = [
+        Root(root_id=str(row.ID), name=str(row.Name))
+        for row in rb_writer.top_level_folders(db, display)
+    ]
     return tuple(sorted(found, key=lambda root: root.root_id))
 
 

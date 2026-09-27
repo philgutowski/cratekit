@@ -1703,6 +1703,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # putting it back on the bridge would send the next splice at a tree
         # that must not be imported over.
         "cutover-native-write-taken": ExitCode.PRECONDITION,
+        # A cutover was asked to record a tree the registry already records as
+        # database native. Refused under the registry lock rather than
+        # replaced, because the second record would move the anchor or the day
+        # under a tree that may have taken writes under the first.
+        "cutover-already-recorded": ExitCode.PRECONDITION,
     }
 )
 

@@ -2661,22 +2661,26 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
     )
 
 
-def _declared_trees(cfg: config.Config) -> tuple[tuple[str, ...], str | None]:
-    """The trees this library's taxonomy declares, and why they could not be read.
+def _declared_trees(
+    cfg: config.Config,
+) -> tuple[tuple[str, ...], frozenset[str], str | None]:
+    """The trees this taxonomy declares, the ones that may cut over, and why not.
 
     The routing tree, the intake tree, and the catalogue tree when one is
-    declared, by stable identifier. An unusable template is ``taxonomy.active``'s
-    failure and is reported there, so here it costs the declared half of the
-    list and a clause saying so, never the check.
+    declared, by stable identifier. The second answer is the subset a cutover
+    may record, which is the routing tree alone: the intake tree stays on the
+    bridge by rule and the catalogue tree is not rebuildable. An unusable
+    template is ``taxonomy.active``'s failure and is reported there, so here it
+    costs the declared half of the list and a clause saying so, never the check.
     """
     try:
         declared = active_taxonomy.load(cfg)
     except CratekitError as exc:
-        return (), exc.cause.message
+        return (), frozenset(), exc.cause.message
     named = [declared.tree.id, declared.intake.id]
     if declared.catalog is not None:
         named.append(declared.catalog.id)
-    return tuple(named), None
+    return tuple(named), frozenset({declared.tree.id}), None
 
 
 def _check_tree_registry(inputs: _Inputs) -> Finding:
@@ -2690,6 +2694,14 @@ def _check_tree_registry(inputs: _Inputs) -> Finding:
     A RECORD FOR A TREE THE TAXONOMY DOES NOT DECLARE IS LISTED TOO, after the
     declared ones, because the registry is what decides which writer runs and a
     record nobody can see still decides it.
+
+    A NATIVE RECORD THE PRODUCT WOULD REFUSE TO CREATE IS NOT GREEN. The cutover
+    verb records the routing tree and nothing else, so a native record for the
+    intake tree, the catalogue tree or a tree nobody declares arrived by a hand
+    edit or by a template that changed after the cutover. It is a FAIL, since
+    it routes a writer today: a native intake tree refuses the splice that lands
+    new tracks. The sentence names the act, because no remedy token means
+    "revert this tree" and this is the layer that may name a verb.
 
     AN UNREADABLE REGISTRY IS NOT ANSWERED HERE. ``tree_registry.read`` refuses
     with its own cause and remedy, and :func:`answer` reports that refusal
@@ -2707,9 +2719,10 @@ def _check_tree_registry(inputs: _Inputs) -> Finding:
     if unreadable is not None:
         return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
     found = tree_registry.read(inputs.cfg)
-    declared, undeclared_reason = _declared_trees(inputs.cfg)
+    declared, may_cut_over, undeclared_reason = _declared_trees(inputs.cfg)
     listed = [*declared, *(t for t in found.tree_ids() if t not in declared)]
     described: list[str] = []
+    refused: list[str] = []
     for tree_id in listed:
         record = found.record(tree_id)
         if record is None or record.mode != tree_registry.Mode.DATABASE:
@@ -2719,18 +2732,29 @@ def _check_tree_registry(inputs: _Inputs) -> Finding:
             f"{tree_id} is database native, anchored to root {record.root_id} "
             f"since {record.cutover_on}, rebuilt from {record.source}"
         )
+        if undeclared_reason is None and tree_id not in may_cut_over:
+            refused.append(tree_id)
     detail = "; ".join(described) if described else "no tree is declared or recorded"
     if undeclared_reason is not None:
         detail += (
             f". The declared trees could not be listed ({undeclared_reason}), so "
-            f"only recorded trees are shown"
+            f"only recorded trees are shown and none was judged"
         )
-    return Finding(
-        key=key,
-        title=title,
-        status=Status.OK,
-        detail=f"{tree_registry.path_for(inputs.cfg)}: {detail}",
-    )
+    where = tree_registry.path_for(inputs.cfg)
+    if refused:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{where}: {detail}. {', '.join(refused)} is recorded database "
+                f"native and is not a tree a cutover records, only the routing "
+                f"tree is, so a writer is being routed by a record this product "
+                f"would refuse to create. Run `crate tree revert <tree>` for "
+                f"each, which refuses if the tree has taken a native write"
+            ),
+        )
+    return Finding(key=key, title=title, status=Status.OK, detail=f"{where}: {detail}")
 
 
 # ---------------------------------------------------------------------------

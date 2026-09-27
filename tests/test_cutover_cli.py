@@ -650,7 +650,7 @@ def test_doctor_shows_the_mode_and_the_anchored_root_after_a_cutover(ready):
     assert str(tree_registry.path_for(cfg)) in finding.detail
 
 
-def test_doctor_lists_a_recorded_tree_the_taxonomy_does_not_declare(machine):
+def test_doctor_lists_and_fails_a_recorded_tree_the_taxonomy_does_not_declare(machine):
     registry = tree_registry.EMPTY.with_record(
         tree_registry.TreeRecord(
             tree_id="a_dropped_tree",
@@ -663,6 +663,7 @@ def test_doctor_lists_a_recorded_tree_the_taxonomy_does_not_declare(machine):
     tree_registry.write(machine, registry)
     finding = _tree_finding(machine)
     assert "a_dropped_tree is database native, anchored to root root-9" in finding.detail
+    assert finding.status is doctor.Status.FAIL
 
 
 def test_doctor_fails_on_a_registry_it_cannot_read_rather_than_listing_the_bridge(machine):
@@ -675,3 +676,81 @@ def test_doctor_fails_on_a_registry_it_cannot_read_rather_than_listing_the_bridg
     assert "XML bridge" not in finding.detail, (
         "an unreadable registry was reported as every tree being on the bridge"
     )
+
+
+# ---------------------------------------------------------------------------
+# What the review found, closed
+# ---------------------------------------------------------------------------
+
+
+def test_the_steps_the_refused_adoption_names_are_the_steps_that_work(ready):
+    """The remedy as a person follows it: refused, cut over, apply again.
+
+    DRIVEN BECAUSE THE FIRST DRAFT OF THE STEP WAS FALSE. It named a resume of
+    the refused job, and the engine refuses one: the job ended on a cause that
+    is not retryable. A step nobody drove is the defect this unit closes.
+    """
+    cfg, export, root_id = ready
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, refused = drive(_resume(job_id))
+    assert code != int(ExitCode.OK)
+    steps = refused["cause"]["inner"]["remediation"]["steps"]
+    assert "crate tree cutover" in steps[0]
+    assert "crate adopt apply" in steps[1]
+    assert "job resume" not in " ".join(steps)
+
+    code, resumed = drive(["job", "resume", job_id])
+    assert code != int(ExitCode.OK), "a resume retried a job the step says it cannot"
+    assert resumed["cause"]["reason"] == "job-not-retryable"
+
+    _cut_over(export)
+    code, applied = _adopt()
+    assert code == int(ExitCode.OK), applied
+    held = _memberships(cfg)
+    assert sorted(member for members in held.values() for member in members) == [
+        "r-one",
+        "r-two",
+    ]
+    assert set(held) <= _under(cfg, root_id)
+
+
+def test_two_cutovers_offered_before_either_was_approved_record_one(ready):
+    cfg, export, root_id = ready
+    code, first = drive(_cutover(export))
+    assert code == int(ExitCode.DECISION_REQUIRED)
+    code, second = drive(_cutover(export))
+    assert code == int(ExitCode.DECISION_REQUIRED)
+    for offered in (first, second):
+        decided, _ = drive(
+            ["run", "decide", offered["run_id"], CUTOVER_GATE, "approve", "--actor", "a-person"]
+        )
+        assert decided == int(ExitCode.OK)
+
+    code, acted = drive(["--run", first["run_id"], *_cutover(export)])
+    assert code == int(ExitCode.OK), acted
+    recorded = tree_registry.path_for(cfg).read_bytes()
+
+    code, again = drive(["--run", second["run_id"], *_cutover(export)])
+    assert code == int(ExitCode.OK), again
+    assert again["outcome"] == "no_op"
+    assert tree_registry.path_for(cfg).read_bytes() == recorded
+    assert tree_registry.read(cfg).record(TREE).root_id == root_id
+
+
+def test_doctor_fails_on_a_native_record_the_cutover_would_refuse_to_create(machine):
+    registry = tree_registry.EMPTY.with_record(
+        tree_registry.TreeRecord(
+            tree_id=DECLARED.intake.id,
+            mode=tree_registry.Mode.DATABASE,
+            cutover_on=TODAY,
+            root_id="root-7",
+            source=tree_registry.DerivationSource.TAXONOMY,
+        )
+    )
+    tree_registry.write(machine, registry)
+    finding = _tree_finding(machine)
+
+    assert finding.status is doctor.Status.FAIL
+    assert f"{DECLARED.intake.id} is recorded database native" in finding.detail
+    assert "crate tree revert" in finding.detail
+    assert f"{TREE} is on the XML bridge" in finding.detail

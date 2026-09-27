@@ -293,3 +293,144 @@ def test_a_session_that_wrote_nothing_to_this_tree_leaves_the_revert_open(cfg):
     _native_write(cfg, created=0)
     assert tree_registry.native_writes(cfg, TREE_ID) == ()
     assert tree_registry.revert_cutover(cfg, TREE_ID).is_on_the_bridge(TREE_ID)
+
+
+# ---------------------------------------------------------------------------
+# What the review of R-235 found, closed
+# ---------------------------------------------------------------------------
+
+
+def _unreadable_record(cfg: config.Config) -> Path:
+    directory = session.log_dir(cfg)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "s-torn.json"
+    path.write_text("{ not a record\n", encoding="utf-8")
+    return path
+
+
+def test_a_record_nobody_can_read_refuses_the_revert_rather_than_reading_as_no_write(cfg):
+    """The gate's policy, not the report's: the torn record may be the write."""
+    _flipped(cfg)
+    torn = _unreadable_record(cfg)
+    with pytest.raises(CratekitError) as excinfo:
+        tree_registry.revert_cutover(cfg, TREE_ID)
+    assert excinfo.value.cause.detail["unreadable"] == [str(torn)]
+    assert tree_registry.read(cfg).is_database_native(TREE_ID)
+
+
+def test_a_record_nobody_can_read_refuses_the_flip_rather_than_reading_as_no_open_run(cfg):
+    export = _ready(cfg)
+    torn = _unreadable_record(cfg)
+    with pytest.raises(CratekitError) as excinfo:
+        tree_registry.flip(
+            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
+        )
+    assert excinfo.value.cause.detail["unreadable"] == [str(torn)]
+    assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
+
+
+def test_an_open_run_refuses_the_revert_because_it_may_have_written(cfg):
+    _flipped(cfg)
+    session.write_record(
+        session.SessionRecord(
+            session_id="s-killed",
+            workflow="tree-membership",
+            started=output.timestamp(),
+            state=session.SessionState.OPEN,
+        ),
+        cfg,
+    )
+    with pytest.raises(CratekitError) as excinfo:
+        tree_registry.revert_cutover(cfg, TREE_ID)
+    assert excinfo.value.cause.reason == "cutover-open-run"
+    assert excinfo.value.cause.detail["sessions"] == ["s-killed"]
+    assert tree_registry.read(cfg).is_database_native(TREE_ID)
+
+
+def _write_started(cfg: config.Config, session_id: str, started: str) -> None:
+    session.write_record(
+        session.SessionRecord(
+            session_id=session_id,
+            workflow="tree-membership",
+            started=started,
+            state=session.SessionState.CLOSED,
+            change=session.ChangeSummary((session.TreeChange(tree=TREE_ID, created=2),)),
+        ),
+        cfg,
+    )
+
+
+def test_a_write_under_an_earlier_cutover_does_not_close_this_ones_door(cfg):
+    """Cut over, written, restored to before it, cut over again: one write, long ago."""
+    _write_started(cfg, "s-last-month", "2026-07-01T10:00:00Z")
+    _flipped(cfg)
+    assert tree_registry.native_writes(cfg, TREE_ID) == ()
+    assert tree_registry.revert_cutover(cfg, TREE_ID).is_on_the_bridge(TREE_ID)
+
+
+@pytest.mark.parametrize(
+    "started",
+    [
+        # The cutover day itself, and the day before it: a start is universal
+        # time and the cutover day is the machine's own calendar date.
+        "2026-08-01T00:05:00Z",
+        "2026-07-31T23:50:00Z",
+        # A start nothing can place counts, because it cannot be shown to predate.
+        "not a timestamp",
+    ],
+)
+def test_a_write_that_cannot_be_shown_to_predate_the_cutover_counts(cfg, started):
+    _write_started(cfg, "s-near", started)
+    _flipped(cfg)
+    assert tree_registry.native_writes(cfg, TREE_ID) == ("s-near",)
+
+
+def test_the_day_before_the_margin_is_the_first_day_left_out(cfg):
+    _write_started(cfg, "s-two-days", "2026-07-30T23:59:59Z")
+    _flipped(cfg)
+    assert tree_registry.native_writes(cfg, TREE_ID) == ()
+
+
+def test_a_tree_already_recorded_is_not_recorded_again(cfg):
+    """Under the lock, so two approved cutovers cannot replace one another."""
+    _flipped(cfg)
+    export = _export(cfg)
+    before = tree_registry.path_for(cfg).read_bytes()
+    with pytest.raises(CratekitError) as excinfo:
+        tree_registry.flip(
+            cfg,
+            TREE_ID,
+            root_id="root-2",
+            on=date(2026, 9, 1),
+            source=DERIVATION,
+            export=export,
+        )
+    assert excinfo.value.cause.reason == "cutover-already-recorded"
+    assert excinfo.value.cause.detail["root_id"] == "root-1"
+    assert tree_registry.path_for(cfg).read_bytes() == before
+
+
+def test_a_reverted_tree_can_cut_over_again(cfg):
+    _flipped(cfg)
+    export = _export(cfg)
+    tree_registry.revert_cutover(cfg, TREE_ID)
+    after = tree_registry.flip(
+        cfg, TREE_ID, root_id="root-2", on=CUTOVER_ON, source=DERIVATION, export=export
+    )
+    assert after.record(TREE_ID).root_id == "root-2"
+
+
+def test_the_revert_holds_the_session_lock_while_it_asks_and_writes(cfg, monkeypatch):
+    """No membership write is in flight between the question and the file."""
+    _flipped(cfg)
+    held_during: list[bool] = []
+    real = tree_registry.assert_revertible
+
+    def watching(config_in_hand, tree_id):
+        held_during.append(bool(session._HELD))
+        return real(config_in_hand, tree_id)
+
+    monkeypatch.setattr(tree_registry, "assert_revertible", watching)
+    tree_registry.revert_cutover(cfg, TREE_ID)
+    assert held_during == [True]
+    assert not session._HELD, "the revert left the session lock held"

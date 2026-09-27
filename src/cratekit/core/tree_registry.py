@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Callable
@@ -697,7 +697,31 @@ def record_cutover(
     assert_rebuildable(tree_id, source)
     assert_not_intake(tree_id, active_taxonomy.load(cfg))
     with config._exclusive_lock(lock_path(cfg)):
-        updated = read(cfg).with_record(
+        current = read(cfg)
+        standing = current.record(tree_id)
+        if standing is not None and standing.mode == Mode.DATABASE:
+            # ASKED UNDER THE LOCK, which is the only place the answer holds.
+            # Two approved cutovers of one tree each read "not recorded" before
+            # either wrote, and the second then replaced the first: a new day
+            # and possibly a new anchor, on a tree that may already have taken
+            # writes under the old one.
+            raise refuse(
+                "cutover-already-recorded",
+                f"the tree {tree_id!r} is already recorded as database native, "
+                f"anchored to root {standing.root_id!r} since "
+                f"{standing.cutover_on}; recording it again would move the "
+                f"anchor or the day under a tree that may have taken writes",
+                steps=("leave the record as it is; a tree cuts over once",),
+                scope=Scope.RUN,
+                origin=("tree_registry",),
+                detail={
+                    "tree_id": tree_id,
+                    "root_id": standing.root_id,
+                    "cutover_on": str(standing.cutover_on),
+                    "asked_root_id": str(root_id),
+                },
+            )
+        updated = current.with_record(
             TreeRecord(
                 tree_id=tree_id,
                 mode=Mode.DATABASE,
@@ -764,19 +788,53 @@ class PrecheckResult:
         return None if self.refusal is None else self.refusal.cause
 
 
+def _whole_log(cfg: config.Config, *, so: str) -> tuple[session.SessionRecord, ...]:
+    """Every session record, or a refusal when one of them could not be read.
+
+    THE GATE'S POLICY AND NOT THE REPORT'S. ``session.records`` skips an entry
+    it cannot read, which its own docstring keeps for reporting and for nothing
+    else, because a gate that borrowed it fails open: the one record nobody
+    could parse is the open run, or the native write, and the question is then
+    answered "none" over a log that was never read whole. ``so`` finishes the
+    sentence with what the caller could not establish.
+    """
+    parsed, unreadable = session.scan_log(cfg)
+    if unreadable:
+        raise refuse(
+            "internal-error",
+            f"the session log holds {len(unreadable)} entr"
+            + ("y" if len(unreadable) == 1 else "ies")
+            + f" this build cannot read, so {so}; refusing rather than "
+            "writing the tree registry against a log it cannot read",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.RUN,
+            origin=("tree_registry",),
+            detail={"unreadable": [str(path) for path in unreadable]},
+        )
+    return parsed
+
+
+def _open_runs(records: tuple[session.SessionRecord, ...]) -> list[session.SessionRecord]:
+    """The runs that have not reached a terminal state and still owe something.
+
+    A RUN WHOSE ONLY DEBT IS A DEFERRED PLACEMENT IS NOT ONE OF THEM (R-501).
+    Its import was proven and it holds no capture, and the placement it still
+    owes needs a database native tree, which only a cutover creates. The
+    question is asked of the record by the module that owns the record.
+    """
+    return [
+        record
+        for record in records
+        if not record.terminal and not session.owes_only_deferred_routing(record)
+    ]
+
+
 def _open_run_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
     """An open run still holds a capture, and possibly an un-imported export."""
     del export
-    # A RUN WHOSE ONLY DEBT IS A DEFERRED PLACEMENT IS NOT REFUSED (R-501). Its
-    # import was proven and it holds no capture, so neither half of the reason
-    # below is true of it, and the placement it still owes needs a database
-    # native tree, which only this cutover creates. The question is asked of the
-    # record by the module that owns the record.
-    open_runs = [
-        record
-        for record in session.records(cfg)
-        if not record.terminal and not session.owes_only_deferred_routing(record)
-    ]
+    open_runs = _open_runs(
+        _whole_log(cfg, so="whether a run is still open was not established")
+    )
     if not open_runs:
         return None
     first = open_runs[0]
@@ -959,8 +1017,33 @@ def flip(
     return record_cutover(cfg, tree_id, root_id=root_id, on=on, source=source)
 
 
+#: How far before the recorded cutover day a session may have started and
+#: still be counted as a write under that cutover. One day, because the cutover
+#: day is a calendar date on the machine that recorded it and a session's start
+#: is a timestamp in universal time, so a write taken minutes after a cutover
+#: can carry the previous day's date. The margin errs toward counting.
+NATIVE_WRITE_MARGIN = timedelta(days=1)
+
+
+def _predates(started: str, cutover_on: date | None) -> bool:
+    """Whether a session provably started before the cutover it is judged against.
+
+    PROVABLY, and everything else counts. A start this cannot parse, a record
+    with no cutover day to compare against, and a start inside the margin all
+    answer False, so the only session left out is one that was over before this
+    cutover could have existed.
+    """
+    if cutover_on is None:
+        return False
+    try:
+        began = datetime.fromisoformat(str(started).replace("Z", "+00:00")).date()
+    except ValueError:
+        return False
+    return began < cutover_on - NATIVE_WRITE_MARGIN
+
+
 def native_writes(cfg: config.Config, tree_id: str) -> tuple[str, ...]:
-    """The sessions that wrote ``tree_id`` natively, by identifier, oldest first.
+    """The sessions that wrote ``tree_id`` natively under its standing cutover.
 
     READ OFF THE SESSION LOG, which is the one record that survives a rollback.
     A database membership writer records its commit against the tree's stable
@@ -970,16 +1053,33 @@ def native_writes(cfg: config.Config, tree_id: str) -> tuple[str, ...]:
     a record: the byte writers produce a file a person imports and commit no
     tree change at all.
 
+    THE WHOLE LOG OR A REFUSAL. One record this build cannot read may be the
+    write, so an unreadable entry refuses rather than being skipped.
+
+    ONLY WRITES UNDER THE STANDING CUTOVER COUNT. A tree that cut over, took a
+    write, was restored to before that cutover and cut over again still has the
+    first cutover's write in its log, and counting it would close the door on a
+    second cutover that has taken none. A session that provably started before
+    the recorded cutover day is left out. See :func:`_predates` for how much
+    benefit of the doubt that is.
+
     WHAT THIS CANNOT SEE, said rather than implied. A restore that rolled the
     database back past one of these writes leaves the record standing, because
-    the log is kept across a rollback on purpose. So the answer is "a native
-    write was taken", never "the rows are still there", and the caller that
-    refuses on it refuses in the conservative direction.
+    the log is kept across a rollback on purpose and a restore does not record
+    which session it rolled back to. So the answer is "a native write was
+    taken", never "the rows are still there", and the caller that refuses on it
+    refuses in the conservative direction.
     """
+    standing = read(cfg).record(tree_id)
+    cutover_on = None if standing is None else standing.cutover_on
+    records = _whole_log(
+        cfg, so=f"whether the tree {tree_id!r} has taken a native write was not established"
+    )
     return tuple(
         record.session_id
-        for record in session.records(cfg)
-        if any(
+        for record in records
+        if not _predates(record.started, cutover_on)
+        and any(
             change.tree == tree_id and (change.created > 0 or change.updated > 0)
             for change in record.change.trees
         )
@@ -987,7 +1087,7 @@ def native_writes(cfg: config.Config, tree_id: str) -> tuple[str, ...]:
 
 
 def assert_revertible(cfg: config.Config, tree_id: str) -> None:
-    """Refuse a revert once the tree has taken a native write.
+    """Refuse a revert once the tree has taken a native write, or may have.
 
     The door :func:`revert_cutover` describes, as a guard rather than as a
     sentence in a docstring. Before the first native write the registry record
@@ -995,26 +1095,48 @@ def assert_revertible(cfg: config.Config, tree_id: str) -> None:
     After one, the database holds rows the last export knows nothing about, and
     a tree back on the bridge takes its next write as a splice a person imports
     over them.
+
+    AN OPEN RUN REFUSES TOO, because a write records its commit only after it
+    has committed. A membership write killed between the two leaves rows in the
+    database and a record that is still open and names no tree, and reading
+    that as "no native write" is reading absence out of a run nobody finished.
     """
     taken = native_writes(cfg, tree_id)
-    if not taken:
-        return
-    raise refuse(
-        "cutover-native-write-taken",
-        f"the tree {tree_id!r} has taken {len(taken)} native write(s) since it "
-        f"cut over, so the database owns it and it cannot go back on the XML "
-        f"bridge; the next export splice would be imported over rows the export "
-        f"never held",
-        steps=(
-            "leave the tree database native",
-            "to undo the writes themselves, restore a capture taken before "
-            "them; a capture taken before the cutover carries the registry "
-            "back with the database",
-        ),
-        scope=Scope.RUN,
-        origin=("tree_registry",),
-        detail={"tree_id": tree_id, "sessions": list(taken)},
+    if taken:
+        raise refuse(
+            "cutover-native-write-taken",
+            f"the tree {tree_id!r} has taken {len(taken)} native write(s) since "
+            f"it cut over, so the database owns it and it cannot go back on the "
+            f"XML bridge; the next export splice would be imported over rows "
+            f"the export never held",
+            steps=(
+                "leave the tree database native",
+                "to undo the writes themselves, restore a capture taken before "
+                "the cutover, which carries the registry back with the database",
+            ),
+            scope=Scope.RUN,
+            origin=("tree_registry",),
+            detail={"tree_id": tree_id, "sessions": list(taken)},
+        )
+    open_runs = _open_runs(
+        _whole_log(cfg, so="whether a run is still open was not established")
     )
+    if open_runs:
+        raise refuse(
+            "cutover-open-run",
+            f"session {open_runs[0].session_id} has not reached a terminal "
+            f"state, so whether it wrote the tree {tree_id!r} natively is not "
+            f"established and the tree cannot go back on the XML bridge yet",
+            remedy=Remedy.COMPLETE_PENDING_ACTION,
+            steps=("close or abandon every open run, then revert",),
+            scope=Scope.RUN,
+            origin=("tree_registry",),
+            detail={
+                "tree_id": tree_id,
+                "sessions": [record.session_id for record in open_runs],
+                "states": {record.session_id: str(record.state) for record in open_runs},
+            },
+        )
 
 
 def revert_cutover(cfg: config.Config, tree_id: str) -> Registry:
@@ -1023,14 +1145,24 @@ def revert_cutover(cfg: config.Config, tree_id: str) -> Registry:
     Safe only before the flipped tree has taken a post-cutover native write.
     After that write the database owns the tree, and deleting the record
     would send the next XML splice at a tree U9's A2 verdict says must not
-    be imported over. A failed live validation restores the snapshot first,
-    then calls this, in the same session.
+    be imported over.
 
-    THE GUARD IS HERE AND UNDER THE LOCK, not only in the verb above it, so no
-    caller can revert a tree the session log says was written and no second
-    process records between the question and the write to this file.
+    AFTER A NATIVE WRITE THE WAY BACK IS A RESTORE, NOT THIS. The registry is
+    coupled to the database, so restoring a capture taken before the cutover
+    puts the tree back on the bridge with the rows it had then, and nothing is
+    left to revert. Restoring a capture taken after the cutover undoes the rows
+    and leaves both the record and the log entry standing, and this still
+    refuses, because the log cannot say that write was rolled back.
+
+    THE GUARD IS HERE, UNDER THE SESSION LOCK AND THE REGISTRY LOCK, not only in
+    the verb above it. The session lock is the one every destructive session
+    holds for its whole run, so no membership write is in flight while the
+    question is asked and the file is written, and the registry lock keeps a
+    second registry writer out. It is taken here rather than asked of the
+    caller, so this may not be called from inside a destructive session:
+    sessions do not nest.
     """
-    with config._exclusive_lock(lock_path(cfg)):
+    with session.session_lock(cfg), config._exclusive_lock(lock_path(cfg)):
         assert_revertible(cfg, tree_id)
         updated = read(cfg).without_record(tree_id)
         write(cfg, updated)
@@ -1201,6 +1333,7 @@ __all__ = [
     "STATE_KEY",
     "DerivationSource",
     "Mode",
+    "NATIVE_WRITE_MARGIN",
     "PrecheckResult",
     "Registry",
     "RegistrySkew",

@@ -1717,6 +1717,31 @@ def ensure_folder(db: Any, name: str, parent: Any = None) -> Any:
     return db.create_playlist_folder(name, parent=parent)
 
 
+def top_level_folders(db: Any, name: str) -> tuple[Any, ...]:
+    """Every playlist FOLDER named ``name`` sitting directly under the playlist root.
+
+    THE READING HALF OF :func:`ensure_folder`'s unscoped match, and it answers
+    with all of them where that function returns the first. A caller about to
+    record which folder a tree adopted needs to know whether there is exactly
+    one, and "whichever the query happens to yield first" is the answer that
+    question exists to refuse.
+
+    DIRECTLY UNDER THE ROOT, which the unscoped match does not ask. A folder of
+    the same name nested somewhere else is a namesake, and it is not a
+    candidate for a tree's root.
+
+    IT CREATES NOTHING and it reads no soft delete marker, as no playlist lookup
+    in this module does. The rows are materialized, so the query is not being
+    iterated while the caller asks the handle for something else.
+    """
+    return tuple(
+        playlist
+        for playlist in list(db.get_playlist(Name=name))
+        if _is_folder(playlist)
+        and str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINELS
+    )
+
+
 def ensure_playlist(db: Any, name: str, parent: Any) -> Any:
     """Find or create a playlist under a specific parent.
 
@@ -2729,6 +2754,7 @@ __all__ = [
     "db_sidecar_suffixes",
     "default_protected_snapshot_paths",
     "ensure_folder",
+    "top_level_folders",
     "ensure_my_tag_value",
     "ensure_playlist",
     "MOVED",

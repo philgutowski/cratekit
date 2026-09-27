@@ -5096,16 +5096,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # to 183, non-reserved 154 to 155, reserved half UNCHANGED at 28.
     # Re-pinned on the residual finding "Adoption cannot write membership on a
     # library nobody has cut over, and no verb can cut one over", 2026-09-27.
-    # THREE slugs, named rather than counted: cutover-tree-undeclared, which
+    # FOUR slugs, named rather than counted: cutover-tree-undeclared, which
     # the cutover verb refuses with over a tree the taxonomy does not declare,
     # cutover-root-unresolved, which it refuses with when the database holds
-    # no root folder for the tree or more than one, and
+    # no root folder for the tree or more than one,
     # cutover-native-write-taken, which the registry refuses a revert with
-    # once the session log holds a native write to the tree. All three are in
-    # cause.REASONS beside the four the precheck already had and none is in
-    # the reserved table. Population 183 to 186, non-reserved 155 to 158,
-    # reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (186, 158, 28)
+    # once the session log holds a native write to the tree, and
+    # cutover-already-recorded, which the registry refuses a second record of
+    # one tree with, under its lock. All four are in cause.REASONS beside the
+    # four the precheck already had and none is in the reserved table.
+    # Population 183 to 187, non-reserved 155 to 159, reserved half UNCHANGED
+    # at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (187, 159, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5805,16 +5807,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # core/rb_writer.py and compared against in cli/setup.py.
     # Re-pinned on the residual finding "Adoption cannot write membership on a
     # library nobody has cut over, and no verb can cut one over", 2026-09-27:
-    # 509 to 518 distinct, non-keys 327 to 333. NINE joined and nothing left.
-    # Three are keys in cause.REASONS and move only the distinct half:
+    # 509 to 518 distinct, non-keys 327 to 332. NINE joined and nothing left.
+    # Four are keys in cause.REASONS and move only the distinct half:
     # cutover-tree-undeclared and cutover-root-unresolved, raised by
-    # cli/cutover.py, and cutover-native-write-taken, raised by
-    # core/tree_registry.py. Six are not keys and nothing refuses with them.
-    # Four name the prechecks in `CUTOVER_CHECKS`, which a plan shows beside
-    # each result: no-open-run, no-pending-intake-xml, fresh-export and
-    # verified-snapshot. Two are WARNING codes on a run that recorded nothing:
-    # cutover-already-recorded and revert-nothing-recorded.
-    assert (len(literals), len(literals - set(causes))) == (518, 333), (
+    # cli/cutover.py, and cutover-native-write-taken and
+    # cutover-already-recorded, raised by core/tree_registry.py. The last is
+    # also the warning code the verb gives when it finds the tree recorded
+    # before it asks, one spelling for one fact. Five are not keys and nothing
+    # refuses with them. Four name the prechecks in `CUTOVER_CHECKS`, which a
+    # plan shows beside each result: no-open-run, no-pending-intake-xml,
+    # fresh-export and verified-snapshot. One is a WARNING code on a revert
+    # that found nothing to revert: revert-nothing-recorded.
+    assert (len(literals), len(literals - set(causes))) == (518, 332), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

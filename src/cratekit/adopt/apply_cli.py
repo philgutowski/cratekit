@@ -647,9 +647,12 @@ def handle(job, item, cfg) -> jobs.Produced:
     ON A LIBRARY THAT HAS NOT BEEN CUT OVER THIS ALWAYS RAISES.
     ``tree_registry.anchored_root`` refuses a tree still on the bridge, and an
     unrecorded tree IS on the bridge because ``Registry.mode`` defaults to XML.
-    The applied ledger stays empty because nothing was marked, and the job is
-    resumable once ``crate tree cutover`` has recorded the tree, which is the
-    step :func:`_write_memberships` puts on the refusal (R-235).
+    The applied ledger stays empty because nothing was marked, so nothing is
+    lost, and the job ends FAILED on a cause a resume does not retry. The way
+    on is ``crate tree cutover`` and then this verb again, which are the two
+    steps :func:`_write_memberships` puts on the refusal (R-235). Driven in
+    ``tests/test_cutover_cli.py``, which is how the second step came to name a
+    fresh apply: the first draft named a resume, and the engine refuses one.
     """
     del item
     declared = active_taxonomy.load(cfg)
@@ -864,8 +867,13 @@ def _naming_the_cutover(exc: tree_registry.TreeModeRefused) -> CratekitError | N
                 remedy=cause.remediation.remedy,
                 steps=(
                     f"take a Fresh Export from rekordbox, then run `crate tree "
-                    f"cutover {exc.tree_id} --export <that file>` and approve it",
-                    "run `crate job resume` on this job once the tree has cut over",
+                    f"cutover {exc.tree_id} --export <that file>`; it names "
+                    f"anything else the library owes before a tree can cut "
+                    f"over, a snapshot or an import, and asks for approval "
+                    f"once nothing is",
+                    "once the tree has cut over, run `crate adopt apply` again "
+                    "and approve the plan; this job ended on a cause a resume "
+                    "cannot retry, and nothing it planned was marked applied",
                 ),
             ),
             origin=(*cause.origin, "adopt.apply_cli"),
