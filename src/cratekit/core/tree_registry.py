@@ -741,6 +741,179 @@ def pending_intake_xml(cfg: config.Config) -> tuple[Path, ...]:
     return tuple(sorted(found))
 
 
+@dataclass(frozen=True, slots=True)
+class PrecheckResult:
+    """One precheck's answer: which check, and the refusal it gave, if any.
+
+    ``refusal`` is None when the check passed. It is the exception
+    :func:`assert_cutover_ready` would have raised otherwise, whole, so a caller
+    reporting the result shows that refusal's own sentence and steps and never a
+    second wording of them, and a caller that raises it has the exception in
+    hand rather than a cause to build a new one around.
+    """
+
+    check: str
+    refusal: CratekitError | None = None
+
+    @property
+    def passed(self) -> bool:
+        return self.refusal is None
+
+    @property
+    def cause(self) -> Cause | None:
+        return None if self.refusal is None else self.refusal.cause
+
+
+def _open_run_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
+    """An open run still holds a capture, and possibly an un-imported export."""
+    del export
+    # A RUN WHOSE ONLY DEBT IS A DEFERRED PLACEMENT IS NOT REFUSED (R-501). Its
+    # import was proven and it holds no capture, so neither half of the reason
+    # below is true of it, and the placement it still owes needs a database
+    # native tree, which only this cutover creates. The question is asked of the
+    # record by the module that owns the record.
+    open_runs = [
+        record
+        for record in session.records(cfg)
+        if not record.terminal and not session.owes_only_deferred_routing(record)
+    ]
+    if not open_runs:
+        return None
+    first = open_runs[0]
+    # THE RUN'S OWN STEPS WHEN IT HAS THEM. A run waiting on an import
+    # carries a pending action written by the layer that may name a verb,
+    # and this layer may not. Without them the refusal named an act no verb
+    # offers.
+    owed: list[str] = []
+    for record in open_runs:
+        for step in record.pending.steps if record.pending is not None else ():
+            if step not in owed:
+                owed.append(step)
+    if any(record.pending is None for record in open_runs):
+        # A run with no action recorded gets the general wording, beside
+        # and never instead of what the other runs said.
+        owed.extend(
+            (
+                "close or abandon every open run",
+                "import any export a run left in awaiting-import, then close it",
+            )
+        )
+    return refuse(
+        "cutover-open-run",
+        f"session {first.session_id} has not reached a terminal state, so "
+        f"a cutover would flip a tree while that run still holds a capture "
+        f"and possibly an un-imported export",
+        remedy=Remedy.COMPLETE_PENDING_ACTION,
+        steps=tuple(owed),
+        scope=Scope.RUN,
+        origin=("tree_registry",),
+        detail={
+            "sessions": [record.session_id for record in open_runs],
+            "states": {record.session_id: str(record.state) for record in open_runs},
+        },
+    )
+
+
+def _pending_xml_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
+    """An un-imported intake XML is work the next sync will try to consume."""
+    del export
+    pending = pending_intake_xml(cfg)
+    if not pending:
+        return None
+    return refuse(
+        "cutover-xml-pending",
+        f"{len(pending)} un-imported intake XML file(s) are still sitting "
+        f"in this library, so a cutover would proceed over work the next "
+        f"run will try to consume",
+        remedy=Remedy.COMPLETE_PENDING_ACTION,
+        steps=(
+            "import or remove each pending intake XML",
+            "do not treat a U22 stub listing as an importable splice",
+        ),
+        scope=Scope.RUN,
+        origin=("tree_registry",),
+        detail={"paths": [str(path) for path in pending]},
+    )
+
+
+def _export_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
+    """A Fresh Export is the XML-era fallback if the flip is walked back."""
+    del cfg
+    export_path = Path(export)
+    if export_path.is_file() and export_path.stat().st_size != 0:
+        return None
+    return refuse(
+        "cutover-export-missing",
+        "a Fresh Export has to exist before a tree flips, so a failed "
+        "validation still has an XML-era copy of the tree to walk back to",
+        remedy=Remedy.COMPLETE_PENDING_ACTION,
+        steps=("take a Fresh Export from rekordbox and pass that file in",),
+        scope=Scope.RUN,
+        origin=("tree_registry",),
+        detail={"export": str(export_path)},
+    )
+
+
+def _snapshot_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
+    """A verified snapshot is the restore target if validation fails."""
+    del export
+    store = snapshot.store_root(cfg)
+    if store.is_dir():
+        for child in store.iterdir():
+            if not child.is_dir():
+                continue
+            try:
+                record = snapshot.read_manifest(child)
+            except CratekitError:
+                continue
+            if record.verified:
+                return None
+    return refuse(
+        "cutover-snapshot-missing",
+        "no verified snapshot exists for this library, so a failed "
+        "cutover would have nothing to restore from in the same session",
+        remedy=Remedy.COMPLETE_PENDING_ACTION,
+        steps=("take a library snapshot before flipping a tree",),
+        scope=Scope.RUN,
+        origin=("tree_registry",),
+        detail={"store": str(store)},
+    )
+
+
+#: The precheck, as the checks it is made of, IN THE ORDER THEY REFUSE. One
+#: table read by both the assertion and the report, so a plan that names each
+#: result cannot disagree with the refusal about what was asked: a check added
+#: here is asserted and reported the day it is added (P3). The name is what a
+#: report shows beside the answer and is never read for control flow.
+CUTOVER_CHECKS: tuple[
+    tuple[str, Callable[[config.Config, Path], CratekitError | None]], ...
+] = (
+    ("no-open-run", _open_run_refusal),
+    ("no-pending-intake-xml", _pending_xml_refusal),
+    ("fresh-export", _export_refusal),
+    ("verified-snapshot", _snapshot_refusal),
+)
+
+
+def cutover_precheck(cfg: config.Config, *, export: Path) -> tuple[PrecheckResult, ...]:
+    """Every precheck's answer, passed or refused, without raising on a refusal.
+
+    THE REPORT HALF OF :func:`assert_cutover_ready`, over the same table. A plan
+    shown to a person names each result, and a second implementation of the four
+    questions written where the plan is built is how the screen and the refusal
+    come to disagree about whether a library is ready.
+
+    IT RECORDS NOTHING AND IT IS NOT THE GUARD. :func:`flip` asserts for itself,
+    so a caller that read four passes here and then flipped is still held to the
+    assertion at the moment it records.
+    """
+    target = Path(export)
+    results: list[PrecheckResult] = []
+    for name, check in CUTOVER_CHECKS:
+        results.append(PrecheckResult(check=name, refusal=check(cfg, target)))
+    return tuple(results)
+
+
 def assert_cutover_ready(cfg: config.Config, *, export: Path) -> None:
     """Refuse a flip while the library still owes an act or has no undo.
 
@@ -755,103 +928,16 @@ def assert_cutover_ready(cfg: config.Config, *, export: Path) -> None:
     for. A hunt that picked the newest XML in the library would pick the
     pending intake file this same function refuses, and a cutover that
     treated debris as the fallback would have no fallback.
+
+    THE FIRST REFUSAL IS RAISED AND THE REST ARE NOT ASKED, in the order
+    :data:`CUTOVER_CHECKS` declares, which is the order this function always
+    refused in.
     """
-    # A RUN WHOSE ONLY DEBT IS A DEFERRED PLACEMENT IS NOT REFUSED (R-501). Its
-    # import was proven and it holds no capture, so neither half of the reason
-    # below is true of it, and the placement it still owes needs a database
-    # native tree, which only this cutover creates. The question is asked of the
-    # record by the module that owns the record.
-    open_runs = [
-        record
-        for record in session.records(cfg)
-        if not record.terminal and not session.owes_only_deferred_routing(record)
-    ]
-    if open_runs:
-        first = open_runs[0]
-        # THE RUN'S OWN STEPS WHEN IT HAS THEM. A run waiting on an import
-        # carries a pending action written by the layer that may name a verb,
-        # and this layer may not. Without them the refusal named an act no verb
-        # offers.
-        owed: list[str] = []
-        for record in open_runs:
-            for step in record.pending.steps if record.pending is not None else ():
-                if step not in owed:
-                    owed.append(step)
-        if any(record.pending is None for record in open_runs):
-            # A run with no action recorded gets the general wording, beside
-            # and never instead of what the other runs said.
-            owed.extend(
-                (
-                    "close or abandon every open run",
-                    "import any export a run left in awaiting-import, then close it",
-                )
-            )
-        raise refuse(
-            "cutover-open-run",
-            f"session {first.session_id} has not reached a terminal state, so "
-            f"a cutover would flip a tree while that run still holds a capture "
-            f"and possibly an un-imported export",
-            remedy=Remedy.COMPLETE_PENDING_ACTION,
-            steps=tuple(owed),
-            scope=Scope.RUN,
-            origin=("tree_registry",),
-            detail={
-                "sessions": [record.session_id for record in open_runs],
-                "states": {record.session_id: str(record.state) for record in open_runs},
-            },
-        )
-    pending = pending_intake_xml(cfg)
-    if pending:
-        raise refuse(
-            "cutover-xml-pending",
-            f"{len(pending)} un-imported intake XML file(s) are still sitting "
-            f"in this library, so a cutover would proceed over work the next "
-            f"run will try to consume",
-            remedy=Remedy.COMPLETE_PENDING_ACTION,
-            steps=(
-                "import or remove each pending intake XML",
-                "do not treat a U22 stub listing as an importable splice",
-            ),
-            scope=Scope.RUN,
-            origin=("tree_registry",),
-            detail={"paths": [str(path) for path in pending]},
-        )
-    export_path = Path(export)
-    if not export_path.is_file() or export_path.stat().st_size == 0:
-        raise refuse(
-            "cutover-export-missing",
-            "a Fresh Export has to exist before a tree flips, so a failed "
-            "validation still has an XML-era copy of the tree to walk back to",
-            remedy=Remedy.COMPLETE_PENDING_ACTION,
-            steps=("take a Fresh Export from rekordbox and pass that file in",),
-            scope=Scope.RUN,
-            origin=("tree_registry",),
-            detail={"export": str(export_path)},
-        )
-    store = snapshot.store_root(cfg)
-    verified = False
-    if store.is_dir():
-        for child in store.iterdir():
-            if not child.is_dir():
-                continue
-            try:
-                record = snapshot.read_manifest(child)
-            except CratekitError:
-                continue
-            if record.verified:
-                verified = True
-                break
-    if not verified:
-        raise refuse(
-            "cutover-snapshot-missing",
-            "no verified snapshot exists for this library, so a failed "
-            "cutover would have nothing to restore from in the same session",
-            remedy=Remedy.COMPLETE_PENDING_ACTION,
-            steps=("take a library snapshot before flipping a tree",),
-            scope=Scope.RUN,
-            origin=("tree_registry",),
-            detail={"store": str(store)},
-        )
+    target = Path(export)
+    for _name, check in CUTOVER_CHECKS:
+        refusal = check(cfg, target)
+        if refusal is not None:
+            raise refusal
 
 
 def flip(
@@ -873,6 +959,64 @@ def flip(
     return record_cutover(cfg, tree_id, root_id=root_id, on=on, source=source)
 
 
+def native_writes(cfg: config.Config, tree_id: str) -> tuple[str, ...]:
+    """The sessions that wrote ``tree_id`` natively, by identifier, oldest first.
+
+    READ OFF THE SESSION LOG, which is the one record that survives a rollback.
+    A database membership writer records its commit against the tree's stable
+    identifier with the count it added, and it records nothing when it added
+    nothing, so a record naming this tree with a count above zero is a session
+    that put rows into the database under it. Nothing on the bridge writes such
+    a record: the byte writers produce a file a person imports and commit no
+    tree change at all.
+
+    WHAT THIS CANNOT SEE, said rather than implied. A restore that rolled the
+    database back past one of these writes leaves the record standing, because
+    the log is kept across a rollback on purpose. So the answer is "a native
+    write was taken", never "the rows are still there", and the caller that
+    refuses on it refuses in the conservative direction.
+    """
+    return tuple(
+        record.session_id
+        for record in session.records(cfg)
+        if any(
+            change.tree == tree_id and (change.created > 0 or change.updated > 0)
+            for change in record.change.trees
+        )
+    )
+
+
+def assert_revertible(cfg: config.Config, tree_id: str) -> None:
+    """Refuse a revert once the tree has taken a native write.
+
+    The door :func:`revert_cutover` describes, as a guard rather than as a
+    sentence in a docstring. Before the first native write the registry record
+    is the only thing the cutover changed, so removing it is a complete undo.
+    After one, the database holds rows the last export knows nothing about, and
+    a tree back on the bridge takes its next write as a splice a person imports
+    over them.
+    """
+    taken = native_writes(cfg, tree_id)
+    if not taken:
+        return
+    raise refuse(
+        "cutover-native-write-taken",
+        f"the tree {tree_id!r} has taken {len(taken)} native write(s) since it "
+        f"cut over, so the database owns it and it cannot go back on the XML "
+        f"bridge; the next export splice would be imported over rows the export "
+        f"never held",
+        steps=(
+            "leave the tree database native",
+            "to undo the writes themselves, restore a capture taken before "
+            "them; a capture taken before the cutover carries the registry "
+            "back with the database",
+        ),
+        scope=Scope.RUN,
+        origin=("tree_registry",),
+        detail={"tree_id": tree_id, "sessions": list(taken)},
+    )
+
+
 def revert_cutover(cfg: config.Config, tree_id: str) -> Registry:
     """Put ``tree_id`` back on the bridge.
 
@@ -881,8 +1025,13 @@ def revert_cutover(cfg: config.Config, tree_id: str) -> Registry:
     would send the next XML splice at a tree U9's A2 verdict says must not
     be imported over. A failed live validation restores the snapshot first,
     then calls this, in the same session.
+
+    THE GUARD IS HERE AND UNDER THE LOCK, not only in the verb above it, so no
+    caller can revert a tree the session log says was written and no second
+    process records between the question and the write to this file.
     """
     with config._exclusive_lock(lock_path(cfg)):
+        assert_revertible(cfg, tree_id)
         updated = read(cfg).without_record(tree_id)
         write(cfg, updated)
     return updated
@@ -1041,6 +1190,7 @@ def anchored_root(
 
 
 __all__ = [
+    "CUTOVER_CHECKS",
     "DEFAULT_MODE",
     "EMPTY",
     "LOCK_KEY",
@@ -1051,6 +1201,7 @@ __all__ = [
     "STATE_KEY",
     "DerivationSource",
     "Mode",
+    "PrecheckResult",
     "Registry",
     "RegistrySkew",
     "TreeModeRefused",
@@ -1061,8 +1212,11 @@ __all__ = [
     "assert_cutover_ready",
     "assert_not_intake",
     "assert_rebuildable",
+    "assert_revertible",
+    "cutover_precheck",
     "flip",
     "lock_path",
+    "native_writes",
     "path_for",
     "pending_intake_xml",
     "read",
