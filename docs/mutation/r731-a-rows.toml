@@ -1,0 +1,112 @@
+name = "r731-a"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_unread_tree_withholds"
+description = "a tree nobody read is treated as read, so held subs a caller carried withhold"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''    if not placements.read:
+        return NO_COMPETING_PLACE
+    kind, competing'''
+new = '''    kind, competing'''
+
+[[rows]]
+id = "M02_held_sub_class_competes"
+description = "a held sub is no longer filtered to the bucket's competing subs, so a sub class withholds"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''    held = tuple(sorted(set(placements.holds(bucket, content_id)) & competing))'''
+new = '''    held = tuple(sorted(set(placements.holds(bucket, content_id))))'''
+
+[[rows]]
+id = "M03_same_sub_withheld"
+description = "a track already in the sub the plan names is withheld instead of left to the writer"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''    if not held or (sub in held and sub not in unnamed):'''
+new = '''    if not held:'''
+
+[[rows]]
+id = "M04_renamed_sub_not_withheld"
+description = "a track in the planned sub under another name only is routed, so the writer doubles it"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''    if not held or (sub in held and sub not in unnamed):'''
+new = '''    if not held or sub in held:'''
+
+[[rows]]
+id = "M05_unnamed_without_held"
+description = "an unnamed sub is no longer required to be one the track holds"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''    unnamed = tuple(sorted(set(placements.holds_unnamed(bucket, content_id)) & set(held)))
+    if not held or (sub in held and sub not in unnamed):'''
+new = '''    unnamed = tuple(sorted(set(placements.holds_unnamed(bucket, content_id))))
+    if (not held and not unnamed) or (sub in held and sub not in unnamed):'''
+
+[[rows]]
+id = "M06_competing_place_never_withholds"
+description = "the plan reads the competing place and routes the entry anyway"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''                if withheld_by:
+                    # THE BUCKET'''
+new = '''                if False:
+                    # THE BUCKET'''
+
+[[rows]]
+id = "M07_withheld_entry_loses_its_bucket"
+description = "a withheld entry's bucket is blanked, so its identifier and its review row lose it"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''        if disposition not in (Disposition.ROUTE, Disposition.WITHHELD):'''
+new = '''        if disposition is not Disposition.ROUTE:'''
+
+[[rows]]
+id = "M08_digest_blind_to_unread"
+description = "the digest no longer covers whether the tree was read"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''                "placements": self.placements.state,
+                "held_elsewhere": ['''
+new = '''                "held_elsewhere": ['''
+
+[[rows]]
+id = "M09_digest_blind_to_the_review_list"
+description = "the digest no longer covers the rows of the review list"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''                    for entry in self.held_elsewhere()
+                ],
+                "collisions": sorted('''
+new = '''                    for entry in ()
+                ],
+                "collisions": sorted('''
+
+[[rows]]
+id = "M10_answered_genre_routes_over_a_held_place"
+description = "a genre answered later routes a track that holds a competing sub"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''                disposition=Disposition.WITHHELD if withheld_by else Disposition.ROUTE,'''
+new = '''                disposition=Disposition.ROUTE,'''
+
+[[rows]]
+id = "M11_verdict_withheld_on_the_review_list"
+description = "an entry a collision verdict withheld is listed as holding a place"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''        return self.disposition is Disposition.WITHHELD and bool(self.holds)'''
+new = '''        return self.disposition is Disposition.WITHHELD'''
