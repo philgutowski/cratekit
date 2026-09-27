@@ -59,7 +59,16 @@ def placements_from(
     then created again under the taxonomy's name leaves two nodes for one
     destination, and a track in either one holds that sub. Choosing between
     them here would make what a track holds depend on which node a query
-    yielded first.
+    yielded first. THIS IS NOT ``resolve_destinations``'S TIE RULE AND IS NOT
+    MEANT TO BE: that function picks the one node a write goes to and refuses
+    to choose between two, and this one asks where a track sits, which has no
+    reason to choose.
+
+    WHICH NAME A TRACK IS HELD UNDER IS KEPT, because the writer finds a
+    playlist by its declared name and cannot see a renamed one. A sub held
+    only through a node that does not carry the declared names goes in
+    ``unnamed`` as well, and the plan withholds on it even when it is the very
+    sub the plan names.
 
     A PLAYLIST NO COMPETING SUB RESOLVES TO IS NOT A PLACE. A sub class, a
     playlist a person made by hand inside a bucket folder, a folder the
@@ -72,26 +81,31 @@ def placements_from(
         by_display.setdefault((node.folder_display, node.playlist_display), []).append(node)
 
     held: dict[str, dict[str, set[str]]] = {}
+    unnamed: dict[str, dict[str, set[str]]] = {}
     for bucket in declared.buckets:
         _kind, competing = routing.competing_subs(declared, bucket.id)
         for sub_id in sorted(competing):
-            answering = list(by_display.get(destination(declared, bucket.id, sub_id), ()))
+            named = by_display.get(destination(declared, bucket.id, sub_id), ())
+            under_the_name = {cid for node in named for cid in node.content_ids}
+            under_another: set[str] = set()
             recorded = None if record is None else record.node(bucket.id, sub_id)
             if recorded is not None:
                 node = by_ids.get((recorded.folder_id, recorded.playlist_id))
-                if node is not None and node not in answering:
-                    answering.append(node)
-            for node in answering:
-                for content_id in node.content_ids:
-                    held.setdefault(bucket.id, {}).setdefault(content_id, set()).add(sub_id)
+                if node is not None and node not in named:
+                    under_another = set(node.content_ids) - under_the_name
+            for content_id in under_the_name | under_another:
+                held.setdefault(bucket.id, {}).setdefault(content_id, set()).add(sub_id)
+            for content_id in under_another:
+                unnamed.setdefault(bucket.id, {}).setdefault(content_id, set()).add(sub_id)
 
-    return Placements(
-        read=True,
-        held={
-            bucket_id: {content_id: tuple(sorted(subs)) for content_id, subs in tracks.items()}
-            for bucket_id, tracks in held.items()
-        },
-    )
+    return Placements(read=True, held=_frozen(held), unnamed=_frozen(unnamed))
+
+
+def _frozen(found: dict[str, dict[str, set[str]]]) -> dict[str, dict[str, tuple[str, ...]]]:
+    return {
+        bucket_id: {content_id: tuple(sorted(subs)) for content_id, subs in tracks.items()}
+        for bucket_id, tracks in found.items()
+    }
 
 
 def read_placements(cfg: config.Config, declared: taxonomy.Taxonomy) -> Placements:
@@ -117,10 +131,11 @@ def read_placements(cfg: config.Config, declared: taxonomy.Taxonomy) -> Placemen
         cfg=cfg,
     )
     try:
-        known = {str(row.ID) for row in handle.get_playlist()}
         try:
             root_id = tree_registry.anchored_root(
-                declared.tree.id, registry, root_exists=lambda root: root in known
+                declared.tree.id,
+                registry,
+                root_exists=lambda root: handle.get_playlist(ID=str(root)) is not None,
             )
         except (tree_registry.TreeModeRefused, tree_registry.RegistrySkew):
             return UNREAD

@@ -1390,3 +1390,52 @@ def test_a_track_moved_after_the_approval_is_a_stale_decision(placed):
         handler(job, item, jobs.frozen_config(job))
     assert raised.value.cause.reason == "decision-stale"
     assert _filed(placed) == before
+
+
+def _rename_recorded(cfg: config.Config, bucket_id: str, sub_id: str, to: str) -> None:
+    """Rename one destination's playlist the way a person does in rekordbox,
+    after a previous write recorded which node that destination is."""
+    from cratekit.core import convergence
+
+    folder_display, sub_display = destination_names(bucket_id, sub_id)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
+    try:
+        root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
+        folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
+        playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
+        node = convergence.DestinationNode(
+            bucket=bucket_id,
+            sub=sub_id,
+            folder_id=str(folder.ID),
+            playlist_id=str(playlist.ID),
+        )
+        playlist.Name = to
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    convergence.record_nodes(cfg, DECLARED.tree.id, [node])
+
+
+def test_a_track_in_the_planned_sub_under_another_name_is_withheld_not_doubled(placed):
+    """The writer finds a playlist by the declared name. A playlist renamed in
+    rekordbox is still the sub its recorded node says it is, and the writer
+    would make a second one beside it and file the track in both."""
+    bucket = _energy_bucket().id
+    _rename_recorded(placed, bucket, _band(5), "Middle of the night")
+    before = _filed(placed)
+
+    shown = _shown(["adopt", "apply"])
+    listed = {row["content_id"]: row for row in shown["held_elsewhere"]}
+    assert "p-same" in listed
+    assert listed["p-same"]["holds"] == [_band(5)]
+    assert listed["p-same"]["planned"] == _band(5)
+    assert listed["p-same"]["holds_under_another_name"] == [_band(5)]
+    assert listed["p-med-reads-high"]["holds_under_another_name"] == [_band(5)]
+    assert "p-same" not in {item["content_id"] for item in shown["items"]}
+
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    after = _filed(placed)
+    assert after["p-same"] == before["p-same"]
+    assert after["p-med-reads-high"] == before["p-med-reads-high"]

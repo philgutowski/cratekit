@@ -17,6 +17,8 @@ D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from cratekit.adopt import placements as adopt_placements
@@ -145,6 +147,7 @@ def test_a_track_in_one_band_whose_file_reads_another_is_withheld_and_listed():
             "bucket": bucket,
             "kind": "band",
             "holds": [MED],
+            "holds_under_another_name": [],
             "planned": HIGH,
             "energy": 8,
             "energy_unreadable": False,
@@ -400,6 +403,40 @@ def test_a_renamed_node_is_resolved_through_its_recorded_identifier():
     assert adopt_placements.placements_from(DECLARED, [renamed], None).held == {}
     found = adopt_placements.placements_from(DECLARED, [renamed], record)
     assert found.holds(bucket, "t") == (MED,)
+    assert found.holds_unnamed(bucket, "t") == (MED,)
+
+
+def test_a_sub_held_under_both_names_is_one_the_writer_can_see():
+    bucket = _energy_bucket().id
+    record = convergence.TreeConvergence(
+        tree_id=TREE_ID,
+        nodes=(
+            convergence.DestinationNode(
+                bucket=bucket, sub=MED, folder_id="f1", playlist_id="p1"
+            ),
+        ),
+    )
+    nodes = [
+        _node(bucket, MED, "t", "u", names=("Renamed folder", "Renamed list")),
+        _node(bucket, MED, "t", ids=("f2", "p2")),
+    ]
+    found = adopt_placements.placements_from(DECLARED, nodes, record)
+    assert (found.holds(bucket, "t"), found.holds_unnamed(bucket, "t")) == ((MED,), ())
+    assert (found.holds(bucket, "u"), found.holds_unnamed(bucket, "u")) == ((MED,), (MED,))
+
+
+def test_a_recorded_node_that_carries_the_declared_names_is_not_unnamed():
+    bucket = _energy_bucket().id
+    record = convergence.TreeConvergence(
+        tree_id=TREE_ID,
+        nodes=(
+            convergence.DestinationNode(
+                bucket=bucket, sub=MED, folder_id="f1", playlist_id="p1"
+            ),
+        ),
+    )
+    found = adopt_placements.placements_from(DECLARED, [_node(bucket, MED, "t")], record)
+    assert (found.holds(bucket, "t"), found.holds_unnamed(bucket, "t")) == ((MED,), ())
 
 
 def test_two_nodes_answering_for_one_destination_both_count():
@@ -420,3 +457,51 @@ def test_a_track_in_two_bands_holds_both():
     ]
     found = adopt_placements.placements_from(DECLARED, nodes, None)
     assert found.holds(bucket, "t") == tuple(sorted((MED, HIGH)))
+
+
+# ── a place the writer cannot see, and a screen the digest covers ──────────
+
+
+def test_a_track_in_the_planned_sub_under_another_name_only_is_withheld():
+    bucket = _energy_bucket().id
+    renamed = adopt_plan.Placements(
+        read=True, held={bucket: {"t": (HIGH,)}}, unnamed={bucket: {"t": (HIGH,)}}
+    )
+    entry = _only(_plan([_scanned("t", bucket, energy=8)], renamed))
+    assert entry.disposition is adopt_scan.Disposition.WITHHELD
+    assert (entry.sub, entry.holds, entry.holds_unnamed) == (HIGH, (HIGH,), (HIGH,))
+
+
+def test_an_unnamed_sub_the_track_does_not_hold_changes_nothing():
+    """``unnamed`` is a part of ``held``. A caller that hands over one without
+    the other has not shown that the track sits anywhere."""
+    bucket = _energy_bucket().id
+    odd = adopt_plan.Placements(read=True, unnamed={bucket: {"t": (HIGH,)}})
+    entry = _only(_plan([_scanned("t", bucket, energy=8)], odd))
+    assert entry.disposition is adopt_scan.Disposition.ROUTE
+
+
+def test_the_digest_covers_every_field_the_review_list_shows():
+    """One changed field at a time, and the list of fields is closed below so
+    a field added to the screen has to be added here."""
+    bucket = _energy_bucket().id
+    held = _held(bucket, t=(MED,))
+    shown = _scanned("t", bucket, energy=8)
+    base = _plan([shown], held)
+    renamed = adopt_plan.Placements(
+        read=True, held={bucket: {"t": (MED,)}}, unnamed={bucket: {"t": (MED,)}}
+    )
+    changed = {
+        "location": _plan([replace(shown, recorded="/library/Music/moved.flac")], held),
+        "energy": _plan([replace(shown, energy=9)], held),
+        "energy_unreadable": _plan([replace(shown, energy_unreadable=True)], held),
+        "holds": _plan([shown], _held(bucket, t=(LOW,))),
+        "holds_under_another_name": _plan([shown], renamed),
+    }
+    (row,) = adopt_plan.to_json(base)["held_elsewhere"]
+    for name, plan in changed.items():
+        (other,) = adopt_plan.to_json(plan)["held_elsewhere"]
+        assert {key for key in row if row[key] != other[key]} == {name}, name
+        assert plan.digest() != base.digest(), name
+    # THE REST ARE THE ENTRY'S IDENTITY, which the digest has always covered.
+    assert set(row) == set(changed) | {"content_id", "bucket", "kind", "planned"}

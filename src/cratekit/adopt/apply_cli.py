@@ -439,7 +439,7 @@ def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
     They are not items, since an apply writes none of them, and they are not
     left as a number either: each is a track whose tag and whose placement
     disagree, and the list is what a person settles that from. The digest
-    covers every row of it.
+    is taken over the rows as they are shown here, every field.
     """
     document = plan_engine.to_json(plan)
     listed = {entry.entry_id for entry in plan.applicable()}

@@ -110,14 +110,26 @@ class Placements:
     ``held`` maps a bucket identifier to a content identifier to the sub
     identifiers that track holds there. Stable identifiers throughout, never
     display names (R19, D5).
+
+    ``unnamed`` is the part of ``held`` the membership writer cannot see: the
+    subs a track holds ONLY through a playlist that no longer carries the
+    names the taxonomy declares, recognised through the node a previous write
+    recorded. The writer finds a playlist by its declared name, so for these
+    it would make a second playlist beside the renamed one and file the track
+    in both. A sub a track holds under both names is not in here.
     """
 
     read: bool = False
     held: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
+    unnamed: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
 
     def holds(self, bucket: str, content_id: str) -> tuple[str, ...]:
         """The subs of ``bucket`` this track sits in, or none."""
         return tuple(self.held.get(bucket, {}).get(content_id, ()))
+
+    def holds_unnamed(self, bucket: str, content_id: str) -> tuple[str, ...]:
+        """The subs of ``bucket`` this track holds under another name only."""
+        return tuple(self.unnamed.get(bucket, {}).get(content_id, ()))
 
     @property
     def state(self) -> str:
@@ -211,6 +223,9 @@ class PlanEntry:
     #: that is why it is withheld. Identifiers, in sorted order. Empty for every
     #: entry withheld for another reason or not withheld at all.
     holds: tuple[str, ...] = ()
+    #: The part of ``holds`` the track holds through a renamed playlist only,
+    #: which is the part the membership writer cannot see.
+    holds_unnamed: tuple[str, ...] = ()
     #: Why a withheld entry is withheld: :data:`WITHHELD_BY_VERDICT`, or the
     #: kind of competing place the track holds. Empty when it is not withheld.
     withheld_by: str = ""
@@ -354,7 +369,8 @@ class AdoptionPlan:
         that place named, so a track somebody moved between the approval and
         the apply is a different screen and a different digest. Whether the
         tree was read at all is covered for the reason :class:`Placements`
-        gives.
+        gives. The rows are digested as they are shown, every field of them,
+        so nothing on the review list can change under a recorded answer.
         """
         return digest_of(
             {
@@ -363,10 +379,10 @@ class AdoptionPlan:
                 "counts": self.counts(),
                 "energy": self.energy_readings(),
                 "placements": self.placements.state,
-                "held_elsewhere": sorted(
-                    f"{entry.entry_id}:{entry.withheld_by}:{','.join(entry.holds)}"
+                "held_elsewhere": [
+                    {"id": entry.entry_id, **review_row(entry)}
                     for entry in self.held_elsewhere()
-                ),
+                ],
                 "collisions": sorted(
                     f"{item.bucket}:{item.node_id}" for item in self.collisions
                 ),
@@ -405,6 +421,31 @@ def _sub_for(
     return None if sub is None else sub.id
 
 
+def review_row(entry: PlanEntry) -> dict[str, Any]:
+    """One withheld entry as the review list shows it and the digest covers it.
+
+    What a person needs to decide which reading is right: the track, where it
+    sits, where the plan would have put it, and what the file reads. ONE BODY
+    for the document and the digest, so a field added to the screen is a field
+    the approval binds to.
+    """
+    return {
+        "content_id": entry.content_id,
+        "location": entry.recorded,
+        "bucket": entry.bucket,
+        "kind": entry.withheld_by,
+        "holds": list(entry.holds),
+        "holds_under_another_name": list(entry.holds_unnamed),
+        "planned": entry.sub,
+        "energy": entry.energy,
+        "energy_unreadable": entry.energy_unreadable,
+    }
+
+
+#: What :func:`competing_place` answers for an entry that may be placed.
+NO_COMPETING_PLACE: tuple[str, tuple[str, ...], tuple[str, ...]] = ("", (), ())
+
+
 def competing_place(
     declared: taxonomy.Taxonomy,
     placements: Placements,
@@ -412,11 +453,12 @@ def competing_place(
     bucket: str,
     sub: str,
     content_id: str,
-) -> tuple[str, tuple[str, ...]]:
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
     """Why a routed entry must be withheld and what its track holds, or nothing.
 
-    Returns the kind of competing place and the subs held, and ``("", ())``
-    when the entry may be placed.
+    Returns the kind of competing place, the subs held, and the ones among
+    them held under another name only. :data:`NO_COMPETING_PLACE` when the
+    entry may be placed.
 
     WHAT COMPETES IS THE TAXONOMY'S ANSWER, through
     :func:`cratekit.core.routing.competing_subs`, and both sides are asked of
@@ -430,16 +472,24 @@ def competing_place(
     and adds nothing, which is the outcome this function exists to guarantee,
     and withholding it would list a track for review over a write that was
     never going to happen.
+
+    UNLESS THE WRITER CANNOT SEE THAT IT IS THERE. The writer finds a playlist
+    by its declared name, so a track sitting in the planned sub through a
+    renamed playlist only is a track the writer would file a second time, in a
+    new playlist under the old name. That entry is withheld and its row shows
+    the sub it holds and the sub planned as the same one, with the name as the
+    reason. Found by the review of this unit and driven before it was fixed.
     """
     if not placements.read:
-        return "", ()
+        return NO_COMPETING_PLACE
     kind, competing = routing.competing_subs(declared, bucket)
     if sub not in competing:
-        return "", ()
+        return NO_COMPETING_PLACE
     held = tuple(sorted(set(placements.holds(bucket, content_id)) & competing))
-    if not held or sub in held:
-        return "", ()
-    return str(kind.value), held
+    unnamed = tuple(sorted(set(placements.holds_unnamed(bucket, content_id)) & set(held)))
+    if not held or (sub in held and sub not in unnamed):
+        return NO_COMPETING_PLACE
+    return str(kind.value), held, unnamed
 
 
 def build_adoption_plan(
@@ -468,15 +518,14 @@ def build_adoption_plan(
         disposition = track.disposition
         bucket = track.bucket
         sub = ""
-        withheld_by = ""
-        holds: tuple[str, ...] = ()
+        withheld_by, holds, holds_unnamed = NO_COMPETING_PLACE
         if disposition is Disposition.ROUTE:
             resolved = _sub_for(declared, bucket, track.genre, track.energy)
             if resolved is None:
                 disposition = Disposition.UNDECLARED
             else:
                 sub = resolved
-                withheld_by, holds = competing_place(
+                withheld_by, holds, holds_unnamed = competing_place(
                     declared,
                     placements,
                     bucket=bucket,
@@ -511,6 +560,7 @@ def build_adoption_plan(
                 energy=track.energy,
                 energy_unreadable=track.energy_unreadable,
                 holds=holds,
+                holds_unnamed=holds_unnamed,
                 withheld_by=withheld_by,
             )
         )
@@ -709,9 +759,10 @@ def with_verdicts(
             continue
         # AN ANSWERED GENRE IS CHECKED AGAINST THE SAME TREE. A track a person
         # has just given a bucket to may already sit in that bucket under
-        # another band, and routing it on the strength of the answer alone
-        # would reopen R-731 through the review queue.
-        withheld_by, holds = competing_place(
+        # another band. NOTHING UNDER ``src`` CALLS THIS FUNCTION TODAY, so
+        # this holds the rule for the caller that will fold answers in and is
+        # proven by this module's own tests and by nothing driven.
+        withheld_by, holds, holds_unnamed = competing_place(
             declared,
             plan.placements,
             bucket=chosen,
@@ -726,6 +777,7 @@ def with_verdicts(
                 sub=sub,
                 entry_id=entry_id_for(entry.tree, entry.content_id, chosen, sub),
                 holds=holds,
+                holds_unnamed=holds_unnamed,
                 withheld_by=withheld_by,
             )
         )
@@ -797,23 +849,8 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
         "energy": plan.energy_readings(),
         "placements": plan.placements.state,
         "withheld_by_placement": plan.withheld_by_placement(),
-        # EVERY ONE OF THEM, for the reason ``held_elsewhere`` gives. Each row
-        # is what a person needs to decide which reading is right: the track,
-        # where it sits, where the plan would have put it, and what the file
-        # reads.
-        "held_elsewhere": [
-            {
-                "content_id": entry.content_id,
-                "location": entry.recorded,
-                "bucket": entry.bucket,
-                "kind": entry.withheld_by,
-                "holds": list(entry.holds),
-                "planned": entry.sub,
-                "energy": entry.energy,
-                "energy_unreadable": entry.energy_unreadable,
-            }
-            for entry in plan.held_elsewhere()
-        ],
+        # EVERY ONE OF THEM, for the reason ``held_elsewhere`` gives.
+        "held_elsewhere": [review_row(entry) for entry in plan.held_elsewhere()],
         "entries": [
             {
                 "id": entry.entry_id,
@@ -828,6 +865,7 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
                 "energy_unreadable": entry.energy_unreadable,
                 "withheld_by": entry.withheld_by,
                 "holds": list(entry.holds),
+                "holds_under_another_name": list(entry.holds_unnamed),
             }
             for entry in plan.entries
         ],
@@ -849,6 +887,7 @@ __all__ = [
     "ENTRY_ID_PREFIX",
     "KIND_COLLISION",
     "KIND_GENRE",
+    "NO_COMPETING_PLACE",
     "PLACEMENTS_READ",
     "PLACEMENTS_UNREAD",
     "UNREAD",
@@ -865,6 +904,7 @@ __all__ = [
     "entry_id_for",
     "find_collisions",
     "offer_plan",
+    "review_row",
     "to_json",
     "with_collision_verdicts",
     "with_verdicts",
