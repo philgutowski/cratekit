@@ -70,7 +70,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from cratekit.adopt import apply as apply_engine
-from cratekit.adopt import artifacts, collection, scan, shell
+from cratekit.adopt import artifacts, collection, placements, scan, shell
 from cratekit.adopt import plan as plan_engine
 from cratekit.adopt.approval import grant
 from cratekit.cli.output import Envelope
@@ -182,9 +182,19 @@ def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> plan_engine
     THE TREE COMES OFF THE DECLARED TAXONOMY, never off a flag. A taxonomy
     declares exactly one routing tree by stable identifier (R19), so an argument
     naming one could only hold that identifier or a mistake.
+
+    THE TREE IS READ AS WELL AS THE COLLECTION (R-731), from the database the
+    census read, so an entry whose track already holds a competing sub in its
+    bucket is withheld and listed rather than added beside it. The census goes
+    first, so a library that cannot be read at all refuses the way it always
+    did.
     """
+    scanned = census(cfg, declared)
     return plan_engine.build_adoption_plan(
-        census(cfg, declared), declared, tree=declared.tree.id
+        scanned,
+        declared,
+        tree=declared.tree.id,
+        placements=placements.read_placements(cfg, declared),
     )
 
 
@@ -421,8 +431,15 @@ def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
     does not name changed its recorded location, so a recorded answer would
     stand over a screen that reads differently. What the plan will not touch
     is on the screen as the counts per disposition, which the digest covers
-    as well, beside the tree and the collisions. Read off the same document
-    ``adopt plan`` prints, so the two say the same thing.
+    as well, beside the tree and the collisions. Read off the plan's own
+    document, so the two say the same thing.
+
+    THE ENTRIES WITHHELD OVER A PLACE THE TRACK HOLDS ARE LISTED IN FULL
+    (R-731), under their own name and with their own count split by kind.
+    They are not items, since an apply writes none of them, and they are not
+    left as a number either: each is a track whose tag and whose placement
+    disagree, and the list is what a person settles that from. The digest
+    covers every row of it.
     """
     document = plan_engine.to_json(plan)
     listed = {entry.entry_id for entry in plan.applicable()}
@@ -436,6 +453,9 @@ def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
             "counts": document["counts"],
             "energy": document["energy"],
             "collisions": document["collisions"],
+            "placements": document["placements"],
+            "withheld_by_placement": document["withheld_by_placement"],
+            "held_elsewhere": document["held_elsewhere"],
         },
     )
 

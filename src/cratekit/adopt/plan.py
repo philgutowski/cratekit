@@ -27,6 +27,16 @@ THE TWO QUESTIONS A PLAN ASKS A PERSON, and neither is "is this plan ok".
    the folder regardless is worse than never asking, because it puts the person's
    name on a merge they refused.
 
+WHERE A TRACK ALREADY SITS IS READ, AND IT WAS NOT (R-731). The plan placed
+each track by its genre and its file's energy reading and asked nothing of the
+tree it was about to write, and the membership writer is add only. So a track
+the library files under one energy band whose file reads another was added to
+the second and stayed in the first: 569 of 700 additions on a copy of a real
+library. :class:`Placements` is what the tree holds, handed in as data the way
+``existing`` is, and an entry whose track holds a different competing sub in
+the same bucket is WITHHELD, counted under its own name, and listed. Nothing is
+moved and nothing is removed. Which reading is right is a person's to say.
+
 THE IDENTITY OF A COLLISION IS THE NODE, NEVER ITS NAME. This is the shape U19
 shipped as a blocking defect and it is worth stating twice. Its membership dedup
 targeted a destination's DISPLAY name, so a re-run after somebody renamed the
@@ -45,7 +55,7 @@ Layer: modules.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Mapping, Sequence
 
 from cratekit.adopt.scan import Disposition, Readability, ScannedTrack
@@ -71,6 +81,52 @@ KIND_COLLISION = "adoption-collision"
 #: answering it.
 COLLISION_ADOPT = "adopt-existing"
 COLLISION_SEPARATE = "keep-separate"
+
+#: Why an entry is withheld, when a person's collision verdict is the reason.
+#: The other reasons are the members of :class:`cratekit.core.routing.Competing`,
+#: so the set of reasons is this value and that enumeration and nothing else.
+WITHHELD_BY_VERDICT = "verdict"
+
+#: The two states of :attr:`Placements.read`, as the plan document spells them.
+PLACEMENTS_READ = "read"
+PLACEMENTS_UNREAD = "unread"
+
+
+@dataclass(frozen=True, slots=True)
+class Placements:
+    """The competing subs each track already holds, by bucket. Supplied, not read.
+
+    Built by :mod:`cratekit.adopt.placements`, which is the layer holding a
+    database open. This module performs no library input, for the reason
+    :class:`ExistingFolder` gives.
+
+    ``read`` IS A FACT OF ITS OWN AND NOT THE EMPTINESS OF ``held``. A tree
+    nobody could read and a tree holding nothing both produce no held subs, and
+    folding them is the absence read as evidence this repository has paid for
+    more than once. An unread tree withholds nothing, says ``unread`` on the
+    plan document, and moves the digest, so an approval given over a plan that
+    could not see the tree is not honoured once it can.
+
+    ``held`` maps a bucket identifier to a content identifier to the sub
+    identifiers that track holds there. Stable identifiers throughout, never
+    display names (R19, D5).
+    """
+
+    read: bool = False
+    held: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
+
+    def holds(self, bucket: str, content_id: str) -> tuple[str, ...]:
+        """The subs of ``bucket`` this track sits in, or none."""
+        return tuple(self.held.get(bucket, {}).get(content_id, ()))
+
+    @property
+    def state(self) -> str:
+        return PLACEMENTS_READ if self.read else PLACEMENTS_UNREAD
+
+
+#: The placements of a tree nobody read. The default everywhere one is taken,
+#: and it is visible on the plan rather than silent. See :class:`Placements`.
+UNREAD = Placements()
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +207,18 @@ class PlanEntry:
     #: its sub from the same level the census read. See :class:`ScannedTrack`.
     energy: int | None = None
     energy_unreadable: bool = False
+    #: The competing subs of this entry's bucket the track already holds, when
+    #: that is why it is withheld. Identifiers, in sorted order. Empty for every
+    #: entry withheld for another reason or not withheld at all.
+    holds: tuple[str, ...] = ()
+    #: Why a withheld entry is withheld: :data:`WITHHELD_BY_VERDICT`, or the
+    #: kind of competing place the track holds. Empty when it is not withheld.
+    withheld_by: str = ""
+
+    @property
+    def held_elsewhere(self) -> bool:
+        """Withheld because the track already holds a competing place."""
+        return self.disposition is Disposition.WITHHELD and bool(self.holds)
 
     @property
     def applicable(self) -> bool:
@@ -188,6 +256,9 @@ class AdoptionPlan:
     tree: str
     entries: tuple[PlanEntry, ...] = ()
     collisions: tuple[Collision, ...] = ()
+    #: What the tree already holds, kept on the plan so a genre answered later
+    #: is checked against the same tree the first build was.
+    placements: Placements = UNREAD
 
     def applicable(self) -> tuple[PlanEntry, ...]:
         """The entries an apply may write, in plan order."""
@@ -240,6 +311,30 @@ class AdoptionPlan:
                 readings["read"] += 1
         return readings
 
+    def withheld_by_placement(self) -> dict[str, int]:
+        """How many entries are withheld over a place the track already holds.
+
+        A NAME OF ITS OWN, beside :meth:`counts` rather than inside it. The
+        ``withheld`` count there is every withheld entry whatever the reason,
+        and a person reading the gate needs the ones the tree caused apart from
+        the ones a verdict caused. Split by kind, derived over the members of
+        the enumeration so a kind with nothing in it reads zero rather than
+        being absent, and totalled so nobody adds them up by eye.
+        """
+        found = {str(member.value): 0 for member in routing.Competing}
+        for entry in self.entries:
+            if entry.held_elsewhere and entry.withheld_by in found:
+                found[entry.withheld_by] += 1
+        return {"total": sum(found.values()), **found}
+
+    def held_elsewhere(self) -> tuple[PlanEntry, ...]:
+        """Every entry withheld over a place its track already holds, in plan order.
+
+        THE WHOLE LIST, with no bound, because the list is what a person
+        decides from and a first page would leave the rest decided by nobody.
+        """
+        return tuple(entry for entry in self.entries if entry.held_elsewhere)
+
     def digest(self) -> str:
         """What an approval is recorded AGAINST, so a stale one is detectable.
 
@@ -253,6 +348,13 @@ class AdoptionPlan:
         counts them differently is a different plan. An
         approval whose digest no longer matches is refused rather than applied,
         because the person approved a different plan.
+
+        THE WITHHELD ENTRIES ARE COVERED BY WHAT THEY HOLD (R-731). An entry
+        withheld over a place its track already sits in is on the screen with
+        that place named, so a track somebody moved between the approval and
+        the apply is a different screen and a different digest. Whether the
+        tree was read at all is covered for the reason :class:`Placements`
+        gives.
         """
         return digest_of(
             {
@@ -260,6 +362,11 @@ class AdoptionPlan:
                 "entries": [entry.entry_id for entry in self.applicable()],
                 "counts": self.counts(),
                 "energy": self.energy_readings(),
+                "placements": self.placements.state,
+                "held_elsewhere": sorted(
+                    f"{entry.entry_id}:{entry.withheld_by}:{','.join(entry.holds)}"
+                    for entry in self.held_elsewhere()
+                ),
                 "collisions": sorted(
                     f"{item.bucket}:{item.node_id}" for item in self.collisions
                 ),
@@ -298,12 +405,50 @@ def _sub_for(
     return None if sub is None else sub.id
 
 
+def competing_place(
+    declared: taxonomy.Taxonomy,
+    placements: Placements,
+    *,
+    bucket: str,
+    sub: str,
+    content_id: str,
+) -> tuple[str, tuple[str, ...]]:
+    """Why a routed entry must be withheld and what its track holds, or nothing.
+
+    Returns the kind of competing place and the subs held, and ``("", ())``
+    when the entry may be placed.
+
+    WHAT COMPETES IS THE TAXONOMY'S ANSWER, through
+    :func:`cratekit.core.routing.competing_subs`, and both sides are asked of
+    it. The sub the plan names has to be one of the bucket's competing subs,
+    and only a held sub in that same set counts, so a track sitting in a
+    manual or derived sub alone is placed as it always was whatever the
+    placements carry.
+
+    A TRACK ALREADY IN THE SUB THE PLAN NAMES IS NOT WITHHELD, even when it
+    holds a second one as well. The writer reports that row already present
+    and adds nothing, which is the outcome this function exists to guarantee,
+    and withholding it would list a track for review over a write that was
+    never going to happen.
+    """
+    if not placements.read:
+        return "", ()
+    kind, competing = routing.competing_subs(declared, bucket)
+    if sub not in competing:
+        return "", ()
+    held = tuple(sorted(set(placements.holds(bucket, content_id)) & competing))
+    if not held or sub in held:
+        return "", ()
+    return str(kind.value), held
+
+
 def build_adoption_plan(
     scanned: Sequence[ScannedTrack],
     declared: taxonomy.Taxonomy,
     *,
     tree: str,
     existing: Sequence[ExistingFolder] = (),
+    placements: Placements = UNREAD,
 ) -> AdoptionPlan:
     """Turn a census into a plan, resolving destinations and finding collisions.
 
@@ -312,24 +457,43 @@ def build_adoption_plan(
     the only shape that matters. Taking an iterable and walking it twice is how
     U18's row index reported an empty library while the run reported clean, so
     the type says what it needs and the caller materializes once.
+
+    ``placements`` DEFAULTS TO A TREE NOBODY READ, and the plan says so. A
+    caller with a database passes what :mod:`cratekit.adopt.placements` read
+    off it; a caller without one gets a plan that withholds nothing over a
+    held place and carries ``unread`` on its document and in its digest.
     """
     entries: list[PlanEntry] = []
     for ordinal, track in enumerate(scanned, start=1):
         disposition = track.disposition
         bucket = track.bucket
         sub = ""
+        withheld_by = ""
+        holds: tuple[str, ...] = ()
         if disposition is Disposition.ROUTE:
             resolved = _sub_for(declared, bucket, track.genre, track.energy)
             if resolved is None:
                 disposition = Disposition.UNDECLARED
             else:
                 sub = resolved
+                withheld_by, holds = competing_place(
+                    declared,
+                    placements,
+                    bucket=bucket,
+                    sub=sub,
+                    content_id=track.content_id,
+                )
+                if withheld_by:
+                    # THE BUCKET AND THE SUB STAY, as they do for an entry a
+                    # verdict withheld: the identifier is derived from the
+                    # record, and the record is what the review list shows.
+                    disposition = Disposition.WITHHELD
         # THE IDENTIFIER IS DERIVED FROM WHAT THE RECORD WILL HOLD, not from
         # what was resolved on the way to it. An identifier a reader cannot
         # recompute from the record it identifies is an identifier nobody can
         # audit, and the first version of this hashed a bucket that the
         # undeclared entries then did not carry.
-        if disposition is not Disposition.ROUTE:
+        if disposition not in (Disposition.ROUTE, Disposition.WITHHELD):
             bucket = ""
         entries.append(
             PlanEntry(
@@ -346,12 +510,15 @@ def build_adoption_plan(
                 path=track.path,
                 energy=track.energy,
                 energy_unreadable=track.energy_unreadable,
+                holds=holds,
+                withheld_by=withheld_by,
             )
         )
     return AdoptionPlan(
         tree=tree,
         entries=tuple(entries),
         collisions=find_collisions(entries, declared, tree=tree, existing=existing),
+        placements=placements,
     )
 
 
@@ -389,9 +556,15 @@ def find_collisions(
     empty in the library rather than silently absorbing tracks.
     """
     planned_by_bucket: dict[str, set[str]] = {}
+    # A TRACK WITHHELD OVER A PLACE IT HOLDS IS NAMED BY THIS PLAN, under this
+    # bucket, and it sits in the folder by definition. Counting it a stranger
+    # would raise a collision over the tracks the plan has already listed.
+    named_by_bucket: dict[str, set[str]] = {}
     for entry in entries:
         if entry.applicable:
             planned_by_bucket.setdefault(entry.bucket, set()).add(entry.content_id)
+        elif entry.held_elsewhere:
+            named_by_bucket.setdefault(entry.bucket, set()).add(entry.content_id)
     by_display = {folder.display: folder for folder in existing}
 
     found: list[Collision] = []
@@ -399,7 +572,11 @@ def find_collisions(
         folder = by_display.get(declared.bucket(bucket_id).display)
         if folder is None:
             continue
-        strangers = set(folder.content_ids) - planned_by_bucket[bucket_id]
+        strangers = (
+            set(folder.content_ids)
+            - planned_by_bucket[bucket_id]
+            - named_by_bucket.get(bucket_id, set())
+        )
         if not strangers:
             continue
         found.append(
@@ -530,16 +707,29 @@ def with_verdicts(
         if sub is None:
             updated.append(replace(entry, disposition=Disposition.UNDECLARED))
             continue
+        # AN ANSWERED GENRE IS CHECKED AGAINST THE SAME TREE. A track a person
+        # has just given a bucket to may already sit in that bucket under
+        # another band, and routing it on the strength of the answer alone
+        # would reopen R-731 through the review queue.
+        withheld_by, holds = competing_place(
+            declared,
+            plan.placements,
+            bucket=chosen,
+            sub=sub,
+            content_id=entry.content_id,
+        )
         updated.append(
             replace(
                 entry,
-                disposition=Disposition.ROUTE,
+                disposition=Disposition.WITHHELD if withheld_by else Disposition.ROUTE,
                 bucket=chosen,
                 sub=sub,
                 entry_id=entry_id_for(entry.tree, entry.content_id, chosen, sub),
+                holds=holds,
+                withheld_by=withheld_by,
             )
         )
-    return AdoptionPlan(tree=plan.tree, entries=tuple(updated), collisions=plan.collisions)
+    return replace(plan, entries=tuple(updated))
 
 
 def with_collision_verdicts(
@@ -584,12 +774,12 @@ def with_collision_verdicts(
     if not withheld:
         return plan
     updated = tuple(
-        replace(entry, disposition=Disposition.WITHHELD)
+        replace(entry, disposition=Disposition.WITHHELD, withheld_by=WITHHELD_BY_VERDICT)
         if entry.applicable and entry.bucket in withheld
         else entry
         for entry in plan.entries
     )
-    return AdoptionPlan(tree=plan.tree, entries=updated, collisions=plan.collisions)
+    return replace(plan, entries=updated)
 
 
 def to_json(plan: AdoptionPlan) -> dict[str, Any]:
@@ -605,6 +795,25 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
         "digest": plan.digest(),
         "counts": plan.counts(),
         "energy": plan.energy_readings(),
+        "placements": plan.placements.state,
+        "withheld_by_placement": plan.withheld_by_placement(),
+        # EVERY ONE OF THEM, for the reason ``held_elsewhere`` gives. Each row
+        # is what a person needs to decide which reading is right: the track,
+        # where it sits, where the plan would have put it, and what the file
+        # reads.
+        "held_elsewhere": [
+            {
+                "content_id": entry.content_id,
+                "location": entry.recorded,
+                "bucket": entry.bucket,
+                "kind": entry.withheld_by,
+                "holds": list(entry.holds),
+                "planned": entry.sub,
+                "energy": entry.energy,
+                "energy_unreadable": entry.energy_unreadable,
+            }
+            for entry in plan.held_elsewhere()
+        ],
         "entries": [
             {
                 "id": entry.entry_id,
@@ -617,6 +826,8 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
                 "sub": entry.sub,
                 "energy": entry.energy,
                 "energy_unreadable": entry.energy_unreadable,
+                "withheld_by": entry.withheld_by,
+                "holds": list(entry.holds),
             }
             for entry in plan.entries
         ],
@@ -638,11 +849,17 @@ __all__ = [
     "ENTRY_ID_PREFIX",
     "KIND_COLLISION",
     "KIND_GENRE",
+    "PLACEMENTS_READ",
+    "PLACEMENTS_UNREAD",
+    "UNREAD",
+    "WITHHELD_BY_VERDICT",
     "Collision",
     "ExistingFolder",
     "AdoptionPlan",
+    "Placements",
     "PlanEntry",
     "bucket_options",
+    "competing_place",
     "build_adoption_plan",
     "covers",
     "entry_id_for",

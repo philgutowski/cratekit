@@ -1109,3 +1109,284 @@ def _tombstone_row(cfg: config.Config, content_id: str) -> None:
     finally:
         conn.close()
     collection.reset_cache()
+
+
+# ---------------------------------------------------------------------------
+# R-731: a track that already holds a competing place is withheld, not doubled
+# ---------------------------------------------------------------------------
+
+
+def _energy_bucket() -> taxonomy.Bucket:
+    return next(
+        bucket
+        for bucket in DECLARED.buckets
+        if bucket.sub_by_source is None
+        and bucket.energy.enabled
+        and adopt_scan.classify_genre(DECLARED, bucket.display)[1] == bucket.id
+    )
+
+
+def _style_bucket() -> taxonomy.Bucket:
+    return next(
+        bucket
+        for bucket in DECLARED.buckets
+        if not bucket.energy.enabled and len(bucket.subs) > 1
+    )
+
+
+def _band(level: int) -> str:
+    return next(band.id for band in DECLARED.energy.bands if level <= band.max)
+
+
+#: One placed library, as data. Each row is a track, the energy its file
+#: carries, the sub it already sits in, and what an approved apply must do.
+#: ``held`` is a sub identifier, a sub class identifier, or None for nowhere.
+_PLACED_ENERGY = (
+    # content id, energy tag, held, the sub the plan names
+    ("p-med-reads-high", "8", "band:5", "band:8"),
+    ("p-nowhere", "8", None, "band:8"),
+    ("p-vox-only", "5", "class:with_vox", "band:5"),
+    ("p-candy-only", "2", "class:candy", "band:2"),
+    ("p-sink-now-reads", "5", "sink", "band:5"),
+    ("p-band-no-reading", None, "band:9", "sink"),
+    ("p-same", "5", "band:5", "band:5"),
+)
+
+#: What each of those must come to. The three the plan adds, the four it
+#: withholds counting the style one below, and the one already where it goes.
+_ADDED = {"p-nowhere", "p-vox-only", "p-candy-only"}
+_WITHHELD_BAND = {"p-med-reads-high", "p-sink-now-reads", "p-band-no-reading"}
+_WITHHELD_STYLE = {"p-style"}
+
+
+def _sub_id(spec: str) -> str:
+    kind, _, value = spec.partition(":")
+    if kind == "band":
+        return _band(int(value))
+    if kind == "sink":
+        return DECLARED.energy.no_energy_sub.id
+    return value
+
+
+@pytest.fixture(scope="module")
+def silence(tmp_path_factory) -> Path:
+    """One real FLAC, encoded once and copied per track, because ffmpeg is slow."""
+    from tests._containers import synth_container
+
+    return synth_container(tmp_path_factory.mktemp("synth"), ".flac")
+
+
+@pytest.fixture
+def placed(machine, silence):
+    """A cut over library whose tree already files tracks, some of them elsewhere.
+
+    REAL CONTAINERS WITH REAL TAGS, because the defect is a disagreement
+    between a file's energy tag and the sub its track sits in, and the fixture
+    library's sixty four zero bytes carry no tag to disagree with.
+
+    THE TREE IS SEEDED THROUGH THE GUARDED WRITER'S OWN FIND OR CREATE, under
+    the display names the taxonomy declares, which is what a cutover adopts.
+    """
+    import shutil
+
+    from cratekit.core import tags
+    from cratekit.write.routing_pass import destination
+
+    energy, style = _energy_bucket(), _style_bucket()
+    first, second = style.subs[0], style.subs[1]
+    style_genre = next(
+        source for source, sub in style.sub_by_source.map.items() if sub == second.id
+    )
+    tracks = [
+        adopt_fixtures.Track(content_id, f"{content_id}.flac", energy.display)
+        for content_id, _tag, _held, _planned in _PLACED_ENERGY
+    ]
+    tracks.append(adopt_fixtures.Track("p-style", "p-style.flac", style_genre))
+    adopt_fixtures.build(machine, tuple(tracks))
+    collection.reset_cache()
+
+    music = Path(machine.library.root) / "Music"
+    readings = {content_id: tag for content_id, tag, _held, _planned in _PLACED_ENERGY}
+    readings["p-style"] = "8"
+    for content_id, tag in readings.items():
+        path = music / f"{content_id}.flac"
+        shutil.copyfile(silence, path)
+        if tag is not None:
+            assert tags.write_tags(path, {"energylevel": tag}) is True
+
+    seeded = [
+        (energy.id, _sub_id(held), content_id)
+        for content_id, _tag, held, _planned in _PLACED_ENERGY
+        if held is not None
+    ]
+    seeded.append((style.id, first.id, "p-style"))
+
+    handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
+    try:
+        root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
+        for bucket_id, sub_id, content_id in seeded:
+            folder_display, sub_display = destination(DECLARED, bucket_id, sub_id)
+            folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
+            playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
+            rb_writer.add_memberships(handle, playlist, [content_id])
+        handle.session.commit()
+        root_id = str(root.ID)
+    finally:
+        rb_writer.close_db(handle)
+    tree_registry.record_cutover(
+        machine,
+        DECLARED.tree.id,
+        root_id=root_id,
+        on=date(2026, 9, 27),
+        source=tree_registry.DerivationSource.TAXONOMY,
+    )
+    return machine
+
+
+def _filed(cfg: config.Config) -> dict[str, set[tuple[str, str]]]:
+    """Every track's places in the tree, as folder and playlist names, read back."""
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
+    try:
+        names = {str(row.ID): (str(row.Name), str(row.ParentID)) for row in handle.get_playlist()}
+        found: dict[str, set[tuple[str, str]]] = {}
+        for playlist_id, (name, parent) in names.items():
+            for entry in handle.get_playlist_songs(PlaylistID=playlist_id):
+                found.setdefault(str(entry.ContentID), set()).add(
+                    (names.get(parent, ("", ""))[0], name)
+                )
+        return found
+    finally:
+        rb_writer.close_db(handle)
+
+
+def _shown(verb: list[str]) -> dict:
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    return refused["cause"]["detail"]["shown"]
+
+
+def test_the_plan_reads_the_tree_the_census_database_holds(placed):
+    plan = apply_cli.current_plan(placed, DECLARED)
+    assert plan.placements.read is True
+    withheld = {entry.content_id: entry for entry in plan.held_elsewhere()}
+    assert set(withheld) == _WITHHELD_BAND | _WITHHELD_STYLE
+    assert {entry.content_id for entry in plan.applicable()} == _ADDED | {"p-same"}
+    for content_id, _tag, held, planned in _PLACED_ENERGY:
+        if content_id in withheld:
+            assert withheld[content_id].holds == (_sub_id(held),), content_id
+            assert withheld[content_id].sub == _sub_id(planned), content_id
+
+
+def test_an_uncut_library_says_its_tree_was_not_read(machine):
+    plan = apply_cli.current_plan(machine, DECLARED)
+    assert plan.placements.read is False
+    assert _shown(["adopt", "apply"])["placements"] == "unread"
+
+
+def test_the_gate_counts_the_withheld_by_kind_and_lists_every_one(placed):
+    shown = _shown(["adopt", "apply"])
+
+    assert shown["placements"] == "read"
+    assert shown["withheld_by_placement"] == {"total": 4, "band": 3, "style": 1}
+    assert {item["content_id"] for item in shown["items"]} == _ADDED | {"p-same"}
+    listed = {row["content_id"]: row for row in shown["held_elsewhere"]}
+    assert set(listed) == _WITHHELD_BAND | _WITHHELD_STYLE
+
+    row = listed["p-med-reads-high"]
+    assert (row["bucket"], row["kind"]) == (_energy_bucket().id, "band")
+    assert (row["holds"], row["planned"], row["energy"]) == ([_band(5)], _band(8), 8)
+    assert row["location"].endswith("p-med-reads-high.flac")
+    assert listed["p-band-no-reading"]["energy"] is None
+    assert listed["p-style"]["kind"] == "style"
+
+
+def test_a_person_reading_the_gate_is_shown_the_whole_list(placed):
+    from tests.cli_drive import drive_human
+
+    _code, text = drive_human(["adopt", "apply"])
+    for content_id in _WITHHELD_BAND | _WITHHELD_STYLE:
+        assert f"content_id={content_id}" in text, content_id
+    assert "withheld_by_placement:" in text
+
+
+def test_an_approved_apply_leaves_a_withheld_track_where_it_sat(placed):
+    before = _filed(placed)
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    after = _filed(placed)
+
+    for content_id in _WITHHELD_BAND | _WITHHELD_STYLE:
+        assert after[content_id] == before[content_id], content_id
+        assert len(after[content_id]) == 1, content_id
+    assert after["p-same"] == before["p-same"]
+    for content_id, _tag, _held, planned in _PLACED_ENERGY:
+        if content_id in _ADDED:
+            gained = after[content_id] - before.get(content_id, set())
+            assert gained == {destination_names(_energy_bucket().id, _sub_id(planned))}
+    # NOTHING IS REMOVED BY THIS UNIT, from any playlist.
+    for content_id, places in before.items():
+        assert places <= after[content_id], content_id
+
+    report = artifacts.committed(placed, job_id)[-1]
+    assert (report["added"], report["already_present"]) == (len(_ADDED), 1)
+    plan = apply_cli.current_plan(placed, DECLARED)
+    assert adopt_apply.read(placed).entry_ids() == {
+        entry.entry_id for entry in plan.entries if entry.content_id in _ADDED | {"p-same"}
+    }
+
+
+def destination_names(bucket_id: str, sub_id: str) -> tuple[str, str]:
+    from cratekit.write.routing_pass import destination
+
+    return destination(DECLARED, bucket_id, sub_id)
+
+
+def test_a_second_approved_apply_adds_nothing_and_withholds_the_same(placed):
+    first_shown = _shown(["adopt", "apply"])
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    filed = _filed(placed)
+
+    collection.reset_cache()
+    second_shown = _shown(["adopt", "apply"])
+    assert second_shown["held_elsewhere"] == first_shown["held_elsewhere"]
+    assert second_shown["withheld_by_placement"] == first_shown["withheld_by_placement"]
+    assert second_shown["digest"] == first_shown["digest"]
+
+    _run_id, second_job = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, resumed = drive(_resume(second_job))
+    assert code == int(ExitCode.OK), resumed
+    report = artifacts.committed(placed, second_job)[-1]
+    assert (report["added"], report["already_present"]) == (0, len(_ADDED) + 1)
+    assert _filed(placed) == filed
+
+
+def test_a_track_moved_after_the_approval_is_a_stale_decision(placed):
+    """The digest covers what a withheld track holds, so a plan approved over
+    one tree is not applied over another."""
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+
+    handle = rb_writer.open_db(rb_writer.live_db_path(placed), unlock=False, cfg=placed)
+    try:
+        root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
+        folder_display, sub_display = destination_names(_energy_bucket().id, _band(1))
+        folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
+        playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
+        rb_writer.add_memberships(handle, playlist, ["p-med-reads-high"])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    before = _filed(placed)
+
+    # THE WORKER DIRECTLY, because the resume asks the gate first and the
+    # gate's own digest check would answer before the worker's could.
+    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        item = jobs.items(store, job_id)[0]
+    with pytest.raises(Exception) as raised:
+        handler(job, item, jobs.frozen_config(job))
+    assert raised.value.cause.reason == "decision-stale"
+    assert _filed(placed) == before
