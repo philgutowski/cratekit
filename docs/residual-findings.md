@@ -29566,6 +29566,48 @@ place.
 bar means, a filing the library did not have and cannot shed through any
 shipped verb, and #212 cannot run live until it closes.
 
+**Closed 2026-09-27 on `relay/221`, issue #221, fixed in the code, awaiting
+the attended check.** `adopt/placements.py` reads the tree from the database
+the census read, the configured path opened with read intent, walking down
+from the adopted root by identifier. It answers `unread` only where
+`tree_registry.anchored_root` refuses, the function the membership writer
+asks, so a plan that could not see the tree is a plan whose apply lands
+nothing. `routing.competing_subs` says what competes from taxonomy
+identifiers: the bands and the no reading sub in an energy bucket, the style
+subs where a bucket routes by source or has no energy dimension, never a sub
+class. `adopt/plan.py` withholds an entry whose track holds a different
+competing sub in its bucket, keeps its bucket and sub on it, and names what it
+holds. The gate's facts carry `placements`, `withheld_by_placement` with a
+total and a count per kind, and `held_elsewhere`, every row with the track,
+the subs held, the sub planned and the reading. The digest covers the rows as
+shown and whether the tree was read. Nothing is moved or removed.
+
+**The decision the card asked for: the same disposition with a reason.** A
+withheld entry is `Disposition.WITHHELD` whatever withheld it, and
+`PlanEntry.withheld_by` says `verdict`, `band` or `style`. A disposition
+answers what an apply will do and both answers are nothing. The enumeration
+is also the key set of `adopt scan`'s summary, where a member only the plan
+layer sets would read zero for ever. `counts()["withheld"]` is therefore every
+withheld entry, and the count the tree caused is `withheld_by_placement`, a
+block of its own.
+
+**One thing the card did not name, found by the review and driven red.** A
+track sitting in the planned sub through a playlist renamed in rekordbox read
+as already placed, and the writer finds a playlist by its declared name, so it
+would have made a second playlist and filed the track in both. Such an entry
+is withheld too, its row showing the same sub held and planned with
+`holds_under_another_name` as the reason. It counts under its bucket's kind.
+
+**The 37 are untouched and unlisted.** A track already in two bands where one
+is the sub the plan names is `already present`, as the card requires, so it
+is not on the review list. R-734.
+
+Measured on fixtures only: 36 tests in `tests/test_adopt_placements.py` and 8
+in `tests/test_adopt_workers.py`, the second set on real containers with real
+tags over a disposable database. The withheld count against 569 and 15 and
+the added count against 107 and 9 are the next attended sitting's to read, on
+a disposable copy with library state redirected, before #212 runs live.
+
 ---
 
 ## R-732. A pin mismatch names a remedy no verb performs
@@ -29606,3 +29648,127 @@ with the mint as its remedy.
 
 **Not on the board bar.** Nothing is written and nothing false is said.
 
+---
+
+## R-734. A track already in two competing subs is not shown on the adoption gate when one of them is the sub the plan names
+
+**Found:** on `relay/221`, 2026-09-27, by the built in review of R-731's fix.
+Read from the source and pinned by
+`test_a_track_in_two_bands_is_not_withheld_from_the_one_the_plan_names`. The
+card for R-731 puts these out of scope and requires a track already in the
+planned sub to read `already present`, so the fix leaves them applicable and
+off the review list.
+
+**Measured cost.** The live database holds 37 such tracks, counted at sitting
+14. An apply adds nothing for them. A person reading the gate to settle which
+reading is right sees the 569 the plan withheld and not the 37 the library
+already double files.
+
+**Closes when:** the plan document lists every track holding more than one
+competing sub in a bucket, under a name of its own, whatever the plan does
+with it.
+
+**Not on the board bar.** Nothing is written and nothing false is said. The
+list is short of a population the card excluded.
+
+---
+
+## R-735. The routing pass and the rebuild reach the add only membership writer with no competing sub check
+
+**Found:** on `relay/221`, 2026-09-27, by the built in review. Read from the
+source, NOT DRIVEN. R-731's guard is in the adoption plan. `routing_pass` and
+`rebuild` call `write_tree_membership` as well, and that function adds and
+never asks what the track holds.
+
+**Measured cost.** Unmeasured. No producer was driven, so whether either
+caller files a track under a second band in practice is not known. The
+rebuild compares the tree with its declaration and reports what is
+unexpected, which may already surface it.
+
+**Closes when:** each caller is driven with a track whose reading moved band
+since it was filed, and either the double filing is shown not to happen or
+the check moves to a place every caller shares.
+
+**Not on the board bar as filed,** since the reachability is unmeasured. It
+meets clause (a) the moment a producer is driven.
+
+---
+
+## R-736. The adoption plan joins a census cached for the process to a tree read fresh
+
+**Found:** on `relay/221`, 2026-09-27, by the built in review. Read from the
+source, not driven. `collection.read_collection` caches per process and
+`placements.read_placements` does not, on purpose, since a worker that writes
+memberships and runs again must not see the tree as it stood before.
+
+**Measured cost.** Unmeasured. One process running the apply worker twice
+plans the second time from the first run's rows and the current tree. The
+worker's digest check refuses a plan that moved since approval, and the
+suite's idempotence test clears the cache by hand between runs.
+
+**Closes when:** the worker clears the collection cache before it rebuilds
+the plan, or a test shows the mixed view cannot change what is written.
+
+**Not on the board bar.** Maintainer facing until a producer is driven.
+
+---
+
+## R-737. No caller under `src` folds a genre verdict or a collision verdict into the adoption plan
+
+**Found:** on `relay/221`, 2026-09-27, by the built in review, while checking
+what reaches `with_verdicts`. `git grep` over `src`: `apply_cli.current_plan`
+calls `build_adoption_plan` and nothing calls `with_verdicts` or
+`with_collision_verdicts`, and `current_plan` passes no `existing` folders, so
+no collision is ever found.
+
+**Measured cost.** Read, not driven. A genre a person answered in the review
+queue does not make its track applicable in `adopt apply`, and a collision
+is never raised. R-731's check inside `with_verdicts` is held by this
+module's own tests and by nothing a verb drives.
+
+**Closes when:** `current_plan` reads the adoption queue's verdicts and the
+tree's existing folders and folds both, with a driven test per verdict kind.
+
+**Not on the board bar as filed.** It may meet clause (c) once driven: a
+track needing a genre has no shipped way into the tree through adoption.
+
+---
+
+## R-738. Two folders of one declared name under a tree's root are read as one place and written as the first
+
+**Found:** on `relay/221`, 2026-09-27, by the built in review. Read from the
+source, not driven. `placements_from` counts a track in any node carrying a
+destination's declared names as holding that sub. `ensure_folder` writes into
+the first folder of that name under the anchor. A track in the second folder
+reads `already present` to the plan and is added to the first by the writer.
+
+**Measured cost.** Unmeasured. `convergence.assert_injective` and the
+rebuild's `assert_addressable` refuse this shape on their own paths, and
+whether the adoption write meets either was not driven.
+
+**Closes when:** the reader hands the plan which node each held sub sits in
+and the plan withholds on a node the writer would not choose, or the write is
+shown to refuse the tree first.
+
+**Not on the board bar.** Unmeasured, and the shape is a tree already
+damaged.
+
+---
+
+## R-739. An approved adoption takes the census and reads the tree three times
+
+**Found:** on `relay/221`, 2026-09-27, by the built in review.
+`apply_adoption`, `_resume` and `handle` each call `current_plan`. The census
+stats and opens every file, and since R-731 each call also reads the tree,
+one query per playlist under every bucket folder.
+
+**Measured cost.** The tree read was not timed on a real library. The plan
+build over 7,773 synthetic entries measured 33 ms unread and 42 ms read, five
+runs each, so the competing sub lookup the review also raised costs 9 ms and
+was left as it is. Sitting 14's whole approved apply took 4 minutes 24 seconds
+before this unit.
+
+**Closes when:** the three are timed on a copy of a real library and the plan
+is either carried between them or shown not to need it.
+
+**Not on the board bar.** Maintainer facing.

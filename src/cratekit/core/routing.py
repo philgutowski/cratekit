@@ -341,6 +341,59 @@ def energy_sub(
     return Sub(last.id, bucket.energy.band_display.get(last.id, last.display))
 
 
+class Competing(str, Enum):
+    """What kind of place a bucket's exclusive subs are.
+
+    A track belongs in ONE of a bucket's competing subs. Which subs those are
+    is the taxonomy's to say, and the kind is what a report splits its count by.
+    """
+
+    #: The energy bands and the no reading sub beside them.
+    BAND = "band"
+
+    #: The style subs of a bucket that does not split by energy.
+    STYLE = "style"
+
+
+def competing_subs(taxonomy: Taxonomy, bucket_id: str) -> tuple[Competing, frozenset[str]]:
+    """The subs of one bucket a track may hold only one of, and their kind.
+
+    THE TIER ORDER IS :func:`energy_sub`'S OWN, because this answers the
+    question that function's answer raises: given the sub a track was routed
+    to, which other subs would be a second place for it. A bucket that routes
+    by source genre never consults energy, so its style subs compete. A bucket
+    with no energy dimension holds its style subs and its single sub. Every
+    other bucket splits by energy, so its bands compete, and the no reading
+    sub competes with them, since a track filed under a band has a reading as
+    far as the tree is concerned.
+
+    A SUB CLASS IS NEVER IN THE SET. A manual or derived sub sits beside a
+    track's band rather than instead of it, which is what additive means, so
+    it is removed by identifier even where a bucket happens to declare a sub
+    of the same identifier.
+
+    Identifiers, never display names (R19, D5). A bucket that labels its bands
+    differently still competes on the band's identifier.
+    """
+    bucket = taxonomy.bucket(bucket_id)
+    classes = {entry.id for entry in taxonomy.sub_classes}
+
+    if (
+        bucket.sub_by_source is not None
+        or not taxonomy.energy.enabled
+        or not bucket.energy.enabled
+    ):
+        found = {sub.id for sub in bucket.subs}
+        if bucket.single_sub is not None:
+            found.add(bucket.single_sub.id)
+        return Competing.STYLE, frozenset(found - classes)
+
+    found = {band.id for band in taxonomy.energy.bands}
+    if taxonomy.energy.no_energy_sub is not None:
+        found.add(taxonomy.energy.no_energy_sub.id)
+    return Competing.BAND, frozenset(found - classes)
+
+
 def energy_rating(taxonomy: Taxonomy, level: int | None) -> int | None:
     """Map an energy level to a star-rating integer, or None with no reading.
 

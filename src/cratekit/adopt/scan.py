@@ -141,12 +141,18 @@ class Disposition(StrEnum):
     #: the category that says why, so it is reported rather than omitted.
     EXCLUDED = "excluded"
 
-    #: The destination folder already exists holding tracks this plan does not
-    #: name, and a person answered "leave that folder alone". Its own member
-    #: rather than a silent removal from the applicable set: the track was
-    #: routable, the genre was right, and the reason it is not being placed is a
-    #: decision somebody made rather than anything about the track. Set by the
-    #: plan layer, which is where collisions and their verdicts live.
+    #: The track was routable, the genre was right, and the plan will not place
+    #: it. Two reasons, and the plan entry names which. The destination folder
+    #: already exists holding tracks this plan does not name and a person
+    #: answered "leave that folder alone", or the track already holds a
+    #: different competing sub in the same bucket, a second energy band or a
+    #: second style, and the writer can only add (R-731). Its own member rather
+    #: than a silent removal from the applicable set. ONE MEMBER WITH A REASON
+    #: rather than two members, because a disposition answers what an apply
+    #: will do and both answers are "nothing", and because this enumeration is
+    #: also the census's summary, where a member only the plan layer can set
+    #: is a key that reads zero for ever. Set by the plan layer, which is where
+    #: collisions, verdicts and placements live.
     WITHHELD = "withheld"
 
     #: The genre resolved to a bucket and the taxonomy declares no sub-playlist

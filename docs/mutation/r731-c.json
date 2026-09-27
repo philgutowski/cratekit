@@ -1,0 +1,103 @@
+{
+  "name": "r731-c",
+  "pass_kind": "light",
+  "branch": "relay/221",
+  "head": "c185b57",
+  "when": "2026-09-27 21:59 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10522,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "state_guarded": "~/Library/Application Support/cratekit (22959 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/routing.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/routing.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5eb16899df3f9018",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10522,
+    "baseline_collected": 10522,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M24_sub_class_left_in_the_bands",
+      "description": "a sub class identifier is no longer removed from an energy bucket's competing subs",
+      "file": "src/cratekit/core/routing.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4e548acb3d6581b0",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 74,
+      "baseline_collected": 74,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_planned_sub_outside_the_competing_set_is_never_withheld",
+        "tests/test_adopt_placements.py::test_a_sub_class_is_removed_from_the_bands_by_identifier"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return Competing.BAND, frozenset(found - classes)",
+      "new": "    return Competing.BAND, frozenset(found)"
+    },
+    {
+      "id": "M25_planned_sub_outside_the_set",
+      "description": "a planned sub outside the bucket's competing subs is no longer let through unasked",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4ef991b2db53e45d",
+      "subset": [
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 74,
+      "baseline_collected": 74,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_planned_sub_outside_the_competing_set_is_never_withheld"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sub not in competing:\n        return NO_COMPETING_PLACE\n    held",
+      "new": "    held"
+    }
+  ],
+  "dropped": []
+}

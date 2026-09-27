@@ -1049,6 +1049,29 @@ last export, and `formerly`, the paths it moved from.
 *Avoid:* reading it as `crate adopt`. That verb family brings an existing
 LIBRARY under this product and shares nothing with this but the word.
 
+### Competing sub
+Since R-731, one of the subs of a bucket a track may hold only one of. In a
+bucket that splits by energy they are the bands and the no reading sub. In a
+bucket with no energy dimension, or one that routes by source genre, they are
+its style subs. A sub class, manual or derived, is never one: it sits beside
+a track's band and not instead of it. `routing.competing_subs` is the one
+answer, from taxonomy identifiers.
+
+*Avoid:* deciding it from a playlist's name. A bucket may label its bands
+differently and a person may rename a playlist, and neither changes which
+subs compete.
+
+### Held elsewhere
+An adoption plan entry withheld because its track already holds a competing
+sub in the bucket the plan routes it to, or holds the planned sub through a
+renamed playlist the writer cannot see. The entry keeps its bucket and its
+sub, carries what it holds, and is listed on the gate for a person to settle.
+Adoption moves nothing and removes nothing.
+
+*Avoid:* reading it as the provider's Withheld, or as a collision verdict.
+All three leave something out and share nothing else. A plan entry says
+which through `withheld_by`.
+
 ## Review
 
 ### Review item

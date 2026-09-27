@@ -14,7 +14,30 @@ bar, and **R-732** and **R-733**, not on it. #212 waits on R-731.
 `docs/cutover.md` sitting 14 is the record. **Main's highest residual number
 is R-733.**
 
-**Last merged: R-235, issue #220, `relay/220`, 2026-09-27.** A shipped verb
+**Last built: R-731, issue #221, `relay/221`, 2026-09-27, merged by the
+Relay runner after its gate.** An approved adoption adds a track only where
+it holds no competing place. `adopt/placements.py` reads the tree from the
+database the census read and answers `unread` only where `anchored_root`
+refuses. `routing.competing_subs` says what competes: bands and the no
+reading sub, or style subs where a bucket has no energy dimension, never a
+sub class. The plan withholds an entry whose track holds a different
+competing sub in its bucket, or holds the planned one through a renamed
+playlist only, which the writer cannot see. The gate shows `placements`,
+`withheld_by_placement` split by kind, and `held_elsewhere` in full, and the
+digest covers all three. `Disposition.WITHHELD` is reused with a reason on
+the entry. Nothing is moved or removed. The built in review raised ten
+findings: three applied, one out of scope by the card, one measured and left,
+five recorded. **The numbers:** 10,522 collected, 10,521 passed and 1
+skipped, ruff clean, `scan_repo.py` exit 0. **The mutation table was
+MEASURED:** 25 rows in `docs/mutation/r731-a-rows.toml`, `r731-b-rows.toml`
+and `r731-c-rows.toml`, 25 killed, two of them zero until a test on an edited
+template reached them, the author's. Filed **R-734** to **R-739**, none on
+the board bar as filed. **Owed to the next attended sitting, before #212 runs
+live:** sitting 14's copy run again, library state redirected, reading the
+withheld count against 569 and 15 and the added count against 107 and 9.
+**Main's highest residual number is R-739 once this merges.**
+
+**Merged before it: R-235, issue #220, `relay/220`, 2026-09-27.** A shipped verb
 records a cutover. `crate tree cutover <tree> --export <file>` finds the
 tree's root in a disposable copy of the configured database, the one folder
 of the taxonomy's display name directly under the playlist root, refuses
