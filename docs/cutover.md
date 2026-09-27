@@ -378,6 +378,39 @@ approval on a disposable copy with only the config and state directory
 redirected would mark the live library's entries applied. A copy run that
 approves needs the library root redirected too.
 
+## Sitting 14, 2026-09-27
+
+Machine state before: the volume mounted, rekordbox and its agent closed.
+**rekordbox had been updated to 7.2.19.0342 for a security concern**, so the
+sitting opened on a failed `rekordbox.pins`. The pipx install brought from
+`6a45398` to `65532c0`, the R-235 merge, with its extras kept. Backup ages 1
+and 10 days at the start. The acknowledgment was minted by the author from a
+Terminal window at 21:05Z, valid twelve hours. The copy was taken with
+rekordbox closed, its sha256 equal to the live file's, driven through a
+temporary config and state directory **with library state redirected as
+well**, by pointing `library.state_dirname` at a scratch directory on the
+volume rather than moving the library root, since a moved root puts every
+file outside it. Both gates named the scratch registry and the scratch
+database before they were answered.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| The 7.2.19 database, read | yes, on a disposable copy | Opened through `rb_writer.read_only_copy`: the key decrypts under pyrekordbox 0.4.4, schema version 6000, `integrity_check` ok, 17,402 content rows, 9,998 active, 577 playlists, 19,236 memberships, library sync off. | measured |
+| The re-pin | by hand | `pinned_app_version` set to `7.2.19.0342` in the configuration file, `validated_on` left unset. Doctor ok. No verb does this (R-732). | live |
+| `backup run`, job `11b2` | yes | Succeeded, 2 of 2, about 55 minutes. Both ages 0 days. | live |
+| #220, the cutover verb | built by Relay | Landed in 1 hour 1 minute. The first launch halted in 54 seconds on `head_equals_remote`, `main` eight documentation commits ahead of the remote, and ran after a push. | merged |
+| `tree cutover genre_energy`, on the copy | to the gate, approved | One root found, `BY GENRE + ENERGY`, row 3976565623, all four prechecks passed against `Music/9-25-export.xml`, digest `55075882cc692d3e`. Recorded in the scratch registry. The live registry was not created. The answer after approval is `ok` and a run (R-730). | proven on a copy |
+| `adopt scan` then `adopt apply`, on the copy | approved | The plan is sitting 13's to the digit, digest `5eca58df932496a3`, 7,773 routed, energy 9,769 read and 62 absent. The first approval was spent on a missing acknowledgment (R-733). The second ran 4 minutes 24 seconds: **7,073 already present, 700 added**, no playlist created, 577 before and after, Unsorted subs 13 to 58, the plan's 45, every BPM unchanged, `integrity_check` ok. | proven on a copy |
+| What the 700 are | measured | **569 tracks gained a second band sub beside the one they held**, 331 Med to High, 215 Med to Low, 19 High to Med, 4 High to Low. 15 gained a second style sub under `NonElectronic`. 107 had no place in the tree and 9 sat beside `with vox` or `Candy` alone. The live database already holds 37 tracks in two bands of one bucket. | measured, R-731 |
+
+**Stopped before the live step.** The cutover verb works and adoption lands
+membership through the database, which is what #220 owed. Adoption as it
+stands would double file 569 tracks through the one way door, and the gate
+does not show it. Filed R-731, on the board bar, and R-732 and R-733. The
+live database and the live library state were not written: the live file's
+sha256 was the same after the copy run as before it. The scratch state
+directory was removed at the end of the sitting.
+
 ## What blocks a full sync cycle, stated plainly
 
 Corrected at sitting 11. This section once said the three Tidal seams, U62
@@ -391,35 +424,31 @@ rating on an owned row (R-688), so a full sync cycle's routing has to land
 through the database. Sitting 12 found the database path reaches the tree only
 through adoption, and adoption filed by no energy reading (R-722, fixed by
 #219). Adoption's membership write also refuses any tree not cut over, and no
-shipped verb records a cutover (R-235), so #212 waits on #220. Ratings can
+shipped verb recorded a cutover (R-235), closed by #220 on 2026-09-27. #212
+now waits on R-731, since adoption adds a second band sub beside the one a
+track holds. Ratings can
 ride with it now #214 has landed. Line 4 of #178, the full sync cycle, comes
 after #212.
 
 ## Next sitting
 
-**The road from here to the first favourite filed through the database is
-`docs/plans/2026-09-26-favourites-to-rekordbox-end-to-end.md`**, written
-2026-09-26. Its step 0 is new: rekordbox was updated to 7.2.19.0342 that day
-for a security concern, the config still pins 7.2.18.0311, and doctor reads
-every database write frozen until the pin is replaced by hand.
+**The road is `docs/plans/2026-09-26-favourites-to-rekordbox-end-to-end.md`.**
+Its steps 0 to 2 are done: the re-pin, #220, and a backup. **#212 now waits
+on R-731**, the card that makes adoption withhold a track already holding a
+competing sub. When it lands, repeat sitting 14's copy run and read the
+withheld count against 569 and 15, and the added count against 107 and 9.
+Only then the live step: a backup if the library changed, the acknowledgment
+minted before any gate is answered, `tree cutover genre_energy` approved,
+`adopt apply` approved, `route unplaced` for the 61 rows, `route pending` for
+the open sessions, then rekordbox opened and the tree read.
 
-**#212 waits on two things.** First, #220. Sitting 13's open question was
-already answered: R-235, found 2026-09-02, records that an approved `adopt
-apply` on a tree not cut over refuses `tree-unconverged` on its one item and
-ends failed, and
-`tests/test_adopt_workers.py::test_an_uncut_library_marks_nothing_and_the_job_stays_resumable`
-drives it. U20 landed `tree_registry.flip` with no verb over it, so #220 is
-that verb. Its own verification is the copy run sitting 13 planned, cutover
-then approved adoption, with the library root redirected as well as the config
-and state, because `tree_registry.json` is library state like the adoption
-ledger. Second, a fresh backup: job `7d21` was resumed on 2026-09-26 as run
-`20a7`, so the backup taken just before the live step sends only what changed
-since. Then adopt live through the session gates, `route unplaced` for the 61
-rows and `route pending` for the two open sessions. Then line 4, the full sync
-cycle.
+**The author owes one decision, and it does not block the card.** On the 569,
+which is right, the file's energy tag or the sub the track sits in. The card
+withholds them either way and lists them, so the answer decides what happens
+to the list, not whether adoption can run.
 
-Also owed: the 18 downloads from sitting 11 tagged, named and landed; a second
-`sync labels` for the 20 labels the rate limit stopped, **run with no download
-beside it** (R-705), after which the 43 addressed rows are read again and #213
-closes; the 1,799 label rows reviewed for line 5; the vocal calibration and
-filing pass for line 7, after #212, now its scores are in.
+Also owed, unchanged: the 18 downloads from sitting 11 tagged, named and
+landed; a second `sync labels` for the 20 labels the rate limit stopped, run
+with no download beside it, after which #213 closes; the 1,799 label rows
+reviewed for line 5; the vocal calibration and filing pass for line 7, after
+#212.

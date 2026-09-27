@@ -47,6 +47,8 @@ session driving the verbs, recorded in `docs/cutover.md`.
 
 ### 0. Re-pin rekordbox to 7.2.19.0342. Attended, about 30 minutes.
 
+**DONE, sitting 14, 2026-09-27.**
+
 rekordbox was updated on 2026-09-26 for a security concern. `crate doctor`
 reads `installed rekordbox 7.2.19.0342 does not match the recorded pin
 7.2.18.0311, so database writes are frozen by design`. Every step below that
@@ -82,6 +84,8 @@ Phillip's yes.
 
 ### 1. #220, the cutover verb. Session, one unit, 3 to 5 hours.
 
+**DONE 2026-09-27, landed by Relay in 1 hour 1 minute.**
+
 Ready now with no dependencies. The brief on the issue is complete: a verb
 over `tree_registry.flip`, plan then approve, the root found in the database
 by display name and never created, the export named on the command line, a
@@ -92,11 +96,20 @@ redirects the library root, not only config and state.
 
 ### 2. A fresh database backup. Attended, about 1 hour.
 
+**DONE 2026-09-27, job `11b2`, both ages 0 days.**
+
 Doctor reads `backup.age.files` 0 days and `backup.age.database` 9 days: the
 resumed job sent the file mirror and the database item failed. Run
 `crate backup run` with rekordbox closed. The database snapshot is the small
 half, so this is minutes of copy plus the rclone listing. #212's one way door
 does not open on a nine day old snapshot.
+
+### 2a. R-731, adoption withholds a competing placement. Session, one unit.
+
+**Added at sitting 14.** The copy run landed 700 memberships, and 569 of them
+put a track in a second band sub beside the one it held. #212 waits on this
+card. `adopt apply` on the copy took 4 minutes 24 seconds, which answers the
+unknown step 3 names below.
 
 ### 3. #212, the live cutover and adoption. Attended, 3 to 4 hours.
 
