@@ -204,3 +204,13 @@ def test_an_off_wheel_key_tag_under_a_headed_title_lands_the_head(
     )
     assert name == "08A - 124 - Body"
     assert b'Tonality="Am"' in body
+
+
+def test_a_filename_head_wins_over_a_disagreeing_key_tag(cfg, silence, tmp_path):
+    """With no head in the title, the filename's head is the head the file
+    carries, so a key tag that disagrees with it must not drop the whole head."""
+    name, body, _ = _land(
+        cfg, silence, tmp_path, "05B - 98 - Probe - Body.flac", title="Body", initialkey="8A"
+    )
+    assert name == "05B - 98 - Body"
+    assert b'Tonality="8A"' in body
