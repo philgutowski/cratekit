@@ -110,7 +110,16 @@ def assert_not_staging(path: Path, cfg: config.Config) -> None:
 
 
 def read_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
-    """COLLECTION metadata from a file already on disk. No network."""
+    """COLLECTION metadata from a file already on disk. No network.
+
+    THE NAME CARRIES THE HEAD THE FILE CARRIES (R-740). The head is read from
+    the title tag, and from the filename stem when the title has none, as text
+    through the head parser and never from a tempo tag, since none is written.
+    Its key wins over the key tag so the Name equals the title tag rekordbox
+    would read on Reload Tags; the key tag only fills a head that has none. A
+    file headed nowhere lands with the bare title, as it always did, because
+    nothing here may invent a tempo. ``tonality`` stays the key tag's value.
+    """
     assert_not_staging(path, cfg)
     stat = path.stat()
     artist = tags.read_tag(path, "artist") or ""
@@ -119,13 +128,18 @@ def read_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
     key = tags.read_tag(path, "initialkey")
     energy = tags.read_energy_from_file(path)
     template = _template_for(cfg)
-    body = naming.strip_head(title, template=template)
+    head = (
+        naming.parse_head(title, template=template)
+        or naming.parse_head(path.stem, template=template)
+        or {}
+    )
+    marker = cfg.naming.lossy_marker
     spec = NameSpec(
-        stem=body,
+        stem=path.stem,
         suffix=path.suffix,
-        key=key,
-        lossy=lossy,
-        title=body,
+        key=head.get("key") or key,
+        lossy=lossy or marker in title or marker in path.stem,
+        title=title,
     )
     rendered = naming.render_all(spec, template=template)
     return {

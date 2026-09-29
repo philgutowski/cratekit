@@ -732,7 +732,7 @@ def budget_head(spec: NameSpec, *, template: NameTemplate) -> str:
 
 
 def normalize_spec(spec: NameSpec, *, template: NameTemplate) -> NameSpec:
-    """Strip any head already present on the stem and title.
+    """Strip any head already present on the stem and title, keeping what it said.
 
     Rendering is then idempotent, which fixes a real decoupling window in the
     source: when the tag write succeeds and the rename then fails, the file is
@@ -740,12 +740,31 @@ def normalize_spec(spec: NameSpec, *, template: NameTemplate) -> NameSpec:
     skip it, because the filename has no head, and the title gets a SECOND head
     prepended. Normalizing the inputs makes the second pass converge instead of
     compounding.
+
+    A STRIPPED HEAD FILLS THE FIELDS THE SPEC LEFT EMPTY (R-740). The head is
+    all or nothing by default, and the tempo has no tag field at all, so a spec
+    built from tags carries a key and no tempo. Stripping the head and rendering
+    from that spec wrote the bare title, and every landed track reached rekordbox
+    without the head its own file carried. The title's head is read first and the
+    stem's second, a value the spec supplies always wins, and a marker in the
+    stripped head marks the spec, so R21 cannot be undone by a caller that forgot
+    to pass the flag. The head is text in a name here, never a tempo tag.
     """
-    stem = strip_head(spec.stem, template=template)
-    title = strip_head(spec.title, template=template) if spec.title else spec.title
+    stem_head, stem = split_head(spec.stem, template=template)
+    title_head, title = (
+        split_head(spec.title, template=template) if spec.title else ("", spec.title)
+    )
     if stem == spec.stem and title == spec.title:
         return spec
-    return replace(spec, stem=stem, title=title)
+    filled: dict[str, object] = {}
+    for head in (title_head, stem_head):
+        for name, value in (parse_head(head, template=template) or {}).items():
+            if getattr(spec, name) is None and name not in filled:
+                filled[name] = int(value) if HEAD_FIELDS[name] is _BPM_FIELD else value
+        for rule in template.markers:
+            if rule.literal in head and not getattr(spec, rule.field):
+                filled[rule.field] = True
+    return replace(spec, stem=stem, title=title, **filled)
 
 
 def render_all(spec: NameSpec, *, template: NameTemplate) -> RenderedName:
