@@ -5818,7 +5818,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # plan shows beside each result: no-open-run, no-pending-intake-xml,
     # fresh-export and verified-snapshot. One is a WARNING code on a revert
     # that found nothing to revert: revert-nothing-recorded.
-    assert (len(literals), len(literals - set(causes))) == (518, 332), (
+    # Re-pinned on the residual finding "A Fresh Export can only come from
+    # rekordbox, so every landing and every cutover waits on a person at its
+    # menus", 2026-09-29: 518 to 529 distinct, non-keys 332 to 343. ELEVEN
+    # joined and nothing left, each differenced with `git grep` on `main`, and
+    # none is a key, which is why both halves move by eleven. The verb's
+    # refusals reuse output-exists, library-export-unusable and
+    # path-permission-denied. Seven are WARNING codes `cli/export_collection.py`
+    # gives for what the database held and the file does not:
+    # export-smart-playlist-omitted, export-node-kind-unreadable,
+    # export-node-unreachable, export-member-not-in-collection,
+    # export-rating-unreadable, export-text-normalised and
+    # export-location-not-a-file. Four are words in the line that says who
+    # wrote the file, spelled in `write/collection_export.py`: cratekit-export,
+    # which opens it, and the names database-schema, application-installed
+    # and application-pinned.
+    assert (len(literals), len(literals - set(causes))) == (529, 343), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
