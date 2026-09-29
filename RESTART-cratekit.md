@@ -4,8 +4,17 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last built: R-745, issue #223, `relay/223`, 2026-09-29, left for the
-Relay runner to gate and merge.** `crate export collection FILE` writes a
+**Sitting 17, attended, 2026-09-29, no code.** The session drives rekordbox
+through desktop control, by the author's rule change in `CLAUDE.md`. **A8's
+verdict is clean**: two rows inserted through the database were accepted by
+rekordbox 7.2.19, analysed on request and stable over three launches, so
+#224 is buildable. #223 was refused at its gate on a timing test under load
+and landed by hand after two green batteries, 10,621 passed and 1 skipped.
+Filed **R-757**, **R-758** and **R-759**, on the board bar, and **R-760**,
+not on it. **Main's highest residual number is R-760.**
+
+**Last built: R-745, issue #223, `relay/223`, 2026-09-29, landed by hand, see
+sitting 17.** `crate export collection FILE` writes a
 collection export from a disposable copy of the configured database, with
 rekordbox closed, so the verbs that take `--export` no longer wait on
 rekordbox's menu. It never replaces a file and never opens the live

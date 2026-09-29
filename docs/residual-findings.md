@@ -30244,3 +30244,88 @@ minutes cannot finish on this machine while that writer runs.
 another process, or the periodic writer is named and paused for a run.
 
 **Not on the board bar.** Maintainer facing.
+
+---
+
+## R-757. A backup compares the whole library against the remote however little changed
+
+**Found:** sittings 1 and 16. The mirror is `rclone sync` with 16 checkers
+and 8 transfers. Sitting 1: both sides listed in 51 minutes before 52 files
+were copied. Sitting 16, 2026-09-29: 176 files and 1.44 GB had changed since
+the last backup, and the job took about 55 minutes.
+
+**Measured cost.** Most of an hour per backup. An attended session may open
+rekordbox only with both backup ages under one day, so every sitting waits.
+Where the time goes, the local walk, the remote listing or the comparison,
+has not been measured.
+
+**Closes when:** a backup of a library where under one percent of the files
+changed completes its comparison in under five minutes on the author's
+library, measured, with no changed file skipped, a full comparison still
+available, and doctor saying how long ago one last ran.
+
+**On the board bar, 2026-09-29.** A workflow a DJ needs does not finish in a
+sitting's time.
+
+---
+
+## R-758. No verb moves a track from one competing sub to another
+
+**Found:** sittings 14 to 16. Adoption withholds 585 entries whose track
+holds a competing sub, 569 by band and 16 by style, and lists them. Every
+membership writer adds and none removes, so a track whose file reads energy
+8 and which sits in Med stays in Med.
+
+**Decided by the author, 2026-09-29:** the tag is the current reading and
+the track moves to the sub the tag names. The evidence is sitting 16's
+calibration test, 59 of 59 sampled library tracks scored equal to the energy
+tag their file carries.
+
+**Closes when:** a verb plans, for each track adoption holds elsewhere, the
+membership to add and the one to remove, shows both on a gate with the
+reading that decides it, and on approval adds the one and removes the other
+through the guarded writer in one session, so a failure leaves the track in
+at least one of the two. The removal is a soft delete as rekordbox makes it.
+A sub whose class is manual or derived is never a move source.
+
+**On the board bar, 2026-09-29.** 585 tracks are filed where their own file
+says they do not belong, and no shipped verb can correct one.
+
+---
+
+## R-759. A timing test fails the gate when the machine is busy
+
+**Found:** 2026-09-29, by the author's question and the log of issue #223.
+`tests/test_provider_gate.py::test_two_processes_never_call_at_once_and_keep_the_interval`
+asserts intervals between two processes. It failed in the task's own full
+run at 22:03Z, the minute rekordbox was launched on the same machine, and
+again at the runner's gate at 22:07Z with the load average at 9. Alone on a
+quiet machine it passed three times of three, and #223 touches none of the
+code it covers.
+
+**Measured cost.** One finished card refused at its gate and then excluded,
+since the retry was refused at pre flight on the branch the first attempt
+left. Landed by hand after two green batteries on a quiet machine.
+
+**Closes when:** the test measures what it means to without depending on
+the machine being idle, or is kept out of the parallel run and says why.
+
+**On the board bar, 2026-09-29.** A guard on a path that writes is reported
+failing when it is not, and a finished unit did not land.
+
+---
+
+## R-760. The guarded writer refuses a content row, and a verb that lands one needs a column policy
+
+**Found:** sitting 17, 2026-09-29. `commit_guarded` refused
+`db.add_content` on a copy, both rows, and the rollback left the table as it
+was. The source system's guard passed the same insert, since the flush
+emptied `session.new` first; that hole is closed here. So R-746 cannot be
+built by calling the binding: the whitelist has to admit a content row on
+purpose, with a rule for what a new row may carry.
+
+**Closes with:** R-746.
+
+**Not on the board bar.** It is a requirement of R-746 and is carried in its
+card.
+

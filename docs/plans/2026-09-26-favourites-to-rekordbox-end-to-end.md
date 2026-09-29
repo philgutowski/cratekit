@@ -154,6 +154,10 @@ import. Three runs from 2026-09-23 still hold open gates, two
 favourites tail on files already in hand, so any defect surfaces here and
 not in step 5.
 
+**Before step 5, sitting 17, 2026-09-29:** the session drives rekordbox
+itself, `crate export collection` replaces the hand export, and A8 came back
+clean, so landing by database write (#224) is buildable.
+
 ### 5. The favourites cycle, end to end. Attended, 3 to 4 hours plus download time.
 
 The step this plan exists for. One Tidal verb at a time, nothing else on the

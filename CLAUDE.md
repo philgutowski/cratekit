@@ -147,8 +147,22 @@ lists what.
   backup feature, whose whole job is to capture that file: it may read and copy
   the live database, but only with both `rekordbox` and `rekordboxAgent`
   confirmed gone, only into a new dated destination, and never in place. Writing
-  to the live database outside a gated destructive session stays forbidden, and
-  nothing here ever launches rekordbox or its background agent.
+  to the live database outside a gated destructive session stays forbidden.
+- **rekordbox is opened by an attended session and by nothing else**, decided
+  2026-09-29. A session Phillip is present for may open, drive and quit
+  rekordbox on the live library through the desktop control tool, to import,
+  to let it analyse, and to read what it shows. A Relay run, a job, a verb and
+  a test never launch rekordbox or its background agent. Before opening it: no
+  Cratekit job is running, and `crate doctor` reads both backup ages under one
+  day. After quitting it: `rekordbox` and `rekordboxAgent` are both confirmed
+  gone before any verb runs.
+- **A database write gate is approved by the session only when a rehearsal
+  matches**, decided 2026-09-29. The session drives the same verb on a
+  disposable copy with library state redirected, reads the result, and then
+  brings the live plan to its gate. If the live digest equals the rehearsed
+  one, the session approves and reports. If it differs in any way, the session
+  stops and waits for Phillip. The backup acknowledgment is minted by Phillip
+  from a Terminal window and by nobody else.
 - **DJ_tools is read-only for code.** It is the live system until each workflow's
   replacement is proven. Its `docs/` are the exception.
 - **Do not symlink `.venv` into a worktree.** The editable install names the
