@@ -106,12 +106,18 @@ does not open on a nine day old snapshot.
 
 ### 2a. R-731, adoption withholds a competing placement. Session, one unit.
 
+**DONE 2026-09-27, #221, landed by Relay in 51 minutes.**
+
 **Added at sitting 14.** The copy run landed 700 memberships, and 569 of them
 put a track in a second band sub beside the one it held. #212 waits on this
 card. `adopt apply` on the copy took 4 minutes 24 seconds, which answers the
 unknown step 3 names below.
 
 ### 3. #212, the live cutover and adoption. Attended, 3 to 4 hours.
+
+**DONE, sitting 15, 2026-09-29.** 115 added, 585 withheld, read back equal to
+the rehearsal. `route unplaced` on the database path is a report and
+`route pending` had nothing to place, so step 4 of this list needed no write.
 
 Depends on steps 0 to 2. Runs as the rewritten brief on the issue says, with
 #220's verification folded in front:
