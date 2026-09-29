@@ -368,8 +368,16 @@ def test_the_envelope_counts_what_the_file_holds_and_names_what_it_left_out(mach
     assert summary["smart_playlists_omitted"] == 1
     assert summary["memberships_omitted"] == 1
     warned = {warning["code"]: warning["message"] for warning in envelope["warnings"]}
-    assert set(warned) == {"export-smart-playlist-omitted", "export-member-not-in-collection"}
+    assert set(warned) == {
+        "export-smart-playlist-omitted",
+        "export-member-not-in-collection",
+        "export-location-not-a-file",
+    }
     assert "'Smart Crate'" in warned["export-smart-playlist-omitted"]
+    # The two rows the fixture builder seeds record no path at all.
+    assert summary["tracks_without_a_file"] == len(BASELINE)
+    assert "'1', '2'" in warned["export-location-not-a-file"]
+    assert summary["rows_normalised"] == 0
 
 
 def test_every_line_ends_in_a_carriage_return_and_a_line_feed(machine):
@@ -619,8 +627,30 @@ def test_a_file_that_appears_after_the_check_is_refused_by_the_write(machine, tm
     assert destination.read_bytes() == b"arrived first"
 
 
-def test_a_write_that_fails_part_way_leaves_no_truncated_export(tmp_path, monkeypatch):
-    destination = tmp_path / "torn.xml"
+def test_a_file_that_came_and_went_is_still_refused_as_taken(tmp_path, monkeypatch):
+    """A sync client does this. The refusal is decided by the create, not a second look."""
+    destination = tmp_path / "flicker.xml"
+    real_open = open
+
+    def taken_then_gone(path, mode="r", *args, **kwargs):
+        if Path(path) == destination and "x" in mode:
+            raise FileExistsError(17, "File exists", str(path))
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", taken_then_gone)
+    with pytest.raises(CratekitError) as caught:
+        export_collection._write_new(destination, b"the export")
+
+    assert caught.value.cause.reason == "output-exists"
+    assert not destination.exists()
+
+
+def test_a_write_that_fails_part_way_leaves_no_file_and_no_folder_it_made(
+    tmp_path, monkeypatch
+):
+    kept = tmp_path / "kept"
+    kept.mkdir()
+    destination = kept / "made" / "deeper" / "torn.xml"
 
     def fail(_descriptor):
         raise OSError("the volume went away")
@@ -628,7 +658,67 @@ def test_a_write_that_fails_part_way_leaves_no_truncated_export(tmp_path, monkey
     monkeypatch.setattr(export_collection.os, "fsync", fail)
     with pytest.raises(OSError):
         export_collection._write_new(destination, b"the export")
+
     assert not destination.exists()
+    assert not (kept / "made").exists()
+    assert kept.is_dir()
+
+
+def _copies(monkeypatch) -> list[Path]:
+    """Every database the verb copies from here on, so a test can see there were none."""
+    taken: list[Path] = []
+    real_copy = rb_writer.disposable_copy
+
+    def watched(source):
+        taken.append(Path(source))
+        return real_copy(source)
+
+    monkeypatch.setattr(rb_writer, "disposable_copy", watched)
+    return taken
+
+
+def test_a_folder_that_is_a_file_is_refused_before_the_database_is_copied(
+    machine, monkeypatch
+):
+    blocked = Path(machine.library.root) / "not-a-folder"
+    blocked.write_bytes(b"a file")
+    taken = _copies(monkeypatch)
+
+    code, envelope = drive(["export", "collection", str(blocked / "deep" / "out.xml")])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "path-permission-denied"
+    assert envelope["cause"]["detail"]["blocked"] == str(blocked.resolve())
+    assert taken == []
+    assert blocked.read_bytes() == b"a file"
+
+
+def test_a_folder_nobody_may_write_to_is_refused_before_the_database_is_copied(
+    machine, monkeypatch
+):
+    locked = Path(machine.library.root) / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    taken = _copies(monkeypatch)
+    try:
+        code, envelope = drive(["export", "collection", str(locked / "out.xml")])
+    finally:
+        locked.chmod(0o700)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "path-permission-denied"
+    assert taken == []
+    assert list(locked.iterdir()) == []
+
+
+def test_a_refused_read_leaves_no_folder_behind(machine, monkeypatch):
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    destination = Path(machine.library.root) / "new" / "deeper" / "out.xml"
+
+    code, envelope = drive(["export", "collection", str(destination)])
+
+    assert envelope["cause"]["reason"] == "rekordbox-running", (code, envelope)
+    assert not (Path(machine.library.root) / "new").exists()
 
 
 @pytest.mark.parametrize("suffix", tree_registry.PENDING_XML_SUFFIXES)
@@ -959,3 +1049,211 @@ def test_the_composed_sync_reads_the_file_and_queues_the_favourites(machine, mon
         favourites = [job for job in jobs.list_jobs(store) if job.handler_key == "sync.favorites"]
         (job,) = favourites
         assert [item.item_id for item in jobs.items(store, job.job_id)] == ["12", "13"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. What the review found, each driven
+# ═══════════════════════════════════════════════════════════════════════════
+
+NOBODY = collection_export.Provenance(writer="cratekit test", written="2026-09-29T12:00:00Z")
+
+
+def _rendered(tracks, nodes=()) -> collection_export.Document:
+    return collection_export.render(tuple(tracks), tuple(nodes), NOBODY)
+
+
+def test_an_identifier_is_spelled_one_way_in_the_collection_and_in_a_playlist():
+    """A leading zero. The row and the key naming it have to be the same string."""
+    document = _rendered(
+        [collection_export.TrackRow(track_id="007", location="/library/a.flac")],
+        [collection_export.NodeRow("1", "root", "Held", 0, 1, ("007",))],
+    )
+    view = library_export.read_export(document.content)
+
+    assert tuple(entry.track_id for entry in view.entries) == ("007",)
+    assert {item.path: item.track_ids for item in view.playlists} == {("Held",): ("007",)}
+    assert document.omitted.dangling_members == 0
+
+
+def test_two_identifiers_that_are_one_number_are_two_rows_the_reader_takes():
+    document = _rendered(
+        [
+            collection_export.TrackRow(track_id="7", location="/library/a.flac"),
+            collection_export.TrackRow(track_id="007", location="/library/b.flac"),
+        ],
+        [collection_export.NodeRow("1", "root", "Held", 0, 1, ("007", "7"))],
+    )
+    view = library_export.read_export(document.content)
+
+    assert sorted(entry.track_id for entry in view.entries) == ["007", "7"]
+    assert view.playlists[0].track_ids == ("007", "7")
+
+
+def test_one_identifier_held_twice_is_refused():
+    with pytest.raises(CratekitError) as caught:
+        _rendered(
+            [
+                collection_export.TrackRow(track_id="7", location="/library/a.flac"),
+                collection_export.TrackRow(track_id="7", location="/library/b.flac"),
+            ]
+        )
+    assert caught.value.cause.reason == "library-export-unusable"
+
+
+def test_a_row_handed_straight_to_the_emitter_is_held_to_digits_as_well():
+    with pytest.raises(CratekitError) as caught:
+        _rendered([collection_export.TrackRow(track_id='7" Evil="1', location="/a.flac")])
+    assert caught.value.cause.reason == "library-export-unusable"
+
+
+@pytest.mark.parametrize("bad", ["\x01", "\x00", "\x1f", "\t", "\n", "\r", "\ufffe"])
+def test_a_character_no_document_may_carry_is_written_as_a_space_and_counted(bad):
+    document = _rendered(
+        [
+            collection_export.TrackRow(
+                track_id="7", name=f"Left{bad}Right", comments="plain", location="/library/a.flac"
+            )
+        ],
+        [collection_export.NodeRow("1", "root", f"Crate{bad}Name", 0, 1, ("7",))],
+    )
+
+    parsed = ET.fromstring(document.content)
+    (track,) = parsed.find("COLLECTION").findall("TRACK")
+    assert track.get("Name") == "Left Right"
+    assert track.get("Comments") == "plain"
+    (node,) = parsed.find("PLAYLISTS").find("NODE").findall("NODE")
+    assert node.get("Name") == "Crate Name"
+    assert document.omitted.normalised_text == ("7", "Crate Name")
+    assert document.content.replace(b"\r\n", b"").find(b"\n") == -1
+
+
+def test_a_row_with_nothing_to_clean_is_not_counted_as_cleaned():
+    document = _rendered(
+        [collection_export.TrackRow(track_id="7", name=AWKWARD_TITLE, location="/library/a.flac")]
+    )
+    assert document.omitted.normalised_text == ()
+
+
+def test_a_streamed_track_is_not_dressed_as_a_file_on_this_machine():
+    document = _rendered(
+        [
+            collection_export.TrackRow(track_id="7", location="tidal:tracks:123"),
+            collection_export.TrackRow(track_id="8", location=""),
+            collection_export.TrackRow(track_id="9", location="/library/Music/a b.flac"),
+            collection_export.TrackRow(
+                track_id="10", location="file://localhost/library/Music/c%20d.flac"
+            ),
+        ]
+    )
+    rows = {
+        track.get("TrackID"): track.get("Location")
+        for track in ET.fromstring(document.content).find("COLLECTION").findall("TRACK")
+    }
+
+    assert rows == {
+        "7": "tidal:tracks:123",
+        "8": "",
+        "9": "file://localhost/library/Music/a%20b.flac",
+        "10": "file://localhost/library/Music/c%20d.flac",
+    }
+    assert document.omitted.not_file_paths == ("7", "8")
+
+
+class _Row:
+    """A playlist row as the binding hands one over, with whatever kind it holds."""
+
+    def __init__(self, identifier: str, attribute) -> None:
+        self.ID = identifier
+        self.ParentID = "root"
+        self.Name = f"Node {identifier}"
+        self.Attribute = attribute
+        self.Seq = int(identifier)
+        self.rb_local_deleted = 0
+
+
+class _Handle:
+    def __init__(self, rows) -> None:
+        self._rows = rows
+
+    def get_playlist(self):
+        return list(self._rows)
+
+    def get_playlist_songs(self):
+        return []
+
+
+@pytest.mark.parametrize("unreadable", [None, "folder", "", True, 2.5j])
+def test_a_kind_that_cannot_be_read_is_never_written_as_a_playlist(unreadable):
+    nodes = collection_export.read_nodes(_Handle([_Row("1", unreadable), _Row("2", 0)]))
+    document = _rendered([], nodes)
+
+    written = [
+        node.get("Name")
+        for node in ET.fromstring(document.content).find("PLAYLISTS").find("NODE").findall("NODE")
+    ]
+    assert written == ["Node 2"]
+    assert document.omitted.unreadable_kinds == ("Node 1",)
+    assert document.playlists == 1
+
+
+def test_the_lookup_tables_are_read_once_each_and_not_once_per_row(machine):
+    """Forty rows, forty artists. The statements must not grow with the rows."""
+    from pyrekordbox.db6 import tables
+    from sqlalchemy import create_engine, event
+    from sqlalchemy.orm import Session
+
+    engine = create_engine(f"sqlite:///{machine.library.db_path}")
+    with Session(engine) as db_session:
+        for index in range(40):
+            db_session.add(_row(tables.DjmdArtist, ID=str(5000 + index), Name=f"Artist {index}"))
+            db_session.add(
+                _row(
+                    tables.DjmdContent,
+                    ID=str(6000 + index),
+                    Title=f"Title {index}",
+                    ArtistID=str(5000 + index),
+                    FolderPath=str(_music(machine) / f"{index}.flac"),
+                    rb_local_deleted=0,
+                )
+            )
+        db_session.commit()
+    engine.dispose()
+
+    handle = rb_writer.open_db(
+        rb_writer.live_db_path(machine), require_closed=False, check_app_version=False, cfg=machine
+    )
+    statements: list[str] = []
+    try:
+        bound = handle.session.get_bind()
+        event.listen(
+            bound, "before_cursor_execute", lambda *args: statements.append(args[2])
+        )
+        tracks, _unrated = collection_export.read_tracks(handle)
+    finally:
+        rb_writer.close_db(handle)
+
+    named = {track.track_id: track.artist for track in tracks}
+    assert named["6000"] == "Artist 0" and named["6039"] == "Artist 39"
+    assert named["12"] == "Probe & Co"
+    assert len(statements) <= 1 + len(collection_export.LOOKUPS), statements
+
+
+def test_the_day_added_falls_back_to_the_day_on_this_machines_clock():
+    from datetime import timedelta
+
+    class Row:
+        StockDate = ""
+        created_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone.utc)
+
+    here = Row.created_at.astimezone().date().isoformat()
+    assert collection_export._date_added(Row) == here
+
+    class Evening(Row):
+        created_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone(timedelta(hours=-4)))
+
+    assert collection_export._date_added(Evening) == Evening.created_at.astimezone().date().isoformat()
+
+    class Stocked(Row):
+        StockDate = "2026-09-18"
+
+    assert collection_export._date_added(Stocked) == "2026-09-18"

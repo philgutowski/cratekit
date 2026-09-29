@@ -173,6 +173,12 @@ class Omitted:
     unreadable_kinds: tuple[str, ...] = ()
     dangling_members: int = 0
     unreadable_ratings: tuple[str, ...] = ()
+    #: Collection rows and playlist names holding a character no XML document
+    #: may carry, or a tab or a line break, each written as a space.
+    normalised_text: tuple[str, ...] = ()
+    #: Collection rows whose recorded location is neither a location nor an
+    #: absolute path, a streamed track or a row with none, copied as recorded.
+    not_file_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +235,10 @@ def _date_added(row: Any) -> str:
 
     The stock date when it reads as a day, otherwise the day the row was
     created. Which of the two rekordbox exports is not measured here.
+
+    THE FALLBACK IS THE DAY ON THIS MACHINE'S CLOCK. The database stores the
+    creation time with its offset, and the day taken off it as stored is the
+    day in Greenwich, which for an evening import is tomorrow.
     """
     stock = _text(row, "StockDate")
     if _DAY.match(stock):
@@ -237,7 +247,8 @@ def _date_added(row: Any) -> str:
     if created is None:
         return ""
     try:
-        return created.date().isoformat()
+        local = created.astimezone() if created.tzinfo is not None else created
+        return local.date().isoformat()
     except AttributeError:
         text = str(created)
         return text[:10] if _DAY.match(text) else ""
@@ -265,6 +276,30 @@ def refuse_unusable_id(kind: str, identifier: str) -> None:
     )
 
 
+#: The lookup tables a collection row names by identifier, as the handle's own
+#: readers. Seven fields of a row resolve through these five.
+LOOKUPS = ("get_artist", "get_album", "get_genre", "get_key", "get_label")
+
+
+def _prime_lookups(db: Any) -> list[Any]:
+    """Read each lookup table once, and hold the rows for as long as the read runs.
+
+    WITHOUT THIS EVERY DISTINCT ARTIST IS ITS OWN QUERY. A row's artist, album,
+    genre, key and label each resolve through a lazy relation, and a relation
+    to a row the session has not met yet is one statement. On a library of ten
+    thousand tracks that is several thousand statements against an encrypted
+    file. A row the session already holds resolves with none, so the tables
+    are read whole, five statements, and the rows are kept referenced because
+    the session holds them weakly.
+    """
+    held: list[Any] = []
+    for name in LOOKUPS:
+        reader = getattr(db, name, None)
+        if reader is not None:
+            held.append(list(reader()))
+    return held
+
+
 def read_tracks(db: Any) -> tuple[tuple[TrackRow, ...], tuple[str, ...]]:
     """Every active collection row, and the rows whose rating could not be read.
 
@@ -276,6 +311,7 @@ def read_tracks(db: Any) -> tuple[tuple[TrackRow, ...], tuple[str, ...]]:
     """
     found: list[TrackRow] = []
     unrated: list[str] = []
+    held = _prime_lookups(db)
     for row in db.get_content():
         if trees.soft_delete_marker(row):
             continue
@@ -311,7 +347,8 @@ def read_tracks(db: Any) -> tuple[tuple[TrackRow, ...], tuple[str, ...]]:
                 label=_text(row, "LabelName"),
             )
         )
-    found.sort(key=lambda track: int(track.track_id))
+    del held
+    found.sort(key=lambda track: (int(track.track_id), track.track_id))
     return tuple(found), tuple(unrated)
 
 
@@ -344,7 +381,7 @@ def read_nodes(db: Any) -> tuple[NodeRow, ...]:
                 node_id=node_id,
                 parent_id=_text(row, "ParentID"),
                 name=_text(row, "Name"),
-                attribute=_whole(row, "Attribute") if _has(row, "Attribute") else -1,
+                attribute=_attribute(row),
                 seq=_whole(row, "Seq"),
                 members=tuple(
                     content_id for _order, _row_id, content_id in sorted(members.get(node_id, ()))
@@ -354,8 +391,24 @@ def read_nodes(db: Any) -> tuple[NodeRow, ...]:
     return tuple(found)
 
 
-def _has(row: Any, name: str) -> bool:
-    return getattr(row, name, None) is not None
+#: What a playlist row's kind is recorded as when it could not be read. It is
+#: none of the three codes the database uses, so the row is omitted and named.
+UNREADABLE_ATTRIBUTE = -1
+
+
+def _attribute(row: Any) -> int:
+    """A playlist row's kind, or the unreadable code, and never a default kind.
+
+    ZERO IS A PLAYLIST, so a reader that answered zero for a value it could not
+    parse would write every such row as a playlist holding nothing.
+    """
+    value = getattr(row, "Attribute", None)
+    if value is None or isinstance(value, bool):
+        return UNREADABLE_ATTRIBUTE
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return UNREADABLE_ATTRIBUTE
 
 
 # ---------------------------------------------------------------------------
@@ -370,11 +423,55 @@ def _location(recorded: str) -> str:
     one encoder, because a second encoder is the byte mismatch that makes an
     import add a second row for a file the collection already holds.
     """
-    if not recorded:
-        return ""
-    if locations.looks_like_location(recorded):
-        return recorded
-    return locations.location_url(recorded)
+    if is_file_path(recorded):
+        return locations.location_url(recorded)
+    return clean_text(recorded)
+
+
+def is_file_path(recorded: str) -> bool:
+    """Whether the database recorded an absolute path, the one thing to encode.
+
+    ANYTHING ELSE IS COPIED AS RECORDED. A location is already encoded. A
+    streamed track records a provider's own reference, and the encoder would
+    dress that as a file on this machine, which a reader then reports as a file
+    that has gone missing.
+    """
+    return recorded.startswith("/") and not locations.looks_like_location(recorded)
+
+
+def is_located(recorded: str) -> bool:
+    """Whether what the database recorded names a file at all, by either spelling."""
+    return is_file_path(recorded) or (
+        bool(recorded) and locations.looks_like_location(recorded)
+    )
+
+
+#: Every character an XML 1.0 document may not carry, with the tab and the two
+#: line breaks, which a document may carry and a parser folds to a space inside
+#: an attribute. One space for each, so what is written is what is read back.
+_NOT_ATTRIBUTE_TEXT = re.compile("[\x00-\x1f\ufffe\uffff\ud800-\udfff]")
+
+
+def clean_text(value: str) -> str:
+    """``value`` with every character an attribute cannot hold written as a space.
+
+    THE BYTE READERS HERE WOULD TAKE THE CHARACTER AND REKORDBOX WOULD NOT. A
+    control character in a title makes a document no parser accepts, and the
+    file is read by this product, spliced into by a landing, and refused at the
+    import. The caller counts the rows it changed.
+    """
+    return _NOT_ATTRIBUTE_TEXT.sub(" ", value)
+
+
+_TEXT_FIELDS = (
+    "name", "artist", "composer", "album", "genre", "kind", "date_added",
+    "comments", "remixer", "tonality", "label",
+)  # fmt: skip
+
+
+def text_was_cleaned(track: TrackRow) -> bool:
+    """Whether any text field of ``track`` is written differently from how it is held."""
+    return any(clean_text(getattr(track, name)) != getattr(track, name) for name in _TEXT_FIELDS)
 
 
 def track_element(track: TrackRow) -> str:
@@ -383,9 +480,15 @@ def track_element(track: TrackRow) -> str:
     THE TEMPO ATTRIBUTE IS A LITERAL IN THIS SOURCE, and the no beat grid suite
     holds it to being one. There is no child element, so there is no grid.
     """
-    escape = xml_escape_attr
+    def escape(value: str) -> str:
+        return xml_escape_attr(clean_text(value))
+
+    refuse_unusable_id("collection", track.track_id)
     return (
-        f'    <TRACK TrackID="{int(track.track_id)}" Name="{escape(track.name)}" '
+        # THE IDENTIFIER AS IT IS HELD, never as a number. Membership is
+        # written from the same string, and a leading zero dropped here would
+        # leave a playlist naming a row the collection does not spell.
+        f'    <TRACK TrackID="{track.track_id}" Name="{escape(track.name)}" '
         f'Artist="{escape(track.artist)}" Composer="{escape(track.composer)}"\r\n'
         f'           Album="{escape(track.album)}" Grouping="" '
         f'Genre="{escape(track.genre)}" Kind="{escape(track.kind)}" '
@@ -399,7 +502,7 @@ def track_element(track: TrackRow) -> str:
         f'SampleRate="{int(track.sample_rate)}" '
         f'Comments="{escape(track.comments)}"\r\n'
         f'           PlayCount="{int(track.play_count)}" Rating="{int(track.rating)}" '
-        f'Location="{escape(_location(track.location))}"\r\n'
+        f'Location="{xml_escape_attr(_location(track.location))}"\r\n'
         f'           Remixer="{escape(track.remixer)}" '
         f'Tonality="{escape(track.tonality)}" '
         f'Label="{escape(track.label)}" Mix="">\r\n'
@@ -498,15 +601,16 @@ def _render_node(
     """One folder or playlist and everything under it, as lines."""
     indent = rbxml.indent_at(depth)
     written.add(node.node_id)
+    name = clean_text(node.name)
     if node.attribute == PLAYLIST_ATTRIBUTE:
         keys = [member for member in node.members if member in live]
         tally.dangling += len(node.members) - len(keys)
         tally.playlists += 1
         tally.memberships += len(keys)
         if not keys:
-            return rbxml.empty_playlist(node.name, indent) + "\r\n"
+            return rbxml.empty_playlist(name, indent) + "\r\n"
         return (
-            rbxml.playlist_open(node.name, len(keys), indent)
+            rbxml.playlist_open(name, len(keys), indent)
             + rbxml.track_key_lines(keys, rbxml.indent_at(depth + 1))
             + rbxml.node_close(indent)
         )
@@ -519,7 +623,7 @@ def _render_node(
     # OPEN AND CLOSE, EVEN WITH NOTHING BETWEEN THEM. rekordbox self closes a
     # childless folder. A landing inserts into the intake folder, and an intake
     # folder with nothing in it yet is the ordinary state of a new library.
-    return rbxml.folder_open(node.name, len(body), indent) + "".join(body) + rbxml.node_close(indent)
+    return rbxml.folder_open(name, len(body), indent) + "".join(body) + rbxml.node_close(indent)
 
 
 def _writable(nodes: Iterable[NodeRow]) -> list[NodeRow]:
@@ -547,8 +651,6 @@ def render(
     strict reader refuse the whole file. A NODE NOTHING REACHES FROM THE ROOT,
     its parent a tombstone or an omitted row, is omitted and named as well.
     """
-    for track in tracks:
-        refuse_unusable_id("collection", track.track_id)
     seen: set[str] = set()
     for track in tracks:
         if track.track_id in seen:
@@ -581,6 +683,12 @@ def render(
         for node in _writable(nodes)
         if node.node_id not in written
     )
+    normalised = tuple(track.track_id for track in tracks if text_was_cleaned(track)) + tuple(
+        clean_text(node.name)
+        for node in _writable(nodes)
+        if node.node_id in written and clean_text(node.name) != node.name
+    )
+    unlocated = tuple(track.track_id for track in tracks if not is_located(track.location))
 
     root_indent = " " * rbxml.indent_at(0)
     content = (
@@ -613,6 +721,8 @@ def render(
             unreadable_kinds=unreadable,
             dangling_members=tally.dangling,
             unreadable_ratings=tuple(unreadable_ratings),
+            normalised_text=normalised,
+            not_file_paths=unlocated,
         ),
     )
 
@@ -624,12 +734,16 @@ __all__ = [
     "PROVENANCE_LEAD",
     "ROOT_NAME",
     "SMART_ATTRIBUTE",
+    "UNREADABLE_ATTRIBUTE",
     "STAR_BYTES",
     "Document",
     "NodeRow",
     "Omitted",
     "Provenance",
     "TrackRow",
+    "clean_text",
+    "is_file_path",
+    "is_located",
     "provenance_of",
     "provenance_line",
     "rating_byte",

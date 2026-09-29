@@ -18,9 +18,10 @@ appeared between the check and the write is refused by the write itself. An
 export somebody kept is the copy of a tree a cutover walks back to, and nothing
 records what was in one that was overwritten.
 
-THE ORDER IS CHEAPEST REFUSAL FIRST. The destination is a name and a stat. The
-copy is the whole database, which is the expensive read, so it is taken last
-and only for a destination that can be written.
+THE ORDER IS CHEAPEST REFUSAL FIRST. The destination is a name and a stat, and
+so is the folder it would sit in. The copy is the whole database, which is the
+expensive read, so it is taken last and only for a destination whose folder
+exists, or could be made, and can be written to.
 
 NO GATE, AND NOT DESTRUCTIVE. The run adds one file where a person said to put
 it, replaces nothing and writes no database row, so there is no decision for a
@@ -44,7 +45,7 @@ from cratekit import __version__
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
 from cratekit.core import config, rb_writer, tree_registry
-from cratekit.core.cause import refuse
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.write import collection_export
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
@@ -96,39 +97,105 @@ def _refuse_destination(destination: Path) -> None:
                 detail={"destination": str(destination), "suffix": suffix},
             )
     if os.path.lexists(destination):
-        raise refuse(
-            "output-exists",
-            f"{destination} already exists, and an export somebody kept is "
-            f"never replaced; no export was written",
-            steps=("name a file that does not exist yet, or move the existing one",),
-            origin=("cli.export_collection",),
-            detail={"destination": str(destination)},
-        )
+        raise _taken(destination)
+    _refuse_unwritable_folder(destination)
+
+
+def _taken(destination: Path) -> CratekitError:
+    return refuse(
+        "output-exists",
+        f"{destination} already exists, and an export somebody kept is "
+        f"never replaced; no export was written",
+        steps=("name a file that does not exist yet, or move the existing one",),
+        origin=("cli.export_collection",),
+        detail={"destination": str(destination)},
+    )
+
+
+def _unwritable(destination: Path, blocked: Path, why: str) -> CratekitError:
+    return refuse(
+        "path-permission-denied",
+        f"the export cannot be written to {destination}, because {blocked} "
+        f"{why}; no export was written",
+        steps=("name a file in a folder that exists and can be written to",),
+        origin=("cli.export_collection",),
+        detail={"destination": str(destination), "blocked": str(blocked)},
+    )
+
+
+def _refuse_unwritable_folder(destination: Path) -> None:
+    """Refuse a destination whose folder could not hold it, before the copy.
+
+    THE NEAREST FOLDER THAT EXISTS IS THE ONE ASKED, since the folders under it
+    are made by the write. It has to be a folder, and one this account can
+    write into. Asked here so a database is not copied and read whole for a
+    file that could never have been written.
+    """
+    nearest = destination.parent
+    while not os.path.lexists(nearest) and nearest != nearest.parent:
+        nearest = nearest.parent
+    if not nearest.is_dir():
+        raise _unwritable(destination, nearest, "is not a folder")
+    if not os.access(nearest, os.W_OK | os.X_OK):
+        raise _unwritable(destination, nearest, "cannot be written to")
+
+
+def _make_folders(folder: Path) -> list[Path]:
+    """Make ``folder`` and whatever it lacks above it. Answers what was made."""
+    missing: list[Path] = []
+    cursor = folder
+    while not os.path.lexists(cursor) and cursor != cursor.parent:
+        missing.append(cursor)
+        cursor = cursor.parent
+    made: list[Path] = []
+    for path in reversed(missing):
+        try:
+            path.mkdir()
+        except FileExistsError:
+            continue
+        made.append(path)
+    return made
 
 
 def _write_new(destination: Path, content: bytes) -> None:
     """Create ``destination`` holding ``content``, or refuse, and never replace.
 
-    EXCLUSIVE CREATE, so the check above is a courtesy and this is the guard. A
-    write that fails part way removes the file it created, since a truncated
-    export opens and reads as a smaller library.
+    EXCLUSIVE CREATE, so the check ahead of the copy is a courtesy and this is
+    the guard. A file that is there when the create is tried is refused as
+    taken whether or not it is still there a moment later.
+
+    A WRITE THAT FAILS LEAVES NOTHING. The file it created is removed, since a
+    truncated export opens and reads as a smaller library, and so is every
+    folder it made on the way, newest first and only while empty.
     """
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    made: list[Path] = []
+    created = False
     try:
-        handle = open(destination, "xb")  # noqa: SIM115 - the cleanup below owns the close
-    except FileExistsError:
-        _refuse_destination(destination)
-        raise
-    try:
+        try:
+            made = _make_folders(destination.parent)
+            handle = open(destination, "xb")  # noqa: SIM115 - closed by the with below
+        except FileExistsError as exc:
+            raise _taken(destination) from exc
+        except OSError as exc:
+            raise _unwritable(
+                destination, destination.parent, f"refused the write: {exc}"
+            ) from exc
+        created = True
         with handle:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
     except BaseException:
-        try:
-            destination.unlink()
-        except OSError:
-            pass
+        if created:
+            try:
+                destination.unlink()
+            except OSError:
+                pass
+        for path in reversed(made):
+            try:
+                path.rmdir()
+            except OSError:
+                break
         raise
 
 
@@ -215,6 +282,30 @@ def _warnings(omitted: collection_export.Omitted) -> list[dict[str, str]]:
                 ),
             }
         )
+    if omitted.normalised_text:
+        found.append(
+            {
+                "code": "export-text-normalised",
+                "message": (
+                    f"{len(omitted.normalised_text)} row(s) or playlist name(s) "
+                    f"hold a tab, a line break or a character no XML document "
+                    f"may carry, each written as a space: "
+                    f"{names(omitted.normalised_text)}"
+                ),
+            }
+        )
+    if omitted.not_file_paths:
+        found.append(
+            {
+                "code": "export-location-not-a-file",
+                "message": (
+                    f"{len(omitted.not_file_paths)} track(s) record no file on "
+                    f"this machine, a streamed track or a row with no path, and "
+                    f"their location is copied as the database holds it: rows "
+                    f"{names(omitted.not_file_paths)}"
+                ),
+            }
+        )
     return found
 
 
@@ -278,6 +369,8 @@ def export_collection(ctx: "Context") -> Envelope:
                 "nodes_omitted": len(omitted.unreadable_kinds)
                 + len(omitted.unreachable_nodes),
                 "memberships_omitted": omitted.dangling_members,
+                "tracks_without_a_file": len(omitted.not_file_paths),
+                "rows_normalised": len(omitted.normalised_text),
             },
         },
         warnings=tuple(_warnings(omitted)),
