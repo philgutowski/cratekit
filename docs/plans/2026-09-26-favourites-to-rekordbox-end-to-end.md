@@ -142,9 +142,9 @@ Budget the sitting around it and do not start it late in the day.
 ### 4. Land sitting 11's 18 downloads. Attended, about 1 hour.
 
 **DONE, sitting 16, 2026-09-29.** 17 of 18 filed through the database, the
-eighteenth carries no genre. Five findings, R-734 to R-738. The tail as it
+eighteenth carries no genre. Five findings, R-740 to R-744. The tail as it
 actually runs is in that sitting's table, and it includes `analyze restamp`
-and a Reload Tags by hand until R-734 lands.
+and a Reload Tags by hand until R-740 lands.
 
 The 18 FLAC files from the set and the tracklist sit where `acquire download`
 put them, untagged and unnamed. `tag folder`, `name apply`, `intake land`,
