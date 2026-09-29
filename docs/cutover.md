@@ -466,6 +466,40 @@ folder in the tree with no xml routing.
 bar. The 9-27 database backup predates today's writes; a backup is owed
 before the next sitting.
 
+## Sitting 17, 2026-09-29, evening
+
+Machine state before: rekordbox closed, the pipx install at `7ebb07f`,
+backup job `0cb8` finished at about 17:10 local, both ages 0 days. **The
+author turned on desktop control for the session and changed the rule**: an
+attended session may open, drive and quit rekordbox on the live library, and
+approves a database write gate when its digest equals a rehearsal's. `CLAUDE.md`
+carries both. The acknowledgment of 17:07Z held. The Relay feeder was
+building #222 and #223 throughout, which sitting 17 paid for below.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| Desktop control, read | by the session | rekordbox opened in under 20 seconds, the playlist tree and track rows read from a screenshot, quit, both processes gone within 5 seconds. The window shows 9,865 tracks against 10,016 active rows: the 151 are 137 Tidal and 14 SoundCloud streaming rows. | works |
+| Desktop control, drag | by the session | An empty playlist dragged into INBOX and back to the root, each on the first attempt. Read back from the database: parent `root`, 569 playlists, 19,346 memberships, integrity ok. A drag is pressed, moved in steps, held, and released once the target is outlined. | works |
+| A8, #225, the rehearsal | on copies | Through `commit_guarded`: refused, both rows, rolled back (R-760). Raw, the binding's `add_content`: two rows, gridless, integrity ok, digest `055b509b1b5d7144`, twice. | measured |
+| A8, the live insert | run by the author | The session's own attempt was refused by its safety classifier, so the author ran the same script. A copy of the database was kept in library state history first. Digest before commit equal to the rehearsal's. 17,420 to 17,422 content rows. Row A in rekordbox's own not yet analysed shape, row B the binding's default, both stored under the base drive prefix. | live |
+| A8, launch 1, Auto Analysis off | by the session | **No dialog.** Both rows shown, 9,867 tracks, BPM 0.00, no waveform. After the quit, both rows unchanged in the database. | clean |
+| A8, launch 2, Analyze Tracks from the menu | by the session | Both analysed inside 30 seconds. **124.00 in 7A and 117.00 in 8A, which is what the files' own names say.** `Analysed` 105, the analysis files under `PIONEER/Master/share/PIONEER/USBANLZ` in the folder each row's UUID named, one mixer row and four or five file rows each. Artwork on the file that carries a picture. | clean |
+| A8, launch 3 | by the session | No dialog, both rows unchanged, integrity ok. | clean |
+| The two rows kept | by the session, at the author's word | Reload Tags gave them their titles, artists and one genre. The spike playlist deleted through its dialog. 10,018 active rows, 569 playlists, 19,346 memberships. | done |
+
+**The verdict of A8 is CLEAN**, by the outcome table of
+`DJ_tools/docs/runbooks/2026-08-01-u9-A1-gridless-insert-notes.md`: a row
+inserted through the database is accepted by rekordbox 7.2.19, analysed on
+request, and stable across three launches. Intake can leave the xml bridge
+and #224 is buildable. What the writer must do: store the base drive prefix,
+choose the device whose `MasterDBID` is the library's, and ask for analysis,
+since with Auto Analysis off rekordbox analyses nothing on its own.
+
+**What the sitting cost.** #223 was refused at its gate on a timing test
+while the machine was busy, and then excluded (R-759). It was landed by hand
+after two green batteries. **rekordbox and a Relay build do not run at the
+same time.** Filed R-757 to R-760.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -477,17 +511,14 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-**First a backup**, the database has been written three times since the
-last. Then **step 5 of the road map, the favourites cycle end to end**: one
-Tidal verb at a time, `intake playlist favorites`, `intake missing`,
-`acquire download`, then sitting 16's tail as it ran, `tag folder`, `analyze
-run`, `name apply --root`, `intake land`, the import, `intake imported`,
-`adopt scan`, `adopt apply`. Until R-740 lands, Reload Tags in rekordbox after
-the import and before any genre is set by hand.
+**Step 5 of the road map, the favourites cycle.** `crate export collection`
+landed with #223, so no export is taken by hand, and #222 means a landed
+Name keeps its head. The session drives rekordbox for the import. Stop the
+feeder first: rekordbox and a Relay build do not share the machine (R-759).
 
-Owed by the author: a decision on the 585 withheld entries, where the energy
-test of sitting 16 says the tag is the current reading; a genre on 15 INBOX
-rows that carry none.
+Queued for the feeder: #224 (R-746), R-757, R-758 and R-759.
+
+Owed by the author: a genre on the INBOX rows that carry none.
 
 Also owed, unchanged: a second `sync labels` for the 20 labels the rate limit
 stopped, run with no download beside it, after which #213 closes; the 1,799
