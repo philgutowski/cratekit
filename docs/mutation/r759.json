@@ -2,13 +2,13 @@
   "name": "r759",
   "pass_kind": "light",
   "branch": "relay/228",
-  "head": "6fbb119",
-  "when": "2026-09-29 22:56 UTC",
+  "head": "de68b90",
+  "when": "2026-09-29 23:08 UTC",
   "valid": true,
   "invalid_reason": "",
   "baseline_collected": 10623,
   "baseline_exit": 0,
-  "pytest_runs": 11,
+  "pytest_runs": 13,
   "state_guarded": "~/Library/Application Support/cratekit (63638 entries)",
   "reused_rows": 0,
   "control": {
@@ -210,6 +210,64 @@
       "head_verified": true,
       "old": "                if not block:\n                    break\n                hasher.update(block)\n                if time.monotonic() > give_up_at:\n                    raise TimeoutError(\n                        f\"{path} did not finish arriving within \"\n                        f\"{deadline_seconds} seconds\"\n                    )\n",
       "new": "                if not block:\n                    if time.monotonic() > give_up_at:\n                        raise TimeoutError(\n                            f\"{path} did not finish arriving within \"\n                            f\"{deadline_seconds} seconds\"\n                        )\n                    break\n                hasher.update(block)\n"
+    },
+    {
+      "id": "P6_wait_skipped_stamp_kept",
+      "description": "the wait before a call is skipped while its stamp still reads the due time, so the stamps stay spaced and the requests go out back to back",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d2b5248862cadd91",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if due > now:\n            self._sleep(due - now)\n            now = max(self._clock(), due)\n",
+      "new": "        if due > now:\n            now = max(self._clock(), due)\n"
+    },
+    {
+      "id": "A2_deadline_a_second_late",
+      "description": "the read deadline is honoured a second after it passes, so a trickling file is read fifty blocks further than the caller allowed",
+      "file": "src/cratekit/adopt/revert.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "70e9325e9c79eb96",
+      "subset": [
+        "tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if time.monotonic() > give_up_at:\n                    raise TimeoutError(\n",
+      "new": "                if time.monotonic() > give_up_at + 1.0:\n                    raise TimeoutError(\n"
     }
   ],
   "dropped": []
