@@ -10,7 +10,9 @@ and filed by `adopt apply` through the database, 17 added and one with no
 genre. The energy calibration was carried from the source system by hand
 after 59 of 59 sampled tracks scored equal to their tag. Filed **R-734**, on
 the board bar, a landed Name loses its head, and **R-735** to **R-738**, not
-on it. **Main's highest residual number is R-738.** Next is a backup, then
+on it. Filed after it, from the question of what still needs a person at
+rekordbox: **R-739** and **R-740**, on the board bar, and **R-741**, not on
+it. **Main's highest residual number is R-741.** Next is a backup, then
 step 5 of the road map.
 
 **Sitting 15, attended, 2026-09-29, no code. #212 is done.** `genre_energy`

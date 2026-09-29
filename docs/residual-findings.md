@@ -29878,3 +29878,71 @@ corrected or the difference is recorded as the method's.
 
 **Not on the board bar.** Nothing is written to a grid.
 
+---
+
+## R-739. A Fresh Export can only come from rekordbox, so every landing and every cutover waits on a person at its menus
+
+**Found:** sittings 15 and 16, 2026-09-29. `intake land`, `intake imported`
+and `tree cutover` each take `--export`, a rekordbox xml export of the
+collection, and the only way to produce one is File, Export Collection in
+xml format, by hand, with the application open. The product already reads
+the database those rows come from, through a disposable copy.
+
+**Measured cost.** Three exports by hand in one afternoon, each a launch, a
+menu, a save dialog and a quit, with every verb stopped until it is done. An
+export also goes stale the moment the database is written, which sitting 16
+met when the 9-25 export no longer described a library adopted that morning.
+
+**Closes when:** a verb writes a collection export from a disposable copy of
+the configured database, in the shape the verbs that take `--export` read,
+with no beat grid invented: tempo data is carried from the rows only where
+the database already holds it, and the file says which application version
+the database was last written by.
+
+**On the board bar, 2026-09-29.** A workflow a DJ needs cannot finish without
+a person at another application's menus.
+
+---
+
+## R-740. A landed file reaches the collection only through a hand import
+
+**Found:** sitting 16, 2026-09-29. `intake land` moves the files and writes
+an intake file, and ends `PENDING_HUMAN` on five steps: point rekordbox at
+the file, import one playlist and never the folder, drag it into INBOX,
+export again, run `intake imported`. The import is the xml bridge, whose
+limits sitting 10 measured: a playlist lands at the root whatever folder the
+file gave it (R-687), and attributes are set only on rows it creates (R-688).
+
+**Measured cost.** About twenty minutes of a person's time per batch, and
+each hand step is a place to import the wrong node. The routing tree left
+the bridge on 2026-09-29; the intake did not.
+
+**Not known.** Whether rekordbox analyses a row it did not create when it
+next opens, or waits for the track to be loaded. pyrekordbox can insert a
+content row. Nothing here has measured what 7.2.19 does with one.
+
+**Closes when:** a verb adds landed files to the collection through the
+guarded database writer, behind a plan and an approval, on a library whose
+intake tree has cut over, writing no beat grid, no tempo and no analysis
+data, and an attended sitting has opened rekordbox on the result and read
+the rows analysed.
+
+**On the board bar, 2026-09-29.** The same bar as R-739, and this is the
+larger half.
+
+---
+
+## R-741. No verb sets a genre on a row
+
+**Found:** sitting 16, 2026-09-29. Adoption reads a track's genre from its
+database row and answers `needs-genre` for 2,059 rows. The tagger reads
+catalogues and gave 6 of 18 files none. A person who knows the genre has one
+place to say so, the Genre column in rekordbox, by hand.
+
+**Measured cost.** 2,059 rows the tree cannot place, 15 of them in INBOX.
+
+**Closes when:** a verb sets the genre on named rows, from the taxonomy's own
+names, through the guarded writer.
+
+**Not on the board bar.** The hand path works and is recorded.
+
