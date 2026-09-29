@@ -68,5 +68,5 @@ description = "existing guard sample: the intake row's AverageBpm literal become
 file = "src/cratekit/intake/collection_xml.py"
 surface = "user"
 tests = ["tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py", "tests/intake/test_collection_xml.py", "tests/test_no_beatgrid_ever.py"]
-old = '''f'DiscNumber="0" TrackNumber="0" Year="0" AverageBpm="0.00"\\r\\n\''''
-new = '''f'DiscNumber="0" TrackNumber="0" Year="0" AverageBpm="112.00"\\r\\n\''''
+old = '''Year="0" AverageBpm="0.00"'''
+new = '''Year="0" AverageBpm="112.00"'''
