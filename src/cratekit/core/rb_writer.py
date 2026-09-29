@@ -1689,6 +1689,11 @@ def _is_folder(playlist: Any) -> bool:
     return int(getattr(playlist, "Attribute", -1)) == 1
 
 
+def is_folder(playlist: Any) -> bool:
+    """Whether a playlist row is a FOLDER. The one spelling of that question."""
+    return _is_folder(playlist)
+
+
 def ensure_folder(db: Any, name: str, parent: Any = None) -> Any:
     """Find or create a playlist FOLDER by name, optionally under a parent.
 
@@ -1812,29 +1817,70 @@ def add_membership(db: Any, playlist: Any, content_id: str) -> bool:
 _MARKER_ABSENT = object()
 
 
-def membership_removed(row: Any) -> bool:
-    """Whether one membership row carries rekordbox's soft delete marker, or REFUSE.
+def soft_deleted(
+    row: Any,
+    *,
+    message: str,
+    origin: Sequence[str],
+    detail: Mapping[str, Any],
+) -> bool:
+    """Read rekordbox's soft delete marker off one mapped row, or REFUSE.
 
-    A ROW THAT CANNOT SAY REFUSES, for the reason
-    :func:`cratekit.write.trees.soft_delete_marker` gives for a collection row:
-    every default a reader could supply is the answer "live", and here that
-    answer reports a removed track as filed and stops a removal being made at
-    all. That function is a layer above this module, so the rule is held here
-    for the rows this module reads and is the same rule.
+    THE ONE READ OF THE MARKER FOR EVERY ROW KIND (R-758). A collection row, a
+    playlist and a membership each carry the column, and until a membership
+    could be removed only the first was ever asked. Two copies of the read
+    agree today and disagree eventually, so the read and the refusal live here
+    and a caller supplies only the words: what the row is and what treating it
+    as live would cost, which differ by kind.
+
+    A ROW THAT CANNOT SAY REFUSES. A missing attribute and ``None`` are both
+    refused, because every default a reader could supply is the answer "live",
+    which is the permissive one.
     """
     marker = getattr(row, SOFT_DELETE_COLUMN, _MARKER_ABSENT)
     if marker is _MARKER_ABSENT or marker is None:
         raise refuse(
             "soft-delete-marker-unreadable",
-            f"the playlist membership row {getattr(row, 'ID', '?')!r} cannot say "
-            f"whether rekordbox removed it, and treating that as live would "
-            f"report a track as filed where nobody can see it",
+            message,
             remedy=Remedy.RUN_DOCTOR,
             scope=Scope.RUN,
-            origin=("rb_writer",),
-            detail={"membership_id": str(getattr(row, "ID", "")), "column": SOFT_DELETE_COLUMN},
+            origin=tuple(origin),
+            detail={**detail, "column": SOFT_DELETE_COLUMN},
         )
     return bool(marker)
+
+
+def membership_removed(row: Any) -> bool:
+    """Whether rekordbox, or this product, removed one membership row. Or REFUSE.
+
+    Through :func:`soft_deleted`, which holds the read. A row that cannot say
+    refuses, since treating it as live reports a removed track as filed and
+    treating it as removed would file a track twice.
+    """
+    return soft_deleted(
+        row,
+        message=(
+            f"the playlist membership row {getattr(row, 'ID', '?')!r} cannot say "
+            f"whether rekordbox removed it, and treating that as live would "
+            f"report a track as filed where nobody can see it"
+        ),
+        origin=("rb_writer",),
+        detail={"membership_id": str(getattr(row, "ID", ""))},
+    )
+
+
+def node_removed(row: Any) -> bool:
+    """Whether one playlist or folder row carries the marker. Or REFUSE."""
+    return soft_deleted(
+        row,
+        message=(
+            f"the playlist row {getattr(row, 'ID', '?')!r} cannot say whether "
+            f"rekordbox removed it, and treating that as live would file a "
+            f"track in a playlist nobody can see"
+        ),
+        origin=("rb_writer",),
+        detail={"playlist_id": str(getattr(row, "ID", ""))},
+    )
 
 
 def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[str]:
@@ -2899,8 +2945,10 @@ __all__ = [
     "pending_changes",
     "integration_db_path",
     "integrity_ok",
+    "is_folder",
     "live_db_path",
     "membership_removed",
+    "node_removed",
     "metadata_decision",
     "open_db",
     "pin_validated_on",
@@ -2923,6 +2971,7 @@ __all__ = [
     "snapshot_database_in",
     "snapshot_db",
     "snapshot_root",
+    "soft_deleted",
     "unlock_needed",
     "write_lock_path",
     "write_metadata_field",

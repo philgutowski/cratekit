@@ -1186,12 +1186,17 @@ def membership_proven(db: Any, placed: Placed, *, root_id: str) -> bool:
     fail-safe direction.
 
     A MEMBERSHIP MARKED REMOVED PROVES NOTHING (R-758), since rekordbox shows no
-    track for it.
+    track for it. NEITHER DOES ONE THAT CANNOT SAY, and it is passed over here
+    where every other reader refuses on it: this function's contract is a
+    boolean, and unproven is the direction that tries again.
     """
     if placed.content_id is None:
         return False
     for membership in db.get_playlist_songs(ContentID=str(placed.content_id)):
-        if rb_writer.membership_removed(membership):
+        try:
+            if rb_writer.membership_removed(membership):
+                continue
+        except CratekitError:
             continue
         playlist = db.get_playlist(ID=str(membership.PlaylistID))
         if playlist is None or playlist.Name != placed.sub:

@@ -1786,15 +1786,19 @@ def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():
 #: ``_soft_delete_reads`` was narrowed to load context so a row double stops
 #: counting as a reader.
 #:
-#: ``core/rb_writer`` JOINED AT R-758, AS A DECISION. The membership primitives
-#: live there, a removed membership must not count as present and must not be
-#: removed twice, and ``trees`` is a layer above, so its reader cannot be
-#: reached from below. ``rb_writer.membership_removed`` holds the same rule for
-#: the rows that module reads, refusing on a row that cannot answer.
+#:
+#: RE-PINNED AT R-758, AS A DECISION, and the count stays at two. The read moved
+#: DOWN a layer: ``core/rb_writer`` joined and ``write/trees`` left. A membership
+#: can now be removed, so the membership primitives have to read the marker, and
+#: they live below ``trees`` and cannot reach up to its reader. Rather than a
+#: third copy, ``rb_writer.soft_deleted`` holds the one read and the one
+#: refusal, and ``trees.soft_delete_marker``, ``rb_writer.membership_removed``
+#: and ``rb_writer.node_removed`` each supply the words for their kind of row.
+#: The first version of this unit added a second reader beside the first and
+#: the built in review named it.
 SOFT_DELETE_READERS = {
     "src/cratekit/core/rb_writer.py",
     "src/cratekit/write/metadata.py",
-    "src/cratekit/write/trees.py",
 }
 
 

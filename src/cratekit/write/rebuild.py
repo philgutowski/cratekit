@@ -548,6 +548,12 @@ class TreeNode:
     #: exists to catch a doubled tree could not see doubling at this depth at all,
     #: and reported such a tree converged.
     doubled: frozenset[str] = frozenset()
+    #: Whether rekordbox removed this playlist or the folder it sits in. The
+    #: binding's lookup hands a removed node back beside the live ones, and
+    #: this walk reports it as it always did, since the comparison that reads
+    #: it was argued over what the lookup returns. The flag is for a reader
+    #: asking where a track SITS, which a playlist nobody can see is not.
+    removed: bool = False
 
 
 def read_tree(db: Any, root_id: str) -> tuple[TreeNode, ...]:
@@ -599,6 +605,8 @@ def read_tree(db: Any, root_id: str) -> tuple[TreeNode, ...]:
                     doubled=frozenset(
                         content_id for content_id, count in seen.items() if count > 1
                     ),
+                    removed=rb_writer.node_removed(folder)
+                    or rb_writer.node_removed(playlist),
                 )
             )
     return tuple(out)

@@ -36,6 +36,7 @@ from typing import Any, Mapping, Sequence
 from cratekit.adopt import apply_cli, artifacts, placements, shell
 from cratekit.adopt import move as move_engine
 from cratekit.adopt import plan as plan_engine
+from cratekit.adopt.scan import Disposition
 from cratekit.cli.output import Envelope
 from cratekit.core import (
     active_taxonomy,
@@ -68,6 +69,9 @@ ACTOR_KEY = apply_cli.ACTOR_KEY
 
 #: The payload key holding the plan document the approval was recorded against.
 PLAN_KEY = "plan"
+
+#: The key this verb's jobs are queued under, which is the registry's.
+HANDLER_KEY = "adopt.move"
 
 #: The warning a run carries when the plan holds no move.
 NOTHING_TO_MOVE = "move-nothing-planned"
@@ -211,8 +215,26 @@ def move_adoption(ctx) -> Envelope:
 
 
 def _frozen(job) -> Mapping[str, Any]:
-    """The plan document this job froze, or a refusal naming the job."""
-    document = (job.payload or {}).get(PLAN_KEY)
+    """The plan document this job froze, PROVEN, or a refusal naming the job.
+
+    THREE THINGS ARE ASKED BEFORE ANYTHING IS SHOWN OR PERFORMED. The job is
+    this verb's own, so a job another verb queued is never driven through this
+    gate. It carries a plan. And the digest of the rows it carries, taken
+    again here, is the digest the job was queued under and the one the
+    document states, so the gate is never shown rows under a digest that does
+    not describe them. The worker and the resume both come through here.
+    """
+    if job.handler_key != HANDLER_KEY:
+        raise refuse(
+            "internal-error",
+            f"job {job.job_id} was queued by {job.handler_key!r} and is not a "
+            f"move, so this verb has nothing to continue in it",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=_ORIGIN,
+            detail={"job_id": job.job_id, "handler_key": job.handler_key},
+        )
+    payload = job.payload or {}
+    document = payload.get(PLAN_KEY)
     if not isinstance(document, Mapping):
         raise refuse(
             "internal-error",
@@ -221,6 +243,28 @@ def _frozen(job) -> Mapping[str, Any]:
             remedy=Remedy.REPORT_DEFECT,
             origin=_ORIGIN,
             detail={"job_id": job.job_id},
+        )
+    try:
+        taken = move_engine.document_digest(document)
+        stated = str(document["digest"])
+    except (KeyError, TypeError) as exc:
+        raise refuse(
+            "internal-error",
+            f"job {job.job_id} carries a plan short of {exc}, so it cannot be "
+            f"shown whole and nothing is performed from it",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=_ORIGIN,
+            detail={"job_id": job.job_id},
+        ) from exc
+    queued_under = str(payload.get("digest") or "")
+    if not (taken == stated == queued_under):
+        raise refuse(
+            "decision-stale",
+            "the plan this job carries is not the plan its approval was "
+            "recorded against, so nothing was written",
+            steps=("run `crate adopt move` again and approve the plan as it is now",),
+            origin=_ORIGIN,
+            detail={"approved": queued_under, "stated": stated, "job_id": job.job_id},
         )
     return document
 
@@ -254,7 +298,9 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
 
 
 #: The fields of a committed report that are lists of content identifiers.
-_LISTED = ("moved", "in_both", "untouched", "gone", "held_back")
+#: ``neither`` is here so that the one outcome no path should produce is on
+#: the screen if one ever does, and the first version left it off.
+_LISTED = ("moved", "in_both", "untouched", "neither", "gone", "skipped", "held_back")
 
 #: The fields of a committed report that are counts.
 _COUNTED = ("added", "already_present", "removed", "already_absent")
@@ -300,10 +346,12 @@ def remaining(
     target and nowhere else is done and is in neither.
 
     IT REFUSES THE WHOLE RUN, ``decision-stale``, when any approved track has
-    moved in a way nobody was shown: its reading now names another sub, it
-    holds a competing sub that was neither its target nor one it was leaving,
-    it holds one through a renamed playlist, or it was approved as already in
-    its target and is not there now. Nothing is narrowed to fit. The approval
+    moved in a way nobody was shown: its reading now names another sub, the
+    plan as it stands would leave it or would not move it, it holds a
+    competing sub that was neither its target nor one it was leaving, or it
+    was approved as already in its target and is not there now. What the plan
+    would do now is asked of :func:`cratekit.adopt.move.standing`, the body
+    the plan was built from. Nothing is narrowed to fit. The approval
     covers a track arriving at its target and leaving the subs it was shown
     leaving, in either order, and nothing else.
 
@@ -329,21 +377,26 @@ def remaining(
         if not {move.target, *move.remove} <= competing:
             stale[move.content_id] = "a sub it names no longer competes"
             continue
+        # THE PLAN'S OWN RULE, ASKED OF THE LIBRARY AS IT STANDS.
+        now = move_engine.standing(entry, current.placements, declared, tree=current.tree)
+        if isinstance(now, move_engine.Left):
+            stale[move.content_id] = f"the plan as it stands leaves it: {now.reason}"
+            continue
         held = set(current.placements.holds(move.bucket, move.content_id)) & competing
-        if held - {move.target, *move.remove}:
+        if now is None:
+            if held == {move.target} and entry.disposition is Disposition.ROUTE:
+                continue
+            stale[move.content_id] = (
+                "it holds no sub of its bucket any more"
+                if not held
+                else "the plan as it stands does not move it"
+            )
+            continue
+        if set(now.remove) - set(move.remove):
             stale[move.content_id] = "it holds a sub nobody was shown"
             continue
-        if set(current.placements.holds_unnamed(move.bucket, move.content_id)) & held:
-            stale[move.content_id] = "it holds a sub through a renamed playlist"
-            continue
-        if not move.add and move.target not in held:
+        if now.add and not move.add:
             stale[move.content_id] = "it has left the sub it was approved as holding"
-            continue
-        leaving = tuple(sub for sub in move.remove if sub in held)
-        if not leaving and move.target in held:
-            continue
-        if not leaving and not held:
-            stale[move.content_id] = "it holds no sub of its bucket any more"
             continue
         todo.append(
             move_engine.Move(
@@ -353,9 +406,9 @@ def remaining(
                 bucket=move.bucket,
                 kind=move.kind,
                 target=move.target,
-                add="" if move.target in held else move.target,
-                remove=leaving,
-                holds=tuple(sorted(held)),
+                add=now.add,
+                remove=now.remove,
+                holds=now.holds,
                 energy=move.energy,
                 genre=move.genre,
             )
@@ -451,15 +504,6 @@ def handle(job, item, cfg) -> jobs.Produced:
     document = _frozen(job)
     payload = job.payload or {}
     frozen_digest = str(payload.get("digest") or "")
-    if move_engine.document_digest(document) != frozen_digest:
-        raise refuse(
-            "decision-stale",
-            "the plan this job carries is not the plan its approval was "
-            "recorded against, so nothing was written",
-            steps=("run `crate adopt move` again and approve the plan as it is now",),
-            origin=_ORIGIN,
-            detail={"approved": frozen_digest, "job_id": job.job_id},
-        )
     actor = str(payload.get(ACTOR_KEY) or "")
     if not actor.strip():
         raise refuse(
@@ -476,11 +520,18 @@ def handle(job, item, cfg) -> jobs.Produced:
 
     written: trees.MoveReport | None = None
     interrupted: BaseException | None = None
+    refused: CratekitError | None = None
     if todo:
         try:
             written = _write(cfg, str(document["tree"]), membership_moves(todo, declared))
         except trees.MoveInterrupted as exc:
             written, interrupted = exc.report, exc.__cause__ or exc
+        except CratekitError as exc:
+            # A REFUSAL KEEPS ITS OWN TYPE AND ITS OWN REMEDY. It is held only
+            # long enough to read the library back and commit what it says,
+            # since a refusal at the second commit is over additions that
+            # landed, and it is raised again below as it came.
+            refused = exc
 
     found = read_back(cfg, declared, approved, gone)
     produced = artifacts.produced(
@@ -499,10 +550,14 @@ def handle(job, item, cfg) -> jobs.Produced:
             "held_back": list(written.held_back) if written else [],
             "skipped": list(written.skipped) if written else [],
             "playlists": list(written.playlists) if written else [],
-            "interrupted": interrupted is not None,
+            "interrupted": interrupted is not None or refused is not None,
         },
     )
     unfinished = sorted({*found["in_both"], *found["untouched"], *found["neither"]})
+    if refused is not None:
+        if produced.staged is not None and produced.final is not None:
+            jobs.commit_artifact(produced.staged, produced.final)
+        raise refused
     if interrupted is not None or unfinished:
         if produced.staged is not None and produced.final is not None:
             jobs.commit_artifact(produced.staged, produced.final)
@@ -558,6 +613,7 @@ def _approving_actor(ctx, spec) -> str:
 
 __all__ = [
     "ACTOR_KEY",
+    "HANDLER_KEY",
     "NOTHING_TO_MOVE",
     "PLAN_KEY",
     "WORKFLOW",

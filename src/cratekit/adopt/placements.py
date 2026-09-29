@@ -74,7 +74,13 @@ def placements_from(
     playlist a person made by hand inside a bucket folder, a folder the
     taxonomy declares no bucket for: none of them is read, because none of
     them can compete.
+
+    A PLAYLIST REKORDBOX REMOVED IS NOT A PLACE EITHER (R-758). It shows no
+    track, and the move finds the playlists it removes from among the live
+    ones, so a sub held only through a removed playlist would be planned for a
+    removal nothing could perform.
     """
+    nodes = [node for node in nodes if not node.removed]
     by_ids = {(node.folder_id, node.playlist_id): node for node in nodes}
     by_display: dict[tuple[str, str], list[rebuild.TreeNode]] = {}
     for node in nodes:

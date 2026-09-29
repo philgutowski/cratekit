@@ -200,6 +200,37 @@ def test_a_bucket_with_one_sub_and_no_energy_names_no_style():
     assert plan.moves == () and plan.left == ()
 
 
+def test_a_bucket_that_reads_neither_energy_nor_genre_has_no_reading_to_move_on():
+    """Found by the review. Nothing in the shipped template declares one, so
+    the template is given one: several subs, no energy, no map from genre."""
+    from dataclasses import replace
+
+    plain = next(
+        b for b in DECLARED.buckets if b.sub_by_source is None and not b.energy.enabled
+    )
+    extra = taxonomy.Sub("another_place", "Another place")
+    buckets = tuple(
+        replace(b, subs=(*b.subs, extra)) if b.id == plain.id else b
+        for b in DECLARED.buckets
+    )
+    # The index is a field the loader fills, so it is rebuilt with the buckets.
+    declared = replace(DECLARED, buckets=buckets, _by_id={b.id: b for b in buckets})
+    kind, competing = routing.competing_subs(declared, plain.id)
+    assert kind is routing.Competing.STYLE
+    assert competing == {plain.single_sub.id, extra.id}
+
+    plan = adopt_plan.build_adoption_plan(
+        [_scanned("t", plain.id, energy=8)],
+        declared,
+        tree=TREE_ID,
+        placements=adopt_plan.Placements(read=True, held={plain.id: {"t": (extra.id,)}}),
+    )
+    found = adopt_move.build_move_plan(plan, declared)
+    assert found.moves == ()
+    (left,) = found.left
+    assert left.reason == adopt_move.LEFT_NO_READING
+
+
 def test_a_sub_held_under_another_name_only_is_left_and_listed():
     bucket = _pure_energy_bucket().id
     plan = _moves(
@@ -725,6 +756,230 @@ def test_a_failure_in_the_additions_writes_nothing_at_all(moved, monkeypatch):
     assert _rows(moved) == before
 
 
+# ── what the review found, driven ──────────────────────────────────────────
+
+
+def _mark_playlist_removed(cfg, sub_id: str) -> None:
+    conn = sqlite3.connect(Path(cfg.library.db_path))
+    try:
+        changed = conn.execute(
+            "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE Name = ? AND Attribute = 0",
+            (_place(sub_id)[1],),
+        ).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    assert changed == 1
+
+
+def test_an_addition_never_lands_in_a_playlist_rekordbox_removed(moved):
+    """The additive find or create reads no marker and hands back a removed
+    namesake. The move resolves among live nodes and makes a live one."""
+    _mark_playlist_removed(moved, HIGH)
+    shown = _shown(VERB)
+    items = {item["content_id"]: item for item in shown["items"]}
+    # Held only through the removed playlist, so High is not a place it holds.
+    assert (items["m-both-reads-high"]["holds"], items["m-both-reads-high"]["add"]) == (
+        [MED],
+        HIGH,
+    )
+    assert "m-no-reading" not in {row["content_id"] for row in shown["left"]}
+
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+
+    conn = sqlite3.connect(Path(moved.library.db_path))
+    try:
+        found = conn.execute(
+            "SELECT p.rb_local_deleted, COUNT(*) FROM djmdSongPlaylist sp "
+            "JOIN djmdPlaylist p ON p.ID = sp.PlaylistID "
+            "WHERE p.Name = ? AND sp.rb_local_deleted = 0 AND sp.ContentID IN (?, ?, ?) "
+            "GROUP BY p.rb_local_deleted ORDER BY p.rb_local_deleted",
+            (_place(HIGH)[1], "m-med-reads-high", "m-both-reads-high", "m-vox-and-med"),
+        ).fetchall()
+    finally:
+        conn.close()
+    # Three additions in the live playlist. The one row in the removed playlist
+    # is the row the fixture seeded there, which nothing here touches.
+    assert found == [(0, 3), (1, 1)]
+
+
+def test_a_sub_held_only_through_a_removed_playlist_is_not_planned_for_removal(moved):
+    _mark_playlist_removed(moved, MED)
+    shown = _shown(VERB)
+    assert {item["content_id"] for item in shown["items"]} == {"m-sink-now-reads", "m-style"}
+    before = [row for row in _rows(moved) if row[2] == _place(MED)[1]]
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    assert all(not row[3] for row in before)
+    unmarked = [row for row in _rows(moved) if row[2] == _place(MED)[1] and not row[3]]
+    assert set(before) <= set(unmarked)
+
+
+def test_a_person_stopping_the_removals_is_an_interrupt_and_not_a_failure(
+    moved, monkeypatch
+):
+    def stopped(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(rb_writer, "remove_memberships", stopped)
+    with pytest.raises(KeyboardInterrupt):
+        _write(moved, [trees.MembershipMove("m-med-reads-high", _place(HIGH), (_place(MED),))])
+    assert _live(moved)["m-med-reads-high"] == {_place(MED), _place(HIGH)}
+    assert _removed(moved) == {}
+
+
+def test_a_refusal_at_the_second_commit_keeps_its_own_cause_and_the_job_says_in_both(
+    moved, monkeypatch
+):
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+
+    def opened(_what):
+        raise rb_writer._running("rekordbox was opened while this ran")
+
+    with monkeypatch.context() as patched:
+        # The guarded commit asks whether rekordbox is closed. The additions'
+        # commit is let through and the removals' is refused.
+        patched.setattr(rb_writer, "assert_rekordbox_closed", _after_first(opened))
+        code, failed = drive(_resume(job_id))
+
+    assert code != int(ExitCode.OK), failed
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        (item,) = jobs.items(store, job_id)
+    # THE ITEM FAILED ON THE REFUSAL ITSELF, with its own slug and remedy, and
+    # not on this verb's account of an unfinished move.
+    assert item.cause.reason == "rekordbox-running", item.cause
+    assert "adopt-entries-failed" not in str(job.cause.to_json())
+    assert "rekordbox-running" in str(job.cause.to_json())
+    assert _live(moved)["m-med-reads-high"] == {_place(MED), _place(HIGH)}
+    assert _removed(moved) == {}
+    report = artifacts.committed(moved, job_id)[-1]
+    assert set(report["in_both"]) == _MOVED and report["interrupted"] is True
+
+
+def _after_first(refusal):
+    """A stand in for the closed check that passes until a commit has landed."""
+    seen = {"commits": 0}
+
+    def check(what):
+        if what != "committing":
+            return None
+        seen["commits"] += 1
+        if seen["commits"] > 1:
+            refusal(what)
+        return None
+
+    return check
+
+
+def test_the_fingerprint_is_taken_after_each_commit_that_landed(moved, monkeypatch):
+    from cratekit.core import convergence
+
+    taken: list[int] = []
+    real = convergence.record_fingerprint
+
+    def counting(cfg, db, **kwargs):
+        taken.append(1)
+        return real(cfg, db, **kwargs)
+
+    monkeypatch.setattr(convergence, "record_fingerprint", counting)
+
+    def fails(*_args, **_kwargs):
+        raise RuntimeError("the disk went away")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(rb_writer, "remove_memberships", fails)
+        with pytest.raises(trees.MoveInterrupted) as raised:
+            _write(
+                moved,
+                [trees.MembershipMove("m-med-reads-high", _place(HIGH), (_place(MED),))],
+            )
+    assert (raised.value.report.added, raised.value.report.adds_committed) == (1, True)
+    assert isinstance(raised.value.__cause__, RuntimeError)
+    assert len(taken) == 1, "the additions landed and the reading was not moved"
+
+    _write(moved, [trees.MembershipMove("m-med-reads-high", _place(HIGH), (_place(MED),))])
+    # Nothing to add the second time, so one more reading, for the removal.
+    assert len(taken) == 2
+
+
+def test_a_membership_that_cannot_say_is_unproven_and_is_refused_by_a_reader(moved):
+    from cratekit.write import rebuild, routing_pass
+
+    class Song:
+        ID = "s"
+        ContentID = "c"
+        PlaylistID = "p"
+        rb_local_deleted = None
+
+    class Node:
+        def __init__(self, name, parent):
+            self.ID, self.Name, self.ParentID = name, name, parent
+            self.rb_local_deleted = 0
+
+    class Db:
+        def get_playlist_songs(self, **_kwargs):
+            return [Song()]
+
+        def get_playlist(self, **kwargs):
+            if "ParentID" in kwargs:
+                return [Node("child", kwargs["ParentID"])]
+            return {"p": Node("Sub", "f"), "f": Node("Folder", "root")}.get(kwargs["ID"])
+
+    placed = routing_pass.Placed.__new__(routing_pass.Placed)
+    for name, value in (("content_id", "c"), ("sub", "Sub"), ("folder", "Folder")):
+        object.__setattr__(placed, name, value)
+    assert routing_pass.membership_proven(Db(), placed, root_id="root") is False
+    with pytest.raises(Exception) as raised:
+        rebuild.read_tree(Db(), "root")
+    assert raised.value.cause.reason == "soft-delete-marker-unreadable"
+
+
+def test_a_job_another_verb_queued_is_never_driven_through_this_gate(moved):
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    with jobs.open_store() as store:
+        mine = jobs.get(store, job_id)
+        other = jobs.enqueue(
+            store,
+            handler_key="adopt.apply",
+            payload=dict(mine.payload),
+            item_ids=("one",),
+            cfg=moved,
+        )
+    before = _rows(moved)
+    code, envelope = drive(["adopt", "move", "--job", other.job_id])
+    assert code != int(ExitCode.DECISION_REQUIRED), "it was shown the gate"
+    assert envelope["cause"]["reason"] == "internal-error"
+    assert "adopt.apply" in envelope["cause"]["message"]
+    assert _rows(moved) == before
+
+
+def test_rows_under_a_digest_that_does_not_describe_them_are_never_shown(moved):
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    with jobs.open_store() as store:
+        document = dict(jobs.get(store, job_id).payload[move_cli.PLAN_KEY])
+    document["moves"] = document["moves"][:1]
+    _requeued(job_id, **{move_cli.PLAN_KEY: document})
+    before = _rows(moved)
+    code, envelope = drive(["adopt", "move", "--job", job_id])
+    assert code == int(ExitCode.DECISION_STALE), envelope
+    assert "shown" not in envelope["cause"].get("detail", {})
+    assert _rows(moved) == before
+
+
+def test_the_summary_a_person_reads_names_every_ending(moved):
+    job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    summary = resumed["data"]["progress"]["move"]
+    assert {"moved", "in_both", "untouched", "neither", "gone", "skipped", "held_back"} <= set(
+        summary
+    )
+    report = artifacts.committed(moved, job_id)[-1]
+    for name in ("neither", "skipped"):
+        assert summary[name] == report[name] == []
+
+
 # ── the endings a queued verb owes ─────────────────────────────────────────
 
 
@@ -919,6 +1174,82 @@ def test_a_sub_class_in_an_approved_row_is_refused_by_what_competes_now():
 
     todo, gone = move_cli.remaining([approved], current, DECLARED)
     assert ([move.remove for move in todo], gone) == ([(MED,)], ())
+
+
+def _approved_over(tracks, held) -> tuple[adopt_plan.AdoptionPlan, tuple[adopt_move.Move, ...]]:
+    plan = adopt_plan.build_adoption_plan(
+        tracks, DECLARED, tree=TREE_ID,
+        placements=adopt_plan.Placements(read=True, held=held),
+    )
+    return plan, adopt_move.build_move_plan(plan, DECLARED).moves
+
+
+def test_a_track_a_verdict_withheld_since_the_approval_is_a_stale_decision():
+    """Found by the review. The bucket and the sub are unchanged by a verdict,
+    and the first version of the check compared those two and nothing else."""
+    from dataclasses import replace
+
+    bucket = _pure_energy_bucket().id
+    current, approved = _approved_over(
+        [_scanned("t", bucket, energy=8)], {bucket: {"t": (MED,)}}
+    )
+    (entry,) = current.entries
+    refused = replace(
+        current,
+        entries=(
+            replace(
+                entry,
+                disposition=adopt_scan.Disposition.WITHHELD,
+                holds=(),
+                holds_unnamed=(),
+                withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
+            ),
+        ),
+    )
+    assert (refused.entries[0].bucket, refused.entries[0].sub) == (bucket, HIGH)
+    with pytest.raises(Exception) as raised:
+        move_cli.remaining(approved, refused, DECLARED)
+    assert raised.value.cause.reason == "decision-stale"
+    assert "does not move it" in raised.value.cause.detail["moved_under"]["t"]
+
+
+def test_a_genre_that_stopped_naming_the_style_is_a_stale_decision():
+    """The resolver's default can equal the approved target, so the sub alone
+    does not say whether the file still names it."""
+    style = _style_bucket()
+    default = style.sub_by_source.default
+    named = next(g for g, sub in style.sub_by_source.map.items() if sub == default)
+    held = next(sub.id for sub in style.subs if sub.id != default)
+    _plan, approved = _approved_over(
+        [_scanned("t", style.id, energy=None, genre=named)], {style.id: {"t": (held,)}}
+    )
+    assert [move.target for move in approved] == [default]
+
+    now, _none = _approved_over(
+        [_scanned("t", style.id, energy=None, genre="A genre no style is declared for")],
+        {style.id: {"t": (held,)}},
+    )
+    assert (now.entries[0].bucket, now.entries[0].sub) == (style.id, default)
+    with pytest.raises(Exception) as raised:
+        move_cli.remaining(approved, now, DECLARED)
+    assert raised.value.cause.reason == "decision-stale"
+    assert adopt_move.LEFT_NO_STYLE in raised.value.cause.detail["moved_under"]["t"]
+
+
+def test_a_reading_lost_since_the_approval_is_a_stale_decision():
+    bucket = _pure_energy_bucket().id
+    _plan, approved = _approved_over(
+        [_scanned("t", bucket, energy=None)], {bucket: {"t": (SINK, HIGH)}}
+    )
+    assert approved == ()
+    _plan, approved = _approved_over(
+        [_scanned("t", bucket, energy=8)], {bucket: {"t": (SINK,)}}
+    )
+    # The file loses its tag, and the sink is where an untagged track goes.
+    now, _none = _approved_over([_scanned("t", bucket, energy=None)], {bucket: {"t": (SINK,)}})
+    with pytest.raises(Exception) as raised:
+        move_cli.remaining(approved, now, DECLARED)
+    assert raised.value.cause.reason == "decision-stale"
 
 
 def test_what_is_left_of_a_move_is_narrowed_and_a_finished_one_is_dropped():

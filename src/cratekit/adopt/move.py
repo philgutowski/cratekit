@@ -18,10 +18,11 @@ a source and never removed from.
 
 WHAT IS LEFT WHERE IT IS, AND LISTED. A move is made on a reading, so a track
 with none is not moved: a file with no energy tag in a bucket split by energy,
-and a genre that names no style in a bucket split by style, where the resolver
-would fall back to a default nobody's file asked for. A track held through a
-playlist that no longer carries the declared name is left as well, since the
-writer finds a playlist by that name.
+a bucket that reads neither energy nor genre and so has nothing of the file's
+to decide by, and a genre that names no style in a bucket split by style,
+where the resolver would fall back to a default nobody's file asked for. A
+track held through a playlist that no longer carries the declared name is left
+as well, since the writer finds a playlist by that name.
 
 Layer: modules. It performs no input. Everything it reads is handed in.
 """
@@ -32,7 +33,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from cratekit.adopt.plan import AdoptionPlan, PlanEntry
+from cratekit.adopt.plan import AdoptionPlan, Placements, PlanEntry
 from cratekit.adopt.scan import Disposition
 from cratekit.cli.output import canonical_json, digest_of
 from cratekit.core import routing, taxonomy
@@ -209,27 +210,45 @@ def document_digest(document: Mapping[str, Any]) -> str:
     )
 
 
-def _style_named(bucket: taxonomy.Bucket, genre: str) -> bool:
-    """Whether the file's genre names one of this bucket's styles itself.
-
-    The resolver answers a default for a genre its map does not hold. That
-    default is a place to put a track nobody has filed, and is no reading.
-    """
-    return bucket.sub_by_source is not None and genre in bucket.sub_by_source.map
-
-
 def _left_reason(
     declared: taxonomy.Taxonomy, entry: PlanEntry, kind: routing.Competing, unnamed: tuple[str, ...]
 ) -> str:
+    """Why a track holding a stale sub is left where it is, or nothing.
+
+    A BUCKET THAT READS NEITHER ENERGY NOR GENRE HAS NO READING TO MOVE ON. It
+    declares one place for everything, so nothing about a file says a track
+    belongs there rather than where it sits, and ``no-reading`` is the true
+    name for that. It was first filed under the genre reason, which says a
+    genre was read and named nothing, and no genre is read there at all.
+
+    THE RESOLVER ANSWERS A DEFAULT FOR A GENRE ITS MAP DOES NOT HOLD. That
+    default is a place to put a track nobody has filed, and is no reading.
+    """
     if unnamed:
         return LEFT_UNNAMED
     if kind is routing.Competing.BAND:
         return LEFT_NO_READING if entry.energy is None else ""
-    return "" if _style_named(declared.bucket(entry.bucket), entry.genre) else LEFT_NO_STYLE
+    by_source = declared.bucket(entry.bucket).sub_by_source
+    if by_source is None:
+        return LEFT_NO_READING
+    return "" if entry.genre in by_source.map else LEFT_NO_STYLE
 
 
-def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan:
-    """Every track holding a competing sub its reading does not name.
+def standing(
+    entry: PlanEntry,
+    placements: Placements,
+    declared: taxonomy.Taxonomy,
+    *,
+    tree: str,
+) -> Move | Left | None:
+    """What one entry comes to over one tree: a move, a track left, or neither.
+
+    ONE BODY FOR THE PLAN AND FOR THE WORKER'S CHECK OF IT. The plan is built
+    from this, and the worker asks it again of the library as it stands, so
+    every condition that leaves a track alone at planning time leaves it alone
+    at write time. The first version of the worker compared the bucket and the
+    sub and nothing else, and would have removed a membership of a track the
+    plan as it stood listed as left.
 
     OVER THE ENTRIES ADOPTION ROUTES AND THE ONES IT WITHHOLDS OVER A PLACE.
     The second set is its review list. The first holds the track already in
@@ -238,71 +257,67 @@ def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan
     one removed.
 
     AN ENTRY A VERDICT WITHHELD IS NOT MOVED. A person refused that folder.
+    """
+    if not placements.read or not entry.bucket or not entry.sub:
+        return None
+    if entry.disposition is Disposition.WITHHELD:
+        if not entry.held_elsewhere:
+            return None
+    elif entry.disposition is not Disposition.ROUTE:
+        return None
+    kind, competing = routing.competing_subs(declared, entry.bucket)
+    if entry.sub not in competing:
+        return None
+    held = tuple(sorted(set(placements.holds(entry.bucket, entry.content_id)) & competing))
+    stale = tuple(sub for sub in held if sub != entry.sub)
+    if not stale:
+        return None
+    unnamed = tuple(
+        sorted(set(placements.holds_unnamed(entry.bucket, entry.content_id)) & set(held))
+    )
+    reason = _left_reason(declared, entry, kind, unnamed)
+    if reason:
+        return Left(
+            content_id=entry.content_id,
+            location=entry.recorded,
+            bucket=entry.bucket,
+            kind=str(kind.value),
+            reason=reason,
+            target=entry.sub,
+            holds=held,
+            holds_unnamed=unnamed,
+            energy=entry.energy,
+            genre=entry.genre,
+        )
+    return Move(
+        move_id=move_id_for(tree, entry.content_id, entry.bucket, entry.sub, stale),
+        content_id=entry.content_id,
+        location=entry.recorded,
+        bucket=entry.bucket,
+        kind=str(kind.value),
+        target=entry.sub,
+        add="" if entry.sub in held else entry.sub,
+        remove=stale,
+        holds=held,
+        energy=entry.energy,
+        genre=entry.genre,
+    )
+
+
+def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan:
+    """Every track holding a competing sub its reading does not name.
 
     A TREE NOBODY READ PLANS NOTHING and the plan says ``unread``, so an
     approval given over it is not honoured once the tree can be read.
     """
-    placements = plan.placements
-    if not placements.read:
-        return MovePlan(tree=plan.tree, placements=placements.state)
-
-    moves: list[Move] = []
-    left: list[Left] = []
-    for entry in plan.entries:
-        if not entry.bucket or not entry.sub:
-            continue
-        if entry.disposition is Disposition.WITHHELD:
-            if not entry.held_elsewhere:
-                continue
-        elif entry.disposition is not Disposition.ROUTE:
-            continue
-        kind, competing = routing.competing_subs(declared, entry.bucket)
-        if entry.sub not in competing:
-            continue
-        held = tuple(sorted(set(placements.holds(entry.bucket, entry.content_id)) & competing))
-        stale = tuple(sub for sub in held if sub != entry.sub)
-        if not stale:
-            continue
-        unnamed = tuple(
-            sorted(set(placements.holds_unnamed(entry.bucket, entry.content_id)) & set(held))
-        )
-        reason = _left_reason(declared, entry, kind, unnamed)
-        if reason:
-            left.append(
-                Left(
-                    content_id=entry.content_id,
-                    location=entry.recorded,
-                    bucket=entry.bucket,
-                    kind=str(kind.value),
-                    reason=reason,
-                    target=entry.sub,
-                    holds=held,
-                    holds_unnamed=unnamed,
-                    energy=entry.energy,
-                    genre=entry.genre,
-                )
-            )
-            continue
-        moves.append(
-            Move(
-                move_id=move_id_for(plan.tree, entry.content_id, entry.bucket, entry.sub, stale),
-                content_id=entry.content_id,
-                location=entry.recorded,
-                bucket=entry.bucket,
-                kind=str(kind.value),
-                target=entry.sub,
-                add="" if entry.sub in held else entry.sub,
-                remove=stale,
-                holds=held,
-                energy=entry.energy,
-                genre=entry.genre,
-            )
-        )
+    found = [
+        standing(entry, plan.placements, declared, tree=plan.tree) for entry in plan.entries
+    ]
     return MovePlan(
         tree=plan.tree,
-        placements=placements.state,
-        moves=tuple(moves),
-        left=tuple(left),
+        placements=plan.placements.state,
+        moves=tuple(item for item in found if isinstance(item, Move)),
+        left=tuple(item for item in found if isinstance(item, Left)),
     )
 
 
@@ -359,5 +374,6 @@ __all__ = [
     "left_row",
     "move_id_for",
     "move_row",
+    "standing",
     "to_json",
 ]
