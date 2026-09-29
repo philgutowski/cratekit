@@ -1,0 +1,622 @@
+{
+  "name": "r759-b",
+  "pass_kind": "light",
+  "branch": "relay/228",
+  "head": "6fbb119",
+  "when": "2026-09-29 23:00 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10623,
+  "baseline_exit": 0,
+  "pytest_runs": 24,
+  "state_guarded": "~/Library/Application Support/cratekit (63638 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/provider_gate.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/provider_gate.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d32550bba20639ba",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10623,
+    "baseline_collected": 10623,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "P2_interval_halved_r01",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 1 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "25581ba003017f92",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved_r02",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 2 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bb29bf6f4c68b5f5",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved_r03",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 3 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "95de87e66ced11cd",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved_r04",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 4 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8e3cab72c1fdca06",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved_r05",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 5 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6f934a2d89eb696a",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved_r06",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 6 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "96ffd5f4412e135a",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved_r07",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 7 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "704072e7f8111a31",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved_r08",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 8 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "17b8426adc8ee587",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved_r09",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 9 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "90c908ed659d094d",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved_r10",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 10 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "11693e8e6aa206b7",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P4_lock_removed_r01",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 1 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bd38d2bfd144ef9b",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P4_lock_removed_r02",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 2 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a0e3d1c21ec4da5f",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P4_lock_removed_r03",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 3 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "882b399791cd9ba4",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P4_lock_removed_r04",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 4 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "676cccb881836bb0",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P4_lock_removed_r05",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 5 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9731f5ae691f0e4b",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P4_lock_removed_r06",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 6 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "145329716687add5",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P4_lock_removed_r07",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 7 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "da3bb9422108c8d0",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P4_lock_removed_r08",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 8 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "86057c8c6389d651",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P4_lock_removed_r09",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 9 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f381314c46702547",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P4_lock_removed_r10",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 10 of 10",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1651744eccb53a1b",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    }
+  ],
+  "dropped": []
+}

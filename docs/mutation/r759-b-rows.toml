@@ -1,0 +1,227 @@
+name = "r759-b"
+pass_kind = "light"
+
+# R-759 table b. The two rows whose kill rests on real timing, repeated ten
+# times each for a kill rate: P2 is the closest a mutant comes to the bound
+# (half the interval), P4 is the race the in flight test exists to catch.
+# Same text as table a. METHOD: a timing row carries a repeat count.
+
+[[rows]]
+id = "P2_interval_halved_r01"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 1 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved_r02"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 2 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved_r03"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 3 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved_r04"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 4 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved_r05"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 5 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved_r06"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 6 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved_r07"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 7 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved_r08"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 8 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved_r09"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 9 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved_r10"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 10 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P4_lock_removed_r01"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 1 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
+
+[[rows]]
+id = "P4_lock_removed_r02"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 2 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
+
+[[rows]]
+id = "P4_lock_removed_r03"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 3 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
+
+[[rows]]
+id = "P4_lock_removed_r04"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 4 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
+
+[[rows]]
+id = "P4_lock_removed_r05"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 5 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
+
+[[rows]]
+id = "P4_lock_removed_r06"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 6 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
+
+[[rows]]
+id = "P4_lock_removed_r07"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 7 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
+
+[[rows]]
+id = "P4_lock_removed_r08"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 8 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
+
+[[rows]]
+id = "P4_lock_removed_r09"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 9 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
+
+[[rows]]
+id = "P4_lock_removed_r10"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together, repeat 10 of 10"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''                        pass
+'''
