@@ -119,6 +119,9 @@ def read_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
     would read on Reload Tags; the key tag only fills a head that has none. A
     file headed nowhere lands with the bare title, as it always did, because
     nothing here may invent a tempo. ``tonality`` stays the key tag's value.
+    A lossy marker inside that head marks the track, and ``lossy`` reports the
+    flag the Name was rendered from; a marker in the body is text, and marks
+    nothing, so the Name never gains a second marker the title tag lacks.
     """
     assert_not_staging(path, cfg)
     stat = path.stat()
@@ -133,13 +136,15 @@ def read_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
         or naming.parse_head(path.stem, template=template)
         or {}
     )
-    marker = cfg.naming.lossy_marker
-    spec = NameSpec(
-        stem=path.stem,
-        suffix=path.suffix,
-        key=head.get("key") or key,
-        lossy=lossy or marker in title or marker in path.stem,
-        title=title,
+    spec = naming.normalize_spec(
+        NameSpec(
+            stem=path.stem,
+            suffix=path.suffix,
+            key=head.get("key") or key,
+            lossy=lossy,
+            title=title,
+        ),
+        template=template,
     )
     rendered = naming.render_all(spec, template=template)
     return {
@@ -155,7 +160,7 @@ def read_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
         "tonality": key or "",
         "energy": energy,
         "inizio": tags.read_tag(path, "inizio"),
-        "lossy": lossy,
+        "lossy": spec.lossy,
     }
 
 

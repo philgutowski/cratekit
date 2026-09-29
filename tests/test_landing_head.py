@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import config, tags
-from cratekit.intake import landing, pipeline
+from cratekit.intake import ingest, landing, pipeline
 from tests._containers import synth_container
 from tests.test_config import valid_data
 from tests.xml_fixtures import _fresh_xml
@@ -171,3 +171,36 @@ def test_intake_file_names_its_track_from_the_same_head(cfg, silence, tmp_path):
     names = re.findall(rb'<TRACK TrackID="\d+" Name="([^"]*)"', body)
     assert [html.unescape(n.decode()) for n in names] == [HEADED]
     _no_tempo(body)
+
+
+def test_an_acquired_body_marker_is_not_doubled_into_the_head(cfg, silence, tmp_path):
+    """The acquire path marks a lossy staging name at the END of the stem. The
+    Name stays the title tag, and no second marker is prepended."""
+    name, _, _ = _land(cfg, silence, tmp_path, "Body [MP3].flac", title="Body")
+    assert name == "Body"
+
+
+def test_the_lossy_flag_reported_is_the_one_the_name_was_rendered_from(
+    cfg, silence, tmp_path
+):
+    headed = "08A - 124 - [MP3] Body"
+    audio = Path(cfg.library.root) / f"{headed}.flac"
+    shutil.copyfile(silence, audio)
+    assert tags.write_tags(audio, {"title": headed}) is True
+    meta = ingest.read_meta(audio, cfg=cfg)
+    assert meta["name"] == headed
+    assert meta["lossy"] is True
+    bare = Path(cfg.library.root) / "Plain.flac"
+    shutil.copyfile(silence, bare)
+    assert tags.write_tags(bare, {"title": "08A - 124 - Plain"}) is True
+    assert ingest.read_meta(bare, cfg=cfg)["lossy"] is False
+
+
+def test_an_off_wheel_key_tag_under_a_headed_title_lands_the_head(
+    cfg, silence, tmp_path
+):
+    name, body, _ = _land(
+        cfg, silence, tmp_path, "Body.flac", title="08A - 124 - Body", initialkey="Am"
+    )
+    assert name == "08A - 124 - Body"
+    assert b'Tonality="Am"' in body

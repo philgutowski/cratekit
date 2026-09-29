@@ -506,6 +506,44 @@ class TestAStrippedHeadIsKept:
         )
         assert out.title_tag == "03B - 126 - Body"
 
+    def test_a_fresh_key_is_never_paired_with_the_tempo_it_replaces(self):
+        """A spec whose key disagrees with the head takes nothing from it, so
+        no name carries a key and tempo that no source ever said together."""
+        out = render_all(
+            NameSpec(stem="Body", suffix=".flac", key="03B", title="08A - 124 - Body"),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "Body"
+
+    def test_an_off_wheel_key_is_not_completed_into_a_refused_shape(self):
+        out = render_all(
+            NameSpec(stem="Body", suffix=".flac", key="Am", title="08A - 124 - Body"),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "Body"
+
+    def test_an_unpadded_or_lowercase_key_agrees_with_its_padded_head(self):
+        out = render_all(
+            NameSpec(stem="Body", suffix=".flac", key="8a", title="08A - 124 - Body"),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "08A - 124 - Body"
+
+    def test_a_disagreeing_title_head_leaves_the_stem_head_to_agree(self):
+        out = render_all(
+            NameSpec(
+                stem="05B - 98 - Body", suffix=".flac", key="5B", title="08A - 124 - Body"
+            ),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "05B - 98 - Body"
+
+    def test_a_marker_in_the_body_marks_nothing(self):
+        out = render_all(
+            NameSpec(stem=f"Body {MARKER}", suffix=".mp3", title="Body"), template=DEFAULT
+        )
+        assert out.title_tag == "Body"
+
     def test_a_marker_in_the_stripped_head_marks_the_spec(self):
         out = render_all(
             NameSpec(stem="Body", suffix=".mp3", title=f"08A - 124 - {MARKER} Body"),
