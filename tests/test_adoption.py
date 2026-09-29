@@ -4776,20 +4776,22 @@ def test_the_deadline_ends_a_read_that_keeps_arriving_forever(tmp_path):
             return False
 
     original = Path.open
+    stream = _TrickleThenStop()
 
     def trickles(self, *args, **kwargs):
-        return (
-            _TrickleThenStop() if self == endless else original(self, *args, **kwargs)
-        )
+        return stream if self == endless else original(self, *args, **kwargs)
 
-    started = time.monotonic()
     Path.open = trickles
     try:
         with pytest.raises(TimeoutError):
             adopt_revert.digest_of(endless, deadline_seconds=0.2)
     finally:
         Path.open = original
-    assert time.monotonic() - started < 2, (
+    # Counted in blocks rather than timed, R-759: the stream cannot deliver a
+    # hundred blocks in under two seconds however fast the machine, and a busy
+    # one slows the stream and the deadline alike, so a block count is a
+    # verdict load cannot move and an elapsed time was not.
+    assert stream.blocks > 0, (
         "the deadline is asked between blocks, so the read must end near it "
         "rather than run the stream out"
     )
