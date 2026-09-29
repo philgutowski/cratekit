@@ -1,0 +1,13 @@
+name = "r745-c"
+pass_kind = "light"
+
+[[rows]]
+id = "E2_tombstone_membership_written"
+description = "read_nodes: keep a tombstoned membership row. Measured again after the test its zero bought"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        if trees.soft_delete_marker(song):
+            continue'''
+new = '''        if False:
+            continue'''

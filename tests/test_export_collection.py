@@ -1314,3 +1314,31 @@ def test_siblings_come_out_in_their_sequence_and_not_in_identifier_order():
     )
     root = ET.fromstring(document.content).find("PLAYLISTS").find("NODE")
     assert [node.get("Name") for node in root.findall("NODE")] == ["First", "Second", "Third"]
+
+
+def test_a_membership_somebody_removed_is_not_written_back_into_the_playlist():
+    """The zero row E2 bought this. The track is live. Its place in the list is not."""
+    removed = _Song("b", "1", "20", 2)
+    removed.rb_local_deleted = 1
+    songs = [_Song("a", "1", "10", 1), removed, _Song("c", "1", "30", 3)]
+    (node,) = collection_export.read_nodes(_Songs([_Row("1", 0)], songs))
+    assert node.members == ("10", "30")
+
+    document = _rendered(
+        [
+            collection_export.TrackRow(track_id=key, location=f"/library/{key}.flac")
+            for key in ("10", "20", "30")
+        ],
+        [node],
+    )
+    view = library_export.read_export(document.content)
+    assert view.playlists[0].track_ids == ("10", "30")
+    assert document.omitted.dangling_members == 0
+
+
+def test_a_membership_that_cannot_say_whether_it_was_removed_refuses():
+    unreadable = _Song("a", "1", "10", 1)
+    unreadable.rb_local_deleted = None
+    with pytest.raises(CratekitError) as caught:
+        collection_export.read_nodes(_Songs([_Row("1", 0)], [unreadable]))
+    assert caught.value.cause.reason == "soft-delete-marker-unreadable"
