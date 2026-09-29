@@ -84,6 +84,10 @@ VOX_SUB_CLASS = "with_vox"
 #: A name for an operation, not a verb: the CLI layer owns verb names (D2).
 MEMBERSHIP_WORKFLOW = "tree-membership"
 
+#: The workflow name the membership MOVE records in the session log. Its own,
+#: so a session that removed something is told apart from one that only added.
+MOVE_WORKFLOW = "tree-membership-move"
+
 
 # ---------------------------------------------------------------------------
 # What a write did, reported rather than printed
@@ -1165,9 +1169,286 @@ def write_tree_membership(
     )
 
 
+# ---------------------------------------------------------------------------
+# The move: the one writer that removes a membership (R-758)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MembershipMove:
+    """One track, the playlist it belongs in, and the playlists it leaves.
+
+    Display names, as the membership writer's plan is phrased, each a folder
+    and a playlist under it. ``target`` is named whether or not the track is
+    already in it, because the removal is made only once the track is proven
+    to sit there.
+    """
+
+    content_id: str
+    target: tuple[str, str]
+    remove: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class MoveReport:
+    """What one move session wrote, and what it would not.
+
+    ``skipped`` is every track with no live collection row, for which nothing
+    was added and nothing removed. ``held_back`` is every track that was not
+    in its target when the removals began, for which nothing was removed.
+    ``adds_committed`` says the first commit landed, which is what a failure
+    report reads to say a track sits in both places.
+    """
+
+    tree_id: str
+    root_id: str
+    added: int = 0
+    already_present: int = 0
+    removed: int = 0
+    already_absent: int = 0
+    skipped: tuple[str, ...] = ()
+    held_back: tuple[str, ...] = ()
+    playlists: tuple[str, ...] = field(default=())
+    adds_committed: bool = False
+
+
+class MoveInterrupted(Exception):
+    """The move stopped after its additions landed and before its removals did.
+
+    Carries the report as far as it got and the failure that stopped it as
+    ``__cause__``. Raised only for that window, so a caller that catches it
+    knows every track it moved is in its target and may still be in the
+    playlist it was leaving: in both, never in neither.
+    """
+
+    def __init__(self, report: MoveReport) -> None:
+        self.report = report
+        super().__init__(
+            f"the move of tree {report.tree_id!r} added {report.added} "
+            f"membership(s) and removed none"
+        )
+
+
+def _live_content(db: Any, content_id: str) -> bool:
+    """Whether the collection holds a live row for this identifier."""
+    row = db.get_content(ID=str(content_id))
+    return row is not None and not soft_delete_marker(row)
+
+
+def _named_playlists(db: Any, anchor: Any, folder_display: str, sub_display: str) -> list[Any]:
+    """Every live playlist answering to one destination under the adopted root.
+
+    FOUND AND NEVER CREATED. A removal has nothing to do in a playlist that is
+    not there, and a read that created one would leave an empty playlist behind
+    every track it looked for.
+
+    EVERY NODE CARRYING THE NAMES, as the placement reader counts them: a track
+    holds a sub through any of them, so it leaves through all of them.
+    """
+    anchor_id = str(anchor.ID)
+    found: list[Any] = []
+    for folder in list(db.get_playlist(Name=folder_display)):
+        if int(getattr(folder, "Attribute", -1)) != 1 or soft_delete_marker(folder):
+            continue
+        if str(getattr(folder, "ParentID", "")) != anchor_id:
+            continue
+        for playlist in list(db.get_playlist(Name=sub_display)):
+            if int(getattr(playlist, "Attribute", -1)) == 1 or soft_delete_marker(playlist):
+                continue
+            if str(getattr(playlist, "ParentID", "")) == str(folder.ID):
+                found.append(playlist)
+    return found
+
+
+def _holds(db: Any, playlists: Sequence[Any], content_id: str) -> bool:
+    """Whether any of these playlists holds a live membership for the track."""
+    for playlist in playlists:
+        for song in db.get_playlist_songs(
+            PlaylistID=str(playlist.ID), ContentID=str(content_id)
+        ):
+            if not rb_writer.membership_removed(song):
+                return True
+    return False
+
+
+def move_tree_membership(
+    cfg: config.Config,
+    db: Any,
+    *,
+    tree_id: str,
+    registry: tree_registry.Registry,
+    moves: Sequence[MembershipMove],
+    root_exists: Callable[[str], bool],
+    analysis_roots: Iterable[Path | str],
+) -> MoveReport:
+    """Move tracks between the playlists of one database native tree.
+
+    THE FIRST WRITER THAT REMOVES A MEMBERSHIP, and it is treated as the
+    cutover was. Everything :func:`write_tree_membership` holds is held here
+    and for its reasons: the medium and the anchored root through the shared
+    assertion, the convergence gate, the three session gates, a record opened
+    before a capture that is verified before anything commits, the analysis
+    watch over roots the caller names, and the guarded commit.
+
+    TWO COMMITS IN ONE SESSION, THE ADDITIONS FIRST. Every addition is
+    committed before any removal is attempted, so a failure between the two
+    leaves a track in both playlists and never in neither. One commit for both
+    would roll the addition back with the removal, which is safe and is also a
+    run that did nothing; two lets a resume finish what is left.
+
+    A REMOVAL IS MADE ONLY FOR A TRACK PROVEN TO SIT IN ITS TARGET, read from
+    the database after the additions landed. That holds for a track this call
+    added and for one the plan found already there, since somebody may have
+    taken it out since.
+
+    ONLY THE SECOND COMMIT ADMITS A REMOVAL, and only in the membership table.
+    The first is an ordinary commit and refuses one, as every other writer's
+    does.
+
+    IT TAKES NO ``workflow``, ``purpose`` OR ``intent``. It is a routine write
+    by one verb, and a parameter that let a caller declare it a recovery would
+    lift two latches in front of the only writer that removes.
+    """
+    watched = [Path(root) for root in analysis_roots]
+    if not watched:
+        raise ValueError(
+            "analysis_roots is empty, so the analysis-file watch would watch "
+            "nothing and this session would report itself clean whatever "
+            "happened to the library's grids; name the roots this write could "
+            "touch (R17's fifth surface, runtime half)"
+        )
+    root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
+    convergence.assert_tree_writable(
+        cfg, db, tree_id, registry, purpose=convergence.Purpose.ROUTINE
+    )
+
+    added = 0
+    already_present = 0
+    removed = 0
+    already_absent = 0
+    touched: list[str] = []
+
+    with session.assert_gates(
+        cfg,
+        workflow=MOVE_WORKFLOW,
+        analysis_roots=watched,
+        intent=session.Intent.WRITE,
+        keep=session.Keep.RECORD,
+    ) as gates:
+        record = gates.record
+        capture = snapshot.capture(cfg, db=db)
+        session.attach_capture(record, capture.root, cfg)
+        snapshot.assert_verified(capture)
+
+        anchor = _root_row(db, root_id)
+        live = [move for move in moves if _live_content(db, move.content_id)]
+        skipped = tuple(
+            sorted({move.content_id for move in moves} - {move.content_id for move in live})
+        )
+
+        # ── the additions, and their own commit ────────────────────────────
+        wanted: dict[tuple[str, str], list[str]] = {}
+        for move in live:
+            wanted.setdefault(move.target, []).append(move.content_id)
+        with rb_writer.commit_witness(db) as witness:
+            try:
+                folders: dict[str, Any] = {}
+                for (folder_display, sub_display), content_ids in sorted(wanted.items()):
+                    folder = folders.get(folder_display)
+                    if folder is None:
+                        folder = rb_writer.ensure_folder(db, folder_display, parent=anchor)
+                        folders[folder_display] = folder
+                    playlist = rb_writer.ensure_playlist(db, sub_display, folder)
+                    touched.append(f"{folder_display}/{sub_display}")
+                    inserted = rb_writer.add_memberships(db, playlist, content_ids)
+                    added += len(inserted)
+                    already_present += len(content_ids) - len(inserted)
+                rb_writer.commit_guarded(db)
+            except BaseException:
+                _rollback_quietly(db)
+                if witness.landed:
+                    _record_membership_commit(record, tree_id, added, cfg)
+                raise
+        _record_membership_commit(record, tree_id, added, cfg)
+
+        def report(**extra: Any) -> MoveReport:
+            return MoveReport(
+                tree_id=tree_id,
+                root_id=root_id,
+                added=added,
+                already_present=already_present,
+                skipped=skipped,
+                playlists=tuple(touched),
+                adds_committed=True,
+                **extra,
+            )
+
+        # ── the removals, behind the additions ─────────────────────────────
+        held_back: list[str] = []
+        with rb_writer.commit_witness(db) as witness:
+            try:
+                for move in live:
+                    target = _named_playlists(db, anchor, *move.target)
+                    if not _holds(db, target, move.content_id):
+                        held_back.append(move.content_id)
+                        continue
+                    for folder_display, sub_display in move.remove:
+                        if (folder_display, sub_display) == move.target:
+                            continue
+                        gone = 0
+                        for playlist in _named_playlists(db, anchor, folder_display, sub_display):
+                            gone += len(
+                                rb_writer.remove_memberships(db, playlist, [move.content_id])
+                            )
+                        if gone:
+                            touched.append(f"{folder_display}/{sub_display}")
+                            removed += gone
+                        else:
+                            already_absent += 1
+                rb_writer.commit_guarded(db, removals=rb_writer.REMOVABLE_TABLES)
+            except BaseException as exc:
+                _rollback_quietly(db)
+                if witness.landed:
+                    _record_removal_commit(record, tree_id, removed, cfg)
+                    raise
+                raise MoveInterrupted(report(held_back=tuple(held_back))) from exc
+        _record_removal_commit(record, tree_id, removed, cfg)
+
+        convergence.record_fingerprint(cfg, db)
+
+    return report(
+        removed=removed,
+        already_absent=already_absent,
+        held_back=tuple(held_back),
+    )
+
+
+def _record_removal_commit(
+    record: session.SessionRecord, tree_id: str, removed: int, cfg: config.Config
+) -> None:
+    """Record the removals on the session record, as rows this session changed.
+
+    ``updated`` and never a negative ``created``: the row is still there and
+    carries a marker, which is what a restore would be discarding.
+    """
+    if removed <= 0:
+        return
+    session.record_commit(
+        record,
+        tree_id,
+        session.ChangeSummary((session.TreeChange(tree=tree_id, updated=removed),)),
+        cfg,
+    )
+
+
 __all__ = [
     "MEMBERSHIP_WORKFLOW",
+    "MOVE_WORKFLOW",
     "VOX_SUB_CLASS",
+    "MembershipMove",
+    "MoveInterrupted",
+    "MoveReport",
+    "move_tree_membership",
     "ContentRow",
     "DuplicateFolders",
     "MatchOutcome",

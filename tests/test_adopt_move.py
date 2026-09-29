@@ -1,0 +1,1231 @@
+"""R-758: a track is moved from the competing sub it holds to the one its file names.
+
+Adoption withholds a track that already holds a competing sub and lists it.
+``crate adopt move`` is the verb that acts on that list, and it is the first
+verb in this product that removes a membership. The pure plan is held first,
+then the verb through the real dispatcher against a disposable library with
+real tags, then the writer's own guards.
+
+Every expected identifier is derived from the shipped taxonomy's declarations
+rather than spelled.
+
+D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+"""
+
+from __future__ import annotations
+
+import shutil
+import sqlite3
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from cratekit.adopt import apply_cli, artifacts, collection, move_cli
+from cratekit.adopt import move as adopt_move
+from cratekit.adopt import plan as adopt_plan
+from cratekit.adopt import scan as adopt_scan
+from cratekit.cli import handlers, registry
+from cratekit.core import jobs, rb_writer, routing, session, taxonomy, tree_registry
+from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.write import trees
+from cratekit.write.routing_pass import destination
+from tests import adopt_fixtures
+from tests.cli_drive import approve_and_queue, drive, drive_human
+from tests.test_adopt_workers import (  # noqa: F401
+    _energy_bucket,
+    _platform_seams,
+    _reader_cache,
+    _release_process_locks,
+    _resume,
+    _style_bucket,
+    library,
+    machine,
+    silence,
+)
+
+DECLARED = taxonomy.default_taxonomy()
+TREE_ID = DECLARED.tree.id
+GATE = "adopt.move.approve"
+VERB = ["adopt", "move"]
+
+
+def _band(level: int) -> str:
+    return next(band.id for band in DECLARED.energy.bands if level <= band.max)
+
+
+LOW, MED, HIGH = _band(1), _band(5), _band(9)
+SINK = DECLARED.energy.no_energy_sub.id
+CLASSES = {entry.id: entry for entry in DECLARED.sub_classes}
+MANUAL = next(e.id for e in DECLARED.sub_classes if e.policy is taxonomy.SubPolicy.MANUAL)
+DERIVED = next(e.id for e in DECLARED.sub_classes if e.policy is taxonomy.SubPolicy.DERIVED)
+
+
+# ---------------------------------------------------------------------------
+# The plan, with no database
+# ---------------------------------------------------------------------------
+
+
+def _pure_energy_bucket() -> taxonomy.Bucket:
+    return next(
+        bucket
+        for bucket in DECLARED.buckets
+        if bucket.sub_by_source is None and bucket.energy.enabled
+    )
+
+
+def _scanned(
+    content_id: str, bucket: str, *, energy: int | None, genre: str = ""
+) -> adopt_scan.ScannedTrack:
+    return adopt_scan.ScannedTrack(
+        content_id=content_id,
+        recorded=f"/library/Music/{content_id}.flac",
+        path=f"/library/Music/{content_id}.flac",
+        readability=adopt_scan.Readability.READABLE,
+        disposition=adopt_scan.Disposition.ROUTE,
+        genre=genre or DECLARED.bucket(bucket).display,
+        bucket=bucket,
+        energy=energy,
+    )
+
+
+def _moves(tracks, held: dict, *, unnamed: dict | None = None) -> adopt_move.MovePlan:
+    placements = adopt_plan.Placements(read=True, held=held, unnamed=unnamed or {})
+    plan = adopt_plan.build_adoption_plan(
+        tracks, DECLARED, tree=TREE_ID, placements=placements
+    )
+    return adopt_move.build_move_plan(plan, DECLARED)
+
+
+def test_a_track_in_med_whose_file_reads_eight_is_added_to_high_and_leaves_med():
+    bucket = _pure_energy_bucket().id
+    plan = _moves([_scanned("t", bucket, energy=8)], {bucket: {"t": (MED,)}})
+    (move,) = plan.moves
+    assert (move.target, move.add, move.remove, move.holds) == (HIGH, HIGH, (MED,), (MED,))
+    assert (move.kind, move.decided_by, move.energy) == ("band", "energy", 8)
+    assert plan.left == ()
+
+
+def test_a_track_in_both_has_only_the_stale_one_removed():
+    bucket = _pure_energy_bucket().id
+    plan = _moves([_scanned("t", bucket, energy=8)], {bucket: {"t": (MED, HIGH)}})
+    (move,) = plan.moves
+    assert (move.target, move.add, move.remove) == (HIGH, "", (MED,))
+    assert plan.counts()["memberships_added"] == 0
+    assert plan.counts()["memberships_removed"] == 1
+
+
+def test_a_track_in_three_bands_leaves_the_two_its_reading_does_not_name():
+    bucket = _pure_energy_bucket().id
+    plan = _moves([_scanned("t", bucket, energy=8)], {bucket: {"t": (LOW, MED, HIGH)}})
+    (move,) = plan.moves
+    assert (move.add, set(move.remove)) == ("", {LOW, MED})
+
+
+@pytest.mark.parametrize("sub_class", sorted(CLASSES))
+def test_a_sub_class_is_never_a_source_and_never_removed_from(sub_class):
+    bucket = _pure_energy_bucket().id
+    alone = _moves([_scanned("t", bucket, energy=8)], {bucket: {"t": (sub_class,)}})
+    assert alone.moves == () and alone.left == ()
+
+    beside = _moves([_scanned("t", bucket, energy=8)], {bucket: {"t": (sub_class, MED)}})
+    (move,) = beside.moves
+    assert move.remove == (MED,)
+    assert sub_class not in move.holds
+
+
+def test_both_policies_are_declared_so_the_test_above_means_something():
+    assert {entry.policy for entry in DECLARED.sub_classes} == set(taxonomy.SubPolicy)
+
+
+def test_a_track_whose_file_has_no_reading_is_left_and_listed():
+    bucket = _pure_energy_bucket().id
+    plan = _moves([_scanned("t", bucket, energy=None)], {bucket: {"t": (HIGH,)}})
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.reason, left.holds, left.target) == (adopt_move.LEFT_NO_READING, (HIGH,), SINK)
+    assert plan.counts()["left"] == {
+        "total": 1,
+        adopt_move.LEFT_NO_READING: 1,
+        adopt_move.LEFT_NO_STYLE: 0,
+        adopt_move.LEFT_UNNAMED: 0,
+    }
+
+
+def test_a_track_in_the_no_reading_sub_whose_file_now_reads_is_moved_out_of_it():
+    bucket = _pure_energy_bucket().id
+    plan = _moves([_scanned("t", bucket, energy=5)], {bucket: {"t": (SINK,)}})
+    (move,) = plan.moves
+    assert (move.add, move.remove) == (MED, (SINK,))
+
+
+def test_a_track_already_where_its_reading_names_is_not_planned():
+    bucket = _pure_energy_bucket().id
+    plan = _moves([_scanned("t", bucket, energy=5)], {bucket: {"t": (MED,)}})
+    assert plan.moves == () and plan.left == ()
+    nowhere = _moves([_scanned("t", bucket, energy=5)], {})
+    assert nowhere.moves == () and nowhere.left == ()
+
+
+def test_the_genre_decides_a_style_move_and_a_genre_naming_no_style_is_left():
+    bucket = _style_bucket()
+    first, second = bucket.subs[0], bucket.subs[1]
+    named = next(g for g, sub in bucket.sub_by_source.map.items() if sub == second.id)
+    plan = _moves(
+        [_scanned("t", bucket.id, energy=8, genre=named)], {bucket.id: {"t": (first.id,)}}
+    )
+    (move,) = plan.moves
+    assert (move.kind, move.decided_by) == ("style", "genre")
+    assert (move.add, move.remove, move.genre) == (second.id, (first.id,), named)
+
+    unnamed_genre = "A genre no style is declared for"
+    assert unnamed_genre not in bucket.sub_by_source.map
+    held = next(sub.id for sub in bucket.subs if sub.id != bucket.sub_by_source.default)
+    plan = _moves(
+        [_scanned("t", bucket.id, energy=8, genre=unnamed_genre)],
+        {bucket.id: {"t": (held,)}},
+    )
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.reason, left.holds) == (adopt_move.LEFT_NO_STYLE, (held,))
+
+
+def test_a_bucket_with_one_sub_and_no_energy_names_no_style():
+    bucket = next(
+        b for b in DECLARED.buckets if b.sub_by_source is None and not b.energy.enabled
+    )
+    kind, competing = routing.competing_subs(DECLARED, bucket.id)
+    assert kind is routing.Competing.STYLE and competing == {bucket.single_sub.id}
+    plan = _moves([_scanned("t", bucket.id, energy=8)], {bucket.id: {"t": tuple(competing)}})
+    assert plan.moves == () and plan.left == ()
+
+
+def test_a_sub_held_under_another_name_only_is_left_and_listed():
+    bucket = _pure_energy_bucket().id
+    plan = _moves(
+        [_scanned("t", bucket, energy=8)],
+        {bucket: {"t": (MED,)}},
+        unnamed={bucket: {"t": (MED,)}},
+    )
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.reason, left.holds_unnamed) == (adopt_move.LEFT_UNNAMED, (MED,))
+
+
+def test_a_tree_nobody_read_plans_nothing_and_says_unread():
+    bucket = _pure_energy_bucket().id
+    unread = adopt_plan.build_adoption_plan(
+        [_scanned("t", bucket, energy=8)],
+        DECLARED,
+        tree=TREE_ID,
+        placements=adopt_plan.Placements(read=False, held={bucket: {"t": (MED,)}}),
+    )
+    plan = adopt_move.build_move_plan(unread, DECLARED)
+    assert (plan.moves, plan.left, plan.placements) == ((), (), "unread")
+    read = _moves([_scanned("t", bucket, energy=5)], {bucket: {"t": (MED,)}})
+    assert read.moves == () and read.digest() != plan.digest()
+
+
+def test_the_counts_split_by_kind_and_total():
+    energy, style = _pure_energy_bucket().id, _style_bucket()
+    named = next(g for g, sub in style.sub_by_source.map.items() if sub == style.subs[1].id)
+    plan = _moves(
+        [
+            _scanned("a", energy, energy=8),
+            _scanned("b", energy, energy=2),
+            _scanned("c", style.id, energy=None, genre=named),
+        ],
+        {
+            energy: {"a": (MED,), "b": (MED, LOW)},
+            style.id: {"c": (style.subs[0].id,)},
+        },
+    )
+    assert plan.counts() == {
+        "moves": 3,
+        "band": 2,
+        "style": 1,
+        "memberships_added": 2,
+        "memberships_removed": 3,
+        "left": {"total": 0, **{reason: 0 for reason in adopt_move.LEFT_REASONS}},
+    }
+
+
+def _one_move(**changed) -> adopt_move.MovePlan:
+    bucket = _pure_energy_bucket().id
+    plan = _moves([_scanned("t", bucket, energy=8)], {bucket: {"t": (MED,)}})
+    (move,) = plan.moves
+    fields = {name: getattr(move, name) for name in move.__slots__}
+    fields.update(changed)
+    return adopt_move.MovePlan(
+        tree=plan.tree, placements=plan.placements, moves=(adopt_move.Move(**fields),)
+    )
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"move_id": "mv_other"},
+        {"content_id": "u"},
+        {"location": "/library/Music/elsewhere.flac"},
+        {"bucket": "another"},
+        {"kind": "style"},
+        {"target": LOW},
+        {"add": ""},
+        {"remove": (MED, LOW)},
+        {"holds": (MED, LOW)},
+        {"energy": 9},
+        {"genre": "Another"},
+    ],
+    ids=lambda changed: next(iter(changed)),
+)
+def test_the_digest_covers_every_field_a_move_shows(changed):
+    assert set(adopt_move.move_row(_one_move().moves[0])) - {"decided_by", "id"} == {
+        name for name in adopt_move.Move.__slots__ if name != "move_id"
+    }
+    assert _one_move(**changed).digest() != _one_move().digest()
+
+
+def test_the_digest_covers_the_tracks_left_and_the_tree():
+    base = _one_move()
+    bucket = _pure_energy_bucket().id
+    left = adopt_move.Left(
+        content_id="l", location="/l", bucket=bucket, kind="band",
+        reason=adopt_move.LEFT_NO_READING, target=SINK, holds=(HIGH,),
+        holds_unnamed=(), energy=None, genre="g",
+    )
+    with_left = adopt_move.MovePlan(
+        tree=base.tree, placements=base.placements, moves=base.moves, left=(left,)
+    )
+    other_tree = adopt_move.MovePlan(tree="another", placements="read", moves=base.moves)
+    assert len({base.digest(), with_left.digest(), other_tree.digest()}) == 3
+
+
+def test_the_frozen_rows_read_back_to_the_moves_and_to_the_digest():
+    bucket = _pure_energy_bucket().id
+    plan = _moves(
+        [_scanned("a", bucket, energy=8), _scanned("b", bucket, energy=None)],
+        {bucket: {"a": (MED,), "b": (HIGH,)}},
+    )
+    document = adopt_move.to_json(plan)
+    assert adopt_move.from_rows(document["moves"]) == plan.moves
+    assert adopt_move.document_digest(document) == plan.digest() == document["digest"]
+    tampered = {**document, "moves": [{**document["moves"][0], "remove": [LOW]}]}
+    assert adopt_move.document_digest(tampered) != plan.digest()
+
+
+def test_a_frozen_row_short_of_a_field_raises_rather_than_defaulting():
+    row = adopt_move.move_row(_one_move().moves[0])
+    for name in ("id", "content_id", "bucket", "target", "add", "remove", "holds", "energy"):
+        short = {key: value for key, value in row.items() if key != name}
+        with pytest.raises(KeyError):
+            adopt_move.from_rows([short])
+
+
+# ---------------------------------------------------------------------------
+# A placed library with real tags
+# ---------------------------------------------------------------------------
+
+#: One library, as data: a track, the energy its file carries, the subs it sits in.
+_SEEDED = (
+    ("m-med-reads-high", "8", (MED,)),
+    ("m-both-reads-high", "8", (MED, HIGH)),
+    ("m-vox-and-med", "8", (DERIVED, MED)),
+    ("m-candy-only", "2", (MANUAL,)),
+    ("m-no-reading", None, (HIGH,)),
+    ("m-same", "5", (MED,)),
+    ("m-sink-now-reads", "5", (SINK,)),
+)
+
+_MOVED = {"m-med-reads-high", "m-both-reads-high", "m-vox-and-med", "m-sink-now-reads", "m-style"}
+_LEFT = {"m-no-reading"}
+
+
+@pytest.fixture
+def moved(machine, silence):  # noqa: F811
+    """A cut over library whose tree files tracks where their files do not read."""
+    from cratekit.core import tags
+
+    energy, style = _energy_bucket(), _style_bucket()
+    first, second = style.subs[0], style.subs[1]
+    style_genre = next(g for g, sub in style.sub_by_source.map.items() if sub == second.id)
+    tracks = [
+        adopt_fixtures.Track(content_id, f"{content_id}.flac", energy.display)
+        for content_id, _tag, _held in _SEEDED
+    ]
+    tracks.append(adopt_fixtures.Track("m-style", "m-style.flac", style_genre))
+    adopt_fixtures.build(machine, tuple(tracks))
+    collection.reset_cache()
+
+    music = Path(machine.library.root) / "Music"
+    readings = {content_id: tag for content_id, tag, _held in _SEEDED}
+    readings["m-style"] = "8"
+    for content_id, tag in readings.items():
+        path = music / f"{content_id}.flac"
+        shutil.copyfile(silence, path)
+        if tag is not None:
+            assert tags.write_tags(path, {"energylevel": tag}) is True
+
+    seeded = [
+        (energy.id, sub, content_id) for content_id, _tag, held in _SEEDED for sub in held
+    ]
+    seeded.append((style.id, first.id, "m-style"))
+    handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
+    try:
+        root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
+        for bucket_id, sub_id, content_id in seeded:
+            folder_display, sub_display = destination(DECLARED, bucket_id, sub_id)
+            folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
+            playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
+            rb_writer.add_memberships(handle, playlist, [content_id])
+        handle.session.commit()
+        root_id = str(root.ID)
+    finally:
+        rb_writer.close_db(handle)
+    tree_registry.record_cutover(
+        machine,
+        TREE_ID,
+        root_id=root_id,
+        on=date(2026, 9, 29),
+        source=tree_registry.DerivationSource.TAXONOMY,
+    )
+    return machine
+
+
+def _rows(cfg) -> list[tuple[str, str, str, int]]:
+    """Every membership row: track, folder name, playlist name, removal marker.
+
+    Read with plain SQL off the file, so what is asserted is what the database
+    holds and the marker is read whatever a reader in the product does with it.
+    """
+    conn = sqlite3.connect(Path(cfg.library.db_path))
+    try:
+        return [
+            (str(a), str(b), str(c), int(d))
+            for a, b, c, d in conn.execute(
+                "SELECT sp.ContentID, f.Name, p.Name, sp.rb_local_deleted "
+                "FROM djmdSongPlaylist sp "
+                "JOIN djmdPlaylist p ON p.ID = sp.PlaylistID "
+                "JOIN djmdPlaylist f ON f.ID = p.ParentID "
+                "ORDER BY sp.ContentID, f.Name, p.Name, sp.rb_local_deleted"
+            )
+        ]
+    finally:
+        conn.close()
+
+
+def _live(cfg) -> dict[str, set[tuple[str, str]]]:
+    found: dict[str, set[tuple[str, str]]] = {}
+    for content_id, folder, playlist, marker in _rows(cfg):
+        if not marker:
+            found.setdefault(content_id, set()).add((folder, playlist))
+    return found
+
+
+def _removed(cfg) -> dict[str, set[tuple[str, str]]]:
+    found: dict[str, set[tuple[str, str]]] = {}
+    for content_id, folder, playlist, marker in _rows(cfg):
+        if marker:
+            found.setdefault(content_id, set()).add((folder, playlist))
+    return found
+
+
+def _place(sub_id: str, bucket: taxonomy.Bucket | None = None) -> tuple[str, str]:
+    return destination(DECLARED, (bucket or _energy_bucket()).id, sub_id)
+
+
+def _shown(verb: list[str]) -> dict:
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == GATE
+    return refused["cause"]["detail"]["shown"]
+
+
+def _approve_and_run() -> tuple[str, int, dict]:
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    code, resumed = drive(_resume(job_id))
+    return job_id, code, resumed
+
+
+# ── the gate ────────────────────────────────────────────────────────────────
+
+
+def test_the_gate_shows_every_move_with_what_it_adds_removes_and_reads(moved):
+    shown = _shown(VERB)
+    style = _style_bucket()
+
+    items = {item["content_id"]: item for item in shown["items"]}
+    assert set(items) == _MOVED
+    assert shown["counts"] == {
+        "moves": 5,
+        "band": 4,
+        "style": 1,
+        "memberships_added": 4,
+        "memberships_removed": 5,
+        "left": {
+            "total": 1,
+            adopt_move.LEFT_NO_READING: 1,
+            adopt_move.LEFT_NO_STYLE: 0,
+            adopt_move.LEFT_UNNAMED: 0,
+        },
+    }
+    assert shown["placements"] == "read"
+
+    row = items["m-med-reads-high"]
+    assert (row["add"], row["remove"], row["holds"]) == (HIGH, [MED], [MED])
+    assert (row["decided_by"], row["energy"], row["bucket"]) == ("energy", 8, _energy_bucket().id)
+    assert row["location"].endswith("m-med-reads-high.flac")
+    assert (items["m-both-reads-high"]["add"], items["m-both-reads-high"]["remove"]) == ("", [MED])
+    assert (items["m-vox-and-med"]["holds"], items["m-vox-and-med"]["remove"]) == ([MED], [MED])
+    assert (items["m-sink-now-reads"]["add"], items["m-sink-now-reads"]["remove"]) == (MED, [SINK])
+    assert (items["m-style"]["decided_by"], items["m-style"]["kind"]) == ("genre", "style")
+    assert items["m-style"]["remove"] == [style.subs[0].id]
+    assert items["m-style"]["add"] == style.subs[1].id
+
+    (left,) = shown["left"]
+    assert (left["content_id"], left["reason"]) == ("m-no-reading", adopt_move.LEFT_NO_READING)
+    assert shown["digest"] == move_cli.current_plan(moved, DECLARED).digest()
+
+
+def test_a_person_reading_the_gate_is_shown_every_move_and_every_track_left(moved):
+    _code, text = drive_human(VERB)
+    for content_id in _MOVED | _LEFT:
+        assert f"content_id={content_id}" in text, content_id
+
+
+def test_the_gate_takes_no_inline_answer(moved):
+    before = _rows(moved)
+    code, refused = drive(["-d", f"{GATE}=approve", *VERB])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+    assert _rows(moved) == before
+
+
+def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(moved):
+    session.ack_path(moved).unlink()
+    before = _rows(moved)
+
+    code, refused = drive(VERB)
+
+    assert code == int(ExitCode.ACK_REQUIRED), refused
+    assert refused["cause"]["reason"] == "backup-acknowledgment-missing"
+    assert "shown" not in refused["cause"].get("detail", {})
+    assert refused["cause"]["remediation"]["remedy"] == str(Remedy.ACKNOWLEDGE_BACKUP)
+    assert _rows(moved) == before
+
+
+def test_an_acknowledgment_out_of_its_window_refuses_before_the_gate(moved, monkeypatch):
+    monkeypatch.setattr(session.Acknowledgment, "valid_at", lambda self, moment: False)
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.ACK_REQUIRED), refused
+    assert refused["cause"]["detail"]["expired"] is True
+
+
+def test_a_resume_with_no_acknowledgment_refuses_before_anything_is_driven(moved):
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    session.ack_path(moved).unlink()
+    before = _rows(moved)
+    code, refused = drive(_resume(job_id))
+    assert code == int(ExitCode.ACK_REQUIRED), refused
+    assert _rows(moved) == before
+
+
+# ── the move ────────────────────────────────────────────────────────────────
+
+
+def test_an_approved_move_adds_the_new_sub_and_removes_the_old(moved):
+    before = _live(moved)
+    job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    after, removed = _live(moved), _removed(moved)
+    style = _style_bucket()
+
+    # In High and not in Med.
+    assert after["m-med-reads-high"] == {_place(HIGH)}
+    # In Med and High: Med removed, nothing added.
+    assert after["m-both-reads-high"] == {_place(HIGH)}
+    # The vocal sub is untouched.
+    assert after["m-vox-and-med"] == {_place(DERIVED), _place(HIGH)}
+    assert after["m-sink-now-reads"] == {_place(MED)}
+    assert after["m-style"] == {_place(style.subs[1].id, style)}
+    # Not planned, and left where they are.
+    for content_id in ("m-candy-only", "m-no-reading", "m-same"):
+        assert after[content_id] == before[content_id], content_id
+        assert content_id not in removed, content_id
+
+    report = artifacts.committed(moved, job_id)[-1]
+    assert (report["added"], report["already_present"]) == (4, 1)
+    assert (report["removed"], report["already_absent"]) == (5, 0)
+    assert set(report["moved"]) == _MOVED
+    assert report["in_both"] == report["untouched"] == report["neither"] == []
+    assert report["interrupted"] is False
+    assert resumed["data"]["progress"]["move"]["moved"] == sorted(_MOVED)
+
+
+def test_the_removal_is_a_soft_delete_and_the_row_is_still_there(moved):
+    rows_before = len(_rows(moved))
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+
+    assert _removed(moved) == {
+        "m-med-reads-high": {_place(MED)},
+        "m-both-reads-high": {_place(MED)},
+        "m-vox-and-med": {_place(MED)},
+        "m-sink-now-reads": {_place(SINK)},
+        "m-style": {_place(_style_bucket().subs[0].id, _style_bucket())},
+    }
+    # Five rows marked, four rows added, none deleted.
+    assert len(_rows(moved)) == rows_before + 4
+
+
+def test_no_content_row_and_no_grid_column_is_written(moved):
+    def content():
+        conn = sqlite3.connect(Path(moved.library.db_path))
+        try:
+            return conn.execute("SELECT * FROM djmdContent ORDER BY ID").fetchall()
+        finally:
+            conn.close()
+
+    before = content()
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    assert content() == before
+
+
+def test_after_the_move_adoption_withholds_none_of_the_moved_tracks(moved):
+    withheld = {e.content_id for e in apply_cli.current_plan(moved, DECLARED).held_elsewhere()}
+    assert _MOVED - {"m-both-reads-high"} <= withheld
+
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    collection.reset_cache()
+
+    plan = apply_cli.current_plan(moved, DECLARED)
+    assert {e.content_id for e in plan.held_elsewhere()} == _LEFT
+    assert _MOVED <= {entry.content_id for entry in plan.applicable()}
+
+
+def test_a_second_approved_run_plans_nothing_and_writes_nothing(moved):
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    rows = _rows(moved)
+    collection.reset_cache()
+
+    shown = _shown(VERB)
+    assert shown["items"] == []
+    assert shown["counts"]["moves"] == 0
+    assert [row["content_id"] for row in shown["left"]] == sorted(_LEFT)
+
+    code, refused = drive(VERB)
+    run_id = refused["run_id"]
+    decided, _ = drive(["run", "decide", run_id, GATE, "approve", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+    code, envelope = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["state"] == "no-op"
+    assert [w["code"] for w in envelope["warnings"]] == [move_cli.NOTHING_TO_MOVE]
+    with jobs.open_store() as store:
+        assert len(jobs.list_jobs(store)) == 1
+    assert _rows(moved) == rows
+
+
+def test_a_declined_gate_queues_nothing(moved):
+    before = _rows(moved)
+    code, refused = drive(VERB)
+    run_id = refused["run_id"]
+    drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
+    code, envelope = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["state"] == "declined"
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+    assert _rows(moved) == before
+
+
+def test_a_moved_track_can_be_moved_back_and_gets_a_live_row(moved):
+    """A removed membership is not counted as present, so the track returns."""
+    from cratekit.core import tags
+
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    music = Path(moved.library.root) / "Music"
+    assert tags.write_tags(music / "m-med-reads-high.flac", {"energylevel": "5"}) is True
+    collection.reset_cache()
+
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    assert _live(moved)["m-med-reads-high"] == {_place(MED)}
+    assert _removed(moved)["m-med-reads-high"] == {_place(MED), _place(HIGH)}
+
+
+# ── a failure between the add and the remove ───────────────────────────────
+
+
+def test_a_failure_after_the_add_leaves_the_track_in_both_and_a_resume_finishes(
+    moved, monkeypatch
+):
+    before = _live(moved)
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+
+    def fails(*_args, **_kwargs):
+        raise RuntimeError("the disk went away")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(rb_writer, "remove_memberships", fails)
+        code, failed = drive(_resume(job_id))
+
+    assert code != int(ExitCode.OK), failed
+    after = _live(moved)
+    # IN BOTH, and never in neither.
+    assert after["m-med-reads-high"] == {_place(MED), _place(HIGH)}
+    assert after["m-sink-now-reads"] == {_place(SINK), _place(MED)}
+    for content_id, places in before.items():
+        assert places <= after[content_id], content_id
+    assert _removed(moved) == {}
+
+    # THE JOB SAYS SO.
+    report = artifacts.committed(moved, job_id)[-1]
+    assert set(report["in_both"]) == _MOVED
+    assert report["moved"] == [] and report["neither"] == []
+    assert (report["interrupted"], report["added"], report["removed"]) == (True, 4, 0)
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+    assert job.state is jobs.JobState.FAILED
+    assert job.cause is not None and job.cause.retryable is True
+    assert "adopt-entries-failed" in str(job.cause.to_json())
+    assert "m-med-reads-high" in str(job.cause.to_json())
+
+    # AND A RESUME FINISHES IT.
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    collection.reset_cache()
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    finished = _live(moved)
+    assert finished["m-med-reads-high"] == {_place(HIGH)}
+    assert finished["m-both-reads-high"] == {_place(HIGH)}
+    assert finished["m-vox-and-med"] == {_place(DERIVED), _place(HIGH)}
+    assert finished["m-sink-now-reads"] == {_place(MED)}
+    report = artifacts.committed(moved, job_id)[-1]
+    assert set(report["moved"]) == _MOVED and report["in_both"] == []
+    assert (report["added"], report["already_present"], report["removed"]) == (0, 5, 5)
+    assert resumed["data"]["progress"]["move"]["moved"] == sorted(_MOVED)
+
+
+def test_a_failure_in_the_additions_writes_nothing_at_all(moved, monkeypatch):
+    before = _rows(moved)
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+
+    def fails(*_args, **_kwargs):
+        raise RuntimeError("the disk went away")
+
+    monkeypatch.setattr(rb_writer, "add_memberships", fails)
+    code, failed = drive(_resume(job_id))
+    assert code != int(ExitCode.OK), failed
+    assert _rows(moved) == before
+
+
+# ── the worker's own checks ────────────────────────────────────────────────
+
+
+def _worker(job_id: str):
+    handler = handlers.resolve(registry.entry("adopt.move").handler_key)
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        item = jobs.items(store, job_id)[0]
+    return handler, job, item
+
+
+def _file_in(cfg, content_id: str, sub_id: str) -> None:
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
+    try:
+        root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
+        folder_display, sub_display = _place(sub_id)
+        folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
+        playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
+        rb_writer.add_memberships(handle, playlist, [content_id])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+
+
+def test_a_track_filed_somewhere_nobody_was_shown_is_a_stale_decision(moved):
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    _file_in(moved, "m-med-reads-high", LOW)
+    before = _rows(moved)
+
+    handler, job, item = _worker(job_id)
+    with pytest.raises(Exception) as raised:
+        handler(job, item, jobs.frozen_config(job))
+    assert raised.value.cause.reason == "decision-stale"
+    assert set(raised.value.cause.detail["moved_under"]) == {"m-med-reads-high"}
+    assert _rows(moved) == before
+
+
+def test_a_reading_that_changed_after_the_approval_is_a_stale_decision(moved):
+    from cratekit.core import tags
+
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    music = Path(moved.library.root) / "Music"
+    assert tags.write_tags(music / "m-med-reads-high.flac", {"energylevel": "1"}) is True
+    collection.reset_cache()
+    before = _rows(moved)
+
+    handler, job, item = _worker(job_id)
+    with pytest.raises(Exception) as raised:
+        handler(job, item, jobs.frozen_config(job))
+    assert raised.value.cause.reason == "decision-stale"
+    assert _rows(moved) == before
+
+
+def test_a_track_approved_as_in_its_target_that_left_it_is_a_stale_decision(moved):
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    conn = sqlite3.connect(Path(moved.library.db_path))
+    try:
+        conn.execute(
+            "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE ContentID = ? "
+            "AND PlaylistID IN (SELECT ID FROM djmdPlaylist WHERE Name = ?)",
+            ("m-both-reads-high", _place(HIGH)[1]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    before = _rows(moved)
+
+    handler, job, item = _worker(job_id)
+    with pytest.raises(Exception) as raised:
+        handler(job, item, jobs.frozen_config(job))
+    assert raised.value.cause.reason == "decision-stale"
+    assert _rows(moved) == before, "its one live place would have been removed"
+
+
+def _requeued(job_id: str, **changed):
+    """The same job with its payload edited, which is what a tampered queue is."""
+    import json
+
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        payload = {**job.payload, **changed}
+        with store.immediate() as conn:
+            conn.execute(
+                "UPDATE jobs SET payload = ? WHERE job_id = ?", (json.dumps(payload), job_id)
+            )
+    return _worker(job_id)
+
+
+def test_rows_that_are_not_the_rows_approved_are_refused(moved):
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    with jobs.open_store() as store:
+        document = dict(jobs.get(store, job_id).payload[move_cli.PLAN_KEY])
+    document["moves"] = [
+        {**row, "remove": [DERIVED]} if row["content_id"] == "m-vox-and-med" else row
+        for row in document["moves"]
+    ]
+    before = _rows(moved)
+    handler, job, item = _requeued(job_id, **{move_cli.PLAN_KEY: document})
+    with pytest.raises(Exception) as raised:
+        handler(job, item, jobs.frozen_config(job))
+    assert raised.value.cause.reason == "decision-stale"
+    assert _rows(moved) == before
+
+
+def test_a_job_naming_nobody_writes_nothing(moved):
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    before = _rows(moved)
+    handler, job, item = _requeued(job_id, **{move_cli.ACTOR_KEY: " "})
+    with pytest.raises(Exception) as raised:
+        handler(job, item, jobs.frozen_config(job))
+    assert raised.value.cause.reason == "decision-required"
+    assert _rows(moved) == before
+
+
+def test_the_approving_actor_travels_in_the_payload(moved):
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    with jobs.open_store() as store:
+        payload = jobs.get(store, job_id).payload
+    assert payload[move_cli.ACTOR_KEY] == "a-person"
+    assert payload["digest"] == payload[move_cli.PLAN_KEY]["digest"]
+
+
+def test_a_sub_class_in_an_approved_row_is_refused_by_what_competes_now():
+    bucket = _pure_energy_bucket().id
+    tracks = [_scanned("t", bucket, energy=8)]
+    held = {bucket: {"t": (MED,)}}
+    current = adopt_plan.build_adoption_plan(
+        tracks, DECLARED, tree=TREE_ID,
+        placements=adopt_plan.Placements(read=True, held=held),
+    )
+    (approved,) = adopt_move.build_move_plan(current, DECLARED).moves
+    fields = {name: getattr(approved, name) for name in approved.__slots__}
+    fields["remove"] = (MED, DERIVED)
+    with pytest.raises(Exception) as raised:
+        move_cli.remaining([adopt_move.Move(**fields)], current, DECLARED)
+    assert raised.value.cause.reason == "decision-stale"
+
+    todo, gone = move_cli.remaining([approved], current, DECLARED)
+    assert ([move.remove for move in todo], gone) == ([(MED,)], ())
+
+
+def test_what_is_left_of_a_move_is_narrowed_and_a_finished_one_is_dropped():
+    bucket = _pure_energy_bucket().id
+    tracks = [_scanned("a", bucket, energy=8), _scanned("b", bucket, energy=8)]
+    start = adopt_plan.build_adoption_plan(
+        tracks, DECLARED, tree=TREE_ID,
+        placements=adopt_plan.Placements(read=True, held={bucket: {"a": (MED,), "b": (MED,)}}),
+    )
+    approved = adopt_move.build_move_plan(start, DECLARED).moves
+    halfway = adopt_plan.build_adoption_plan(
+        tracks, DECLARED, tree=TREE_ID,
+        placements=adopt_plan.Placements(
+            read=True, held={bucket: {"a": (MED, HIGH), "b": (HIGH,)}}
+        ),
+    )
+    todo, gone = move_cli.remaining(approved, halfway, DECLARED)
+    assert [(m.content_id, m.add, m.remove) for m in todo] == [("a", "", (MED,))]
+    assert gone == ()
+
+    without_b = adopt_plan.build_adoption_plan(
+        tracks[:1], DECLARED, tree=TREE_ID,
+        placements=adopt_plan.Placements(read=True, held={bucket: {"a": (MED,)}}),
+    )
+    todo, gone = move_cli.remaining(approved, without_b, DECLARED)
+    assert ([m.content_id for m in todo], gone) == (["a"], ("b",))
+
+    unread = adopt_plan.build_adoption_plan(tracks, DECLARED, tree=TREE_ID)
+    with pytest.raises(Exception) as raised:
+        move_cli.remaining(approved, unread, DECLARED)
+    assert raised.value.cause.reason == "decision-stale"
+
+
+# ---------------------------------------------------------------------------
+# The writer's own guards
+# ---------------------------------------------------------------------------
+
+
+def _write(cfg, moves, monkeypatch=None):
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
+    try:
+        known = {str(row.ID) for row in handle.get_playlist()}
+        return trees.move_tree_membership(
+            cfg,
+            handle,
+            tree_id=TREE_ID,
+            registry=tree_registry.read(cfg),
+            moves=moves,
+            root_exists=lambda root_id: root_id in known,
+            analysis_roots=[Path(cfg.library.root)],
+        )
+    finally:
+        rb_writer.close_db(handle)
+
+
+def test_a_track_not_in_its_target_has_nothing_removed(moved, monkeypatch):
+    """Never in neither: the removal waits on the addition being in the database."""
+    before = _rows(moved)
+    monkeypatch.setattr(rb_writer, "add_memberships", lambda *_args, **_kwargs: [])
+    report = _write(
+        moved,
+        [trees.MembershipMove("m-med-reads-high", _place(HIGH), (_place(MED),))],
+    )
+    assert report.held_back == ("m-med-reads-high",)
+    assert (report.added, report.removed) == (0, 0)
+    assert _live(moved)["m-med-reads-high"] == {_place(MED)}
+    assert [row for row in _rows(moved) if row[3]] == [row for row in before if row[3]] == []
+
+
+def test_a_track_with_no_live_collection_row_is_skipped_whole(moved):
+    conn = sqlite3.connect(Path(moved.library.db_path))
+    try:
+        conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = 'm-med-reads-high'")
+        conn.commit()
+    finally:
+        conn.close()
+    before = _rows(moved)
+    report = _write(
+        moved,
+        [
+            trees.MembershipMove("m-med-reads-high", _place(HIGH), (_place(MED),)),
+            trees.MembershipMove("nobody", _place(HIGH), (_place(MED),)),
+        ],
+    )
+    assert report.skipped == ("m-med-reads-high", "nobody")
+    assert (report.added, report.removed) == (0, 0)
+    assert _rows(moved) == before
+
+
+def test_a_removal_from_a_playlist_that_is_not_there_creates_none(moved):
+    def playlists():
+        conn = sqlite3.connect(Path(moved.library.db_path))
+        try:
+            return conn.execute("SELECT COUNT(*) FROM djmdPlaylist").fetchone()[0]
+        finally:
+            conn.close()
+
+    before = playlists()
+    report = _write(
+        moved, [trees.MembershipMove("m-same", _place(MED), (_place(LOW),))]
+    )
+    assert (report.removed, report.already_absent, report.already_present) == (0, 1, 1)
+    assert playlists() == before
+
+
+def test_the_target_is_never_removed_from_even_when_a_move_names_it(moved):
+    report = _write(
+        moved, [trees.MembershipMove("m-same", _place(MED), (_place(MED),))]
+    )
+    assert report.removed == 0
+    assert _live(moved)["m-same"] == {_place(MED)}
+
+
+def test_a_doubled_membership_leaves_in_one_move(moved):
+    conn = sqlite3.connect(Path(moved.library.db_path))
+    try:
+        conn.execute(
+            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
+            "rb_local_deleted, created_at, updated_at) "
+            "SELECT 'doubled', PlaylistID, ContentID, 99, 0, created_at, updated_at "
+            "FROM djmdSongPlaylist WHERE ContentID = 'm-med-reads-high'"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    report = _write(
+        moved, [trees.MembershipMove("m-med-reads-high", _place(HIGH), (_place(MED),))]
+    )
+    assert report.removed == 2
+    assert _live(moved)["m-med-reads-high"] == {_place(HIGH)}
+
+
+def test_the_move_takes_one_capture_and_records_both_commits(moved):
+    from cratekit.core import snapshot
+
+    taken = []
+    real = snapshot.capture
+
+    def counting(*args, **kwargs):
+        taken.append(1)
+        return real(*args, **kwargs)
+
+    import unittest.mock
+
+    with unittest.mock.patch.object(snapshot, "capture", counting):
+        _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    assert len(taken) == 1
+
+    (record,) = [r for r in session.records(moved) if r.workflow == trees.MOVE_WORKFLOW]
+    assert record.state is session.SessionState.CLOSED
+    assert record.snapshot_path
+    assert (record.change.created, record.change.updated) == (4, 5)
+    assert record.sources == {TREE_ID: str(session.SourceState.COMMITTED)}
+
+
+def test_an_empty_watch_is_refused(moved):
+    handle = rb_writer.open_db(rb_writer.live_db_path(moved), unlock=False, cfg=moved)
+    try:
+        with pytest.raises(ValueError, match="analysis_roots is empty"):
+            trees.move_tree_membership(
+                moved, handle, tree_id=TREE_ID, registry=tree_registry.read(moved),
+                moves=[], root_exists=lambda _root: True, analysis_roots=[],
+            )
+    finally:
+        rb_writer.close_db(handle)
+
+
+def test_a_tree_still_on_the_bridge_is_refused(machine):  # noqa: F811
+    handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
+    try:
+        with pytest.raises(tree_registry.TreeModeRefused):
+            trees.move_tree_membership(
+                machine, handle, tree_id=TREE_ID, registry=tree_registry.read(machine),
+                moves=[], root_exists=lambda _root: True,
+                analysis_roots=[Path(machine.library.root)],
+            )
+    finally:
+        rb_writer.close_db(handle)
+
+
+# ── every other writer still cannot remove ─────────────────────────────────
+
+
+def _mark_one_removed(handle) -> None:
+    (song,) = [
+        row
+        for row in handle.get_playlist_songs(ContentID="m-med-reads-high")
+        if not rb_writer.membership_removed(row)
+    ]
+    playlist = handle.get_playlist(ID=str(song.PlaylistID))
+    assert rb_writer.remove_memberships(handle, playlist, ["m-med-reads-high"]) == [
+        "m-med-reads-high"
+    ]
+
+
+def test_an_ordinary_guarded_commit_refuses_a_removal_and_rolls_it_back(moved):
+    before = _rows(moved)
+    handle = rb_writer.open_db(rb_writer.live_db_path(moved), unlock=False, cfg=moved)
+    try:
+        _mark_one_removed(handle)
+        with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
+            rb_writer.commit_guarded(handle)
+        assert raised.value.cause.reason == "whitelist-violation"
+        assert "soft delete marker" in raised.value.cause.message
+    finally:
+        rb_writer.close_db(handle)
+    assert _rows(moved) == before
+
+
+def test_a_commit_that_admits_the_removal_lands_it(moved):
+    handle = rb_writer.open_db(rb_writer.live_db_path(moved), unlock=False, cfg=moved)
+    try:
+        _mark_one_removed(handle)
+        rb_writer.commit_guarded(handle, removals=rb_writer.REMOVABLE_TABLES)
+    finally:
+        rb_writer.close_db(handle)
+    assert _removed(moved) == {"m-med-reads-high": {_place(MED)}}
+
+
+def test_an_admitted_commit_refuses_a_removed_collection_row(moved):
+    before = _rows(moved)
+    handle = rb_writer.open_db(rb_writer.live_db_path(moved), unlock=False, cfg=moved)
+    try:
+        row = handle.get_content(ID="m-med-reads-high")
+        setattr(row, rb_writer.SOFT_DELETE_COLUMN, 1)
+        with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
+            rb_writer.commit_guarded(handle, removals=rb_writer.REMOVABLE_TABLES)
+        assert raised.value.cause.reason == "whitelist-violation"
+        assert "djmdContent" in raised.value.cause.message
+    finally:
+        rb_writer.close_db(handle)
+    assert _rows(moved) == before
+    conn = sqlite3.connect(Path(moved.library.db_path))
+    try:
+        assert conn.execute(
+            "SELECT rb_local_deleted FROM djmdContent WHERE ID = 'm-med-reads-high'"
+        ).fetchone() == (0,)
+    finally:
+        conn.close()
+
+
+def test_an_admitted_commit_refuses_a_hard_delete_of_a_membership(moved):
+    before = _rows(moved)
+    handle = rb_writer.open_db(rb_writer.live_db_path(moved), unlock=False, cfg=moved)
+    try:
+        (song,) = list(handle.get_playlist_songs(ContentID="m-med-reads-high"))
+        handle.delete(song)
+        with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
+            rb_writer.commit_guarded(handle, removals=rb_writer.REMOVABLE_TABLES)
+        assert "additive-only" in raised.value.cause.message
+    finally:
+        rb_writer.close_db(handle)
+    assert _rows(moved) == before
+
+
+def test_the_additive_membership_writer_refuses_a_removal_in_its_session(moved, monkeypatch):
+    """The other writer's own session, with a removal slipped into it."""
+    before = _rows(moved)
+    real = rb_writer.add_memberships
+
+    def adds_and_removes(db, playlist, content_ids):
+        _mark_one_removed(db)
+        return real(db, playlist, content_ids)
+
+    monkeypatch.setattr(rb_writer, "add_memberships", adds_and_removes)
+    handle = rb_writer.open_db(rb_writer.live_db_path(moved), unlock=False, cfg=moved)
+    try:
+        known = {str(row.ID) for row in handle.get_playlist()}
+        with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
+            trees.write_tree_membership(
+                moved,
+                handle,
+                tree_id=TREE_ID,
+                registry=tree_registry.read(moved),
+                plan={_place(LOW): [adopt_fixtures.recorded_location(
+                    Path(moved.library.root), "m-same.flac"
+                )]},
+                rows=collection.read_collection(moved),
+                root_exists=lambda root_id: root_id in known,
+                analysis_roots=[Path(moved.library.root)],
+            )
+        assert raised.value.cause.reason == "whitelist-violation"
+    finally:
+        rb_writer.close_db(handle)
+    assert _rows(moved) == before
+
+
+def test_the_moves_own_first_commit_refuses_a_removal(moved, monkeypatch):
+    """Only the second commit admits one, so a removal in the additions is refused."""
+    before = _rows(moved)
+    real = rb_writer.add_memberships
+
+    def adds_and_removes(db, playlist, content_ids):
+        _mark_one_removed(db)
+        return real(db, playlist, content_ids)
+
+    monkeypatch.setattr(rb_writer, "add_memberships", adds_and_removes)
+    with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
+        _write(moved, [trees.MembershipMove("m-same", _place(LOW), (_place(MED),))])
+    assert raised.value.cause.reason == "whitelist-violation"
+    assert _rows(moved) == before
+
+
+# ── the readers ─────────────────────────────────────────────────────────────
+
+
+def test_a_removed_membership_is_not_held_and_not_present(moved):
+    from cratekit.adopt import placements
+
+    bucket = _energy_bucket().id
+    assert placements.read_placements(moved, DECLARED).holds(bucket, "m-med-reads-high") == (MED,)
+    handle = rb_writer.open_db(rb_writer.live_db_path(moved), unlock=False, cfg=moved)
+    try:
+        _mark_one_removed(handle)
+        handle.session.commit()
+        playlist = next(
+            row for row in handle.get_playlist(Name=_place(MED)[1])
+        )
+        # Absent to the writer, so an add inserts a live row beside the removed one.
+        assert rb_writer.add_memberships(handle, playlist, ["m-med-reads-high"]) == [
+            "m-med-reads-high"
+        ]
+        # And a second removal finds the one live row and not the removed one.
+        assert rb_writer.remove_memberships(handle, playlist, ["m-med-reads-high"]) == [
+            "m-med-reads-high"
+        ]
+        assert rb_writer.remove_memberships(handle, playlist, ["m-med-reads-high"]) == []
+        handle.session.rollback()
+    finally:
+        rb_writer.close_db(handle)
+    assert placements.read_placements(moved, DECLARED).holds(bucket, "m-med-reads-high") == ()
+
+
+def test_a_membership_row_that_cannot_say_refuses():
+    class Row:
+        ID = "r"
+
+    class Unset(Row):
+        rb_local_deleted = None
+
+    for row in (Row(), Unset()):
+        with pytest.raises(Exception) as raised:
+            rb_writer.membership_removed(row)
+        assert raised.value.cause.reason == "soft-delete-marker-unreadable"
+
+
+# ── the registry ────────────────────────────────────────────────────────────
+
+
+def test_the_verb_is_its_own_and_resort_is_still_additive():
+    entry = registry.entry("adopt.move")
+    assert entry.landed and entry.destructive and entry.long_running
+    assert entry.writes == frozenset({"db_tree"})
+    assert entry.module_id == registry.entry("adopt.apply").module_id
+    (approve,) = [spec for spec in entry.gates if spec.digest_source == "plan"]
+    assert (approve.name, approve.explicit, approve.options) == (GATE, True, ("approve", "abort"))
+    resort = registry.entry("route.resort")
+    assert "additive" in resort.summary
+    assert all(spec.digest_source is None for spec in resort.gates)
+
+
+def test_the_resume_carries_the_run_that_holds_the_approval(moved):
+    run_id, job_id = approve_and_queue(VERB, GATE)
+    assert _resume(job_id) == ["--run", run_id, "adopt", "move", "--job", job_id]

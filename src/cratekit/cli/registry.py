@@ -1780,6 +1780,48 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # R-758. THE FIRST VERB THAT REMOVES A MEMBERSHIP, and a verb of its own
+    # rather than a mode of ``route.resort``. That verb is additive and says
+    # so in its summary, and a gate is declared per verb: an approval asked in
+    # a removing mode only is a gate this table cannot state and conformance 3
+    # cannot hold to firing. It sits in this group because what it moves is
+    # the list ``adopt.apply`` withholds, read with the census that verb reads.
+    Entry(
+        name="adopt.move",
+        summary="move each track from the energy or style sub it holds to the one "
+        "its own file names, adding before it removes",
+        module="cratekit.adopt.move_cli",
+        builder="build",
+        handler_key="adopt.move",
+        feature_rows=(13,),
+        module_id="adoption",
+        argv_builder="adopt_move_argv",
+        long_running=True,
+        emits=frozenset({"job_state"}),
+        output_schema="job_state/1",
+        writes=frozenset({"db_tree"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy", "low", "med", "high"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
+        gates=(
+            GateSpec(
+                name="adopt.move.approve",
+                options=("approve", "abort"),
+                prompt="Move these tracks, adding each to its new sub and then "
+                "removing it from the old one?",
+                # A removal is the one write this product makes that takes
+                # something away, so no blanket affirmative satisfies it (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── Deletion: one surface, TWO MODULES, and the split is the decision ────
     #
     # The two verbs named one module and moved together, and the pair was

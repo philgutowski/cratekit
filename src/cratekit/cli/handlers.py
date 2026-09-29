@@ -75,6 +75,7 @@ HANDLERS: Mapping[str, str] = {
     "acquire.download": "cratekit.acquire.cli:handle",
     "acquire.fallback-fetch": "cratekit.acquire.fallback_cli:handle_fetch",
     "adopt.apply": "cratekit.adopt.apply_cli:handle",
+    "adopt.move": "cratekit.adopt.move_cli:handle",
     "adopt.scan": "cratekit.adopt.scan_cli:handle",
     # TWO WORKERS IN ONE MODULE, named for what each does to a file: the run
     # analyses and finalizes it, the restamp rescores one tag on it. Neither is
