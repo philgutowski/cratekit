@@ -11,3 +11,23 @@ old = '''        if trees.soft_delete_marker(song):
             continue'''
 new = '''        if False:
             continue'''
+
+[[rows]]
+id = "C2_existing_file_not_checked_first"
+description = "_refuse_destination: drop the check ahead of the copy. Measured again after the test its zero bought"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    if os.path.lexists(destination):
+        raise _taken(destination)'''
+new = '''    if False:
+        raise _taken(destination)'''
+
+[[rows]]
+id = "C7_a_file_taken_for_a_folder"
+description = "_refuse_unwritable_folder: do not ask whether the nearest ancestor is a folder. Measured again after the assertion its zero bought"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    if not nearest.is_dir():'''
+new = '''    if False:'''

@@ -689,8 +689,25 @@ def test_a_folder_that_is_a_file_is_refused_before_the_database_is_copied(
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "path-permission-denied"
     assert envelope["cause"]["detail"]["blocked"] == str(blocked.resolve())
+    # The reason it gives is the true one. A file also fails the next question,
+    # whether it can be written into, and that answer would send a person to
+    # its permissions.
+    assert "is not a folder" in envelope["cause"]["message"]
     assert taken == []
     assert blocked.read_bytes() == b"a file"
+
+
+def test_an_existing_file_is_refused_before_the_database_is_copied(machine, monkeypatch):
+    """The exclusive create would refuse it too, after the whole database was read."""
+    destination = Path(machine.library.root) / "kept.xml"
+    destination.write_bytes(b"somebody kept this")
+    taken = _copies(monkeypatch)
+
+    code, envelope = drive(["export", "collection", str(destination)])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "output-exists"
+    assert taken == []
 
 
 def test_a_folder_nobody_may_write_to_is_refused_before_the_database_is_copied(
