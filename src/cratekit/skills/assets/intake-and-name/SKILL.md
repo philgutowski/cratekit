@@ -109,6 +109,15 @@ crate intake file /path/to/one-track.aiff
 crate intake file /path/to/one-track.aiff --export /path/to/fresh-export.xml
 ```
 
+The export comes from rekordbox's File menu, or, with rekordbox closed, from a
+copy of the database:
+
+```bash
+crate export collection /path/to/fresh-export.xml
+```
+
+It never replaces a file, so name one that does not exist yet.
+
 ## Tagging a folder
 
 ```bash
