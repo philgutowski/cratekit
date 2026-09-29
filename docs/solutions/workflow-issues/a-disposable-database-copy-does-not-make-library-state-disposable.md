@@ -51,6 +51,29 @@ config) to a scratch directory, and the state inventory checked for every
 `src/cratekit/core/config.py` for `root=StateRoot.LIBRARY` before trusting any
 copy run that approves.
 
+## How it was done, sittings 14 and 15
+
+Redirecting the library ROOT does not work on a real library: every file the
+census reads sits under the real root, so a moved root puts all of them
+outside it. What the rule protects is the state directory, and that has its
+own setting. The copy's temporary config keeps `library.root` on the volume
+and sets `library.state_dirname` to a scratch name, after the volume's state
+directory is copied to that name with `cp -Rp`. `db_path` names the database
+copy and `db_outside_root_acknowledged_on` carries the day.
+
+Three checks before any gate is answered on the copy. `crate doctor` in that
+environment prints the `tree.registry` path, which must carry the scratch
+name. Each gate prints what it reads and what it writes, and both must be
+scratch paths. The live database's sha256 is taken before and compared after.
+
+The backup acknowledgment is library state too, so the copy has none until
+the author's live one is copied into the scratch `local` directory. Remove
+the scratch directory from the volume when the run ends, or the next backup
+mirrors it.
+
+Both sittings' rehearsals matched their live runs to the digit, plan digest
+and every membership, which is what the copy is for.
+
 ## Related
 
 `docs/cutover.md` sitting 13, which also leaves open whether an approved
