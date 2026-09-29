@@ -1,0 +1,130 @@
+{
+  "name": "r745-c",
+  "pass_kind": "light",
+  "branch": "relay/223",
+  "head": "bf8934e",
+  "when": "2026-09-29 21:54 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10622,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "state_guarded": "~/Library/Application Support/cratekit (63179 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/collection_export.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/collection_export.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "e14b3ba4da75ddbd",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10622,
+    "baseline_collected": 10622,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "E2_tombstone_membership_written",
+      "description": "read_nodes: keep a tombstoned membership row. Measured again after the test its zero bought",
+      "file": "src/cratekit/write/collection_export.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0bf5c16af487247d",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_membership_somebody_removed_is_not_written_back_into_the_playlist",
+        "tests/test_export_collection.py::test_a_membership_that_cannot_say_whether_it_was_removed_refuses"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if trees.soft_delete_marker(song):\n            continue",
+      "new": "        if False:\n            continue"
+    },
+    {
+      "id": "C2_existing_file_not_checked_first",
+      "description": "_refuse_destination: drop the check ahead of the copy. Measured again after the test its zero bought",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3f5388827d967d98",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_an_existing_file_is_refused_before_the_database_is_copied"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if os.path.lexists(destination):\n        raise _taken(destination)",
+      "new": "    if False:\n        raise _taken(destination)"
+    },
+    {
+      "id": "C7_a_file_taken_for_a_folder",
+      "description": "_refuse_unwritable_folder: do not ask whether the nearest ancestor is a folder. Measured again after the assertion its zero bought",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "703968ce7c0132f1",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_folder_that_is_a_file_is_refused_before_the_database_is_copied"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not nearest.is_dir():",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": []
+}
