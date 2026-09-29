@@ -411,44 +411,56 @@ live database and the live library state were not written: the live file's
 sha256 was the same after the copy run as before it. The scratch state
 directory was removed at the end of the sitting.
 
+## Sitting 15, 2026-09-28 and 2026-09-29
+
+Machine state before: the volume mounted, rekordbox and its agent closed,
+the pipx install brought from `65532c0` to `7ebb07f`, the R-731 merge, with
+its extras kept. The live database's sha256 was the one sitting 14 copied,
+unchanged since 2026-09-26, so the database backup of 2026-09-27 was still an
+exact copy of it. Acknowledgments minted by the author from a Terminal window
+on both days, the second at 17:07Z on the 29th, **before any gate was
+answered**. Copy runs isolated library state through `library.state_dirname`
+as sitting 14 did. The author answered every live gate from Terminal; the
+session drove the verbs and answered the gates on the copy.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| The rehearsal, `tree cutover` then `adopt apply` on a copy | approved, 2026-09-28 | Plan digest `e67844ef76b53a36`: 7,188 route, **585 withheld by placement, 569 band and 16 style**, one style more than sitting 14 counted by hand. Applied: **115 added, 7,073 already present, none failed**, no track given a second band sub, 577 playlists before and after, every BPM unchanged, `integrity_check` ok. | proven on a copy, R-731 holds |
+| `tree cutover genre_energy`, LIVE | approved by the author, run `c5f9` | Root `BY GENRE + ENERGY`, row 3976565623, all four prechecks passed against `Music/9-25-export.xml`. Doctor: database native, anchored since 2026-09-29. | **cut over** |
+| `adopt apply`, LIVE | approved by the author, run `2db1`, job `24e9` | The plan's digest was the rehearsal's, `e67844ef76b53a36`. **115 added, 7,073 already present, none failed.** Read back against the rehearsal copy: every membership, every playlist row and every content row's BPM, rating and path the same. 11,391 memberships under the tree. | **live, the first native write** |
+| rekordbox, opened by the author | yes | Opened on 7.2.19 with no warning. The tree read as before, and two of the 115 were found by eye where the plan put them. The author deleted eight empty `CUE Analysis Playlist` rows, rekordbox's own, and a stray root `2026-Q3` whose 40 tracks all sat in `Favorites / 2026-Q3` in the 9-25 export, an import landed at the root (R-687's shape on another tree). 568 playlists after. | read |
+| The pin | by hand | `validated_on = "2026-09-29"` recorded, now there is a write to name. | live |
+| `route unplaced`, database path | on a copy | A report, not a write: no gate, nothing changed. **184 of 9,998 rows are placed by no governed tree.** 13 are streaming rows, 20 carry no genre, the rest carry one and sit outside what adoption could read. The human rendering is `ok` and a run (R-730's class). | measured |
+| The 61 rows of sitting 10 | read | **47 are in the tree**, 40 of the 54 in one batch and all 7 of the other, filed by the adoption. **14 carry no genre** and cannot be routed until they are tagged. | 47 landed, 14 owed a genre |
+| `route pending` | on a copy | `no_op`, nothing pending. Doctor reads six recorded sessions, none open. | nothing to do |
+
+**#212 is done.** The routing tree is on the database, the first native write
+landed and was read back, and rekordbox opened on it. A revert is now refused
+by design. Line 3 of #178 has its memberships through the database. The 585
+withheld entries are in the plan of run `2db1` for the author's decision on
+which reading is right, the tag or the placement.
+
 ## What blocks a full sync cycle, stated plainly
 
-Corrected at sitting 11. This section once said the three Tidal seams, U62
-the catalogue, U63 the account and U64 the playlists source, had no live proof
-and that line 4 waited on them. Sitting 4 drove all three live, fixed R-355 and
-closed R-144, so none of them blocks anything.
-
-**The blocker is #212**, the routing tree's database cutover. Sitting 10
-proved the rekordbox xml bridge cannot land nested membership (R-687) or a
-rating on an owned row (R-688), so a full sync cycle's routing has to land
-through the database. Sitting 12 found the database path reaches the tree only
-through adoption, and adoption filed by no energy reading (R-722, fixed by
-#219). Adoption's membership write also refuses any tree not cut over, and no
-shipped verb recorded a cutover (R-235), closed by #220 on 2026-09-27. #212
-now waits on R-731, since adoption adds a second band sub beside the one a
-track holds. Ratings can
-ride with it now #214 has landed. Line 4 of #178, the full sync cycle, comes
-after #212.
+**Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
+routing tree is database native and adoption has written it. Sitting 10's
+finding stands for every tree still on the xml bridge, `inbox` and
+`record_labels`: an import lands a playlist at the root (R-687) and sets
+attributes only on rows it creates (R-688). Line 4 of #178, the full sync
+cycle, is next and is attended.
 
 ## Next sitting
 
-**The road is `docs/plans/2026-09-26-favourites-to-rekordbox-end-to-end.md`.**
-Its steps 0 to 2 are done: the re-pin, #220, and a backup. **#212 now waits
-on R-731**, the card that makes adoption withhold a track already holding a
-competing sub. When it lands, repeat sitting 14's copy run and read the
-withheld count against 569 and 15, and the added count against 107 and 9.
-Only then the live step: a backup if the library changed, the acknowledgment
-minted before any gate is answered, `tree cutover genre_energy` approved,
-`adopt apply` approved, `route unplaced` for the 61 rows, `route pending` for
-the open sessions, then rekordbox opened and the tree read.
+**The road is `docs/plans/2026-09-26-favourites-to-rekordbox-end-to-end.md`,
+steps 4 and 5.** First the 18 downloads of sitting 11, tagged, named and
+landed, with the three gates open since 2026-09-23 decided. Then the
+favourites cycle end to end, one Tidal verb at a time, new rows filed through
+`adopt scan` and `adopt apply` now the tree is native.
 
-**The author owes one decision, and it does not block the card.** On the 569,
-which is right, the file's energy tag or the sub the track sits in. The card
-withholds them either way and lists them, so the answer decides what happens
-to the list, not whether adoption can run.
+Owed by the author: a decision on the 585 withheld entries; a genre on the 14
+INBOX rows that carry none.
 
-Also owed, unchanged: the 18 downloads from sitting 11 tagged, named and
-landed; a second `sync labels` for the 20 labels the rate limit stopped, run
-with no download beside it, after which #213 closes; the 1,799 label rows
-reviewed for line 5; the vocal calibration and filing pass for line 7, after
-#212.
+Also owed, unchanged: a second `sync labels` for the 20 labels the rate limit
+stopped, run with no download beside it, after which #213 closes; the 1,799
+label rows reviewed for line 5; the vocal calibration and filing pass for
+line 7.

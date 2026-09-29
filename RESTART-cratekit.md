@@ -4,6 +4,15 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Sitting 15, attended, 2026-09-29, no code. #212 is done.** `genre_energy`
+is database native, anchored to root 3976565623. An approved `adopt apply`
+wrote the live database for the first time: 115 added, 7,073 already
+present, 585 withheld by placement, none failed, read back equal to the
+rehearsal copy, and rekordbox 7.2.19 opened on it. The pin carries
+`validated_on`. A revert is refused from here. 184 rows are placed by no
+tree and 14 INBOX rows carry no genre. **Next is step 4 of
+`docs/plans/2026-09-26-favourites-to-rekordbox-end-to-end.md`.**
+
 **Sitting 14, attended, 2026-09-27, no code.** rekordbox is 7.2.19.0342 and
 the pin was replaced by hand after a copy opened clean. On a disposable copy
 with library state redirected, `tree cutover genre_energy` recorded and an
