@@ -1,0 +1,274 @@
+{
+  "name": "r759",
+  "pass_kind": "light",
+  "branch": "relay/228",
+  "head": "de68b90",
+  "when": "2026-09-29 23:08 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10623,
+  "baseline_exit": 0,
+  "pytest_runs": 13,
+  "state_guarded": "~/Library/Application Support/cratekit (63638 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/provider_gate.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/provider_gate.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d32550bba20639ba",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10623,
+    "baseline_collected": 10623,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "P1_interval_dropped",
+      "description": "the interval is dropped from the due time, so a call waits on nothing but a Retry-After and two processes call back to back",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "20e2e0f0aca00a21",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call, state.not_before)\n"
+    },
+    {
+      "id": "P2_interval_halved",
+      "description": "the shared interval is halved, so calls from two processes come twice as fast as the configuration says",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1414ed5866c651de",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)\n"
+    },
+    {
+      "id": "P3_last_call_ignored",
+      "description": "the interval is measured from now rather than from the last call any process made, so no call waits at all",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "622a2fa597e95a69",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                due = max(state.last_call + self.settings.min_interval_s, state.not_before)\n",
+      "new": "                due = max(now, state.not_before)\n"
+    },
+    {
+      "id": "P4_lock_removed",
+      "description": "the one call at a time lock is never taken, so two processes can have a request in flight together",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8a7be83b8c8248ad",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        pass\n"
+    },
+    {
+      "id": "P5_lock_shared",
+      "description": "the lock is taken shared rather than exclusive, so every process holds it at once",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d6b01e7e372cfee8",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n",
+      "new": "                        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)\n"
+    },
+    {
+      "id": "A1_deadline_asked_only_at_the_end",
+      "description": "the read deadline is asked only after the stream has ended, so a trickling file is read to its end before the timeout is raised",
+      "file": "src/cratekit/adopt/revert.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d3647a8418dad023",
+      "subset": [
+        "tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if not block:\n                    break\n                hasher.update(block)\n                if time.monotonic() > give_up_at:\n                    raise TimeoutError(\n                        f\"{path} did not finish arriving within \"\n                        f\"{deadline_seconds} seconds\"\n                    )\n",
+      "new": "                if not block:\n                    if time.monotonic() > give_up_at:\n                        raise TimeoutError(\n                            f\"{path} did not finish arriving within \"\n                            f\"{deadline_seconds} seconds\"\n                        )\n                    break\n                hasher.update(block)\n"
+    },
+    {
+      "id": "P6_wait_skipped_stamp_kept",
+      "description": "the wait before a call is skipped while its stamp still reads the due time, so the stamps stay spaced and the requests go out back to back",
+      "file": "src/cratekit/core/provider_gate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d2b5248862cadd91",
+      "subset": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if due > now:\n            self._sleep(due - now)\n            now = max(self._clock(), due)\n",
+      "new": "        if due > now:\n            now = max(self._clock(), due)\n"
+    },
+    {
+      "id": "A2_deadline_a_second_late",
+      "description": "the read deadline is honoured a second after it passes, so a trickling file is read fifty blocks further than the caller allowed",
+      "file": "src/cratekit/adopt/revert.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "70e9325e9c79eb96",
+      "subset": [
+        "tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1,
+      "baseline_collected": 1,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if time.monotonic() > give_up_at:\n                    raise TimeoutError(\n",
+      "new": "                if time.monotonic() > give_up_at + 1.0:\n                    raise TimeoutError(\n"
+    }
+  ],
+  "dropped": []
+}

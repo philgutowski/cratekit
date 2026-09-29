@@ -1,0 +1,133 @@
+name = "r759"
+pass_kind = "light"
+
+# R-759: the provider gate's two process tests, rewritten to read the gate's
+# own stamps and an O_EXCL in flight marker instead of wall clock spans, and
+# the adoption deadline test, rewritten to count blocks instead of timing the
+# read. The gate itself is unchanged, so every row mutates the code those
+# tests guard and names the rewritten test alone as its subset, so a death
+# is the new test's and not a fake clock test's. Author's table, no
+# independent verifier (METHOD, 2026-09-07).
+
+[[rows]]
+id = "P1_interval_dropped"
+description = "the interval is dropped from the due time, so a call waits on nothing but a Retry-After and two processes call back to back"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''
+                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''
+                due = max(state.last_call, state.not_before)
+'''
+
+[[rows]]
+id = "P2_interval_halved"
+description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''
+                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''
+                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
+'''
+
+[[rows]]
+id = "P3_last_call_ignored"
+description = "the interval is measured from now rather than from the last call any process made, so no call waits at all"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''
+                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
+'''
+new = '''
+                due = max(now, state.not_before)
+'''
+
+[[rows]]
+id = "P4_lock_removed"
+description = "the one call at a time lock is never taken, so two processes can have a request in flight together"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''
+                        pass
+'''
+
+[[rows]]
+id = "P5_lock_shared"
+description = "the lock is taken shared rather than exclusive, so every process holds it at once"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_never_have_a_call_in_flight_together"]
+old = '''
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+'''
+new = '''
+                        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+'''
+
+[[rows]]
+id = "A1_deadline_asked_only_at_the_end"
+description = "the read deadline is asked only after the stream has ended, so a trickling file is read to its end before the timeout is raised"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"]
+old = '''
+                if not block:
+                    break
+                hasher.update(block)
+                if time.monotonic() > give_up_at:
+                    raise TimeoutError(
+                        f"{path} did not finish arriving within "
+                        f"{deadline_seconds} seconds"
+                    )
+'''
+new = '''
+                if not block:
+                    if time.monotonic() > give_up_at:
+                        raise TimeoutError(
+                            f"{path} did not finish arriving within "
+                            f"{deadline_seconds} seconds"
+                        )
+                    break
+                hasher.update(block)
+'''
+
+[[rows]]
+id = "P6_wait_skipped_stamp_kept"
+description = "the wait before a call is skipped while its stamp still reads the due time, so the stamps stay spaced and the requests go out back to back"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''
+        if due > now:
+            self._sleep(due - now)
+            now = max(self._clock(), due)
+'''
+new = '''
+        if due > now:
+            now = max(self._clock(), due)
+'''
+
+[[rows]]
+id = "A2_deadline_a_second_late"
+description = "the read deadline is honoured a second after it passes, so a trickling file is read fifty blocks further than the caller allowed"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"]
+old = '''
+                if time.monotonic() > give_up_at:
+                    raise TimeoutError(
+'''
+new = '''
+                if time.monotonic() > give_up_at + 1.0:
+                    raise TimeoutError(
+'''

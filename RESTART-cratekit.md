@@ -4,6 +4,19 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Last built: R-759, issue #228, `relay/228`, 2026-09-29.** The provider
+gate's two process timing test, which refused #223 at its gate on a busy
+machine, is two tests that read the gate's own stamps and an `O_EXCL` in
+flight marker instead of timing sends. The failing assertion was a lower
+bound with a tolerance, measuring send starts, which trail the gate's stamp
+by an fsynced write whose duration moves with load. The gate is unchanged
+and nothing is marked serial. The adoption read deadline test now counts
+blocks instead of timing the read. R-759 and R-711 are closed, and the sweep
+for the same shape is listed in R-759's closing note. The mutation table is
+the author's, `docs/mutation/r759.md` and `r759-b.md`: 8 distinct
+mutations, 8 killed, and the lock removal killed 10 of 10. **Main's highest
+residual number is still R-760.**
+
 **Sitting 18, 2026-09-29, no code, unattended to the import.** The
 favourites cycle ran from the account to a landed file: 209 hearts listed,
 2 missing, 1 downloaded and 1 refused as lossy only. `crate export

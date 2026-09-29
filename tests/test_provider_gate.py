@@ -14,13 +14,17 @@ the failure the eleventh attended sitting produced on the author's account:
    window refuses before it makes a call, and names the time the window lifts.
 4. **One driver at a time.** Two real processes making calls through one gate
    never have a request in flight together and keep the interval between them.
+   Both are read off the stamps the gate wrote and an ``O_EXCL`` marker, never
+   off a gap the test timed between two sends, and every bound is one a busy
+   machine can only widen (R-759).
 5. **Spend is counted**, across processes, so a run can report what it cost.
 6. **The two build sites attach the gate and nothing else builds a client.**
 
 Every schedule is driven with a fake clock whose ``sleep`` advances it, so the
 suite asserts on the waits a run would have taken rather than taking them. The
 two process tests use the real clock and real sleeps, because the lock the
-kernel holds cannot be faked, and their intervals are short.
+kernel holds cannot be faked, and their intervals are short. They assert on
+the stamps the gate wrote rather than on times they measured themselves.
 """
 
 from __future__ import annotations
@@ -504,58 +508,145 @@ def test_a_cooldown_written_by_one_process_refuses_a_verb_started_in_another(pat
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_two_processes_never_call_at_once_and_keep_the_interval(paths, tmp_path):
-    """Two REAL processes, each making four calls through one gate, each call
-    holding the provider for twenty milliseconds. Read together, no two calls
-    overlap and every gap between starts is the interval. The tolerance on
-    the gap is the write of the state file between a call's stamp and its
-    request, a millisecond against a fifty millisecond interval."""
+#: One driver process for both tests below. It waits at a barrier until both
+#: drivers are up, so both are running when the calls begin, then makes its
+#: calls through one real gate. Inside each send it records three things: the
+#: ``last_call`` stamp the gate has just written to the shared file, the wall
+#: clock as the send begins, and whether another send already held the in
+#: flight marker, which ``O_EXCL`` answers without a clock.
+_DRIVER = """
+import json, os, sys, time
+from pathlib import Path
+from cratekit.core.provider_gate import Gate, GateSettings
+
+state, lock, out, marker, barrier = (Path(arg) for arg in sys.argv[1:6])
+count, interval, hold = int(sys.argv[6]), float(sys.argv[7]), float(sys.argv[8])
+gate = Gate(GateSettings(min_interval_s=interval), path=state, lock_path=lock)
+calls, overlaps = [], 0
+
+class Answer:
+    status_code = 200
+    headers = {}
+
+def send():
+    global overlaps
+    sent = time.time()
+    calls.append((json.loads(state.read_text())["last_call"], sent))
+    try:
+        fd = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        overlaps += 1
+        time.sleep(hold)
+        return Answer()
+    try:
+        time.sleep(hold)
+    finally:
+        os.close(fd)
+        os.unlink(marker)
+    return Answer()
+
+(barrier / str(os.getpid())).touch()
+give_up = time.monotonic() + 30  # a hang guard, not a measurement
+while len(list(barrier.iterdir())) < 2:
+    if time.monotonic() > give_up:
+        sys.exit("the other driver never reached the barrier")
+    time.sleep(0.005)
+
+for _ in range(count):
+    gate.call(send)
+out.write_text(json.dumps({"calls": calls, "overlaps": overlaps}))
+"""
+
+#: How far a send may begin BEFORE its own stamp. The gate sleeps on the
+#: monotonic clock and stamps with the wall clock, and the two can drift apart
+#: by a slew; a busy machine only ever makes a send later than its stamp, never
+#: earlier, so this allowance is for the clocks and not for the load.
+_CLOCK_SKEW_S = 0.001
+
+
+def _drive_two_processes(
+    paths: tuple[Path, Path], tmp_path: Path, *, count: int, interval: float, hold: float
+) -> list[dict[str, Any]]:
+    """Run two drivers over one gate and return what each recorded. A driver
+    still running when this returns, by a failed assertion or a timeout, is
+    killed here, so it cannot hold the lock through the rest of the suite."""
     state, lock = paths
-    interval = 0.05
     script = tmp_path / "driver.py"
-    script.write_text(
-        textwrap.dedent(
-            """
-            import json, sys, time
-            from pathlib import Path
-            from cratekit.core.provider_gate import Gate, GateSettings
-
-            state, lock, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
-            count, interval = int(sys.argv[4]), float(sys.argv[5])
-            gate = Gate(GateSettings(min_interval_s=interval), path=state, lock_path=lock)
-            spans = []
-
-            class Answer:
-                status_code = 200
-                headers = {}
-
-            def send():
-                started = time.time()
-                time.sleep(0.02)
-                spans.append((started, time.time()))
-                return Answer()
-
-            for _ in range(count):
-                gate.call(send)
-            out.write_text(json.dumps(spans))
-            """
-        )
-    )
+    script.write_text(_DRIVER)
+    marker = tmp_path / "in_flight"
+    barrier = tmp_path / "barrier"
+    barrier.mkdir()
     outs = [tmp_path / "a.json", tmp_path / "b.json"]
     children = [
-        _start_child(script, str(state), str(lock), str(out), "4", str(interval)) for out in outs
+        _start_child(
+            script,
+            *(str(p) for p in (state, lock, out, marker, barrier)),
+            str(count),
+            str(interval),
+            str(hold),
+        )
+        for out in outs
     ]
-    for child in children:
-        stdout, stderr = child.communicate(timeout=60)
-        assert child.returncode == 0, stderr
+    try:
+        for child in children:
+            _stdout, stderr = child.communicate(timeout=60)
+            assert child.returncode == 0, stderr
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+                child.communicate()
+    assert json.loads(state.read_text())["calls"] == 2 * count
+    return [json.loads(out.read_text()) for out in outs]
 
-    spans = sorted(span for out in outs for span in json.loads(out.read_text()))
-    assert len(spans) == 8
-    for (_, earlier_end), (later_start, _) in zip(spans, spans[1:]):
-        assert later_start >= earlier_end, f"two calls overlapped: {spans}"
-    gaps = [later[0] - earlier[0] for earlier, later in zip(spans, spans[1:])]
-    assert all(gap >= interval * 0.9 for gap in gaps), gaps
-    assert json.loads(state.read_text())["calls"] == 8
+
+def test_two_processes_keep_the_interval_between_every_call(paths, tmp_path):
+    """Two REAL processes, four calls each, through one gate over one file.
+    Every call's stamp, as the gate wrote it for the next caller to read, is
+    at least the interval after the stamp before it, and no send begins
+    before its own stamp. Together those put every request at least the
+    interval after the last one either process made. Sorted into one chain,
+    at least one neighbouring pair always comes from different processes,
+    however the calls happened to interleave.
+
+    R-759. The version before this timed each send's own start with a wall
+    clock and asserted the gaps against the interval less ten percent. What
+    the gate spaces is its STAMP, and a send starts after the stamp and after
+    the state file write that follows it, which is fsynced. That write took
+    up to fourteen milliseconds longer for one call than for another at a
+    load average of thirteen, enough to put two send starts 40.7 milliseconds
+    apart against a fifty millisecond interval, and on the gate's log the
+    same test read 0.039 and 0.031. The stamps carry no such noise. The gate
+    computes each as the later of the clock and the last stamp plus the
+    interval, so the first bound holds exactly, with no tolerance, and the
+    second is a lower bound that a slow machine can only widen."""
+    interval = 0.05
+    reports = _drive_two_processes(paths, tmp_path, count=4, interval=interval, hold=0.0)
+
+    calls = sorted(call for report in reports for call in report["calls"])
+    assert len(calls) == 8
+    stamps = [stamp for stamp, _sent in calls]
+    for earlier, later in zip(stamps, stamps[1:]):
+        assert later >= earlier + interval, f"two calls closer than the interval: {stamps}"
+    early = [(stamp, sent) for stamp, sent in calls if sent < stamp - _CLOCK_SKEW_S]
+    assert not early, f"a request went out before the gate's wait for it ended: {early}"
+
+
+def test_two_processes_never_have_a_call_in_flight_together(paths, tmp_path):
+    """Two REAL processes, four calls each, where every call holds the provider
+    for a tenth of a second against an interval of a hundredth. No send ever
+    finds another send's in flight marker.
+
+    The hold is longer than the interval on purpose. With a hold shorter than
+    it, the interval alone keeps the calls apart, and a gate whose lock did
+    nothing would pass. Here only the lock can: a second process without it
+    waits out a hundredth of a second and walks into a call still in flight.
+    The verdict reads no clock, so a busy machine cannot change it."""
+    reports = _drive_two_processes(paths, tmp_path, count=4, interval=0.01, hold=0.1)
+
+    assert [report["overlaps"] for report in reports] == [0, 0], (
+        f"two calls were in flight at once: {reports}"
+    )
 
 
 def test_a_lock_held_past_the_wait_is_refused_with_the_holder_named(paths, clock):

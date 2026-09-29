@@ -29036,6 +29036,12 @@ widened, or a gate defect is filed from it.
 
 **Not on the board bar.** Maintainer facing, a test and not a verb.
 
+**Closed 2026-09-29 on `relay/228`, issue #228, with R-759**, which is the
+same test failing at a gate rather than at a driver's baseline. The failing
+assertion was captured there, and neither remedy this entry named was taken.
+The tolerance was not widened, and no gate defect exists: the test measured
+a quantity the gate does not promise. See R-759's closing note.
+
 ---
 
 ## R-712. The run guard's owed count is a layer nothing can reach behind the partition
@@ -30312,6 +30318,49 @@ the machine being idle, or is kept out of the parallel run and says why.
 
 **On the board bar, 2026-09-29.** A guard on a path that writes is reported
 failing when it is not, and a finished unit did not land.
+
+**Closed 2026-09-29 on `relay/228`, issue #228, fixed in the tests.** The
+gate is unchanged. **The assertion that failed was a lower bound with a
+tolerance**, every gap between two send starts at least nine tenths of the
+interval; the log's list read 0.039 and 0.031 against 0.05. It had no upper
+bound. What the gate spaces is its own stamp, and a send begins after the
+stamp and after an fsynced state file write, whose duration varied by up
+to 13.6 milliseconds between calls at a load average of 13. That put two
+send starts 40.7 milliseconds apart while the stamps stayed at least 50.1
+apart. The measurement is in `docs/mutation/r759-notes.md`.
+
+The rewrite splits the test in two. The interval test reads the stamps the
+gate wrote and asserts each is at least the last plus the interval, exactly,
+and that no send begins before its own stamp, less a millisecond for the
+monotonic and wall clocks. The one at a time test holds each call for a
+tenth of a second against an interval of a hundredth, so only the lock can
+keep calls apart, and judges overlap by an `O_EXCL` marker with no clock.
+Both passed twenty runs of twenty beside a running full suite at a load
+average of 7 to 11. Dropping the interval, halving it, measuring it from
+now, skipping the wait, removing the lock and sharing it are each killed,
+the lock removal ten times of ten, in `docs/mutation/r759.md` and
+`r759-b.md`. Nothing is marked serial.
+
+**The sweep for the same shape**, a wall clock assertion with an upper bound
+or a tolerance, over every `time.time`, `time.monotonic` and
+`time.perf_counter` in `tests/`:
+
+- Fixed: `tests/test_adoption.py`,
+  `test_the_deadline_ends_a_read_that_keeps_arriving_forever`, asserted the
+  read ended in under two seconds. It guards the read deadline a revert's
+  digest rests on before it writes, so it now counts blocks read, at most
+  twenty against the eleven the arithmetic allows. A deadline honoured a
+  second late reads fifty.
+- Listed, not fixed, since none guards a write or a provider call:
+  `tests/test_pool_sizing.py`, the hung loader probe under 60 seconds, the
+  abandoned loader probe under 8, the dead child probe under 15, and the
+  release leg's band of 0.36 to 0.50 seconds on the minimum of five reaps,
+  whose own docstring measures its margin under load.
+- Listed as hang guards and not measurements: the polling deadlines of 15 to
+  60 seconds in `tests/test_config_update.py`, `tests/test_doctor.py`,
+  `tests/test_job_resume.py`, `tests/test_job_seam.py` and
+  `tests/test_jobs.py`, each of which fails only when an awaited event never
+  arrives. `tests/_hardware.py` times a calibration and asserts nothing.
 
 ---
 
