@@ -4,6 +4,16 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Last built: R-740, issue #222, `relay/222`, 2026-09-29, merged by the
+Relay runner after its gate.** A landed track's Name carries the head its
+title tag carries, or its filename's when the title has none. The fix is in
+`naming.normalize_spec`: a stripped head fills the fields a spec left empty
+when every supplied value agrees with it, so no caller can drop a head by
+supplying a key and no tempo. No tempo tag or field is read or written. The
+18 and 61 rows already landed bare are not repaired. Filed **R-748** to
+**R-750**, none on the board bar. **Main's highest residual number is
+R-750.**
+
 **Sitting 16, attended, 2026-09-29, no code.** The 18 downloads of sitting
 11 went through the whole tail: tagged, analysed, renamed, landed, imported
 and filed by `adopt apply` through the database, 17 added and one with no

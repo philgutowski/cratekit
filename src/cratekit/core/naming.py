@@ -732,7 +732,7 @@ def budget_head(spec: NameSpec, *, template: NameTemplate) -> str:
 
 
 def normalize_spec(spec: NameSpec, *, template: NameTemplate) -> NameSpec:
-    """Strip any head already present on the stem and title.
+    """Strip any head already present on the stem and title, keeping what it said.
 
     Rendering is then idempotent, which fixes a real decoupling window in the
     source: when the tag write succeeds and the rename then fails, the file is
@@ -740,12 +740,64 @@ def normalize_spec(spec: NameSpec, *, template: NameTemplate) -> NameSpec:
     skip it, because the filename has no head, and the title gets a SECOND head
     prepended. Normalizing the inputs makes the second pass converge instead of
     compounding.
+
+    A STRIPPED HEAD FILLS THE FIELDS THE SPEC LEFT EMPTY (R-740). The head is
+    all or nothing by default, and the tempo has no tag field at all, so a spec
+    built from tags carries a key and no tempo. Stripping the head and rendering
+    from that spec wrote the bare title, and every landed track reached rekordbox
+    without the head its own file carried. The title's head is read first and the
+    stem's second. The head is text in a name here, never a tempo tag.
+
+    A HEAD IS TAKEN WHOLE OR NOT AT ALL. It fills only a spec whose every
+    supplied value agrees with it, so a fresh key is never paired with the tempo
+    of the head it replaces, and a key tag the wheel does not hold is never
+    completed into a shape the renderer refuses. A spec that disagrees renders
+    from its own values, as it always did. A marker inside a stripped head marks
+    the spec whatever the fields say, so R21 cannot be undone by a caller that
+    forgot to pass the flag; a marker in the body is the body's and marks nothing.
     """
-    stem = strip_head(spec.stem, template=template)
-    title = strip_head(spec.title, template=template) if spec.title else spec.title
+    title_head, title_fields, title = (
+        _split_fields(spec.title, template) if spec.title else ("", {}, spec.title)
+    )
+    stem_head, stem_fields, stem = _split_fields(spec.stem, template)
     if stem == spec.stem and title == spec.title:
         return spec
-    return replace(spec, stem=stem, title=title)
+    filled: dict[str, object] = {}
+    for head, fields in ((title_head, title_fields), (stem_head, stem_fields)):
+        values = {
+            name: int(value) if name == _BPM_FIELD.name else value
+            for name, value in fields.items()
+        }
+        current = {name: filled.get(name, getattr(spec, name)) for name in values}
+        if all(_agrees(name, current[name], values[name]) for name in values):
+            filled.update(
+                (name, value) for name, value in values.items() if current[name] is None
+            )
+        for rule in template.markers:
+            if rule.literal in head:
+                filled[rule.field] = True
+    return replace(spec, stem=stem, title=title, **filled)
+
+
+def _split_fields(
+    name: str, template: NameTemplate
+) -> tuple[str, dict[str, str], str]:
+    """(head verbatim, its field values, remainder), from one match."""
+    m = _match_leading(name, template)
+    if m is None:
+        return "", {}, name
+    fields = {k: v for k, v in m.groupdict().items() if v is not None}
+    return name[: m.end()], fields, name[m.end():]
+
+
+def _agrees(name: str, supplied: object | None, written: object) -> bool:
+    """True when a spec value is absent or names the same thing the head does."""
+    if supplied is None:
+        return True
+    if name == _KEY_FIELD.name:
+        parsed = parse_camelot(str(supplied))
+        return parsed is not None and parsed == parse_camelot(str(written))
+    return supplied == written
 
 
 def render_all(spec: NameSpec, *, template: NameTemplate) -> RenderedName:

@@ -29799,6 +29799,30 @@ and a test lands a file whose only tempo is in its title.
 landing needs a hand repair in rekordbox before the row reads like the
 library.
 
+**Closed 2026-09-29 on `relay/222`, issue #222, fixed in the code.** The
+guarantee broke in `naming.normalize_spec`, not in the landing. It stripped a
+head from the stem and the title so rendering would be idempotent, and kept
+nothing it stripped, so `render_all`'s three surfaces agreed with each other
+and not with the file. The naming verb and analysis each rebuilt the head
+themselves before calling it, and `read_meta` did not. A stripped head now
+fills the fields the spec left empty, the title's head first and the stem's
+second, and only when every value the spec supplies agrees with it, the key
+compared on the wheel. A marker inside a stripped head marks the spec.
+`read_meta` takes its key from the title's head, or the filename's when the
+title has none, over the key tag, so the Name is the title tag rekordbox reads
+on Reload Tags. No tempo tag, BPM field or tempo element is read or written:
+the head is text in a name, and the intake row still carries no tempo element
+and `AverageBpm="0.00"`, asserted before and after the change.
+
+A file headed nowhere lands with the bare title, as before, and nothing
+invents a tempo. `intake file` reaches the same `read_meta` through
+`ingest_file` and is tested the same way. The routing pass does not call
+`read_meta` and renders no Name. `tests/test_landing_head.py` lands real
+files, one whose only tempo is in its title. The rows already landed with
+bare Names, 18 at sitting 16 and 61 at sitting 8, are not repaired here.
+Mutation tables `docs/mutation/r740-a.md` to `r740-c.md`. Filed R-748 to
+R-750, none on the board bar.
+
 ---
 
 ## R-741. A rename over download staging walks into the acquire staging directory
@@ -29952,3 +29976,61 @@ names, through the guarded writer.
 
 **Not on the board bar.** The hand path works and is recorded.
 
+
+---
+
+## R-748. A landed Name re-renders the head rather than copying it
+
+**Found:** `relay/222`, 2026-09-29, by `/code-review` over R-740's fix.
+`read_meta` renders the Name from the head's values, so an unpadded key in
+the title tag lands padded, `8A - 124 - Body` as `08A - 124 - Body`, and a
+tempo written with a leading zero loses it.
+
+**Measured cost.** Driven through `render_all` only. No producer on the
+acquisition tail writes either form: analysis writes the padded key and an
+integer tempo, and `name apply` pads before the landing. A file tagged by
+hand elsewhere would land with a Name one Reload Tags away from its tag.
+
+**Closes when:** the Name copies a head that already parses verbatim, or the
+landing refuses a title tag whose head is not in the written form.
+
+**Not on the board bar.** No producer on the tail was found that writes the
+unpadded form; reachability beyond the tail is unmeasured.
+
+---
+
+## R-749. Intake and the naming verb pick a disagreeing key from different places
+
+**Found:** `relay/222`, 2026-09-29, by `/code-review`. `read_meta` takes the
+key from the head over the key tag, so the Name is the title tag.
+`write/naming_cli._spec_for` takes the key tag over the head, because renaming
+from metadata is that verb's job. A file whose key tag disagrees with its head
+lands under the head's key and is renamed under the tag's.
+
+**Measured cost.** None measured on the library. The two converge once `name
+apply` rewrites the title, and the tail runs it before the landing.
+
+**Closes when:** one rule says which key wins when the tag and the head
+disagree, stated once and used by both.
+
+**Not on the board bar.** Maintainer facing; the tail converges.
+
+---
+
+## R-750. A marker in a stripped head marks the spec and no caller can clear it
+
+**Found:** `relay/222`, 2026-09-29, by `/code-review`. `normalize_spec` sets
+the lossy flag whenever a stripped head carries the marker, and `False` is
+the flag's default, so a caller cannot say a file carrying an old marker is
+now lossless.
+
+**Measured cost.** Three producers driven, analysis, the naming verb and
+`read_meta`, and none passes an unmarked flag over a marked head: the first
+two derive the flag from the marker text themselves. A lossless replacement
+that kept a lossy copy's title tag would be marked, which is the direction
+R21 prefers.
+
+**Closes when:** the spec can say lossless explicitly, or this is recorded as
+the rule.
+
+**Not on the board bar.** No producer drives it.

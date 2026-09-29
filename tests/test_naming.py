@@ -41,6 +41,7 @@ from cratekit.core.naming import (
     fit_to_budget,
     has_head,
     is_camelot,
+    normalize_spec,
     pad_camelot,
     pad_head,
     parse_camelot,
@@ -461,6 +462,117 @@ class TestAnalysisOff:
         than emit a name nothing can parse, the head is omitted entirely."""
         out = render_all(NameSpec(stem="Body", suffix=".flac", bpm=124), template=DEFAULT)
         assert out.filename == "Body.flac"
+
+
+class TestAStrippedHeadIsKept:
+    """R-740. ``normalize_spec`` strips a head from the inputs, and before this
+    it kept none of what it stripped. A spec built from tags has a key and no
+    tempo, since no tempo tag exists, so the all or nothing head rendered empty
+    and the three surfaces agreed on a name with the file's head thrown away."""
+
+    def test_a_key_only_spec_over_a_headed_title_keeps_the_whole_head(self):
+        out = render_all(
+            NameSpec(stem="Body", suffix=".flac", key="1A", title="01A - 112 - Body"),
+            template=DEFAULT,
+        )
+        assert out.library_name == out.title_tag == "01A - 112 - Body"
+        assert out.filename == "01A - 112 - Body.flac"
+
+    def test_a_spec_with_no_fields_takes_both_from_the_head(self):
+        out = render_all(
+            NameSpec(stem="Body", suffix=".flac", title="8A - 124 - Body"), template=DEFAULT
+        )
+        assert out.title_tag == "08A - 124 - Body"
+
+    def test_the_title_head_is_read_before_the_stem_head(self):
+        out = render_all(
+            NameSpec(stem="05B - 98 - Body", suffix=".flac", title="08A - 124 - Body"),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "08A - 124 - Body"
+
+    def test_the_stem_head_fills_when_the_title_has_none(self):
+        out = render_all(
+            NameSpec(stem="05B - 98 - Body", suffix=".flac", title="Body"), template=DEFAULT
+        )
+        assert out.title_tag == "05B - 98 - Body"
+
+    def test_a_value_the_spec_supplies_wins_over_the_head(self):
+        """Analysis passes a fresh key and tempo; the old head must not
+        overwrite them, or a re-analysed file keeps its stale head."""
+        out = render_all(
+            NameSpec(stem="Body", suffix=".flac", key="3B", bpm=126, title="08A - 124 - Body"),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "03B - 126 - Body"
+
+    def test_a_fresh_key_is_never_paired_with_the_tempo_it_replaces(self):
+        """A spec whose key disagrees with the head takes nothing from it, so
+        no name carries a key and tempo that no source ever said together."""
+        out = render_all(
+            NameSpec(stem="Body", suffix=".flac", key="03B", title="08A - 124 - Body"),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "Body"
+
+    def test_an_off_wheel_key_is_not_completed_into_a_refused_shape(self):
+        out = render_all(
+            NameSpec(stem="Body", suffix=".flac", key="Am", title="08A - 124 - Body"),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "Body"
+
+    def test_an_unpadded_or_lowercase_key_agrees_with_its_padded_head(self):
+        out = render_all(
+            NameSpec(stem="Body", suffix=".flac", key="8a", title="08A - 124 - Body"),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "08A - 124 - Body"
+
+    def test_a_disagreeing_title_head_leaves_the_stem_head_to_agree(self):
+        out = render_all(
+            NameSpec(
+                stem="05B - 98 - Body", suffix=".flac", key="5B", title="08A - 124 - Body"
+            ),
+            template=DEFAULT,
+        )
+        assert out.title_tag == "05B - 98 - Body"
+
+    def test_a_marker_in_the_body_marks_nothing(self):
+        out = render_all(
+            NameSpec(stem=f"Body {MARKER}", suffix=".mp3", title="Body"), template=DEFAULT
+        )
+        assert out.title_tag == "Body"
+
+    def test_a_marker_in_the_stripped_head_marks_the_spec(self):
+        out = render_all(
+            NameSpec(stem="Body", suffix=".mp3", title=f"08A - 124 - {MARKER} Body"),
+            template=DEFAULT,
+        )
+        assert out.title_tag == f"08A - 124 - {MARKER} Body"
+        assert out.filename == f"08A - 124 - {MARKER} Body.mp3"
+
+    def test_a_marker_only_head_marks_the_spec_and_invents_no_field(self):
+        out = render_all(
+            NameSpec(stem="Body", suffix=".mp3", title=f"{MARKER} Body"), template=DEFAULT
+        )
+        assert out.title_tag == f"{MARKER} Body"
+
+    def test_no_head_anywhere_leaves_the_spec_alone(self):
+        spec = NameSpec(stem="Body", suffix=".flac", key="1A", title="Body")
+        assert normalize_spec(spec, template=DEFAULT) is spec
+        assert render_all(spec, template=DEFAULT).title_tag == "Body"
+
+    def test_a_rendered_head_renders_again_unchanged(self):
+        once = render_all(
+            NameSpec(stem="Body", suffix=".flac", key="1A", title="1A - 112 - Body"),
+            template=DEFAULT,
+        )
+        twice = render_all(
+            NameSpec(stem=once.filename[: -len(".flac")], suffix=".flac", title=once.title_tag),
+            template=DEFAULT,
+        )
+        assert twice == once
 
 
 class TestMarkerCoupling:

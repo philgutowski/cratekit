@@ -1,0 +1,69 @@
+name = "r740-a"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_no_fill"
+description = "normalize_spec: never fill a spec field from the stripped head, the R-740 loss itself"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_naming.py", "tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py"]
+old = '''            filled.update(
+                (name, value) for name, value in values.items() if current[name] is None
+            )'''
+new = '''            pass'''
+
+[[rows]]
+id = "N2_no_agreement"
+description = "normalize_spec: fill from the head whatever the spec supplied, so a fresh key takes the old tempo"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_naming.py", "tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py"]
+old = '''        if all(_agrees(name, current[name], values[name]) for name in values):'''
+new = '''        if True:'''
+
+[[rows]]
+id = "N3_key_compared_raw"
+description = "_agrees: compare the key as raw text instead of on the wheel, so 8a disagrees with 08A"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_naming.py", "tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py"]
+old = '''        return parsed is not None and parsed == parse_camelot(str(written))'''
+new = '''        return str(supplied) == str(written)'''
+
+[[rows]]
+id = "N4_stem_before_title"
+description = "normalize_spec: read the stem head before the title head"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_naming.py", "tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py"]
+old = '''    for head, fields in ((title_head, title_fields), (stem_head, stem_fields)):'''
+new = '''    for head, fields in ((stem_head, stem_fields), (title_head, title_fields)):'''
+
+[[rows]]
+id = "N5_no_marker_fill"
+description = "normalize_spec: a marker in the stripped head no longer marks the spec, so R21's marker is dropped"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_naming.py", "tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py"]
+old = '''            if rule.literal in head:
+                filled[rule.field] = True'''
+new = '''            if rule.literal in head:
+                pass'''
+
+[[rows]]
+id = "N6_current_ignores_filled"
+description = "normalize_spec: judge the stem head against the spec alone, so it overwrites what the title head filled"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_naming.py", "tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py"]
+old = '''        current = {name: filled.get(name, getattr(spec, name)) for name in values}'''
+new = '''        current = {name: getattr(spec, name) for name in values}'''
+
+[[rows]]
+id = "N7_tempo_left_as_text"
+description = "normalize_spec: keep the head's tempo as text, so a supplied integer tempo never agrees with it"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+tests = ["tests/test_naming.py", "tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py"]
+old = '''            name: int(value) if name == _BPM_FIELD.name else value'''
+new = '''            name: value'''
