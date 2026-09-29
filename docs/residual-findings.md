@@ -29775,7 +29775,7 @@ is either carried between them or shown not to need it.
 
 ---
 
-## R-734. A landed track's rekordbox Name loses the key and tempo head its file carries
+## R-740. A landed track's rekordbox Name loses the key and tempo head its file carries
 
 **Found:** sitting 16, 2026-09-29, by the author, reading the import file's
 titles in rekordbox. `intake.ingest.read_meta` reads the title tag, strips
@@ -29801,7 +29801,7 @@ library.
 
 ---
 
-## R-735. A rename over download staging walks into the acquire staging directory
+## R-741. A rename over download staging walks into the acquire staging directory
 
 **Found:** sitting 16, 2026-09-29. `name apply --root` over the download
 staging folder planned 19 renames for 18 tracks. The nineteenth was the copy
@@ -29820,7 +29820,7 @@ in the download's answer.
 
 ---
 
-## R-736. A fresh installation scores no energy, and no verb carries a calibration across
+## R-742. A fresh installation scores no energy, and no verb carries a calibration across
 
 **Found:** sitting 16, 2026-09-29. `analyze run` over 18 files answered
 `energy_status: uncalibrated` on every one and stamped none, because the
@@ -29844,7 +29844,7 @@ bar for any second installation.
 
 ---
 
-## R-737. A genre that names a bucket and no style files under Rock
+## R-743. A genre that names a bucket and no style files under Rock
 
 **Found:** sitting 16, 2026-09-29. A track whose genre is the bare string
 `NonElectronic`, which the tagger wrote, was planned and filed under
@@ -29861,7 +29861,7 @@ bucket's default, or the entry is `needs-genre`.
 
 ---
 
-## R-738. The tempo in a head disagrees with the grid rekordbox computes
+## R-744. The tempo in a head disagrees with the grid rekordbox computes
 
 **Found:** sitting 16, 2026-09-29, reading the export after the import. The
 head carries the tempo `analyze run` measured, and rekordbox's own analysis
@@ -29880,7 +29880,7 @@ corrected or the difference is recorded as the method's.
 
 ---
 
-## R-739. A Fresh Export can only come from rekordbox, so every landing and every cutover waits on a person at its menus
+## R-745. A Fresh Export can only come from rekordbox, so every landing and every cutover waits on a person at its menus
 
 **Found:** sittings 15 and 16, 2026-09-29. `intake land`, `intake imported`
 and `tree cutover` each take `--export`, a rekordbox xml export of the
@@ -29904,7 +29904,7 @@ a person at another application's menus.
 
 ---
 
-## R-740. A landed file reaches the collection only through a hand import
+## R-746. A landed file reaches the collection only through a hand import
 
 **Found:** sitting 16, 2026-09-29. `intake land` moves the files and writes
 an intake file, and ends `PENDING_HUMAN` on five steps: point rekordbox at
@@ -29927,12 +29927,18 @@ intake tree has cut over, writing no beat grid, no tempo and no analysis
 data, and an attended sitting has opened rekordbox on the result and read
 the rows analysed.
 
-**On the board bar, 2026-09-29.** The same bar as R-739, and this is the
+**On the board bar, 2026-09-29.** The same bar as R-745, and this is the
 larger half.
+
+**Held behind #225, the same day.** The source system designed the
+experiment that decides whether this may be built at all,
+`DJ_tools/docs/runbooks/2026-08-01-u9-A1-gridless-insert-notes.md`, and its
+attended half was never run. Its standing decision is that intake stays on
+the xml bridge unless that verdict is clean. Issue #224 waits on #225 (A8).
 
 ---
 
-## R-741. No verb sets a genre on a row
+## R-747. No verb sets a genre on a row
 
 **Found:** sitting 16, 2026-09-29. Adoption reads a track's genre from its
 database row and answers `needs-genre` for 2,059 rows. The tagger reads

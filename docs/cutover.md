@@ -453,16 +453,16 @@ folder in the tree with no xml routing.
 | Workflow | Ran | Observed | State |
 |---|---|---|---|
 | `tag folder` over staging | yes, job `0db5` | 18 settled in seconds. **12 given a genre, 6 none**, every file already carrying art. Two genres read wrong to the session, a 1976 soul record under Breaks and two house remixes under Afro House; the author set genres in rekordbox instead. | live |
-| `analyze run` | yes, job `33ea` | Key and tempo on all 18, each file renamed with its head, no tempo tag written. **Energy on none: `uncalibrated`** (R-736). | live, energy missing |
+| `analyze run` | yes, job `33ea` | Key and tempo on all 18, each file renamed with its head, no tempo tag written. **Energy on none: `uncalibrated`** (R-742). | live, energy missing |
 | The energy calibration | carried by hand | The source system's, tested first: **59 of 59 sampled library tracks scored equal to their tag**. Written through `save_calibration`. | live |
 | `analyze restamp` | yes, job `4604` | Energy stamped on all 18, 1 to 10. The verb warns that its star rating half is not written by this build. | live |
-| `name apply --root` staging | two plans, the second applied | The first planned 19, one of them a refused duplicate inside the acquire job's directory (R-735). Aborted, the leftover moved aside, 18 renamed, no collision. | live |
-| `intake land` | applied, run `76bb` | 18 moved to `Music/2026-09-29-sitting11-sets`, the intake file written over `Music/9-29-export.xml`, 10,016 entries. The 18 new entries carry no tempo element and no average BPM, and no existing entry's tempo data differs from the export. **Every new Name is bare** (R-734). | live, Name defective |
+| `name apply --root` staging | two plans, the second applied | The first planned 19, one of them a refused duplicate inside the acquire job's directory (R-741). Aborted, the leftover moved aside, 18 renamed, no collision. | live |
+| `intake land` | applied, run `76bb` | 18 moved to `Music/2026-09-29-sitting11-sets`, the intake file written over `Music/9-29-export.xml`, 10,016 entries. The 18 new entries carry no tempo element and no average BPM, and no existing entry's tempo data differs from the export. **Every new Name is bare** (R-740). | live, Name defective |
 | The rekordbox import | by the author | One playlist imported, dragged into INBOX, Reload Tags over the 18 to restore the heads, genres set by hand on seven. rekordbox computed its own grids. | done |
 | `intake imported` | yes | Proven imported, 18 tracks, the intake file retired. | live |
 | `adopt scan` then `adopt apply` | approved by the author, run `0a1b` | 10,016 rows. Plan: 7,205 route, 585 withheld, digest `11be33c33f377e53`. **17 added, 7,188 already present, none failed.** Read back: each of the 17 in the one sub the plan named, the eighteenth, which carries no genre, in none. 11,408 memberships under the tree, `integrity_check` ok. | **live** |
 
-**Step 4 is done.** Found by running: R-734 to R-738. R-734 is on the board
+**Step 4 is done.** Found by running: R-740 to R-744. R-740 is on the board
 bar. The 9-27 database backup predates today's writes; a backup is owed
 before the next sitting.
 
@@ -482,7 +482,7 @@ last. Then **step 5 of the road map, the favourites cycle end to end**: one
 Tidal verb at a time, `intake playlist favorites`, `intake missing`,
 `acquire download`, then sitting 16's tail as it ran, `tag folder`, `analyze
 run`, `name apply --root`, `intake land`, the import, `intake imported`,
-`adopt scan`, `adopt apply`. Until R-734 lands, Reload Tags in rekordbox after
+`adopt scan`, `adopt apply`. Until R-740 lands, Reload Tags in rekordbox after
 the import and before any genre is set by hand.
 
 Owed by the author: a decision on the 585 withheld entries, where the energy
