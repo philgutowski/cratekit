@@ -6419,7 +6419,20 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # range. core/tree_registry.py named its refusals on main already.
     # Measured by this pair moving by one on the holders side and by nothing
     # on the other.
-    assert (len(literal_holders), len(literal_both)) == (106, 25), (
+    # Re-pinned on the residual finding "A Fresh Export can only come from
+    # rekordbox, so every landing and every cutover waits on a person at its
+    # menus", 2026-09-29: holders move 106 to 108, and the
+    # also-holds-an-integer half moves 25 to 26. TWO modules joined and none
+    # left, and both are new files. cli/export_collection.py refuses with
+    # output-exists, library-export-unusable and path-permission-denied
+    # through cause.refuse, and its one integer is the 5 it shows names up
+    # to, which is not in the reserved range. write/collection_export.py
+    # refuses with library-export-unusable, and it is the one that holds
+    # in-range integers, four of them, none an exit status: 51 is one star in
+    # rekordbox's xml spelling, as in write/metadata.py, 11 and 12 are the
+    # database's codes for a WAV and an AIFF file, and 10 is the length of a
+    # day written as text. Measured by this pair moving by two and by one.
+    assert (len(literal_holders), len(literal_both)) == (108, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
