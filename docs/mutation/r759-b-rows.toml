@@ -1,120 +1,12 @@
 name = "r759-b"
 pass_kind = "light"
 
-# R-759 table b. The two rows whose kill rests on real timing, repeated ten
-# times each for a kill rate: P2 is the closest a mutant comes to the bound
-# (half the interval), P4 is the race the in flight test exists to catch.
-# Same text as table a. METHOD: a timing row carries a repeat count.
-
-[[rows]]
-id = "P2_interval_halved_r01"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 1 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
-
-[[rows]]
-id = "P2_interval_halved_r02"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 2 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
-
-[[rows]]
-id = "P2_interval_halved_r03"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 3 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
-
-[[rows]]
-id = "P2_interval_halved_r04"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 4 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
-
-[[rows]]
-id = "P2_interval_halved_r05"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 5 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
-
-[[rows]]
-id = "P2_interval_halved_r06"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 6 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
-
-[[rows]]
-id = "P2_interval_halved_r07"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 7 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
-
-[[rows]]
-id = "P2_interval_halved_r08"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 8 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
-
-[[rows]]
-id = "P2_interval_halved_r09"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 9 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
-
-[[rows]]
-id = "P2_interval_halved_r10"
-description = "the shared interval is halved, so calls from two processes come twice as fast as the configuration says, repeat 10 of 10"
-file = "src/cratekit/core/provider_gate.py"
-surface = "user"
-tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
-old = '''                due = max(state.last_call + self.settings.min_interval_s, state.not_before)
-'''
-new = '''                due = max(state.last_call + self.settings.min_interval_s / 2, state.not_before)
-'''
+# R-759 table b. P4, removing the lock, repeated ten times for a kill rate,
+# because it is the one row whose death rests on real timing: two processes
+# have to race into a call still in flight. The interval rows are not
+# repeated, since after the rewrite their deaths are comparisons of the
+# gate's own stamps and hold by construction. Same text as table a.
+# METHOD: a timing row carries a repeat count and a pass rate.
 
 [[rows]]
 id = "P4_lock_removed_r01"

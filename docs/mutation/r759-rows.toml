@@ -100,3 +100,34 @@ new = '''
                     break
                 hasher.update(block)
 '''
+
+[[rows]]
+id = "P6_wait_skipped_stamp_kept"
+description = "the wait before a call is skipped while its stamp still reads the due time, so the stamps stay spaced and the requests go out back to back"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py::test_two_processes_keep_the_interval_between_every_call"]
+old = '''
+        if due > now:
+            self._sleep(due - now)
+            now = max(self._clock(), due)
+'''
+new = '''
+        if due > now:
+            now = max(self._clock(), due)
+'''
+
+[[rows]]
+id = "A2_deadline_a_second_late"
+description = "the read deadline is honoured a second after it passes, so a trickling file is read fifty blocks further than the caller allowed"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py::test_the_deadline_ends_a_read_that_keeps_arriving_forever"]
+old = '''
+                if time.monotonic() > give_up_at:
+                    raise TimeoutError(
+'''
+new = '''
+                if time.monotonic() > give_up_at + 1.0:
+                    raise TimeoutError(
+'''

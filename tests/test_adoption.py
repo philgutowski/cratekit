@@ -4787,13 +4787,15 @@ def test_the_deadline_ends_a_read_that_keeps_arriving_forever(tmp_path):
             adopt_revert.digest_of(endless, deadline_seconds=0.2)
     finally:
         Path.open = original
-    # Counted in blocks rather than timed, R-759: the stream cannot deliver a
-    # hundred blocks in under two seconds however fast the machine, and a busy
-    # one slows the stream and the deadline alike, so a block count is a
-    # verdict load cannot move and an elapsed time was not.
-    assert stream.blocks > 0, (
-        "the deadline is asked between blocks, so the read must end near it "
-        "rather than run the stream out"
+    # Counted in blocks rather than timed, R-759. Each block costs at least its
+    # twenty millisecond sleep however fast the machine, so by the time the
+    # 0.2 second deadline passes at most eleven blocks can have arrived, and a
+    # busy machine only makes that fewer. Twenty is room for that arithmetic,
+    # not for load, and a deadline honoured even a second late reads fifty.
+    read = 100 - stream.blocks
+    assert read <= 20, (
+        f"the deadline is asked between blocks, so the read must end near it "
+        f"rather than run the stream on; {read} of 100 blocks were read"
     )
 
 
