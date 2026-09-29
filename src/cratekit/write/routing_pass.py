@@ -65,7 +65,15 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli import output
-from cratekit.core import config, convergence, locations, session, taxonomy, tree_registry
+from cratekit.core import (
+    config,
+    convergence,
+    locations,
+    rb_writer,
+    session,
+    taxonomy,
+    tree_registry,
+)
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import trees
@@ -956,6 +964,8 @@ def _folders_holding(db: Any, content_id: str | None, *, root_id: str) -> set[st
     if content_id is None:
         return found
     for membership in db.get_playlist_songs(ContentID=str(content_id)):
+        if rb_writer.membership_removed(membership):
+            continue
         playlist = db.get_playlist(ID=str(membership.PlaylistID))
         if playlist is None:
             continue
@@ -1174,10 +1184,15 @@ def membership_proven(db: Any, placed: Placed, *, root_id: str) -> bool:
     Returns a BOOLEAN and never raises for an absent row: a proof that cannot be
     made is a track that stays outstanding and is tried again, which is the
     fail-safe direction.
+
+    A MEMBERSHIP MARKED REMOVED PROVES NOTHING (R-758), since rekordbox shows no
+    track for it.
     """
     if placed.content_id is None:
         return False
     for membership in db.get_playlist_songs(ContentID=str(placed.content_id)):
+        if rb_writer.membership_removed(membership):
+            continue
         playlist = db.get_playlist(ID=str(membership.PlaylistID))
         if playlist is None or playlist.Name != placed.sub:
             continue

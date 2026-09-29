@@ -874,7 +874,87 @@ def test_the_bookkeeping_exemption_covers_ten_columns():
     that fires on correct code gets switched off.
     """
     assert len(W.BOOKKEEPING_COLUMNS) == 10
-    assert W.guard_violations([], [("djmdContent", set(W.BOOKKEEPING_COLUMNS))], []) == []
+    bumped = set(W.BOOKKEEPING_COLUMNS) - {W.SOFT_DELETE_COLUMN}
+    assert W.guard_violations([], [("djmdContent", bumped)], []) == []
+
+
+# ── the one removal, R-758 ───────────────────────────────────────────────────
+
+#: Every table the binding maps a row class for that carries the marker, read
+#: off the binding so a table it gains is a table these tests cover.
+def _tables_with_a_marker() -> list[str]:
+    from pyrekordbox.db6 import tables
+
+    return sorted(
+        mapper.class_.__table__.name
+        for mapper in tables.Base.registry.mappers
+        if W.SOFT_DELETE_COLUMN in mapper.class_.__table__.columns
+    )
+
+
+def test_the_binding_maps_the_tables_the_removal_tests_walk():
+    found = _tables_with_a_marker()
+    assert W.MEMBERSHIP_TABLE in found and W.CONTENT_TABLE in found
+    assert len(found) > 10, found
+
+
+@pytest.mark.parametrize("table", _tables_with_a_marker())
+def test_a_changed_marker_is_a_removal_and_no_ordinary_commit_admits_one(table):
+    """The marker is a bookkeeping column, so a row whose only change was the
+    marker read as untouched, in any table, the collection included."""
+    for columns in ({W.SOFT_DELETE_COLUMN}, {W.SOFT_DELETE_COLUMN, "updated_at", "rb_local_usn"}):
+        violations = W.guard_violations([], [(table, columns)], [])
+        assert len(violations) == 1, (table, violations)
+        assert "soft delete marker" in violations[0] and repr(table) in violations[0]
+
+
+def test_the_removable_tables_are_exactly_the_membership_table():
+    assert W.REMOVABLE_TABLES == frozenset({"djmdSongPlaylist"})
+    assert W.MEMBERSHIP_TABLE == "djmdSongPlaylist"
+
+
+def test_a_commit_that_asks_may_remove_a_membership_and_nothing_else():
+    removal = {W.SOFT_DELETE_COLUMN, "updated_at", "rb_local_usn"}
+    asked = {W.MEMBERSHIP_TABLE}
+    assert W.guard_violations([], [(W.MEMBERSHIP_TABLE, removal)], [], removals=asked) == []
+    for table in _tables_with_a_marker():
+        if table == W.MEMBERSHIP_TABLE:
+            continue
+        violations = W.guard_violations([], [(table, removal)], [], removals=asked)
+        assert len(violations) == 1 and repr(table) in violations[0], table
+
+
+@pytest.mark.parametrize(
+    "table", [name for name in _tables_with_a_marker() if name != "djmdSongPlaylist"]
+)
+def test_asking_for_a_removal_in_any_other_table_is_itself_refused(table):
+    """The set is a ceiling a caller cannot raise by asking."""
+    violations = W.guard_violations(
+        [], [(table, {W.SOFT_DELETE_COLUMN})], [], removals={table}
+    )
+    assert len(violations) == 2, violations
+    assert any("asks to remove" in line for line in violations)
+    assert any("soft delete marker" in line for line in violations)
+    # Asked for and unused, it is still refused.
+    assert W.guard_violations([], [], [], removals={table}) != []
+
+
+def test_an_admitted_removal_admits_no_hard_delete():
+    """A hard delete is refused in the membership table as it is everywhere."""
+    violations = W.guard_violations(
+        [], [], [W.MEMBERSHIP_TABLE], removals={W.MEMBERSHIP_TABLE}
+    )
+    assert len(violations) == 1 and "additive-only" in violations[0]
+
+
+def test_an_admitted_removal_still_judges_the_other_columns_of_the_row():
+    violations = W.guard_violations(
+        [],
+        [(W.CONTENT_TABLE, {"BPM"}), (W.MEMBERSHIP_TABLE, {W.SOFT_DELETE_COLUMN})],
+        [],
+        removals={W.MEMBERSHIP_TABLE},
+    )
+    assert len(violations) == 1 and "BPM" in violations[0]
 
 
 # ── the per-field policy ─────────────────────────────────────────────────────
@@ -1705,7 +1785,14 @@ def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():
 #: ``self.rb_local_deleted`` on a stand-in row and reads it nowhere, and
 #: ``_soft_delete_reads`` was narrowed to load context so a row double stops
 #: counting as a reader.
+#:
+#: ``core/rb_writer`` JOINED AT R-758, AS A DECISION. The membership primitives
+#: live there, a removed membership must not count as present and must not be
+#: removed twice, and ``trees`` is a layer above, so its reader cannot be
+#: reached from below. ``rb_writer.membership_removed`` holds the same rule for
+#: the rows that module reads, refusing on a row that cannot answer.
 SOFT_DELETE_READERS = {
+    "src/cratekit/core/rb_writer.py",
     "src/cratekit/write/metadata.py",
     "src/cratekit/write/trees.py",
 }

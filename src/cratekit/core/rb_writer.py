@@ -22,7 +22,10 @@ delegated upstream. The chain, in the order it fires, and what each link refuses
    and tag tables, may MODIFY only columns an enabled operation has REGISTERED,
    and may DELETE nothing at all, ever. That is R17 stated as a property of the
    database rather than as a code-review note: grid and analysis data is
-   structurally unwritable, not merely untested.
+   structurally unwritable, not merely untested. ONE REMOVAL IS ADMITTED, on
+   purpose (R-758): a membership row may be marked removed with rekordbox's own
+   soft delete marker, in the membership table only, and only by a commit that
+   asks for it by name. See :data:`REMOVABLE_TABLES`.
 6. **A cross-process write-session lock**, held from snapshot through smoke test.
 
 WHAT CHANGED IN THE PORT, AND WHY EACH CHANGE IS A FIX RATHER THAN A DRIFT.
@@ -1773,9 +1776,17 @@ def add_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[
     is not a caveat, it is a requirement: the same lock is what makes the update
     counter's autoincrement safe, so a caller outside the lock is already unsafe
     for a second reason.
+
+    A MEMBERSHIP MARKED REMOVED IS NOT PRESENT (R-758). The binding's query
+    returns a soft deleted row beside the live ones, and rekordbox shows no
+    track for it, so counting it would report a track as filed in a playlist a
+    person cannot see it in, and a track moved away and later moved back would
+    never come back.
     """
     present = {
-        str(song.ContentID) for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+        str(song.ContentID)
+        for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+        if not membership_removed(song)
     }
     inserted: list[str] = []
     for content_id in content_ids:
@@ -1794,6 +1805,82 @@ def add_membership(db: Any, playlist: Any, content_id: str) -> bool:
     One id through :func:`add_memberships`, which owns the rule.
     """
     return bool(add_memberships(db, playlist, [content_id]))
+
+
+#: What "the row could not answer" looks like, distinct from every value the
+#: soft delete column can hold.
+_MARKER_ABSENT = object()
+
+
+def membership_removed(row: Any) -> bool:
+    """Whether one membership row carries rekordbox's soft delete marker, or REFUSE.
+
+    A ROW THAT CANNOT SAY REFUSES, for the reason
+    :func:`cratekit.write.trees.soft_delete_marker` gives for a collection row:
+    every default a reader could supply is the answer "live", and here that
+    answer reports a removed track as filed and stops a removal being made at
+    all. That function is a layer above this module, so the rule is held here
+    for the rows this module reads and is the same rule.
+    """
+    marker = getattr(row, SOFT_DELETE_COLUMN, _MARKER_ABSENT)
+    if marker is _MARKER_ABSENT or marker is None:
+        raise refuse(
+            "soft-delete-marker-unreadable",
+            f"the playlist membership row {getattr(row, 'ID', '?')!r} cannot say "
+            f"whether rekordbox removed it, and treating that as live would "
+            f"report a track as filed where nobody can see it",
+            remedy=Remedy.RUN_DOCTOR,
+            scope=Scope.RUN,
+            origin=("rb_writer",),
+            detail={"membership_id": str(getattr(row, "ID", "")), "column": SOFT_DELETE_COLUMN},
+        )
+    return bool(marker)
+
+
+def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[str]:
+    """Mark each track's live membership of one playlist removed. Returns the ids.
+
+    THE ONE REMOVAL THIS PRODUCT MAKES, AND IT IS A SOFT DELETE (R-758). The row
+    stays and its soft delete marker is set, with ``updated_at`` moved to now.
+    The binding stamps the local update sequence at commit, as it does for any
+    tracked change. Nothing else on the row is touched: ``TrackNo`` stays, so
+    the rows after it are not renumbered, and the binding's own add numbers a
+    new row from the count of every row, removed ones included, so a number is
+    never given twice.
+
+    WHY NOT THE BINDING'S OWN CALL. ``remove_from_playlist`` deletes the row
+    outright and COMMITS BY ITSELF, which would land a write the guarded commit
+    never judged. It is also the opposite of what rekordbox's own rows show:
+    read on 2026-09-29 from a copy of a snapshot, 4,817 membership rows carried
+    the marker and every one was still there.
+
+    WHAT THAT READING DOES NOT SHOW, said here rather than implied. Every one
+    of those rows sat in a playlist that was itself removed. None sat in a
+    playlist that survives, so how rekordbox records ONE track taken out of a
+    living playlist was not observed, and rekordbox's rows also carry a
+    ``rb_data_status`` this does not write. Recorded in the ledger.
+
+    EVERY LIVE ROW FOR THE PAIR IS MARKED, so a track a playlist holds twice is
+    out of it after one call. An id the playlist does not hold is skipped and is
+    not in the return.
+
+    DOES NOT COMMIT. The commit is the caller's, through
+    :func:`commit_guarded` with this table named in ``removals``, and any other
+    commit refuses the change this makes.
+    """
+    from datetime import datetime
+
+    wanted = {str(content_id) for content_id in content_ids}
+    now = datetime.now()
+    removed: list[str] = []
+    for song in list(db.get_playlist_songs(PlaylistID=str(playlist.ID))):
+        key = str(song.ContentID)
+        if key not in wanted or membership_removed(song):
+            continue
+        setattr(song, SOFT_DELETE_COLUMN, 1)
+        song.updated_at = now
+        removed.append(key)
+    return removed
 
 
 def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
@@ -1969,6 +2056,19 @@ GRIDLESS_ON_CREATE_COLUMNS = frozenset(
 #: ``tests/_source_guards.py:permissive_soft_delete_reads``.
 SOFT_DELETE_COLUMN = "rb_local_deleted"
 
+#: The membership table, named once so the removal rule and the primitive that
+#: makes a removal cannot disagree about which table they mean.
+MEMBERSHIP_TABLE = "djmdSongPlaylist"
+
+#: Tables a commit may be ASKED to admit a removal in, and the whole of them.
+#:
+#: A removal is a row whose soft delete marker changes. It is refused in every
+#: table, this one included, unless the commit names the table in ``removals``,
+#: and a commit that names any table outside this set is refused as well, so no
+#: caller can widen it by asking. Static, for the reason
+#: :data:`PERMITTED_ROW_TABLES` is. A hard delete is admitted nowhere.
+REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE})
+
 #: Columns the binding and the object mapper bump on their own during a commit.
 #: TEN of them. Without every one, an otherwise legitimate write trips the guard,
 #: and a guard that fires on correct code gets disabled, which is the failure mode
@@ -2076,8 +2176,13 @@ def guard_violations(
     deleted: Iterable[str],
     *,
     content_columns: Iterable[str] | None = None,
+    removals: Iterable[str] = (),
 ) -> list[str]:
     """Judge a pending session against the whitelist. Empty means allowed.
+
+    ``removals`` names the tables this one commit admits a soft delete in. It
+    is empty for every writer but the one that moves a membership, and a name
+    outside :data:`REMOVABLE_TABLES` is itself a violation.
 
     PURE, and that is what makes it the part of the safety chain that is actually
     tested. It takes table names and column names, so every branch is reachable
@@ -2093,6 +2198,13 @@ def guard_violations(
         else content_writable_columns()
     )
     violations: list[str] = []
+    admitted = frozenset(removals)
+    for table in sorted(admitted - REMOVABLE_TABLES):
+        violations.append(
+            f"asks to remove rows in {table!r}, and a removal is admitted in "
+            f"{sorted(REMOVABLE_TABLES)} and nowhere else"
+        )
+    admitted &= REMOVABLE_TABLES
 
     for table, columns in new:
         if table == CONTENT_TABLE:
@@ -2116,6 +2228,17 @@ def guard_violations(
             )
 
     for table, columns in dirty:
+        columns = set(columns)
+        # THE MARKER IS JUDGED BEFORE THE BOOKKEEPING FILTER DROPS IT (R-758).
+        # It is a bookkeeping column, so a row whose only change was the marker
+        # used to read as untouched, in any table, and a writer could remove a
+        # track from the collection with the guard saying nothing.
+        if SOFT_DELETE_COLUMN in columns and table not in admitted:
+            violations.append(
+                f"changes the soft delete marker of a row in {table!r}, which "
+                f"removes it; writers are additive-only and this commit admits "
+                f"no removal there"
+            )
         modified = {column for column in columns if column not in BOOKKEEPING_COLUMNS}
         if not modified:
             continue
@@ -2135,7 +2258,9 @@ def guard_violations(
         # only is what makes the snapshot a real safety net: if nothing is ever
         # removed, the worst outcome of a bad run is extra rows, which a person
         # can see and remove. Deletion is the one operation whose damage is
-        # invisible. Do not soften this to make a later unit easier.
+        # invisible. Do not soften this to make a later unit easier. The one
+        # removal R-758 admits is a soft delete and arrives as a modification,
+        # so it never reaches this loop and ``removals`` does not apply here.
         violations.append(f"deletes a row in {table!r}; writers are additive-only")
 
     return violations
@@ -2415,10 +2540,12 @@ def assert_created_rows_are_gridless(db: Any) -> None:
         )
 
 
-def assert_session_whitelisted(session: Any, db: Any = None) -> None:
+def assert_session_whitelisted(
+    session: Any, db: Any = None, *, removals: Iterable[str] = ()
+) -> None:
     """Raise unless the pending session touches only whitelisted tables and columns."""
     created, modified, removed = pending_changes(session, db)
-    violations = guard_violations(created, modified, removed)
+    violations = guard_violations(created, modified, removed, removals=removals)
     if violations:
         raise _unavailable(
             "whitelist-violation",
@@ -2651,8 +2778,15 @@ def commit_witness(db: Any) -> Iterator[CommitWitness]:
         event.remove(target, "after_commit", witness._mark)
 
 
-def commit_guarded(db: Any, *, force_cloud_canary: bool = False) -> None:
+def commit_guarded(
+    db: Any, *, force_cloud_canary: bool = False, removals: Iterable[str] = ()
+) -> None:
     """Commit only when it is still safe to, and roll back rather than leak.
+
+    ``removals`` IS EMPTY FOR EVERY WRITER BUT ONE. It names the tables this
+    commit admits a soft delete in, the whitelist holds it to
+    :data:`REMOVABLE_TABLES`, and a source guard holds the callers that pass it
+    to the membership move. Any other commit refuses a changed marker.
 
     RE-CHECKED AT COMMIT, NOT ONLY AT OPEN, AND UNCONDITIONALLY. A run takes
     minutes, and the user can launch rekordbox during it. The open-time process
@@ -2689,7 +2823,7 @@ def commit_guarded(db: Any, *, force_cloud_canary: bool = False) -> None:
             # Reads the binding's update buffer as well as the session, so a
             # write autoflush has already carried out of ``session.new`` is
             # still judged (W2).
-            assert_session_whitelisted(db.session, db)
+            assert_session_whitelisted(db.session, db, removals=removals)
             assert_created_rows_are_gridless(db)
         except RekordboxUnavailable:
             # Rolled back rather than left pending: carrying rejected objects
@@ -2716,7 +2850,9 @@ __all__ = [
     "GRIDLESS_ON_CREATE_COLUMNS",
     "LIBRARY_SYNC_SETTING",
     "MASTER_PLAYLIST_XML",
+    "MEMBERSHIP_TABLE",
     "PERMITTED_ROW_TABLES",
+    "REMOVABLE_TABLES",
     "ROOT_PARENT_SENTINELS",
     "SETTINGS_APP_DIRNAME",
     "SOFT_DELETE_COLUMN",
@@ -2764,6 +2900,7 @@ __all__ = [
     "integration_db_path",
     "integrity_ok",
     "live_db_path",
+    "membership_removed",
     "metadata_decision",
     "open_db",
     "pin_validated_on",
@@ -2776,6 +2913,7 @@ __all__ = [
     "read_run_state_records",
     "register_field_policy",
     "registered_field_policies",
+    "remove_memberships",
     "rekordbox_agent_running",
     "rekordbox_processes_running",
     "rekordbox_running",
