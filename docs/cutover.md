@@ -440,6 +440,32 @@ by design. Line 3 of #178 has its memberships through the database. The 585
 withheld entries are in the plan of run `2db1` for the author's decision on
 which reading is right, the tag or the placement.
 
+## Sitting 16, 2026-09-29, afternoon
+
+Machine state before: as sitting 15 left it, the same day. rekordbox closed
+for every verb and opened by the author for the two exports and the import.
+The acknowledgment of 17:07Z held throughout.
+
+The 18 downloads of sitting 11, through the whole tail. This is step 4 of the
+road map and the first time an acquired file has gone from staging to a
+folder in the tree with no xml routing.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `tag folder` over staging | yes, job `0db5` | 18 settled in seconds. **12 given a genre, 6 none**, every file already carrying art. Two genres read wrong to the session, a 1976 soul record under Breaks and two house remixes under Afro House; the author set genres in rekordbox instead. | live |
+| `analyze run` | yes, job `33ea` | Key and tempo on all 18, each file renamed with its head, no tempo tag written. **Energy on none: `uncalibrated`** (R-736). | live, energy missing |
+| The energy calibration | carried by hand | The source system's, tested first: **59 of 59 sampled library tracks scored equal to their tag**. Written through `save_calibration`. | live |
+| `analyze restamp` | yes, job `4604` | Energy stamped on all 18, 1 to 10. The verb warns that its star rating half is not written by this build. | live |
+| `name apply --root` staging | two plans, the second applied | The first planned 19, one of them a refused duplicate inside the acquire job's directory (R-735). Aborted, the leftover moved aside, 18 renamed, no collision. | live |
+| `intake land` | applied, run `76bb` | 18 moved to `Music/2026-09-29-sitting11-sets`, the intake file written over `Music/9-29-export.xml`, 10,016 entries. The 18 new entries carry no tempo element and no average BPM, and no existing entry's tempo data differs from the export. **Every new Name is bare** (R-734). | live, Name defective |
+| The rekordbox import | by the author | One playlist imported, dragged into INBOX, Reload Tags over the 18 to restore the heads, genres set by hand on seven. rekordbox computed its own grids. | done |
+| `intake imported` | yes | Proven imported, 18 tracks, the intake file retired. | live |
+| `adopt scan` then `adopt apply` | approved by the author, run `0a1b` | 10,016 rows. Plan: 7,205 route, 585 withheld, digest `11be33c33f377e53`. **17 added, 7,188 already present, none failed.** Read back: each of the 17 in the one sub the plan named, the eighteenth, which carries no genre, in none. 11,408 memberships under the tree, `integrity_check` ok. | **live** |
+
+**Step 4 is done.** Found by running: R-734 to R-738. R-734 is on the board
+bar. The 9-27 database backup predates today's writes; a backup is owed
+before the next sitting.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -451,14 +477,17 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-**The road is `docs/plans/2026-09-26-favourites-to-rekordbox-end-to-end.md`,
-steps 4 and 5.** First the 18 downloads of sitting 11, tagged, named and
-landed, with the three gates open since 2026-09-23 decided. Then the
-favourites cycle end to end, one Tidal verb at a time, new rows filed through
-`adopt scan` and `adopt apply` now the tree is native.
+**First a backup**, the database has been written three times since the
+last. Then **step 5 of the road map, the favourites cycle end to end**: one
+Tidal verb at a time, `intake playlist favorites`, `intake missing`,
+`acquire download`, then sitting 16's tail as it ran, `tag folder`, `analyze
+run`, `name apply --root`, `intake land`, the import, `intake imported`,
+`adopt scan`, `adopt apply`. Until R-734 lands, Reload Tags in rekordbox after
+the import and before any genre is set by hand.
 
-Owed by the author: a decision on the 585 withheld entries; a genre on the 14
-INBOX rows that carry none.
+Owed by the author: a decision on the 585 withheld entries, where the energy
+test of sitting 16 says the tag is the current reading; a genre on 15 INBOX
+rows that carry none.
 
 Also owed, unchanged: a second `sync labels` for the 20 labels the rate limit
 stopped, run with no download beside it, after which #213 closes; the 1,799

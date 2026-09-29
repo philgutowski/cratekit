@@ -29772,3 +29772,109 @@ before this unit.
 is either carried between them or shown not to need it.
 
 **Not on the board bar.** Maintainer facing.
+
+---
+
+## R-734. A landed track's rekordbox Name loses the key and tempo head its file carries
+
+**Found:** sitting 16, 2026-09-29, by the author, reading the import file's
+titles in rekordbox. `intake.ingest.read_meta` reads the title tag, strips
+the head, and renders the library name again from a `NameSpec` that carries
+the key and no tempo. The tempo lives nowhere but the head it stripped, since
+no tempo tag is ever written, so the head renders empty and the Name is the
+bare title.
+
+**Measured cost.** 18 of 18 landed tracks: filename and title tag read
+`01A - 112 - Ain't Gonna Hurt Nobody`, the import file's Name read `Ain't
+Gonna Hurt Nobody`. The 61 rows landed at sitting 8 carry bare Names for the
+same reason. The library holds 9,756 headed titles, so a landed track sorts
+and reads unlike everything beside it. Repaired by hand in rekordbox with
+Reload Tags, which also reads the genre again and undoes a genre set by hand.
+
+**Closes when:** the library name a landing writes carries the head the
+file's own title tag carries, read from that head and never from a tempo tag,
+and a test lands a file whose only tempo is in its title.
+
+**On the board bar, 2026-09-29.** A workflow a DJ needs does not finish: every
+landing needs a hand repair in rekordbox before the row reads like the
+library.
+
+---
+
+## R-735. A rename over download staging walks into the acquire staging directory
+
+**Found:** sitting 16, 2026-09-29. `name apply --root` over the download
+staging folder planned 19 renames for 18 tracks. The nineteenth was the copy
+of a track both lists named, refused `output-exists` at sitting 11 and left
+inside the acquire job's own hidden directory under staging.
+
+**Measured cost.** Driven once. The plan was aborted, the leftover moved
+aside by hand, and the second plan read 18. Had it been applied, a file
+inside a job's working directory would have been renamed under it.
+
+**Closes when:** the naming walk leaves the product's own state directories
+alone, and a refused duplicate is removed from the job's directory or named
+in the download's answer.
+
+**Not on the board bar.** Nothing was lost and the plan showed it.
+
+---
+
+## R-736. A fresh installation scores no energy, and no verb carries a calibration across
+
+**Found:** sitting 16, 2026-09-29. `analyze run` over 18 files answered
+`energy_status: uncalibrated` on every one and stamped none, because the
+library had no `energy_calibration.json`. The only verb that writes one fits
+a new scale over the library, and a library whose files were stamped by the
+source system needs that system's scale, not a new one.
+
+**Measured cost.** The source system's calibration of 2026-05-28, 4,763
+tracks, was read through `Calibration.from_json` and tested first: 59 library
+tracks at an even stride, measured and scored, **59 of 59 equal to the energy
+tag the file carries**. It was then written through `save_calibration` by a
+script, and `analyze restamp` stamped the 18. Without it every new track
+files under Unsorted.
+
+**Closes when:** setup, or a verb of its own, takes a calibration file, checks
+it against a sample of the library's tagged files, and records it, and
+`crate doctor` says when a library with energy tags has no calibration.
+
+**Not on the board bar.** Done once by hand here and recorded. It is on the
+bar for any second installation.
+
+---
+
+## R-737. A genre that names a bucket and no style files under Rock
+
+**Found:** sitting 16, 2026-09-29. A track whose genre is the bare string
+`NonElectronic`, which the tagger wrote, was planned and filed under
+`NonElectronic / Rock`.
+
+**Measured cost.** One track of 18, Selena's Techno Cumbia. The gate showed
+the sub, so it was approved knowingly. Why Rock is where a styleless genre
+lands was not read.
+
+**Closes when:** the rule is read and either named in the taxonomy as the
+bucket's default, or the entry is `needs-genre`.
+
+**Not on the board bar.** One track, shown on the gate.
+
+---
+
+## R-738. The tempo in a head disagrees with the grid rekordbox computes
+
+**Found:** sitting 16, 2026-09-29, reading the export after the import. The
+head carries the tempo `analyze run` measured, and rekordbox's own analysis
+of the same file reads otherwise on several: 83 against 126.00, 123 against
+90.96, 112 against 110.11, 129 against 127.00.
+
+**Measured cost.** 18 tracks read. Two are off by a wide margin, the rest by
+one to three. The head is a name and not a grid, so nothing plays wrong, and
+a DJ reading the title is told a tempo the deck will not show.
+
+**Closes when:** the disagreement is measured over a larger sample against
+the source system's heads for the same files, and either the analyser is
+corrected or the difference is recorded as the method's.
+
+**Not on the board bar.** Nothing is written to a grid.
+
