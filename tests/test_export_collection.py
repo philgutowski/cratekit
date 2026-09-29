@@ -1257,3 +1257,60 @@ def test_the_day_added_falls_back_to_the_day_on_this_machines_clock():
         StockDate = "2026-09-18"
 
     assert collection_export._date_added(Stocked) == "2026-09-18"
+
+
+def test_a_comment_inside_the_document_does_not_answer_for_the_file():
+    """Only the line ahead of the document element says who wrote the file."""
+    line = collection_export.provenance_line(NOBODY).encode("utf-8")
+    theirs = _fresh_xml()
+    at = theirs.index(b"  <PRODUCT")
+    assert collection_export.provenance_of(theirs[:at] + line + theirs[at:]) is None
+    ahead = theirs.index(b"<DJ_PLAYLISTS")
+    assert collection_export.provenance_of(theirs[:ahead] + line + theirs[ahead:]) == {
+        "writer": "cratekit test",
+        "written": "2026-09-29T12:00:00Z",
+        "database-schema": "unknown",
+        "application-installed": "unknown",
+        "application-pinned": "unknown",
+    }
+
+
+class _Song:
+    def __init__(self, identifier: str, playlist: str, content: str, order: int) -> None:
+        self.ID = identifier
+        self.PlaylistID = playlist
+        self.ContentID = content
+        self.TrackNo = order
+        self.rb_local_deleted = 0
+
+
+class _Songs(_Handle):
+    def __init__(self, rows, songs) -> None:
+        super().__init__(rows)
+        self._songs = songs
+
+    def get_playlist_songs(self):
+        return list(self._songs)
+
+
+def test_members_come_out_in_their_stored_order_whatever_order_the_rows_arrive_in():
+    songs = [
+        _Song("c", "1", "30", 3),
+        _Song("a", "1", "10", 1),
+        _Song("b", "1", "20", 2),
+    ]
+    (node,) = collection_export.read_nodes(_Songs([_Row("1", 0)], songs))
+    assert node.members == ("10", "20", "30")
+
+
+def test_siblings_come_out_in_their_sequence_and_not_in_identifier_order():
+    document = _rendered(
+        [],
+        [
+            collection_export.NodeRow("1", "root", "Third", 0, 3),
+            collection_export.NodeRow("2", "root", "First", 0, 1),
+            collection_export.NodeRow("3", "root", "Second", 1, 2),
+        ],
+    )
+    root = ET.fromstring(document.content).find("PLAYLISTS").find("NODE")
+    assert [node.get("Name") for node in root.findall("NODE")] == ["First", "Second", "Third"]

@@ -1,0 +1,133 @@
+name = "r745-a"
+pass_kind = "light"
+
+[[rows]]
+id = "E1_tombstone_row_written"
+description = "read_tracks: write a tombstoned collection row as a live one"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        if trees.soft_delete_marker(row):
+            continue
+        track_id = str(row.ID)'''
+new = '''        track_id = str(row.ID)'''
+
+[[rows]]
+id = "E2_tombstone_membership_written"
+description = "read_nodes: keep a tombstoned membership row"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        if trees.soft_delete_marker(song):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "E3_tombstone_playlist_written"
+description = "read_nodes: write a tombstoned playlist as a live one"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        if trees.soft_delete_marker(row):
+            continue
+        node_id = str(row.ID)'''
+new = '''        node_id = str(row.ID)'''
+
+[[rows]]
+id = "E4_dangling_member_written"
+description = "_render_node: write every stored member, whether or not the collection holds it"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        keys = [member for member in node.members if member in live]'''
+new = '''        keys = list(node.members)'''
+
+[[rows]]
+id = "E5_empty_folder_self_closed"
+description = "_render_node: self close a folder with no children, as rekordbox does"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    return rbxml.folder_open(name, len(body), indent) + "".join(body) + rbxml.node_close(indent)'''
+new = '''    if not body:
+        return rbxml.folder_open(name, 0, indent).replace(">\\r\\n", "/>\\r\\n")
+    return rbxml.folder_open(name, len(body), indent) + "".join(body) + rbxml.node_close(indent)'''
+
+[[rows]]
+id = "E6_tempo_constant_moved"
+description = "track_element: write a real tempo in place of the gridless constant"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py", "tests/test_no_beatgrid_ever.py"]
+old = '''AverageBpm="0.00"'''
+new = '''AverageBpm="98.76"'''
+
+[[rows]]
+id = "E7_identifier_not_held_to_digits"
+description = "refuse_unusable_id: accept any identifier"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    if identifier.isascii() and identifier.isdigit():
+        return'''
+new = '''    if True:
+        return'''
+
+[[rows]]
+id = "E8_duplicate_identifier_written"
+description = "render: write one identifier twice"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        if track.track_id in seen:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "E9_smart_playlist_written"
+description = "_writable: write a smart playlist, as a node of a kind no reader classifies as a playlist"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    return [node for node in nodes if node.attribute in (PLAYLIST_ATTRIBUTE, FOLDER_ATTRIBUTE)]'''
+new = '''    return [
+        node
+        for node in nodes
+        if node.attribute in (PLAYLIST_ATTRIBUTE, FOLDER_ATTRIBUTE, SMART_ATTRIBUTE)
+    ]'''
+
+[[rows]]
+id = "E10_text_not_cleaned"
+description = "clean_text: write a control character as it is held"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    return _NOT_ATTRIBUTE_TEXT.sub(" ", value)'''
+new = '''    return value'''
+
+[[rows]]
+id = "E11_any_path_encoded"
+description = "is_file_path: encode anything that is not already a location, a streamed reference included"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    return recorded.startswith("/") and not locations.looks_like_location(recorded)'''
+new = '''    return bool(recorded) and not locations.looks_like_location(recorded)'''
+
+[[rows]]
+id = "E12_three_stars_moved"
+description = "STAR_BYTES: spell three stars 150, a nearby value that is not the export byte"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    {0: 0, 1: 51, 2: 102, 3: 153, 4: 204, 5: 255}'''
+new = '''    {0: 0, 1: 51, 2: 102, 3: 150, 4: 204, 5: 255}'''
+
+[[rows]]
+id = "E13_siblings_by_identifier"
+description = "_children: order siblings by identifier, ignoring the stored sequence"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        siblings.sort(key=lambda node: (node.seq, _ordinal(node.node_id), node.node_id))'''
+new = '''        siblings.sort(key=lambda node: (_ordinal(node.node_id), node.node_id))'''

@@ -1,0 +1,136 @@
+name = "r745-b"
+pass_kind = "light"
+
+[[rows]]
+id = "E14_members_as_they_arrive"
+description = "read_nodes: keep members in the order the rows arrive, not the stored order"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''sorted(members.get(node_id, ()))'''
+new = '''members.get(node_id, ())'''
+
+[[rows]]
+id = "E15_unreadable_kind_is_a_playlist"
+description = "_attribute: answer the playlist code for a kind that cannot be parsed"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return UNREADABLE_ATTRIBUTE'''
+new = '''    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0'''
+
+[[rows]]
+id = "E16_lookups_not_primed"
+description = "read_tracks: read no lookup table ahead of the rows"
+file = "src/cratekit/write/collection_export.py"
+surface = "maintainer"
+tests = ["tests/test_export_collection.py"]
+old = '''    held = _prime_lookups(db)'''
+new = '''    held = []'''
+
+[[rows]]
+id = "E17_provenance_read_anywhere"
+description = "provenance_of: read the line anywhere in the file, not only ahead of the document element"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    head = content[: max(0, content.find(b"<DJ_PLAYLISTS"))]'''
+new = '''    head = content'''
+
+[[rows]]
+id = "C1_pending_name_accepted"
+description = "_refuse_destination: accept a name the pending scan reads as an intake file"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        if name.endswith(suffix):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C2_existing_file_not_checked_first"
+description = "_refuse_destination: drop the check ahead of the copy, leaving the exclusive create alone"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    if os.path.lexists(destination):
+        raise _taken(destination)'''
+new = '''    if False:
+        raise _taken(destination)'''
+
+[[rows]]
+id = "C3_create_not_exclusive"
+description = "_write_new: open for writing, replacing what is there. The composite for C2"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+pairs_with = "C2_existing_file_not_checked_first"
+tests = ["tests/test_export_collection.py"]
+old = '''open(destination, "xb")'''
+new = '''open(destination, "wb")'''
+
+[[rows]]
+id = "C4_torn_file_left"
+description = "_write_new: leave the file a failed write created"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''                destination.unlink()'''
+new = '''                pass'''
+
+[[rows]]
+id = "C5_made_folders_left"
+description = "_write_new: leave the folders a failed write made"
+file = "src/cratekit/cli/export_collection.py"
+surface = "maintainer"
+tests = ["tests/test_export_collection.py"]
+old = '''                path.rmdir()'''
+new = '''                pass'''
+
+[[rows]]
+id = "C6_folder_not_asked_before_the_copy"
+description = "_refuse_destination: do not ask the folder before the database is copied"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    _refuse_unwritable_folder(destination)'''
+new = '''    pass'''
+
+[[rows]]
+id = "C7_a_file_taken_for_a_folder"
+description = "_refuse_unwritable_folder: do not ask whether the nearest existing ancestor is a folder"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    if not nearest.is_dir():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C8_live_database_opened"
+description = "_read: open the configured database itself, with no copy and no check that rekordbox is closed"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    with rb_writer.read_only_copy(database, cfg=cfg) as db:'''
+new = '''    with __import__("contextlib").closing(
+        rb_writer.open_db(database, require_closed=False, check_app_version=False, cfg=cfg)
+    ) as db:'''
+
+[[dropped]]
+id = "C9_folder_not_writable"
+description = "_refuse_unwritable_folder: do not ask whether the folder can be written to"
+reason = "ranked below the cap: the same guard family as C7, which is measured, and its own test names it"
+
+[[dropped]]
+id = "E18_provenance_value_not_made_safe"
+description = "_comment_value: write a provenance value as it is held"
+reason = "ranked below the cap: maintainer facing, the values are version strings this product reads, and one test drives the closing sequence directly"
+
+[[dropped]]
+id = "C10_warnings_not_raised"
+description = "_warnings: say nothing about a smart playlist left out"
+reason = "ranked below the cap: a report line, and the envelope test asserts the exact set of warning codes"
