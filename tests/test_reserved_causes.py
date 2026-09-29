@@ -6444,7 +6444,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # rekordbox's xml spelling, as in write/metadata.py, 11 and 12 are the
     # database's codes for a WAV and an AIFF file, and 10 is the length of a
     # day written as text. Measured by this pair moving by two and by one.
-    assert (len(literal_holders), len(literal_both)) == (108, 26), (
+    # Re-pinned on the residual finding "No verb moves a track from one
+    # competing sub to another", 2026-09-29: holders move 108 to 109, and the
+    # also-holds-an-integer half is UNCHANGED at 26. ONE module joined and none
+    # left, and it is a new file. adopt/move_cli.py refuses with
+    # decision-stale, decision-required, adopt-entries-failed, internal-error
+    # and config-unusable, and its one integer is the 0 a missing count reads
+    # as, which is not in the reserved range. adopt/move.py holds no cause, and
+    # core/rb_writer.py and write/trees.py named their refusals on main
+    # already. Measured by this pair moving by one on the holders side and by
+    # nothing on the other.
+    assert (len(literal_holders), len(literal_both)) == (109, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
