@@ -500,6 +500,27 @@ while the machine was busy, and then excluded (R-759). It was landed by hand
 after two green batteries. **rekordbox and a Relay build do not run at the
 same time.** Filed R-757 to R-760.
 
+## Sitting 18, 2026-09-29, evening, unattended to the import
+
+The author authorised Tidal verbs from the session and asked it to continue
+without him. rekordbox stayed closed and nothing wrote the database, since
+the rule for both is an attended session. The feeder was stopped, by the
+lesson of R-759. The pipx install brought to `11c4081`.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `intake playlist favorites` | yes, job `8b37` | **218 declared, 209 listed, 9 withheld.** 8 provider calls, no rate limit. Resolved: 205 owned, 2 offered, 2 missing, 0 suppressed, each with its reasons printed (R-682 holding). | live |
+| `intake missing --job` | yes | 2 listed. | live |
+| `acquire download` | yes, job `7308` | **1 landed, 1 refused `lossy-refused`**, the provider offers `Calvin Harris :: Satisfy` in a lossy format only, as sitting 10 read. 9 provider calls, no rate limit. The job reads failed, permanently, over one durable success. | live |
+| `tag folder`, `analyze run`, `analyze restamp` | yes | One file. No genre found. Key 03B, tempo 144, **energy 4 stamped by `analyze run` itself** now a calibration exists, no tempo tag. | live |
+| `name apply --root` | applied | One rename, no collision, nothing left in the acquire staging directory this time. | live |
+| `crate export collection`, the first live use | yes | 10,018 active tracks, 76 folders, 493 playlists, 18,761 memberships, 7.5 MB, under a minute. Against the export rekordbox wrote that afternoon: **the same 493 playlist paths, none only in one**, 14 playlists larger by the 17 adopted since, 2 more tracks. No tempo element and no average BPM on any track. | live, #223 proven |
+| `intake land` over that export | applied, run `b7f7` | One file to `Music/2026-09-29-favorites`. **The intake file's Name is `03B - 144 - Same Girl (with Usher)`, the head kept**, no tempo data, the batch playlist under INBOX. Ends pending the import. | live, #222 proven |
+
+**Stopped at the import.** Owed to the next attended sitting: import the
+batch, `intake imported`, a genre for the track, then `adopt scan` and
+`adopt apply` with the two rows sitting 17 kept.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
