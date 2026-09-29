@@ -1,0 +1,72 @@
+name = "r740-b"
+pass_kind = "light"
+
+[[rows]]
+id = "I1_tag_key_first"
+description = "read_meta: prefer the key tag over the head's key, so a disagreeing tag drops the whole head"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py", "tests/test_intake_land.py"]
+old = '''            key=head.get("key") or key,'''
+new = '''            key=key or head.get("key"),'''
+
+[[rows]]
+id = "I2_no_stem_fallback"
+description = "read_meta: read the head from the title only, never the filename stem"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py", "tests/test_intake_land.py"]
+old = '''        or naming.parse_head(path.stem, template=template)
+'''
+new = ''
+
+[[rows]]
+id = "I3_stem_is_the_title"
+description = "read_meta: pass the title as the stem, so the filename's head never reaches normalize_spec"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py", "tests/test_intake_land.py"]
+old = '''            stem=path.stem,
+            suffix=path.suffix,
+            key=head.get("key") or key,'''
+new = '''            stem=title,
+            suffix=path.suffix,
+            key=head.get("key") or key,'''
+
+[[rows]]
+id = "I4_lossy_is_the_parameter"
+description = "read_meta: report the caller's lossy parameter, not the flag the Name was rendered from"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py", "tests/test_intake_land.py"]
+old = '''        "lossy": spec.lossy,'''
+new = '''        "lossy": lossy,'''
+
+[[rows]]
+id = "I5_body_marker_marks"
+description = "read_meta: read the marker anywhere in the title or stem, the round one defect, doubling an acquired marker"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py", "tests/test_intake_land.py"]
+old = '''            lossy=lossy,
+            title=title,'''
+new = '''            lossy=lossy or "[MP3]" in title or "[MP3]" in path.stem,
+            title=title,'''
+
+[[rows]]
+id = "E1_library_name_from_stem"
+description = "existing guard sample: render_all derives the library name from the filename stem instead of the title tag"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_naming.py", "tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py"]
+old = '''        library_name=title_tag,'''
+new = '''        library_name=head + spec.stem,'''
+
+[[rows]]
+id = "E2_average_bpm_nonzero"
+description = "existing guard sample: the intake row's AverageBpm literal becomes a tempo"
+file = "src/cratekit/intake/collection_xml.py"
+surface = "user"
+tests = ["tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py", "tests/intake/test_collection_xml.py", "tests/test_no_beatgrid_ever.py"]
+old = '''f'DiscNumber="0" TrackNumber="0" Year="0" AverageBpm="0.00"\\r\\n\''''
+new = '''f'DiscNumber="0" TrackNumber="0" Year="0" AverageBpm="112.00"\\r\\n\''''
