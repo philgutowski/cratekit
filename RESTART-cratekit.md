@@ -4,6 +4,32 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Last built: R-745, issue #223, `relay/223`, 2026-09-29, left for the
+Relay runner to gate and merge.** `crate export collection FILE` writes a
+collection export from a disposable copy of the configured database, with
+rekordbox closed, so the verbs that take `--export` no longer wait on
+rekordbox's menu. It never replaces a file and never opens the live
+database. **The export carries no tempo data**: every row has the gridless
+constant and no child element. It carries no cue points and no smart
+playlists, and it is not a backup. The file names who wrote it in a comment
+ahead of the document element, and claims nothing about which application
+last wrote the database, since the database holds no application version.
+Every verb that takes `--export` is driven against a file this verb wrote,
+nine of them, and the cutover precheck holds for it with no new rule. The
+built in review raised ten findings: eight fixed with a test each, one was
+the record, one measured and left. **The numbers:** 10,622 collected, 10,621
+passed and 1 skipped, ruff clean, `scan_repo.py` exit 0. **The mutation
+tables are the author's**, `docs/mutation/r745-a.md` to `r745-c.md`: 25
+distinct mutations, 22 killed on the first pass, and each of the 3 zeros
+bought a test and was measured again as a kill. Filed **R-751** to
+**R-756**. **R-755 meets the board bar and its issue is owed**, since an
+issue is created after the merge that carries the entry and this session
+does not merge. **Owed at the next attended sitting:** write an export,
+take one from rekordbox the same minute, compare track count, playlist
+paths and each playlist's membership, and import an intake file spliced
+from the written one, which is R-753. **Main's highest residual number is
+R-756 once this merges.**
+
 **Last built: R-740, issue #222, `relay/222`, 2026-09-29, merged by the
 Relay runner after its gate.** A landed track's Name carries the head its
 title tag carries, or its filename's when the title has none. The fix is in

@@ -219,6 +219,17 @@ missing and would be offered for download again. R-413 records that the step did
 not exist. U71 built its engine, `intake/landing.py`, and U72 built the verb,
 `intake land`.
 
+### Fresh Export
+A collection export that describes the database as it is now: the XML document
+holding every collection row and the playlist tree, which the verbs on the
+export medium read instead of the database. It has two sources. rekordbox
+writes one from its File menu, and `export collection` writes one from a
+disposable copy of the database with rekordbox closed (R-745). The second
+carries no tempo data and no cue points, names who wrote it in a comment ahead
+of the document element, and is for the verbs that read an export, never for
+restoring anything. Fresh is a statement about time and not about the writer:
+either one is stale the moment the database is written.
+
 ### Import proof
 What ends a landing's wait on a person. A landing leaves its intake session
 `awaiting-import`, and the import is PROVEN, never declared: `intake imported`

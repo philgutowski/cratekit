@@ -1,0 +1,411 @@
+{
+  "name": "r745-b",
+  "pass_kind": "light",
+  "branch": "relay/223",
+  "head": "d06ea73",
+  "when": "2026-09-29 21:47 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10621,
+  "baseline_exit": 0,
+  "pytest_runs": 17,
+  "state_guarded": "~/Library/Application Support/cratekit (63179 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/collection_export.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/collection_export.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "e14b3ba4da75ddbd",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10621,
+    "baseline_collected": 10621,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "E14_members_as_they_arrive",
+      "description": "read_nodes: keep members in the order the rows arrive, not the stored order",
+      "file": "src/cratekit/write/collection_export.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "99a60795cce738b2",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_members_come_out_in_their_stored_order_whatever_order_the_rows_arrive_in"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "sorted(members.get(node_id, ()))",
+      "new": "members.get(node_id, ())"
+    },
+    {
+      "id": "E15_unreadable_kind_is_a_playlist",
+      "description": "_attribute: answer the playlist code for a kind that cannot be parsed",
+      "file": "src/cratekit/write/collection_export.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "daf97760ee67cb18",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_kind_that_cannot_be_read_is_never_written_as_a_playlist[2.5j]",
+        "tests/test_export_collection.py::test_a_kind_that_cannot_be_read_is_never_written_as_a_playlist[]",
+        "tests/test_export_collection.py::test_a_kind_that_cannot_be_read_is_never_written_as_a_playlist[folder]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        return int(value)\n    except (TypeError, ValueError):\n        return UNREADABLE_ATTRIBUTE",
+      "new": "    try:\n        return int(value)\n    except (TypeError, ValueError):\n        return 0"
+    },
+    {
+      "id": "E16_lookups_not_primed",
+      "description": "read_tracks: read no lookup table ahead of the rows",
+      "file": "src/cratekit/write/collection_export.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e3be0e67b1c14dcc",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_the_lookup_tables_are_read_once_each_and_not_once_per_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    held = _prime_lookups(db)",
+      "new": "    held = []"
+    },
+    {
+      "id": "E17_provenance_read_anywhere",
+      "description": "provenance_of: read the line anywhere in the file, not only ahead of the document element",
+      "file": "src/cratekit/write/collection_export.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "88f7bdd1e5847756",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_comment_inside_the_document_does_not_answer_for_the_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    head = content[: max(0, content.find(b\"<DJ_PLAYLISTS\"))]",
+      "new": "    head = content"
+    },
+    {
+      "id": "C1_pending_name_accepted",
+      "description": "_refuse_destination: accept a name the pending scan reads as an intake file",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7d11702e00ab0908",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_name_the_pending_scan_reads_as_an_intake_file_is_refused[_favorites.xml]",
+        "tests/test_export_collection.py::test_a_name_the_pending_scan_reads_as_an_intake_file_is_refused[_inboxed.xml]",
+        "tests/test_export_collection.py::test_a_name_the_pending_scan_reads_as_an_intake_file_is_refused[_synced.xml]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if name.endswith(suffix):",
+      "new": "        if False:"
+    },
+    {
+      "id": "C2_existing_file_not_checked_first",
+      "description": "_refuse_destination: drop the check ahead of the copy, leaving the exclusive create alone",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3f5388827d967d98",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 10621,
+      "baseline_collected": 10621,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if os.path.lexists(destination):\n        raise _taken(destination)",
+      "new": "    if False:\n        raise _taken(destination)"
+    },
+    {
+      "id": "C3_create_not_exclusive",
+      "description": "_write_new: open for writing, replacing what is there. The composite for C2",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": "C2_existing_file_not_checked_first",
+      "fingerprint": "30ea226722dba859",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_file_that_appears_after_the_check_is_refused_by_the_write",
+        "tests/test_export_collection.py::test_a_file_that_came_and_went_is_still_refused_as_taken"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "open(destination, \"xb\")",
+      "new": "open(destination, \"wb\")"
+    },
+    {
+      "id": "C4_torn_file_left",
+      "description": "_write_new: leave the file a failed write created",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0774cb191bf68404",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_write_that_fails_part_way_leaves_no_file_and_no_folder_it_made"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                destination.unlink()",
+      "new": "                pass"
+    },
+    {
+      "id": "C5_made_folders_left",
+      "description": "_write_new: leave the folders a failed write made",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4db06372852aebea",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_write_that_fails_part_way_leaves_no_file_and_no_folder_it_made"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                path.rmdir()",
+      "new": "                pass"
+    },
+    {
+      "id": "C6_folder_not_asked_before_the_copy",
+      "description": "_refuse_destination: do not ask the folder before the database is copied",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0effdaeca26c7ff0",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_folder_nobody_may_write_to_is_refused_before_the_database_is_copied",
+        "tests/test_export_collection.py::test_a_folder_that_is_a_file_is_refused_before_the_database_is_copied"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _refuse_unwritable_folder(destination)",
+      "new": "    pass"
+    },
+    {
+      "id": "C7_a_file_taken_for_a_folder",
+      "description": "_refuse_unwritable_folder: do not ask whether the nearest existing ancestor is a folder",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "703968ce7c0132f1",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 10621,
+      "baseline_collected": 10621,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if not nearest.is_dir():",
+      "new": "    if False:"
+    },
+    {
+      "id": "C8_live_database_opened",
+      "description": "_read: open the configured database itself, with no copy and no check that rekordbox is closed",
+      "file": "src/cratekit/cli/export_collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0aa35de4f4fa96c4",
+      "subset": [
+        "tests/test_export_collection.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 67,
+      "baseline_collected": 67,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_collection.py::test_a_refused_read_leaves_no_folder_behind",
+        "tests/test_export_collection.py::test_rekordbox_running_is_refused_and_nothing_is_written",
+        "tests/test_export_collection.py::test_the_agent_running_is_refused_under_the_same_slug",
+        "tests/test_export_collection.py::test_the_configured_database_is_never_opened_and_is_left_byte_for_byte"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    with rb_writer.read_only_copy(database, cfg=cfg) as db:",
+      "new": "    with __import__(\"contextlib\").closing(\n        rb_writer.open_db(database, require_closed=False, check_app_version=False, cfg=cfg)\n    ) as db:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "C9_folder_not_writable",
+      "description": "_refuse_unwritable_folder: do not ask whether the folder can be written to",
+      "reason": "ranked below the cap: the same guard family as C7, which is measured, and its own test names it"
+    },
+    {
+      "id": "E18_provenance_value_not_made_safe",
+      "description": "_comment_value: write a provenance value as it is held",
+      "reason": "ranked below the cap: maintainer facing, the values are version strings this product reads, and one test drives the closing sequence directly"
+    },
+    {
+      "id": "C10_warnings_not_raised",
+      "description": "_warnings: say nothing about a smart playlist left out",
+      "reason": "ranked below the cap: a report line, and the envelope test asserts the exact set of warning codes"
+    }
+  ]
+}

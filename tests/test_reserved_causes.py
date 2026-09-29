@@ -5818,7 +5818,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # plan shows beside each result: no-open-run, no-pending-intake-xml,
     # fresh-export and verified-snapshot. One is a WARNING code on a revert
     # that found nothing to revert: revert-nothing-recorded.
-    assert (len(literals), len(literals - set(causes))) == (518, 332), (
+    # Re-pinned on the residual finding "A Fresh Export can only come from
+    # rekordbox, so every landing and every cutover waits on a person at its
+    # menus", 2026-09-29: 518 to 529 distinct, non-keys 332 to 343. ELEVEN
+    # joined and nothing left, each differenced with `git grep` on `main`, and
+    # none is a key, which is why both halves move by eleven. The verb's
+    # refusals reuse output-exists, library-export-unusable and
+    # path-permission-denied. Seven are WARNING codes `cli/export_collection.py`
+    # gives for what the database held and the file does not:
+    # export-smart-playlist-omitted, export-node-kind-unreadable,
+    # export-node-unreachable, export-member-not-in-collection,
+    # export-rating-unreadable, export-text-normalised and
+    # export-location-not-a-file. Four are words in the line that says who
+    # wrote the file, spelled in `write/collection_export.py`: cratekit-export,
+    # which opens it, and the names database-schema, application-installed
+    # and application-pinned.
+    assert (len(literals), len(literals - set(causes))) == (529, 343), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6404,7 +6419,20 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # range. core/tree_registry.py named its refusals on main already.
     # Measured by this pair moving by one on the holders side and by nothing
     # on the other.
-    assert (len(literal_holders), len(literal_both)) == (106, 25), (
+    # Re-pinned on the residual finding "A Fresh Export can only come from
+    # rekordbox, so every landing and every cutover waits on a person at its
+    # menus", 2026-09-29: holders move 106 to 108, and the
+    # also-holds-an-integer half moves 25 to 26. TWO modules joined and none
+    # left, and both are new files. cli/export_collection.py refuses with
+    # output-exists, library-export-unusable and path-permission-denied
+    # through cause.refuse, and its one integer is the 5 it shows names up
+    # to, which is not in the reserved range. write/collection_export.py
+    # refuses with library-export-unusable, and it is the one that holds
+    # in-range integers, four of them, none an exit status: 51 is one star in
+    # rekordbox's xml spelling, as in write/metadata.py, 11 and 12 are the
+    # database's codes for a WAV and an AIFF file, and 10 is the length of a
+    # day written as text. Measured by this pair moving by two and by one.
+    assert (len(literal_holders), len(literal_both)) == (108, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

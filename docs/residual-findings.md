@@ -29926,6 +29926,86 @@ the database was last written by.
 **On the board bar, 2026-09-29.** A workflow a DJ needs cannot finish without
 a person at another application's menus.
 
+**Closed 2026-09-29 on `relay/223`, issue #223, fixed in the code.** `crate
+export collection FILE` writes the document from a disposable copy of the
+configured database, read through `rb_writer.read_only_copy`, so it refuses
+while rekordbox or its agent is running under `rekordbox-running`. The
+emitter is `write/collection_export.py` and opens nothing. The verb is
+`cli/export_collection.py`. It is core, writes one XML, asks nothing and is
+not destructive: the file is created exclusively and nothing is replaced.
+
+**The tempo decision: the export carries none.** Every row is written with
+the gridless constant `AverageBpm="0.00"` and no child element, whatever the
+database holds. The closing condition above allowed tempo copied from the
+rows, and it is not taken, for three reasons. No verb reads a tempo off an
+export, measured by a sweep of every consumer. A landing splices into this
+file and hands the result to an import. And the source scan in
+`tests/test_no_beatgrid_ever.py` refuses an interpolated value in that
+attribute, so carrying one would mean loosening the guard the standing rule
+rests on. The emitter's row type has no tempo field and the module never
+names the column. `test_no_tempo_the_database_holds_reaches_the_file` seeds
+a stored tempo on every row and proves no spelling of it is in the file.
+
+**The application version: not claimed.** The database holds its schema
+version and, in the binding's schema, no application version. The file names
+three things in a comment ahead of the document element, each labelled: the
+schema version read off the copy, the application installed on the machine,
+and the version the recorded pin names. A value that could not be read is
+written `unknown`. `collection_export.provenance_of` reads the line and
+answers None for a file rekordbox wrote. The `PRODUCT` line keeps
+rekordbox's name and company, since a landing's output is imported. R-751
+and R-753 record what that leaves open.
+
+**Where the shape is the readers' and not rekordbox's.** A folder with no
+children is written as an open line and a close line, where rekordbox self
+closes it, because a landing inserts into the intake folder. Every line ends
+in a carriage return and a line feed. Membership is one key element per line
+in the one spelling the membership reader matches. An identifier is written
+as the string the database holds and must be digits.
+
+**What a rekordbox export carries that this one does not.** The repository
+holds no export of a real library, so this list is the format's published
+attribute list against the emitter, and the byte fixtures the splice suites
+use, which were cut from one. Absent altogether: the `TEMPO` child elements
+and their `Inizio`, `Bpm`, `Metro` and `Battito`, the `POSITION_MARK` child
+elements, which are the cue points and loops, and the attributes
+`DateModified`, `LastPlayed` and `Colour`. Present and always empty:
+`Grouping` and `Mix`. Present and constant: `AverageBpm`. Present with a
+source not measured against rekordbox: `DateAdded`, which is the stock date,
+or the day the row was created on this machine's clock when there is none,
+and `Kind`, which is empty for a file type code outside the five the binding
+names. Smart playlists are absent, R-752. The 25 attributes a row does carry
+are the ones the intake emitter writes, in its order, asserted by name.
+
+**The cutover precheck was read and holds with no new rule.** It asks that
+the export is a file of non zero size. A test drives `tree cutover` to a
+recorded cutover against a file this verb wrote. R-755 records what the
+check does not ask.
+
+**Every verb that takes `--export` is driven against a file this verb
+wrote:** `intake land`, `intake imported`, `intake file`, `tree cutover`,
+`route inbox`, `route unplaced`, `export playlist`, `sync favorites` and
+`sync all`. The population is derived from the shipped parsers, so a new
+verb taking one fails the test that lists them. The import proof is driven
+in both directions: proved against a second export written after the rows
+were added, and withheld against one written before.
+
+**The built in review raised ten findings.** Eight were defects and are
+fixed, each with a test: an identifier written as a number in one place and
+a string in another, a control character no parser accepts, a streamed
+track's reference dressed as a file, a folder asked only after the database
+was copied, a second look that could disagree with the exclusive create, an
+unreadable playlist kind folded to a playlist, a query per distinct artist,
+and a day taken in Greenwich. One was this record. One was the duplicate
+validation pass, which stays: the read needs digits before it sorts and the
+emitter is the guard for a caller that hands it rows directly.
+
+Mutation tables `docs/mutation/r745-a.md` to `r745-c.md`, read in
+`r745-notes.md`. Filed R-751 to R-756. R-755 meets the board bar and its
+issue is owed after the merge. Verification is owed at the next attended
+sitting: write an export, take one from rekordbox the same minute, and
+compare track count, playlist paths and each playlist's membership.
+
 ---
 
 ## R-746. A landed file reaches the collection only through a hand import
@@ -30034,3 +30114,133 @@ R21 prefers.
 the rule.
 
 **Not on the board bar.** No producer drives it.
+
+---
+
+## R-751. An export this product writes cannot say which application last wrote the database
+
+**Found:** `relay/223`, 2026-09-29, by the author, reading the binding's
+schema for a column to copy. The database holds `DBVersion`, its schema
+version, in the property table. No column the binding maps holds an
+application version. R-745 asked the file to say which application version
+the database was last written by.
+
+**Measured cost.** None to a verb. The file names the schema version, the
+installed application and the recorded pin, each labelled, and calls none of
+them the last writer. The writers refuse unless the installed version equals
+the pin, so on a machine that writes, the three agree. Whether the agent
+registry or the settings files beside the database record a version was not
+read, since the live files are protected.
+
+**Closes when:** a copy of a real library is searched for a stored
+application version at an attended sitting, and the file either carries it or
+this is recorded as the rule.
+
+**Not on the board bar.** Nothing a verb does depends on it.
+
+---
+
+## R-752. A smart playlist is left out of an export this product writes
+
+**Found:** `relay/223`, 2026-09-29, by the author. The database stores a smart
+playlist's rule and no membership rows, and a node whose kind is neither a
+folder nor a playlist makes the strict reader refuse the whole file. The
+emitter omits it, the envelope counts it and names it under
+`export-smart-playlist-omitted`.
+
+**Measured cost.** On the fixture, one of one omitted and named. **Not
+measured on the library:** how many smart playlists it holds, and whether
+rekordbox's own export lists one with its current members. `export playlist`
+and `sync favorites` resolve a playlist by name off the export, so either
+refuses a smart playlist's name as unknown against this file.
+
+**Closes when:** an attended sitting reads what rekordbox exports for a smart
+playlist, and the emitter either evaluates the rule or this is recorded as
+the rule.
+
+**Not on the board bar.** Reachability is unmeasured, and rekordbox's own
+export remains a source.
+
+---
+
+## R-753. What rekordbox does on importing a file that carries the provenance comment is not measured
+
+**Found:** `relay/223`, 2026-09-29, by the author. The export opens with the
+XML declaration and then one comment naming who wrote it. `intake land`
+copies the export and splices into it, so the intake file a person imports
+carries the comment too. A comment ahead of the document element is legal
+XML and `xml.etree` takes it. rekordbox's parser was not driven.
+
+**Measured cost.** None measured. If rekordbox refuses the file, every
+landing over an export this product wrote stops at the import, and the
+remedy is an export from rekordbox's menu, which still works.
+
+**Closes when:** an attended sitting imports an intake file spliced from an
+export this verb wrote. That is the first step of the verification R-745
+owes.
+
+**Not on the board bar.** It closes only at an attended sitting.
+
+---
+
+## R-754. The refusals that ask for an export name rekordbox's menu as its only source
+
+**Found:** `relay/223`, 2026-09-29, by the author. 28 lines in 14 modules
+under `src` tell a person to take or export the collection from rekordbox,
+in a refusal's steps or a pending action's. Each is still a remedy that
+works. None names `export collection`.
+
+**Measured cost.** A person is sent to the menus for an export a verb would
+write with rekordbox closed. The guide, the concepts file and the intake
+skill name both sources. `tests/test_intake_imported.py` asserts the steps of
+a landing's pending action by their words, so the wording was left alone
+here rather than changed in one place of 28.
+
+**Closes when:** the steps that ask for an export name both sources, from
+one place.
+
+**Not on the board bar.** A wording fix, and the remedy named still works.
+
+---
+
+## R-755. The cutover precheck named fresh-export asks that the file exists, and neither when it was written nor what it holds
+
+**Found:** `relay/223`, 2026-09-29, by the author, reading the precheck as
+R-745 asked. `tree_registry._export_refusal` passes any file of non zero
+size. The suite's own fixture passes it with a document of 16 bytes holding
+no collection and no tree, and the plan a person approves then shows
+`fresh-export` among the checks that passed.
+
+**Measured cost.** Driven: `cutover_fixtures.fresh_export` writes
+`<DJ_PLAYLISTS/>` and the conformance drive records a cutover over it. The
+check exists so a walked back cutover has an XML era copy of the tree, and a
+person who passes last month's export, or a file that is not one, is told the
+copy exists. **Not measured:** whether anything reads that file on a revert.
+
+**Closes when:** the check reads the file through the strict reader, finds
+the tree it is about to cut over, and compares the file's age with the
+database's, or the check is renamed for what it asks.
+
+**On the board bar, 2026-09-29.** The product says something false: a check
+named fresh passes over a file that is neither fresh nor an export. The issue
+is owed after the merge that carries this entry.
+
+---
+
+## R-756. The mutation driver's state leak guard stops a batch whenever anything else on the machine runs a verb
+
+**Found:** `relay/223`, 2026-09-29, by the author. Table `r745-a` stopped at
+its eighth row on a state leak: the real state directory gained one entry
+while the row ran. The entry is a `doctor` run record. The two newest are
+stamped 21:29:53Z and 21:42:40Z, thirteen minutes apart, and no row in the
+table drives `doctor`, so the writer is outside the session. `r740-notes.md`
+records the same stop.
+
+**Measured cost.** One rerun with `--resume`, about two minutes. The seven
+rows measured before the stop were kept. A table longer than thirteen
+minutes cannot finish on this machine while that writer runs.
+
+**Closes when:** the guard tells a write by its own child from a write by
+another process, or the periodic writer is named and paused for a run.
+
+**Not on the board bar.** Maintainer facing.

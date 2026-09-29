@@ -33,7 +33,9 @@ never go near the live database.
   collection (the File menu, Export Collection in xml format). Several verbs read
   one and never the live database. Cratekit records no location for it, so you
   pass the path each time, and a stale export answers every question confidently
-  and wrongly. Export a fresh one when the answer matters.
+  and wrongly. Export a fresh one when the answer matters. With rekordbox closed,
+  `crate export collection FILE` writes one from a copy of the database, so
+  rekordbox's menu is not the only source. See "Take a collection export" below.
 - **An importable file** is what intake and sync produce for new tracks.
   Cratekit does not import it for you. You load it into rekordbox, export the
   collection again, and run `crate intake imported --export` with that export,
@@ -114,6 +116,32 @@ first, confirm your backup is current, and check `crate restore list` afterward
 so you know what a rollback would undo.
 
 ## Recipes
+
+### Take a collection export
+
+```bash
+crate export collection /path/to/collection-2026-09-29.xml
+```
+
+Quit rekordbox first. The verb copies the database, reads the copy, and writes
+the export to the file you name. It never opens the live database and never
+writes to it, and it refuses while rekordbox or its background agent is running,
+because a copy taken under a live application is missing whatever was mid write.
+
+- It never replaces a file. Name one that does not exist yet.
+- A name ending in `_inboxed.xml`, `_synced.xml` or `_favorites.xml` is refused,
+  since that is how an importable file is named and the verbs that read an export
+  would refuse this one.
+- The file is what the verbs that take `--export` read, and it is not a backup.
+  It carries no tempo, no beat grid and no cue points. Every track is written
+  with the tempo rekordbox uses for a track it has not analysed.
+- Smart playlists are left out, because the database stores their rule and not
+  their tracks. The report counts them and names them.
+- The first line after the XML declaration says Cratekit wrote the file, so it
+  can be told from one rekordbox exported.
+
+An export is a picture of the database at the moment it was written. Take a new
+one after anything writes the database, an import included.
 
 ### Bring music in
 
@@ -288,7 +316,8 @@ not a collection the landed files can be spliced into, is refused before the pla
 reaches its gate, and so is an unmounted library or an importable file already
 written under that name, so no answer is spent on a landing that could never run.
 
-Once you have imported the landed file, export your collection again and run
+Once you have imported the landed file, quit rekordbox, take a new export with
+`crate export collection` or from rekordbox's own menu, and run
 `crate intake imported --export` with that new export. It looks for every landed
 file in the export. When they are all there, the import is proven: the importable
 file is renamed to `NAME_inboxed.xml.imported`, which you can delete whenever you

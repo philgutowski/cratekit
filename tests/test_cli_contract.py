@@ -35,6 +35,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
@@ -1794,6 +1795,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # change it under every other verb's drive.
         "tree.cutover": lambda: _ready_to_cut_over(),
         "tree.revert": lambda: _already_cut_over(),
+        # R-745. A NEW NAME PER DRIVE, because the verb never replaces a file
+        # and a conformance that drives it twice would otherwise be asserting
+        # about the refusal the second time round.
+        "export.collection": lambda: [
+            str(library / "exports" / f"collection-{uuid.uuid4().hex}.xml")
+        ],
     }[entry.name]
     return sample() if callable(sample) else sample
 

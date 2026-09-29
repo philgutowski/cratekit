@@ -2147,6 +2147,30 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         doctor_checks=("library.mounted",),
     ),
+    # ── The export, without rekordbox's menus (R-745) ───────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="export.collection",
+        summary="write a collection export from a copy of the database, with rekordbox closed",
+        module="cratekit.cli.export_collection",
+        builder="build",
+        handler_key="export.collection",
+        # NO FEATURE ROW. The inventory has no row for producing an export,
+        # since the source system never did, and claiming one would make a
+        # row look covered by a verb that does something else.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        #: One XML, where the person says, created exclusively and never
+        #: replaced, which is why the verb is not destructive and asks nothing.
+        #: THE DATABASE IS READ THROUGH A DISPOSABLE COPY and no database
+        #: surface is declared. CORE, with no module behind it, although its
+        #: sibling under this group is the export module's: the verbs that
+        #: read this file are core, and a core workflow cannot wait on a
+        #: module somebody switched off.
+        writes=frozenset({"xml"}),
+        doctor_checks=("library.mounted", "rekordbox.closed"),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that
