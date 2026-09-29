@@ -725,6 +725,61 @@ def test_a_failure_in_the_additions_writes_nothing_at_all(moved, monkeypatch):
     assert _rows(moved) == before
 
 
+# ── the endings a queued verb owes ─────────────────────────────────────────
+
+
+def test_a_parked_move_leaves_blocked_and_non_zero(moved, monkeypatch):
+    """R-290 for a key ``tests/test_job_outcome.py`` cannot drive, which names
+    this function as the place the key is covered."""
+    from cratekit.core.cause import refuse
+
+    def parks(job, item, cfg):
+        raise jobs.Parked(
+            refuse("provider-blocked", "the run must stop", origin=("test",)).cause
+        )
+
+    before = _rows(moved)
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
+
+    code, envelope = drive(_resume(job_id))
+
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is jobs.JobState.BLOCKED, envelope
+    assert envelope["outcome"] == "blocked", envelope
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "provider-blocked"
+    assert _rows(moved) == before
+
+
+def test_a_cancelled_move_exits_with_its_own_cause_and_not_ok(moved):
+    before = _rows(moved)
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    with jobs.open_store() as store:
+        jobs.cancel(store, job_id, stage="interrupted")
+
+    code, envelope = drive(_resume(job_id))
+
+    assert code == int(ExitCode.INTERRUPTED), envelope
+    assert envelope["cause"]["reason"] == "cancelled"
+    assert _rows(moved) == before
+
+
+def test_a_job_carrying_no_plan_is_refused_rather_than_driven(moved):
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="adopt.move",
+            payload={"tree": TREE_ID, "digest": "d"},
+            item_ids=("d",),
+            cfg=moved,
+        )
+    code, envelope = drive(["adopt", "move", "--job", job.job_id])
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["reason"] == "internal-error"
+    assert job.job_id in envelope["cause"]["message"]
+
+
 # ── the worker's own checks ────────────────────────────────────────────────
 
 

@@ -5833,7 +5833,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # wrote the file, spelled in `write/collection_export.py`: cratekit-export,
     # which opens it, and the names database-schema, application-installed
     # and application-pinned.
-    assert (len(literals), len(literals - set(causes))) == (529, 343), (
+    # Re-pinned on the residual finding "No verb moves a track from one
+    # competing sub to another", 2026-09-29: 529 to 534 distinct, non-keys 343
+    # to 348. FIVE joined and nothing left, differenced as sets against a
+    # worktree of `main`, and none is a key, so both halves move by five. The
+    # verb's refusals reuse decision-stale, decision-required,
+    # adopt-entries-failed and backup-acknowledgment-missing. Three are the
+    # reasons `adopt/move.py` lists a track as left where it is, shown on the
+    # gate beside each: no-reading, genre-names-no-style and
+    # held-under-another-name. One is a WARNING code on a run whose plan holds
+    # no move, move-nothing-planned. One is the workflow name the writer
+    # records in the session log, tree-membership-move, the same kind of
+    # literal as tree-membership.
+    assert (len(literals), len(literals - set(causes))) == (534, 348), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
