@@ -30,6 +30,14 @@ person to make.
 NO TEMPO DATA IS WRITTEN. The emitter's docstring gives the decision and the
 ledger entry records it.
 
+EVERY LOCATION IS WRITTEN WHERE THE LIBRARY IS MOUNTED (R-773). The emitter is
+handed the library root and ``library.location_prefix_map``, and writes a row
+a rule places under the rule's target, which is what rekordbox's own export
+holds for a library on a renamed drive. A row under no rule is written as the
+database holds it, and the warning that counts those rows sends a person to
+doctor's ``library.paths_resolved``, which stays the one report of how the
+collection resolves.
+
 Layer: cli, beside the cutover verbs, which read the database the same way.
 """
 
@@ -44,7 +52,7 @@ from typing import TYPE_CHECKING, Any
 from cratekit import __version__
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
-from cratekit.core import config, rb_writer, tree_registry
+from cratekit.core import config, locations, rb_writer, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.write import collection_export
 
@@ -214,7 +222,14 @@ def _read(cfg: config.Config) -> tuple[collection_export.Document, str | None]:
         pinned=rb_writer.pinned_app_version(cfg),
     )
     document = collection_export.render(
-        tracks, nodes, provenance, unreadable_ratings=unrated
+        tracks,
+        nodes,
+        provenance,
+        root=cfg.library.root,
+        prefix_map=[
+            locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()
+        ],
+        unreadable_ratings=unrated,
     )
     return document, schema
 
@@ -306,6 +321,20 @@ def _warnings(omitted: collection_export.Omitted) -> list[dict[str, str]]:
                 ),
             }
         )
+    if omitted.unmapped_paths:
+        found.append(
+            {
+                "code": "export-location-unmapped",
+                "message": (
+                    f"{len(omitted.unmapped_paths)} track(s) record a path under "
+                    f"neither the library root nor any library.location_prefix_map "
+                    f"rule, and their location is written as the database holds "
+                    f"it, which a verb reading this file may not find on this "
+                    f"machine; doctor's library.paths_resolved says which drives "
+                    f"they record: rows {names(omitted.unmapped_paths)}"
+                ),
+            }
+        )
     return found
 
 
@@ -342,6 +371,15 @@ def export_collection(ctx: "Context") -> Envelope:
             status="ok" if not left_out and not omitted.dangling_members else "info",
         ),
         _check(
+            "export.locations",
+            "locations",
+            f"{document.remapped} location(s) written where a "
+            f"library.location_prefix_map rule places them, and "
+            f"{len(omitted.unmapped_paths)} under no rule written as the "
+            f"database holds them",
+            status="ok" if not omitted.unmapped_paths else "info",
+        ),
+        _check(
             "export.tempo",
             "tempo",
             "no tempo data was written: every track carries the gridless "
@@ -370,6 +408,8 @@ def export_collection(ctx: "Context") -> Envelope:
                 + len(omitted.unreachable_nodes),
                 "memberships_omitted": omitted.dangling_members,
                 "tracks_without_a_file": len(omitted.not_file_paths),
+                "locations_remapped": document.remapped,
+                "tracks_under_no_rule": len(omitted.unmapped_paths),
                 "rows_normalised": len(omitted.normalised_text),
             },
         },

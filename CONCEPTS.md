@@ -233,8 +233,13 @@ writes one from its File menu, and `export collection` writes one from a
 disposable copy of the database with rekordbox closed (R-745). The second
 carries no tempo data and no cue points, names who wrote it in a comment ahead
 of the document element, and is for the verbs that read an export, never for
-restoring anything. Fresh is a statement about time and not about the writer:
-either one is stale the moment the database is written.
+restoring anything. Both name each file where the library is mounted today and
+not under the drive the database was made on: rekordbox swaps its base drive
+for the current one, and `export collection` resolves each recorded path
+through `library.location_prefix_map` (R-773). A row no rule places is written
+as the database holds it and counted in a warning. Fresh is a statement about
+time and not about the writer: either one is stale the moment the database is
+written.
 
 ### Import proof
 What ends a landing's wait on a person. A landing leaves its intake session

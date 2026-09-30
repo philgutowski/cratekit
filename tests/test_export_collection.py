@@ -20,7 +20,9 @@ D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 
 from __future__ import annotations
 
+import re
 import shutil
+import sqlite3
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,7 +47,7 @@ from cratekit.intake import collection_xml
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import source as outbound_source
 from cratekit.modules.reports import export as library_export
-from cratekit.write import collection_export, rbxml
+from cratekit.write import collection_export, metadata_cli, rbxml
 from tests import cutover_fixtures, outbound_fakes
 from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue, drive
@@ -117,6 +119,17 @@ EXPECTED_FOLDERS = {
 }
 ROOT_CHILDREN = (INTAKE, TREE, "Crates", outbound_fakes.FAVORITES)
 
+#: The drive a moved library's database was made on, as a folder name beside
+#: the library. Nothing is ever created there, which is the point: rekordbox
+#: keeps recording a path under a drive this machine no longer mounts (R-773).
+BASE_DRIVE = "former-drive"
+
+#: The two ways a library's rows are recorded, as the ids of a parametrized
+#: fixture: where the library is mounted, or under the base drive with the one
+#: rule setup offers.
+UNDER_THE_ROOT = "recorded-under-the-root"
+UNDER_A_BASE_DRIVE = "recorded-under-a-base-drive"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
@@ -158,9 +171,13 @@ def _forget_libraries():
     outbound_source.forget_libraries()
 
 
-@pytest.fixture
-def machine(tmp_path, monkeypatch) -> config.Config:
-    """A set-up machine, every module on, whose database holds the seeded library."""
+def _machine(tmp_path, monkeypatch, *, moved: bool = False, rule: bool = True) -> config.Config:
+    """A set-up machine, every module on, whose database holds the seeded library.
+
+    ``moved`` records every row under the base drive and says so in the
+    database's own drive row, which is a library whose drive was renamed.
+    ``rule`` records the prefix rule that joins the two, as setup offers it.
+    """
     root = tmp_path / "library"
     (root / "db").mkdir(parents=True)
     (root / "Music").mkdir(parents=True)
@@ -173,19 +190,61 @@ def machine(tmp_path, monkeypatch) -> config.Config:
         rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
     )
     data["paths"] = {"download_staging": str(staging)}
+    if moved and rule:
+        data["library"]["location_prefix_map"] = [
+            {"from": str(tmp_path / BASE_DRIVE), "to": "{library.root}"}
+        ]
     resolved = config.from_dict(data)
     config.save(resolved)
     config.reset_cache()
     monkeypatch.setattr(
         preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
     )
-    _seed(resolved)
+    _seed(resolved, moved=moved)
     session.record_acknowledgment(resolved, terminal=lambda: True)
     return resolved
 
 
+@pytest.fixture
+def machine(tmp_path, monkeypatch) -> config.Config:
+    """A library whose rows record the paths it is mounted under."""
+    return _machine(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def moved(tmp_path, monkeypatch) -> config.Config:
+    """A library recorded under a base drive, with the one rule recorded."""
+    return _machine(tmp_path, monkeypatch, moved=True)
+
+
+@pytest.fixture
+def unruled(tmp_path, monkeypatch) -> config.Config:
+    """The same library with no rule recorded, which is sitting 19's export."""
+    return _machine(tmp_path, monkeypatch, moved=True, rule=False)
+
+
+@pytest.fixture(params=(UNDER_THE_ROOT, UNDER_A_BASE_DRIVE))
+def either(request, tmp_path, monkeypatch) -> config.Config:
+    """Both layouts in turn, for a claim that has to hold on each."""
+    return _machine(tmp_path, monkeypatch, moved=request.param == UNDER_A_BASE_DRIVE)
+
+
 def _music(cfg: config.Config) -> Path:
     return Path(cfg.library.root) / "Music"
+
+
+def _base(cfg: config.Config) -> Path:
+    return Path(cfg.library.root).parent / BASE_DRIVE
+
+
+def _under_base(cfg: config.Config, path: Path) -> Path:
+    """``path`` as a moved library's database records it, under the base drive."""
+    return _base(cfg) / Path(path).relative_to(cfg.library.root)
+
+
+def _as_recorded(cfg: config.Config, path: Path) -> Path:
+    """``path`` as this library's database records it, whichever layout it is."""
+    return _under_base(cfg, path) if cfg.library.location_prefix_map else Path(path)
 
 
 def _content(cfg: config.Config, rows) -> None:
@@ -218,21 +277,36 @@ def _content(cfg: config.Config, rows) -> None:
     engine.dispose()
 
 
-def _seed(cfg: config.Config) -> None:
-    """The library every test reads: five rows, four trees, one of everything odd."""
+def _seed(cfg: config.Config, *, moved: bool = False) -> None:
+    """The library every test reads: five rows, four trees, one of everything odd.
+
+    THE FILES ARE ALWAYS UNDER THE MOUNTED ROOT. A moved library differs in
+    what its rows and its drive row say, and in nothing on disk.
+    """
     from pyrekordbox.db6 import tables
 
     _build_disposable_database(Path(cfg.library.db_path), with_tag_category=False)
     music = _music(cfg)
     for _identifier, filename, *_rest in TRACKS:
         (music / filename).write_bytes(b"")
+    recorded = _under_base(cfg, music) if moved else music
     _content(
         cfg,
         [
-            (identifier, filename, title, stars, deleted, music / filename)
+            (identifier, filename, title, stars, deleted, recorded / filename)
             for identifier, filename, title, stars, deleted in TRACKS
         ],
     )
+    if moved:
+        # rekordbox's own record of the rename, with the trailing separator it
+        # stores. The export does not read it; setup offers the rule from it.
+        conn = sqlite3.connect(cfg.library.db_path)
+        conn.execute(
+            "UPDATE djmdProperty SET BaseDBDrive = ?, CurrentDBDrive = ?",
+            (f"{_base(cfg)}/", f"{cfg.library.root}/"),
+        )
+        conn.commit()
+        conn.close()
 
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
@@ -494,12 +568,17 @@ def test_an_ampersand_a_quote_and_an_accent_survive_the_readers(machine):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_no_tempo_the_database_holds_reaches_the_file(machine):
-    """Every seeded row stores a tempo. The file carries the gridless constant."""
+def test_no_tempo_the_database_holds_reaches_the_file(either):
+    """Every seeded row stores a tempo. The file carries the gridless constant.
+
+    ON BOTH LAYOUTS, since a row a prefix rule places is rebuilt on its way to
+    the emitter and must gain nothing on the way.
+    """
     from pyrekordbox.db6 import tables
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
+    machine = either
     engine = create_engine(f"sqlite:///{machine.library.db_path}")
     with Session(engine) as db_session:
         stored = {
@@ -790,6 +869,8 @@ def test_the_verb_declares_one_xml_no_database_surface_and_asks_nothing():
     assert entry.gates == ()
     assert entry.module_id is None, "a core workflow cannot wait on a module"
     assert "rekordbox.closed" in entry.doctor_checks
+    # R-773: the check that says how many rows no rule places.
+    assert "library.paths_resolved" in entry.doctor_checks
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -845,7 +926,7 @@ def _stage(cfg: config.Config, silence: Path, name: str) -> Path:
 
 
 def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_second(
-    machine, silence
+    either, silence
 ):
     """``intake.land`` and ``intake.imported``, with the import done by hand.
 
@@ -853,7 +934,13 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
     file adds one collection row per file, recording the path. So the rows are
     added to the database, and the proof is read off a SECOND export written by
     this verb, which is the workflow the finding asks for.
+
+    ON A MOVED LIBRARY THE ROW IS RECORDED UNDER THE BASE DRIVE, which is what
+    rekordbox stores, and the proof still comes back with no edit between the
+    two verbs (R-773). Sitting 19 measured the other outcome on the file this
+    verb wrote before it applied the prefix rule.
     """
+    machine = either
     cutover_fixtures.verified_snapshot(machine)
     first = _export(machine, "before-landing.xml")
     for name in ("One.flac", "Two.flac"):
@@ -882,18 +969,24 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
     _content(
         machine,
         [
-            (str(9000 + index), path.name, path.stem, 0, False, path.resolve())
+            (
+                str(9000 + index), path.name, path.stem, 0, False,
+                _as_recorded(machine, path.resolve()),
+            )
             for index, path in enumerate(sorted(landed_in.glob("*.flac")))
         ],
     )
     second = _export(machine, "after-import.xml")
+    before = second.read_bytes()
 
     code, proved = drive(["intake", "imported", "--export", str(second)])
 
     assert code == int(ExitCode.OK), proved
     (item,) = proved["data"]["items"]
+    assert item["action"] == "imported"
     assert item["count"] == 2
     assert not intake_file.exists()
+    assert second.read_bytes() == before, "the export was edited between the two verbs"
     tree_registry.assert_cutover_ready(machine, export=second)
 
 
@@ -916,7 +1009,8 @@ def test_the_import_proof_is_withheld_against_an_export_taken_before_the_import(
     assert Path(landed["pending_human_action"]["artifact"]).exists()
 
 
-def test_a_single_file_intake_splices_into_the_file(machine, silence):
+def test_a_single_file_intake_splices_into_the_file(either, silence):
+    machine = either
     exported = _export(machine)
     path = _music(machine) / "Single.flac"
     shutil.copyfile(silence, path)
@@ -932,13 +1026,14 @@ def test_a_single_file_intake_splices_into_the_file(machine, silence):
     assert int(collection.get("Entries")) == len(collection.findall("TRACK")) == len(LIVE) + 1
 
 
-def test_a_cutover_takes_the_file_as_its_fresh_export(machine):
+def test_a_cutover_takes_the_file_as_its_fresh_export(either):
     """The precheck asks that the export is a file holding something, and no more.
 
     So it holds for this file with no rule of its own, and the file is a better
     answer to what the check is for than the one it was written against: it is
     the tree as the database held it the minute the cutover was planned.
     """
+    machine = either
     cutover_fixtures.verified_snapshot(machine)
     exported = _export(machine)
 
@@ -980,7 +1075,8 @@ def _sub_keys(document: bytes, folder: str, sub: str) -> tuple[str, ...]:
     return tuple(track.get("Key") for track in nodes[(TREE, folder, sub)].findall("TRACK"))
 
 
-def test_the_inbox_routing_reads_the_file_and_routes_its_intake(machine, tagged):
+def test_the_inbox_routing_reads_the_file_and_routes_its_intake(either, tagged):
+    machine = either
     exported = _export(machine)
 
     code, envelope = drive(
@@ -996,7 +1092,8 @@ def test_the_inbox_routing_reads_the_file_and_routes_its_intake(machine, tagged)
     assert written != exported.read_bytes()
 
 
-def test_the_unplaced_sweep_reads_the_file_and_places_what_no_sub_holds(machine, tagged):
+def test_the_unplaced_sweep_reads_the_file_and_places_what_no_sub_holds(either, tagged):
+    machine = either
     exported = _export(machine)
 
     code, envelope = drive(["route", "unplaced", "--export", str(exported)])
@@ -1015,8 +1112,9 @@ def _bind(monkeypatch, account) -> None:
 
 
 def test_a_playlist_export_reads_the_file_and_queues_the_playlists_tracks(
-    machine, monkeypatch
+    either, monkeypatch
 ):
+    machine = either
     from cratekit.core import jobs
 
     exported = _export(machine)
@@ -1030,7 +1128,8 @@ def test_a_playlist_export_reads_the_file_and_queues_the_playlists_tracks(
         assert [item.item_id for item in jobs.items(store, job_id)] == ["13", "31", "11"]
 
 
-def test_the_favourites_sweep_reads_the_file_and_queues_the_favourites(machine, monkeypatch):
+def test_the_favourites_sweep_reads_the_file_and_queues_the_favourites(either, monkeypatch):
+    machine = either
     from cratekit.core import jobs
 
     exported = _export(machine)
@@ -1044,7 +1143,8 @@ def test_the_favourites_sweep_reads_the_file_and_queues_the_favourites(machine, 
         assert [item.item_id for item in jobs.items(store, job_id)] == ["12", "13"]
 
 
-def test_the_composed_sync_reads_the_file_and_queues_the_favourites(machine, monkeypatch):
+def test_the_composed_sync_reads_the_file_and_queues_the_favourites(either, monkeypatch):
+    machine = either
     from cratekit.core import jobs
     from cratekit.sync import cli as sync_cli
 
@@ -1075,8 +1175,10 @@ def test_the_composed_sync_reads_the_file_and_queues_the_favourites(machine, mon
 NOBODY = collection_export.Provenance(writer="cratekit test", written="2026-09-29T12:00:00Z")
 
 
-def _rendered(tracks, nodes=()) -> collection_export.Document:
-    return collection_export.render(tuple(tracks), tuple(nodes), NOBODY)
+def _rendered(tracks, nodes=(), *, root="/library", prefix_map=()) -> collection_export.Document:
+    return collection_export.render(
+        tuple(tracks), tuple(nodes), NOBODY, root=root, prefix_map=tuple(prefix_map)
+    )
 
 
 def test_an_identifier_is_spelled_one_way_in_the_collection_and_in_a_playlist():
@@ -1359,3 +1461,254 @@ def test_a_membership_that_cannot_say_whether_it_was_removed_refuses():
     with pytest.raises(CratekitError) as caught:
         collection_export.read_nodes(_Songs([_Row("1", 0)], [unreadable]))
     assert caught.value.cause.reason == "soft-delete-marker-unreadable"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. Where the library is mounted, and what no rule places (R-773)
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: The seeded file names as the one encoder spells them, written out by hand.
+ENCODED = {
+    "11": "Low%20Track.flac",
+    "12": "Mid%20Track.flac",
+    "13": "Top%20Track.flac",
+    "31": "Salt%20%26%20%22Pepper%22%20Caf%c3%a9.flac",
+}
+
+_PLAIN = re.compile(r"[A-Za-z0-9/_.-]+")
+
+
+def _locations(path: Path) -> dict[str, str]:
+    """Each collection row's location, by a real parser."""
+    return {
+        track.get("TrackID"): track.get("Location")
+        for track in _parsed(path).find("COLLECTION").findall("TRACK")
+    }
+
+
+def _recorded_paths(cfg: config.Config) -> dict[str, str]:
+    """What the database itself holds for the seeded rows, read with no binding."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        return dict(
+            conn.execute(
+                "SELECT ID, FolderPath FROM djmdContent WHERE ID IN ('11', '12', '13', '31')"
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+
+
+def _drive_collection(cfg: config.Config, name: str) -> tuple[Path, dict]:
+    destination = Path(cfg.library.root) / "exports" / name
+    code, envelope = drive(["export", "collection", str(destination)])
+    assert code == int(ExitCode.OK), envelope
+    return destination, envelope
+
+
+def test_the_moved_fixture_is_a_library_whose_base_drive_is_not_its_mounted_root(moved):
+    """The fixture, held to the shape the finding was measured on."""
+    base, root = str(_base(moved)), str(moved.library.root)
+    assert _PLAIN.fullmatch(root), "the literals below assume a root the encoder leaves alone"
+    assert not Path(base).exists(), "the base drive is a name nothing mounts"
+
+    recorded = _recorded_paths(moved)
+    assert set(recorded) == {"11", "12", "13", "31"}
+    assert all(path.startswith(base + "/Music/") for path in recorded.values()), recorded
+    conn = sqlite3.connect(moved.library.db_path)
+    drives = conn.execute("SELECT BaseDBDrive, CurrentDBDrive FROM djmdProperty").fetchone()
+    conn.close()
+    assert drives == (base + "/", root + "/")
+    assert moved.resolved_prefix_map() == ((base, root),)
+
+
+def test_every_location_is_written_under_the_mounted_root_when_a_rule_places_it(moved):
+    root = str(moved.library.root)
+    exported, envelope = _drive_collection(moved, "mounted.xml")
+
+    assert _locations(exported) == {
+        "1": "",
+        "2": "",
+        **{key: f"file://localhost{root}/Music/{name}" for key, name in ENCODED.items()},
+    }
+    assert BASE_DRIVE.encode() not in exported.read_bytes()
+
+    summary = envelope["data"]["summary"]
+    assert summary["locations_remapped"] == 4
+    assert summary["tracks_under_no_rule"] == 0
+    assert "export-location-unmapped" not in {w["code"] for w in envelope["warnings"]}
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "export.locations"]
+    assert check["status"] == "ok"
+    assert check["detail"].startswith("4 location(s) written where")
+
+
+def test_a_library_recorded_where_it_is_mounted_has_nothing_to_place(machine):
+    exported, envelope = _drive_collection(machine, "in-place.xml")
+    root = str(machine.library.root)
+
+    assert _locations(exported)["12"] == f"file://localhost{root}/Music/Mid%20Track.flac"
+    summary = envelope["data"]["summary"]
+    assert summary["locations_remapped"] == 0
+    assert summary["tracks_under_no_rule"] == 0
+
+
+def test_with_no_rule_each_location_is_written_as_the_database_holds_it_and_counted(unruled):
+    """Never dropped, never guessed: the root is not swapped in on a hunch."""
+    base = str(_base(unruled))
+    exported, envelope = _drive_collection(unruled, "as-held.xml")
+
+    assert _locations(exported) == {
+        "1": "",
+        "2": "",
+        **{key: f"file://localhost{base}/Music/{name}" for key, name in ENCODED.items()},
+    }
+    summary = envelope["data"]["summary"]
+    assert summary["tracks"] == len(LIVE)
+    assert summary["tracks_under_no_rule"] == 4
+    assert summary["locations_remapped"] == 0
+    # The two baseline rows hold no path, and are not the prefix map's to place.
+    assert summary["tracks_without_a_file"] == len(BASELINE)
+
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == "export-location-unmapped"]
+    assert warning["message"].startswith("4 track(s) record a path under neither")
+    assert "'11', '12', '13', '31'" in warning["message"]
+    assert "library.paths_resolved" in warning["message"]
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "export.locations"]
+    assert check["status"] == "info"
+    assert "4 under no rule" in check["detail"]
+
+
+def test_the_export_and_doctor_count_the_same_rows_as_under_no_rule(unruled):
+    """Two surfaces, one survey: the number doctor reports is the number warned of.
+
+    One row is added under the mounted root, so the two counts cannot agree by
+    both being every row.
+    """
+    _content(unruled, [("61", "Here.flac", "Here", 0, False, _music(unruled) / "Here.flac")])
+    (_music(unruled) / "Here.flac").write_bytes(b"")
+
+    with rb_writer.read_only_copy(rb_writer.live_db_path(unruled), cfg=unruled) as db:
+        totals = metadata_cli.resolution_totals(unruled, db)
+    _exported, envelope = _drive_collection(unruled, "surveyed.xml")
+
+    assert totals.unmapped == 4
+    assert envelope["data"]["summary"]["tracks_under_no_rule"] == 4
+
+
+def test_the_import_proof_is_withheld_on_a_moved_library_with_no_rule(unruled, silence):
+    """Sitting 19, reproduced: with nothing joining the two spellings, no proof.
+
+    The landed file is under the mounted root and the imported row is recorded
+    under the base drive. No rule says they are one place, so the export names
+    the row as the database holds it and the run stays waiting, and the export
+    said why when it was written.
+    """
+    machine = unruled
+    first = _export(machine, "before-landing.xml")
+    _stage(machine, silence, "One.flac")
+    batch = "2026-09-30_unjoined"
+    code, landed = drive(
+        ["-d", "intake.land.confirm=apply", "intake", "land", "--export", str(first),
+         "--name", batch]
+    )  # fmt: skip
+    assert code == int(ExitCode.PENDING_HUMAN), landed
+    (path,) = sorted((_music(machine) / batch).glob("*.flac"))
+    _content(
+        machine, [("9000", path.name, path.stem, 0, False, _under_base(machine, path.resolve()))]
+    )
+    second, envelope = _drive_collection(machine, "after-import.xml")
+    assert envelope["data"]["summary"]["tracks_under_no_rule"] == 5
+
+    code, withheld = drive(["intake", "imported", "--export", str(second)])
+
+    assert code == int(ExitCode.PENDING_HUMAN), withheld
+    assert Path(landed["pending_human_action"]["artifact"]).exists()
+
+
+RULE = (locations.PrefixRule("/former", "/library"),)
+
+
+def test_each_recorded_spelling_is_placed_or_left_by_the_one_resolver():
+    """One row per way a row can resolve, with the written value spelled out."""
+    document = _rendered(
+        [
+            collection_export.TrackRow(track_id="1", location="/former/Music/a b.flac"),
+            collection_export.TrackRow(
+                track_id="2", location="file://localhost/former/Music/c%20d.flac"
+            ),
+            # Decomposed on the way in, composed and lowercase on the way out.
+            collection_export.TrackRow(track_id="3", location="/former/Music/Café.flac"),
+            # A different folder that shares the rule's spelling, so no rule places it.
+            collection_export.TrackRow(track_id="4", location="/formerly/Music/e.flac"),
+            collection_export.TrackRow(track_id="5", location="/library/Music/f.flac"),
+            collection_export.TrackRow(track_id="6", location="tidal:tracks:123"),
+            collection_export.TrackRow(
+                track_id="7", location="file://elsewhere/former/Music/g.flac"
+            ),
+            collection_export.TrackRow(track_id="8", location=""),
+        ],
+        prefix_map=RULE,
+    )
+
+    assert _rows(document) == {
+        "1": "file://localhost/library/Music/a%20b.flac",
+        "2": "file://localhost/library/Music/c%20d.flac",
+        "3": "file://localhost/library/Music/Caf%c3%a9.flac",
+        "4": "file://localhost/formerly/Music/e.flac",
+        "5": "file://localhost/library/Music/f.flac",
+        "6": "tidal:tracks:123",
+        "7": "file://elsewhere/former/Music/g.flac",
+        "8": "",
+    }
+    assert document.remapped == 3
+    assert document.omitted.unmapped_paths == ("4",)
+    assert document.omitted.not_file_paths == ("6", "8")
+
+
+def _rows(document: collection_export.Document) -> dict[str, str]:
+    return {
+        track.get("TrackID"): track.get("Location")
+        for track in ET.fromstring(document.content).find("COLLECTION").findall("TRACK")
+    }
+
+
+def test_the_rules_are_walked_in_the_order_they_were_recorded():
+    """First match wins, so a rule that is another's prefix has to come first."""
+    document = _rendered(
+        [
+            collection_export.TrackRow(track_id="1", location="/former/Music/a.flac"),
+            collection_export.TrackRow(track_id="2", location="/former/Sets/b.flac"),
+        ],
+        prefix_map=(
+            locations.PrefixRule("/former/Music", "/library/Deep"),
+            locations.PrefixRule("/former", "/library"),
+        ),
+    )
+
+    assert _rows(document) == {
+        "1": "file://localhost/library/Deep/a.flac",
+        "2": "file://localhost/library/Sets/b.flac",
+    }
+    assert document.remapped == 2
+
+
+def test_a_rule_whose_target_is_not_a_path_places_nothing():
+    """The configuration takes any text as a target. The file takes only a path."""
+    document = _rendered(
+        [collection_export.TrackRow(track_id="1", location="/former/Music/a.flac")],
+        prefix_map=(locations.PrefixRule("/former", "Music"),),
+    )
+
+    assert _rows(document) == {"1": "file://localhost/former/Music/a.flac"}
+    assert document.remapped == 0
+    assert document.omitted.unmapped_paths == ("1",)
+
+
+def test_the_emitter_cannot_be_asked_for_a_document_without_saying_where_it_is_mounted():
+    """No default for either argument, since a default is sitting 19's export."""
+    with pytest.raises(TypeError):
+        collection_export.render((), (), NOBODY)
+    with pytest.raises(TypeError):
+        collection_export.render((), (), NOBODY, root="/library")
+    with pytest.raises(TypeError):
+        collection_export.render((), (), NOBODY, prefix_map=())
