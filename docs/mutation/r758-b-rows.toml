@@ -1,0 +1,208 @@
+name = "r758-b"
+pass_kind = "light"
+
+[[rows]]
+id = "T7_refusal_read_as_an_interruption"
+description = "a refusal in the removals is raised as an interrupted move and loses its own cause and remedy"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''                if isinstance(exc, cause.CratekitError):
+                    raise
+'''
+new = ''''''
+
+[[rows]]
+id = "P1_removed_node_is_a_place"
+description = "the placement reader counts a playlist rekordbox removed as a place a track holds"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''    nodes = [node for node in nodes if not node.removed]
+'''
+new = ''''''
+
+[[rows]]
+id = "R1_removed_membership_is_held"
+description = "read_tree hands back a removed membership as held, so a moved track reads as still sitting where it left"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py", "tests/test_rebuild.py", "tests/test_adopt_placements.py"]
+old = '''                for row in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+                if not rb_writer.membership_removed(row)'''
+new = '''                for row in db.get_playlist_songs(PlaylistID=str(playlist.ID))'''
+
+[[rows]]
+id = "M1_no_reading_is_moved"
+description = "a track whose file has no energy reading is moved to the no reading sub"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        return LEFT_NO_READING if entry.energy is None else ""'''
+new = '''        return ""'''
+
+[[rows]]
+id = "M2_unnamed_genre_is_moved"
+description = "a track whose genre names no style is moved to the resolver's default"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    return "" if entry.genre in by_source.map else LEFT_NO_STYLE'''
+new = '''    return ""'''
+
+[[rows]]
+id = "M3_renamed_playlist_is_moved_from"
+description = "a sub held through a renamed playlist only is planned for a move the writer cannot make"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    if unnamed:
+        return LEFT_UNNAMED
+'''
+new = ''''''
+
+[[rows]]
+id = "M4_verdict_withheld_is_moved"
+description = "a track a person's verdict withheld is moved"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        if not entry.held_elsewhere:
+            return None
+'''
+new = '''        pass
+'''
+
+[[rows]]
+id = "C1_gate_asked_before_the_acknowledgment"
+description = "the verb asks its gate without reading the backup acknowledgment first"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    session.assert_backup_acknowledged(cfg)
+'''
+new = '''    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+'''
+
+[[rows]]
+id = "C3_rows_not_proven_against_the_digest"
+description = "the digest of the frozen rows is not taken again, so edited rows are shown and performed under the approved digest"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    if not (taken == stated == queued_under):'''
+new = '''    if not (stated == queued_under):'''
+
+[[rows]]
+id = "C5_a_sub_nobody_was_shown_is_removed"
+description = "a track filed in a further sub since the approval has that sub removed as well"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        if set(now.remove) - set(move.remove):
+            stale[move.content_id] = "it holds a sub nobody was shown"
+            continue
+'''
+new = ''''''
+
+[[rows]]
+id = "C6_left_target_is_added_back"
+description = "a track approved as already in its target that has left it is added back and its other sub removed"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        if now.add and not move.add:
+            stale[move.content_id] = "it has left the sub it was approved as holding"
+            continue
+'''
+new = ''''''
+
+[[rows]]
+id = "C9_read_back_is_not_the_verdict"
+description = "the job fails only when the writer raised, so tracks still in both subs drive it to succeeded"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    if interrupted is not None or unfinished:'''
+new = '''    if interrupted is not None:'''
+
+[[dropped]]
+id = "W8_stamp_not_moved"
+description = "a removed row keeps its old updated_at, where every row rekordbox removed has it moved"
+reason = "ranked below the cap: one column of the removal, read by one driven test, and the marker itself is measured in W7"
+
+[[dropped]]
+id = "W9_unset_marker_reads_live"
+description = "a marker that is None reads as live, the permissive answer"
+reason = "ranked below the cap: the refusal is the rule every reader already held, moved a layer down and pinned by the source guard"
+
+[[dropped]]
+id = "T8_no_fingerprint_after_the_additions"
+description = "the fingerprint is not taken after the additions land, so an interrupted run leaves the reading from before them"
+reason = "ranked below the cap: maintainer facing, counted by one driven test"
+
+[[dropped]]
+id = "T9_members_not_read_again"
+description = "what each playlist holds is not dropped before the proof, so the proof may read from before the additions"
+reason = "ranked below the cap: maintainer facing, and expected to kill nothing, since nothing reads a playlist's members before the additions land"
+
+[[dropped]]
+id = "T10_removals_not_recorded"
+description = "the removals are not recorded on the session record, so a restore does not see them as work it would discard"
+reason = "ranked below the cap: the record's counts are read by one driven test"
+
+[[dropped]]
+id = "M5_unread_tree_plans"
+description = "a tree nobody read still plans moves from whatever the placements carry"
+reason = "ranked below the cap: adoption's own plan withholds nothing over an unread tree, so this guard is the second of two"
+
+[[dropped]]
+id = "M6_digest_drops_the_tracks_left"
+description = "the digest stops covering the tracks left where they are"
+reason = "ranked below the cap: the digest's coverage of a move's fields is driven field by field, and this is its other half"
+
+[[dropped]]
+id = "M7_one_bucket_place_filed_under_genre"
+description = "a bucket that reads neither energy nor genre lists its track under the genre reason"
+reason = "ranked below the cap: a wording on a list, over a bucket the shipped template does not declare"
+
+[[dropped]]
+id = "C2_another_verbs_job_is_driven"
+description = "a job another verb queued is driven through this verb's gate"
+reason = "ranked below the cap: the digest proof in C3 stands behind it"
+
+[[dropped]]
+id = "C4_nobody_approved"
+description = "a job naming no approver is performed"
+reason = "ranked below the cap: reached only by a payload edited in the queue"
+
+[[dropped]]
+id = "C7_sub_class_in_a_row_is_removed_from"
+description = "an approved row naming a sub that no longer competes is performed"
+reason = "ranked below the cap: reached only by a taxonomy edited between the approval and the write"
+
+[[dropped]]
+id = "C8_plan_as_it_stands_not_asked"
+description = "a track the plan as it stands would leave is moved on the approval"
+reason = "ranked below the cap: three driven tests read it, and C5 and C6 measure the two checks beside it"
+
+[[dropped]]
+id = "C10_reading_changed_is_performed"
+description = "a track whose reading now names another sub is moved to the sub it was approved for"
+reason = "ranked below the cap: the same family as C8, driven through the real verb by one test"
+
+[[dropped]]
+id = "C11_refusal_not_raised_as_itself"
+description = "the worker raises its own account over a refusal it held"
+reason = "ranked below the cap: the same ending as T7, which is measured one layer down"
+
+[[dropped]]
+id = "C12_unfinished_not_retryable"
+description = "the unfinished cause is built with retryable false"
+reason = "ranked below the cap: a flag on a cause two driven tests already read, and the cap was the two batches' 38 rows"
+
+[[dropped]]
+id = "X1_membership_proven_refuses"
+description = "the proof reader refuses on a row that cannot say"
+reason = "ranked below the cap: a reader this unit touched and did not add, pinned by one test"

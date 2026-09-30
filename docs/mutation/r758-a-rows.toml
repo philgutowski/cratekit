@@ -1,0 +1,133 @@
+name = "r758-a"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_marker_not_judged"
+description = "the guard stops judging a changed soft delete marker, so any writer removes a row in any table with the guard saying nothing"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '''        if SOFT_DELETE_COLUMN in columns and table not in admitted:
+            violations.append('''
+new = '''        if SOFT_DELETE_COLUMN in columns and table not in admitted and table == "":
+            violations.append('''
+
+[[rows]]
+id = "W2_asked_table_not_held_to_the_set"
+description = "a commit that asks for a removal in any table is admitted it, the refusal of the ask left standing"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '''    admitted &= REMOVABLE_TABLES
+'''
+new = ''''''
+
+[[rows]]
+id = "W3_ask_outside_the_set_not_refused"
+description = "asking for a removal outside the removable set is no longer itself a violation, the intersection left standing"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '''    for table in sorted(admitted - REMOVABLE_TABLES):'''
+new = '''    for table in sorted(admitted - admitted):'''
+
+[[rows]]
+id = "W4_removable_set_widened"
+description = "the collection table joins the removable set, so a commit that asks may remove a track from the collection"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '''REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE})'''
+new = '''REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE, CONTENT_TABLE})'''
+
+[[rows]]
+id = "W5_commit_drops_the_ask"
+description = "the guarded commit does not hand its removals to the whitelist, so the move's own removal is refused"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '''            assert_session_whitelisted(db.session, db, removals=removals)'''
+new = '''            assert_session_whitelisted(db.session, db)'''
+
+[[rows]]
+id = "W6_removed_row_counts_as_present"
+description = "add_memberships counts a removed membership as present, so a track moved away and back never returns"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '''        for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+        if not membership_removed(song)
+    }
+    inserted: list[str] = []'''
+new = '''        for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+    }
+    inserted: list[str] = []'''
+
+[[rows]]
+id = "W7_removed_row_marked_again"
+description = "remove_memberships marks a row that is already removed and reports it, so a second removal counts a row it did not remove"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '''        if key not in wanted or membership_removed(song):'''
+new = '''        if key not in wanted:'''
+
+[[rows]]
+id = "T1_second_commit_does_not_ask"
+description = "the move's second commit admits no removal, so every removal is refused"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''                rb_writer.commit_guarded(db, removals=rb_writer.REMOVABLE_TABLES)'''
+new = '''                rb_writer.commit_guarded(db)'''
+
+[[rows]]
+id = "T2_first_commit_admits_a_removal"
+description = "the move's first commit admits a removal, so one slipped into the additions lands"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''                    already_present += len(content_ids) - len(inserted)
+                rb_writer.commit_guarded(db)'''
+new = '''                    already_present += len(content_ids) - len(inserted)
+                rb_writer.commit_guarded(db, removals=rb_writer.REMOVABLE_TABLES)'''
+
+[[rows]]
+id = "T3_target_not_proven"
+description = "a removal is made whether or not the track sits in its target, so a track can end in neither"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''            if not places.holds(move.target, move.content_id):
+                held_back.append(move.content_id)
+                continue'''
+new = ''''''
+
+[[rows]]
+id = "T4_target_can_be_removed_from"
+description = "a move that names its own target among its removals takes the track out of the target"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''                if destination != move.target:
+                    leaving.setdefault(destination, []).append(move.content_id)'''
+new = '''                leaving.setdefault(destination, []).append(move.content_id)'''
+
+[[rows]]
+id = "T5_dead_track_moved"
+description = "a track with no live collection row is moved like any other"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        live = [move for move in moves if _live_content(db, move.content_id)]'''
+new = '''        live = list(moves)'''
+
+[[rows]]
+id = "T6_removed_playlist_is_a_destination"
+description = "a playlist rekordbox removed answers for a destination, so an addition lands where nobody can see it"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        and str(getattr(playlist, "ParentID", "")) in parents
+        and not rb_writer.node_removed(playlist)'''
+new = '''        and str(getattr(playlist, "ParentID", "")) in parents'''

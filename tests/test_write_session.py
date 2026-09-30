@@ -2613,6 +2613,8 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
     )
     assert set(takers) == {
         "write/metadata_cli.py::mytags_vocals",
+        # R-758. One capture before two commits, and both are recorded.
+        "write/trees.py::move_tree_membership",
         "write/trees.py::write_tree_membership",
     }, (
         f"the set of functions that take a capture changed: {sorted(takers)}. A new "

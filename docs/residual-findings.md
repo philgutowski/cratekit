@@ -30297,6 +30297,79 @@ A sub whose class is manual or derived is never a move source.
 **On the board bar, 2026-09-29.** 585 tracks are filed where their own file
 says they do not belong, and no shipped verb can correct one.
 
+**Closed 2026-09-29 on `relay/227`, issue #227, by `crate adopt move`.** The
+attended run on a copy and the live run are owed and are not this session's.
+
+**A verb of its own, and not `route resort` given a removing mode.** That
+verb is additive and its summary says the old membership stays. A gate is
+declared per verb and conformance holds every declared gate to firing, so an
+approval asked in one mode only is a gate the registry cannot state. It sits
+in the `adopt` group because what it moves is the list `adopt apply`
+withholds, read with the census that verb reads.
+
+**The removal is a SOFT DELETE.** The membership row stays, its
+`rb_local_deleted` is set and its `updated_at` is moved, and the binding
+stamps the local update sequence at commit. `TrackNo` is left and no other
+row is renumbered. Read from a copy of the snapshot taken at 19:50Z, 4,817
+membership rows carry the marker and all of them are still there. The
+binding's own `remove_from_playlist` deletes the row outright and commits by
+itself, past the guarded commit, so it is not used. What the reading does
+not show is R-761.
+
+**The whitelist is widened on purpose, by one table and one kind of
+change.** A changed marker is now judged as a removal, in every table, and
+every commit refuses one unless it names the table in `removals`. The only
+table that may be named is `djmdSongPlaylist`, and the only caller that
+names it is the second commit of `trees.move_tree_membership`. A hard delete
+is refused everywhere as before. **Before this unit the guard could not see
+a soft delete at all**: the marker is a bookkeeping column and those were
+dropped before anything was judged, so a row whose only change was the
+marker passed in any table, the collection included. That is closed here.
+Proven per table the binding maps, and against a real database for the
+additive membership writer's session, an ordinary guarded commit, a removed
+collection row under an admitting commit, and a hard delete under one.
+
+**Two commits in one session, the additions first**, behind one capture. A
+removal is made only for a track read back as sitting in its target. A
+failure between the two leaves a track in both subs, the job's report lists
+which, the job fails on a cause a resume retries, and the resume finishes.
+
+**The approved rows are frozen in the job.** A move changes the tree the
+plan is rebuilt from, so a digest rebuilt in the worker would refuse the
+verb's own half finished work. The worker proves the rows against the
+approved digest, then asks the plan's own rule of each row over the library
+as it stands, and refuses the whole run as a stale decision when a track
+moved in a way nobody was shown.
+
+**The count on the gate will not read 585**, and the attended reader should
+expect that. The plan also takes the tracks R-734 counts, already in the sub
+their reading names and in a stale one as well, 37 at sitting 14, which have
+only the stale one removed. It leaves every track with no reading, every
+genre that names no style and every sub held through a renamed playlist, and
+lists each with its reason. The split by band and by style is on the gate.
+
+**Every reader of a membership skips a removed one**: `add_memberships`,
+`read_tree`, and the two upward walks in the routing pass. The placement
+reader skips a playlist rekordbox removed. The marker is read in one place,
+`rb_writer.soft_deleted`.
+
+**The built in review raised ten findings and all ten were fixed**, each
+with a test that drives it: removed nodes read two ways, an interrupt and a
+refusal both raised as an interrupted move, the worker's check narrower than
+the plan's rule, a reader's contract changed, a resume that showed a gate
+before proving the job, two endings missing from the summary, a reason that
+was untrue of a bucket, a walk per track, a third copy of the marker read,
+and no fingerprint after the additions.
+
+**The numbers.** 87 tests in `tests/test_adopt_move.py` and 30 new in
+`tests/test_rb_writer_guard.py`. The mutation tables are the author's,
+`docs/mutation/r758-a.md` and `r758-b.md`: 25 distinct mutations, 25 killed
+on the subset each ran, none promoted since none was a zero. 16 rows were
+considered and not run, each named in `r758-b-rows.toml` with why it ranked
+below the cap. No independent verifier ran.
+
+Filed **R-761**, **R-762** and **R-763**.
+
 ---
 
 ## R-759. A timing test fails the gate when the machine is busy
@@ -30378,3 +30451,87 @@ purpose, with a rule for what a new row may carry.
 **Not on the board bar.** It is a requirement of R-746 and is carried in its
 card.
 
+---
+
+## R-761. How rekordbox records one track taken out of a living playlist was not observed
+
+**Found:** on `relay/227`, 2026-09-29, building R-758. Read from a copy of
+the snapshot taken at 19:50Z. 4,817 membership rows carry
+`rb_local_deleted`, and every one sits in a playlist that was itself
+removed or in no playlist at all. No living playlist holds a removed
+membership, and every living playlist's live rows number from 1 with no gap.
+So the library shows how rekordbox removes a playlist and does not show how
+it removes one track from a playlist that survives. One snapshot was read.
+
+**What the move does, and what it does not copy.** It sets the marker and
+moves `updated_at`. It leaves `rb_data_status` at 0, where every row
+rekordbox removed carries 258 or 262, 313 of them on rows with no `usn`. It
+leaves `TrackNo`, so a playlist a track left has a gap in its numbering that
+no playlist rekordbox wrote has. The binding numbers a new row from the
+count of every row, removed ones included, so no number is given twice.
+
+**Measured cost.** None measured, since rekordbox was not opened. If
+rekordbox does not honour the marker on a membership in a living playlist,
+a moved track shows in both subs, which is the state before the move plus
+one playlist. If it honours it, the unknowns are the gap and the status.
+
+**Closes when:** at the attended run on a copy, rekordbox is opened after an
+approved move and each bucket's subs are read, a track is then removed from
+a playlist by hand in rekordbox, and the row it leaves is read beside one
+the move left.
+
+**Not on the board bar.** It closes only at an attended sitting, and that
+sitting is R-758's own verification.
+
+---
+
+## R-762. The additive find or create hands back a playlist rekordbox removed
+
+**Found:** on `relay/227`, 2026-09-29, by the built in review of R-758.
+`rb_writer.ensure_folder`, `ensure_playlist` and `top_level_folders` go
+through the binding's lookup, which filters nothing, and read no marker, as
+the last one's docstring says. With a removed playlist of the declared name
+under a live folder, the first match may be the removed one, and
+`write_tree_membership` would add a track to a playlist nobody can see and
+report it added. `read_tree` reports a removed node to the convergence
+comparison as it always did. It carries a `removed` flag since this unit and
+only the placement reader acts on it.
+
+**Measured.** On a copy of the snapshot taken at 19:50Z the library holds
+1,554 removed playlist rows. None sits under the routing tree's root: its 18
+folders are live, and no playlist under them is removed. The record labels
+tree, the intake tree and the root playlists were not read. One snapshot was
+read and no producer was driven, so whether a verb or rekordbox itself can
+leave a removed node inside a governed tree is unmeasured.
+
+**The move does not share it.** It resolves what it adds to and what it
+removes from through one walk over live nodes, and creates a live playlist
+where there is none, which two tests drive.
+
+**Closes when:** the find or create skips a removed node, or refuses on one,
+for every writer, and the comparison that reads `read_tree` says what it
+does with a removed node.
+
+**Not on the board bar, with the reason.** The input was looked for on the
+one tree `adopt apply` and the routing pass write, and is not there. It
+joins the bar the day a removed node is found inside a governed tree.
+
+---
+
+## R-763. Conformance acknowledges a backup for the one verb that reads the acknowledgment first
+
+**Found:** on `relay/227`, 2026-09-29. `adopt move` reads the backup
+acknowledgment before it asks its gate, which R-733 asks of `adopt apply`
+and no verb did. The conformance fixture is a machine that never
+acknowledged one, so conformance 3 could not reach the gate it holds the
+verb to. `tests/test_cli_contract.py` records an acknowledgment for the
+verbs named in `ACKNOWLEDGED_BEFORE_THE_GATE`, one entry, and a guard holds
+each entry to the test that drives the verb with no acknowledgment.
+
+**Measured cost.** None to a person. The table is an exemption a second verb
+can join by adding a line, and R-733 closing on `adopt apply` would add it.
+
+**Closes when:** the fixture decides per verb from the registry, or R-733
+closes and the table is reviewed with it.
+
+**Not on the board bar.** Maintainer facing.

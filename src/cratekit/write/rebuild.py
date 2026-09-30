@@ -548,6 +548,12 @@ class TreeNode:
     #: exists to catch a doubled tree could not see doubling at this depth at all,
     #: and reported such a tree converged.
     doubled: frozenset[str] = frozenset()
+    #: Whether rekordbox removed this playlist or the folder it sits in. The
+    #: binding's lookup hands a removed node back beside the live ones, and
+    #: this walk reports it as it always did, since the comparison that reads
+    #: it was argued over what the lookup returns. The flag is for a reader
+    #: asking where a track SITS, which a playlist nobody can see is not.
+    removed: bool = False
 
 
 def read_tree(db: Any, root_id: str) -> tuple[TreeNode, ...]:
@@ -567,15 +573,22 @@ def read_tree(db: Any, root_id: str) -> tuple[TreeNode, ...]:
     The folder list is MATERIALIZED before the inner queries run. Iterating one
     query while issuing others on the same session is the shape that made a
     previous unit's row index report an empty library on its second pass.
+
+    A MEMBERSHIP MARKED REMOVED IS NOT HELD (R-758). The binding's query hands
+    back a soft deleted row beside the live ones and rekordbox shows no track
+    for it, so a track moved out of a playlist would still read as sitting
+    there, and the plan that moved it would plan the same move for ever.
     """
     out: list[TreeNode] = []
     folders = list(db.get_playlist(ParentID=str(root_id)))
     for folder in folders:
         playlists = list(db.get_playlist(ParentID=str(folder.ID)))
         for playlist in playlists:
-            members = [str(row.ContentID) for row in db.get_playlist_songs(
-                PlaylistID=str(playlist.ID)
-            )]
+            members = [
+                str(row.ContentID)
+                for row in db.get_playlist_songs(PlaylistID=str(playlist.ID))
+                if not rb_writer.membership_removed(row)
+            ]
             # COUNTED BEFORE IT IS COLLAPSED. The set is what the comparison
             # needs; the multiplicity is a fact that only exists before the set
             # is taken, and it is the one this walk used to throw away.
@@ -592,6 +605,8 @@ def read_tree(db: Any, root_id: str) -> tuple[TreeNode, ...]:
                     doubled=frozenset(
                         content_id for content_id, count in seen.items() if count > 1
                     ),
+                    removed=rb_writer.node_removed(folder)
+                    or rb_writer.node_removed(playlist),
                 )
             )
     return tuple(out)

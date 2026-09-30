@@ -1077,11 +1077,33 @@ An adoption plan entry withheld because its track already holds a competing
 sub in the bucket the plan routes it to, or holds the planned sub through a
 renamed playlist the writer cannot see. The entry keeps its bucket and its
 sub, carries what it holds, and is listed on the gate for a person to settle.
-Adoption moves nothing and removes nothing.
+Adoption moves nothing and removes nothing. Since R-758 `crate adopt move` is
+the verb that settles one, see Move.
 
 *Avoid:* reading it as the provider's Withheld, or as a collision verdict.
 All three leave something out and share nothing else. A plan entry says
 which through `withheld_by`.
+
+### Move
+Since R-758, one track leaving the competing subs its file's reading does not
+name for the one it does. It carries a target, the sub to add, which is empty
+when the track already holds the target, and the subs to remove, which are
+never empty. The addition is committed before the removal is attempted. The
+removal is a soft delete of the membership row, rekordbox's own marker set
+and the row kept, and it is the only removal the guarded writer admits.
+
+*Avoid:* reading it as a move between buckets or as `route resort`, which is
+additive. A move stays inside one bucket. A track with no reading is not
+moved, it is Left.
+
+### Left
+A track the move plan found holding a stale competing sub and did not move,
+with the reason: `no-reading`, `genre-names-no-style` or
+`held-under-another-name`. It is listed on the move's gate in full and covered
+by its digest.
+
+*Avoid:* reading it as Held back or Withheld. Those are a provider's and a
+plan's. This one is the move's own.
 
 ## Review
 

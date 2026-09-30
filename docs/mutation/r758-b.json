@@ -1,0 +1,504 @@
+{
+  "name": "r758-b",
+  "pass_kind": "light",
+  "branch": "relay/227",
+  "head": "47fe4fc",
+  "when": "2026-09-30 00:07 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10795,
+  "baseline_exit": 0,
+  "pytest_runs": 17,
+  "state_guarded": "~/Library/Application Support/cratekit (83694 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/trees.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/trees.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "9e8e00259048efd9",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10795,
+    "baseline_collected": 10795,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "T7_refusal_read_as_an_interruption",
+      "description": "a refusal in the removals is raised as an interrupted move and loses its own cause and remedy",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "471c4144fbef2430",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_refusal_at_the_second_commit_keeps_its_own_cause_and_the_job_says_in_both"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if isinstance(exc, cause.CratekitError):\n                    raise\n",
+      "new": ""
+    },
+    {
+      "id": "P1_removed_node_is_a_place",
+      "description": "the placement reader counts a playlist rekordbox removed as a place a track holds",
+      "file": "src/cratekit/adopt/placements.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "be48c3db4265b1f0",
+      "subset": [
+        "tests/test_adopt_move.py",
+        "tests/test_adopt_placements.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_sub_held_only_through_a_removed_playlist_is_not_planned_for_removal",
+        "tests/test_adopt_move.py::test_an_addition_never_lands_in_a_playlist_rekordbox_removed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    nodes = [node for node in nodes if not node.removed]\n",
+      "new": ""
+    },
+    {
+      "id": "R1_removed_membership_is_held",
+      "description": "read_tree hands back a removed membership as held, so a moved track reads as still sitting where it left",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1239edcc5bf58e2c",
+      "subset": [
+        "tests/test_adopt_move.py",
+        "tests/test_rebuild.py",
+        "tests/test_adopt_placements.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 15,
+      "collected": 228,
+      "baseline_collected": 228,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_failure_after_the_add_leaves_the_track_in_both_and_a_resume_finishes",
+        "tests/test_adopt_move.py::test_a_membership_that_cannot_say_is_unproven_and_is_refused_by_a_reader",
+        "tests/test_adopt_move.py::test_a_moved_track_can_be_moved_back_and_gets_a_live_row",
+        "tests/test_adopt_move.py::test_a_removed_membership_is_not_held_and_not_present",
+        "tests/test_adopt_move.py::test_a_removed_row_changes_its_marker_and_its_stamp_and_nothing_else",
+        "tests/test_adopt_move.py::test_a_second_approved_run_plans_nothing_and_writes_nothing",
+        "tests/test_adopt_move.py::test_a_sub_held_only_through_a_removed_playlist_is_not_planned_for_removal",
+        "tests/test_adopt_move.py::test_a_track_approved_as_in_its_target_that_left_it_is_a_stale_decision",
+        "tests/test_adopt_move.py::test_after_the_move_adoption_withholds_none_of_the_moved_tracks",
+        "tests/test_adopt_move.py::test_an_addition_never_lands_in_a_playlist_rekordbox_removed",
+        "tests/test_adopt_move.py::test_an_approved_move_adds_the_new_sub_and_removes_the_old",
+        "tests/test_adopt_move.py::test_no_content_row_and_no_grid_column_is_written",
+        "tests/test_adopt_move.py::test_the_move_takes_one_capture_and_records_both_commits",
+        "tests/test_adopt_move.py::test_the_removal_is_a_soft_delete_and_the_row_is_still_there",
+        "tests/test_adopt_move.py::test_the_summary_a_person_reads_names_every_ending"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                for row in db.get_playlist_songs(PlaylistID=str(playlist.ID))\n                if not rb_writer.membership_removed(row)",
+      "new": "                for row in db.get_playlist_songs(PlaylistID=str(playlist.ID))"
+    },
+    {
+      "id": "M1_no_reading_is_moved",
+      "description": "a track whose file has no energy reading is moved to the no reading sub",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9ae0d049c54016c7",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_failure_after_the_add_leaves_the_track_in_both_and_a_resume_finishes",
+        "tests/test_adopt_move.py::test_a_reading_lost_since_the_approval_is_a_stale_decision",
+        "tests/test_adopt_move.py::test_a_refusal_at_the_second_commit_keeps_its_own_cause_and_the_job_says_in_both",
+        "tests/test_adopt_move.py::test_a_removal_that_did_not_take_fails_the_job_though_nothing_raised",
+        "tests/test_adopt_move.py::test_a_second_approved_run_plans_nothing_and_writes_nothing",
+        "tests/test_adopt_move.py::test_a_sub_held_only_through_a_removed_playlist_is_not_planned_for_removal",
+        "tests/test_adopt_move.py::test_a_track_whose_file_has_no_reading_is_left_and_listed",
+        "tests/test_adopt_move.py::test_after_the_move_adoption_withholds_none_of_the_moved_tracks",
+        "tests/test_adopt_move.py::test_an_approved_move_adds_the_new_sub_and_removes_the_old",
+        "tests/test_adopt_move.py::test_the_gate_shows_every_move_with_what_it_adds_removes_and_reads",
+        "tests/test_adopt_move.py::test_the_move_takes_one_capture_and_records_both_commits",
+        "tests/test_adopt_move.py::test_the_removal_is_a_soft_delete_and_the_row_is_still_there"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return LEFT_NO_READING if entry.energy is None else \"\"",
+      "new": "        return \"\""
+    },
+    {
+      "id": "M2_unnamed_genre_is_moved",
+      "description": "a track whose genre names no style is moved to the resolver's default",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0f66ea510ac5313a",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_genre_that_stopped_naming_the_style_is_a_stale_decision",
+        "tests/test_adopt_move.py::test_the_genre_decides_a_style_move_and_a_genre_naming_no_style_is_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return \"\" if entry.genre in by_source.map else LEFT_NO_STYLE",
+      "new": "    return \"\""
+    },
+    {
+      "id": "M3_renamed_playlist_is_moved_from",
+      "description": "a sub held through a renamed playlist only is planned for a move the writer cannot make",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9b939680a0539a1f",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_sub_held_under_another_name_only_is_left_and_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unnamed:\n        return LEFT_UNNAMED\n",
+      "new": ""
+    },
+    {
+      "id": "M4_verdict_withheld_is_moved",
+      "description": "a track a person's verdict withheld is moved",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0681b50f0217d9c0",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_track_a_verdict_withheld_since_the_approval_is_a_stale_decision"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not entry.held_elsewhere:\n            return None\n",
+      "new": "        pass\n"
+    },
+    {
+      "id": "C1_gate_asked_before_the_acknowledgment",
+      "description": "the verb asks its gate without reading the backup acknowledgment first",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a9a94d03b6d3442a",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_resume_with_no_acknowledgment_refuses_before_anything_is_driven",
+        "tests/test_adopt_move.py::test_an_acknowledgment_out_of_its_window_refuses_before_the_gate",
+        "tests/test_adopt_move.py::test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).\n    session.assert_backup_acknowledged(cfg)\n",
+      "new": "    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).\n"
+    },
+    {
+      "id": "C3_rows_not_proven_against_the_digest",
+      "description": "the digest of the frozen rows is not taken again, so edited rows are shown and performed under the approved digest",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "228ab26369793fe3",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_rows_under_a_digest_that_does_not_describe_them_are_never_shown"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not (taken == stated == queued_under):",
+      "new": "    if not (stated == queued_under):"
+    },
+    {
+      "id": "C5_a_sub_nobody_was_shown_is_removed",
+      "description": "a track filed in a further sub since the approval has that sub removed as well",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8ac46d12689e613f",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_track_filed_somewhere_nobody_was_shown_is_a_stale_decision"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if set(now.remove) - set(move.remove):\n            stale[move.content_id] = \"it holds a sub nobody was shown\"\n            continue\n",
+      "new": ""
+    },
+    {
+      "id": "C6_left_target_is_added_back",
+      "description": "a track approved as already in its target that has left it is added back and its other sub removed",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f352d91f12ab56e1",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_track_approved_as_in_its_target_that_left_it_is_a_stale_decision"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if now.add and not move.add:\n            stale[move.content_id] = \"it has left the sub it was approved as holding\"\n            continue\n",
+      "new": ""
+    },
+    {
+      "id": "C9_read_back_is_not_the_verdict",
+      "description": "the job fails only when the writer raised, so tracks still in both subs drive it to succeeded",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0e2628500541876d",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_removal_that_did_not_take_fails_the_job_though_nothing_raised"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if interrupted is not None or unfinished:",
+      "new": "    if interrupted is not None:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "W8_stamp_not_moved",
+      "description": "a removed row keeps its old updated_at, where every row rekordbox removed has it moved",
+      "reason": "ranked below the cap: one column of the removal, read by one driven test, and the marker itself is measured in W7"
+    },
+    {
+      "id": "W9_unset_marker_reads_live",
+      "description": "a marker that is None reads as live, the permissive answer",
+      "reason": "ranked below the cap: the refusal is the rule every reader already held, moved a layer down and pinned by the source guard"
+    },
+    {
+      "id": "T8_no_fingerprint_after_the_additions",
+      "description": "the fingerprint is not taken after the additions land, so an interrupted run leaves the reading from before them",
+      "reason": "ranked below the cap: maintainer facing, counted by one driven test"
+    },
+    {
+      "id": "T9_members_not_read_again",
+      "description": "what each playlist holds is not dropped before the proof, so the proof may read from before the additions",
+      "reason": "ranked below the cap: maintainer facing, and expected to kill nothing, since nothing reads a playlist's members before the additions land"
+    },
+    {
+      "id": "T10_removals_not_recorded",
+      "description": "the removals are not recorded on the session record, so a restore does not see them as work it would discard",
+      "reason": "ranked below the cap: the record's counts are read by one driven test"
+    },
+    {
+      "id": "M5_unread_tree_plans",
+      "description": "a tree nobody read still plans moves from whatever the placements carry",
+      "reason": "ranked below the cap: adoption's own plan withholds nothing over an unread tree, so this guard is the second of two"
+    },
+    {
+      "id": "M6_digest_drops_the_tracks_left",
+      "description": "the digest stops covering the tracks left where they are",
+      "reason": "ranked below the cap: the digest's coverage of a move's fields is driven field by field, and this is its other half"
+    },
+    {
+      "id": "M7_one_bucket_place_filed_under_genre",
+      "description": "a bucket that reads neither energy nor genre lists its track under the genre reason",
+      "reason": "ranked below the cap: a wording on a list, over a bucket the shipped template does not declare"
+    },
+    {
+      "id": "C2_another_verbs_job_is_driven",
+      "description": "a job another verb queued is driven through this verb's gate",
+      "reason": "ranked below the cap: the digest proof in C3 stands behind it"
+    },
+    {
+      "id": "C4_nobody_approved",
+      "description": "a job naming no approver is performed",
+      "reason": "ranked below the cap: reached only by a payload edited in the queue"
+    },
+    {
+      "id": "C7_sub_class_in_a_row_is_removed_from",
+      "description": "an approved row naming a sub that no longer competes is performed",
+      "reason": "ranked below the cap: reached only by a taxonomy edited between the approval and the write"
+    },
+    {
+      "id": "C8_plan_as_it_stands_not_asked",
+      "description": "a track the plan as it stands would leave is moved on the approval",
+      "reason": "ranked below the cap: three driven tests read it, and C5 and C6 measure the two checks beside it"
+    },
+    {
+      "id": "C10_reading_changed_is_performed",
+      "description": "a track whose reading now names another sub is moved to the sub it was approved for",
+      "reason": "ranked below the cap: the same family as C8, driven through the real verb by one test"
+    },
+    {
+      "id": "C11_refusal_not_raised_as_itself",
+      "description": "the worker raises its own account over a refusal it held",
+      "reason": "ranked below the cap: the same ending as T7, which is measured one layer down"
+    },
+    {
+      "id": "C12_unfinished_not_retryable",
+      "description": "the unfinished cause is built with retryable false",
+      "reason": "ranked below the cap: a flag on a cause two driven tests already read, and the cap was the two batches' 38 rows"
+    },
+    {
+      "id": "X1_membership_proven_refuses",
+      "description": "the proof reader refuses on a row that cannot say",
+      "reason": "ranked below the cap: a reader this unit touched and did not add, pinned by one test"
+    }
+  ]
+}

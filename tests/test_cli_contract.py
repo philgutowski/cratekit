@@ -1566,6 +1566,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # destructive session, which is what lets the verb exit OK on a machine
         # that has never acknowledged a backup.
         "adopt.apply": [],
+        # R-758. No argument, as its sibling takes none. It reads the backup
+        # acknowledgment BEFORE it asks its gate (R-733), so it is the one verb
+        # here that needs the acknowledgment this fixture records to reach its
+        # own logic at all. The tree on this fixture has not cut over, so the
+        # plan is the empty one over a tree nobody read, which still asks.
+        "adopt.move": [],
         # U61. The composer takes the favourites source's export, the same
         # document ``sync.favorites`` is driven with below, so its confirm gate
         # is reachable and conformance 3 can drive it. The registry on this
@@ -1947,6 +1953,43 @@ def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
     )
 
 
+#: Verbs that read the backup acknowledgment BEFORE they ask their gate (R-733),
+#: so a machine that never acknowledged one refuses them ahead of the gate
+#: conformance 3 holds them to reaching. NAMED RATHER THAN GIVEN TO EVERY VERB
+#: THROUGH THE FIXTURE: the other gated verbs reach their gates on a machine
+#: with no acknowledgment, and that is a property worth keeping under test.
+#: That each of these refuses without one is driven in its own suite, which
+#: the guard below holds this table to.
+ACKNOWLEDGED_BEFORE_THE_GATE = {
+    "adopt.move": (
+        "tests/test_adopt_move.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+}
+
+
+def _acknowledge_where_the_verb_reads_it_first(entry: registry.Entry, cfg) -> None:
+    if entry.name not in ACKNOWLEDGED_BEFORE_THE_GATE:
+        return
+    from cratekit.core import session
+
+    session.record_acknowledgment(cfg, terminal=lambda: True)
+
+
+def test_every_verb_acknowledged_for_conformance_is_refused_without_one_elsewhere():
+    """The table is an exemption from one machine state, so each entry names
+    the test that drives the verb in that state, and the test has to exist."""
+    root = Path(__file__).resolve().parent.parent
+    for name, node_id in ACKNOWLEDGED_BEFORE_THE_GATE.items():
+        assert registry.entry(name).landed, name
+        path, _, function = node_id.partition("::")
+        tree = ast.parse((root / path).read_text(encoding="utf-8"))
+        defined = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+        }
+        assert function in defined, f"{name} names {node_id}, which does not exist"
+
+
 def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
     """Drive one gated verb to OK the way R34 says it is reached, and say how.
 
@@ -2062,6 +2105,7 @@ def test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds(entry, conf
     """
     if not entry.gates:
         return
+    _acknowledge_where_the_verb_reads_it_first(entry, configured)
     _conformance_3(entry, _sample_arguments(entry))
 
 

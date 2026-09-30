@@ -54,6 +54,10 @@ SUPERVISOR = "job.resume"
 #: below keeps this table from outliving the reason for it.
 DRIVEN_ELSEWHERE = {
     "adopt.apply": "tests/test_adopt_workers.py::test_a_parked_adoption_leaves_blocked_and_non_zero",
+    # R-758. It reads the backup acknowledgment before it looks at the job, and
+    # its resume answers the gate from the plan the job froze, so it needs that
+    # file's machine and a job its own verb queued.
+    "adopt.move": "tests/test_adopt_move.py::test_a_parked_move_leaves_blocked_and_non_zero",
 }
 
 #: What each verb's argv builder reads off the frozen payload before it can name
