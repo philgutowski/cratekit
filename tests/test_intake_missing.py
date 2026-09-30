@@ -1206,7 +1206,13 @@ def test_the_default_human_output_names_the_list_the_download_and_the_landing(cf
     assert code == int(ExitCode.OK), text
     path = lists_dir(library) / RUN_LIST
     assert f"next: crate acquire download {path}" in text
-    assert "crate intake land --export XML --name 2026-09-18T100000Z-ab12_synced" in text
+    # R-770. The landing takes an export on the xml bridge and refuses one on a
+    # native intake tree, so the hint names the batch and says which medium
+    # wants the export, and never hands a cut over library a flag that refuses.
+    assert "crate intake land --name 2026-09-18T100000Z-ab12_synced" in text
+    assert "adding --export XML" in text and "while the intake tree is on the xml bridge" in text
+    assert "no export once the intake tree is database native" in text
+    assert "crate intake land --export" not in text
 
 
 def test_an_open_job_refuses_the_whole_run_and_names_it(cfg, library):

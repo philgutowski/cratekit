@@ -6488,7 +6488,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # were the engine's, and now refuses with library-export-unusable,
     # intake-list-unusable and internal-error itself. Measured by this pair
     # moving by two on the holders side and by nothing on the other.
-    assert (len(literal_holders), len(literal_both)) == (111, 26), (
+    # Re-pinned on the residual finding "Every other xml intake writer refuses
+    # as a defect once the intake tree cuts over", 2026-09-30: holders move 111
+    # to 112, and the also-holds-an-integer half is UNCHANGED at 26. ONE module
+    # joined and none left. intake/file_cli.py is a new file, the intake file
+    # verb moved out of intake/cli.py with its second medium, and it refuses
+    # with intake-list-unusable itself; intake/cli.py still holds its own. The
+    # splice's new refusal reuses tree-unconverged inside intake/ingest.py,
+    # which was a holder already, so the literal population did not move.
+    # Measured by this pair moving by one on the holders side and by nothing
+    # on the other.
+    assert (len(literal_holders), len(literal_both)) == (112, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

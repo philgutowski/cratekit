@@ -1620,7 +1620,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # U69. The job verbs' convention: an identifier deliberately absent,
         # so the verb must refuse from the vocabulary rather than trace back.
         "intake.missing": ["--job", "no-such-job"],
-        "intake.file": [str(library / "no-such-track.flac")],
+        # R-770. A FILE THAT IS THERE, since the verb declares a gate now and
+        # conformance 3 holds a gated verb to ending OK. On the conformance
+        # fixture the intake tree is on the xml bridge and no export is named,
+        # so the verb shows its plan, writes nothing and asks nothing. LAZY,
+        # because it puts a file under the library.
+        "intake.file": lambda: [str(_a_file_in_the_library())],
         # U72. A folder under the CONFIGURED library that holds no audio, so
         # the verb refuses from the vocabulary before its gate is reached.
         "intake.land": [str(library / "Music"), "--export", str(library / "no-such.xml")],
@@ -1819,6 +1824,18 @@ def _routing_tree() -> tuple[str, str]:
     return declared.tree.id, declared.tree.display
 
 
+def _a_file_in_the_library() -> Path:
+    """One file with an audio suffix under the configured library, made on demand.
+
+    Empty, which is enough: ``intake file`` with no export on a bridge tree
+    reads its tags for the plan and an empty container carries none.
+    """
+    path = Path(config.load().library.root) / "Music" / "conformance-single.flac"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+    return path
+
+
 def _ready_to_cut_over() -> list[str]:
     from tests import cutover_fixtures
 
@@ -1910,6 +1927,15 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
 #: fires is a gate the suite can hold a verb to.
 UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
     {
+        "intake.file.native": (
+            "asked only on a library whose intake tree is recorded database "
+            "native, for the reason intake.land.native gives below: the "
+            "conformance fixture's intake tree is on the xml bridge, where the "
+            "same verb shows its plan and asks nothing, and the medium is the "
+            "tree's mode, not an argument. The gate, its explicit two act answer "
+            "and its refusals are driven in tests/test_intake_writers_native.py "
+            "on a library whose intake tree has cut over."
+        ),
         "intake.land.native": (
             "asked only on a library whose intake tree is recorded database "
             "native, and the conformance fixture's intake tree is on the xml "
@@ -3210,15 +3236,19 @@ def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
 #: Adding a gate here is now a red suite, which is the point. It is the same
 #: shape `EXPECTED_PENDING` uses: the duplication IS the mechanism, because the
 #: second place is a line a reviewer reads in a diff.
-EXPECTED_UNREACHABLE_GATES = frozenset({"write.cloudsync.unreadable", "intake.land.native"})
+EXPECTED_UNREACHABLE_GATES = frozenset(
+    {"write.cloudsync.unreadable", "intake.land.native", "intake.file.native"}
+)
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Two gates are exempt. A third one is a decision, not a diff.
+    """Three gates are exempt. A fourth one is a decision, not a diff.
 
     The second, ``intake.land.native``, joined with R-746: one verb, two media,
     one drive per fixture, and the conformance fixture's intake tree is on the
-    bridge. Its own suite holds the verb to reaching it on a native tree.
+    bridge. Its own suite holds the verb to reaching it on a native tree. The
+    third, ``intake.file.native``, joined with R-770 for the same reason: it
+    is the second verb that writes the intake tree, on the same two media.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

@@ -18,7 +18,7 @@ from typing import Callable
 
 from cratekit.acquire.adapter import LosslessPolicy, decide_lossless
 from cratekit.acquire.match import MatchResult, Wanted
-from cratekit.core import config
+from cratekit.core import config, taxonomy, tree_registry
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import ingest, normalize, recognize
@@ -87,8 +87,15 @@ def ingest_file(
     export: Path,
     destination: Path,
     lossy: bool = False,
+    declared: taxonomy.Taxonomy | None = None,
+    registry: tree_registry.Registry | None = None,
 ) -> FileIngestResult:
-    """Ingest one audio file already on disk. No network call."""
+    """Ingest one audio file already on disk. No network call.
+
+    ``declared`` and ``registry`` are what the caller read to choose the intake
+    tree's medium, handed on so the splice is asked of the same read (R-770).
+    With none, ``place_files`` reads them itself.
+    """
     normalize.from_audio_file(path)
     placed = ingest.place_files(
         [path],
@@ -96,6 +103,8 @@ def ingest_file(
         export=export,
         destination=destination,
         lossy=lossy,
+        declared=declared,
+        registry=registry,
     )
     return FileIngestResult(
         placed=tuple(placed),

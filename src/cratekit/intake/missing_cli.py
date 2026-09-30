@@ -1337,9 +1337,16 @@ def _missing_for_run(ctx, run_id: str) -> Envelope:
             "land_name": name,
         },
         checks=checks,
+        # TRUE ON BOTH MEDIA, AND READS NEITHER (R-770). The landing takes an
+        # export on the xml bridge and refuses one on a native intake tree, so
+        # a hint that always named --export sent a person on a cut over library
+        # to a refusal. It says both rather than reading the switch, because a
+        # hint must not be one more thing that can refuse a listing.
         after=(
             f"; land what it downloads as one batch with: crate intake land "
-            f"--export XML --name {name}, XML being a Fresh Export of the collection"
+            f"--name {name}, adding --export XML, a Fresh Export of the collection, "
+            f"while the intake tree is on the xml bridge, and no export once the "
+            f"intake tree is database native"
         ),
         left_out=tuple(skipped),
     )
