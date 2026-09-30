@@ -5845,7 +5845,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # no move, move-nothing-planned. One is the workflow name the writer
     # records in the session log, tree-membership-move, the same kind of
     # literal as tree-membership.
-    assert (len(literals), len(literals - set(causes))) == (534, 348), (
+    # Re-pinned on the residual finding "A backup compares the whole library
+    # against the remote however little changed", 2026-09-29: 534 to 535
+    # distinct, non-keys 348 to 349. ONE joined and nothing left, and it is
+    # not a key: backup-comparison is the WARNING code `backup/cli.py` gives
+    # on a resumed backup to say which mode the file comparison ran in and
+    # what it sent. The verb's refusals are the ones it had.
+    assert (len(literals), len(literals - set(causes))) == (535, 349), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
