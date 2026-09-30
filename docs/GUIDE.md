@@ -553,6 +553,7 @@ the loudness target, minus fourteen by default.
 ```bash
 crate backup run --dry-run
 crate backup run
+crate backup run --full
 crate restore list
 crate restore run SESSION_ID --dry-run
 crate restore run --from-backup --target /path/to/empty/dir
@@ -570,6 +571,19 @@ when you leave it out. The database portion refuses while rekordbox or its
 agent is running, so a backup taken with the app open covers the music and not
 the database. Doctor reports each portion's age separately for that reason. Use
 `--dry-run` first, since it walks the whole plan and copies nothing.
+
+Every backup compares every file on the volume with the remote, by size and
+modification time, so a file whose tags were rewritten is sent even when its
+length did not change. What differs between the two modes is how the remote is
+listed. The ordinary run asks the remote for one recursive listing. `--full`
+asks folder by folder, which on a large library is most of an hour against a
+few minutes, and does not depend on the recursive listing being complete.
+Doctor reports how long ago a full comparison last ran, under
+`backup.full_comparison`, and says to run one after thirty days. The answer
+to a resumed backup says which mode ran, how long the mirror took, and how many
+files it compared and sent. The count sent is never zero after a real run,
+because the record of the previous backup lives in the library and travels with
+it.
 
 A restore puts the database and the state coupled to it back to a recorded write
 session. It does not put back values written into audio files, so genre tags

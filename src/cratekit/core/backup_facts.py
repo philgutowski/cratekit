@@ -67,6 +67,12 @@ SCHEMA_VERSION = 1
 #: hour is comfortably past both and far short of any real backup interval.
 FUTURE_TOLERANCE = timedelta(hours=1)
 
+#: The top level key holding when the file mirror last compared the library
+#: with the remote folder by folder (R-757). Beside ``portions`` and not inside
+#: a portion's entry, because it is not a backup: it is how the last backup of
+#: the files looked at the remote.
+FULL_COMPARISON_KEY = "full_comparison"
+
 
 class Portion(StrEnum):
     """The two halves of a library backup, each with its own gate.
@@ -168,6 +174,20 @@ def path_for(cfg: config.Config) -> Path:
 def read_facts(cfg: config.Config) -> dict[Portion, BackupFact]:
     """Every recorded fact, keyed by portion. An absent file is an empty dict.
 
+    The portions half of :func:`_read`, which is the one reader of the file.
+    """
+    return _read(cfg)[0]
+
+
+def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], BackupFact | None]:
+    """The file, read once: every portion's fact, and the last full comparison.
+
+    ONE READER FOR BOTH, so the file is either understood or refused as a whole.
+    Two readers would let a file the portions reader refuses answer a question
+    about the full comparison, over a document nothing vouched for.
+
+    THE PORTIONS, as :func:`read_facts` has always returned them:
+
     Absent is normal and is not an error: it is the state of every library
     before the backup module has run once. A file that exists but cannot be
     parsed is an error, for the reason in :class:`BackupFactsUnreadable`.
@@ -182,7 +202,7 @@ def read_facts(cfg: config.Config) -> dict[Portion, BackupFact]:
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
-        return {}
+        return {}, None
     except OSError as exc:
         # TWO CONDITIONS, TWO SENTENCES, TWO ACTS. A permission is not a
         # corruption, and it does not establish that the file is there either: an
@@ -248,32 +268,83 @@ def read_facts(cfg: config.Config) -> dict[Portion, BackupFact]:
     for name, entry in entries.items():
         if name not in known or not isinstance(entry, dict):
             continue
-        stamp = entry.get("completed_at")
-        try:
-            completed = datetime.fromisoformat(str(stamp))
-        except (TypeError, ValueError) as exc:
-            raise BackupFactsUnreadable(
-                f"{path} records {name!r} as completing at {stamp!r}, which is "
-                f"not an ISO timestamp",
-                path=path,
-                remedy=Remedy.REPAIR_BACKUP_FACTS,
-            ) from exc
-        if completed.tzinfo is None:
-            # A naive timestamp is unanswerable, not merely awkward: two
-            # installations of one library can sit in different zones, so the
-            # same text would describe two different instants.
-            raise BackupFactsUnreadable(
-                f"{path} records {name!r} without a time zone offset, so the "
-                f"instant it names depends on who reads it",
-                path=path,
-                remedy=Remedy.REPAIR_BACKUP_FACTS,
-            )
-        facts[Portion(name)] = BackupFact(
-            portion=Portion(name),
-            completed_at=completed,
-            destination=str(entry.get("destination") or ""),
+        facts[Portion(name)] = _fact(Portion(name), entry, named=name, path=path)
+
+    if FULL_COMPARISON_KEY not in data:
+        # WRITTEN BY A BUILD THAT HAD ONE MODE. Every build that does not write
+        # this key lists the remote folder by folder, so the files fact it left
+        # IS the last full comparison. Answering "never" here would tell a
+        # person whose every backup so far was a full one that none ever ran.
+        return facts, facts.get(Portion.FILES)
+    held = data[FULL_COMPARISON_KEY]
+    if held is None:
+        return facts, None
+    if not isinstance(held, dict):
+        raise BackupFactsUnreadable(
+            f"{path} holds something other than an object or null under "
+            f"{FULL_COMPARISON_KEY!r}",
+            path=path,
+            remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
-    return facts
+    return facts, _fact(Portion.FILES, held, named=FULL_COMPARISON_KEY, path=path)
+
+
+def _fact(portion: Portion, entry: dict, *, named: str, path: Path) -> BackupFact:
+    """One recorded completion, or a refusal naming what about it cannot be read."""
+    stamp = entry.get("completed_at")
+    try:
+        completed = datetime.fromisoformat(str(stamp))
+    except (TypeError, ValueError) as exc:
+        raise BackupFactsUnreadable(
+            f"{path} records {named!r} as completing at {stamp!r}, which is "
+            f"not an ISO timestamp",
+            path=path,
+            remedy=Remedy.REPAIR_BACKUP_FACTS,
+        ) from exc
+    if completed.tzinfo is None:
+        # A naive timestamp is unanswerable, not merely awkward: two
+        # installations of one library can sit in different zones, so the
+        # same text would describe two different instants.
+        raise BackupFactsUnreadable(
+            f"{path} records {named!r} without a time zone offset, so the "
+            f"instant it names depends on who reads it",
+            path=path,
+            remedy=Remedy.REPAIR_BACKUP_FACTS,
+        )
+    return BackupFact(
+        portion=portion,
+        completed_at=completed,
+        destination=str(entry.get("destination") or ""),
+    )
+
+
+def _age_of(portion: Portion, fact: BackupFact | None, moment: datetime) -> PortionAge:
+    """One fact as an age, in the three answers :class:`AgeState` names."""
+    if fact is None:
+        return PortionAge(portion=portion, state=AgeState.NEVER_RECORDED)
+    delta = moment - fact.completed_at
+    state = (
+        AgeState.RECORDED_IN_THE_FUTURE
+        if delta < -FUTURE_TOLERANCE
+        else AgeState.KNOWN
+    )
+    return PortionAge(
+        portion=portion,
+        state=state,
+        age=delta if state is AgeState.KNOWN else None,
+        completed_at=fact.completed_at,
+        destination=fact.destination,
+    )
+
+
+def full_comparison_age(cfg: config.Config, *, now: datetime | None = None) -> PortionAge:
+    """How long ago the file mirror last compared folder by folder (R-757).
+
+    The same three answers a portion's age has, and for the same reasons. It is
+    an age of the FILES portion's comparison, so that is the portion it names.
+    """
+    moment = now or datetime.now(timezone.utc)
+    return _age_of(Portion.FILES, _read(cfg)[1], moment)
 
 
 def ages(cfg: config.Config, *, now: datetime | None = None) -> tuple[PortionAge, ...]:
@@ -285,28 +356,7 @@ def ages(cfg: config.Config, *, now: datetime | None = None) -> tuple[PortionAge
     """
     moment = now or datetime.now(timezone.utc)
     facts = read_facts(cfg)
-    out: list[PortionAge] = []
-    for portion in Portion:
-        fact = facts.get(portion)
-        if fact is None:
-            out.append(PortionAge(portion=portion, state=AgeState.NEVER_RECORDED))
-            continue
-        delta = moment - fact.completed_at
-        state = (
-            AgeState.RECORDED_IN_THE_FUTURE
-            if delta < -FUTURE_TOLERANCE
-            else AgeState.KNOWN
-        )
-        out.append(
-            PortionAge(
-                portion=portion,
-                state=state,
-                age=delta if state is AgeState.KNOWN else None,
-                completed_at=fact.completed_at,
-                destination=fact.destination,
-            )
-        )
-    return tuple(out)
+    return tuple(_age_of(portion, facts.get(portion), moment) for portion in Portion)
 
 
 def oldest_usable_age(
@@ -331,8 +381,15 @@ def record(
     *,
     completed_at: datetime,
     destination: str,
+    full_comparison: bool = False,
 ) -> Path:
     """Record one portion's successful completion, leaving the others alone.
+
+    ``full_comparison`` says this completion compared the library with the
+    remote folder by folder, and moves that fact to this instant. Without it
+    the fact is carried through as it was read, INCLUDING the one a file from
+    an earlier build implies, so the first fast run after an upgrade does not
+    erase the date of the last full one.
 
     Read-modify-write rather than a whole-file overwrite. The two portions
     complete independently and often in the same run, and a writer that replaced
@@ -349,12 +406,26 @@ def record(
             "a different instant to every reader, and two installations of one "
             "library legitimately sit in different zones"
         )
-    facts = dict(read_facts(cfg))
+    read, compared = _read(cfg)
+    facts = dict(read)
     facts[portion] = BackupFact(
         portion=portion, completed_at=completed_at, destination=destination
     )
+    if full_comparison:
+        compared = facts[portion]
     payload = {
         "schema_version": SCHEMA_VERSION,
+        # ALWAYS WRITTEN, null included. Its absence is how a file from a build
+        # with one mode is recognised, so a build with two must never leave it
+        # out, or its own fast run would be read as a full one.
+        FULL_COMPARISON_KEY: (
+            None
+            if compared is None
+            else {
+                "completed_at": compared.completed_at.isoformat(),
+                "destination": compared.destination,
+            }
+        ),
         "portions": {
             fact.portion.value: {
                 "completed_at": fact.completed_at.isoformat(),
@@ -468,6 +539,7 @@ def read_outcomes(job_id: str) -> dict[str, dict] | None:
 
 
 __all__ = [
+    "FULL_COMPARISON_KEY",
     "FUTURE_TOLERANCE",
     "OUTCOMES_FIELD",
     "OUTCOMES_KEY",
@@ -484,6 +556,7 @@ __all__ = [
     "ages",
     "clear_outcome",
     "encode_outcome",
+    "full_comparison_age",
     "oldest_usable_age",
     "outcome_path",
     "path_for",

@@ -436,6 +436,16 @@ configuration sharing the asker's mirror or its archive root. `backup run`
 reports a twin with the warning `backup-already-queued` and files nothing. A
 rehearsal is never the twin of a real run. A job whose frozen configuration
 cannot be rebuilt is a twin, because could not read is not somewhere else.
+A fast backup and a full one are twins, since they write to one mirror.
+
+### Full comparison
+A file mirror that listed the remote folder by folder, `backup run --full`,
+as against the ordinary **fast** one, which takes one recursive listing. Both
+compare every file by size and modification time, so the word says how the
+remote was listed and never how much was compared. The fact file records when
+one last completed and doctor reports it under `backup.full_comparison`. A
+fact file with no such key was written by a build that had one mode, and its
+files record IS the last full comparison.
 
 ## Verification
 

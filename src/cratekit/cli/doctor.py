@@ -1904,6 +1904,69 @@ def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
     )
 
 
+#: How old the last full comparison may be before the check says to run one.
+#: Not a failure at any age: both modes compare every file, so what ages is
+#: only the proof that the recursive listing and the folder by folder one agree.
+FULL_COMPARISON_DUE_DAYS = 30
+
+
+def _check_full_comparison(inputs: _Inputs) -> Finding:
+    """How long ago the file mirror last compared folder by folder (R-757).
+
+    INFO AT EVERY AGE, and FAIL only where the record itself cannot be trusted.
+    The ordinary backup compares every file through one recursive listing, and
+    this is the date of the last run that did not depend on that listing, so a
+    fast mode cannot go unchecked for ever without the report saying so.
+    """
+    key, title = "backup.full_comparison", "backup, last full comparison"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    try:
+        answer = backup_facts.full_comparison_age(inputs.cfg, now=inputs.probes.now)
+    except backup_facts.BackupFactsUnreadable as exc:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=str(exc),
+            remedy=Remedy(str(exc.remedy)),
+        )
+    run_one = "Run one with: crate backup run --full"
+    if answer.state is backup_facts.AgeState.NEVER_RECORDED:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                "no backup here has compared the library with the remote folder "
+                "by folder. Every backup compares every file, through one "
+                f"recursive listing of the remote. {run_one}"
+            ),
+        )
+    if answer.state is backup_facts.AgeState.RECORDED_IN_THE_FUTURE:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"the recorded full comparison at {answer.completed_at} is ahead "
+                f"of now, so its age cannot be stated"
+            ),
+            remedy=Remedy.REPAIR_BACKUP_FACTS,
+        )
+    days = answer.age.days if answer.age is not None else 0
+    due = f". {run_one}" if days >= FULL_COMPARISON_DUE_DAYS else ""
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"last ran {days} days ago, against "
+            f"{answer.destination or 'an unnamed destination'}{due}"
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TrashPolicy:
     """What one rclone remote type does with a deleted object, as a declaration.
@@ -2802,6 +2865,8 @@ CHECKS: tuple[Check, ...] = (
         _bound(f"backup.age.{portion}", _check_backup_portion)
         for portion in backup_facts.PORTIONS
     ),
+    # R-757. After the ages it qualifies and before the remote they all name.
+    Check("backup.full_comparison", _check_full_comparison),
     Check("backup.remote", _check_backup_remote),
     Check("session.unresolved", _check_unresolved_session),
     # R-235. Beside the session check because both report this product's own

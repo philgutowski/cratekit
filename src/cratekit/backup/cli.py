@@ -108,6 +108,16 @@ from cratekit.modules.tools import backup
 #: is a resume that quietly does different work from the run it continues.
 DRY_RUN = "dry_run"
 
+#: The payload key for the full comparison (R-757), frozen and rebuilt the way
+#: the one above is and for the same reason: a resume that lost it would run
+#: the fast comparison under a job a person queued to be the full one.
+FULL = "full"
+
+#: The advisory saying what the file comparison did (R-757). A warning because
+#: the default renderer prints a verb's warnings and nothing of its payload, so
+#: this is the only place a person reading the terminal meets the numbers.
+COMPARISON = "backup-comparison"
+
 #: The warning a second ``backup run`` carries when it reports the open job in
 #: place of filing another (R-223). A warning and not a refusal, because nothing
 #: went wrong: the backup the person asked for is already in the queue, and the
@@ -188,6 +198,59 @@ def _is_rehearsal(job) -> bool:
     already read it, so all four readers answer the same question the same way.
     """
     return bool((job.payload or {}).get(DRY_RUN))
+
+
+def _is_full(job) -> bool:
+    """Whether this JOB compares folder by folder, read off its frozen payload.
+
+    The payload and never the command line, for the reason :func:`_is_rehearsal`
+    gives: ``--full`` typed beside ``--job`` selects nothing.
+    """
+    return bool((job.payload or {}).get(FULL))
+
+
+def comparison_warning(outcomes) -> tuple[dict[str, str], ...]:
+    """What the file comparison did, as one sentence, or nothing (R-757).
+
+    READ FROM THE RECORDED OUTCOME of the files item, which is what the run
+    itself wrote, and from nowhere else. A job whose files item recorded no
+    outcome, or one whose mirror never ran, says nothing here rather than
+    reporting a comparison nobody measured.
+
+    A NUMBER THAT WAS NOT READ IS SAID TO BE UNREAD. The engine reports None
+    for a total rclone did not give, and printing that as zero would tell a
+    person nothing was sent.
+    """
+    recorded = (outcomes or {}).get(str(backup_facts.Portion.FILES))
+    if not isinstance(recorded, dict):
+        return ()
+    found = None
+    for row in recorded.get("portions") or ():
+        if isinstance(row, dict) and isinstance(row.get("comparison"), dict):
+            found = row["comparison"]
+    if found is None:
+        return ()
+
+    def said(key: str, unit: str) -> str:
+        value = found.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return f"an unread number of {unit}"
+        return f"{value:.0f} {unit}"
+
+    other = "full" if found.get("mode") != backup.COMPARISON_FULL else "fast"
+    return (
+        {
+            "code": COMPARISON,
+            "message": (
+                f"the file comparison ran in the {found.get('mode')} mode and the "
+                f"mirror took {said('seconds', 'seconds')}, comparing "
+                f"{said('compared', 'files')} and sending {said('sent', 'files')}. "
+                f"Both modes compare every file by size and modification time. "
+                f"The {other} mode is: crate backup run"
+                + (" --full" if other == "full" else "")
+            ),
+        },
+    )
 
 
 def rehearsal_warning() -> dict[str, str]:
@@ -322,6 +385,9 @@ def _reported(store, job) -> dict:
     """
     progress = dict(jobs.progress(store, job.job_id))
     progress[DRY_RUN] = _is_rehearsal(job)
+    # R-757, beside the rehearsal flag and read the same way, so a second ask
+    # that is handed an open job can see which comparison that job will make.
+    progress[FULL] = _is_full(job)
     # R-349, under ``progress`` for the reason above. Read from the same files
     # ``job show`` reads, so the two surfaces cannot disagree about one item.
     outcomes = backup_facts.read_outcomes(job.job_id)
@@ -353,10 +419,20 @@ def build(parser, entry) -> None:
             "and recording no backup age"
         ),
     )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        dest="full",
+        help=(
+            "list the remote folder by folder instead of in one recursive pass, "
+            "which takes most of an hour on a large library and does not depend "
+            "on the recursive listing being complete"
+        ),
+    )
     parser.set_defaults(_handler=backup_library)
 
 
-def frozen_payload(dry_run: bool) -> dict[str, Any]:
+def frozen_payload(dry_run: bool, full: bool = False) -> dict[str, Any]:
     """What the queued job carries, and the only thing the resume is rebuilt from.
 
     ``bool`` rather than the argparse value straight through, so the payload holds
@@ -364,7 +440,7 @@ def frozen_payload(dry_run: bool) -> dict[str, Any]:
     namespace. A payload key that is ``"false"`` as a string is true to every
     reader of it, and the reader here decides whether anything is copied.
     """
-    return {DRY_RUN: bool(dry_run)}
+    return {DRY_RUN: bool(dry_run), FULL: bool(full)}
 
 
 def backup_argv(job) -> list[str]:
@@ -391,6 +467,8 @@ def backup_argv(job) -> list[str]:
     argv = ["backup", "run"]
     if payload.get(DRY_RUN):
         argv.append("--dry-run")
+    if payload.get(FULL):
+        argv.append("--full")
     return [*argv, "--job", job.job_id]
 
 
@@ -473,7 +551,10 @@ def _open_twin(store, *, handler_key: str, dry_run: bool, cfg: config.Config):
     library is not.
 
     THE REHEARSAL FLAG IS READ THE WAY THE WORK BODY READS IT, ``bool`` of one
-    key, and the rest of the payload is not compared. :func:`backup_argv`
+    key, and the rest of the payload is not compared, THE COMPARISON MODE
+    INCLUDED (R-757): a fast and a full backup write to one mirror, so they are
+    the same claim on the destination, and the job handed back says which mode
+    it is under ``progress``. :func:`backup_argv`
     already tolerates a key a later build may add, and whole-payload equality
     would make every job queued before such a build a stranger to every ask
     after it. A rehearsal and a real run stay two jobs: a rehearsal copies
@@ -670,9 +751,12 @@ def backup_library(ctx) -> Envelope:
                 *map(dict, backup.absent_analysis_share(jobs.frozen_config(job))),
                 *map(dict, backup.snapshot_identity_warning(jobs.frozen_config(job))),
                 *_rehearsal(job),
+                # R-757. From what ``_reported`` just read, so the sentence and
+                # the payload beside it are one reading of one file.
+                *comparison_warning(reported["progress"].get(OUTCOMES)),
             )
             return ctx.envelope(data=reported, warnings=warnings)
-        payload = frozen_payload(ctx.args.dry_run)
+        payload = frozen_payload(ctx.args.dry_run, ctx.args.full)
         found = _open_twin(
             store,
             handler_key=ctx.entry.handler_key,
@@ -944,7 +1028,12 @@ def perform_backup(
     cfg = _load() if cfg is None else cfg
     dry_run = bool(payload.get(DRY_RUN))
     try:
-        plan = backup.plan_backup(cfg, now=now, process_lister=process_lister)
+        plan = backup.plan_backup(
+            cfg,
+            now=now,
+            process_lister=process_lister,
+            full=bool(payload.get(FULL)),
+        )
     except backup.BackupRefused as exc:
         raise _engine_refusal(
             exc.refusal, exc.detail, library=str(cfg.library.root)
@@ -1193,13 +1282,16 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
 
 __all__ = [
     "ALREADY_QUEUED",
+    "COMPARISON",
     "DRY_RUN",
+    "FULL",
     "OUTCOMES",
     "REHEARSAL",
     "backup_argv",
     "backup_items",
     "backup_library",
     "build",
+    "comparison_warning",
     "frozen_payload",
     "handle",
     "perform_backup",

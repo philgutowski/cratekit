@@ -67,6 +67,7 @@ WHAT THIS PORT CHANGES, beyond translating the shell.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -222,6 +223,34 @@ IDENTITY_MARKER_PREFIX = "library-volume."
 #: wider keep.
 DEFAULT_ARCHIVE_KEEP = 1
 
+#: The option that makes rclone list the remote in one recursive pass, where it
+#: otherwise asks once per folder (R-757). It changes HOW THE REMOTE IS LISTED
+#: and nothing about what is compared: every file on both sides is still
+#: compared by size and modification time, so a file that changed is sent in
+#: either mode.
+#:
+#: MEASURED ON THE AUTHOR'S LIBRARY, 2026-09-29, 91,265 files in 22,433 folders.
+#: The local walk took 1.5 seconds. The mirror without this option had compared
+#: 18,774 files after 220 seconds and was killed at 540, a rate the remote's
+#: request pacing sets and 64 checkers did not move. The same command with this
+#: option compared all 91,235 in 190 seconds.
+FAST_LIST = "--fast-list"
+
+#: The two ways the mirror lists the remote, as the words a report carries.
+COMPARISON_FAST = "fast"
+COMPARISON_FULL = "full"
+
+#: What makes rclone say what the mirror did, in a shape that can be read
+#: rather than scraped. Without ``--stats-log-level`` the final totals are
+#: logged below the level rclone prints at, and with a ``--stats`` of zero they
+#: are not logged at all, both measured. The interval is an hour so an ordinary
+#: run carries the final totals and no others.
+MIRROR_STATS_ARGS: tuple[str, ...] = (
+    "--use-json-log",
+    "--stats", "1h",
+    "--stats-log-level", "NOTICE",
+)
+
 
 class Refusal(StrEnum):
     """Why a portion will not run, as a structured cause (KTD25, D2).
@@ -285,6 +314,10 @@ class CommandResult:
     returncode: int
     stdout: str = ""
     stderr: str = ""
+    #: Wall clock seconds the command took, or None when the runner did not
+    #: time it. None and never zero: a stand-in runner that measured nothing
+    #: must not report a comparison that took no time.
+    elapsed: float | None = None
 
 
 Runner = Callable[[Command], CommandResult]
@@ -403,6 +436,10 @@ class PortionOutcome:
     #: is the command AS RUN, so a rehearsal records its neutralized argv and
     #: the rotation records its listing and every purge it attempted.
     commands: tuple[Command, ...] = field(default_factory=tuple)
+    #: What the mirror's comparison did (R-757), or None for a portion that ran
+    #: no mirror. Built by :func:`comparison_report` from the command AS RUN and
+    #: from rclone's own totals.
+    comparison: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -669,8 +706,14 @@ def plan_backup(
     process_lister: ProcessLister | None = None,
     archive_keep: int = DEFAULT_ARCHIVE_KEEP,
     settings_dirs: Sequence[Path] | None = None,
+    full: bool = False,
 ) -> BackupPlan:
     """Decide what a run would do. Touches no remote and copies nothing.
+
+    ``full`` lists the remote folder by folder, the way every mirror did before
+    R-757, instead of in one recursive pass. Both modes compare every file, so
+    it selects the slower listing that does not depend on the recursive one
+    being complete, and nothing else.
 
     The same function serves the dry run and the real run, so "what it says it
     will do" and "what it does" are one decision rather than two that can
@@ -706,7 +749,11 @@ def plan_backup(
             ),
         )
 
-    portions.append(_plan_files(cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep))
+    portions.append(
+        _plan_files(
+            cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, full=full
+        )
+    )
     portions.append(
         _plan_database(
             cfg,
@@ -720,7 +767,7 @@ def plan_backup(
 
 
 def _plan_files(
-    cfg: config.Config, *, rclone: str, stamp: str, archive_keep: int
+    cfg: config.Config, *, rclone: str, stamp: str, archive_keep: int, full: bool = False
 ) -> PortionPlan:
     root = cfg.library.root
     if not root.is_dir():
@@ -741,6 +788,11 @@ def _plan_files(
                 # one-way propagation of local deletions to the only copy.
                 "--backup-dir", archive,
                 "--transfers", "8", "--checkers", "16",
+                # THE FULL MODE IS THE ABSENCE OF ONE OPTION, so the two modes
+                # cannot drift apart in anything else: the excludes, the
+                # archive and the comparison itself are the same arguments.
+                *(() if full else (FAST_LIST,)),
+                *MIRROR_STATS_ARGS,
             ),
         )
     ]
@@ -981,7 +1033,9 @@ def absent_analysis_share(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
 def subprocess_runner(command: Command) -> CommandResult:
     """Run one command with the fallback directories on PATH and no credentials."""
     import subprocess
+    import time
 
+    started = time.monotonic()
     completed = subprocess.run(
         list(command.argv),
         capture_output=True,
@@ -993,7 +1047,97 @@ def subprocess_runner(command: Command) -> CommandResult:
         returncode=completed.returncode,
         stdout=completed.stdout or "",
         stderr=completed.stderr or "",
+        elapsed=time.monotonic() - started,
     )
+
+
+def comparison_mode(command: Command) -> str:
+    """Which listing one mirror command used, read off the command AS RUN.
+
+    From the argv and from nothing else, so the report, the published fact and
+    the command rclone was handed cannot disagree about which mode a run was. A
+    flag carried beside the plan would be a second statement of it.
+    """
+    return COMPARISON_FAST if FAST_LIST in command.argv else COMPARISON_FULL
+
+
+def _logged(stderr: str) -> list[dict]:
+    """The JSON objects one command logged, skipping every line that is not one."""
+    out: list[dict] = []
+    for line in stderr.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict):
+            out.append(entry)
+    return out
+
+
+def _count(stats: Mapping[str, object], key: str) -> int | float | None:
+    """One total, or None when rclone did not give a number under that name.
+
+    ``bool`` is refused by name because it is an ``int`` to ``isinstance``, and
+    rclone's totals carry two booleans beside the counts.
+    """
+    value = stats.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
+
+
+def comparison_report(command: Command, result: CommandResult) -> dict[str, object]:
+    """What one mirror's comparison did: the mode, the time, and the counts.
+
+    EVERY COUNT IS NONE WHEN IT COULD NOT BE READ, AND NEVER ZERO. A run whose
+    totals were not found would otherwise answer "sent 0 files", which is the
+    sentence a person reads as nothing having changed.
+
+    ``seconds`` IS THE WHOLE MIRROR COMMAND, measured around it. rclone compares
+    and transfers at once, so the comparison has no separate clock; on a run
+    that sent nothing, and on a rehearsal, the two are the same number.
+    ``transfer_seconds`` is rclone's own total beside it.
+
+    THE LAST TOTALS LOGGED ARE THE ONES READ, because a run longer than the
+    stats interval logs more than one and only the last describes the whole run.
+    """
+    stats: Mapping[str, object] = {}
+    for entry in _logged(result.stderr):
+        found = entry.get("stats")
+        if isinstance(found, dict):
+            stats = found
+    return {
+        "mode": comparison_mode(command),
+        "seconds": result.elapsed,
+        "compared": _count(stats, "checks"),
+        "sent": _count(stats, "transfers"),
+        "sent_bytes": _count(stats, "bytes"),
+        "transfer_seconds": _count(stats, "transferTime"),
+        # rclone's own names and its own counting. How many files went to the
+        # dated archive is not derived from them: between two local folders a
+        # replaced file counted as a rename and a removed one as a rename and a
+        # delete, and what the remote counts was not measured.
+        "renames": _count(stats, "renames"),
+        "deletes": _count(stats, "deletes"),
+    }
+
+
+def _said(stderr: str) -> str:
+    """What a failed command said, as sentences when it logged JSON.
+
+    The mirror logs JSON so its totals can be read, and the tail of a JSON log
+    is the totals object rather than the reason. The errors are rendered and the
+    totals dropped. A command that logged plain text is returned as it was.
+    """
+    entries = _logged(stderr)
+    if not entries:
+        return stderr.strip()
+    lines = [
+        str(entry.get("msg", "")).strip()
+        for entry in entries
+        if "stats" not in entry and str(entry.get("msg", "")).strip()
+    ]
+    return "\n".join(lines) if lines else stderr.strip()
 
 
 def dry_run_argv(command: Command) -> tuple[str, ...]:
@@ -1057,6 +1201,7 @@ def run_backup(
         # afterwards by position would be a second reading of which result
         # belongs to which command, and the prune returns a variable number.
         executed: list[Command] = []
+        comparison: Mapping[str, object] | None = None
 
         def recorded(command: Command, _executed: list[Command] = executed) -> CommandResult:
             _executed.append(command)
@@ -1094,6 +1239,10 @@ def run_backup(
                 command = Command(label=command.label, argv=dry_run_argv(command))
             result = recorded(command)
             results.append(result)
+            if command.label == MIRROR:
+                # READ WHETHER OR NOT THE MIRROR SUCCEEDED, so a run that failed
+                # after sending half of what changed still says how far it got.
+                comparison = comparison_report(command, result)
             if result.returncode != 0 and command.label == SNAPSHOT_IDENTITY:
                 # THE SECOND CLASS THIS LOOP DOES NOT FAIL ON. By the time the
                 # marker is attempted the whole database set has copied, and
@@ -1123,10 +1272,11 @@ def run_backup(
                 PortionOutcome(
                     portion=entry.portion,
                     ran=False,
-                    detail=f"{entry.portion.value} portion failed: {failed.stderr.strip()[-400:]}",
+                    detail=f"{entry.portion.value} portion failed: {_said(failed.stderr)[-400:]}",
                     results=tuple(results),
                     warnings=tuple(warnings),
                     commands=tuple(executed),
+                    comparison=comparison,
                 )
             )
             continue
@@ -1137,6 +1287,13 @@ def run_backup(
                 entry.portion,
                 completed_at=moment,
                 destination=_destination_for(cfg, entry.portion),
+                # READ FROM THE REPORT OF THE COMMAND THAT RAN. A portion with
+                # no mirror carries no comparison and records none, so the
+                # database portion can never move this fact.
+                full_comparison=(
+                    comparison is not None
+                    and comparison["mode"] == COMPARISON_FULL
+                ),
             )
         outcomes.append(
             PortionOutcome(
@@ -1145,6 +1302,7 @@ def run_backup(
                 results=tuple(results),
                 warnings=tuple(warnings),
                 commands=tuple(executed),
+                comparison=comparison,
             )
         )
 
@@ -2115,6 +2273,11 @@ def outcome_payload(outcome: BackupOutcome) -> dict:
                 "refusal": entry.refusal.value if entry.refusal else None,
                 "detail": entry.detail,
                 "warnings": [dict(warning) for warning in entry.warnings],
+                # R-757. None for a portion that ran no mirror. A field that
+                # joins, so ``PAYLOAD_VERSION`` stays for the reason above.
+                "comparison": (
+                    dict(entry.comparison) if entry.comparison is not None else None
+                ),
                 # R-349. STRICT, because ``run_backup`` builds both from the same
                 # runner calls, and a mismatch would pair a return code with the
                 # wrong argv, which is worse than printing neither.
@@ -2133,7 +2296,12 @@ def outcome_payload(outcome: BackupOutcome) -> dict:
 
 
 __all__ = [
+    "COMPARISON_FAST",
+    "COMPARISON_FULL",
     "DEFAULT_ARCHIVE_KEEP",
+    "FAST_LIST",
+    "MIRROR",
+    "MIRROR_STATS_ARGS",
     "PAYLOAD_VERSION",
     "REFUSALS",
     "REKORDBOX_PROCESSES",
@@ -2157,6 +2325,8 @@ __all__ = [
     "RestorePlan",
     "ShareRestore",
     "absent_analysis_share",
+    "comparison_mode",
+    "comparison_report",
     "database_fileset",
     "database_target_for",
     "dry_run_argv",
