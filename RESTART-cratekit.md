@@ -28,7 +28,7 @@ the matcher could not resolve where it used to plan an add over it.
 tempo, grid, key or analysis row is written**, read from SQL column by
 column. The built in review raised ten findings: eight applied with a test
 each, two filed. **The numbers:** 10,949 collected, 10,948 passed and 1
-skipped, ruff clean, `scan_repo.py` exit 0. One full run of thirteen failed
+skipped, ruff clean, `scan_repo.py` exit 0. One full run of fourteen failed
 one restore test the branch does not touch, not reproduced, noted under
 R-22. **The mutation tables are the author's**, `docs/mutation/r770-a.md`
 to `r770-d.md`: 25 rows, 24 killed, one zero on a sample guard with its
