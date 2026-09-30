@@ -591,6 +591,26 @@ export, which R-773 (#229) makes possible without a hand edit, then
 `adopt scan` and `adopt apply` for the two rows. rekordbox's own view of
 the moved subs, which is R-761's close.
 
+## Sitting 21, 2026-09-30, 12:24 to 12:41, attended, the second favourites batch to the tree
+
+The author freed the screen for the import, with the feeder idle and
+stopped. rekordbox opened by the session, driven, quit, both processes
+gone before any verb.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| The import, by desktop control | by the session | Imported Library set to the day's intake file through Preferences. The one playlist imported from the rekordbox xml view. 9,869 tracks shown, the two rows at the top with BPM 0.00. | works |
+| The drag into INBOX | by the session, one attempt | **No box outline appears on a folder the drag has already expanded.** The insertion line above INBOX is the root; the line below it, at the children's indent, is the first place inside. Released there: `2026-09-30-favorites_inboxed` under INBOX at position 1, read back from the database. | works, the rule refined |
+| Analyze Tracks, both rows | by the session | Fractals **123.00 in 4A, equal to Cratekit's head**. I'll Find My Way To You **120.00 in 3B against Cratekit's `04B - 117`**, a second case for R-744. Genres already on both from the tagger, no Reload Tags needed since #222. | measured |
+| The moved subs, rekordbox's own view | read from the screen | Organic House: Low 359, Med 394, High 318. The database reads 359, 395, 318, every Med row on an active, distinct track. One display count, cause not found. | R-761 closed |
+| `crate export collection`, after #229 | yes | 10,020 rows, 495 playlists, no tempo. **9,853 Locations under the mounted root, none under the base drive.** A new warning names the 153 rows no rule maps. | R-773 live |
+| `intake imported` over it | yes, no hand edit | **Proven imported, 2 tracks, intake file retired.** The first time on a file this product wrote. | R-773 closed live |
+| `adopt scan` then `adopt apply`, the rehearsal | on a copy, state redirected | Route 7,790, withheld 4, digest `2c9e9f90b60aecad`. Applied: 2 added, 19,313 to 19,315, both rows in their bucket's Med sub. | measured |
+| `adopt apply`, live | approved by the session on an equal digest | Read back equal to the copy on every count. Fractals in Melodic House / Med, I'll Find My Way To You in Tech House / Med. | live |
+
+**The favourites cycle has run end to end twice**, the second time with no
+hand edit and no hand step but the acknowledgment and the screen.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -601,15 +621,6 @@ attributes only on rows it creates (R-688). Line 4 of #178, the full sync
 cycle, is next and is attended.
 
 ## Next sitting
-
-**The import of `2026-09-30-favorites_inboxed`** through desktop control,
-when the author frees the screen: the one playlist from the rekordbox xml
-view, dragged into INBOX with the box outline seen, Reload Tags, genres set,
-quit, both processes gone. Then `crate export collection` and `intake
-imported` over it with no hand edit, which is R-773's live proof. Then
-`adopt scan` and `adopt apply` for the two rows, rehearsed on a copy. Read
-the moved subs in rekordbox's own view while it is open, which closes R-761.
-Stop the feeder first (R-759).
 
 Owed by the author: a genre on the INBOX rows that carry none.
 
