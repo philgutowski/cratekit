@@ -4,6 +4,41 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Last built: R-746, issue #224, `relay/224`, 2026-09-29.** `crate intake
+land` adds a landed batch to the collection on a library whose intake tree
+has cut over, and splices the export as before on one that has not; the
+intake tree's mode chooses. On the native medium it opens the database with
+write intent, plans one content row per file with every column it sets, the
+batch playlist under the adopted INBOX root and the device whose `MasterDBID`
+is the library's, reads the backup acknowledgment before the gate, and asks
+`intake.land.native`, which takes no inline answer. It then moves the files
+and adds the rows through the binding's `add_content`, restamped with the
+path under `BaseDBDrive` and the chosen device, one playlist, the memberships
+in listing order, and one guarded commit that names the content table on
+`creations`. **The guard admits that one creation and no other**, held to
+`ADMITTABLE_ROW_TABLES`, judged against ten columns in memory and from SQL
+after the flush with the cue, mixer and file tables read, and the SQL read
+back now sees a creation the binding flushed (R-760 closed with it). **No
+tempo, grid, key, rate, artwork path or analysis row is written**, asserted
+column by column after the commit, and the answer says the rows await
+analysis. A file the collection holds is present and not added twice, a
+suffix the database has no type for stays in staging alone, and a plan of
+nothing asks nothing. `assert_not_intake` is gone: `crate tree cutover inbox`
+records the intake tree native like any tree. The built in review raised ten
+findings, nine fixed with a test each and one considered. **The numbers:**
+10,876 collected, 10,875 passed and 1 skipped, ruff clean, `scan_repo.py`
+exit 0. **The mutation tables are the author's**, `docs/mutation/r746-a.md`
+to `r746-d.md`: 25 distinct mutations, 25 killed, two of them after the test
+their zero bought, three considered and not run and each named. Filed
+**R-770** to **R-772**; R-770 meets the board bar and its issue is owed after
+this merge. **Owed at the next attended sitting, and it is R-746's own
+verification:** cut the intake tree over on a disposable copy with
+`library.state_dirname` redirected, land three files, approve, open rekordbox
+on the copy and read whether the rows are there, play and analyse; then live
+on three files at most, approved by the session only if the live digest
+equals the copy's, recorded in `docs/cutover.md`. **Main's highest residual
+number is R-772 once this merges.**
+
 **Last built: R-757, issue #226, `relay/226`, 2026-09-29.** A backup's file
 mirror lists the remote in one recursive pass, `--fast-list`, and `crate
 backup run --full` lists it folder by folder as every mirror did before.

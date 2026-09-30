@@ -30046,6 +30046,32 @@ experiment that decides whether this may be built at all,
 attended half was never run. Its standing decision is that intake stays on
 the xml bridge unless that verdict is clean. Issue #224 waits on #225 (A8).
 
+**Released 2026-09-29 by A8's clean verdict, sitting 17.** Built 2026-09-29
+on `relay/224`, issue #224. `intake land` chooses its medium by the intake
+tree's mode. On a tree recorded database native it opens the database with
+write intent, plans one content row per file with every column it sets, the
+batch playlist under the adopted intake root and the device whose
+`MasterDBID` is the library's, reads the backup acknowledgment before the
+gate, asks an explicit gate, then moves the files and adds the rows through
+the binding's `add_content`, restamped with the path under `BaseDBDrive` and
+the chosen device, one playlist and the memberships in listing order, behind
+one guarded commit that names the content table on `creations`. The guard
+admits that one creation with a column policy of ten, judged in memory and
+read from SQL after the flush with the cue, mixer and file tables, and every
+other commit refuses a content row as before (R-760 closed with it). The
+rows are read back after the commit and the answer says they await analysis.
+The intake tree's own cutover refusal is lifted, since the landing no longer
+owes the bridge a splice on a native tree. **Not written, and asserted column
+by column:** `BPM`, `Analysed`, `AnalysisDataPath`, `AnalysisUpdated`,
+`CueUpdated`, `KeyID`, `SampleRate`, `BitRate`, `BitDepth`, `ImagePath`, and
+no `djmdCue`, `djmdMixerParam` or `contentFile` row. Left for rekordbox and
+Reload Tags as well: `Length`, artist, album, genre (R-747). No routing
+intent is recorded for a native landing; the routing tree takes the rows
+through `adopt`. **The attended half is owed**, on a copy with library state
+redirected and then live on three files at most, and belongs to
+`docs/cutover.md`: this entry is closed by the build, and the sitting reads
+whether rekordbox shows, plays and analyses the rows.
+
 ---
 
 ## R-747. No verb sets a genre on a row
@@ -30474,6 +30500,14 @@ purpose, with a rule for what a new row may carry.
 **Not on the board bar.** It is a requirement of R-746 and is carried in its
 card.
 
+**Closed 2026-09-29 on `relay/224` with R-746.** A commit admits a content
+row by naming the table on `creations`, held to `ADMITTABLE_ROW_TABLES`, and
+the row is judged against `CONTENT_ROW_EMPTY_COLUMNS` in memory and again
+from SQL. The read back had a second blind spot beside the one this entry
+names: it walked `session.new` alone, so a creation the binding had already
+flushed, which is every row `add_content` makes, was never read back at all.
+It now resolves the instances the binding's buffer records a creation for.
+
 ---
 
 ## R-761. How rekordbox records one track taken out of a living playlist was not observed
@@ -30682,3 +30716,77 @@ measured first.
 full mode either takes it or the ledger records why not.
 
 **Not on the board bar.** Unchanged from every backup before this unit.
+
+## R-770. Every other xml intake writer refuses as a defect once the intake tree cuts over
+
+**Found:** on `relay/224`, 2026-09-29. `intake land` chooses its medium by
+the intake tree's mode. Nothing else does. `intake file`, `sync favorites`,
+`sync all`, the label batch and every other verb that writes an intake
+playlist into an export goes through `rbxml.insert_intake_playlist`, whose
+emitter guard refuses a tree the database owns with `tree-unconverged` and
+the remedy `report-defect`. After `crate tree cutover inbox` each of them
+refuses, and the refusal tells the person to file a bug against a cutover
+they chose.
+
+**Measured cost.** Not driven on a cut over library; read off the emitter
+guard and the suffixes `pending_intake_xml` walks. The bridge stays whole
+for a library that does not cut the intake tree over, which is every
+library today.
+
+**Closes when:** each intake writer chooses its medium the way the landing
+does, or refuses in its own words naming the landing, and a test drives
+each on a native intake tree.
+
+**On the board bar, 2026-09-29.** A workflow a DJ needs, the favourites
+cycle, cannot finish on a library whose intake tree has cut over, and the
+refusal says something false about whose defect it is. The issue is owed
+after the merge that carries this entry.
+
+---
+
+## R-771. A manifest is refused on a native intake tree, so label filing has no native path
+
+**Found:** on `relay/224`, 2026-09-29. `--manifest` files a manifest's label
+rows under the record labels tree inside the intake file the landing wrote.
+The native medium writes no intake file, and the record labels tree has no
+database writer for a landing to call, so `intake land --manifest` on a
+native intake tree is refused before the gate with the flag named, and the
+files land without their labels when run again without it.
+
+**Measured cost.** A label batch landed natively files nothing under its
+label. Whether the label verbs' own sweep files the same tracks later was
+not driven.
+
+**Closes when:** the label rows are filed through a native writer for the
+record labels tree, or the refusal is replaced by a warning once that tree
+has a medium of its own.
+
+**Not on the board bar.** Refused before anything moves, and said in the
+person's terms.
+
+---
+
+## R-772. The stored path's base drive form and the prefix map are two records of one fact
+
+**Found:** on `relay/224`, 2026-09-29. A landed row's `FolderPath` is stored
+under `djmdProperty.BaseDBDrive`, swapped for `CurrentDBDrive`, which is
+what rekordbox's own rows carry. Every reader of the collection resolves a
+stored path through `library.location_prefix_map`, which setup offers from
+the same two drives and a person may edit. When the two disagree, a row this
+product stored resolves to nothing on this machine: the next landing of the
+same file reads it absent and plans a second row, and the binding's own
+duplicate check compares the mounted spelling and does not catch the base
+drive one.
+
+**Measured cost.** Not reached. On the author's library the map was written
+from the drives, and on a library whose drives have never moved the two
+spellings are one. A test holds the swap and a test holds the resolver; no
+test holds them to agreeing.
+
+**Closes when:** the landing refuses, before the gate, a base drive the
+prefix map does not map to the current one, or the plan resolves its own
+stored path through the map and refuses when it does not come back.
+
+**Not on the board bar.** Reachability unmeasured; the input needs a map
+edited away from what setup wrote.
+
