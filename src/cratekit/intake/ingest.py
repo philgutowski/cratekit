@@ -7,7 +7,14 @@ destination is decided. U19's deferred-routing mechanism hangs off that
 call. Closing a run that still holds a deferred track goes through
 ``routing_pass.close_run``, never ``session.close_session``.
 
-Inbox stays on the XML bridge. This module does not flip a tree.
+THE INTAKE TREE HAS TWO MEDIA AND THIS MODULE WRITES ONE (R-746, R-770). On
+the xml bridge a file is spliced into an export, here. On a library whose
+intake tree has cut over a file becomes a content row through
+:mod:`cratekit.intake.native`, and nothing here may splice for it.
+:func:`intake_medium` is the one switch every intake verb reads, and
+:func:`assert_intake_on_the_bridge` is what a splice asks before its first
+byte, so a caller that did not read the switch is refused in this writer's
+words and never as a defect. This module does not flip a tree.
 """
 
 from __future__ import annotations
@@ -30,7 +37,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import refuse
+from cratekit.core.cause import Remedy, refuse
 from cratekit.core.naming import AUDIO_EXTS, MarkerRule, NameSpec, NameTemplate
 from cratekit.intake import collection_xml
 from cratekit.write import rbxml, routing_pass
@@ -44,6 +51,73 @@ INTAKE_WORKFLOW = "intake"
 #: how one of them goes stale. It was ``route.pending``, which before a cutover
 #: answers without reading anything (R-436).
 VERIFY_VERB = "intake.imported"
+
+
+@dataclass(frozen=True, slots=True)
+class IntakeMedium:
+    """What was read to choose the intake tree's medium, and the choice.
+
+    ``declared`` and ``registry`` are both None when the library root is not
+    there. The registry lives under the root, so an unreachable root decides
+    nothing: the bridge path is taken as it was before the second medium
+    existed, and its own checks name the library.
+    """
+
+    declared: taxonomy.Taxonomy | None
+    registry: tree_registry.Registry | None
+
+    @property
+    def native(self) -> bool:
+        """Whether the intake tree is recorded database native."""
+        if self.declared is None or self.registry is None:
+            return False
+        return self.registry.is_database_native(self.declared.intake.id)
+
+
+def intake_medium(cfg: config.Config) -> IntakeMedium:
+    """THE ONE SWITCH (R-770). Every verb that writes the intake tree reads it.
+
+    The intake tree's recorded mode chooses, the way the routing verbs choose
+    theirs: native takes a file into the collection through the guarded
+    writer, the bridge splices it into an export. One function, so two verbs
+    cannot come to read two rules, and so the taxonomy and the registry a verb
+    checks with are the ones its write is made against.
+    """
+    if not Path(cfg.library.root).is_dir():
+        return IntakeMedium(declared=None, registry=None)
+    return IntakeMedium(declared=active_taxonomy.load(cfg), registry=tree_registry.read(cfg))
+
+
+def assert_intake_on_the_bridge(
+    declared: taxonomy.Taxonomy, registry: tree_registry.Registry
+) -> None:
+    """Refuse a splice for an intake tree the database owns, in this writer's words.
+
+    THE CHECKING PATH, AHEAD OF THE EMITTER GUARD (R-770). The emitter refuses
+    the same tree with ``report-defect``, which is true of a writer that arrived
+    at the wrong medium by mistake and false of a person who cut the intake tree
+    over and then ran a verb that splices. A cutover is a choice, so the refusal
+    names the verbs that take the other medium and asks for no bug report.
+    """
+    if not IntakeMedium(declared=declared, registry=registry).native:
+        return
+    tree_id = declared.intake.id
+    raise refuse(
+        "tree-unconverged",
+        f"the intake tree {tree_id!r} is database native since its recorded "
+        f"cutover, so no intake file is written for it and nothing was spliced "
+        f"into an export; crate intake land adds a staged folder to the "
+        f"collection through the database, and crate intake file adds one file",
+        remedy=Remedy.FIX_COMMAND_LINE,
+        steps=(
+            "run crate intake land without --export to add a staged folder to "
+            "the collection",
+            "or run crate intake file without --export for one file already in "
+            "the library",
+        ),
+        origin=("intake.ingest",),
+        detail={"tree_id": tree_id, "mode": str(registry.mode(tree_id))},
+    )
 
 
 def import_steps(destination: Path, intake: str) -> tuple[str, ...]:
@@ -242,7 +316,17 @@ def place_files(
     registry, when the caller already read them to check what this writes, so
     the check and the write agree; with none each is read here, the taxonomy
     from the library and never from the shipped template.
+
+    A NATIVE INTAKE TREE IS REFUSED FIRST (R-770), before the export is looked
+    for, because on that medium there is no export to find and "export the
+    collection again" would be the wrong thing to tell anybody.
     """
+    if declared is None or registry is None:
+        medium = intake_medium(cfg)
+        declared = declared if declared is not None else medium.declared
+        registry = registry if registry is not None else medium.registry
+    if declared is not None and registry is not None:
+        assert_intake_on_the_bridge(declared, registry)
     if not export.is_file():
         raise refuse(
             "library-export-unusable",

@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import active_taxonomy, config, rb_writer, session, tree_registry
+from cratekit.core import config, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
@@ -280,12 +280,13 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
     return {**payload, "items": items, "totals": totals}
 
 
-def _gate(entry, name: str):
-    """One of this verb's gates by name, never by position.
+def gate_named(entry, name: str):
+    """One of a verb's gates by name, never by position.
 
-    Two gates since R-746, one per medium, and the shared cloud sync one is
-    raised by the guarded writer rather than asked here, so indexing would bind
-    a medium to the order the gates happen to be written in.
+    Two gates on the landing since R-746, one per medium, and the shared cloud
+    sync one is raised by the guarded writer rather than asked by a verb, so
+    indexing would bind a medium to the order the gates happen to be written
+    in. ``intake file`` looks its native gate up the same way (R-770).
     """
     for spec in entry.gates:
         if spec.name == name:
@@ -293,7 +294,7 @@ def _gate(entry, name: str):
     raise refuse(
         "internal-error",
         f"{entry.name} declares no gate named {name!r}, so there is no question "
-        f"to ask before landing",
+        f"to ask before it writes",
         remedy=Remedy.REPORT_DEFECT,
         origin=_ORIGIN,
         detail={"verb": entry.name, "gate": name},
@@ -318,12 +319,12 @@ def intake_land(ctx) -> Envelope:
     # lives under the library root, so an unreachable root decides nothing
     # here: the xml path is taken as it was before the medium existed, and
     # its preflight names the library, before the gate, under the R-677
-    # contract that a recorded abort is still honoured over it.
-    declared = registry = None
-    if Path(cfg.library.root).is_dir():
-        declared = active_taxonomy.load(cfg)
-        registry = tree_registry.read(cfg)
-    if declared is not None and registry.is_database_native(declared.intake.id):
+    # contract that a recorded abort is still honoured over it. THE SWITCH IS
+    # ``ingest.intake_medium`` AND NO COPY OF IT (R-770): ``intake file`` reads
+    # the same one, so the two verbs cannot choose by two rules.
+    medium = ingest.intake_medium(cfg)
+    declared, registry = medium.declared, medium.registry
+    if medium.native:
         return _land_native(
             ctx,
             cfg,
@@ -376,7 +377,7 @@ def intake_land(ctx) -> Envelope:
     payload = _payload(
         planned, target=target, destination=destination, export=export, manifest=manifest
     )
-    spec = _gate(ctx.entry, XML_GATE)
+    spec = gate_named(ctx.entry, XML_GATE)
     try:
         option = ctx.gate.require(
             spec,
@@ -471,16 +472,20 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
     }
 
 
-def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dict[str, Any]:
-    """The facts beside the items on the gate screen, one line per fact."""
+def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
+    """What a native plan writes, one line per fact, for any verb's gate screen.
+
+    SHARED WITH ``intake file`` (R-770), which asks the same kind of question
+    over the same engine's plan: where the playlist hangs, which database is
+    written, which device the rows are stamped with, how the path is stored,
+    and what is left for rekordbox.
+    """
     stored = (
         f"under the base drive {rows.base_drive}, which rekordbox maps to {rows.current_drive}"
         if rows.base_drive and rows.current_drive and rows.base_drive != rows.current_drive
         else "under the mounted path"
     )
     return {
-        "folder": str(folder),
-        "lands in": str(target),
         "playlist": f"{rows.playlist} under {rows.root_name} (row {rows.root_id})",
         "reads and writes": str(rows.database),
         "device": f"{rows.device_id} (master {rows.master_db_id})",
@@ -488,6 +493,26 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         "left empty for rekordbox": list(native.LEFT_EMPTY),
         "adds": len(rows.to_add()),
         "already present": len(rows.present()),
+    }
+
+
+def playlist_item(collection: native.NativeLanded) -> dict[str, Any]:
+    """The one item a native write appends for the batch playlist it wrote."""
+    return {
+        "action": PLAYLIST,
+        "playlist": collection.playlist,
+        "id": collection.playlist_id,
+        "tree": collection.tree_id,
+        "session": collection.session_id,
+    }
+
+
+def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dict[str, Any]:
+    """The facts beside the items on the gate screen, one line per fact."""
+    return {
+        "folder": str(folder),
+        "lands in": str(target),
+        **collection_facts(rows),
         "left in staging": len(rows.unsupported()),
     }
 
@@ -534,15 +559,7 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
         "already present": len(landed.collection.present),
         "memberships": landed.collection.memberships_added,
     }
-    items.append(
-        {
-            "action": PLAYLIST,
-            "playlist": landed.collection.playlist,
-            "id": landed.collection.playlist_id,
-            "tree": landed.collection.tree_id,
-            "session": landed.collection.session_id,
-        }
-    )
+    items.append(playlist_item(landed.collection))
     return {**payload, "items": items, "totals": totals}
 
 
@@ -594,7 +611,7 @@ def _land_native(
             origin=_ORIGIN,
             detail={"tree_id": tree_id, "manifest": str(manifest.path)},
         )
-    spec = _gate(ctx.entry, NATIVE_GATE)
+    spec = gate_named(ctx.entry, NATIVE_GATE)
     if not planned.items:
         identity = {"kind": "land-native", "folder": str(planned.folder), "batch": planned.batch}
         empty = {"digest": digest_of(identity), "items": [], "totals": {"count": 0}, "chunk": None}
@@ -630,20 +647,31 @@ def _land_native(
         rb_writer.close_db(db)
     native.assert_rows_gridless(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
-    if landed.collection.added:
-        warnings.append(
-            {
-                "code": AWAITING_ANALYSIS,
-                "message": (
-                    f"{len(landed.collection.added)} row(s) joined the collection with no "
-                    f"tempo, grid, key or waveform, and rekordbox analyses nothing on its "
-                    f"own with Auto Analysis off; open rekordbox, select the "
-                    f"{landed.collection.playlist} playlist under the intake folder and "
-                    f"run Analyze Track"
-                ),
-            }
-        )
+    warnings.extend(awaiting_analysis(landed.collection))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
+
+
+def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
+    """The warning a native write carries when rows joined the collection, else none.
+
+    ONE SENTENCE FOR EVERY VERB THAT ADDS A ROW (R-770). ``intake file`` adds
+    one through the same engine and owes the person the same next step, and a
+    second wording of it is how one of the two goes stale.
+    """
+    if not collection.added:
+        return []
+    return [
+        {
+            "code": AWAITING_ANALYSIS,
+            "message": (
+                f"{len(collection.added)} row(s) joined the collection with no "
+                f"tempo, grid, key or waveform, and rekordbox analyses nothing on its "
+                f"own with Auto Analysis off; open rekordbox, select the "
+                f"{collection.playlist} playlist under the intake folder and "
+                f"run Analyze Track"
+            ),
+        }
+    ]
 
 
 __all__ = [
@@ -653,9 +681,13 @@ __all__ = [
     "RETIRED_SUFFIX",
     "VERIFY_VERB",
     "XML_GATE",
+    "awaiting_analysis",
     "build_land",
+    "collection_facts",
     "default_name",
+    "gate_named",
     "intake_file",
     "intake_land",
+    "playlist_item",
     "unretired_name",
 ]

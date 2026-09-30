@@ -425,6 +425,11 @@ def _check_export(
     asked of the same copy, after the intake playlist is in it, which is the
     document the writer will actually be handed.
     """
+    # BEFORE THE EXPORT IS LOOKED FOR (R-770). A caller that arrives here on a
+    # native intake tree did not read the switch, and the writer's own refusal
+    # names the landing that takes that medium, where the emitter guard below
+    # would ask for a defect report over a cutover the person chose.
+    ingest.assert_intake_on_the_bridge(checked.declared, checked.registry)
     if not export.is_file():
         raise refuse(
             "library-export-unusable",
