@@ -268,6 +268,47 @@ def test_every_gridless_column_is_a_real_column_on_the_content_table():
     real = {column.name for column in DjmdContent.__table__.columns}
     missing = sorted(W.GRIDLESS_ON_CREATE_COLUMNS - real)
     assert not missing, f"{missing} are not columns on djmdContent; the check is disarmed"
+    missing = sorted(W.CONTENT_ROW_EMPTY_COLUMNS - real)
+    assert not missing, f"{missing} are not columns on djmdContent; the check is disarmed"
+
+
+def test_every_analysis_table_is_a_real_table_keyed_on_the_content_row():
+    """The three tables an admitted content row must own no row in (R-746)."""
+    from pyrekordbox.db6.tables import Base
+
+    for name in W.CONTENT_ANALYSIS_TABLES:
+        table = Base.metadata.tables.get(name)
+        assert table is not None, f"{name} is not a table in the binding"
+        assert "ContentID" in table.columns, f"{name} carries no ContentID column"
+
+
+def test_a_flushed_creation_is_read_back_from_both_sources(monkeypatch):
+    """R-760's blind spot, closed: the SQL read back used to walk ``session.new``
+    only, so a creation the binding had already flushed was never read."""
+    row = _FakeObj("djmdContent", columns=("ID", "BPM"))
+    monkeypatch.setattr(W, "_registry_created_instances", lambda db: {id(row): row})
+    seen: list[object] = []
+
+    class _Inspected:
+        identity = None
+
+    def inspect(obj):
+        seen.append(obj)
+        return _Inspected()
+
+    import sqlalchemy
+
+    monkeypatch.setattr(sqlalchemy, "inspect", inspect)
+
+    class _Flushing(_Session):
+        def flush(self):
+            return None
+
+    class _Handle:
+        session = _Flushing()
+
+    W.assert_created_rows_are_gridless(_Handle())
+    assert seen == [row], "the buffered creation was not resolved for its read back"
 
 
 # ---------------------------------------------------------------------------
