@@ -59,8 +59,9 @@ track once though it carried two moves, and refuses again a target held
 only through a renamed playlist. `tree_path_decides` is the one band only
 predicate. **No tempo, grid, cue or rating value differs**, column by column
 over `djmdContent` and the three cue tables. The built in review raised
-eight findings: seven applied, one recorded. **The numbers:** ruff clean,
-`scan_repo.py` exit 0, the suite green at the merge count below. **The
+eight findings: seven applied, one recorded. **The numbers:** 10,976
+collected, 10,975 passed and 1 skipped in 82 seconds, ruff clean,
+`scan_repo.py` exit 0. **The
 mutation tables are the author's**, `docs/mutation/r780-a.md` and
 `r780-b.md`: 18 rows, 18 killed, five considered and not run, the watched
 roots a scratch directory because a live `sync labels` job was writing the
