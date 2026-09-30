@@ -389,6 +389,9 @@ def test_the_script_prints_the_four_buckets_over_a_fixture_copy(tmp_path, monkey
     # one, which is the shape a session uses on a copy of the live library.
     copy = tmp_path / "copy.db"
     copy.write_bytes(Path(cfg.library.db_path).read_bytes())
+    # The configured database goes away, so a script that ignored --database
+    # and read the configured one would refuse rather than print the same rows.
+    Path(cfg.library.db_path).unlink()
     env = {
         **os.environ,
         config.ENV_LIBRARY_ROOT: str(cfg.library.root),
