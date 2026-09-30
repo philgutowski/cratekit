@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, rb_writer, session
@@ -575,12 +575,9 @@ def _land_native(
 ) -> Envelope:
     """Plan the rows against the database, ask, then move and write.
 
-    THE DATABASE IS OPENED WITH WRITE INTENT BEFORE THE PLAN, so a running
-    rekordbox or its agent refuses before anything is shown, and the plan is
-    made against the database the apply will write. THE ACKNOWLEDGMENT IS READ
-    BEFORE THE GATE (R-733): an approval is the one way door on a live library,
-    and a person who reads the whole plan and answers should not then be
-    refused by something the verb could have read first. A PLAN OF NOTHING IS
+    THE ORDER IS :func:`ask_then_write`'s, which ``intake file`` shares: the
+    database opened with write intent before the plan, the acknowledgment read
+    before the gate (R-733), the write only on ``apply``. A PLAN OF NOTHING IS
     NOT ASKED: download staging is empty after every landing, and an explicit
     gate, which takes a separate recorded act, is the price of a new kind of
     write and not of learning there is nothing to move. Nothing is written
@@ -623,32 +620,71 @@ def _land_native(
     # before its first move, as the xml landing's preflight is.
     landing.preflight_native(planned, cfg=cfg)
     files = [(item, target / item.name) for item in planned.items]
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
-        rows = native.plan_rows(
-            cfg, db, tree_id=tree_id, registry=registry, batch=planned.batch, files=files
-        )
-        payload = _native_payload(planned, rows, target=target)
-        session.assert_backup_acknowledged(cfg)
-        option = ctx.gate.require(
-            spec,
-            plan=payload,
-            context=_native_shown(rows, folder=planned.folder, target=target),
-        )
-        if option != "apply":
-            return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
+
+    def write(db, rows: native.NativePlan) -> landing.LandedNative:
         # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432), as on
         # the bridge: the engine checks a target free and then renames over it.
         with landing.batch_lock(planned.batch):
-            landed = landing.apply_native(
-                planned, cfg=cfg, db=db, rows=rows, declared=declared
-            )
-    finally:
-        rb_writer.close_db(db)
+            return landing.apply_native(planned, cfg=cfg, db=db, rows=rows, declared=declared)
+
+    payload, landed = ask_then_write(
+        ctx,
+        cfg,
+        spec,
+        plan=lambda db: native.plan_rows(
+            cfg, db, tree_id=tree_id, registry=registry, batch=planned.batch, files=files
+        ),
+        payload=lambda rows: _native_payload(planned, rows, target=target),
+        shown=lambda rows: _native_shown(rows, folder=planned.folder, target=target),
+        write=write,
+    )
+    if landed is None:
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     native.assert_rows_gridless(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(awaiting_analysis(landed.collection))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
+
+
+def ask_then_write(
+    ctx,
+    cfg: config.Config,
+    spec,
+    *,
+    plan: Callable[[Any], native.NativePlan],
+    payload: Callable[[native.NativePlan], dict],
+    shown: Callable[[native.NativePlan], dict[str, Any]],
+    write: Callable[[Any, native.NativePlan], Any],
+) -> tuple[dict, Any | None]:
+    """The order every native intake write keeps, held once. Answers (payload, written).
+
+    SHARED BY THE LANDING AND ``intake file`` (R-770), because the order is the
+    contract and two hand kept copies of it would come to differ:
+
+    * THE DATABASE IS OPENED WITH WRITE INTENT BEFORE THE PLAN, so a running
+      rekordbox or its agent refuses before anything is shown, and the plan is
+      made against the database the write will be made to;
+    * THE ACKNOWLEDGMENT IS READ BEFORE THE GATE (R-733): an approval is the
+      one way door on a live library, and a person who reads the whole plan
+      and answers should not then be refused by something the verb could have
+      read first;
+    * the gate is asked over the digested plan, and only ``apply`` writes;
+    * the handle is closed whatever happened.
+
+    ``written`` is None when the answer was not ``apply``, and the payload is
+    then the plan as it was shown.
+    """
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        rows = plan(db)
+        data = payload(rows)
+        session.assert_backup_acknowledged(cfg)
+        option = ctx.gate.require(spec, plan=data, context=shown(rows))
+        if option != "apply":
+            return data, None
+        return data, write(db, rows)
+    finally:
+        rb_writer.close_db(db)
 
 
 def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
@@ -681,6 +717,7 @@ __all__ = [
     "RETIRED_SUFFIX",
     "VERIFY_VERB",
     "XML_GATE",
+    "ask_then_write",
     "awaiting_analysis",
     "build_land",
     "collection_facts",

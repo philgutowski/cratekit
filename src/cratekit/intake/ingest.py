@@ -80,8 +80,11 @@ def intake_medium(cfg: config.Config) -> IntakeMedium:
     The intake tree's recorded mode chooses, the way the routing verbs choose
     theirs: native takes a file into the collection through the guarded
     writer, the bridge splices it into an export. One function, so two verbs
-    cannot come to read two rules, and so the taxonomy and the registry a verb
-    checks with are the ones its write is made against.
+    cannot come to read two rules. ``intake file`` hands what this read to its
+    splice, so its check and its write are one read. The bridge landing's
+    engine reads both again before its first move, by its own contract
+    (R-677), and :func:`assert_intake_on_the_bridge` is what refuses there if
+    a cutover was recorded in between.
     """
     if not Path(cfg.library.root).is_dir():
         return IntakeMedium(declared=None, registry=None)
@@ -118,6 +121,21 @@ def assert_intake_on_the_bridge(
         origin=("intake.ingest",),
         detail={"tree_id": tree_id, "mode": str(registry.mode(tree_id))},
     )
+
+
+def bridge_intake_tree(
+    declared: taxonomy.Taxonomy, registry: tree_registry.Registry
+) -> rbxml.Tree:
+    """The intake tree a splice is handed, refused first when the database owns it.
+
+    THE ONE PLACE IN ``src`` THAT BUILDS IT. The write layer names no verb, so
+    the refusal that names the landing cannot live beside the emitter guard; it
+    lives here, one layer up, in the function every splicer has to go through to
+    get a tree to pass the emitter at all. A third splicer therefore meets this
+    refusal and not the guard's, without anybody remembering to ask.
+    """
+    assert_intake_on_the_bridge(declared, registry)
+    return rbxml.intake_tree(declared, registry)
 
 
 def import_steps(destination: Path, intake: str) -> tuple[str, ...]:
@@ -319,7 +337,9 @@ def place_files(
 
     A NATIVE INTAKE TREE IS REFUSED FIRST (R-770), before the export is looked
     for, because on that medium there is no export to find and "export the
-    collection again" would be the wrong thing to tell anybody.
+    collection again" would be the wrong thing to tell anybody. So the taxonomy
+    and the registry are read ahead of every other check here, and one that
+    cannot be read refuses with its own cause before a missing export does.
     """
     if declared is None or registry is None:
         medium = intake_medium(cfg)
@@ -393,7 +413,7 @@ def place_files(
     collection_xml.splice_tracks(content, xml_rows)
     if registry is None:
         registry = tree_registry.read(cfg)
-    tree = rbxml.intake_tree(declared, registry)
+    tree = bridge_intake_tree(declared, registry)
     playlist_error = rbxml.insert_intake_playlist(
         content,
         destination.stem,

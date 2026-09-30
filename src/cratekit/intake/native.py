@@ -309,6 +309,21 @@ def plan_rows(
     )
     rows: list[RowPlan] = []
     for (source, target), match in zip(files, matches):
+        if match.outcome is trees.MatchOutcome.UNRESOLVED:
+            # NOT ABSENT, UNASKED (R-770). The matcher could not put the target
+            # under the library root or a prefix rule, so it never looked for a
+            # row, and planning an add over that is planning a second row for a
+            # file the collection may hold. Every reader that resolves against
+            # the root would drop the row it made, too.
+            raise refuse(
+                "intake-list-unusable",
+                f"{target} resolves nowhere under the library at "
+                f"{cfg.library.root} or its prefix rules, so the collection could "
+                f"not be asked whether it already holds that file and no row was "
+                f"planned for it",
+                origin=_ORIGIN,
+                detail={"target": str(target), "root": str(cfg.library.root)},
+            )
         held = _holding(match)
         file_type = file_type_of(target)
         if file_type is None:

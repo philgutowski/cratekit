@@ -277,7 +277,7 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     assert title == ingest.read_meta(path, cfg=cfg)["name"]
     assert title.startswith("01A - 124 - ")
 
-    ((playlist_id, parent, attribute),) = _playlists(cfg, file_cli.batch_name(path))
+    ((playlist_id, parent, attribute),) = _playlists(cfg, path.stem)
     assert str(parent) == root_id, "the batch playlist was not parented to the adopted root"
     assert int(attribute or 0) == 0, "the batch node is a folder, not a playlist"
     assert _members(cfg, str(playlist_id)) == [str(content_id)]
@@ -292,7 +292,7 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     assert item["left_empty"] == sorted(native.LEFT_EMPTY)
     assert playlist == {
         "action": land_cli.PLAYLIST,
-        "playlist": file_cli.batch_name(path),
+        "playlist": path.stem,
         "id": str(playlist_id),
         "tree": INTAKE,
         "session": playlist["session"],
@@ -305,7 +305,7 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     }
     (warning,) = acted["warnings"]
     assert warning["code"] == land_cli.AWAITING_ANALYSIS
-    assert file_cli.batch_name(path) in warning["message"] and "Analyze" in warning["message"]
+    assert path.stem in warning["message"] and "Analyze" in warning["message"]
 
     # What a restore reads and what a revert of the intake cutover refuses over.
     (record,) = session.records(cfg)
@@ -363,7 +363,7 @@ def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database
     assert shown["file"] == str(path.resolve())
     assert shown["reads and writes"] == str(cfg.library.db_path)
     assert shown["playlist"] == (
-        f"{file_cli.batch_name(path)} under {DECLARED.intake.display} (row {root_id})"
+        f"{path.stem} under {DECLARED.intake.display} (row {root_id})"
     )
     assert shown["left empty for rekordbox"] == list(native.LEFT_EMPTY)
     assert shown["adds"] == 1 and shown["already present"] == 0
@@ -373,7 +373,7 @@ def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database
     assert set(item["row"]) == {"Title", "FolderPath", "FileNameL", "FileSize", "FileType"}
     # Nothing was written for a plan nobody answered.
     _assert_nothing_written(cfg, tmp_path)
-    assert _playlists(cfg, file_cli.batch_name(path)) == []
+    assert _playlists(cfg, path.stem) == []
 
 
 def test_the_native_gate_takes_no_inline_answer(native_library, silence, tmp_path):
@@ -436,7 +436,7 @@ def test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row(
     assert shown["adds"] == 0 and shown["already present"] == 1
     assert code == int(ExitCode.OK), acted
     assert [row[0] for row in _rows(cfg)] == ["held-1"], "the held file gained a second row"
-    ((playlist_id, _parent, _attribute),) = _playlists(cfg, file_cli.batch_name(path))
+    ((playlist_id, _parent, _attribute),) = _playlists(cfg, path.stem)
     assert _members(cfg, str(playlist_id)) == ["held-1"]
     item = acted["data"]["items"][0]
     assert item["action"] == native.PRESENT and item["content_id"] == "held-1"
@@ -509,6 +509,143 @@ def test_a_file_no_declared_sub_would_take_is_refused_before_the_gate(
     _assert_nothing_written(cfg, tmp_path)
 
 
+def test_a_file_outside_the_library_is_refused_on_the_native_medium(
+    native_library, silence, tmp_path
+):
+    """The review drove this: a file outside the root was planned as an add,
+    written, and could never be found again, since the matcher resolves under
+    the root. A second run then planned a second row for it."""
+    cfg, _root = native_library
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    outside = elsewhere / "Out.flac"
+    shutil.copyfile(silence, outside)
+    assert tags.write_tags(outside, {"title": "Out", "artist": "Probe", "genre": "Deep House"})
+
+    code, envelope = drive(_file(outside))
+
+    _assert_refused_before_the_gate(envelope, code, "intake-list-unusable")
+    message = envelope["cause"]["message"]
+    assert "Out.flac" in message and "outside the library" in message
+    assert str(cfg.library.root) in message
+    _assert_nothing_written(cfg, tmp_path)
+
+
+def test_a_file_outside_the_library_is_still_spliced_on_the_bridge(
+    bridge_library, silence, export, tmp_path
+):
+    """The bridge never asked, and still does not: a Location is text."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    outside = elsewhere / "Out.flac"
+    shutil.copyfile(silence, outside)
+    assert tags.write_tags(outside, {"title": "Out", "artist": "Probe", "genre": "Deep House"})
+    code, envelope = drive(_file(outside, "--export", str(export)))
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert b"Out.flac" in (elsewhere / "Out_inboxed.xml").read_bytes()
+
+
+def test_a_file_named_through_a_link_is_stored_under_the_configured_root(
+    native_library, silence, tmp_path
+):
+    """The row is spelled as the native landing spells its targets, under the
+    root as configured, so it matches the rows the collection holds whichever
+    way the person reached the file."""
+    cfg, _root = native_library
+    path = _single(cfg, silence)
+    alias = tmp_path / "alias"
+    alias.symlink_to(cfg.library.root, target_is_directory=True)
+    through = alias / path.relative_to(cfg.library.root)
+    assert through.is_file() and str(through) != str(path)
+
+    code, acted, _ = _two_acts(_file(through))
+
+    assert code == int(ExitCode.OK), acted
+    ((_content_id, _title, folder_path),) = _rows(cfg)
+    assert folder_path == str(Path(cfg.library.root) / cfg.library.music_dir / "Single.flac")
+    # And a second run finds the row it made, where the unresolved spelling
+    # planned a second one.
+    code, refused = drive(_file(through))
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["adds"] == 0 and shown["already present"] == 1
+
+
+def test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_add(
+    native_library, silence, tmp_path
+):
+    """Unasked is not absent. The matcher never looked for a row for a path it
+    could not put under the root, and the plan used to read that as no row."""
+    cfg, _root = native_library
+    outside = tmp_path / "elsewhere.flac"
+    shutil.copyfile(silence, outside)
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        with pytest.raises(CratekitError) as raised:
+            native.plan_rows(
+                cfg,
+                db,
+                tree_id=INTAKE,
+                registry=tree_registry.read(cfg),
+                batch="probe",
+                files=[(outside, outside)],
+            )
+    finally:
+        rb_writer.close_db(db)
+    cause = raised.value.cause
+    assert cause.reason == "intake-list-unusable"
+    assert str(outside) in cause.message and "no row was planned" in cause.message
+
+
+def test_a_binding_failure_past_the_gate_says_what_it_leaves(
+    native_library, silence, tmp_path, monkeypatch
+):
+    cfg, _root = native_library
+    path = _single(cfg, silence)
+
+    def broken(*args, **kwargs):
+        raise ValueError("the binding said no")
+
+    monkeypatch.setattr(native, "apply_rows", broken)
+    code, acted, _ = _two_acts(_file(path))
+
+    assert code != int(ExitCode.OK), acted
+    cause = acted["cause"]
+    assert cause["reason"] == "internal-error"
+    assert "the binding said no" in cause["message"]
+    assert "no row was added and Single.flac is where it was" in cause["message"]
+    assert path.is_file()
+    assert _rows(cfg) == []
+
+
+def test_a_refusal_past_the_gate_keeps_its_reason_and_remedy(
+    native_library, silence, monkeypatch
+):
+    from cratekit.core.cause import refuse
+    from cratekit.core.exit_codes import Remedy
+
+    cfg, _root = native_library
+    path = _single(cfg, silence)
+
+    def refused(*args, **kwargs):
+        raise refuse(
+            "rekordbox-running",
+            "rekordbox opened the database",
+            remedy=Remedy.QUIT_REKORDBOX,
+            steps=("quit rekordbox",),
+            origin=("a-test",),
+        )
+
+    monkeypatch.setattr(native, "apply_rows", refused)
+    code, acted, _ = _two_acts(_file(path))
+
+    cause = acted["cause"]
+    assert cause["reason"] == "rekordbox-running"
+    assert cause["remediation"]["remedy"] == "quit-rekordbox"
+    assert cause["remediation"]["steps"] == ["quit rekordbox"]
+    assert "rekordbox opened the database" in cause["message"]
+    assert "no row was added" in cause["message"]
+
+
 def test_no_acknowledgment_refuses_before_the_gate(machine, silence, tmp_path):
     cfg = machine
     _cut_over_intake(cfg)
@@ -543,14 +680,13 @@ def test_on_the_bridge_the_export_is_spliced_as_before(bridge_library, silence, 
     intake_file = path.with_name("Single_inboxed.xml")
     assert envelope["pending_human_action"]["artifact"] == str(intake_file)
     written = intake_file.read_bytes()
+    # The bridge names the batch playlist after its intake file, as it did.
     assert b'<NODE Name="Single_inboxed" Type="1"' in written
     assert b"Single.flac" in written
-    # The playlist has one name on both media: the intake file's stem.
-    assert intake_file.stem == file_cli.batch_name(path)
     # The export itself is read and never written, and the database is not touched.
     assert export.read_bytes() == before
     assert _rows(cfg) == []
-    assert _playlists(cfg, file_cli.batch_name(path)) == []
+    assert _playlists(cfg, path.stem) == []
     (record,) = session.records(cfg)
     assert record.state is session.SessionState.AWAITING_IMPORT
 
@@ -565,6 +701,55 @@ def test_on_the_bridge_no_export_is_a_plan_and_asks_no_gate(bridge_library, sile
     assert envelope.get("cause") is None, "the bridge plan asked a gate"
     assert gates.load(envelope["run_id"]).offers == {}
     _assert_nothing_written(cfg, tmp_path)
+
+
+@pytest.fixture(params=(BRIDGE, NATIVE))
+def both(request, bridge_library) -> config.Config:
+    """The acknowledged machine on each medium in turn."""
+    if request.param == NATIVE:
+        _cut_over_intake(bridge_library)
+    return bridge_library
+
+
+def test_a_file_that_is_not_there_refuses_from_the_vocabulary_on_either_medium(both, tmp_path):
+    """The conformance sample held the verb to this until it needed a file that
+    exists, so it is held here, on both media."""
+    cfg = both
+    code, envelope = drive(_file(_music(cfg) / "no-such-track.flac"))
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert "is not a file on this machine" in envelope["cause"]["message"]
+    _assert_nothing_written(cfg, tmp_path)
+
+
+def test_a_file_that_is_not_audio_refuses_on_either_medium(both, tmp_path):
+    cfg = both
+    notes = _music(cfg) / "notes.txt"
+    notes.write_text("not audio\n", encoding="utf-8")
+    code, envelope = drive(_file(notes))
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert "not an audio file" in envelope["cause"]["message"]
+    _assert_nothing_written(cfg, tmp_path)
+
+
+def test_a_registry_nobody_can_read_refuses_the_plan_with_its_own_cause(
+    bridge_library, silence, tmp_path
+):
+    """The medium is read before the plan is shown, on the bridge too. A
+    registry that cannot be read is not read as "on the bridge": the verb
+    cannot say whether there is a gate to ask, so it says why."""
+    cfg = bridge_library
+    path = _single(cfg, silence)
+    registry_file = tree_registry.path_for(cfg)
+    registry_file.parent.mkdir(parents=True, exist_ok=True)
+    registry_file.write_text("{ not json", encoding="utf-8")
+
+    code, envelope = drive(_file(path))
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "tree-registry-unusable"
+    assert _rows(cfg) == [] and _xml_anywhere(cfg, tmp_path) == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -642,6 +827,27 @@ def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way(
     assert staged.exists()
 
 
+def test_a_bridge_apply_on_a_native_tree_moves_nothing_and_keeps_the_splices_cause(
+    native_library, silence, export
+):
+    """A cutover recorded between the verb's read and the engine's. The engine
+    reads the registry again before its first move (R-677), and what it finds
+    is refused there, unwrapped, with the file still in staging."""
+    cfg, _root = native_library
+    staged = Path(cfg.paths.download_staging) / "One.flac"
+    shutil.copyfile(silence, staged)
+    assert tags.write_tags(staged, {"title": "One", "artist": "Probe", "genre": "Deep House"})
+    planned = landing.plan(Path(cfg.paths.download_staging), cfg, "2026-09-30_batch")
+    destination = land_cli.intake_file(cfg, "2026-09-30_batch")
+
+    with pytest.raises(CratekitError) as raised:
+        landing.apply(planned, cfg=cfg, export=export, destination=destination)
+
+    _assert_names_the_landing_and_no_defect(raised.value.cause)
+    assert staged.exists() and not destination.exists()
+    assert not (Path(cfg.library.root) / cfg.library.music_dir / "2026-09-30_batch").exists()
+
+
 def test_the_splice_still_takes_a_bridge_tree(bridge_library, silence, export, tmp_path):
     cfg = bridge_library
     path = _single(cfg, silence)
@@ -650,11 +856,11 @@ def test_the_splice_still_takes_a_bridge_tree(bridge_library, silence, export, t
     assert placed.path == path and destination.is_file()
 
 
-def test_every_caller_of_the_intake_emitter_asks_the_bridge_assertion_first():
-    """The emitter guard says ``report-defect``. A writer that reaches it
-    without asking the assertion first tells a person who chose a cutover to
-    file a bug, which is the finding. The callers are named, so a third one is
-    a line somebody reads in a diff."""
+def test_every_caller_of_the_intake_emitter_builds_its_tree_through_the_refusal():
+    """The emitter guard says ``report-defect``. A writer that reaches it with
+    a tree the refusal never saw tells a person who chose a cutover to file a
+    bug, which is the finding. The callers are named, so a third one is a line
+    somebody reads in a diff."""
     callers: dict[str, tuple[int, list[int]]] = {}
     for module in sorted(SRC.rglob("*.py")):
         if module.name == "rbxml.py":
@@ -678,7 +884,7 @@ def test_every_caller_of_the_intake_emitter_asks_the_bridge_assertion_first():
                 if isinstance(node, ast.Call)
                 and isinstance(node.func, (ast.Attribute, ast.Name))
                 and getattr(node.func, "attr", getattr(node.func, "id", ""))
-                == "assert_intake_on_the_bridge"
+                == "bridge_intake_tree"
             ]
             key = f"{module.relative_to(SRC).as_posix()}::{function.name}"
             callers[key] = (min(emits), asked)
@@ -686,8 +892,42 @@ def test_every_caller_of_the_intake_emitter_asks_the_bridge_assertion_first():
     assert set(callers) == {"intake/ingest.py::place_files", "intake/landing.py::_check_export"}
     for key, (first_emit, asked) in callers.items():
         assert asked and min(asked) < first_emit, (
-            f"{key} reaches the intake emitter without asking the bridge assertion first"
+            f"{key} reaches the intake emitter without building its tree through "
+            f"the function that refuses a native one first"
         )
+
+
+def test_the_intake_tree_is_built_in_one_place_and_that_place_refuses_first():
+    """The write layer names no verb, so the refusal that names the landing
+    lives one layer up, in the one function that builds the tree a splice is
+    handed. A second builder is a second way past it."""
+    builders: list[str] = []
+    for module in sorted(SRC.rglob("*.py")):
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for function in ast.walk(tree):
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for node in ast.walk(function):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "intake_tree"
+                ):
+                    builders.append(f"{module.relative_to(SRC).as_posix()}::{function.name}")
+    assert builders == ["intake/ingest.py::bridge_intake_tree"]
+
+    (function,) = [
+        node
+        for node in ast.walk(ast.parse(Path(ingest.__file__).read_text(encoding="utf-8")))
+        if isinstance(node, ast.FunctionDef) and node.name == "bridge_intake_tree"
+    ]
+    first, second = [
+        node
+        for node in function.body
+        if not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant))
+    ]
+    assert isinstance(first, ast.Expr) and first.value.func.id == "assert_intake_on_the_bridge"
+    assert isinstance(second, ast.Return)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

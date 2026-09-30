@@ -8,9 +8,10 @@ of its own.
 TWO MEDIA, CHOSEN BY THE INTAKE TREE'S MODE (R-770), through the one switch the
 landing reads, :func:`cratekit.intake.ingest.intake_medium`.
 
-* On the xml bridge nothing changed. With no ``--export`` the verb shows its
-  plan and writes nothing; with one it splices the file into that export
-  through ``place_files`` and ends waiting on the import, as a landing does.
+* On the xml bridge the verb writes what it always wrote. With no ``--export``
+  it shows its plan and writes nothing; with one it splices the file into that
+  export through ``place_files`` and ends waiting on the import, as a landing
+  does.
 * On a library whose intake tree has cut over there is no export to splice.
   Before this unit the verb reached the emitter guard and was refused as a
   defect, over a cutover the person chose. Now it plans one content row and one
@@ -19,21 +20,33 @@ landing reads, :func:`cratekit.intake.ingest.intake_medium`.
   ``intake.file.native``. ``--export`` is refused by name, as the landing
   refuses it.
 
-THE FILE STAYS WHERE IT IS ON BOTH MEDIA. This verb has never moved a file, so
-the row is planned for the path the file is at, resolved, which is the path the
-bridge stamps as its Location. A file still under download staging is refused
-on both, because a path stamped from staging dies when staging is cleaned.
+THE FILE STAYS WHERE IT IS ON BOTH MEDIA. This verb has never moved a file. A
+file still under download staging is refused on both, because a path stamped
+from staging dies when staging is cleaned. ON THE NATIVE MEDIUM THE FILE HAS TO
+BE IN THE LIBRARY, which the bridge never asked: a row is matched against the
+collection by resolving its path under the library root, so a file outside it
+could not be asked about again, and its row would be dropped by every reader
+that resolves against the root. The row is planned for the path spelled under
+the configured root, as the native landing spells its targets, so a root
+reached through a link still matches the rows the collection already holds.
 
 THE NATIVE GATE TAKES NO INLINE ANSWER, for the landing's reason: a content row
 in the collection is answered by a separate recorded act with an actor (R34).
-The row carries a title, a path, a name, a size and a type, and every column an
+The order around it is the landing's own, ``land_cli.ask_then_write``. The row
+carries a title, a path, a name, a size and a type, and every column an
 analysis pass fills is left for rekordbox. That policy is the engine's and the
 guarded writer's, asserted from SQL before the commit and read back after it.
 
-THE PLAYLIST HAS THE NAME THE BRIDGE GIVES IT. The bridge writes the file's
-batch playlist under the stem of its intake file, ``<stem>_inboxed``, and the
-native medium writes the same name, so a library that cuts over does not start
-naming its single file batches by a second rule.
+THE NATIVE PLAYLIST IS NAMED AS THE NATIVE LANDING NAMES ITS OWN, by the bare
+batch, which for one file is the file's stem. The bridge names the batch
+playlist after its intake file, stem and suffix, on both verbs; the native
+medium has no intake file and the landing already dropped the suffix there, so
+a cut over library has one naming rule and not one per verb.
+
+THE MEDIUM IS READ BEFORE THE PLAN IS SHOWN, on the bridge too. Which medium
+the verb is on decides whether there is a gate to ask, and that is the
+library's taxonomy and its tree registry, so either one unreadable refuses
+with its own cause where the plan only path used to need the file alone.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -45,8 +58,8 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config, rb_writer, session
-from cratekit.core.cause import Outcome, Remedy, refuse
+from cratekit.core import analysis_store, config
+from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import ingest, land_cli, native, normalize, pipeline
@@ -77,16 +90,6 @@ def build_file(parser, entry) -> None:
     parser.set_defaults(_handler=intake_file)
 
 
-def batch_name(path: Path) -> str:
-    """The batch playlist one file is filed under, on either medium.
-
-    The stem of the intake file the bridge writes beside the track. Spelled
-    once, because the native medium has no such file and would otherwise have
-    to guess the name the bridge gives the same batch.
-    """
-    return path.stem + land_cli.INTAKE_SUFFIX[: -len(".xml")]
-
-
 def intake_file(ctx) -> Envelope:
     cfg = intake_cli._load()
     path = Path(ctx.args.source)
@@ -102,7 +105,7 @@ def intake_file(ctx) -> Envelope:
     export = ctx.args.export
     if not export:
         return ctx.envelope(data=plan, outcome=Outcome.OK)
-    destination = path.with_name(batch_name(path) + ".xml")
+    destination = path.with_name(path.stem + land_cli.INTAKE_SUFFIX)
     result = pipeline.ingest_file(
         path,
         cfg=cfg,
@@ -129,14 +132,26 @@ def intake_file(ctx) -> Envelope:
 # ---------------------------------------------------------------------------
 
 
-def _unusable(message: str, *, remedy: Remedy | None = None, **detail: Any):
-    return refuse(
-        "intake-list-unusable",
-        message,
-        remedy=remedy,
-        origin=_ORIGIN,
-        detail=detail,
-    )
+def _in_the_library(path: Path, cfg: config.Config) -> Path:
+    """``path`` spelled under the configured library root, or the refusal.
+
+    Both sides are resolved to compare them and the answer is rebuilt under the
+    root AS CONFIGURED, which is how the native landing spells a target and how
+    the collection's own rows are matched.
+    """
+    root = Path(cfg.library.root)
+    try:
+        return root / path.resolve().relative_to(root.resolve())
+    except ValueError:
+        raise refuse(
+            "intake-list-unusable",
+            f"{path.name} is outside the library at {root}, so the collection could "
+            f"not be asked again whether it holds that file and a row added for it "
+            f"would name a file the library does not own; move it into the "
+            f"library's music folder and ingest it again, nothing was written",
+            origin=_ORIGIN,
+            detail={"source": str(path), "root": str(root)},
+        ) from None
 
 
 def _native_payload(plan: dict, rows: native.NativePlan) -> dict:
@@ -196,65 +211,90 @@ def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Env
     """Plan the row against the database, ask, then write it.
 
     EVERYTHING THAT CAN REFUSE WITHOUT THE DATABASE REFUSES BEFORE IT IS
-    OPENED: an export named for a medium that has none, a file under staging,
-    a file no declared sub would take, a suffix the database has no type for.
-    THE DATABASE IS THEN OPENED WITH WRITE INTENT BEFORE THE PLAN, so a running
-    rekordbox refuses before anything is shown, and THE ACKNOWLEDGMENT IS READ
-    BEFORE THE GATE (R-733), so nobody answers a plan the verb could have known
-    it would not run.
+    OPENED: an export named for a medium that has none, a file outside the
+    library, a file under staging, a file no declared sub would take, a suffix
+    the database has no type for. The order from there is the landing's.
     """
     declared, registry = medium.declared, medium.registry
     tree_id = declared.intake.id
     if ctx.args.export is not None:
-        raise _unusable(
+        raise refuse(
+            "intake-list-unusable",
             f"the intake tree {tree_id!r} is database native, so {path.name} joins "
             f"the collection through the database and there is no export to "
             f"splice; drop --export, nothing was written",
             remedy=Remedy.FIX_COMMAND_LINE,
-            tree_id=tree_id,
-            export=str(ctx.args.export),
+            origin=_ORIGIN,
+            detail={"tree_id": tree_id, "export": str(ctx.args.export)},
         )
-    target = path.resolve()
+    # STAGING FIRST, since staging is usually outside the library too and the
+    # sentence that names it is the more useful of the two.
+    ingest.assert_not_staging(path, cfg)
+    target = _in_the_library(path, cfg)
     meta = ingest.read_meta(target, cfg=cfg)
     if ingest.decide_placement(meta, declared) is None:
-        raise _unusable(
+        raise refuse(
+            "intake-list-unusable",
             f"{path.name} resolves to a bucket with no declared sub, so a row "
             f"added for it would sit in the intake with nowhere to route; run "
             f"crate tag folder over it and ingest it again, nothing was written",
-            source=str(path),
+            origin=_ORIGIN,
+            detail={"source": str(path)},
         )
     if native.file_type_of(target) is None:
-        raise _unusable(
+        raise refuse(
+            "intake-list-unusable",
             f"{path.name} has a suffix rekordbox's database has no file type for, "
             f"so no content row can name it and nothing was written; convert it "
             f"and ingest it again",
-            source=str(path),
+            origin=_ORIGIN,
+            detail={"source": str(path)},
         )
-    spec = land_cli.gate_named(ctx.entry, NATIVE_GATE)
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
-        rows = native.plan_rows(
+
+    def write(db, rows: native.NativePlan) -> native.NativeLanded:
+        try:
+            return native.apply_rows(
+                cfg, db, rows, analysis_roots=analysis_store.watch_roots(cfg)
+            )
+        except Exception as exc:
+            # EVERY FAILURE PAST THE GATE SAYS WHAT IT LEAVES, as the landing's
+            # does: the database is all or nothing and the file was never
+            # moved. A cause this product raised keeps its reason and remedy;
+            # anything else is the defect it is, with the same sentence.
+            inner = exc.cause if isinstance(exc, CratekitError) else None
+            raise refuse(
+                inner.reason if inner is not None else "internal-error",
+                f"the collection could not be written "
+                f"({inner.message if inner is not None else exc}); no row was added "
+                f"and {path.name} is where it was",
+                remedy=inner.remediation.remedy if inner is not None else None,
+                steps=inner.remediation.steps if inner is not None else (),
+                origin=_ORIGIN,
+                detail={
+                    "source": str(target),
+                    **(dict(inner.detail) if inner is not None else {}),
+                },
+                inner=inner,
+            ) from exc
+
+    payload, landed = land_cli.ask_then_write(
+        ctx,
+        cfg,
+        land_cli.gate_named(ctx.entry, NATIVE_GATE),
+        plan=lambda db: native.plan_rows(
             cfg,
             db,
             tree_id=tree_id,
             registry=registry,
-            batch=batch_name(path),
+            batch=path.stem,
             files=[(target, target)],
-        )
-        payload = _native_payload(plan, rows)
-        session.assert_backup_acknowledged(cfg)
-        option = ctx.gate.require(
-            spec,
-            plan=payload,
-            context={"file": str(target), **land_cli.collection_facts(rows)},
-        )
-        if option != "apply":
-            return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
-        landed = native.apply_rows(
-            cfg, db, rows, analysis_roots=analysis_store.watch_roots(cfg)
-        )
-    finally:
-        rb_writer.close_db(db)
+        ),
+        payload=lambda rows: _native_payload(plan, rows),
+        shown=lambda rows: {"file": str(target), **land_cli.collection_facts(rows)},
+        write=write,
+    )
+    if landed is None:
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     native.assert_rows_gridless(landed)
     return ctx.envelope(
         data=_native_reported(payload, landed),
@@ -265,7 +305,6 @@ def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Env
 __all__ = [
     "ADDED",
     "NATIVE_GATE",
-    "batch_name",
     "build_file",
     "intake_file",
 ]

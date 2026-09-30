@@ -171,10 +171,12 @@ crate match run /path/to/tracklist.txt
   settled the same way, with `crate intake imported`. Once your intake tree
   has cut over to the database it takes no export and refuses one: it plans
   one collection row for the file where it sits and one playlist under your
-  INBOX folder, named as the intake file would have been, and asks
+  INBOX folder, named for the file, and asks
   `intake.file.native`, which is answered by a separate `crate run decide`.
   The file is not moved, nothing about the audio is written, and the row
-  awaits an analysis you ask rekordbox for, as a native landing's rows do.
+  awaits an analysis you ask rekordbox for, as a native landing's rows do. On
+  that path the file has to be inside your library, since a row for a file
+  outside it could not be matched against the collection again.
 - `intake set` takes a recording on this machine, or the web address of a mix.
   An address is fetched with `yt-dlp` into a scratch folder outside the
   library, identified, and removed again, because a mix is input and not
@@ -398,6 +400,12 @@ changed since the plan is skipped, and a playlist already carrying the prefix is
 never prefixed twice. If a rename fails part way, the run names the playlists it
 had already renamed, and running it again picks up the rest. A rename is a
 change to your account that this tool does not undo.
+
+**Once your intake tree is database native this step has nothing to read.** A
+native landing writes no importable file, and `sync mark` finds its pass by
+that file's name, so after a cutover the playlists of a pass stay unmarked and
+are offered again on the next one. That is a known gap, recorded in
+`docs/residual-findings.md`, and not something a flag works around.
 
 `name apply`, `intake land` and `route inbox` each build a plan and stop at a
 gate before they write. Run once to read the plan, then answer the gate. See
