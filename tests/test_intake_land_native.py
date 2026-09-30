@@ -282,6 +282,18 @@ def test_three_files_become_three_rows_and_one_playlist_under_the_adopted_root(
     assert "Analyze" in acted["warnings"][0]["message"]
     assert "pending_human_action" not in acted or acted["pending_human_action"] is None
 
+    # The session record is what a restore reads and what a revert of the
+    # intake tree's cutover refuses over: the commit is recorded under the
+    # tree for the memberships and under the content table for the rows.
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.CLOSED
+    assert record.sources == {INTAKE: "committed"}
+    assert {change.tree: change.created for change in record.change.trees} == {
+        INTAKE: 3,
+        rb_writer.CONTENT_TABLE: 3,
+    }
+    assert record.snapshot_path, "the capture the commit happened behind is not attached"
+
 
 def test_the_rows_carry_the_library_device_and_not_the_bindings_first(native_library, silence):
     """Sitting 17: the database holds two devices and ``get_device().first()``
@@ -613,6 +625,56 @@ def test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commi
     assert "BPM" in acted["cause"]["message"]
     assert _landed_rows(cfg) == [], "a row carrying a tempo was committed"
     assert _batch_playlist(cfg) == []
+
+
+def test_an_analysis_product_row_for_the_new_row_is_refused_from_sql_before_the_commit(
+    native_library, silence, monkeypatch
+):
+    """The other half of the column policy: no cue, mixer or file row may name
+    a row this product creates. Planted by SQL after the flush, the way an
+    analysis pass would write one, and the commit is refused on it."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    from sqlalchemy import text
+
+    real = native._restamp
+
+    def restamp_and_plant(content, row, plan):
+        real(content, row, plan)
+        content._sa_instance_state.session.execute(
+            text(
+                "INSERT INTO djmdMixerParam (ID, ContentID, rb_local_deleted, created_at, "
+                "updated_at) VALUES ('mp-1', :id, 0, '2026-01-01', '2026-01-01')"
+            ),
+            {"id": str(content.ID)},
+        )
+
+    monkeypatch.setattr(native, "_restamp", restamp_and_plant)
+
+    code, acted, _ = _two_acts(_land())
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "whitelist-violation"
+    assert "djmdMixerParam" in acted["cause"]["message"]
+    assert _landed_rows(cfg) == []
+    assert _query(cfg, "SELECT COUNT(*) FROM djmdMixerParam")[0] == (0,)
+
+
+def test_a_manifest_on_a_native_tree_is_refused_before_the_gate(native_library, silence, tmp_path):
+    """Label filing writes the catalog tree into the intake file, and this
+    medium makes none; a person who asked for it is told, not quietly denied."""
+    from cratekit.acquire import listdoc
+
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    rows = [listdoc.Row(ref="1", artist="Probe", title="One")]
+    provenance = {"1": listdoc.Provenance(source="label", label_name="Kompakt", year=2025)}
+    written = listdoc.write(tmp_path, "label-approved-verb", rows, provenance)
+    assert written.manifest_path is not None
+
+    code, envelope = drive(_land("--manifest", str(written.manifest_path)))
+    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
+    assert "--manifest" in envelope["cause"]["message"]
 
 
 # ---------------------------------------------------------------------------
