@@ -2612,6 +2612,9 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         f"a capture is imported in a spelling this guard cannot follow: {unreadable}"
     )
     assert set(takers) == {
+        # R-746. The native landing: content rows and one playlist behind one
+        # capture, recorded under the intake tree and the content table.
+        "intake/native.py::apply_rows",
         "write/metadata_cli.py::mytags_vocals",
         # R-758. One capture before two commits, and both are recorded.
         "write/trees.py::move_tree_membership",
@@ -2661,6 +2664,7 @@ def test_each_commit_helper_records_the_commit():
     for relative, helper in (
         ("write/trees.py", "_record_membership_commit"),
         ("write/metadata_cli.py", "_record_mytags_commit"),
+        ("intake/native.py", "_record_landing_commit"),
     ):
         tree = ast.parse((src / relative).read_text())
         (function,) = [

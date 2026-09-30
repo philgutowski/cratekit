@@ -5851,7 +5851,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # not a key: backup-comparison is the WARNING code `backup/cli.py` gives
     # on a resumed backup to say which mode the file comparison ran in and
     # what it sent. The verb's refusals are the ones it had.
-    assert (len(literals), len(literals - set(causes))) == (535, 349), (
+    # Re-pinned on the residual finding "A landed file reaches the collection
+    # only through a hand import", 2026-09-29: 535 to 537 distinct, non-keys
+    # 349 to 351. TWO joined and nothing left, and neither is a key. One is a
+    # WARNING code `intake/land_cli.py` gives when rows joined the collection
+    # and rekordbox has not analysed them, rows-await-analysis. One is the
+    # plan kind the native landing digests, land-native, the same kind of
+    # literal as the bridge landing's land. The verb's refusals reuse
+    # tree-unconverged, intake-list-unusable, library-export-unusable,
+    # decision-stale, collection-unreadable and whitelist-violation, and the
+    # writer's admission adds no reason of its own.
+    assert (len(literals), len(literals - set(causes))) == (537, 351), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6460,7 +6470,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # core/rb_writer.py and write/trees.py named their refusals on main
     # already. Measured by this pair moving by one on the holders side and by
     # nothing on the other.
-    assert (len(literal_holders), len(literal_both)) == (109, 26), (
+    # Re-pinned on the residual finding "A landed file reaches the collection
+    # only through a hand import", 2026-09-29: holders move 109 to 111, and
+    # the also-holds-an-integer half is UNCHANGED at 26. TWO modules joined and
+    # none left. intake/native.py is a new file and refuses with
+    # collection-unreadable, intake-list-unusable, tree-unconverged,
+    # decision-stale, internal-error and whitelist-violation; its integers are
+    # column values compared as empty, none in the reserved range.
+    # intake/land_cli.py held no cause literal on main, since its refusals
+    # were the engine's, and now refuses with library-export-unusable,
+    # intake-list-unusable and internal-error itself. Measured by this pair
+    # moving by two on the holders side and by nothing on the other.
+    assert (len(literal_holders), len(literal_both)) == (111, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

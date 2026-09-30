@@ -65,7 +65,15 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from cratekit.acquire import listdoc, match, match_cli
-from cratekit.core import active_taxonomy, config, jobs, tags, taxonomy, tree_registry
+from cratekit.core import (
+    active_taxonomy,
+    analysis_store,
+    config,
+    jobs,
+    tags,
+    taxonomy,
+    tree_registry,
+)
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.naming import AUDIO_EXTS, NameTemplate
 from cratekit.intake import collection_xml, ingest, native
@@ -1108,7 +1116,9 @@ def apply_native(
     landed_targets = {str(item.target) for item in moved}
     kept = replace_rows(rows, tuple(row for row in rows.rows if str(row.target) in landed_targets))
     try:
-        collection = native.apply_rows(cfg, db, kept, analysis_roots=[Path(cfg.library.root)])
+        collection = native.apply_rows(
+            cfg, db, kept, analysis_roots=analysis_store.watch_roots(cfg)
+        )
     except Exception as exc:
         # EVERY FAILURE PAST THE MOVES SAYS WHAT IT LEAVES, a binding error as
         # much as a refusal: the files are in the library and the database is

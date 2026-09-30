@@ -3210,11 +3210,15 @@ def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
 #: Adding a gate here is now a red suite, which is the point. It is the same
 #: shape `EXPECTED_PENDING` uses: the duplication IS the mechanism, because the
 #: second place is a line a reviewer reads in a diff.
-EXPECTED_UNREACHABLE_GATES = frozenset({"write.cloudsync.unreadable"})
+EXPECTED_UNREACHABLE_GATES = frozenset({"write.cloudsync.unreadable", "intake.land.native"})
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """One gate is exempt. A second one is a decision, not a diff.
+    """Two gates are exempt. A third one is a decision, not a diff.
+
+    The second, ``intake.land.native``, joined with R-746: one verb, two media,
+    one drive per fixture, and the conformance fixture's intake tree is on the
+    bridge. Its own suite holds the verb to reaching it on a native tree.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

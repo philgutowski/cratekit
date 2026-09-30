@@ -525,10 +525,10 @@ def apply_rows(
         except BaseException:
             trees._rollback_quietly(db)
             if witness.landed:
-                _record(record, plan, len(added_ids), memberships, cfg)
+                _record_landing_commit(record, plan, len(added_ids), memberships, cfg)
             raise
 
-        _record(record, plan, len(added_ids), memberships, cfg)
+        _record_landing_commit(record, plan, len(added_ids), memberships, cfg)
         convergence.record_fingerprint(cfg, db)
 
         landed = []
@@ -556,7 +556,7 @@ def apply_rows(
     )
 
 
-def _record(
+def _record_landing_commit(
     record: session.SessionRecord, plan: NativePlan, rows: int, memberships: int, cfg: config.Config
 ) -> None:
     """Record the commit on the session, once anything landed.
