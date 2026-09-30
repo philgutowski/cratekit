@@ -5861,7 +5861,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # tree-unconverged, intake-list-unusable, library-export-unusable,
     # decision-stale, collection-unreadable and whitelist-violation, and the
     # writer's admission adds no reason of its own.
-    assert (len(literals), len(literals - set(causes))) == (537, 351), (
+    # Re-pinned on the residual finding "The collection export writes every
+    # Location under the base drive, so intake imported matches nothing it
+    # names", 2026-09-30: 537 to 538 distinct, non-keys 351 to 352. ONE joined
+    # and nothing left, and it is not a key. It is export-location-unmapped,
+    # the WARNING code `cli/export_collection.py` gives for the rows no prefix
+    # rule places, written as the database holds them. The verb's refusals
+    # are the ones it had.
+    assert (len(literals), len(literals - set(causes))) == (538, 352), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

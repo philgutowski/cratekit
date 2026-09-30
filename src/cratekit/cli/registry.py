@@ -2235,8 +2235,11 @@ ENTRIES: tuple[Entry, ...] = (
         #: sibling under this group is the export module's: the verbs that
         #: read this file are core, and a core workflow cannot wait on a
         #: module somebody switched off.
+        #: ``library.paths_resolved`` joined with R-773, since a row under no
+        #: prefix rule is written as the database holds it, and that check is
+        #: where a person reads how many there are before relying on the file.
         writes=frozenset({"xml"}),
-        doctor_checks=("library.mounted", "rekordbox.closed"),
+        doctor_checks=("library.mounted", "rekordbox.closed", "library.paths_resolved"),
     ),
 )
 

@@ -1,0 +1,138 @@
+name = "r773-b"
+pass_kind = "light"
+
+# The verb, `cli/export_collection.py`, its registry entry, and the proof the
+# landing tests rest on in `intake/imported_cli.py`.
+
+[[rows]]
+id = "C1_no_rule_handed_to_the_emitter"
+description = "_read: hand the emitter an empty prefix map, which is the export sitting 19 measured"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        prefix_map=[
+            locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()
+        ],'''
+new = '''        prefix_map=[],'''
+
+[[rows]]
+id = "C2_root_not_the_library_root"
+description = "_read: hand the emitter the filesystem root as the library root"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        root=cfg.library.root,'''
+new = '''        root="/",'''
+
+[[rows]]
+id = "C3_warning_not_given"
+description = "_warnings: give no warning over rows under no rule"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    if omitted.unmapped_paths:
+        shown = omitted.unmapped_prefixes[:_NAMED_PREFIXES]'''
+new = '''    if False:
+        shown = omitted.unmapped_prefixes[:_NAMED_PREFIXES]'''
+
+[[rows]]
+id = "C4_warning_counts_prefixes_as_rows"
+description = "_warnings: open the warning with the number of prefixes where the number of rows goes"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''                    f"{len(omitted.unmapped_paths)} track(s) record a path under "'''
+new = '''                    f"{len(omitted.unmapped_prefixes)} track(s) record a path under "'''
+
+[[rows]]
+id = "C5_prefix_cap_two"
+description = "_NAMED_PREFIXES: name two prefixes where three are named"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''_NAMED_PREFIXES = 3'''
+new = '''_NAMED_PREFIXES = 2'''
+
+[[rows]]
+id = "C6_rest_of_the_prefixes_not_counted"
+description = "_warnings: never say how many prefixes were not named"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        if more > 0:
+            listed +='''
+new = '''        if False:
+            listed +='''
+
+[[rows]]
+id = "C7_check_always_ok"
+description = "export.locations: report ok whatever is under no rule"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''            status="ok" if not omitted.unmapped_paths else "info",
+        ),
+        _check(
+            "export.tempo",'''
+new = '''            status="ok",
+        ),
+        _check(
+            "export.tempo",'''
+
+[[rows]]
+id = "C8_summary_unmapped_zero"
+description = "summary: report no track under no rule"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''                "tracks_under_no_rule": len(omitted.unmapped_paths),'''
+new = '''                "tracks_under_no_rule": 0,'''
+
+[[rows]]
+id = "C9_summary_left_zero"
+description = "summary: report no location left to a rule"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''                "locations_left_to_a_rule": len(omitted.left_to_rule),'''
+new = '''                "locations_left_to_a_rule": 0,'''
+
+[[rows]]
+id = "C10_summary_remapped_zero"
+description = "summary: report no location placed by a rule"
+file = "src/cratekit/cli/export_collection.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''                "locations_remapped": document.remapped,'''
+new = '''                "locations_remapped": 0,'''
+
+[[rows]]
+id = "R1_doctor_check_not_declared"
+description = "registry: the verb no longer declares library.paths_resolved"
+file = "src/cratekit/cli/registry.py"
+surface = "maintainer"
+tests = ["tests/test_export_collection.py"]
+old = '''        doctor_checks=("library.mounted", "rekordbox.closed", "library.paths_resolved"),'''
+new = '''        doctor_checks=("library.mounted", "rekordbox.closed"),'''
+
+# The proof the landing tests rest on, an existing guard, as the composite for
+# C1: what the import proof decides once the export names the right place.
+
+[[rows]]
+id = "P1_proof_granted_whatever_the_export_names"
+description = "settle, existing: find no landed track missing, so any export proves any import"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_export_collection.py", "tests/test_intake_imported.py"]
+old = '''    missing = [entry for entry in landed if entry.track not in held]'''
+new = '''    missing = []'''
+
+[[dropped]]
+id = "C11_prefix_rules_reversed"
+description = "_read: hand the emitter the rules in reverse order"
+reason = "ranked below the cap: the order is the configuration's to keep and the resolver's to walk, both held in their own suites, and the emitter's walk is held by a test over two rules. A reversal in the one line that passes the list on is not a nearby value"
+
+[[dropped]]
+id = "M12_replace_keeps_the_recorded_location"
+description = "render: rebuild a placed row with its recorded location"
+reason = "ranked below the cap: the same line of sight as M3 and M4, which are measured"

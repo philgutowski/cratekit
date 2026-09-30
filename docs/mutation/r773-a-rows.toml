@@ -1,0 +1,140 @@
+name = "r773-a"
+pass_kind = "light"
+
+# The emitter, `write/collection_export.py`: each new guard in
+# `mounted_location` and in `render`, alone, and three of the unit's existing
+# guards as the fixed sample.
+
+[[rows]]
+id = "M1_read_back_not_asked"
+description = "mounted_location: rewrite a row wherever a rule sends it, without asking whether the place reads back as itself"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        if read_back.path == resolved.path:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "M2_unmapped_not_told_apart"
+description = "mounted_location: answer a row under no rule as recorded, so nothing counts it"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        return Mounted(recorded, Mounting.UNDER_NO_RULE, prefix=resolved.prefix)'''
+new = '''        return Mounted(recorded, Mounting.AS_RECORDED)'''
+
+[[rows]]
+id = "M3_placed_row_written_as_recorded"
+description = "mounted_location: count a placed row and hand back the recorded spelling, which is the finding itself"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''            return Mounted(resolved.path, Mounting.PLACED)'''
+new = '''            return Mounted(recorded, Mounting.PLACED)'''
+
+[[rows]]
+id = "M4_emitter_handed_the_rows_as_read"
+description = "render: emit the rows as read and not the rows as placed"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        + "".join(track_element(track) for track in placed)'''
+new = '''        + "".join(track_element(track) for track in tracks)'''
+
+[[rows]]
+id = "M5_another_host_not_caught"
+description = "mounted_location: catch a different error, so a location naming another host ends the export"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    except locations.LocationDecodeError:
+        return Mounted(recorded, Mounting.AS_RECORDED)'''
+new = '''    except KeyError:
+        return Mounted(recorded, Mounting.AS_RECORDED)'''
+
+[[rows]]
+id = "M6_left_row_counted_as_under_no_rule"
+description = "mounted_location: answer a row left to its rule as under no rule, which is where doctor and the export disagreed"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        return Mounted(recorded, Mounting.LEFT_TO_ITS_RULE)'''
+new = '''        return Mounted(recorded, Mounting.UNDER_NO_RULE)'''
+
+[[rows]]
+id = "M7_prefixes_not_carried"
+description = "render: carry no leading prefix for the rows under no rule"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''            unmapped_prefixes=tuple(prefixes.most_common()),'''
+new = '''            unmapped_prefixes=(),'''
+
+[[rows]]
+id = "M8_placed_rows_not_counted"
+description = "render: count no placed row"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''            remapped += 1'''
+new = '''            remapped += 0'''
+
+[[rows]]
+id = "M9_left_rows_not_collected"
+description = "render: collect no row left to its rule"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''            left.append(track.track_id)'''
+new = '''            pass'''
+
+[[rows]]
+id = "M10_unmapped_rows_not_collected"
+description = "render: collect no row under no rule, the prefix still counted"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''            unmapped.append(track.track_id)'''
+new = '''            pass'''
+
+[[rows]]
+id = "M11_prefixes_least_rows_first"
+description = "render: order the prefixes with the fewest rows first"
+file = "src/cratekit/write/collection_export.py"
+surface = "maintainer"
+tests = ["tests/test_export_collection.py"]
+old = '''            unmapped_prefixes=tuple(prefixes.most_common()),'''
+new = '''            unmapped_prefixes=tuple(reversed(prefixes.most_common())),'''
+
+# The fixed sample of guards the unit already had.
+
+[[rows]]
+id = "S1_streamed_row_encoded_as_a_file"
+description = "is_file_path, existing: take any value that is not a location as a path, a streamed track and an empty one included"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    return recorded.startswith("/") and not locations.looks_like_location(recorded)'''
+new = '''    return not locations.looks_like_location(recorded)'''
+
+[[rows]]
+id = "S2_tombstoned_row_written"
+description = "read_tracks, existing: write a tombstoned collection row"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''        if trees.soft_delete_marker(row):
+            continue
+        track_id = str(row.ID)'''
+new = '''        if False:
+            continue
+        track_id = str(row.ID)'''
+
+[[rows]]
+id = "S3_not_a_file_count_inverted"
+description = "render, existing: count the rows that do name a file as the ones that do not"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''    unlocated = tuple(track.track_id for track in tracks if not is_located(track.location))'''
+new = '''    unlocated = tuple(track.track_id for track in tracks if is_located(track.location))'''
