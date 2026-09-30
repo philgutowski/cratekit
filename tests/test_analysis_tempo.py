@@ -143,12 +143,15 @@ def test_a_window_no_bin_falls_in_answers_none():
 
 
 def test_the_prior_prefers_the_level_nearer_the_centre_inside_the_window():
-    """Two equal peaks, at 90 and 135, both inside the window: the prior at
-    120 picks the one nearer it, so a flat window would have been a coin
-    toss and is not."""
+    """Two peaks at 90 and 135, both inside the window, the 90 a twentieth
+    stronger: a flat window names 90, the prior at 120 names 135. The first
+    mutation table measured this test with equal peaks and the prior's removal
+    killed nothing, because the argmax tie fell on the higher tempo anyway;
+    the imbalance is what makes the prior the thing under test."""
     lag_90 = 60.0 * RATE / (detect.TEMPO_HOP * 90.0)
     lag_135 = 60.0 * RATE / (detect.TEMPO_HOP * 135.0)
-    strength = _autocorrelation_peaked_at(lag_90) + _autocorrelation_peaked_at(lag_135)
+    strength = 1.05 * _autocorrelation_peaked_at(lag_90) + _autocorrelation_peaked_at(lag_135)
+    assert int(np.argmax(strength)) == int(round(lag_90))
     tempo = detect.tempo_from_autocorrelation(strength)
     assert tempo is not None and abs(tempo - 135.0) < 1.5
 
