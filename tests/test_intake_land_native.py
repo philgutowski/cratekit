@@ -37,8 +37,11 @@ GATE = land_cli.NATIVE_GATE
 TODAY = date(2026, 9, 29)
 
 #: Two devices, the first one NOT the library's, so a row stamped by the
-#: binding's own default is stamped wrong and the writer has to choose.
-OTHER_DEVICE = ("d-other", "999")
+#: binding's own default is stamped wrong and the writer has to choose. The
+#: wrong one also sorts FIRST by identifier, so a choice that dropped the
+#: MasterDBID rule and kept the sort would still pick wrong: the first table
+#: measured a device row that sorted the right way by accident.
+OTHER_DEVICE = ("d-aaa-other", "999")
 MY_DEVICE = ("d-mine", "1")
 
 
@@ -625,6 +628,37 @@ def test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commi
     assert "BPM" in acted["cause"]["message"]
     assert _landed_rows(cfg) == [], "a row carrying a tempo was committed"
     assert _batch_playlist(cfg) == []
+
+
+def test_a_key_reaching_the_row_is_refused_from_sql_before_the_commit(
+    native_library, silence, monkeypatch
+):
+    """The key is one of the five columns a content row is held to beyond the
+    playlist tables' five (R-746): an analysis output here and nowhere else.
+    Tainted by SQL after the flush, as the tempo is above, so the read back is
+    what refuses it, and it refuses because the content policy is the wider
+    list and not the playlist one."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    from sqlalchemy import text
+
+    real = native._restamp
+
+    def restamp_and_key(content, row, plan):
+        real(content, row, plan)
+        content._sa_instance_state.session.execute(
+            text("UPDATE djmdContent SET KeyID = '283157525' WHERE ID = :id"),
+            {"id": str(content.ID)},
+        )
+
+    monkeypatch.setattr(native, "_restamp", restamp_and_key)
+
+    code, acted, _ = _two_acts(_land())
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "whitelist-violation"
+    assert "KeyID" in acted["cause"]["message"]
+    assert _landed_rows(cfg) == []
 
 
 def test_an_analysis_product_row_for_the_new_row_is_refused_from_sql_before_the_commit(

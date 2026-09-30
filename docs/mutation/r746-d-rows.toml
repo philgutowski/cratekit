@@ -1,0 +1,20 @@
+name = "r746-d"
+pass_kind = "light"
+
+[[rows]]
+id = "G5_content_row_read_back_against_five_not_ten"
+description = "assert_created_rows_are_gridless: a content row is held to the playlist tables' five columns, so a key or a rate rides in. Measured again after the key taint test its zero bought"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''        policy = CONTENT_ROW_EMPTY_COLUMNS if table == CONTENT_TABLE else GRIDLESS_ON_CREATE_COLUMNS'''
+new = '''        policy = GRIDLESS_ON_CREATE_COLUMNS'''
+
+[[rows]]
+id = "N1_first_device_wins"
+description = "choose_device: every device matches, so the first by identifier is stamped rather than the library's own. Measured again with the wrong device sorting first"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        (device for device in devices if dbid and str(device.MasterDBID) == dbid),'''
+new = '''        (device for device in devices if dbid),'''
