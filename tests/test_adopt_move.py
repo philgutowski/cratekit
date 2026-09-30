@@ -609,6 +609,34 @@ def test_the_removal_is_a_soft_delete_and_the_row_is_still_there(moved):
     assert len(_rows(moved)) == rows_before + 4
 
 
+def test_a_removed_row_changes_its_marker_and_its_stamp_and_nothing_else(moved):
+    """As rekordbox's own removed rows read: the marker set, ``updated_at``
+    moved past ``created_at``, the local update sequence stamped, and the
+    track number where it was."""
+    columns = "ID, PlaylistID, ContentID, TrackNo, UUID, rb_data_status, created_at"
+
+    def rows(extra: str):
+        conn = sqlite3.connect(Path(moved.library.db_path))
+        try:
+            return conn.execute(
+                f"SELECT {columns}, {extra} FROM djmdSongPlaylist "
+                "WHERE ContentID = 'm-med-reads-high' ORDER BY created_at, ID"
+            ).fetchall()
+        finally:
+            conn.close()
+
+    (before,) = rows("rb_local_deleted, updated_at, rb_local_usn")
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    after = [row for row in rows("rb_local_deleted, updated_at, rb_local_usn") if row[0] == before[0]]
+    (after,) = after
+
+    assert after[:7] == before[:7]
+    assert (before[7], after[7]) == (0, 1)
+    assert after[8] != before[8] and str(after[8]) > str(before[6])
+    assert after[9] is not None and after[9] != before[9]
+
+
 def test_no_content_row_and_no_grid_column_is_written(moved):
     def content():
         conn = sqlite3.connect(Path(moved.library.db_path))
@@ -741,6 +769,27 @@ def test_a_failure_after_the_add_leaves_the_track_in_both_and_a_resume_finishes(
     assert set(report["moved"]) == _MOVED and report["in_both"] == []
     assert (report["added"], report["already_present"], report["removed"]) == (0, 5, 5)
     assert resumed["data"]["progress"]["move"]["moved"] == sorted(_MOVED)
+
+
+def test_a_removal_that_did_not_take_fails_the_job_though_nothing_raised(
+    moved, monkeypatch
+):
+    """The read back is the verdict. A writer that reports no failure over
+    tracks still in both subs must not drive the job to succeeded."""
+    _run_id, job_id = approve_and_queue(VERB, GATE)
+    monkeypatch.setattr(rb_writer, "remove_memberships", lambda *_args, **_kwargs: [])
+
+    code, failed = drive(_resume(job_id))
+
+    assert code != int(ExitCode.OK), failed
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        (item,) = jobs.items(store, job_id)
+    assert job.state is jobs.JobState.FAILED
+    assert item.cause.reason == "adopt-entries-failed" and item.cause.retryable is True
+    assert set(item.cause.detail["in_both"]) == _MOVED
+    report = artifacts.committed(moved, job_id)[-1]
+    assert (report["interrupted"], report["removed"], report["already_absent"]) == (False, 0, 5)
 
 
 def test_a_failure_in_the_additions_writes_nothing_at_all(moved, monkeypatch):
