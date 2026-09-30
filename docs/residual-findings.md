@@ -31141,6 +31141,68 @@ answer lists the doubles it cannot reach by name.
 
 **Not on the board bar.** Two rows, both visible in rekordbox, neither lost.
 
+**Closed 2026-09-30 on `relay/231`, issue #231, fixed in the code, with the
+approved run on the author's library still owed.** The plan walks, for every
+entry, the bucket adoption's entry claims and every band bucket the tree
+holds the track in twice or more, in declared order. The entry's own bucket
+goes to R-758's rule unchanged. Every other bucket goes to a tree path that
+decides by the census's reading through `routing.energy_sub`, the one
+resolver, and only ever removes: the reading picks one of the subs held and
+the rest go, or it names none and the track is left under
+`reading-names-neither-held`. Adding a sub in a bucket the genre does not
+name is adoption's decision. The worker asks the same body for the bucket
+each move names, so a tree path move is not refused as naming another place.
+
+**The mechanism as carded was wrong, and the fix is where the reading put
+it.** Read off a disposable copy of the live database on this branch:
+Nations carries the genre Progressive House, so its entry's bucket is
+Progressive House, where it holds one sub, and the Organic House pair is in a
+bucket its genre does not name. Mumbling Yeah has a blank genre, so its
+disposition is needs-genre and it has no plan bucket at all. Neither was
+"already present in its target"; adoption never resolved either to the
+bucket that holds the pair. The two entries' readings are 7 and 2, which
+name High and Low, so both would move under the new plan, Nations out of
+Med and Mumbling Yeah out of Med Energy. Not run live: an unattended run
+does not approve a write on the author's library. `docs/cutover.md` holds it
+for the next attended sitting, rehearsed on a copy first as R-758's run was.
+
+**What the closing condition was met on.** A fixture with a track whose
+genre routes to a second energy bucket sitting in Med and High of the first
+with a reading of 8, one the same with a reading of 1, one with no genre in
+Low and Med reading 2, one doubling in both buckets reading 5, and one pair
+held by two rows. Nine moves for eight tracks, the stale band gone in each,
+the place the genre names untouched, the reading naming neither left and
+listed, the doubled pair listed and both rows live. Column by column over
+`BPM`, `Rating`, `KeyID`, the three analysis columns and the three cue
+tables, nothing differs.
+
+**Four things the brief did not say, decided by the build.**
+
+- **A track in one sub of a bucket its genre does not name is not this
+  verb's.** Whether it belongs there at all is adoption's question, and the
+  tree path plans only where a track holds two or more competing subs.
+- **A file the census could not read has no reading.** An excluded track,
+  missing, unreadable, online only or unmapped, is listed under `no-reading`
+  in every bucket it doubles in and never moved, whatever its row carries.
+  The brief put tracks with no reading out of scope; they are listed rather
+  than hidden because the answer is meant to name the doubles it cannot
+  reach.
+- **A pair held by two rows is listed, not moved.** `Placements` carries the
+  subs a track holds through more than one active row, read from the
+  multiplicity `read_tree` already counts, and a band sub so held is listed
+  under `one-sub-held-by-two-rows` beside whatever else is said of the
+  track, except a move, whose next plan lists it. No row of a pair the
+  reading names is removed. R-781 stays its own.
+- **A verdict is honoured in the bucket asked, not the entry's.** Found by
+  the review. The buckets a collision verdict kept adoption out of are read
+  off the plan's withheld entries, and the tree path leaves a double in one
+  of them under `withheld-by-verdict`. What that read cannot see is R-782.
+
+The built in review raised eight findings: seven applied, one recorded in
+the commit. Eighteen mutation rows across `docs/mutation/r780-a.md` and
+`r780-b.md`, eighteen killed, the notes in `r780-notes.md`, which also say
+why the driver's watched roots were a scratch directory (R-783).
+
 ## R-781. One membership pair is held by two active rows, and the readers count rows
 
 **Found:** at sitting 20, 2026-09-30. The move's read back showed 619 rows
@@ -31159,3 +31221,59 @@ No verb is wrong because of it; the numbers in the record are.
 than one active row, and the count the records carry is of pairs.
 
 **Not on the board bar.** A count in a document.
+
+## R-782. A collision verdict is folded into a plan by no shipped verb, and a plan carries one only as the entries it withheld
+
+**Found:** on `relay/231`, 2026-09-30, by the built in review of R-780's
+fix and then by reading the source. `plan.with_collision_verdicts` is
+defined, documented as the function the question was missing, and called
+from nowhere under `src`: `adopt apply` and `adopt move` build their plan
+through `apply_cli.current_plan`, which folds no verdict. Read from the
+source, NOT DRIVEN through a verb, since no verb reaches it.
+
+**The mechanism.** When the fold does run it flips the entries routed to the
+refused bucket to withheld and records nothing else, so the plan knows a
+bucket is refused only if some entry's genre routes there. R-780's tree path
+reads the refused buckets off those entries. A track sitting in two bands of
+a refused bucket under a genre that routes elsewhere, with no entry routed
+to that bucket, is planned for a removal inside the folder the person
+refused. Pinned by
+`test_a_verdict_no_entry_routes_to_is_not_known_and_is_recorded_as_such`.
+
+**Measured cost.** Unmeasured. No producer was driven: a collision verdict
+reaches no current plan through any shipped verb, so the removal above
+cannot happen today, and neither can the fold's own protection. Both halves
+are one absence.
+
+**Closes when:** the plan carries the refused buckets as a value of its own,
+set by the fold, and the fold is called by the verbs that ask the collision
+question, or the fold and the question are removed together.
+
+**Not on the board bar as filed,** since the reachability is unmeasured. It
+meets clause (a) the moment a verb folds a verdict.
+
+## R-783. The mutation driver reads a concurrent writer of the real installation state as a leak, so no table can be measured beside a live job
+
+**Found:** on `relay/231`, 2026-09-30, measuring R-780's first table. The
+driver's baseline stopped with `STATE LEAK`: the fingerprint of the real
+state directory moved at an unchanged entry count. The writer was a live
+`crate sync labels` job of the author's, queued at 18:00 UTC and running
+beside the session, writing `provider_gate.json` and the job queue's write
+ahead log. The guard says it cannot tell a child that reached the real
+machine from something else writing there, and it is right that it cannot.
+
+**Measured cost.** One batch stopped and rerun. Both R-780 tables were then
+measured with `CRATEKIT_CONFIG_DIR` and `CRATEKIT_STATE_DIR` pointed at an
+empty scratch directory, so the roots the driver watched were not the real
+ones and a child reaching the real machine during those runs would not have
+been seen by this guard. The children were sandboxed as always, since the
+driver sets each child's roots inside its workspace whatever the caller's
+are. `docs/mutation/r780-notes.md` says so beside the tables.
+
+**Closes when:** the driver can tell its children's writes from another
+process's, for instance by watching only the paths the sandbox would have
+redirected and reporting the rest as a concurrent writer, or by refusing to
+start while a Cratekit job lock is held and naming the job.
+
+**Not on the board bar.** Maintainer facing, and the guard erred on the side
+of stopping.
