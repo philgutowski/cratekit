@@ -64,8 +64,11 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import ingest, land_cli, native, normalize, pipeline
 
-#: The gate the native medium asks. Explicit, and looked up by name.
-NATIVE_GATE = "intake.file.native"
+#: The gate the native medium asks. Explicit, and looked up by name. NOT
+#: ``NATIVE_GATE``: the landing shell exports that name for its own gate, and
+#: one symbol holding two gates in two modules is how a test comes to decide
+#: the wrong one.
+FILE_GATE = "intake.file.native"
 
 #: What a row this run added is marked on the report. The plan's own word for
 #: it is the engine's, ``native.ADD``, and a row the collection already held
@@ -280,7 +283,7 @@ def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Env
     payload, landed = land_cli.ask_then_write(
         ctx,
         cfg,
-        land_cli.gate_named(ctx.entry, NATIVE_GATE),
+        land_cli.gate_named(ctx.entry, FILE_GATE),
         plan=lambda db: native.plan_rows(
             cfg,
             db,
@@ -304,7 +307,7 @@ def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Env
 
 __all__ = [
     "ADDED",
-    "NATIVE_GATE",
+    "FILE_GATE",
     "build_file",
     "intake_file",
 ]

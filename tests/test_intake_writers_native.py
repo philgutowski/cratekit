@@ -59,7 +59,7 @@ from tests.test_outbound_workers import catalog
 from tests.test_rb_writer_db import RECORDED_APP_VERSION
 from tests.xml_fixtures import _fresh_xml
 
-GATE = file_cli.NATIVE_GATE
+GATE = file_cli.FILE_GATE
 SRC = Path(ingest.__file__).resolve().parents[1]
 
 BRIDGE = "bridge"
