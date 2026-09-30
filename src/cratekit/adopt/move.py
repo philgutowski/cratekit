@@ -53,7 +53,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from cratekit.adopt.plan import AdoptionPlan, Placements, PlanEntry
+from cratekit.adopt.plan import WITHHELD_BY_VERDICT, AdoptionPlan, Placements, PlanEntry
 from cratekit.adopt.scan import Disposition
 from cratekit.cli.output import canonical_json, digest_of
 from cratekit.core import routing, taxonomy
@@ -307,31 +307,64 @@ def standing(
     stale = tuple(sub for sub in held if sub != entry.sub)
     if not stale:
         return None
-    unnamed = tuple(
-        sorted(set(placements.holds_unnamed(entry.bucket, entry.content_id)) & set(held))
-    )
+    unnamed = _unnamed(placements, entry, entry.bucket, held)
     reason = _left_reason(declared, entry, kind, unnamed)
     if reason:
-        return Left(
-            content_id=entry.content_id,
-            location=entry.recorded,
-            bucket=entry.bucket,
-            kind=str(kind.value),
-            reason=reason,
-            target=entry.sub,
-            holds=held,
-            holds_unnamed=unnamed,
-            energy=entry.energy,
-            genre=entry.genre,
-        )
-    return Move(
-        move_id=move_id_for(tree, entry.content_id, entry.bucket, entry.sub, stale),
+        return _left(entry, entry.bucket, kind, reason, entry.sub, held, unnamed)
+    return _move(entry, entry.bucket, kind, entry.sub, held, tree=tree)
+
+
+def _unnamed(
+    placements: Placements, entry: PlanEntry, bucket: str, held: tuple[str, ...]
+) -> tuple[str, ...]:
+    """The part of ``held`` the track holds under another name only."""
+    return tuple(sorted(set(placements.holds_unnamed(bucket, entry.content_id)) & set(held)))
+
+
+def _left(
+    entry: PlanEntry,
+    bucket: str,
+    kind: routing.Competing,
+    reason: str,
+    target: str,
+    held: tuple[str, ...],
+    unnamed: tuple[str, ...],
+) -> Left:
+    """One track left where it is. ONE BUILDER for both paths."""
+    return Left(
         content_id=entry.content_id,
         location=entry.recorded,
-        bucket=entry.bucket,
+        bucket=bucket,
         kind=str(kind.value),
-        target=entry.sub,
-        add="" if entry.sub in held else entry.sub,
+        reason=reason,
+        target=target,
+        holds=held,
+        holds_unnamed=unnamed,
+        energy=entry.energy,
+        genre=entry.genre,
+    )
+
+
+def _move(
+    entry: PlanEntry,
+    bucket: str,
+    kind: routing.Competing,
+    target: str,
+    held: tuple[str, ...],
+    *,
+    tree: str,
+) -> Move:
+    """One move. ONE BUILDER for both paths: ``add`` is empty when the target
+    is held, and ``remove`` is every other held sub."""
+    stale = tuple(sub for sub in held if sub != target)
+    return Move(
+        move_id=move_id_for(tree, entry.content_id, bucket, target, stale),
+        content_id=entry.content_id,
+        location=entry.recorded,
+        bucket=bucket,
+        kind=str(kind.value),
+        target=target,
+        add="" if target in held else target,
         remove=stale,
         holds=held,
         energy=entry.energy,
@@ -373,6 +406,23 @@ def reading_target(entry: PlanEntry, bucket: str, declared: taxonomy.Taxonomy) -
     return "" if sub is None else sub.id
 
 
+def refused_buckets(entries: Sequence[PlanEntry]) -> frozenset[str]:
+    """Every bucket a person's collision verdict kept adoption out of.
+
+    READ OFF THE ENTRIES, because the plan carries a verdict only as the
+    entries it withheld: :func:`cratekit.adopt.plan.with_collision_verdicts`
+    flips the entries routed to the refused bucket and records nothing else.
+    So a bucket no entry routes to cannot be known refused here, and that gap
+    is recorded rather than hidden. Found by the review: the first version
+    honoured a verdict only when it fell on the entry's own bucket, and would
+    have planned a removal inside a folder the person refused when the track
+    sat there under another genre.
+    """
+    return frozenset(
+        entry.bucket for entry in entries if entry.withheld_by == WITHHELD_BY_VERDICT
+    )
+
+
 def _standing_in_tree(
     entry: PlanEntry,
     bucket: str,
@@ -380,6 +430,7 @@ def _standing_in_tree(
     declared: taxonomy.Taxonomy,
     *,
     tree: str,
+    refused: frozenset[str],
 ) -> Move | Left | None:
     """What one track comes to in a band bucket adoption's entry does not claim.
 
@@ -393,6 +444,11 @@ def _standing_in_tree(
     and the rest are removed, or it names none of them and the track is left,
     under its own reason. A move that added a band in a bucket the genre does
     not name would be filing the track by a rule adoption does not use.
+
+    A FILE THE CENSUS COULD NOT READ HAS NO READING, whatever its row carries.
+    An excluded track, missing, unreadable, online only or unmapped, is listed
+    under ``no-reading`` and never moved, because the reading a move is made
+    on was never taken off the file.
     """
     kind, competing = routing.competing_subs(declared, bucket)
     if kind is not routing.Competing.BAND:
@@ -400,47 +456,21 @@ def _standing_in_tree(
     held = tuple(sorted(set(placements.holds(bucket, entry.content_id)) & competing))
     if len(held) < 2:
         return None
-    unnamed = tuple(
-        sorted(set(placements.holds_unnamed(bucket, entry.content_id)) & set(held))
-    )
+    unnamed = _unnamed(placements, entry, bucket, held)
     target = reading_target(entry, bucket, declared)
     if unnamed:
         reason = LEFT_UNNAMED
-    elif entry.disposition is Disposition.WITHHELD and entry.bucket == bucket:
+    elif bucket in refused:
         reason = LEFT_VERDICT
-    elif entry.energy is None or not target:
+    elif entry.disposition is Disposition.EXCLUDED or entry.energy is None or not target:
         reason = LEFT_NO_READING
     elif target not in held:
         reason = LEFT_NAMES_NEITHER
     else:
         reason = ""
     if reason:
-        return Left(
-            content_id=entry.content_id,
-            location=entry.recorded,
-            bucket=bucket,
-            kind=str(kind.value),
-            reason=reason,
-            target=target,
-            holds=held,
-            holds_unnamed=unnamed,
-            energy=entry.energy,
-            genre=entry.genre,
-        )
-    stale = tuple(sub for sub in held if sub != target)
-    return Move(
-        move_id=move_id_for(tree, entry.content_id, bucket, target, stale),
-        content_id=entry.content_id,
-        location=entry.recorded,
-        bucket=bucket,
-        kind=str(kind.value),
-        target=target,
-        add="",
-        remove=stale,
-        holds=held,
-        energy=entry.energy,
-        genre=entry.genre,
-    )
+        return _left(entry, bucket, kind, reason, target, held, unnamed)
+    return _move(entry, bucket, kind, target, held, tree=tree)
 
 
 def standing_in(
@@ -450,19 +480,21 @@ def standing_in(
     declared: taxonomy.Taxonomy,
     *,
     tree: str,
+    refused: frozenset[str] = frozenset(),
 ) -> Move | Left | None:
     """What one track comes to in one bucket: a move, a track left, or neither.
 
     ONE BODY FOR THE PLAN AND FOR THE WORKER'S CHECK OF IT, over every bucket a
     move can name. The bucket adoption's entry claims goes to :func:`standing`
     unchanged, so R-758's rule is untouched there. Every other bucket goes to
-    the tree path, which R-780 added.
+    the tree path, which R-780 added. ``refused`` is :func:`refused_buckets`
+    over the plan the entry came from.
     """
     if not placements.read:
         return None
     if claims(entry, bucket):
         return standing(entry, placements, declared, tree=tree)
-    return _standing_in_tree(entry, bucket, placements, declared, tree=tree)
+    return _standing_in_tree(entry, bucket, placements, declared, tree=tree, refused=refused)
 
 
 def buckets_asked(
@@ -505,7 +537,9 @@ def _doubled_rows(
     approved row, and a move whose target is doubled is done once the stale
     sub is gone, so the double must not read as a reason the plan as it stands
     leaves the track. It is a row on the screen and in the digest and nothing
-    the worker compares against.
+    the worker compares against. It rides beside a track left for another
+    reason as well, so the double is named whatever else is said about the
+    track, and is omitted only beside a move, whose next plan lists it.
     """
     doubled = tuple(sorted(set(placements.holds_doubled(bucket, entry.content_id)) & competing))
     if not doubled:
@@ -540,14 +574,18 @@ def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan
         competing = {
             bucket.id: routing.competing_subs(declared, bucket.id) for bucket in declared.buckets
         }
+        refused = refused_buckets(plan.entries)
         for entry in plan.entries:
             for bucket in buckets_asked(entry, plan.placements, declared, competing):
-                found = standing_in(entry, bucket, plan.placements, declared, tree=plan.tree)
+                found = standing_in(
+                    entry, bucket, plan.placements, declared, tree=plan.tree, refused=refused
+                )
                 if isinstance(found, Move):
                     moves.append(found)
-                elif isinstance(found, Left):
+                    continue
+                if isinstance(found, Left):
                     left.append(found)
-                elif competing[bucket][0] is routing.Competing.BAND:
+                if competing[bucket][0] is routing.Competing.BAND:
                     doubled = _doubled_rows(
                         entry, bucket, plan.placements, declared, competing[bucket][1]
                     )
@@ -620,6 +658,7 @@ __all__ = [
     "move_id_for",
     "move_row",
     "reading_target",
+    "refused_buckets",
     "standing",
     "standing_in",
     "to_json",

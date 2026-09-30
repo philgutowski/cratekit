@@ -1134,9 +1134,10 @@ A track the move plan found holding a stale competing sub and did not move,
 with the reason: `no-reading`, `genre-names-no-style`,
 `held-under-another-name`, `reading-names-neither-held` for a double in a
 bucket the genre does not name, `withheld-by-verdict`, or
-`one-sub-held-by-two-rows` for a pair rekordbox holds twice (R-781), which is
-listed so the double is named and is not moved. It is listed on the move's
-gate in full and covered by its digest.
+`one-sub-held-by-two-rows` for a band sub rekordbox holds twice (R-781),
+which is listed beside whatever else is said of the track, except a move, and
+is not moved. It is listed on the move's gate in full and covered by its
+digest.
 
 *Avoid:* reading it as Held back or Withheld. Those are a provider's and a
 plan's. This one is the move's own.
