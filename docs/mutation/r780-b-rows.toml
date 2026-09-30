@@ -1,0 +1,97 @@
+name = "r780-b"
+pass_kind = "light"
+
+# R-780, second batch: the worker's check of an approved plan against the
+# library as it stands, `adopt/move_cli.py`, plus one fixed sample of an
+# R-758 guard. Thirteen rows across both batches with `r780-a-rows.toml`.
+
+[[rows]]
+id = "B1_reading_not_rechecked"
+description = "the worker does not ask whether the reading still names the approved target, so a track retagged since the approval is moved to a sub its file no longer names"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        if move_engine.reading_target(entry, move.bucket, declared) != move.target:
+            stale[move.content_id] = "its reading names another place"
+            continue
+'''
+new = ''''''
+
+[[rows]]
+id = "B2_worker_asks_the_entry_bucket"
+description = "the worker asks the plan's rule of the entry's own bucket rather than the bucket the move names, so every tree path move is refused as one the plan does not make"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        now = move_engine.standing_in(
+            entry, move.bucket, current.placements, declared, tree=current.tree, refused=refused
+        )'''
+new = '''        now = move_engine.standing(entry, current.placements, declared, tree=current.tree)'''
+
+[[rows]]
+id = "B3_renamed_target_reads_as_done"
+description = "a track whose one place is its target through a renamed playlist reads as finished, which nobody was shown"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''            if held == {move.target} and not unnamed & held:
+                continue'''
+new = '''            if held == {move.target}:
+                continue'''
+
+[[rows]]
+id = "B4_gone_named_once_per_move"
+description = "a track gone from the collection is named once per move it carried, so the report lists it twice"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    return tuple(todo), tuple(sorted(gone))'''
+new = '''    return tuple(todo), tuple(
+        sorted(move.content_id for move in approved if move.content_id in gone)
+    )'''
+
+[[rows]]
+id = "B5_verdicts_not_handed_to_the_worker"
+description = "the worker asks the plan's rule with no refused bucket, so a move approved before a verdict landed is performed into the refused folder"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    refused = move_engine.refused_buckets(current.entries)'''
+new = '''    refused = frozenset()'''
+
+[[rows]]
+id = "B6_sample_a_sub_nobody_was_shown_is_removed"
+description = "R-758's own guard, the fixed sample: a track filed in a further sub since the approval has that sub removed as well"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        if set(now.remove) - set(move.remove):
+            stale[move.content_id] = "it holds a sub nobody was shown"
+            continue
+'''
+new = ''''''
+
+[[dropped]]
+id = "B7_read_back_lists_twice"
+description = "the read back names a track once per move rather than once per list"
+reason = "ranked below the cap: the lists are sets by construction and there is no nearby text that reintroduces a duplicate without rewriting the function; the driven test asserts the once per track shape"
+
+[[dropped]]
+id = "B8_count_messages"
+description = "the two refusal messages say moves where they count tracks"
+reason = "ranked below the cap: wording, asserted by no test, maintainer facing"
+
+[[dropped]]
+id = "A13_no_reading_reason_in_tree_path"
+description = "a double whose file has no reading is left under names-neither rather than no-reading"
+reason = "ranked below the cap: the track is left either way; only the reason's name moves"
+
+[[dropped]]
+id = "A14_doubled_listing_in_style_buckets"
+description = "a pair held twice in a style sub is listed"
+reason = "ranked below the cap: style subs are out of the brief's scope and the listing is withheld there on purpose"
+
+[[dropped]]
+id = "A15_declared_order_of_buckets_asked"
+description = "the buckets are asked in placement order rather than declared order, moving the digest between two plans over one tree"
+reason = "ranked below the cap: the placement reader itself walks declared order, so both orders agree on every tree it produces"
