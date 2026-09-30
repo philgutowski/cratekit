@@ -521,6 +521,44 @@ lesson of R-759. The pipx install brought to `11c4081`.
 batch, `intake imported`, a genre for the track, then `adopt scan` and
 `adopt apply` with the two rows sitting 17 kept.
 
+## Sitting 19, 2026-09-29, 19:36 to 19:49, attended, the import through desktop control
+
+Run while #227 built and clear of its gate, with the acknowledgment of
+17:07Z still held. The session drove the whole rekordbox side itself, the
+first time from the landing to the tree with no hand step but the
+acknowledgment.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| The import, by desktop control | by the session | Imported Library set through the Browse dialog. The one playlist `2026-09-29-favorites_inboxed` imported from the rekordbox xml view. Analyze Track run. Two genres set in the Info panel. | works |
+| The drag into INBOX | by the session, twice | **The first drag landed BESIDE INBOX at the root**, released on an insertion line. The second, released only once INBOX showed a box outline, landed inside. Rule: zoom and see the box before release. | works on the second attempt |
+| rekordbox's analysis of the landed file | read from the screen | **140.00 in 2B. Cratekit's head says `03B - 144`.** One more case for R-744. | measured |
+| `intake imported` over `crate export collection` | run, then run again on a copy | **Matched nothing, `PENDING_HUMAN`.** The export writes `Location` under `BaseDBDrive`, the base drive's own mount name; rekordbox's own export writes the current drive. Given a copy of the file with the prefix replaced by `sed`: proven imported, 1 track, the intake file retired. | defect, on the board bar |
+| `adopt apply`, the rehearsal | on a copy, state redirected | Added 3, already present 7,205, digest `5fbb8e409f42c727`. | measured |
+| `adopt apply`, live | approved by the session | Plan digest equal to the rehearsal's. **The session approved the live gate itself, the first time under the rule of 2026-09-29.** Added 3, 7,205 already present, none failed, integrity ok, 19,350 memberships, 570 playlists. | live |
+
+**Landed:** In The Air Tonight to House / Funky House / Disco / High. Didn't
+See It Coming to Downtempo / Low. Same Girl to NonElectronic / Soul / R&B.
+
+**Step 5 of the road map is DONE for the favourites source**: account to
+tree, one track, no hand step but the acknowledgment.
+
+**Left for the author, and decided by him the same evening.** The inserted
+MONKYMAN row duplicates a track already in the library from another folder,
+`Processed_Tracks/2025/10_10_25`: two rows, two files, one recording. He
+chose to keep the older row and remove the experiment's row `253549430` from
+the collection, file kept. A search filter `Amal Nemer` may still be set in
+the collection view.
+
+**The defect.** `intake imported` cannot finish over the export this
+product writes, which is a workflow a DJ needs, so it is on the board bar.
+`write/collection_export.py` takes `FolderPath` as the database holds it and
+`_location` encodes it unchanged, so every `Location` carries the base
+drive; `intake imported` digests the decoded path and compares it with the
+landed file's mounted path, and `library.location_prefix_map`, the one rule
+that joins the two spellings, is applied by neither. Filed as R-773, with
+its issue.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -532,12 +570,13 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-**Step 5 of the road map, the favourites cycle.** `crate export collection`
-landed with #223, so no export is taken by hand, and #222 means a landed
-Name keeps its head. The session drives rekordbox for the import. Stop the
-feeder first: rekordbox and a Relay build do not share the machine (R-759).
-
-Queued for the feeder: #224 (R-746), R-757, R-758 and R-759.
+**The favourites cycle has run end to end once, sitting 19.** What is
+owed next: the four decisions of 2026-09-29 evening (the MONKYMAN row
+removed in rekordbox, the lossy Satisfy accepted, the two version match
+review items resolved and downloaded), then #227's `adopt move` rehearsed
+on a copy and run live if the digest matches, then `intake imported` driven
+again once R-773 lands. Stop the feeder first: rekordbox and a Relay build
+do not share the machine (R-759).
 
 Owed by the author: a genre on the INBOX rows that carry none.
 
