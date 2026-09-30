@@ -1,0 +1,88 @@
+name = "r746-a"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_asking_for_any_table_is_not_refused"
+description = "guard_violations: a creation asked for in a table outside ADMITTABLE_ROW_TABLES is no longer itself a violation"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '''    for table in sorted(creatable - ADMITTABLE_ROW_TABLES):
+        violations.append('''
+new = '''    for table in ():
+        violations.append('''
+
+[[rows]]
+id = "G2_admitted_row_judged_without_the_column_policy"
+description = "guard_violations: an admitted content row may declare any column, the ten included"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '''            declared = {column for column in columns if column in CONTENT_ROW_EMPTY_COLUMNS}'''
+new = '''            declared = set()'''
+
+[[rows]]
+id = "G3_content_row_admitted_without_asking"
+description = "guard_violations: every commit admits a content row, whether or not it named the table"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py", "tests/test_intake_land_native.py"]
+old = '''        if table == CONTENT_TABLE and table in creatable:'''
+new = '''        if table == CONTENT_TABLE:'''
+
+[[rows]]
+id = "G4_read_back_walks_session_new_only"
+description = "assert_created_rows_are_gridless: the R-760 blind spot put back, a flushed creation is never read from SQL"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_write_guard_completeness.py", "tests/test_intake_land_native.py"]
+old = '''    instances = {**_registry_created_instances(db), **pending}'''
+new = '''    instances = {**pending}'''
+
+[[rows]]
+id = "G5_content_row_read_back_against_five_not_ten"
+description = "assert_created_rows_are_gridless: a content row is held to the playlist tables' five columns, so a key or a rate rides in"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_write_guard_completeness.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''        policy = CONTENT_ROW_EMPTY_COLUMNS if table == CONTENT_TABLE else GRIDLESS_ON_CREATE_COLUMNS'''
+new = '''        policy = GRIDLESS_ON_CREATE_COLUMNS'''
+
+[[rows]]
+id = "G6_analysis_tables_not_checked"
+description = "assert_created_rows_are_gridless: no cue, mixer or file row is looked for on the new content row"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''        if table == CONTENT_TABLE and len(keys) == 1:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "G7_sql_value_check_disarmed"
+description = "assert_created_rows_are_gridless: a value read from SQL is never a violation"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''            if value not in EMPTY_ON_CREATE:
+                violations.append(f"{table}.{name} = {value!r}")'''
+new = '''            if False:
+                violations.append(f"{table}.{name} = {value!r}")'''
+
+[[rows]]
+id = "G8_key_dropped_from_the_content_policy"
+description = "CONTENT_ROW_EMPTY_COLUMNS: KeyID is no longer a column a new content row must leave empty"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '''        "KeyID",
+        "SampleRate",'''
+new = '''        "SampleRate",'''
+
+[[rows]]
+id = "G9_admittable_set_widened"
+description = "ADMITTABLE_ROW_TABLES: a second table joins the set a commit may ask to create in"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '''ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE})'''
+new = '''ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE, "djmdArtist"})'''

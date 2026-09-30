@@ -1,0 +1,80 @@
+name = "r746-c"
+pass_kind = "light"
+
+[[rows]]
+id = "V1_acknowledgment_not_read_before_the_gate"
+description = "_land_native: the backup acknowledgment is read by the session after the approval, not before the gate (R-733)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        payload = _native_payload(planned, rows, target=target)
+        session.assert_backup_acknowledged(cfg)'''
+new = '''        payload = _native_payload(planned, rows, target=target)'''
+
+[[rows]]
+id = "V2_medium_inverted"
+description = "intake_land: a tree on the bridge takes the native medium and a native tree the bridge"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land.py"]
+old = '''    if declared is not None and registry.is_database_native(declared.intake.id):'''
+new = '''    if declared is not None and not registry.is_database_native(declared.intake.id):'''
+
+[[rows]]
+id = "V3_export_accepted_on_a_native_tree"
+description = "_land_native: --export is ignored rather than refused on a native tree"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''    tree_id = declared.intake.id
+    if ctx.args.export is not None:'''
+new = '''    tree_id = declared.intake.id
+    if False:'''
+
+[[rows]]
+id = "V4_manifest_accepted_on_a_native_tree"
+description = "_land_native: --manifest is ignored rather than refused, so label filing is quietly not done"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''    if manifest is not None:
+        raise refuse(
+            "intake-list-unusable",
+            f"the intake tree {tree_id!r} is database native and label filing from a "'''
+new = '''    if False:
+        raise refuse(
+            "intake-list-unusable",
+            f"the intake tree {tree_id!r} is database native and label filing from a "'''
+
+[[rows]]
+id = "V5_abort_applies"
+description = "_land_native: the recorded answer is read backwards, an abort lands and an apply does nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        if option != "apply":
+            return ctx.envelope(data=payload, outcome=Outcome.NO_OP)'''
+new = '''        if option == "apply":
+            return ctx.envelope(data=payload, outcome=Outcome.NO_OP)'''
+
+[[rows]]
+id = "V6_empty_plan_goes_to_the_database"
+description = "_land_native: a plan of nothing opens the database and asks the explicit gate"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''    spec = _gate(ctx.entry, NATIVE_GATE)
+    if not planned.items:'''
+new = '''    spec = _gate(ctx.entry, NATIVE_GATE)
+    if False:'''
+
+[[rows]]
+id = "V7_registry_read_whether_or_not_the_library_is_there"
+description = "intake_land: the registry under an unmounted library root is read ahead of the gate, narrowing R-677"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_intake_land_native.py"]
+old = '''    declared = registry = None
+    if Path(cfg.library.root).is_dir():'''
+new = '''    declared = registry = None
+    if True:'''
