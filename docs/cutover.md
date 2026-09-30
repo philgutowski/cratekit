@@ -559,6 +559,38 @@ landed file's mounted path, and `library.location_prefix_map`, the one rule
 that joins the two spellings, is applied by neither. Filed as R-773, with
 its issue.
 
+## Sitting 20, 2026-09-29 evening to 2026-09-30 morning, the decisions of the evening
+
+Meant to run unattended overnight. It did not: at 22:40 the session asked
+desktop control for one more application, whose transparent full screen
+window was refusing clicks into rekordbox, and that request waited on an
+approval dialog until the author clicked it at 08:30. The feeder had been
+stopped at 23:08 for the rekordbox step and stayed stopped all night.
+Nothing was lost and nothing was built. The lesson is in the record below.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| The two version match items of job `8b37` | resolved rejected by the session, 2026-09-29 | Fractals and I'll Find My Way To You, each held in another version. A rejection is a missing row and hands the track to acquisition. | done |
+| Calvin Harris, Satisfy, the lossy copy | read, not run | `lossless_policy` is one global switch, `strict` or `allow_lossy_marked`, with no per track exception by design (R21), and `acquire fallback-fetch` refuses under `strict` before it downloads. No verb takes one exception. Left refused. | recorded, not acted on |
+| The MONKYMAN duplicate row | by the session in rekordbox, 08:31 | Row `253549430`, the experiment's file under the 10_25_25 folder, created 9/29/26, play count 0, removed from the collection through its dialog. Row `147268321`, play count 8, kept. File kept. 9,867 tracks shown, 10,018 active rows. No search filter was set; none was left. | done |
+| The favourites cycle, second pass | by the session, 08:33 to 08:37 | `intake playlist favorites` job `269b`: 218 declared, 209 listed, 9 withheld, **206 owned, 3 missing** (2 by verdict, Satisfy). 8 provider calls. `acquire download` job `c50f`: **2 landed, Satisfy `lossy-refused`**, 15 calls, no rate limit. Tag, `analyze run`, `analyze restamp` (energy stamped), `name apply` (2 renames from the files' own tags, the answered run resumed with `--run`). `crate export collection`: 10,018 rows, 494 playlists, no tempo. `intake land` run `812d`: 2 files into `Music/2026-09-30-favorites`, intake file `2026-09-30-favorites_inboxed.xml`. | landed, pending the import |
+| `adopt move`, R-758's verification, the rehearsal | on a copy, state redirected | **618 moves, 605 band and 13 style, 581 memberships added and 618 removed, 4 left** whose genre names no style, digest `a2237b5eff650c14`. Of the 618, 37 already held their target and only lost the stale sub (R-734's shape). Applied in 13 seconds. Read back: 19,349 to 19,311 memberships, 619 rows soft deleted because one pair was held twice, every BPM unchanged, integrity ok, band doubles per bucket **40 down to 6**. | measured |
+| `adopt move`, live | approved by the session on an equal digest, 09:00 | Plan digest `a2237b5eff650c14`, every plan row identical to the rehearsal's. Snapshot `2026-09-30T130022Z` first. Read back equal to the copy on every count, the active membership set identical. **The 585 withheld of sitting 15 and the 37 of R-734 are in the sub their file names.** | live, R-758 verified |
+
+**The six doubles the move leaves.** Four are one pair held twice in the
+same sub, duplicate rows rekordbox made, not two subs. Two are tracks that
+held two band subs before adoption ran and whose reading names one of
+them: `adopt apply` counted them already present and withheld nothing, so
+`adopt move`, which plans from adoption's withheld list, never sees them.
+Nations in Organic House, Med and High. Mumbling Yeah in Minimal / Deep
+Tech, Low Energy and Med Energy. Filed as R-780 and R-781.
+
+**Owed.** The import of `2026-09-30-favorites_inboxed` through desktop
+control once the feeder is idle, then `intake imported` over a written
+export, which R-773 (#229) makes possible without a hand edit, then
+`adopt scan` and `adopt apply` for the two rows. rekordbox's own view of
+the moved subs, which is R-761's close.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -570,40 +602,14 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-**The favourites cycle has run end to end once, sitting 19.** What is
-owed next: the four decisions of 2026-09-29 evening (the MONKYMAN row
-removed in rekordbox, the lossy Satisfy accepted, the two version match
-review items resolved and downloaded), then #227's `adopt move` rehearsed
-on a copy and run live if the digest matches, then `intake imported` driven
-again now that R-773 is built. Stop the feeder first: rekordbox and a Relay
-build do not share the machine (R-759).
-
-**Owed by R-773, built on `relay/229`, 2026-09-30, and it is that unit's own
-verification.** On this library, after the next landing and its import, run
-`crate export collection` and hand the file to `intake imported` with no
-edit between the two verbs. Expected: the run proven, the intake file
-retired, `locations_remapped` in the export's summary near the count of rows
-recorded under the base drive, and the warning `export-location-unmapped`
-naming the rows under no rule by prefix. The installed copy needs the new
-build before the sitting. Record the outcome here, since the issue's closing
-condition names this file.
-
-**Owed by R-770, built on `relay/230`, 2026-09-30, and it rides on R-746's
-own sitting.** R-746 owes a cutover of the intake tree on a disposable copy
-with `library.state_dirname` redirected. On that same copy, before anything
-live: put one tagged file in the music folder, run `crate intake file` on it
-with no export, approve `intake.file.native` with `crate run decide`, then
-open rekordbox on the copy and read whether the row is there under INBOX in a
-playlist named for the file, plays, and analyses on request. Also on the
-copy: `crate intake file` with `--export`, which should be refused by name
-with `fix-command-line` and no `report-defect`. Live only after R-746's own
-three files, on one file, approved by the session only if the live digest
-equals the copy's. Record the outcome here.
-
-**Known before that sitting, R-777.** After a native landing `sync mark` has
-no intake file to read, so a playlists pass landed on a cut over intake tree
-stays unmarked. Do not cut the live intake tree over while a playlists pass
-is waiting to be marked.
+**The import of `2026-09-30-favorites_inboxed`** through desktop control,
+when the author frees the screen: the one playlist from the rekordbox xml
+view, dragged into INBOX with the box outline seen, Reload Tags, genres set,
+quit, both processes gone. Then `crate export collection` and `intake
+imported` over it with no hand edit, which is R-773's live proof. Then
+`adopt scan` and `adopt apply` for the two rows, rehearsed on a copy. Read
+the moved subs in rekordbox's own view while it is open, which closes R-761.
+Stop the feeder first (R-759).
 
 Owed by the author: a genre on the INBOX rows that carry none.
 
