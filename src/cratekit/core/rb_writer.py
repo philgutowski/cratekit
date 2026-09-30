@@ -2496,6 +2496,34 @@ def _session_changes(
     return created, modified, removed
 
 
+def _buffer_entries(db: Any) -> list[tuple[Any, str | None, str, list[Any]]]:
+    """ONE walk of the binding's update buffer, for both readers of it.
+
+    Each entry as ``(entry, op, key, instances)``. ``op`` is None for an
+    entry whose shape this code does not understand, and the readers refuse
+    on it rather than skip it. "move" carries a LIST of instances; the other
+    three carry one, and both are handed over as a list so a reader has one
+    shape to walk. Empty without a handle, for the scoping reason
+    :func:`_registry_changes` gives, and empty without the binding.
+    """
+    if db is None:
+        return []
+    try:
+        from pyrekordbox.db6.registry import RekordboxAgentRegistry
+    except Exception:  # noqa: BLE001 - binding absent means no buffer to read
+        return []
+    walked: list[tuple[Any, str | None, str, list[Any]]] = []
+    for entry in list(getattr(RekordboxAgentRegistry, "__update_sequence__", [])):
+        try:
+            target, op, key, _value = entry
+        except (TypeError, ValueError):  # a shape this code does not understand
+            walked.append((entry, None, "", []))
+            continue
+        instances = list(target) if isinstance(target, (list, tuple)) else [target]
+        walked.append((entry, str(op), str(key) if key else "", instances))
+    return walked
+
+
 def _registry_changes(
     db: Any,
 ) -> tuple[dict[int, tuple[str, set[str]]], dict[int, tuple[str, set[str]]], dict[int, str]]:
@@ -2524,25 +2552,15 @@ def _registry_changes(
     work in the same process and refused a write that was perfectly legitimate.
     A guard that refuses correct code is one people route around (P7).
     """
-    if db is None:
-        return {}, {}, {}
-    try:
-        from pyrekordbox.db6.registry import RekordboxAgentRegistry
-    except Exception:  # noqa: BLE001 - binding absent means no buffer to read
-        return {}, {}, {}
-
     created: dict[int, tuple[str, set[str]]] = {}
     modified: dict[int, tuple[str, set[str]]] = {}
     removed: dict[int, str] = {}
 
-    for entry in list(getattr(RekordboxAgentRegistry, "__update_sequence__", [])):
-        try:
-            target, op, key, _value = entry
-        except (TypeError, ValueError):  # a shape this code does not understand
+    for entry, op, key, instances in _buffer_entries(db):
+        if op is None:
+            # A shape this code does not understand. Refuse rather than ignore.
             modified[id(entry)] = (UNINSPECTABLE, {UNINSPECTABLE})
             continue
-        # "move" carries a LIST of instances; the other three carry one.
-        instances = target if isinstance(target, (list, tuple)) else [target]
         for obj in instances:
             table = _table_of(obj)
             if table is None:
@@ -2604,21 +2622,11 @@ def _registry_created_instances(db: Any) -> dict[int, Any]:
     primary key once the flush has assigned one. Same buffer, same scoping rule,
     read for a different purpose. Runs no query.
     """
-    if db is None:
-        return {}
-    try:
-        from pyrekordbox.db6.registry import RekordboxAgentRegistry
-    except Exception:  # noqa: BLE001 - binding absent means no buffer to read
-        return {}
     found: dict[int, Any] = {}
-    for entry in list(getattr(RekordboxAgentRegistry, "__update_sequence__", [])):
-        try:
-            target, op, _key, _value = entry
-        except (TypeError, ValueError):
-            continue
+    for _entry, op, _key, instances in _buffer_entries(db):
         if op != "create":
             continue
-        for obj in target if isinstance(target, (list, tuple)) else [target]:
+        for obj in instances:
             found[id(obj)] = obj
     return found
 
@@ -2626,7 +2634,10 @@ def _registry_created_instances(db: Any) -> dict[int, Any]:
 #: What "empty" is for a column an analysis pass fills: every spelling the
 #: database uses for a value nobody wrote. ``'0'`` is the key identifier of a
 #: row rekordbox has not analysed, and the empty string is its artwork path.
-_EMPTY_ON_CREATE: tuple[Any, ...] = (None, 0, 0.0, "", "0")
+#: PUBLIC, because the landing reads the committed rows back against the same
+#: notion of empty, and a second spelling there is how the read back comes to
+#: refuse a row the guard admitted.
+EMPTY_ON_CREATE: tuple[Any, ...] = (None, 0, 0.0, "", "0")
 
 
 def assert_created_rows_are_gridless(db: Any) -> None:
@@ -2700,7 +2711,7 @@ def assert_created_rows_are_gridless(db: Any) -> None:
         if row is None:
             continue
         for name, value in zip(sorted(columns), row):
-            if value not in _EMPTY_ON_CREATE:
+            if value not in EMPTY_ON_CREATE:
                 violations.append(f"{table}.{name} = {value!r}")
         if table == CONTENT_TABLE and len(keys) == 1:
             for owned in CONTENT_ANALYSIS_TABLES:
@@ -3049,6 +3060,7 @@ __all__ = [
     "CONTENT_ANALYSIS_TABLES",
     "CONTENT_ROW_EMPTY_COLUMNS",
     "CONTENT_TABLE",
+    "EMPTY_ON_CREATE",
     "CommitWitness",
     "ENV_APP_PATH",
     "FIELD_EMPTIES",

@@ -701,6 +701,25 @@ def test_a_recorded_abort_is_honored_over_an_export_that_went_missing(cfg, silen
     assert _staged_names(cfg) == ["One.flac"]
 
 
+def test_a_recorded_abort_is_honored_over_a_library_that_went_missing(cfg, silence, export):
+    """The other half of the same contract (R-677): the preflight's library
+    refusal gives way to a recorded abort exactly as its export refusal does.
+    Since R-746 the verb reads the tree registry under the library root to
+    choose its medium, and it must not let that read refuse ahead of the gate."""
+    _stage(cfg, silence, "One.flac")
+    code, refused = _drive(_land(export, "--name", BATCH))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    _drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
+    shutil.rmtree(cfg.library.root)
+
+    code, envelope = _drive(["--run", run_id, *_land(export, "--name", BATCH)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert _staged_names(cfg) == ["One.flac"]
+
+
 def test_a_stale_answer_stays_stale_over_an_export_that_is_not_there(cfg, silence, export, tmp_path):
     """Only the refusal that asks for an answer gives way to the preflight. An
     answer given against another plan is the gate's own verdict, and the

@@ -311,29 +311,29 @@ def intake_land(ctx) -> Envelope:
     )
     planned = _planned(folder, cfg, batch)
     target = landing.target_dir(cfg, batch)
-    # THE LIBRARY IS ASKED BEFORE THE REGISTRY, which lives under it: an
-    # unmounted volume is named as the volume, not as an unreadable registry
-    # or a missing export. The same check the engine makes, in its order, and
-    # only when something would move, since a plan of nothing touches nothing.
-    if planned.items:
-        landing.preflight_native(planned, cfg=cfg)
-    # THE MEDIUM IS THE INTAKE TREE'S MODE, read next, the way the routing
-    # verbs choose theirs (R-746). A tree the database owns takes the files
-    # into the collection through the guarded writer and no export is
-    # involved; a tree on the bridge is spliced into the export it always was.
-    declared = active_taxonomy.load(cfg)
-    registry = tree_registry.read(cfg)
-    if registry.is_database_native(declared.intake.id):
+    # THE MEDIUM IS THE INTAKE TREE'S MODE, the way the routing verbs choose
+    # theirs (R-746). A tree the database owns takes the files into the
+    # collection through the guarded writer and no export is involved; a tree
+    # on the bridge is spliced into the export it always was. The registry
+    # lives under the library root, so an unreachable root decides nothing
+    # here: the xml path is taken as it was before the medium existed, and
+    # its preflight names the library, before the gate, under the R-677
+    # contract that a recorded abort is still honoured over it.
+    declared = registry = None
+    if Path(cfg.library.root).is_dir():
+        declared = active_taxonomy.load(cfg)
+        registry = tree_registry.read(cfg)
+    if declared is not None and registry.is_database_native(declared.intake.id):
         return _land_native(
             ctx,
             cfg,
             planned,
             target=target,
-            tree_id=declared.intake.id,
+            declared=declared,
             registry=registry,
             manifest=manifest,
         )
-    if ctx.args.export is None:
+    if ctx.args.export is None and declared is not None:
         raise refuse(
             "library-export-unusable",
             f"the intake tree {declared.intake.id!r} is on the xml bridge, so a "
@@ -348,7 +348,13 @@ def intake_land(ctx) -> Envelope:
             origin=_ORIGIN,
             detail={"tree_id": declared.intake.id},
         )
-    export = Path(ctx.args.export)
+    # With no export named and no library to read, the engine's preflight
+    # below refuses on the library first, so the name here is never opened.
+    export = (
+        Path(ctx.args.export)
+        if ctx.args.export is not None
+        else Path(cfg.library.root) / "collection.xml"
+    )
     destination = intake_file(cfg, batch)
     # THE ENGINE'S PRE-MOVE CHECKS ARE ASKED BEFORE THE GATE TOO (R-677), for
     # the manifest's reason. A plan over an export that is not there, or not a
@@ -446,6 +452,8 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
         }
         if row.content_id is not None:
             entry["content_id"] = row.content_id
+        if row.why:
+            entry["why"] = row.why
         items.append(entry)
     identity = {
         "kind": "land-native",
@@ -480,6 +488,7 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         "left empty for rekordbox": list(native.LEFT_EMPTY),
         "adds": len(rows.to_add()),
         "already present": len(rows.present()),
+        "left in staging": len(rows.unsupported()),
     }
 
 
@@ -543,7 +552,7 @@ def _land_native(
     planned: landing.Plan,
     *,
     target: Path,
-    tree_id: str,
+    declared,
     registry,
     manifest: landing.LabelManifest | None,
 ) -> Envelope:
@@ -554,14 +563,17 @@ def _land_native(
     made against the database the apply will write. THE ACKNOWLEDGMENT IS READ
     BEFORE THE GATE (R-733): an approval is the one way door on a live library,
     and a person who reads the whole plan and answers should not then be
-    refused by something the verb could have read first. A plan of nothing
-    still asks, on the precedent every gated verb sets, and reads no
-    acknowledgment for it, since nothing would be written.
+    refused by something the verb could have read first. A PLAN OF NOTHING IS
+    NOT ASKED: download staging is empty after every landing, and an explicit
+    gate, which takes a separate recorded act, is the price of a new kind of
+    write and not of learning there is nothing to move. Nothing is written
+    for it, so the envelope says so and stops.
 
     THE GATE TAKES NO INLINE ANSWER. This is a new kind of write, content rows
     in the collection, and it is answered by a separate recorded act with an
     actor, the way the adoption is (R34).
     """
+    tree_id = declared.intake.id
     if ctx.args.export is not None:
         raise refuse(
             "intake-list-unusable",
@@ -584,17 +596,14 @@ def _land_native(
         )
     spec = _gate(ctx.entry, NATIVE_GATE)
     if not planned.items:
-        empty = {"digest": digest_of({"kind": "land-native", "folder": str(planned.folder),
-                                      "batch": planned.batch, "files": ""}),
-                 "items": [], "totals": {"count": 0}, "chunk": None}
-        ctx.gate.require(
-            spec, plan=empty, context={"folder": str(planned.folder), "lands in": str(target)}
-        )
+        identity = {"kind": "land-native", "folder": str(planned.folder), "batch": planned.batch}
+        empty = {"digest": digest_of(identity), "items": [], "totals": {"count": 0}, "chunk": None}
         return ctx.envelope(data=empty, outcome=Outcome.NO_OP)
 
     # THE LIBRARY CHECKS BEFORE THE DATABASE IS OPENED, so an unmounted volume
     # is named as the volume and a staging folder on another device refuses
-    # without a snapshot copy of anything.
+    # without a snapshot copy of anything. Once here, and again by the engine
+    # before its first move, as the xml landing's preflight is.
     landing.preflight_native(planned, cfg=cfg)
     files = [(item, target / item.name) for item in planned.items]
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
@@ -614,7 +623,9 @@ def _land_native(
         # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432), as on
         # the bridge: the engine checks a target free and then renames over it.
         with landing.batch_lock(planned.batch):
-            landed = landing.apply_native(planned, cfg=cfg, db=db, rows=rows)
+            landed = landing.apply_native(
+                planned, cfg=cfg, db=db, rows=rows, declared=declared
+            )
     finally:
         rb_writer.close_db(db)
     native.assert_rows_gridless(landed.collection)

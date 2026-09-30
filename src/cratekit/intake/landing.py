@@ -62,7 +62,7 @@ import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Mapping
 
 from cratekit.acquire import listdoc, match, match_cli
 from cratekit.core import (
@@ -867,6 +867,59 @@ def _reason_for(exc: OSError) -> str:
     return "intake-list-unusable"
 
 
+def _assert_unchanged(plan: Plan) -> None:
+    """Refuse a plan whose folder is not what it was listed as, before any move."""
+    items = _list(plan.folder) if plan.folder.is_dir() else ()
+    if items != plan.items or _digest(items) != plan.digest:
+        raise refuse(
+            "decision-stale",
+            f"{plan.folder} changed after it was planned, so nothing was moved",
+            origin=_ORIGIN,
+            detail={"folder": str(plan.folder)},
+        )
+
+
+def _screen(
+    plan: Plan,
+    target: Path,
+    declared: taxonomy.Taxonomy,
+    *,
+    nothing_after: str,
+    also_refused: Mapping[Path, Refused] | None = None,
+) -> tuple[list[Path], list[Refused]]:
+    """Which planned files may move, and which are refused alone, on both media.
+
+    ONE PASS FOR THE XML LANDING AND THE NATIVE ONE, so a file refused on one
+    medium is refused on the other for the same reasons: its tags resolve to no
+    declared sub, so it is left in staging to be tagged and landed again, or
+    its target is already occupied. ``also_refused`` is what the medium itself
+    refuses per file, a suffix the database has no file type for, keyed by
+    the staged path. A batch where nothing may move refuses before the batch
+    folder is made, so it leaves nothing in the library, not even an empty
+    folder.
+    """
+    named = dict(also_refused or {})
+    refused: list[Refused] = []
+    movable: list[Path] = []
+    for item in plan.items:
+        blocked = (
+            named.get(item) or _unplaceable(item, declared) or _occupied(item, target / item.name)
+        )
+        if blocked is not None:
+            refused.append(blocked)
+        else:
+            movable.append(item)
+    if not movable:
+        raise refuse(
+            "intake-list-unusable",
+            f"no file in {plan.folder} could land, so nothing was moved and "
+            f"{nothing_after}: " + "; ".join(entry.sentence for entry in refused),
+            origin=_ORIGIN,
+            detail=_moved_detail([], refused),
+        )
+    return movable, refused
+
+
 def _move(
     plan: Plan,
     target: Path,
@@ -940,14 +993,7 @@ def apply(
     that are not the ones that were shown refuse as stale with nothing moved,
     which is what the folder's own digest does for the files.
     """
-    items = _list(plan.folder) if plan.folder.is_dir() else ()
-    if items != plan.items or _digest(items) != plan.digest:
-        raise refuse(
-            "decision-stale",
-            f"{plan.folder} changed after it was planned, so nothing was moved",
-            origin=_ORIGIN,
-            detail={"folder": str(plan.folder)},
-        )
+    _assert_unchanged(plan)
     label_rows: tuple[listdoc.ManifestRow, ...] = ()
     if manifest is not None:
         read = read_label_manifest(manifest)
@@ -963,27 +1009,9 @@ def apply(
         plan, cfg=cfg, export=export, destination=destination, label_rows=label_rows
     )
     target = target_dir(cfg, plan.batch)
-
-    refused: list[Refused] = []
-    movable: list[Path] = []
-    for item in plan.items:
-        blocked = _unplaceable(item, checked.declared) or _occupied(item, target / item.name)
-        if blocked is not None:
-            refused.append(blocked)
-        else:
-            movable.append(item)
-    if not movable:
-        # Before the batch folder is made, so a batch where nothing lands
-        # leaves nothing in the library, not even an empty folder.
-        raise refuse(
-            "intake-list-unusable",
-            f"no file in {plan.folder} could land, so nothing was moved and no "
-            f"intake file was written: "
-            + "; ".join(entry.sentence for entry in refused),
-            origin=_ORIGIN,
-            detail=_moved_detail([], refused),
-        )
-
+    movable, refused = _screen(
+        plan, target, checked.declared, nothing_after="no intake file was written"
+    )
     moved = _move(plan, target, movable, refused, nothing_after="no intake file was written")
 
     try:
@@ -1053,6 +1081,7 @@ def apply_native(
     cfg: config.Config,
     db: Any,
     rows: native.NativePlan,
+    declared: taxonomy.Taxonomy,
 ) -> LandedNative:
     """Move the planned files into the library, then add them to the collection.
 
@@ -1069,19 +1098,15 @@ def apply_native(
     leaves the collection exactly as it was. Nothing on this medium leaves an
     intake file behind, because nothing writes one.
 
-    A FILE THE MOVE REFUSED IS NOT ADDED. A target that was occupied at the move
-    is refused alone, as it is on the bridge, and its planned row is dropped
-    before the engine runs, so the collection gains rows only for files this
-    call put where the rows say they are.
+    A FILE THE MOVE REFUSED IS NOT ADDED. A file whose tags resolve to no
+    declared sub, a target that was occupied at the move, and a suffix the
+    database has no file type for are each refused alone, as on the bridge,
+    and their planned rows are dropped before the engine runs, so the
+    collection gains rows only for files this call put where the rows say they
+    are. ``declared`` is the library's active taxonomy, read once by the verb
+    with the registry, so the placement check and the medium agree (R-685).
     """
-    items = _list(plan.folder) if plan.folder.is_dir() else ()
-    if items != plan.items or _digest(items) != plan.digest:
-        raise refuse(
-            "decision-stale",
-            f"{plan.folder} changed after it was planned, so nothing was moved",
-            origin=_ORIGIN,
-            detail={"folder": str(plan.folder)},
-        )
+    _assert_unchanged(plan)
     preflight_native(plan, cfg=cfg)
     target = target_dir(cfg, plan.batch)
     planned = {str(row.target): row for row in rows.rows}
@@ -1095,22 +1120,15 @@ def apply_native(
             detail={"folder": str(plan.folder), "unplanned": unplanned},
         )
 
-    refused: list[Refused] = []
-    movable: list[Path] = []
-    for item in plan.items:
-        blocked = _occupied(item, target / item.name)
-        if blocked is not None:
-            refused.append(blocked)
-        else:
-            movable.append(item)
-    if not movable:
-        raise refuse(
-            "intake-list-unusable",
-            f"no file in {plan.folder} could land, so nothing was moved and no "
-            f"row was added: " + "; ".join(entry.sentence for entry in refused),
-            origin=_ORIGIN,
-            detail=_moved_detail([], refused),
-        )
+    unsupported = {
+        item: Refused(path=item, reason="intake-list-unusable", sentence=row.why)
+        for item in plan.items
+        for row in (planned[str(target / item.name)],)
+        if row.action == native.UNSUPPORTED
+    }
+    movable, refused = _screen(
+        plan, target, declared, nothing_after="no row was added", also_refused=unsupported
+    )
     moved = _move(plan, target, movable, refused, nothing_after="no row was added")
 
     landed_targets = {str(item.target) for item in moved}

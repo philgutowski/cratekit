@@ -65,9 +65,12 @@ from cratekit.core.cause import Remedy, refuse
 from cratekit.intake import ingest
 from cratekit.write import routing_pass, trees
 
-#: What a planned row will do.
+#: What a planned row will do. A file whose suffix the binding has no file
+#: type for is planned as UNSUPPORTED and left in staging by the landing, the
+#: way a file whose target is occupied is: refused alone, and the batch lands.
 ADD = "add"
 PRESENT = "already present"
+UNSUPPORTED = "unsupported"
 
 #: The columns a landed row leaves for rekordbox, named once for the plan, the
 #: record and the read back. THE WRITER'S LIST, not a copy of it: the guard is
@@ -95,6 +98,8 @@ class RowPlan:
     file_type: int
     #: The row already holding this file, when ``action`` is ``PRESENT``.
     content_id: str | None = None
+    #: Why the file is planned as ``UNSUPPORTED``, in a sentence, else empty.
+    why: str = ""
 
     def columns(self) -> dict[str, Any]:
         """Every column the writer sets on the row, by name, for the screen."""
@@ -128,6 +133,9 @@ class NativePlan:
 
     def present(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == PRESENT)
+
+    def unsupported(self) -> tuple[RowPlan, ...]:
+        return tuple(row for row in self.rows if row.action == UNSUPPORTED)
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,27 +222,22 @@ def stored_folder_path(path: Path, *, base_drive: str | None, current_drive: str
     return text
 
 
-def file_type_of(path: Path) -> int:
-    """The binding's file type for ``path``'s suffix, or a refusal naming it.
+def file_type_of(path: Path) -> int | None:
+    """The binding's file type for ``path``'s suffix, or None when it has none.
 
     The binding's own lookup raises the wrong exception class on a suffix it
     does not know, and it does so after the duplicate check, so it is asked
-    here at plan time, where a refusal moves nothing.
+    here at plan time. None rather than a refusal, because the answer is one
+    file's and the batch still lands: the file is planned as
+    :data:`UNSUPPORTED` and stays in staging, the way an occupied target does.
+    The xml landing takes every suffix ``AUDIO_EXTS`` names, since a Location
+    is text, so a file this medium cannot name is not lost to the library.
     """
     from pyrekordbox.db6.tables import FileType
 
     name = path.suffix.lstrip(".").upper()
     found = getattr(FileType, name, None) if name else None
-    if found is None:
-        raise refuse(
-            "intake-list-unusable",
-            f"{path.name} has a suffix rekordbox's database has no file type for, so "
-            f"no content row can name it; the xml landing takes it on a library "
-            f"whose intake tree is on the bridge",
-            origin=_ORIGIN,
-            detail={"path": str(path), "suffix": path.suffix},
-        )
-    return int(found.value)
+    return None if found is None else int(found.value)
 
 
 def anchored_intake_root(db: Any, tree_id: str, registry: tree_registry.Registry) -> str:
@@ -307,19 +310,32 @@ def plan_rows(
     rows: list[RowPlan] = []
     for (source, target), match in zip(files, matches):
         held = _holding(match)
+        file_type = file_type_of(target)
+        if file_type is None:
+            action, why = (
+                UNSUPPORTED,
+                (
+                    f"{target.name} has a suffix rekordbox's database has no file type "
+                    f"for, so no content row can name it and it was left in staging; "
+                    f"convert it, or land it through the xml bridge"
+                ),
+            )
+        else:
+            action, why = (ADD if held is None else PRESENT), ""
         rows.append(
             RowPlan(
                 source=source,
                 target=target,
-                action=ADD if held is None else PRESENT,
+                action=action,
                 title=str(ingest.file_meta(source, cfg=cfg)["name"]),
                 folder_path=stored_folder_path(
                     target, base_drive=base_drive, current_drive=current_drive
                 ),
                 file_name=target.name,
                 file_size=source.stat().st_size,
-                file_type=file_type_of(target),
+                file_type=file_type or 0,
                 content_id=held,
+                why=why,
             )
         )
     planned = NativePlan(
@@ -409,19 +425,48 @@ def _holding(match: trees.RowMatch) -> str | None:
     return None
 
 
+def _candidate_rows(db: Any, names: Iterable[str]) -> list[trees.ContentRow]:
+    """The active rows whose stored path ends in one of ``names``, as the matcher reads them.
+
+    A CANDIDATE SET, NOT THE ANSWER. The rows are found by the file name at
+    the end of the stored path, which is the one part of it the base drive and
+    the mounted spelling share, and every candidate is then put through the
+    same resolver the plan used. That keeps the one rule for comparing a path
+    on this machine with a path rekordbox wrote down, and reads a handful of
+    rows instead of the collection.
+    """
+    from pyrekordbox.db6 import tables
+
+    found: list[trees.ContentRow] = []
+    for name in set(names):
+        query = db.session.query(tables.DjmdContent).filter(
+            tables.DjmdContent.FolderPath.like(f"%{name}")
+        )
+        for row in query.all():
+            found.append(
+                trees.ContentRow(
+                    content_id=str(row.ID),
+                    recorded=str(getattr(row, "FolderPath", "") or ""),
+                    deleted=trees.soft_delete_marker(row),
+                )
+            )
+    return found
+
+
 def _taken_since_the_plan(db: Any, cfg: config.Config, rows: Sequence[RowPlan]) -> dict[str, str]:
     """Each planned target a row has taken since the plan was made, by target.
 
     The plan is what was approved and it is not rebuilt, so the one thing the
     apply asks the database again is the question whose answer can change
     under an approval: whether the file is in the collection now. A row that
-    appeared is counted present rather than doubled. ONE walk of the collection,
-    before the first row is added, so nothing pending is flushed by the read.
+    appeared is counted present rather than doubled. Asked before the first
+    row is added, so nothing pending is flushed by the read, and asked of the
+    candidate rows rather than the whole collection.
     """
     prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
     matches = trees.match_active_rows(
         [row.target for row in rows],
-        routing_pass.content_rows(db),
+        _candidate_rows(db, (row.target.name for row in rows)),
         root=cfg.library.root,
         prefix_map=prefix_map,
     )
@@ -590,7 +635,7 @@ def assert_rows_gridless(landed: NativeLanded) -> None:
         f"{row.content_id}: {name} = {value!r}"
         for row in landed.added
         for name, value in row.empty.items()
-        if value not in (None, 0, 0.0, "", "0")
+        if value not in rb_writer.EMPTY_ON_CREATE
     ]
     if carried:
         raise refuse(
@@ -607,6 +652,7 @@ __all__ = [
     "ADD",
     "LEFT_EMPTY",
     "PRESENT",
+    "UNSUPPORTED",
     "WORKFLOW",
     "AddedRow",
     "NativeLanded",

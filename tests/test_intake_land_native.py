@@ -182,6 +182,10 @@ def _staged_names(cfg: config.Config) -> list[str]:
     return sorted(p.name for p in _staging(cfg).glob("*.flac"))
 
 
+def _staged_names_all(cfg: config.Config) -> list[str]:
+    return sorted(p.name for p in _staging(cfg).iterdir() if p.is_file())
+
+
 def _land(*extra: str) -> list[str]:
     return ["intake", "land", "--name", BATCH, *extra]
 
@@ -527,15 +531,17 @@ def test_an_export_on_a_native_tree_is_refused_before_the_gate(native_library, s
     assert "--export" in envelope["cause"]["message"]
 
 
-def test_an_empty_staging_folder_asks_and_is_a_plan_of_nothing(native_library):
+def test_an_empty_staging_folder_is_a_plan_of_nothing_and_asks_no_explicit_gate(
+    native_library,
+):
+    """Staging is empty after every landing. An explicit gate is the price of a
+    new kind of write, not of learning there is nothing to move, so a plan of
+    nothing answers no_op in one invocation and opens nothing."""
     cfg, _root = native_library
-    code, refused = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["gate"] == GATE
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    code, envelope = drive(["--run", run_id, *_land()])
+    code, envelope = drive(_land())
     assert code == int(ExitCode.OK) and envelope["outcome"] == "no_op", envelope
+    assert envelope["data"]["items"] == [] and envelope["data"]["totals"] == {"count": 0}
+    assert "gate" not in (envelope.get("cause") or {})
     assert _landed_rows(cfg) == [] and _batch_playlist(cfg) == []
 
 
@@ -663,15 +669,63 @@ def test_the_stored_path_is_nfc_and_the_swap_is_anchored_on_a_whole_component(tm
     )
 
 
-def test_an_unknown_suffix_is_refused_at_the_plan(native_library, silence):
+def test_a_suffix_the_database_has_no_type_for_is_left_in_staging_and_the_batch_lands(
+    native_library, silence
+):
+    """One file's problem is one file's refusal, as an occupied target is on the
+    bridge. The xml landing takes every suffix AUDIO_EXTS names, because a
+    Location is text; the binding's file type is an enum of five."""
     cfg, _root = native_library
-    path = _stage(cfg, silence, "One.flac")
-    odd = path.with_suffix(".opus")
-    path.rename(odd)
-    code, envelope = drive(_land())
-    assert envelope["cause"]["reason"] == "intake-list-unusable", envelope
-    assert ".opus" in envelope["cause"]["message"]
-    assert not _music(cfg).exists()
+    _stage(cfg, silence, "One.flac")
+    odd = _stage(cfg, silence, "Two.flac")
+    odd.rename(odd.with_suffix(".opus"))
+
+    code, refused = drive(_land())
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["adds"] == 1 and shown["left in staging"] == 1
+    (planned_odd,) = [item for item in shown["items"] if item["action"] == native.UNSUPPORTED]
+    assert "Two.opus" in planned_odd["why"] and "left in staging" in planned_odd["why"]
+
+    code, acted, _ = _two_acts(_land())
+    assert code == int(ExitCode.OK), acted
+    assert _staged_names_all(cfg) == ["Two.opus"]
+    assert sorted(p.name for p in _music(cfg).iterdir()) == ["One.flac"]
+    assert [Path(row[2]).name for row in _landed_rows(cfg)] == ["One.flac"]
+    assert acted["data"]["totals"]["refused"] == 1 and acted["data"]["totals"]["added"] == 1
+    assert any("Two.opus" in w["message"] for w in acted["warnings"])
+
+
+def test_a_file_whose_tags_resolve_to_no_sub_stays_in_staging_on_the_native_medium_too(
+    native_library, silence, monkeypatch
+):
+    """The bridge leaves such a file to be tagged and landed again, and so does
+    this medium: a row added for it would sit in the intake with no route. The
+    shipped taxonomy declares a sub for every file, so the placement check is
+    driven at its seam, and what this proves is that the native landing asks
+    it at all, which the first cut of the medium did not."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    _stage(cfg, silence, "Two.flac")
+    real = landing._unplaceable
+
+    def unplaceable(path, declared):
+        if path.name == "Two.flac":
+            return landing.Refused(
+                path=path,
+                reason="intake-list-unusable",
+                sentence=f"{path.name} resolves to a bucket with no declared sub, so it "
+                f"was left in staging; run crate tag folder over it and land it again",
+            )
+        return real(path, declared)
+
+    monkeypatch.setattr(landing, "_unplaceable", unplaceable)
+
+    code, acted, _ = _two_acts(_land())
+    assert code == int(ExitCode.OK), acted
+    assert _staged_names(cfg) == ["Two.flac"]
+    assert [Path(row[2]).name for row in _landed_rows(cfg)] == ["One.flac"]
+    (warning,) = [w for w in acted["warnings"] if w["code"] == "intake-list-unusable"]
+    assert "Two.flac" in warning["message"] and "tag folder" in warning["message"]
 
 
 def test_the_landing_engine_module_is_the_only_caller_that_admits_a_content_row():

@@ -2123,6 +2123,10 @@ ENTRIES: tuple[Entry, ...] = (
         #: chooses, the way the routing verbs choose.
         writes=frozenset({"xml", "files", "db_tree"}),
         destructive=True,
+        #: The database checks hold for the native medium only, and declaring
+        #: them here changes nothing doctor reports: it requires a check when
+        #: ANY enabled verb declares it, and adoption, which every profile
+        #: carries, already declares these three.
         doctor_checks=(
             "library.mounted",
             "rekordbox.closed",
