@@ -416,6 +416,46 @@ def test_an_answer_given_for_one_title_is_stale_once_the_file_is_retagged(
     _assert_nothing_written(cfg, tmp_path)
 
 
+def test_an_answer_is_stale_once_the_file_itself_changed_under_the_same_tags(
+    native_library, silence, tmp_path
+):
+    """The collection plan's half of the digest, alone: the size the row would
+    carry moved and nothing the verb's own plan lists did."""
+    cfg, _root = native_library
+    path = _single(cfg, silence)
+    code, refused = drive(_file(path))
+    run_id = refused["run_id"]
+    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    with path.open("ab") as handle:
+        handle.write(b"\0" * 64)
+    assert ingest.read_meta(path, cfg=cfg)["name"].startswith("01A - 124 - ")
+
+    code, envelope = drive(["--run", run_id, *_file(path)])
+
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    _assert_nothing_written(cfg, tmp_path)
+
+
+def test_an_answer_is_stale_once_the_artist_the_plan_showed_changed(
+    native_library, silence, tmp_path
+):
+    """The verb's own half of the digest, alone: the artist is on the plan the
+    person read and on no column the row sets."""
+    cfg, _root = native_library
+    path = _single(cfg, silence)
+    size = path.stat().st_size
+    code, refused = drive(_file(path))
+    run_id = refused["run_id"]
+    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert tags.write_tags(path, {"artist": "Other"})
+    assert path.stat().st_size == size, "the retag moved the size, so this proves nothing"
+
+    code, envelope = drive(["--run", run_id, *_file(path)])
+
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    _assert_nothing_written(cfg, tmp_path)
+
+
 def test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row(
     native_library, silence
 ):
@@ -570,6 +610,22 @@ def test_a_file_named_through_a_link_is_stored_under_the_configured_root(
     assert shown["adds"] == 0 and shown["already present"] == 1
 
 
+def test_the_target_is_spelled_under_the_root_as_configured_not_as_resolved(
+    native_library, silence, tmp_path
+):
+    """A library configured through a link. The file is named by its real path
+    and the row is planned under the link, which is how the landing spells a
+    target and how the collection's rows are matched."""
+    from dataclasses import replace
+
+    cfg, _root = native_library
+    path = _single(cfg, silence)
+    alias = tmp_path / "alias"
+    alias.symlink_to(cfg.library.root, target_is_directory=True)
+    linked = replace(cfg, library=replace(cfg.library, root=alias))
+    assert file_cli._in_the_library(path, linked) == alias / cfg.library.music_dir / "Single.flac"
+
+
 def test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_add(
     native_library, silence, tmp_path
 ):
@@ -620,30 +676,25 @@ def test_a_binding_failure_past_the_gate_says_what_it_leaves(
 def test_a_refusal_past_the_gate_keeps_its_reason_and_remedy(
     native_library, silence, monkeypatch
 ):
-    from cratekit.core.cause import refuse
-    from cratekit.core.exit_codes import Remedy
-
-    cfg, _root = native_library
+    """The engine's own skew refusal, whose remedy is not its reason's default,
+    so a wrapper that dropped the remedy would answer with another one."""
+    cfg, root_id = native_library
     path = _single(cfg, silence)
 
-    def refused(*args, **kwargs):
-        raise refuse(
-            "rekordbox-running",
-            "rekordbox opened the database",
-            remedy=Remedy.QUIT_REKORDBOX,
-            steps=("quit rekordbox",),
-            origin=("a-test",),
+    def skewed(*args, **kwargs):
+        raise tree_registry.RegistrySkew(
+            "the adopted intake root could not be read back", tree_id=INTAKE, root_id=root_id
         )
 
-    monkeypatch.setattr(native, "apply_rows", refused)
+    monkeypatch.setattr(native, "apply_rows", skewed)
     code, acted, _ = _two_acts(_file(path))
 
     cause = acted["cause"]
-    assert cause["reason"] == "rekordbox-running"
-    assert cause["remediation"]["remedy"] == "quit-rekordbox"
-    assert cause["remediation"]["steps"] == ["quit rekordbox"]
-    assert "rekordbox opened the database" in cause["message"]
+    assert cause["reason"] == "tree-unconverged"
+    assert cause["remediation"]["remedy"] == "restore-from-snapshot"
+    assert "the adopted intake root could not be read back" in cause["message"]
     assert "no row was added" in cause["message"]
+    assert cause["detail"]["tree_id"] == INTAKE and cause["detail"]["source"] == str(path)
 
 
 def test_no_acknowledgment_refuses_before_the_gate(machine, silence, tmp_path):
