@@ -31113,3 +31113,49 @@ or either condition can drift unseen.
 `splice_tracks`.
 
 **Not on the board bar.** The path is guarded.
+
+## R-780. adopt move plans from adoption's withheld list, so a track that held two band subs before adoption is never moved
+
+**Found:** at sitting 20, 2026-09-30, reading the copy back after R-758's
+rehearsal. `docs/cutover.md` sitting 20 is the measurement. After 618
+moves, two tracks still hold two band subs of one bucket: Nations in
+Organic House, Med and High, and Mumbling Yeah in Minimal / Deep Tech, Low
+Energy and Med Energy. Neither is in the plan and neither is in its `left`
+list.
+
+**The mechanism.** `adopt move` plans from the entries `adopt apply`
+withholds over a place the track already holds. Both tracks held both subs
+before adoption ran, and each file's reading names one of the two, so
+adoption found the track already present in its target and withheld
+nothing. The stale sub is one adoption never proposed, so the move verb
+never sees it. The verb's docstring says what it plans from; nothing says
+what it therefore cannot see.
+
+**Measured cost.** Two tracks on the author's library, each in two energy
+subs of one bucket, after the pass that was meant to end that shape. A DJ
+browsing Med finds a High track.
+
+**Closes when:** the move plans from the tree as it stands, every band sub a
+track holds in a bucket against the one its reading names, or the verb's
+answer lists the doubles it cannot reach by name.
+
+**Not on the board bar.** Two rows, both visible in rekordbox, neither lost.
+
+## R-781. One membership pair is held by two active rows, and the readers count rows
+
+**Found:** at sitting 20, 2026-09-30. The move's read back showed 619 rows
+soft deleted for 618 pairs removed: one pair, playlist and track, existed
+as two active rows in `djmdSongPlaylist`, and the whitelist retired both.
+The copy after the move still holds four pairs each present twice in one
+sub: Euneirophrenia in Deep House Low, and Eulogy, All Shades of Blue and
+Isocèle in Organic House Low. rekordbox made these rows; no Cratekit verb
+writes a pair twice.
+
+**Measured cost.** The membership count every record reports, 19,311 after
+the move, is a count of rows, and four of them say nothing a DJ can see.
+No verb is wrong because of it; the numbers in the record are.
+
+**Closes when:** a doctor check or the tree report names pairs held by more
+than one active row, and the count the records carry is of pairs.
+
+**Not on the board bar.** A count in a document.
