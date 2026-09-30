@@ -1664,6 +1664,10 @@ def test_each_recorded_spelling_is_placed_or_left_by_the_one_resolver():
                 track_id="7", location="file://elsewhere/former/Music/g.flac"
             ),
             collection_export.TrackRow(track_id="8", location=""),
+            # Two more under no rule, recorded later and under one prefix, so
+            # the prefix with the most rows is not the one met first.
+            collection_export.TrackRow(track_id="9", location="/elsewhere/Music/h.flac"),
+            collection_export.TrackRow(track_id="10", location="/elsewhere/Music/i.flac"),
         ],
         prefix_map=RULE,
     )
@@ -1677,10 +1681,12 @@ def test_each_recorded_spelling_is_placed_or_left_by_the_one_resolver():
         "6": "tidal:tracks:123",
         "7": "file://elsewhere/former/Music/g.flac",
         "8": "",
+        "9": "file://localhost/elsewhere/Music/h.flac",
+        "10": "file://localhost/elsewhere/Music/i.flac",
     }
     assert document.remapped == 3
-    assert document.omitted.unmapped_paths == ("4",)
-    assert document.omitted.unmapped_prefixes == (("/formerly/Music", 1),)
+    assert document.omitted.unmapped_paths == ("4", "9", "10")
+    assert document.omitted.unmapped_prefixes == (("/elsewhere/Music", 2), ("/formerly/Music", 1))
     assert document.omitted.left_to_rule == ()
     assert document.omitted.not_file_paths == ("6", "8")
 
