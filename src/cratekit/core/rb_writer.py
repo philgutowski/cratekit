@@ -25,7 +25,11 @@ delegated upstream. The chain, in the order it fires, and what each link refuses
    structurally unwritable, not merely untested. ONE REMOVAL IS ADMITTED, on
    purpose (R-758): a membership row may be marked removed with rekordbox's own
    soft delete marker, in the membership table only, and only by a commit that
-   asks for it by name. See :data:`REMOVABLE_TABLES`.
+   asks for it by name. See :data:`REMOVABLE_TABLES`. ONE CREATION BEYOND THE
+   WHITELIST IS ADMITTED the same way (R-746): a content row, only by a commit
+   that names the table, and only carrying what the file and the filesystem
+   say, with every column an analysis pass fills asserted empty from SQL
+   before the commit. See :data:`ADMITTABLE_ROW_TABLES`.
 6. **A cross-process write-session lock**, held from snapshot through smoke test.
 
 WHAT CHANGED IN THE PORT, AND WHY EACH CHANGE IS A FIX RATHER THAN A DRIFT.
@@ -2036,6 +2040,11 @@ CONTENT_TABLE = "djmdContent"
 #: unlisted table is refused, so grid and analysis rows are structurally
 #: impossible rather than merely untested (R17).
 #:
+#: THE CONTENT TABLE IS NOT HERE AND STAYS OUT. One writer, the native landing,
+#: creates a content row, and it does so by naming the table on its own commit
+#: through ``creations``, see :data:`ADMITTABLE_ROW_TABLES` (R-746). Listing it
+#: here would let every membership and tag writer create one by accident.
+#:
 #: Static, and deliberately not feature-derived. This is the set that makes the
 #: structural guarantee, so no registration may widen it.
 PERMITTED_ROW_TABLES = frozenset(
@@ -2084,6 +2093,49 @@ GRIDLESS_ON_CREATE_COLUMNS = frozenset(
         "CueUpdated",
     }
 )
+
+#: What a CONTENT row this product creates must leave for rekordbox to fill,
+#: the five above and five more that only an analysis pass writes. Settled at
+#: sitting 17 (A8, 2026-09-29) against rekordbox 7.2.19 on the live library:
+#: a row inserted with every one of these empty was accepted with no dialog,
+#: showed a tempo of zero until asked, and was analysed on request to the tempo
+#: and key its file names. The key is an analysis output and the writer never
+#: authors one, see the note on ``djmdKey`` above. The three sample and rate
+#: columns are read from the audio during analysis and are the tell tale of a
+#: row something other than rekordbox filled in. The artwork path is extracted
+#: during analysis too.
+#:
+#: The same honest list, for the same reason, and the same schema test holds it
+#: to real column names.
+CONTENT_ROW_EMPTY_COLUMNS = GRIDLESS_ON_CREATE_COLUMNS | frozenset(
+    {
+        "KeyID",
+        "SampleRate",
+        "BitRate",
+        "BitDepth",
+        "ImagePath",
+    }
+)
+
+#: The tables an analysis pass writes rows into FOR a content row, keyed on the
+#: content identifier. A content row this product creates must own none of
+#: them: a cue is grid relative, the mixer parameters are gain and peak, and the
+#: file rows name the analysis and artwork files. Read from SQL for every
+#: admitted content row before its commit. Measured on rekordbox's own not yet
+#: analysed rows, 223 of them, zero of each.
+CONTENT_ANALYSIS_TABLES: tuple[str, ...] = ("djmdCue", "djmdMixerParam", "contentFile")
+
+#: Tables a commit may be ASKED to admit a CREATION in beyond the whitelist,
+#: and the whole of them. The content table is the one, and it is admitted by
+#: ``creations`` on one commit rather than listed in :data:`PERMITTED_ROW_TABLES`,
+#: because every other writer in this product keeps refusing it: a membership
+#: writer that could create a content row by accident is the hazard the
+#: whitelist exists to make structural. A commit that names any other table
+#: here is refused, so no caller can widen it by asking, and the admitted row
+#: still carries the column policy :data:`CONTENT_ROW_EMPTY_COLUMNS` states,
+#: judged in memory and then from SQL. Static, for the reason
+#: :data:`REMOVABLE_TABLES` is.
+ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE})
 
 #: rekordbox's soft-delete marker, named once so a reader can be BOUND to it
 #: rather than to a string that looks like it.
@@ -2223,12 +2275,21 @@ def guard_violations(
     *,
     content_columns: Iterable[str] | None = None,
     removals: Iterable[str] = (),
+    creations: Iterable[str] = (),
 ) -> list[str]:
     """Judge a pending session against the whitelist. Empty means allowed.
 
     ``removals`` names the tables this one commit admits a soft delete in. It
     is empty for every writer but the one that moves a membership, and a name
     outside :data:`REMOVABLE_TABLES` is itself a violation.
+
+    ``creations`` names the tables this one commit admits a creation in beyond
+    the whitelist, the same shape for the same reason (R-746). It is empty for
+    every writer but the one that lands a file in the collection, a name
+    outside :data:`ADMITTABLE_ROW_TABLES` is itself a violation, and an
+    admitted content row is judged against :data:`CONTENT_ROW_EMPTY_COLUMNS`
+    rather than waved through: what makes the admission safe is that the row
+    declares nothing rekordbox derives from the audio.
 
     PURE, and that is what makes it the part of the safety chain that is actually
     tested. It takes table names and column names, so every branch is reachable
@@ -2251,12 +2312,33 @@ def guard_violations(
             f"{sorted(REMOVABLE_TABLES)} and nowhere else"
         )
     admitted &= REMOVABLE_TABLES
+    creatable = frozenset(creations)
+    for table in sorted(creatable - ADMITTABLE_ROW_TABLES):
+        violations.append(
+            f"asks to create rows in {table!r}, and a creation beyond the "
+            f"whitelist is admitted in {sorted(ADMITTABLE_ROW_TABLES)} and nowhere else"
+        )
+    creatable &= ADMITTABLE_ROW_TABLES
 
     for table, columns in new:
+        if table == CONTENT_TABLE and table in creatable:
+            # THE ONE ADMISSION (R-746), with its column policy judged here and
+            # again from SQL in ``assert_created_rows_are_gridless``. A row a
+            # landing creates carries what the file's tags and the filesystem
+            # say. Every column rekordbox fills during analysis stays empty.
+            declared = {column for column in columns if column in CONTENT_ROW_EMPTY_COLUMNS}
+            if declared:
+                violations.append(
+                    f"creates a {CONTENT_TABLE} row declaring analysis column(s): "
+                    f"{sorted(declared)}; a row this product creates carries what "
+                    f"the file says and rekordbox derives the rest from the audio"
+                )
+            continue
         if table == CONTENT_TABLE:
             violations.append(
-                f"creates a {CONTENT_TABLE} row; new-track intake stays in the XML "
-                f"bridge, where an import is something a person performs and can undo"
+                f"creates a {CONTENT_TABLE} row; only a landing whose commit admits "
+                f"one by name may, and an import in the XML bridge is what every "
+                f"other intake performs"
             )
             continue
         if table not in PERMITTED_ROW_TABLES:
@@ -2414,6 +2496,34 @@ def _session_changes(
     return created, modified, removed
 
 
+def _buffer_entries(db: Any) -> list[tuple[Any, str | None, str, list[Any]]]:
+    """ONE walk of the binding's update buffer, for both readers of it.
+
+    Each entry as ``(entry, op, key, instances)``. ``op`` is None for an
+    entry whose shape this code does not understand, and the readers refuse
+    on it rather than skip it. "move" carries a LIST of instances; the other
+    three carry one, and both are handed over as a list so a reader has one
+    shape to walk. Empty without a handle, for the scoping reason
+    :func:`_registry_changes` gives, and empty without the binding.
+    """
+    if db is None:
+        return []
+    try:
+        from pyrekordbox.db6.registry import RekordboxAgentRegistry
+    except Exception:  # noqa: BLE001 - binding absent means no buffer to read
+        return []
+    walked: list[tuple[Any, str | None, str, list[Any]]] = []
+    for entry in list(getattr(RekordboxAgentRegistry, "__update_sequence__", [])):
+        try:
+            target, op, key, _value = entry
+        except (TypeError, ValueError):  # a shape this code does not understand
+            walked.append((entry, None, "", []))
+            continue
+        instances = list(target) if isinstance(target, (list, tuple)) else [target]
+        walked.append((entry, str(op), str(key) if key else "", instances))
+    return walked
+
+
 def _registry_changes(
     db: Any,
 ) -> tuple[dict[int, tuple[str, set[str]]], dict[int, tuple[str, set[str]]], dict[int, str]]:
@@ -2442,25 +2552,15 @@ def _registry_changes(
     work in the same process and refused a write that was perfectly legitimate.
     A guard that refuses correct code is one people route around (P7).
     """
-    if db is None:
-        return {}, {}, {}
-    try:
-        from pyrekordbox.db6.registry import RekordboxAgentRegistry
-    except Exception:  # noqa: BLE001 - binding absent means no buffer to read
-        return {}, {}, {}
-
     created: dict[int, tuple[str, set[str]]] = {}
     modified: dict[int, tuple[str, set[str]]] = {}
     removed: dict[int, str] = {}
 
-    for entry in list(getattr(RekordboxAgentRegistry, "__update_sequence__", [])):
-        try:
-            target, op, key, _value = entry
-        except (TypeError, ValueError):  # a shape this code does not understand
+    for entry, op, key, instances in _buffer_entries(db):
+        if op is None:
+            # A shape this code does not understand. Refuse rather than ignore.
             modified[id(entry)] = (UNINSPECTABLE, {UNINSPECTABLE})
             continue
-        # "move" carries a LIST of instances; the other three carry one.
-        instances = target if isinstance(target, (list, tuple)) else [target]
         for obj in instances:
             table = _table_of(obj)
             if table is None:
@@ -2513,6 +2613,33 @@ def pending_changes(
     return list(created.values()), list(modified.values()), list(removed.values())
 
 
+def _registry_created_instances(db: Any) -> dict[int, Any]:
+    """The INSTANCES the binding's buffer records a creation for, keyed by identity.
+
+    :func:`_registry_changes` reduces each entry to a table and a column set,
+    which is what the whitelist judge needs and is not enough for a read back:
+    the SQL check below needs the object, because the object is what knows its
+    primary key once the flush has assigned one. Same buffer, same scoping rule,
+    read for a different purpose. Runs no query.
+    """
+    found: dict[int, Any] = {}
+    for _entry, op, _key, instances in _buffer_entries(db):
+        if op != "create":
+            continue
+        for obj in instances:
+            found[id(obj)] = obj
+    return found
+
+
+#: What "empty" is for a column an analysis pass fills: every spelling the
+#: database uses for a value nobody wrote. ``'0'`` is the key identifier of a
+#: row rekordbox has not analysed, and the empty string is its artwork path.
+#: PUBLIC, because the landing reads the committed rows back against the same
+#: notion of empty, and a second spelling there is how the read back comes to
+#: refuse a row the guard admitted.
+EMPTY_ON_CREATE: tuple[Any, ...] = (None, 0, 0.0, "", "0")
+
+
 def assert_created_rows_are_gridless(db: Any) -> None:
     """Verify from SQL that no row this session creates carries analysis data.
 
@@ -2531,6 +2658,15 @@ def assert_created_rows_are_gridless(db: Any) -> None:
     blinds the guard. It runs before the commit, so a violation still rolls back.
     A check that only ran after the commit would find a violation it could no
     longer undo, leaving a snapshot restore as the sole remedy.
+
+    THE ROWS READ BACK COME FROM BOTH SOURCES (R-760). This used to walk
+    ``session.new`` alone, so a creation the binding had already flushed, which
+    is every row its own ``add_content`` makes, was counted as pending and then
+    never read: the whitelist saw it through the buffer and this check saw
+    nothing. The buffer's instances are read here for the same reason the
+    whitelist reads them, and a content row is held to the wider list
+    :data:`CONTENT_ROW_EMPTY_COLUMNS` and to owning no row in any table an
+    analysis pass writes.
     """
     session = getattr(db, "session", None)
     if session is None:
@@ -2539,28 +2675,30 @@ def assert_created_rows_are_gridless(db: Any) -> None:
     from sqlalchemy import inspect as sa_inspect
     from sqlalchemy import text
 
-    created, _modified, _removed = _session_changes(session)
-    r_created, _, _ = _registry_changes(db)
-    instances = {**r_created, **created}
+    pending = {id(obj): obj for obj in session.new}
+    instances = {**_registry_created_instances(db), **pending}
     if not instances:
         return
 
     # Resolve the objects again by identity so the primary keys are populated.
-    pending = [obj for obj in session.new]
     try:
         session.flush()
     except Exception:  # noqa: BLE001 - a flush failure is the caller's to report
         return
 
     violations: list[str] = []
-    for obj in pending:
+    for obj in instances.values():
         table = _table_of(obj)
         if table is None:
             continue
-        columns = {c.name for c in obj.__table__.columns} & GRIDLESS_ON_CREATE_COLUMNS
+        policy = CONTENT_ROW_EMPTY_COLUMNS if table == CONTENT_TABLE else GRIDLESS_ON_CREATE_COLUMNS
+        columns = {c.name for c in obj.__table__.columns} & policy
         if not columns:
             continue
-        identity = sa_inspect(obj).identity
+        try:
+            identity = sa_inspect(obj).identity
+        except Exception:  # noqa: BLE001 - a stand in with no mapper state has no row
+            continue
         if not identity:
             continue
         keys = [c.name for c in obj.__table__.primary_key.columns]
@@ -2573,8 +2711,19 @@ def assert_created_rows_are_gridless(db: Any) -> None:
         if row is None:
             continue
         for name, value in zip(sorted(columns), row):
-            if value not in (None, 0, 0.0, "", "0"):
+            if value not in EMPTY_ON_CREATE:
                 violations.append(f"{table}.{name} = {value!r}")
+        if table == CONTENT_TABLE and len(keys) == 1:
+            for owned in CONTENT_ANALYSIS_TABLES:
+                count = session.execute(
+                    text(f"SELECT COUNT(*) FROM {owned} WHERE ContentID = :id"),
+                    {"id": identity[0]},
+                ).scalar()
+                if count:
+                    violations.append(
+                        f"{owned} holds {count} row(s) for the new {CONTENT_TABLE} "
+                        f"row {identity[0]!r}"
+                    )
 
     if violations:
         raise _unavailable(
@@ -2587,11 +2736,17 @@ def assert_created_rows_are_gridless(db: Any) -> None:
 
 
 def assert_session_whitelisted(
-    session: Any, db: Any = None, *, removals: Iterable[str] = ()
+    session: Any,
+    db: Any = None,
+    *,
+    removals: Iterable[str] = (),
+    creations: Iterable[str] = (),
 ) -> None:
     """Raise unless the pending session touches only whitelisted tables and columns."""
     created, modified, removed = pending_changes(session, db)
-    violations = guard_violations(created, modified, removed, removals=removals)
+    violations = guard_violations(
+        created, modified, removed, removals=removals, creations=creations
+    )
     if violations:
         raise _unavailable(
             "whitelist-violation",
@@ -2825,7 +2980,11 @@ def commit_witness(db: Any) -> Iterator[CommitWitness]:
 
 
 def commit_guarded(
-    db: Any, *, force_cloud_canary: bool = False, removals: Iterable[str] = ()
+    db: Any,
+    *,
+    force_cloud_canary: bool = False,
+    removals: Iterable[str] = (),
+    creations: Iterable[str] = (),
 ) -> None:
     """Commit only when it is still safe to, and roll back rather than leak.
 
@@ -2833,6 +2992,12 @@ def commit_guarded(
     commit admits a soft delete in, the whitelist holds it to
     :data:`REMOVABLE_TABLES`, and a source guard holds the callers that pass it
     to the membership move. Any other commit refuses a changed marker.
+
+    ``creations`` IS EMPTY FOR EVERY WRITER BUT ONE AS WELL (R-746). It names
+    the tables this commit admits a creation in beyond the whitelist, the
+    whitelist holds it to :data:`ADMITTABLE_ROW_TABLES`, and a source guard
+    holds the callers that pass it to the native landing. Any other commit
+    refuses a content row, as every commit did before the landing existed.
 
     RE-CHECKED AT COMMIT, NOT ONLY AT OPEN, AND UNCONDITIONALLY. A run takes
     minutes, and the user can launch rekordbox during it. The open-time process
@@ -2869,7 +3034,9 @@ def commit_guarded(
             # Reads the binding's update buffer as well as the session, so a
             # write autoflush has already carried out of ``session.new`` is
             # still judged (W2).
-            assert_session_whitelisted(db.session, db, removals=removals)
+            assert_session_whitelisted(
+                db.session, db, removals=removals, creations=creations
+            )
             assert_created_rows_are_gridless(db)
         except RekordboxUnavailable:
             # Rolled back rather than left pending: carrying rejected objects
@@ -2888,8 +3055,12 @@ def commit_guarded(
 
 
 __all__ = [
+    "ADMITTABLE_ROW_TABLES",
     "BOOKKEEPING_COLUMNS",
+    "CONTENT_ANALYSIS_TABLES",
+    "CONTENT_ROW_EMPTY_COLUMNS",
     "CONTENT_TABLE",
+    "EMPTY_ON_CREATE",
     "CommitWitness",
     "ENV_APP_PATH",
     "FIELD_EMPTIES",

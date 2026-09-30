@@ -217,7 +217,13 @@ intake file. Staging is deliberately invisible to ownership, which walks the
 music directory only, so an acquired file that has not landed still reads as
 missing and would be offered for download again. R-413 records that the step did
 not exist. U71 built its engine, `intake/landing.py`, and U72 built the verb,
-`intake land`.
+`intake land`. Since R-746 the landing has two media, chosen by the intake
+tree's mode: on the xml bridge it splices the export as above, and on a tree
+that has cut over it adds one content row per file and one batch playlist
+under the adopted intake root through the guarded database writer,
+`intake/native.py`, with no intake file and no import to wait on. A native
+landing writes nothing rekordbox derives from the audio, and its rows await
+an analysis the person asks rekordbox for.
 
 ### Fresh Export
 A collection export that describes the database as it is now: the XML document

@@ -1910,6 +1910,16 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
 #: fires is a gate the suite can hold a verb to.
 UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
     {
+        "intake.land.native": (
+            "asked only on a library whose intake tree is recorded database "
+            "native, and the conformance fixture's intake tree is on the xml "
+            "bridge, where the same verb asks intake.land.confirm instead. One "
+            "drive reaches one medium, and the medium is the tree's mode, not an "
+            "argument, so no argument list reaches both. The native gate, its "
+            "explicit two act answer and its refusals are driven in "
+            "tests/test_intake_land_native.py on a library whose intake tree has "
+            "cut over."
+        ),
         "write.cloudsync.unreadable": (
             "raised by the guarded writer only when rekordbox's Cloud Library "
             "Sync state cannot be READ, which is a property of the machine "
@@ -3200,11 +3210,15 @@ def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
 #: Adding a gate here is now a red suite, which is the point. It is the same
 #: shape `EXPECTED_PENDING` uses: the duplication IS the mechanism, because the
 #: second place is a line a reviewer reads in a diff.
-EXPECTED_UNREACHABLE_GATES = frozenset({"write.cloudsync.unreadable"})
+EXPECTED_UNREACHABLE_GATES = frozenset({"write.cloudsync.unreadable", "intake.land.native"})
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """One gate is exempt. A second one is a decision, not a diff.
+    """Two gates are exempt. A third one is a decision, not a diff.
+
+    The second, ``intake.land.native``, joined with R-746: one verb, two media,
+    one drive per fixture, and the conformance fixture's intake tree is on the
+    bridge. Its own suite holds the verb to reaching it on a native tree.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

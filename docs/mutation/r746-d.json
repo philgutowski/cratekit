@@ -1,0 +1,102 @@
+{
+  "name": "r746-d",
+  "pass_kind": "light",
+  "branch": "relay/224",
+  "head": "80089c3",
+  "when": "2026-09-30 02:56 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10876,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "state_guarded": "~/Library/Application Support/cratekit (83733 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/rb_writer.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/rb_writer.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "cd821bfa633ee07b",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10876,
+    "baseline_collected": 10876,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G5_content_row_read_back_against_five_not_ten",
+      "description": "assert_created_rows_are_gridless: a content row is held to the playlist tables' five columns, so a key or a rate rides in. Measured again after the key taint test its zero bought",
+      "file": "src/cratekit/core/rb_writer.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "42326233f95adeb3",
+      "subset": [
+        "tests/test_intake_land_native.py",
+        "tests/test_write_guard_completeness.py",
+        "tests/test_rb_writer_guard.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 234,
+      "baseline_collected": 234,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_native.py::test_a_key_reaching_the_row_is_refused_from_sql_before_the_commit"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        policy = CONTENT_ROW_EMPTY_COLUMNS if table == CONTENT_TABLE else GRIDLESS_ON_CREATE_COLUMNS",
+      "new": "        policy = GRIDLESS_ON_CREATE_COLUMNS"
+    },
+    {
+      "id": "N1_first_device_wins",
+      "description": "choose_device: every device matches, so the first by identifier is stamped rather than the library's own. Measured again with the wrong device sorting first",
+      "file": "src/cratekit/intake/native.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "73188040a96f6986",
+      "subset": [
+        "tests/test_intake_land_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_native.py::test_the_rows_carry_the_library_device_and_not_the_bindings_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        (device for device in devices if dbid and str(device.MasterDBID) == dbid),",
+      "new": "        (device for device in devices if dbid),"
+    }
+  ],
+  "dropped": []
+}

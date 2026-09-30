@@ -417,14 +417,22 @@ def test_a_tree_the_taxonomy_does_not_declare_is_refused(ready):
     assert not tree_registry.path_for(cfg).exists()
 
 
-def test_the_intake_tree_is_refused_by_the_registrys_own_assertion(ready):
-    cfg, export, _root_id = ready
-    _add_folder(cfg, DECLARED.intake.display)
-    code, refused = drive(_cutover(export, tree=DECLARED.intake.id))
-    assert code != int(ExitCode.OK), refused
-    assert refused["cause"]["reason"] == "tree-unconverged"
-    assert refused["cause"]["detail"]["tree_id"] == DECLARED.intake.id
-    assert not tree_registry.path_for(cfg).exists()
+def test_the_intake_tree_cuts_over_on_the_same_answer_as_the_routing_tree(ready):
+    """R-746. The intake tree stayed on the bridge because flipping it would
+    have refused the splice that landed new rows. The landing now chooses its
+    medium by the tree's mode, so the refusal expired with the reason for it,
+    and the intake tree anchors to its own root the way the routing tree does."""
+    cfg, export, routing_root = ready
+    intake_root = _add_folder(cfg, DECLARED.intake.display)
+    code, acted, _refused = _two_acts(
+        _cutover(export, tree=DECLARED.intake.id), CUTOVER_GATE, "approve"
+    )
+    assert code == int(ExitCode.OK), acted
+    recorded = tree_registry.read(cfg)
+    assert recorded.is_database_native(DECLARED.intake.id)
+    assert recorded.record(DECLARED.intake.id).root_id == intake_root
+    assert intake_root != routing_root
+    assert recorded.is_on_the_bridge(TREE), "the routing tree was not asked about"
 
 
 def test_a_tree_already_native_records_nothing_and_asks_nothing(ready):

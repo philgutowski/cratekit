@@ -316,6 +316,22 @@ not a collection the landed files can be spliced into, is refused before the pla
 reaches its gate, and so is an unmounted library or an importable file already
 written under that name, so no answer is spent on a landing that could never run.
 
+Once your intake tree has cut over to the database, with `crate tree cutover
+inbox --export`, `intake land` needs no export and refuses one. It moves the
+files the same way and then adds each one to the collection itself, with a
+title from the file's own tags, and puts the batch playlist under your INBOX
+folder, through the same guarded database session every database write here
+uses: rekordbox and its agent closed, a backup acknowledged first, a capture
+taken before the commit. The plan shows every row with every column it will
+set, the playlist and its parent, and the database it writes, and its gate,
+`intake.land.native`, is answered by a separate `crate run decide` and never
+inline. A file already in the collection is reported present and not added
+twice. **Nothing about the audio is written**: no tempo, no grid, no key, no
+waveform, and the run says so. rekordbox does not analyse a row it did not
+make until you ask, so open it, select the batch playlist and run Analyze
+Track. There is no import, no drag and no `intake imported` on this path.
+Filing the batch into your genre tree is `adopt scan` and `adopt apply`.
+
 Once you have imported the landed file, quit rekordbox, take a new export with
 `crate export collection` or from rekordbox's own menu, and run
 `crate intake imported --export` with that new export. It looks for every landed
@@ -690,7 +706,8 @@ the same gate with nothing recorded and refuses again. Gates you will meet:
 |---|---|---|
 | `route.inbox.apply` | apply | `route inbox` |
 | `name.apply.confirm` | apply | `name apply` |
-| `intake.land.confirm` | apply | `intake land` |
+| `intake.land.confirm` | apply | `intake land`, intake tree on the xml bridge |
+| `intake.land.native` | apply | `intake land`, intake tree database native; explicit, `crate run decide` only |
 | `tag.retag.confirm` | apply | `tag retag` |
 | `sync.favorites.confirm` | sync | `sync favorites` |
 | `sync.all.favorites.confirm` | sync | `sync all` |

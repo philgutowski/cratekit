@@ -124,6 +124,18 @@ def read_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
     nothing, so the Name never gains a second marker the title tag lacks.
     """
     assert_not_staging(path, cfg)
+    return file_meta(path, cfg=cfg, lossy=lossy)
+
+
+def file_meta(path: Path, *, cfg: config.Config, lossy: bool = False) -> dict:
+    """:func:`read_meta` without the staging refusal, for a file about to move.
+
+    The native landing (R-746) plans a row's Title while the file is still in
+    download staging and stamps it on the row once the file is in the library.
+    The name is a function of the tags and the stem, which the move does not
+    change, so reading it here is reading the same answer early. Every other
+    caller wants the refusal and goes through :func:`read_meta`.
+    """
     stat = path.stat()
     artist = tags.read_tag(path, "artist") or ""
     title = tags.read_tag(path, "title") or path.stem

@@ -1,0 +1,93 @@
+name = "r746-b"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_first_device_wins"
+description = "choose_device: every device matches, so the first by identifier is stamped rather than the library's own"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        (device for device in devices if dbid and str(device.MasterDBID) == dbid),'''
+new = '''        (device for device in devices if dbid),'''
+
+[[rows]]
+id = "N2_base_drive_swap_disabled"
+description = "stored_folder_path: the mounted path is stored whatever the property table records"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        if text == current or text.startswith(current + os.sep):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "N3_folder_path_not_restamped"
+description = "_restamp: the row keeps the path the binding stored, the planned path is never put on it"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''    if str(content.FolderPath) != row.folder_path:
+        content.FolderPath = row.folder_path'''
+new = '''    if False:
+        content.FolderPath = row.folder_path'''
+
+[[rows]]
+id = "N4_device_not_restamped"
+description = "_restamp: the row keeps the device the binding chose"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''    if str(content.DeviceID) != plan.device_id:
+        content.DeviceID = plan.device_id'''
+new = '''    if False:
+        content.DeviceID = plan.device_id'''
+
+[[rows]]
+id = "N5_present_file_planned_as_an_add"
+description = "plan_rows: a file the collection already holds is planned as an add, so it would be added twice"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''            action, why = (ADD if held is None else PRESENT), ""'''
+new = '''            action, why = ADD, ""'''
+
+[[rows]]
+id = "N6_creation_not_named_on_the_commit"
+description = "apply_rows: the commit names no table, so the whitelist judges the rows as every other commit does"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''            rb_writer.commit_guarded(db, creations=(rb_writer.CONTENT_TABLE,))'''
+new = '''            rb_writer.commit_guarded(db, creations=())'''
+
+[[rows]]
+id = "N7_commit_never_recorded"
+description = "_record_landing_commit: the session record never learns of the commit"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_session.py"]
+old = '''    if rows <= 0 and memberships <= 0:
+        return
+    changes = []'''
+new = '''    if True:
+        return
+    changes = []'''
+
+[[rows]]
+id = "N8_unsupported_file_moved_anyway"
+description = "apply_native: a file the database has no type for is not refused per file and moves"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_landing.py"]
+old = '''        if row.action == native.UNSUPPORTED
+    }'''
+new = '''        if False
+    }'''
+
+[[rows]]
+id = "N9_placement_check_dropped_from_the_screen"
+description = "_screen: a file whose tags resolve to no sub is moved on both media"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_landing.py", "tests/test_intake_land.py"]
+old = '''            named.get(item) or _unplaceable(item, declared) or _occupied(item, target / item.name)'''
+new = '''            named.get(item) or _occupied(item, target / item.name)'''

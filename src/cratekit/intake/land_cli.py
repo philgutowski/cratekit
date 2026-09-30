@@ -43,16 +43,30 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config
-from cratekit.core.cause import CratekitError, Outcome, Remedy
+from cratekit.core import active_taxonomy, config, rb_writer, session, tree_registry
+from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import ingest, landing
+from cratekit.intake import ingest, landing, native
 
 #: The action every planned file carries until the apply reports on it.
 LAND = "land"
 LANDED = "landed"
 REFUSED = "refused"
+#: The one item a native landing appends for the batch playlist it wrote.
+PLAYLIST = "playlist"
+
+#: The two gates, one per medium. The xml one answers inline as it always has;
+#: the native one is explicit, because a content row in the collection is a
+#: new kind of write and R34 forbids a blanket answer for it.
+XML_GATE = "intake.land.confirm"
+NATIVE_GATE = "intake.land.native"
+
+#: The warning a native landing carries: the rows are in the collection and
+#: rekordbox has not analysed them, which it does on request and not on sight.
+AWAITING_ANALYSIS = "rows-await-analysis"
+
+_ORIGIN = ("intake.land_cli",)
 
 #: What a label playlist written, and a label row filed under none, are marked.
 FILED = "filed"
@@ -112,9 +126,14 @@ def build_land(parser, entry) -> None:
     )
     parser.add_argument(
         "--export",
-        required=True,
+        default=None,
         metavar="XML",
-        help="a Fresh Export of the collection to splice the landed files into",
+        help=(
+            "a Fresh Export of the collection to splice the landed files into; "
+            "required while the intake tree is on the xml bridge, and refused "
+            "once it is database native, where the files join the collection "
+            "through the database"
+        ),
     )
     parser.add_argument(
         "--name",
@@ -261,11 +280,30 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
     return {**payload, "items": items, "totals": totals}
 
 
+def _gate(entry, name: str):
+    """One of this verb's gates by name, never by position.
+
+    Two gates since R-746, one per medium, and the shared cloud sync one is
+    raised by the guarded writer rather than asked here, so indexing would bind
+    a medium to the order the gates happen to be written in.
+    """
+    for spec in entry.gates:
+        if spec.name == name:
+            return spec
+    raise refuse(
+        "internal-error",
+        f"{entry.name} declares no gate named {name!r}, so there is no question "
+        f"to ask before landing",
+        remedy=Remedy.REPORT_DEFECT,
+        origin=_ORIGIN,
+        detail={"verb": entry.name, "gate": name},
+    )
+
+
 def intake_land(ctx) -> Envelope:
     cfg = intake_cli._load()
     folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.paths.download_staging)
     batch = ctx.args.name if ctx.args.name is not None else default_name(ctx.run.run_id)
-    export = Path(ctx.args.export)
     # READ BEFORE THE GATE, so a file that is not a manifest refuses before
     # anybody spends an answer on it, and the screen can say what it names.
     manifest = (
@@ -273,6 +311,50 @@ def intake_land(ctx) -> Envelope:
     )
     planned = _planned(folder, cfg, batch)
     target = landing.target_dir(cfg, batch)
+    # THE MEDIUM IS THE INTAKE TREE'S MODE, the way the routing verbs choose
+    # theirs (R-746). A tree the database owns takes the files into the
+    # collection through the guarded writer and no export is involved; a tree
+    # on the bridge is spliced into the export it always was. The registry
+    # lives under the library root, so an unreachable root decides nothing
+    # here: the xml path is taken as it was before the medium existed, and
+    # its preflight names the library, before the gate, under the R-677
+    # contract that a recorded abort is still honoured over it.
+    declared = registry = None
+    if Path(cfg.library.root).is_dir():
+        declared = active_taxonomy.load(cfg)
+        registry = tree_registry.read(cfg)
+    if declared is not None and registry.is_database_native(declared.intake.id):
+        return _land_native(
+            ctx,
+            cfg,
+            planned,
+            target=target,
+            declared=declared,
+            registry=registry,
+            manifest=manifest,
+        )
+    if ctx.args.export is None and declared is not None:
+        raise refuse(
+            "library-export-unusable",
+            f"the intake tree {declared.intake.id!r} is on the xml bridge, so a "
+            f"landing splices the batch into a Fresh Export and --export has to name "
+            f"one; nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            steps=(
+                "export the collection from rekordbox and pass that file as --export",
+                f"or run crate tree cutover {declared.intake.id} --export with it, after "
+                f"which a landing adds the files to the collection directly",
+            ),
+            origin=_ORIGIN,
+            detail={"tree_id": declared.intake.id},
+        )
+    # With no export named and no library to read, the engine's preflight
+    # below refuses on the library first, so the name here is never opened.
+    export = (
+        Path(ctx.args.export)
+        if ctx.args.export is not None
+        else Path(cfg.library.root) / "collection.xml"
+    )
     destination = intake_file(cfg, batch)
     # THE ENGINE'S PRE-MOVE CHECKS ARE ASKED BEFORE THE GATE TOO (R-677), for
     # the manifest's reason. A plan over an export that is not there, or not a
@@ -294,7 +376,7 @@ def intake_land(ctx) -> Envelope:
     payload = _payload(
         planned, target=target, destination=destination, export=export, manifest=manifest
     )
-    spec = ctx.entry.gates[0]
+    spec = _gate(ctx.entry, XML_GATE)
     try:
         option = ctx.gate.require(
             spec,
@@ -344,10 +426,233 @@ def intake_land(ctx) -> Envelope:
     )
 
 
+# ---------------------------------------------------------------------------
+# The native medium (R-746)
+# ---------------------------------------------------------------------------
+
+
+def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: Path) -> dict:
+    """The plan as the approval gate shows it: one item per file, with its row.
+
+    EVERY COLUMN THE ROW WOULD CARRY IS ON THE ITEM, and the digest is taken
+    over the files, the folder, the batch and the collection plan together, so
+    an answer given for one folder, one batch name, one database or one set of
+    rows is stale for another. The engine's own digest already covers the rows
+    and the root; the files' fingerprint covers what is on disk.
+    """
+    by_target = {str(row.target): row for row in rows.rows}
+    items = []
+    for item in planned.items:
+        row = by_target[str(target / item.name)]
+        entry: dict[str, Any] = {
+            "action": row.action,
+            "from": str(item),
+            "to": str(row.target),
+            "row": row.columns(),
+        }
+        if row.content_id is not None:
+            entry["content_id"] = row.content_id
+        if row.why:
+            entry["why"] = row.why
+        items.append(entry)
+    identity = {
+        "kind": "land-native",
+        "folder": str(planned.folder),
+        "batch": planned.batch,
+        "target": str(target),
+        "files": planned.digest,
+        "collection": rows.digest,
+    }
+    return {
+        "digest": digest_of(identity),
+        "items": items,
+        "totals": {"count": len(items)},
+        "chunk": None,
+    }
+
+
+def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dict[str, Any]:
+    """The facts beside the items on the gate screen, one line per fact."""
+    stored = (
+        f"under the base drive {rows.base_drive}, which rekordbox maps to {rows.current_drive}"
+        if rows.base_drive and rows.current_drive and rows.base_drive != rows.current_drive
+        else "under the mounted path"
+    )
+    return {
+        "folder": str(folder),
+        "lands in": str(target),
+        "playlist": f"{rows.playlist} under {rows.root_name} (row {rows.root_id})",
+        "reads and writes": str(rows.database),
+        "device": f"{rows.device_id} (master {rows.master_db_id})",
+        "paths stored": stored,
+        "left empty for rekordbox": list(native.LEFT_EMPTY),
+        "adds": len(rows.to_add()),
+        "already present": len(rows.present()),
+        "left in staging": len(rows.unsupported()),
+    }
+
+
+def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
+    """The plan, each item marked with what the apply actually did to it."""
+    refused = {str(entry.path): entry for entry in landed.refused}
+    added = {str(row.target): row for row in landed.collection.added}
+    present = {str(row.target): row for row in landed.collection.present}
+    items: list[dict[str, Any]] = []
+    for item in payload["items"]:
+        entry = refused.get(item["from"])
+        if entry is not None:
+            items.append(
+                {**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence}
+            )
+            continue
+        row = added.get(item["to"])
+        if row is not None:
+            items.append(
+                {
+                    **item,
+                    "action": LANDED,
+                    "content_id": row.content_id,
+                    "row": {**item["row"], "Title": row.title, "FolderPath": row.folder_path},
+                    "left_empty": sorted(row.empty),
+                }
+            )
+            continue
+        held = present.get(item["to"])
+        items.append(
+            {
+                **item,
+                "action": LANDED,
+                "content_id": held.content_id if held is not None else item.get("content_id"),
+                "already_present": True,
+            }
+        )
+    totals = {
+        "count": payload["totals"]["count"],
+        "landed": len(landed.moved),
+        "refused": len(landed.refused),
+        "added": len(landed.collection.added),
+        "already present": len(landed.collection.present),
+        "memberships": landed.collection.memberships_added,
+    }
+    items.append(
+        {
+            "action": PLAYLIST,
+            "playlist": landed.collection.playlist,
+            "id": landed.collection.playlist_id,
+            "tree": landed.collection.tree_id,
+            "session": landed.collection.session_id,
+        }
+    )
+    return {**payload, "items": items, "totals": totals}
+
+
+def _land_native(
+    ctx,
+    cfg: config.Config,
+    planned: landing.Plan,
+    *,
+    target: Path,
+    declared,
+    registry,
+    manifest: landing.LabelManifest | None,
+) -> Envelope:
+    """Plan the rows against the database, ask, then move and write.
+
+    THE DATABASE IS OPENED WITH WRITE INTENT BEFORE THE PLAN, so a running
+    rekordbox or its agent refuses before anything is shown, and the plan is
+    made against the database the apply will write. THE ACKNOWLEDGMENT IS READ
+    BEFORE THE GATE (R-733): an approval is the one way door on a live library,
+    and a person who reads the whole plan and answers should not then be
+    refused by something the verb could have read first. A PLAN OF NOTHING IS
+    NOT ASKED: download staging is empty after every landing, and an explicit
+    gate, which takes a separate recorded act, is the price of a new kind of
+    write and not of learning there is nothing to move. Nothing is written
+    for it, so the envelope says so and stops.
+
+    THE GATE TAKES NO INLINE ANSWER. This is a new kind of write, content rows
+    in the collection, and it is answered by a separate recorded act with an
+    actor, the way the adoption is (R34).
+    """
+    tree_id = declared.intake.id
+    if ctx.args.export is not None:
+        raise refuse(
+            "intake-list-unusable",
+            f"the intake tree {tree_id!r} is database native, so a landing adds the "
+            f"files to the collection through the database and there is no export "
+            f"to splice; drop --export, nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            origin=_ORIGIN,
+            detail={"tree_id": tree_id, "export": str(ctx.args.export)},
+        )
+    if manifest is not None:
+        raise refuse(
+            "intake-list-unusable",
+            f"the intake tree {tree_id!r} is database native and label filing from a "
+            f"manifest is written into an intake file, which this medium does not "
+            f"make; land without --manifest, nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            origin=_ORIGIN,
+            detail={"tree_id": tree_id, "manifest": str(manifest.path)},
+        )
+    spec = _gate(ctx.entry, NATIVE_GATE)
+    if not planned.items:
+        identity = {"kind": "land-native", "folder": str(planned.folder), "batch": planned.batch}
+        empty = {"digest": digest_of(identity), "items": [], "totals": {"count": 0}, "chunk": None}
+        return ctx.envelope(data=empty, outcome=Outcome.NO_OP)
+
+    # THE LIBRARY CHECKS BEFORE THE DATABASE IS OPENED, so an unmounted volume
+    # is named as the volume and a staging folder on another device refuses
+    # without a snapshot copy of anything. Once here, and again by the engine
+    # before its first move, as the xml landing's preflight is.
+    landing.preflight_native(planned, cfg=cfg)
+    files = [(item, target / item.name) for item in planned.items]
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        rows = native.plan_rows(
+            cfg, db, tree_id=tree_id, registry=registry, batch=planned.batch, files=files
+        )
+        payload = _native_payload(planned, rows, target=target)
+        session.assert_backup_acknowledged(cfg)
+        option = ctx.gate.require(
+            spec,
+            plan=payload,
+            context=_native_shown(rows, folder=planned.folder, target=target),
+        )
+        if option != "apply":
+            return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
+        # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432), as on
+        # the bridge: the engine checks a target free and then renames over it.
+        with landing.batch_lock(planned.batch):
+            landed = landing.apply_native(
+                planned, cfg=cfg, db=db, rows=rows, declared=declared
+            )
+    finally:
+        rb_writer.close_db(db)
+    native.assert_rows_gridless(landed.collection)
+    warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
+    if landed.collection.added:
+        warnings.append(
+            {
+                "code": AWAITING_ANALYSIS,
+                "message": (
+                    f"{len(landed.collection.added)} row(s) joined the collection with no "
+                    f"tempo, grid, key or waveform, and rekordbox analyses nothing on its "
+                    f"own with Auto Analysis off; open rekordbox, select the "
+                    f"{landed.collection.playlist} playlist under the intake folder and "
+                    f"run Analyze Track"
+                ),
+            }
+        )
+    return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
+
+
 __all__ = [
+    "AWAITING_ANALYSIS",
     "INTAKE_SUFFIX",
+    "NATIVE_GATE",
     "RETIRED_SUFFIX",
     "VERIFY_VERB",
+    "XML_GATE",
     "build_land",
     "default_name",
     "intake_file",

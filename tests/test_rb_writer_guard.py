@@ -75,11 +75,13 @@ def test_permitted_playlist_and_mytag_writes_pass():
 
 
 def test_creating_a_track_row_is_forbidden():
-    """New content rows mean new-track intake, and intake stays in XML.
+    """New content rows mean new-track intake, and every ordinary commit refuses one.
 
     The reason is R15's safety chain: an XML import is something the user
     performs, reviews, and can undo from rekordbox. A row conjured into the
-    database directly is none of those things.
+    database directly is none of those things. Since R-746 one commit may admit
+    a content row by naming the table, see the creation section below; a
+    commit that names nothing is judged exactly as it always was.
     """
     violations = W.guard_violations([("djmdContent", set())], [], [])
     assert len(violations) == 1
@@ -955,6 +957,113 @@ def test_an_admitted_removal_still_judges_the_other_columns_of_the_row():
         removals={W.MEMBERSHIP_TABLE},
     )
     assert len(violations) == 1 and "BPM" in violations[0]
+
+
+# ── the one creation beyond the whitelist, R-746 ─────────────────────────────
+
+
+#: What the binding's ``add_content`` declares on the row it makes, read off
+#: its source on 2026-09-29 (pyrekordbox 0.4.4), plus the title a landing sets.
+#: None of it is an analysis column, which is what makes the bare row admissible.
+_LANDED_ROW = {
+    "ID",
+    "UUID",
+    "ContentLink",
+    "DateCreated",
+    "DeviceID",
+    "FileNameL",
+    "FileSize",
+    "FileType",
+    "FolderPath",
+    "HotCueAutoLoad",
+    "MasterDBID",
+    "MasterSongID",
+    "StockDate",
+    "rb_file_id",
+    "Title",
+}
+
+
+def test_the_admittable_tables_are_exactly_the_content_table():
+    assert W.ADMITTABLE_ROW_TABLES == frozenset({"djmdContent"})
+    assert W.CONTENT_TABLE not in W.PERMITTED_ROW_TABLES
+
+
+def test_a_commit_that_asks_may_create_a_content_row_carrying_what_the_file_says():
+    asked = {W.CONTENT_TABLE}
+    assert W.guard_violations([(W.CONTENT_TABLE, _LANDED_ROW)], [], [], creations=asked) == []
+    # And the same row with nothing asked is the refusal it always was.
+    assert W.guard_violations([(W.CONTENT_TABLE, _LANDED_ROW)], [], []) != []
+
+
+@pytest.mark.parametrize("column", sorted(W.CONTENT_ROW_EMPTY_COLUMNS))
+def test_an_admitted_content_row_declaring_an_analysis_column_is_refused(column):
+    """The admission is a ceiling on the table, never on what the row may carry.
+
+    Ten columns, not the five the playlist tables are held to: a content row is
+    the one row an analysis pass writes into, so the key, the rates and the
+    artwork path are analysis outputs here and nowhere else.
+    """
+    violations = W.guard_violations(
+        [(W.CONTENT_TABLE, _LANDED_ROW | {column})], [], [], creations={W.CONTENT_TABLE}
+    )
+    assert len(violations) == 1, violations
+    assert column in violations[0] and "analysis" in violations[0]
+
+
+def test_the_wider_content_policy_contains_the_playlist_policy():
+    assert W.GRIDLESS_ON_CREATE_COLUMNS < W.CONTENT_ROW_EMPTY_COLUMNS
+    assert {"KeyID", "SampleRate", "BitRate", "BitDepth", "ImagePath"} < W.CONTENT_ROW_EMPTY_COLUMNS
+
+
+@pytest.mark.parametrize("table", ["djmdArtist", "djmdGenre", "djmdAlbum", "djmdBeatGrid"])
+def test_asking_for_a_creation_in_any_other_table_is_itself_refused(table):
+    """The set is a ceiling a caller cannot raise by asking (P5)."""
+    violations = W.guard_violations([(table, set())], [], [], creations={table})
+    assert len(violations) == 2, violations
+    assert any("asks to create" in line for line in violations)
+    assert any("non-whitelisted" in line for line in violations)
+    # Asked for and unused, it is still refused.
+    assert W.guard_violations([], [], [], creations={table}) != []
+
+
+def test_an_admitted_creation_admits_no_removal_and_no_delete():
+    """Naming the content table on ``creations`` says nothing about the other two loops."""
+    asked = {W.CONTENT_TABLE}
+    assert W.guard_violations([], [], [W.CONTENT_TABLE], creations=asked) != []
+    violations = W.guard_violations(
+        [], [(W.CONTENT_TABLE, {W.SOFT_DELETE_COLUMN})], [], creations=asked
+    )
+    assert len(violations) == 1 and "soft delete marker" in violations[0]
+
+
+def test_an_admitted_creation_still_refuses_a_second_content_row_nobody_asked_about():
+    """One admission covers the commit, and every content row in it is judged."""
+    violations = W.guard_violations(
+        [(W.CONTENT_TABLE, _LANDED_ROW), (W.CONTENT_TABLE, _LANDED_ROW | {"Analysed"})],
+        [],
+        [],
+        creations={W.CONTENT_TABLE},
+    )
+    assert len(violations) == 1 and "Analysed" in violations[0]
+
+
+def test_every_other_writer_in_the_package_asks_for_no_creation():
+    """The callers that pass ``creations`` are the native landing and nobody else.
+
+    A source guard rather than a runtime one, because the property is about who
+    may ask: a membership writer that learned to name the content table would
+    pass every runtime check and still be the hazard the whitelist exists for.
+    """
+    import re
+
+    root = Path(__file__).resolve().parents[1] / "src" / "cratekit"
+    askers = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if re.search(r"commit_guarded\([^)]*creations=", path.read_text(encoding="utf-8"), re.S)
+    )
+    assert askers == ["intake/native.py"], askers
 
 
 # ── the per-field policy ─────────────────────────────────────────────────────

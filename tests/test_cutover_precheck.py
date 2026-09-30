@@ -151,19 +151,22 @@ def test_an_unverified_capture_does_not_count_as_a_snapshot(cfg):
     assert excinfo.value.cause.reason == "cutover-snapshot-missing"
 
 
-def test_the_intake_tree_cannot_flip_even_on_a_rebuildable_source(cfg):
+def test_the_intake_tree_flips_on_a_rebuildable_source_like_any_other(cfg):
+    """R-746. The intake tree's own refusal is gone: the landing chooses its
+    medium by the tree's mode, so a native intake tree refuses no splice that
+    anything still owes. The precheck and the rebuildability rule still hold."""
     export = _ready(cfg)
-    with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
-        tree_registry.flip(
-            cfg,
-            "inbox",
-            root_id="root-inbox",
-            on=CUTOVER_ON,
-            source=DERIVATION,
-            export=export,
-        )
-    assert excinfo.value.tree_id == "inbox"
-    assert tree_registry.read(cfg).is_on_the_bridge("inbox")
+    tree_registry.flip(
+        cfg,
+        "inbox",
+        root_id="root-inbox",
+        on=CUTOVER_ON,
+        source=DERIVATION,
+        export=export,
+    )
+    recorded = tree_registry.read(cfg)
+    assert recorded.is_database_native("inbox")
+    assert recorded.record("inbox").root_id == "root-inbox"
 
 
 def test_a_revert_puts_the_tree_back_on_the_bridge(cfg):
