@@ -54,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true", help="print the distributions as JSON instead"
     )
     args = parser.parse_args(argv)
+    if args.step < 1:
+        parser.error("--step must be one or more")
+    if args.analyse < 0:
+        parser.error("--analyse must be zero or more")
 
     from cratekit.analysis import agreement
     from cratekit.core import config

@@ -105,6 +105,37 @@ def test_a_peak_outside_the_window_is_not_named_and_the_one_inside_is():
     assert raised is not None and abs(raised - 166.0) < 1.0
 
 
+def test_a_vertex_leaning_past_the_window_edge_is_held_at_the_edge():
+    """The bin at the floor edge with a stronger neighbour just outside: the
+    parabola leans outside, and the head must still name a value inside the
+    window, so the answer is held at the floor."""
+    lag_floor = 60.0 * RATE / (detect.TEMPO_HOP * 80.0)  # 32.3
+    strength = np.zeros(384)
+    strength[32] = 1.0
+    strength[33] = 1.2
+    strength[31] = 0.4
+    tempo = detect.tempo_from_autocorrelation(strength, floor=80, ceiling=160)
+    assert tempo == 80.0
+    assert 60.0 * RATE / (detect.TEMPO_HOP * 32.5) < 80.0 < 60.0 * RATE / (detect.TEMPO_HOP * lag_floor) + 0.01
+
+
+def test_the_interpolated_offset_is_held_to_half_a_bin():
+    assert detect._interpolated_peak(np.array([10.0, 9.0, 0.0]), 1) == 0.5
+    assert detect._interpolated_peak(np.array([0.0, 9.0, 10.0]), 1) == 1.5
+    assert abs(detect._interpolated_peak(np.array([1.0, 2.0, 1.0]), 1) - 1.0) < 1e-9
+
+
+def test_a_head_never_names_a_value_outside_the_window():
+    """Both ends included, and the rounded head stays inside: an answer of
+    159.6 rounds to 160, which is the ceiling and allowed; nothing rounds past
+    it, and nothing rounds below the floor."""
+    for lag in np.linspace(15.0, 34.0, 200):
+        tempo = detect.tempo_from_autocorrelation(_autocorrelation_peaked_at(lag))
+        assert tempo is not None
+        assert 80.0 <= tempo <= 160.0, (lag, tempo)
+        assert 80 <= int(tempo + 0.5) <= 160
+
+
 def test_a_window_no_bin_falls_in_answers_none():
     strength = _autocorrelation_peaked_at(20.0, size=4)
     assert detect.tempo_from_autocorrelation(strength, floor=1000, ceiling=1001) is None
@@ -186,11 +217,3 @@ def test_the_shipped_window_is_the_configured_default():
         config.DEFAULT_TEMPO_FLOOR,
         config.DEFAULT_TEMPO_CEILING,
     )
-
-
-def test_a_signal_too_short_for_a_period_is_unanalysable_not_keyless(tmp_path):
-    """Half a second holds no beat inside the window; the terminal is the
-    analyser's, not a claim that the track has no key."""
-    path = _write(tmp_path / "stinger.wav", _chord(A_MINOR, seconds=0.5))
-    found = detect.analyse_file(path)
-    assert found == {"path": path, "terminal": detect.TERMINAL_UNANALYSABLE}

@@ -371,7 +371,9 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
             # stamps a tempo and a key that rekordbox's own analysis of the
             # same file will not always show, and the rate was measured, so
             # the answer carries it rather than presenting the head as a fact.
-            summary["head_agreement"] = detect.head_agreement()
+            summary["head_agreement"] = detect.head_agreement(
+                window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling)
+            )
             unscored = _unscored_vocals_warning(summary)
             if unscored is not None:
                 warnings = (*warnings, unscored)

@@ -287,27 +287,54 @@ def measure(cfg: config.Config, *, database: Path | None = None) -> Agreement:
     return compare(read_rows(cfg, database=database))
 
 
-def local_path(row: HeadRow, cfg: config.Config) -> Path | None:
-    """The row's file on this machine, through the configured prefix rules."""
+def local_path(
+    row: HeadRow, *, root: Path, rules: Sequence[Any]
+) -> Path | None:
+    """The row's file on this machine, through the given prefix rules."""
     from cratekit.core import locations
 
     if not row.folder_path:
         return None
-    rules = tuple(
-        locations.PrefixRule(source=source, target=target)
-        for source, target in cfg.resolved_prefix_map()
-    )
-    resolved = locations.resolve_recorded_path(
-        row.folder_path, root=cfg.library.root, prefix_map=rules
-    )
+    resolved = locations.resolve_recorded_path(row.folder_path, root=root, prefix_map=rules)
     if resolved.path is None:
         return None
     path = Path(resolved.path)
     return path if path.is_file() else None
 
 
+def sample_for_reanalysis(
+    rows: Iterable[HeadRow], cfg: config.Config, *, limit: int, step: int = 1
+) -> list[tuple[HeadRow, Path]]:
+    """Every ``step``-th row rekordbox analysed itself whose file is here, up to ``limit``.
+
+    Lazy on purpose: a row is resolved and its file looked for only until the
+    sample is full, so asking for ten files off a library of thousands costs
+    ten resolutions and the rows skipped by ``step``, not a walk of the whole
+    collection.
+    """
+    from cratekit.core import locations
+
+    if step < 1:
+        raise ValueError(f"step must be one or more, found {step!r}")
+    rules = locations.prefix_rules(cfg.resolved_prefix_map())
+    chosen: list[tuple[HeadRow, Path]] = []
+    eligible = 0
+    for row in rows:
+        if len(chosen) >= limit:
+            break
+        if not row.analysed_by_rekordbox:
+            continue
+        path = local_path(row, root=cfg.library.root, rules=rules)
+        if path is None:
+            continue
+        if eligible % step == 0:
+            chosen.append((row, path))
+        eligible += 1
+    return chosen
+
+
 def reanalyse(
-    rows: Sequence[HeadRow],
+    rows: Iterable[HeadRow],
     cfg: config.Config,
     *,
     detector: Callable[[Path], dict[str, Any] | None],
@@ -316,20 +343,11 @@ def reanalyse(
 ) -> Agreement:
     """Run the detector over a sample of rekordbox's own analyses and bucket it.
 
-    The sample is every ``step``-th row rekordbox analysed itself whose file
-    is on this machine, up to ``limit``. Sequential on purpose: a pool whose
-    worker dies mid file waits for ever, which is how the first measurement
-    of R-744 was lost, and the person who asked for a number can pick a limit
-    that fits the time they have.
+    Sequential on purpose: a pool whose worker dies mid file waits for ever,
+    which is how the first measurement of R-744 was lost, and the person who
+    asked for a number can pick a limit that fits the time they have.
     """
-    chosen = []
-    for row in rows:
-        if not row.analysed_by_rekordbox:
-            continue
-        path = local_path(row, cfg)
-        if path is not None:
-            chosen.append((row, path))
-    chosen = chosen[::step][:limit]
+    chosen = sample_for_reanalysis(rows, cfg, limit=limit, step=step)
     measured: dict[str, Head | None] = {
         row.identifier: head_from_detection(detector(path)) for row, path in chosen
     }

@@ -2428,12 +2428,12 @@ class AcquisitionConfig:
     lossless_policy: str = "strict"
 
 
-#: The tempo window the head's estimate is chosen inside, in beats per minute.
-#: The window is the source system's default, and it is the one setting that
-#: decides which metrical level a head names: a track whose pulse reads as 83
-#: or 166 is named by the value inside the window (R-744). A DJ whose library
-#: is drum and bass raises both bounds in the config file; nothing here reads a
-#: genre.
+#: The tempo window the head's estimate is chosen inside, in beats per minute,
+#: both ends included. The window is the source system's default, and it is
+#: the one setting that decides which metrical level a head names: a track
+#: whose pulse reads as 83 or 166 is named by the value inside the window
+#: (R-744). A DJ whose library is drum and bass raises both bounds in the
+#: config file; nothing here reads a genre.
 DEFAULT_TEMPO_FLOOR = 80
 DEFAULT_TEMPO_CEILING = 160
 
@@ -2446,7 +2446,7 @@ class AnalysisConfig:
     #: resident size against available memory, never from a CPU count.
     jobs: int | None = None
     energy_calibration: str = "auto"
-    #: The head names a tempo at or above the floor and below the ceiling.
+    #: The head names a tempo from the floor to the ceiling, both included.
     tempo_floor: int = DEFAULT_TEMPO_FLOOR
     tempo_ceiling: int = DEFAULT_TEMPO_CEILING
 

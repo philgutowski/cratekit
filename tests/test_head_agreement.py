@@ -199,6 +199,47 @@ def test_reanalysis_samples_rekordbox_own_rows_with_a_file_and_buckets_the_detec
     assert dict(found.key) == {agreement.KEY_EQUAL: 1}
 
 
+def test_the_sample_stops_resolving_rows_once_it_is_full(tmp_path, monkeypatch):
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    cfg = config.from_dict(valid_data(root))
+    on_disk = root / "Music" / "own.flac"
+    on_disk.write_bytes(b"")
+    rows = [
+        agreement.HeadRow(str(n), "01A - 100 - own.flac", 12650, "8A", str(on_disk))
+        for n in range(1, 41)
+    ]
+    resolved = []
+    real = agreement.local_path
+
+    def counted(row, **kwargs):
+        resolved.append(row.identifier)
+        return real(row, **kwargs)
+
+    monkeypatch.setattr(agreement, "local_path", counted)
+    chosen = agreement.sample_for_reanalysis(rows, cfg, limit=3, step=1)
+    assert [row.identifier for row, _path in chosen] == ["1", "2", "3"]
+    assert resolved == ["1", "2", "3"]
+    resolved.clear()
+    chosen = agreement.sample_for_reanalysis(rows, cfg, limit=3, step=4)
+    assert [row.identifier for row, _path in chosen] == ["1", "5", "9"]
+    assert len(resolved) == 9
+    with pytest.raises(ValueError):
+        agreement.sample_for_reanalysis(rows, cfg, limit=3, step=0)
+
+
+def test_the_script_refuses_a_step_below_one_before_it_reads_anything():
+    completed = subprocess.run(
+        [sys.executable, str(SCRIPT), "--analyse", "3", "--step", "0"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert "--step must be one or more" in completed.stderr
+
+
 # ---------------------------------------------------------------------------
 # The measurement over a fixture copy, through the script
 # ---------------------------------------------------------------------------
@@ -402,25 +443,51 @@ def test_the_recorded_agreement_is_a_fresh_copy_with_every_bucket_named():
     assert first == second and first is not second
     first["tempo"]["equal"] = 0
     assert detect.head_agreement()["tempo"]["equal"] != 0
-    assert set(first["tempo"]) == {"within_one", *agreement.TEMPO_BUCKETS}
-    assert set(first["key"]) == {agreement.KEY_EQUAL, agreement.KEY_DIFFERS}
     assert first["window"] == {
         "floor": config.DEFAULT_TEMPO_FLOOR,
         "ceiling": config.DEFAULT_TEMPO_CEILING,
     }
 
 
+def test_the_recorded_shape_is_the_shape_the_measurement_prints():
+    """Re-recording is a copy: every key the measurement's dictionary form
+    carries is in the record at the same level, so a session pasting the
+    script's JSON cannot drop within_one or nest it."""
+    printed = agreement.compare(ROWS).as_dict()
+    recorded = detect.head_agreement()
+    for name in ("files", "tempo", "within_one", "key"):
+        assert name in recorded, name
+    assert set(recorded["tempo"]) == set(printed["tempo"]) == set(agreement.TEMPO_BUCKETS)
+    assert set(recorded["key"]) == set(printed["key"])
+    assert isinstance(recorded["within_one"], int)
+
+
 def test_the_recorded_buckets_sum_to_the_files_measured():
     recorded = detect.head_agreement()
     tempo = recorded["tempo"]
     assert sum(tempo[bucket] for bucket in agreement.TEMPO_BUCKETS) == recorded["files"]
-    assert tempo["within_one"] >= tempo["equal"]
+    assert recorded["within_one"] >= tempo["equal"]
     assert sum(recorded["key"].values()) == recorded["files"]
+
+
+def test_the_record_says_whether_it_applies_to_the_bound_window():
+    measured = (config.DEFAULT_TEMPO_FLOOR, config.DEFAULT_TEMPO_CEILING)
+    assert detect.head_agreement()["applies_to_window"] is True
+    assert detect.head_agreement(window=measured)["applies_to_window"] is True
+    raised = detect.head_agreement(window=(140, 280))
+    assert raised["applies_to_window"] is False
+    # The numbers stay, so the reader sees what was measured, not an absence.
+    assert raised["tempo"] == detect.head_agreement()["tempo"]
+
+
+def test_the_run_answer_carries_the_bound_window_to_the_record():
+    source = (REPO_ROOT / "src" / "cratekit" / "analysis" / "cli.py").read_text(encoding="utf-8")
+    assert "window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling)" in source
 
 
 def test_the_run_answer_carries_the_recorded_agreement():
     source = (REPO_ROOT / "src" / "cratekit" / "analysis" / "cli.py").read_text(encoding="utf-8")
-    assert 'summary["head_agreement"] = detect.head_agreement()' in source
+    assert 'summary["head_agreement"] = detect.head_agreement(' in source
 
 
 # ---------------------------------------------------------------------------

@@ -332,6 +332,16 @@ def _matches_anchored(path: str, prefix: str) -> bool:
     return path == prefix or path.startswith(prefix + "/")
 
 
+def prefix_rules(pairs: Sequence[tuple[str, str]]) -> tuple[PrefixRule, ...]:
+    """The rules a resolved prefix map becomes, in declared order.
+
+    ``pairs`` is what ``Config.resolved_prefix_map`` answers. Named once here so
+    a caller that resolves recorded paths does not rebuild the same three lines
+    and drift from the rest when the rule's construction changes.
+    """
+    return tuple(PrefixRule(source, target) for source, target in pairs)
+
+
 def resolve_recorded_path(
     recorded: str,
     *,
