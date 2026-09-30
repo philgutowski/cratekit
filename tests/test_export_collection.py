@@ -1821,6 +1821,36 @@ def test_the_envelope_counts_a_row_left_to_its_rule(tmp_path, monkeypatch):
     assert "4 left to a rule" in check["detail"]
 
 
+@pytest.mark.parametrize(
+    ("prefixes", "listed"),
+    [
+        ((("/a/b", 3),), "rule (3 under /a/b), and"),
+        (
+            (("/a/b", 3), ("/c/d", 2), ("/e/f", 1)),
+            "rule (3 under /a/b, 2 under /c/d, 1 under /e/f), and",
+        ),
+        (
+            (("/a/b", 3), ("/c/d", 2), ("/e/f", 1), ("/g/h", 1)),
+            "rule (3 under /a/b, 2 under /c/d, 1 under /e/f, and 1 other prefix), and",
+        ),
+        (
+            (("/a/b", 3), ("/c/d", 2), ("/e/f", 1), ("/g/h", 1), ("/i/j", 1)),
+            "rule (3 under /a/b, 2 under /c/d, 1 under /e/f, and 2 other prefixes), and",
+        ),
+    ],
+)
+def test_the_warning_names_three_prefixes_and_counts_the_rest(prefixes, listed):
+    """A drive that has gone dark is a line here, where a count would hide it."""
+    rows = tuple(str(index) for index in range(sum(count for _prefix, count in prefixes)))
+    (warning,) = export_collection._warnings(
+        collection_export.Omitted(unmapped_paths=rows, unmapped_prefixes=prefixes)
+    )
+
+    assert warning["code"] == "export-location-unmapped"
+    assert warning["message"].startswith(f"{len(rows)} track(s) record a path")
+    assert listed in warning["message"]
+
+
 def test_the_emitter_cannot_be_asked_for_a_document_without_saying_where_it_is_mounted():
     """No default for either argument, since a default is sitting 19's export."""
     with pytest.raises(TypeError):

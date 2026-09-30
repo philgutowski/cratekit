@@ -525,22 +525,24 @@ def mounted_location(
     writes for a drive other than its own.
 
     A streamed track, a row with no path and a location naming another host
-    name no file on this machine and are handed back as recorded.
+    name no file on this machine and are handed back as recorded. The first
+    two are the resolver's own answer for a value that is not a path, so
+    nothing here asks the question a second time.
     """
-    if not is_located(recorded):
-        return Mounted(recorded, Placement.AS_RECORDED)
     try:
         _decoded, resolved = trees.located(recorded, root=root, prefix_map=prefix_map)
     except locations.LocationDecodeError:
         return Mounted(recorded, Placement.AS_RECORDED)
     if resolved.resolution is locations.Resolution.UNMAPPED:
         return Mounted(recorded, Placement.UNDER_NO_RULE, prefix=resolved.prefix)
-    if resolved.resolution is not locations.Resolution.REMAPPED or resolved.path is None:
-        return Mounted(recorded, Placement.AS_RECORDED)
-    read_back = locations.resolve_recorded_path(resolved.path, root=root, prefix_map=prefix_map)
-    if read_back.path != resolved.path:
+    if resolved.resolution is locations.Resolution.REMAPPED and resolved.path is not None:
+        read_back = locations.resolve_recorded_path(
+            resolved.path, root=root, prefix_map=prefix_map
+        )
+        if read_back.path == resolved.path:
+            return Mounted(resolved.path, Placement.PLACED)
         return Mounted(recorded, Placement.LEFT_TO_ITS_RULE)
-    return Mounted(resolved.path, Placement.PLACED)
+    return Mounted(recorded, Placement.AS_RECORDED)
 
 
 #: Every character an XML 1.0 document may not carry, with the tab and the two
