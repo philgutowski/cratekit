@@ -5868,7 +5868,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the WARNING code `cli/export_collection.py` gives for the rows no prefix
     # rule places, written as the database holds them. The verb's refusals
     # are the ones it had.
-    assert (len(literals), len(literals - set(causes))) == (538, 352), (
+    # Re-pinned on the residual finding "adopt move plans from adoption's
+    # withheld list, so a track that held two band subs before adoption is
+    # never moved", 2026-09-30: 538 to 541 distinct, non-keys 352 to 355.
+    # THREE joined and nothing left, differenced as sets against `main` over
+    # the diff of `src`, and none is a key. All three are reasons
+    # `adopt/move.py` lists a track as left where it is, shown on the gate
+    # beside each: reading-names-neither-held, withheld-by-verdict and
+    # one-sub-held-by-two-rows. The verb's refusals are the ones it had.
+    assert (len(literals), len(literals - set(causes))) == (541, 355), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
