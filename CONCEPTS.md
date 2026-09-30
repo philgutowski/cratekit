@@ -223,7 +223,11 @@ that has cut over it adds one content row per file and one batch playlist
 under the adopted intake root through the guarded database writer,
 `intake/native.py`, with no intake file and no import to wait on. A native
 landing writes nothing rekordbox derives from the audio, and its rows await
-an analysis the person asks rekordbox for.
+an analysis the person asks rekordbox for. Since R-770 `intake file` chooses
+the same way for one file, and both verbs read one switch,
+`ingest.intake_medium`. Nothing else writes the intake tree: the splice,
+`ingest.place_files`, refuses a native tree in its own words, naming the
+landing, before the emitter guard could call the cutover a defect.
 
 ### Fresh Export
 A collection export that describes the database as it is now: the XML document
