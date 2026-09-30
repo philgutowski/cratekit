@@ -4,6 +4,36 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Last built: R-757, issue #226, `relay/226`, 2026-09-29.** A backup's file
+mirror lists the remote in one recursive pass, `--fast-list`, and `crate
+backup run --full` lists it folder by folder as every mirror did before.
+**Measured first, read only, on the live volume and the live remote:**
+91,265 files in 22,433 folders, the local walk 1.5 seconds, the recursive
+remote listing 66 and 139 seconds, the folder by folder rehearsal killed at
+540 seconds with 18,774 files compared and 64 checkers no faster, the
+recursive rehearsal complete in 190 seconds with 48 to send. The cost was
+the listing at the remote's paced rate, about ten calls a second, and not
+the comparison. **Both modes compare every file by size and modification
+time**, driven through the real rclone between two temporary folders. The
+fact file records when a full comparison last completed and carries an
+earlier build's files record forward as one; `doctor` reports it under
+`backup.full_comparison` and asks for one after thirty days; the resumed
+verb says the mode, the seconds, the files checked on both sides and the
+files sent, and a rehearsal says what it would have sent. A second ask in
+the other mode is handed the open job and told the modes differ. The built
+in review raised ten findings, nine fixed with a test each and one filed as
+R-765. **The numbers:** 10,828 collected, 10,827 passed and 1 skipped, ruff
+clean, `scan_repo.py` exit 0. **The mutation tables are the author's**,
+`docs/mutation/r757-a.md`, `r757-b1.md`, `r757-b2.md`, `r757-c1.md` and
+`r757-c2.md`: 25 distinct mutations, 25 killed, six considered and not run
+and each named; five batches because a batch of nine took 5 minutes 55
+seconds in the foreground against a ceiling of ten. Filed **R-764** to
+**R-769**, none on the board bar. **Owed at the next attended sitting, and
+it is R-757's own closing condition:** one timed `crate backup run` on the
+live library, then `crate backup run --full` in the same sitting, which is
+what closes R-766. **Main's highest residual number is R-769 once this
+merges.**
+
 **Last built: R-758, issue #227, `relay/227`, 2026-09-29.** `crate adopt
 move` moves a track from the energy or style sub it holds to the one its own
 file names, and it is the first verb that removes a membership. It is a verb
@@ -32,7 +62,7 @@ read 585 since the plan also takes the 37 tracks of R-734 and leaves every
 track with no reading, approve, open rekordbox on the copy and read each
 bucket's subs, which is also what closes R-761. Then live, approved by the
 session only if the live digest equals the copy's. **Main's highest
-residual number is R-763 once this merges.**
+residual number was R-763 when this merged.**
 
 **Last built: R-759, issue #228, `relay/228`, 2026-09-29.** The provider
 gate's two process timing test, which refused #223 at its gate on a busy

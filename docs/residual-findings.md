@@ -30273,6 +30273,29 @@ available, and doctor saying how long ago one last ran.
 **On the board bar, 2026-09-29.** A workflow a DJ needs does not finish in a
 sitting's time.
 
+**Measured 2026-09-29 on `relay/226`, issue #226, read only against the
+live volume and the live remote.** 91,265 files in 22,433 folders, not
+10,000. The local walk took 1.5 seconds. The recursive listing of the remote
+took 66 and 139 seconds on two runs. The product's own mirror command as a
+rehearsal had compared 18,774 files after 220 seconds and was killed at
+540; 64 checkers in place of 16 held the same steady rate, 37 files a second
+against 59, so the rate is the remote's request pacing and not the checker
+count. The same command with the recursive listing option compared all
+91,235 files in 190 seconds and found 48 to send. The cost was the listing,
+asked once per folder at about ten calls a second.
+
+**Closed by build, 2026-09-29, the attended run owed.** The mirror carries
+`--fast-list` by default and `crate backup run --full` builds the command
+as it was. Both modes compare every file by size and modification time,
+driven through the real rclone between two temporary folders: a file
+changed in content and not in size is sent, an added file is sent and a
+removed one is archived, and the two modes agree on what to send. The fact
+file records when a full comparison last completed, `doctor` reports it
+under `backup.full_comparison`, and the resumed verb says the mode, the
+seconds and the counts. The closing condition's real run is the attended
+sitting's, and a rehearsal of it measured 190 seconds against the 300 the
+condition names.
+
 ---
 
 ## R-758. No verb moves a track from one competing sub to another
@@ -30535,3 +30558,127 @@ can join by adding a line, and R-733 closing on `adopt apply` would add it.
 closes and the table is reviewed with it.
 
 **Not on the board bar.** Maintainer facing.
+
+---
+
+## R-764. An unchanged library never reports zero files sent
+
+**Found:** on `relay/226`, 2026-09-29, driving the mirror twice over one
+unchanged fixture. The backup fact file lives under the library root, in the
+product's own state folder, and a run that published rewrote it after the
+mirror, so the next run sends it. The count a person reads after a real run
+of an unchanged library is one, not none.
+
+**Measured cost.** A sentence that says one file was sent over a library
+whose music did not change. The file is library state and should travel.
+
+**Closes when:** the sentence names the product's own state separately, or
+the count is taken over the library minus the state folder, and the test
+`test_a_run_that_published_sends_its_own_record_next_time` is reworded.
+
+**Not on the board bar.** Wording.
+
+---
+
+## R-765. A failed mirror's counts reach job show and not the refusal the terminal prints
+
+**Found:** by the built in review on `relay/226`, 2026-09-29. The engine
+reads the comparison whether or not the mirror returned zero, so a run that
+failed after sending half of what changed records how far it got. The
+resumed verb raises the job's cause before the comparison sentence is built,
+so the terminal shows the refusal alone and the counts are under `job show`.
+
+**Measured cost.** A person whose mirror failed has to run a second command
+to learn how far it got.
+
+**Closes when:** the refusal carries the comparison as a step, the way the
+rehearsal word rides `_with_rehearsal_step`, with a test that a failed
+resume prints it.
+
+**Not on the board bar.** The run is reported failed, and the counts exist.
+
+---
+
+## R-766. The recursive listing was not compared with the folder by folder one on the real remote
+
+**Found:** on `relay/226`, 2026-09-29. The folder by folder rehearsal was
+killed at 540 seconds with 18,774 of 91,235 files compared, so whether the
+two listings of the real remote name the same files was not measured. The
+tests between two local folders prove the two modes agree on what to send
+where the listing option changes nothing. If the recursive listing ever
+omitted a remote file, the mirror would send it again, and a remote that
+holds two files of one name would then hold two.
+
+**Measured cost.** Unmeasured. Nothing was observed missing.
+
+**Closes when:** an attended sitting runs `crate backup run` and then
+`crate backup run --full` on the live library within one sitting, and the
+full run sends nothing beyond the product's own state files.
+
+**Not on the board bar.** Closes only at an attended sitting.
+
+---
+
+## R-767. A fact file rebuilt by hand without the full comparison key reads its files record as a full comparison
+
+**Found:** by the built in review on `relay/226`, 2026-09-29. The absence of
+`full_comparison` from the fact file is read as a file written by a build
+that had one mode, whose every mirror was a full comparison. That is right
+for every file this product wrote before this unit, and it is the live
+library's file today. It is wrong for a file a person rebuilt by hand after
+the upgrade with only `schema_version` and `portions`, which the
+`repair-backup-facts` remedy invites: the latest fast run then reads as a
+full comparison and the next record persists it.
+
+**Measured cost.** `doctor` says a full comparison ran when none did, on a
+file somebody wrote by hand.
+
+**Closes when:** the remedy's repair writes the key, or a fact file gains a
+field naming the build that wrote it.
+
+**Not on the board bar.** Reached only through a hand edit.
+
+---
+
+## R-768. Every other rclone command still lists the remote folder by folder
+
+**Found:** on `relay/226`, 2026-09-29. Only the file mirror gained the
+recursive listing option. `restore run --from-backup` copies the whole
+mirror back with `rclone copy`, the analysis share is synced with `rclone
+sync`, and the settings are copied, each without it, so a restore of the
+whole library lists 22,433 folders at the paced rate before it copies, the
+same most of an hour the backup paid.
+
+**Measured cost.** Not measured on those commands. The mirror's number is
+the only one read.
+
+**Closes when:** each is measured on the author's remote and the option is
+added where it helps, with the restore's agreement on what it copies driven
+the way the mirror's was.
+
+**Not on the board bar.** A restore finishes, slowly, and is rare.
+
+---
+
+## R-769. A file changed in content with its size and modification time kept is sent by neither mode
+
+**Found:** on `relay/226`, 2026-09-29. Both modes compare by size and
+modification time, as every mirror before this unit did. A tag write moves
+the modification time, so it is sent, and the tests hold that. A tool that
+rewrites a file and puts the old time back, or a bit that flipped on the
+disk, changes neither number and is not sent. rclone's `--checksum` would
+read every local file to compare content, which on a library this size is
+a read of the whole volume, and it was not measured.
+
+**Decided by the author of the unit, conservatively:** `--full` is the
+folder by folder listing and nothing more, so the flag the brief asks for
+keeps a comparison that is known to work. Whether `--full` should also
+compare by content is Phillip's to decide, with the cost of one such run
+measured first.
+
+**Measured cost.** Unmeasured. No such file was observed.
+
+**Closes when:** a checksum run is timed on the author's library and the
+full mode either takes it or the ledger records why not.
+
+**Not on the board bar.** Unchanged from every backup before this unit.

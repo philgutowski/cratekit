@@ -1,0 +1,91 @@
+name = "r757-a"
+pass_kind = "light"
+
+[[rows]]
+id = "E1_full_mode_still_lists_recursively"
+description = "_plan_files: the full mode carries the recursive listing option too, so --full is the fast run under another name"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''                *(() if full else (FAST_LIST,)),'''
+new = '''                *((FAST_LIST,)),'''
+
+[[rows]]
+id = "E2_fast_mode_lists_folder_by_folder"
+description = "_plan_files: the ordinary run drops the recursive listing option, which is the whole of the speed fix"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''                *(() if full else (FAST_LIST,)),'''
+new = '''                *(() if True else (FAST_LIST,)),'''
+
+[[rows]]
+id = "E3_planner_ignores_the_mode"
+description = "plan_backup: hand the files planner full=False whatever was asked"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''            cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, full=full'''
+new = '''            cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, full=False'''
+
+[[rows]]
+id = "E4_compare_by_size_alone"
+description = "_plan_files: add --size-only to the mirror, the refused candidate, so a tag write that keeps the length is skipped"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''                *(() if full else (FAST_LIST,)),
+                *MIRROR_STATS_ARGS,'''
+new = '''                *(() if full else (FAST_LIST,)),
+                *MIRROR_STATS_ARGS, "--size-only",'''
+
+[[rows]]
+id = "E5_mode_read_backwards"
+description = "comparison_mode: report fast for a command without the option and full for one with it"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''    return COMPARISON_FAST if FAST_LIST in command.argv else COMPARISON_FULL'''
+new = '''    return COMPARISON_FAST if FAST_LIST not in command.argv else COMPARISON_FULL'''
+
+[[rows]]
+id = "E6_unread_total_is_zero"
+description = "_count: answer zero for a total rclone did not give, so an unread run says it sent nothing"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value'''
+new = '''    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return value'''
+
+[[rows]]
+id = "E7_first_totals_win"
+description = "comparison_report: keep the first totals logged and not the last"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''        if isinstance(found, dict):
+            stats = found'''
+new = '''        if isinstance(found, dict) and not stats:
+            stats = found'''
+
+[[rows]]
+id = "E8_failed_mirror_reports_nothing"
+description = "run_backup: read the comparison only when the mirror returned zero"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''            if command.label == MIRROR:'''
+new = '''            if command.label == MIRROR and result.returncode == 0:'''
+
+[[rows]]
+id = "E9_stats_interval_zero"
+description = "MIRROR_STATS_ARGS: a stats interval of zero, at which rclone logs no totals at all"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''    "--stats", "1h",'''
+new = '''    "--stats", "0",'''

@@ -1,0 +1,49 @@
+name = "r757-b2"
+pass_kind = "light"
+
+[[rows]]
+id = "F1_absent_key_reads_as_never"
+description = "_full_comparison: a file from a build with one mode answers never, over a library whose every backup was a full one"
+file = "src/cratekit/core/backup_facts.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''    if held is _ABSENT:
+        return facts.get(Portion.FILES)'''
+new = '''    if held is _ABSENT:
+        return None'''
+
+[[rows]]
+id = "F2_first_record_erases_the_implied_date"
+description = "record: write null where an earlier build's file implied a full comparison"
+file = "src/cratekit/core/backup_facts.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''        held = _as_held(read.get(Portion.FILES))'''
+new = '''        held = None'''
+
+[[rows]]
+id = "F3_full_record_does_not_move_the_date"
+description = "record: ignore full_comparison=True"
+file = "src/cratekit/core/backup_facts.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''    if full_comparison:
+        held = _as_held(facts[portion])'''
+new = '''    if False:
+        held = _as_held(facts[portion])'''
+
+[[rows]]
+id = "F4_damaged_entry_accepted"
+description = "_full_comparison: read anything that is not an object as never recorded, where it refuses"
+file = "src/cratekit/core/backup_facts.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''    if not isinstance(held, dict):
+        raise BackupFactsUnreadable(
+            f"{path} holds something other than an object or null under "
+            f"{FULL_COMPARISON_KEY!r}",
+            path=path,
+            remedy=Remedy.REPAIR_BACKUP_FACTS,
+        )'''
+new = '''    if not isinstance(held, dict):
+        return None'''

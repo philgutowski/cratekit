@@ -1,0 +1,68 @@
+name = "r757-c2"
+pass_kind = "light"
+
+[[rows]]
+id = "S5_unread_number_printed_as_zero"
+description = "comparison_warning: print a total that was not read as 0"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''            return f"an unread number of {unit}"'''
+new = '''            return f"0 {unit}"'''
+
+[[rows]]
+id = "S6_twin_in_the_other_mode_says_nothing"
+description = "_already_queued: drop the sentence saying the open job runs the other comparison, the review's fix"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''    if asked_full is not None and asked_full != _is_full(job):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S7_verb_says_nothing_of_the_comparison"
+description = "backup_library: leave the comparison sentence off the resumed envelope"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''                *comparison_warning(reported["progress"].get(OUTCOMES)),'''
+new = '''                *(),'''
+
+[[rows]]
+id = "D1_due_a_day_late"
+description = "_check_full_comparison: say to run one only past the bound and not at it"
+file = "src/cratekit/cli/doctor.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''    due = f". {run_one}" if days >= FULL_COMPARISON_DUE_DAYS else ""'''
+new = '''    due = f". {run_one}" if days > FULL_COMPARISON_DUE_DAYS else ""'''
+
+[[dropped]]
+id = "D2_due_bound_doubled"
+description = "FULL_COMPARISON_DUE_DAYS 30 to 60"
+reason = "ranked below the cap: the tests read the bound from the constant, so this is a known zero by construction and D1 measures the comparison that uses it"
+
+[[dropped]]
+id = "D3_days_not_clamped"
+description = "_whole_days without the clamp at zero"
+reason = "ranked below the cap: maintainer facing wording, covered by one test written for it in this unit"
+
+[[dropped]]
+id = "D4_future_record_is_info"
+description = "the new check answers INFO over a record ahead of now"
+reason = "ranked below the cap: the same branch in the portion check is measured by earlier tables"
+
+[[dropped]]
+id = "S8_unknown_mode_named"
+description = "comparison_warning names a mode this build does not know"
+reason = "ranked below the cap: no producer in this build writes such a mode"
+
+[[dropped]]
+id = "E14_said_keeps_the_totals"
+description = "_said renders the totals object into the failure detail"
+reason = "ranked below the cap: same function as E12, which is measured"
+
+[[dropped]]
+id = "F5_key_left_out_when_null"
+description = "record omits the key when there is nothing to hold"
+reason = "ranked below the cap: not expressible as one text replacement without restructuring the payload"

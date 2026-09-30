@@ -374,7 +374,7 @@ def test_the_frozen_payload_and_the_parser_agree_about_the_flag(cfg):
         assert code == int(ExitCode.OK), envelope
         with jobs.open_store() as store:
             job = jobs.get(store, envelope["data"]["job_id"])
-        assert job.payload == {backup_cli.DRY_RUN: wanted}, (
+        assert job.payload == {backup_cli.DRY_RUN: wanted, backup_cli.FULL: False}, (
             f"{argv} froze {job.payload}, so the resume would do different work "
             f"from the run it continues"
         )
