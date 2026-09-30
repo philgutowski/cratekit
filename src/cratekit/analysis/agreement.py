@@ -246,7 +246,16 @@ def rows_of(db: Any) -> list[HeadRow]:
     names = {str(key.ID): key.ScaleName for key in db.get_key()}
     rows = []
     for content in db.get_content():
-        if content.rb_local_deleted:
+        if rb_writer.soft_deleted(
+            content,
+            message=(
+                f"the collection row {getattr(content, 'ID', '?')!r} cannot say "
+                f"whether rekordbox removed it, and counting a removed row would "
+                f"measure a head nobody can see"
+            ),
+            origin=("analysis.agreement",),
+            detail={"content_id": str(getattr(content, "ID", ""))},
+        ):
             continue
         key_id = content.KeyID
         rows.append(

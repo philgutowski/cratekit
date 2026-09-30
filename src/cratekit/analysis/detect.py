@@ -10,6 +10,7 @@ writes XML.
 from __future__ import annotations
 
 import copy
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -84,7 +85,7 @@ TEMPO_PRIOR_OCTAVES = 1.0
 #: a target. Re-measure with ``scripts/head_agreement.py`` after any change
 #: to this module and replace every number here in the same commit.
 _HEAD_AGREEMENT: dict[str, Any] = {
-    "measured_on": "2026-09-30",
+    "measured_on": date(2026, 9, 30).isoformat(),
     "reference": "rekordbox 7.2.19, its own analysis of the same files",
     "files": 299,
     "tempo": {
