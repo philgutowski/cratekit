@@ -2428,14 +2428,27 @@ class AcquisitionConfig:
     lossless_policy: str = "strict"
 
 
+#: The tempo window the head's estimate is chosen inside, in beats per minute,
+#: both ends included. The window is the source system's default, and it is
+#: the one setting that decides which metrical level a head names: a track
+#: whose pulse reads as 83 or 166 is named by the value inside the window
+#: (R-744). A DJ whose library is drum and bass raises both bounds in the
+#: config file; nothing here reads a genre.
+DEFAULT_TEMPO_FLOOR = 80
+DEFAULT_TEMPO_CEILING = 160
+
+
 @dataclass(frozen=True, slots=True)
 class AnalysisConfig:
-    """Analysis sizing and calibration selection."""
+    """Analysis sizing, calibration selection, and the tempo window."""
 
     #: None means "probe" (KTD10): worker count comes from a probe worker's
     #: resident size against available memory, never from a CPU count.
     jobs: int | None = None
     energy_calibration: str = "auto"
+    #: The head names a tempo from the floor to the ceiling, both included.
+    tempo_floor: int = DEFAULT_TEMPO_FLOOR
+    tempo_ceiling: int = DEFAULT_TEMPO_CEILING
 
 
 @dataclass(frozen=True, slots=True)
@@ -3095,6 +3108,8 @@ def validate(data: Mapping) -> list[str]:
             f"available memory (KTD10). Found {jobs!r}."
         )
 
+    problems += _validate_tempo_window(data)
+
     problems += _validate_aging_thresholds(data)
     problems += _validate_export_staleness(data)
     problems += _validate_recognition(data)
@@ -3260,6 +3275,37 @@ def recognition_host_problem(value: object) -> str | None:
             f"are sent to this host with every paid call."
         )
     return None
+
+
+def _validate_tempo_window(data: Mapping) -> list[str]:
+    """The tempo window is two whole numbers, floor below ceiling (R-744).
+
+    An empty window would leave the estimator no bin to choose, and the head
+    would carry no tempo on every track with no problem named. Refused at load
+    with the key names attached, as the analysis job count is.
+    """
+    problems: list[str] = []
+    bounds: dict[str, object] = {}
+    for key in ("tempo_floor", "tempo_ceiling"):
+        value = _dig(data, f"analysis.{key}")
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            problems.append(
+                f"analysis.{key} must be a whole number of beats per minute above "
+                f"zero, found {value!r}."
+            )
+            continue
+        bounds[key] = value
+    floor = bounds.get("tempo_floor", DEFAULT_TEMPO_FLOOR)
+    ceiling = bounds.get("tempo_ceiling", DEFAULT_TEMPO_CEILING)
+    if isinstance(floor, int) and isinstance(ceiling, int) and floor >= ceiling:
+        problems.append(
+            f"analysis.tempo_floor must be below analysis.tempo_ceiling, found "
+            f"{floor} and {ceiling}. The head names a tempo inside that window, "
+            f"and an empty window names none."
+        )
+    return problems
 
 
 def _validate_recognition(data: Mapping) -> list[str]:

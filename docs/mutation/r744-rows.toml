@@ -1,0 +1,208 @@
+name = "r744"
+pass_kind = "light"
+
+# R-744: the head's tempo is chosen inside a named window to a fraction of a
+# bin, the head is presented as a measurement with a known error, and the
+# error is measured over a disposable copy. A read only unit: nothing here
+# writes a grid, a tempo or a key anywhere, so the table is scoped to the new
+# guards, with a line per zero rather than a composite (METHOD, verification
+# proportional to blast radius). Eighteen rows, the author's.
+
+# --- the estimator, src/cratekit/analysis/detect.py -------------------------
+
+[[rows]]
+id = "E1_no_floor"
+description = "the window's floor is not applied, so a pulse below it is named at its own level rather than by the level inside the window"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''    inside = (frequencies >= floor) & (frequencies <= ceiling)'''
+new = '''    inside = (frequencies > 0) & (frequencies <= ceiling)'''
+
+[[rows]]
+id = "E2_no_ceiling"
+description = "the window's ceiling is not applied, so a 166 pulse is named 166 under the shipped window instead of 83"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''    inside = (frequencies >= floor) & (frequencies <= ceiling)'''
+new = '''    inside = (frequencies >= floor) & (frequencies <= 10 * ceiling)'''
+
+[[rows]]
+id = "E3_no_interpolation"
+description = "the strongest bin alone is named, which is the six beat bin width R-744 recorded as off by one to three"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''    lag = _interpolated_peak(strength, index)
+    if lag <= 0.0:'''
+new = '''    lag = float(index)
+    if lag <= 0.0:'''
+
+[[rows]]
+id = "E4_offset_not_held"
+description = "the parabola's offset is not held to half a bin, so a stronger raw neighbour pulls the vertex past the midpoint toward a bin the score did not choose"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''    return index + max(-0.5, min(0.5, offset))'''
+new = '''    return index + offset'''
+
+[[rows]]
+id = "E5_answer_not_held_in_window"
+description = "the interpolated answer is not held inside the window, so an edge bin's parabola can name a tempo below the floor"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''    return float(min(max(60.0 * rate / (hop * lag), float(floor)), float(ceiling)))'''
+new = '''    return 60.0 * rate / (hop * lag)'''
+
+[[rows]]
+id = "E6_flat_run_divides"
+description = "a flat run of three equal bins is fitted anyway, dividing by a zero curvature"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''    if curvature >= 0.0:
+        return float(index)'''
+new = '''    if curvature > 0.0:
+        return float(index)'''
+
+[[rows]]
+id = "E7_no_prior"
+description = "the prior over metrical levels is dropped, so two equal peaks inside the window are a coin toss"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''    score = np.where(inside, np.nan_to_num(strength * prior, nan=-np.inf), -np.inf)'''
+new = '''    score = np.where(inside, strength, -np.inf)'''
+
+[[rows]]
+id = "E8_record_applies_to_every_window"
+description = "the recorded agreement says it applies whatever window the run bound, so a DJ who raised theirs is shown a rate nobody measured for it"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_head_agreement.py"]
+old = '''    record["applies_to_window"] = window is None or tuple(window) == measured'''
+new = '''    record["applies_to_window"] = True'''
+
+[[rows]]
+id = "E9_record_does_not_sum"
+description = "one recorded bucket is changed, so the four no longer sum to the files measured"
+file = "src/cratekit/analysis/detect.py"
+tests = ["tests/test_head_agreement.py"]
+old = '''        "equal": 194,'''
+new = '''        "equal": 190,'''
+
+# --- the binding, src/cratekit/analysis/cli.py ------------------------------
+
+[[rows]]
+id = "B1_window_not_bound"
+description = "the run binds the shipped window rather than the configured one, so analysis.tempo_floor and tempo_ceiling change nothing"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_head_agreement.py", "tests/test_analysis_workers.py"]
+old = '''            tempo_window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling),'''
+new = '''            tempo_window=(80, 160),'''
+
+# --- the setting, src/cratekit/core/config.py -------------------------------
+
+[[rows]]
+id = "C1_equal_bounds_accepted"
+description = "a floor equal to the ceiling is accepted, an empty window the estimator answers None for on every track"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_head_agreement.py"]
+old = '''    if isinstance(floor, int) and isinstance(ceiling, int) and floor >= ceiling:'''
+new = '''    if isinstance(floor, int) and isinstance(ceiling, int) and floor > ceiling:'''
+
+[[rows]]
+id = "C2_bool_accepted"
+description = "a boolean is accepted as a bound, since bool is an int to isinstance"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_head_agreement.py"]
+old = '''        if isinstance(value, bool) or not isinstance(value, int) or value < 1:'''
+new = '''        if not isinstance(value, int) or value < 1:'''
+
+# --- the comparison, src/cratekit/analysis/agreement.py ---------------------
+
+[[rows]]
+id = "A1_near_miss_widened"
+description = "off by four counts as a near miss, hiding sitting 19's 144 against 140.00 in the bucket the bin width explains"
+file = "src/cratekit/analysis/agreement.py"
+tests = ["tests/test_head_agreement.py"]
+old = '''    if distance <= 3:
+        return OFF_ONE_TO_THREE'''
+new = '''    if distance <= 4:
+        return OFF_ONE_TO_THREE'''
+
+[[rows]]
+id = "A2_half_not_recognised"
+description = "a head at half the reference is read as another level rather than as the octave case"
+file = "src/cratekit/analysis/agreement.py"
+tests = ["tests/test_head_agreement.py"]
+old = '''    if abs(ratio - 2.0) <= _DOUBLE_TOLERANCE or abs(ratio - 0.5) <= _HALF_TOLERANCE:'''
+new = '''    if abs(ratio - 2.0) <= _DOUBLE_TOLERANCE:'''
+
+[[rows]]
+id = "A3_classic_names_unmapped"
+description = "a classic key name is not mapped, so a library whose display is not Camelot reads every key as unkeyed"
+file = "src/cratekit/analysis/agreement.py"
+surface = "user"
+tests = ["tests/test_head_agreement.py"]
+old = '''    classic = _CLASSIC_TO_CAMELOT.get(text)'''
+new = '''    classic = None'''
+
+[[rows]]
+id = "A4_whole_number_counts_as_rekordbox"
+description = "a whole number stored tempo counts as rekordbox's own analysis, so the imported back catalogue measures itself"
+file = "src/cratekit/analysis/agreement.py"
+tests = ["tests/test_head_agreement.py"]
+old = '''        return bool(self.stored_hundredths) and self.stored_hundredths % 100 != 0'''
+new = '''        return bool(self.stored_hundredths)'''
+
+[[rows]]
+id = "A5_removed_rows_counted"
+description = "a row rekordbox removed is compared, measuring a head nobody can see"
+file = "src/cratekit/analysis/agreement.py"
+surface = "user"
+tests = ["tests/test_head_agreement.py"]
+old = '''            detail={"content_id": str(getattr(content, "ID", ""))},
+        ):
+            continue'''
+new = '''            detail={"content_id": str(getattr(content, "ID", ""))},
+        ):
+            pass'''
+
+[[rows]]
+id = "A6_sample_never_full"
+description = "the sample keeps resolving rows after the limit, walking the whole collection for ten files"
+file = "src/cratekit/analysis/agreement.py"
+tests = ["tests/test_head_agreement.py"]
+old = '''        if len(chosen) >= limit:
+            break'''
+new = '''        if len(chosen) >= limit:
+            pass'''
+
+# --- considered and not run ---------------------------------------------------
+
+[[dropped]]
+id = "A7_key_id_none_guard"
+description = "drop the KeyID is None guard in rows_of"
+reason = "equivalent: names.get(str(None)) answers None the same way, so the row could only measure the dictionary"
+
+[[dropped]]
+id = "A8_round_half_up"
+description = "round_half_up through Python's round, banker's rounding"
+reason = "ranked below the cap: a single arithmetic line with one direct test, and the estimator's own rounding is the row E3 measures the consequence of"
+
+[[dropped]]
+id = "S1_script_step"
+description = "drop the script's --step check"
+reason = "ranked below the cap: the same rule is measured in the library by A6's neighbour, sample_for_reanalysis, and the script test drives it end to end"
+
+[[dropped]]
+id = "A9_database_argument_ignored"
+description = "read the configured database whatever --database names"
+reason = "ranked below the cap: the script test now removes the configured file, so the row would only re-measure that test"

@@ -1,0 +1,16 @@
+name = "r744-b"
+pass_kind = "light"
+
+# R-744, second batch: the one zero of `r744-rows.toml`, E7, measured again
+# after the test it should have killed was rewritten. The first table's peaks
+# were equal, and the argmax tie fell on the higher tempo whether or not the
+# prior was there, so the row measured a tie-break and not the prior.
+
+[[rows]]
+id = "E7_no_prior"
+description = "the prior over metrical levels is dropped, so of two levels inside the window the stronger raw peak wins rather than the one nearer the centre"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''    score = np.where(inside, np.nan_to_num(strength * prior, nan=-np.inf), -np.inf)'''
+new = '''    score = np.where(inside, strength, -np.inf)'''

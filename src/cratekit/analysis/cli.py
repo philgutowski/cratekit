@@ -367,6 +367,13 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         if job.handler_key == "analyze.restamp":
             warnings = (*warnings, DB_NOT_WRITTEN)
         else:
+            # THE HEAD IS A MEASUREMENT WITH A KNOWN ERROR (R-744). The run
+            # stamps a tempo and a key that rekordbox's own analysis of the
+            # same file will not always show, and the rate was measured, so
+            # the answer carries it rather than presenting the head as a fact.
+            summary["head_agreement"] = detect.head_agreement(
+                window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling)
+            )
             unscored = _unscored_vocals_warning(summary)
             if unscored is not None:
                 warnings = (*warnings, unscored)
@@ -513,7 +520,9 @@ def _bind_defaults(cfg: config.Config) -> None:
     global _BOUND_DETECT
     if not _fake_detect_bound():
         _BOUND_DETECT = functools.partial(
-            detect.analyse_file, calibration=energy.load_calibration(cfg)
+            detect.analyse_file,
+            calibration=energy.load_calibration(cfg),
+            tempo_window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling),
         )
         light.bind_detect(_BOUND_DETECT)
     if not vocals.loader_bound():

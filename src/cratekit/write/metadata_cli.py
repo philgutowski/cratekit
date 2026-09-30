@@ -188,10 +188,7 @@ def load_vocal_calibration(cfg: config.Config) -> dict[str, Any] | None:
 
 
 def _prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:
-    return [
-        locations.PrefixRule(source, target)
-        for source, target in cfg.resolved_prefix_map()
-    ]
+    return list(locations.prefix_rules(cfg.resolved_prefix_map()))
 
 
 @dataclass(frozen=True, slots=True)

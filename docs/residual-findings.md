@@ -29921,6 +29921,35 @@ corrected or the difference is recorded as the method's.
 
 **Not on the board bar.** Nothing is written to a grid.
 
+**Carded on the author's word 2026-09-30, issue #232.**
+
+**Closed 2026-09-30 on `relay/232`, issue #232, the setting corrected and the
+rate recorded.** The cause was not a setting. librosa's estimator named the
+strongest tempogram bin, and at the measure rate with a hop of 512 the bins
+near 128 sit about six apart, lag 20 reading 129.2 and lag 21 reading 123.0:
+every off by one to three case above is that bin width, 129 against 127.00
+and 112 against 110.11 included. There was also no window, so a pulse read at
+a related level passed. The estimator now fits a parabola through the
+strongest bin and its neighbours and chooses inside a named window,
+`analysis.tempo_floor` and `analysis.tempo_ceiling`, 80 to 160 by default,
+both ends included, the interpolated answer held inside it.
+
+**Measured over 299 library files rekordbox had analysed itself**, the rows
+whose stored tempo carries a fraction, since a whole number there may be the
+grid the source system imported (see the learning filed with this unit).
+Before: equal 39, within one 106, off by one to three 191, half or double
+10, other level 59. After: equal 194, within one 226, off by one to three 53,
+half or double 1, other level 51. On the 22 files this product had headed
+and rekordbox then analysed: equal 16, within one 17, other level 2. The
+other level bucket, three to two and four to three readings, is the method's
+own rate and is recorded as such in `docs/cutover.md` sitting 22 and in the
+run's answer under `head_agreement`, with `applies_to_window` false when
+the run bound a window the record was not measured under. The key rate,
+158 of 299 equal, is R-784. The four buckets are printed by
+`scripts/head_agreement.py` over a disposable copy, and `--analyse N` runs
+the detector over N of rekordbox's own analyses. Nothing is written to a
+grid, a tempo field, a key or a sidecar; the head is a filename and a Name.
+
 ---
 
 ## R-745. A Fresh Export can only come from rekordbox, so every landing and every cutover waits on a person at its menus
@@ -31277,3 +31306,81 @@ start while a Cratekit job lock is held and naming the job.
 
 **Not on the board bar.** Maintainer facing, and the guard erred on the side
 of stopping.
+
+---
+
+## R-784. The key the head names disagrees with rekordbox on 141 of 299 tracks rekordbox analysed itself, and no template or chroma tried closes the gap
+
+**Found:** on `relay/232`, 2026-09-30, measuring R-744. The detector's key,
+a Krumhansl and Kessler template correlated against the mean chroma of the
+harmonic component, equals rekordbox's on 158 of the 299 rekordbox-analysed
+sample files and on 19 of the 22 files this product headed at sittings 16 to
+21. The source system's heads, which Mixed In Key stamped, equal rekordbox's
+on 276 of 296 of the same sample. Of the 141 disagreements, 43 are a fifth
+away, 18 the relative key, 22 the parallel key and 58 elsewhere.
+
+**Measured, not corrected.** Four template sets (Krumhansl and Kessler,
+Temperley, EDMA, Shaath) against four chroma profiles (harmonic mean,
+harmonic median, raw CQT mean, STFT mean) were scored offline on stored
+profiles of the same files. The best alternative gained 10 on the hard
+sample and lost 3 to 4 of the 19 on the intake sample, so no swap is a
+clear gain and the shipped detector stays. The comparison is in
+`docs/cutover.md` sitting 22.
+
+**Measured cost.** A DJ reading a head is told a key rekordbox will not
+show on about half of unquantised material and on about one in seven of
+the programmed music this product takes in. The run's answer carries the
+rate, so the head is a measurement with a known error rather than a fact.
+
+**Closes when:** a key method is driven over the same 299 files and the 22
+and beats 158 and 19 without losing on either, or the rate is accepted and
+the head's key documented as advisory in the naming template.
+
+**Not on the board bar.** The head is a name and the answer states the
+rate; nothing is written to rekordbox. Phillip can card it on his word as
+he did R-744.
+
+---
+
+## R-785. Twelve modules build prefix rules inline beside the one builder locations now holds
+
+**Found:** on `relay/232`, 2026-09-30, by the built in review. `write/`,
+`adopt/`, `intake/`, `deletion/`, `cli/` and `modules/outbound/` each turn
+`cfg.resolved_prefix_map()` into `locations.PrefixRule` objects with the
+same three lines, and R-744's first version added a thirteenth copy.
+`locations.prefix_rules` now holds the construction, and the comparison and
+`write/metadata_cli.py` call it. The other eleven copies were left as they
+were, because touching six packages for a three line lift is not this unit's.
+
+**Measured cost.** A change to how a rule is built, NFC handling or the
+volume identity, is found in twelve places or missed in eleven. None has
+drifted yet.
+
+**Closes when:** every copy calls the one builder and a source guard
+forbids a direct `PrefixRule(` in a module outside `locations`.
+
+**Not on the board bar.** Maintainer facing.
+
+---
+
+## R-786. A file shorter than one beat period is headed with a tempo and a key nothing measured
+
+**Found:** on `relay/232`, 2026-09-30, writing the fixture set. A half
+second sustained chord, no pulse in it at all, is decoded, given a
+tempogram librosa pads to its full length, and named `8A - 140`: the window
+and the prior pick a bin out of noise. The behaviour predates this unit,
+since librosa's own estimator answers a number for the same file; the
+brief's "stinger" terminal, `skipped-unanalysable`, is reached only when a
+librosa call raises, which a short file does not make it do.
+
+**Measured cost.** A stinger or a sound effect dropped in an intake folder
+is headed with a tempo no deck will show. Driven on a synthetic file; no
+such file has been through a real intake.
+
+**Closes when:** the detector refuses a file whose decoded length holds
+fewer than a named number of periods at the window's floor, under the
+unanalysable terminal, and a test drives it on a half second file.
+
+**Not on the board bar.** Reachable only through a file no DJ plays as a
+track, and the head is presented with its measured rate. The judgment is
+the author's.

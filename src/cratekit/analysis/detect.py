@@ -9,10 +9,13 @@ writes XML.
 
 from __future__ import annotations
 
+import copy
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from cratekit.analysis.energy import MEASURE_RATE
+from cratekit.core.config import DEFAULT_TEMPO_CEILING, DEFAULT_TEMPO_FLOOR
 
 #: The terminal status for a file the decoder could not read at all.
 TERMINAL_UNDECODABLE = "skipped-undecodable"
@@ -53,6 +56,72 @@ _KEY_TO_CAMELOT = {
 }
 
 
+#: The frame hop the onset envelope and the tempogram are computed at, in
+#: samples of ``MEASURE_RATE``. Named because it sets the estimator's raw
+#: precision: a tempogram bin is one frame of lag, and at this rate and hop the
+#: bins near 128 beats per minute sit about six apart (lag 20 reads 129.2, lag
+#: 21 reads 123.0), which is the whole of the "off by one to three" bucket
+#: R-744 recorded. The interpolation below is what recovers the precision.
+TEMPO_HOP = 512
+#: The prior over metrical levels, a log-normal in octaves around a centre,
+#: with the centre and the width librosa's own estimator defaults to. The FORM
+#: is not librosa's: it adds the prior to a log-compressed strength, and this
+#: multiplies the prior into the linear strength, which pulls harder toward
+#: the centre when two levels are close. Kept in this form because it is the
+#: form that was measured: on the sample it beat a flat window by 22 exact
+#: agreements in 299 (docs/cutover.md, sitting 22). The window is the setting,
+#: the prior is the method, and a change to either is re-measured.
+TEMPO_PRIOR_CENTRE = 120.0
+TEMPO_PRIOR_OCTAVES = 1.0
+
+#: How far a head's tempo and key agree with rekordbox's own analysis of the
+#: same file, measured on 2026-09-30 over 299 library files rekordbox had
+#: analysed itself, so the run's answer presents a head as a measurement with
+#: a known error rather than as a fact. The sample is every row whose stored
+#: tempo is not a whole number, because a whole number there may have been
+#: imported from a tag rather than computed, so it leans toward tracks with an
+#: unquantised pulse and understates agreement on programmed music: on the 22
+#: files this product had headed and rekordbox then analysed, 16 agreed
+#: exactly and 19 keys of 22 matched. The shape is the one
+#: ``analysis.agreement.Agreement.as_dict`` answers and the script prints
+#: with ``--json``, so re-recording is a copy: the four tempo buckets, the
+#: count within one beat beside them, and the two key buckets. "Other level"
+#: is a pulse read at a related level rekordbox did not choose, three to two
+#: or four to three, and is the method's own rate rather than a setting. Every
+#: count was measured, none is a target. Re-measure with
+#: ``scripts/head_agreement.py --analyse 300 --step 4`` after any change to
+#: this module and replace every number here in the same commit.
+_HEAD_AGREEMENT: dict[str, Any] = {
+    "measured_on": date(2026, 9, 30).isoformat(),
+    "reference": "rekordbox 7.2.19, its own analysis of the same files",
+    "window": {"floor": DEFAULT_TEMPO_FLOOR, "ceiling": DEFAULT_TEMPO_CEILING},
+    "files": 299,
+    "tempo": {
+        "equal": 194,
+        "off_one_to_three": 53,
+        "half_or_double": 1,
+        "other_level": 51,
+    },
+    "within_one": 226,
+    "key": {"equal": 158, "differs": 141},
+}
+
+
+def head_agreement(window: tuple[int, int] | None = None) -> dict[str, Any]:
+    """A fresh copy of the recorded agreement, safe to place in an envelope.
+
+    ``window`` is the floor and ceiling the run bound to the detector. The
+    record was measured under one window, and a DJ who raised theirs is not
+    shown a rate nobody measured for it: ``applies_to_window`` says whether
+    the bound window is the measured one, and the numbers stay so the reader
+    can see what was measured rather than an absence.
+    """
+    record = copy.deepcopy(_HEAD_AGREEMENT)
+    measured = (record["window"]["floor"], record["window"]["ceiling"])
+    record["applies_to_window"] = window is None or tuple(window) == measured
+    return record
+
+
 def heavy_available() -> bool:
     """Whether the analysis extra is importable HERE, in this process.
 
@@ -69,8 +138,109 @@ def heavy_available() -> bool:
     return True
 
 
-def analyse_file(path: Path, *, calibration: Any = None) -> dict[str, Any] | None:
+def _interpolated_peak(strength: Any, index: int) -> float:
+    """The peak's position between bins, by the parabola through three points.
+
+    A tempogram bin is one frame of lag, and the true period is almost never a
+    whole number of frames, so the strongest bin alone is off by up to half a
+    bin, which near 128 beats per minute is three. Fitting a parabola to the
+    bin and its two neighbours puts the peak where the autocorrelation
+    actually turns, to a fraction of a frame. An edge bin, or a flat run where
+    the three points make no parabola, answers the bin itself.
+
+    THE OFFSET IS HELD TO HALF A BIN EITHER WAY. The bin was chosen on the
+    scored strength, prior and window applied, and the parabola is fitted on
+    the raw strength, so a stronger raw neighbour can put the vertex past the
+    midpoint toward it. Past the midpoint the neighbour would have been the
+    bin, had the score allowed it, so the answer stays on this bin's side.
+    """
+    if index <= 0 or index >= len(strength) - 1:
+        return float(index)
+    left, centre, right = (
+        float(strength[index - 1]),
+        float(strength[index]),
+        float(strength[index + 1]),
+    )
+    curvature = left - 2.0 * centre + right
+    if curvature >= 0.0:
+        return float(index)
+    offset = 0.5 * (left - right) / curvature
+    return index + max(-0.5, min(0.5, offset))
+
+
+def tempo_from_autocorrelation(
+    strength: Any,
+    *,
+    rate: int = MEASURE_RATE,
+    hop: int = TEMPO_HOP,
+    floor: int = DEFAULT_TEMPO_FLOOR,
+    ceiling: int = DEFAULT_TEMPO_CEILING,
+) -> float | None:
+    """The tempo the window and the prior pick out of an aggregated tempogram.
+
+    ``strength`` is one autocorrelation over lag, in frames, bin zero the zero
+    lag. The prior is the log-normal over metrical levels the constants above
+    describe, and the window is applied on top of it: a bin whose tempo falls
+    from ``floor`` to ``ceiling``, both included, is a candidate, every other
+    bin is not, so a pulse that reads at 166 with a window of 80 to 160 is
+    named 83, and named 166 when the window is raised. The interpolated answer
+    is held inside the window too, because a bin at the window's edge can
+    have its parabola lean past the edge, and the window is the contract.
+    None when no bin falls inside the window, which a configured window cannot
+    produce (config refuses an empty one) and a short onset envelope can.
+    """
+    import librosa
+    import numpy as np
+
+    strength = np.asarray(strength, dtype=float).reshape(-1)
+    if strength.size < 2:
+        return None
+    frequencies = librosa.tempo_frequencies(strength.size, sr=rate, hop_length=hop)
+    positive = np.where(frequencies > 0, frequencies, np.nan)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        prior = np.exp(
+            -0.5
+            * ((np.log2(positive) - np.log2(TEMPO_PRIOR_CENTRE)) / TEMPO_PRIOR_OCTAVES) ** 2
+        )
+    inside = (frequencies >= floor) & (frequencies <= ceiling)
+    if not np.any(inside):
+        return None
+    score = np.where(inside, np.nan_to_num(strength * prior, nan=-np.inf), -np.inf)
+    index = int(np.argmax(score))
+    lag = _interpolated_peak(strength, index)
+    if lag <= 0.0:
+        return None
+    return float(min(max(60.0 * rate / (hop * lag), float(floor)), float(ceiling)))
+
+
+def measure_tempo(samples: Any, rate: int, *, floor: int, ceiling: int) -> float | None:
+    """The tempo of decoded samples, inside the window, to a fraction of a beat.
+
+    The onset envelope and the tempogram are the ones librosa's estimator
+    computes; what differs is the window and the interpolation, for the
+    reasons the constants above give. None when the envelope is too short to
+    hold a period inside the window.
+    """
+    import librosa
+
+    envelope = librosa.onset.onset_strength(y=samples, sr=rate, hop_length=TEMPO_HOP)
+    tempogram = librosa.feature.tempogram(onset_envelope=envelope, sr=rate, hop_length=TEMPO_HOP)
+    return tempo_from_autocorrelation(
+        tempogram.mean(axis=1), rate=rate, hop=TEMPO_HOP, floor=floor, ceiling=ceiling
+    )
+
+
+def analyse_file(
+    path: Path,
+    *,
+    calibration: Any = None,
+    tempo_window: tuple[int, int] = (DEFAULT_TEMPO_FLOOR, DEFAULT_TEMPO_CEILING),
+) -> dict[str, Any] | None:
     """Return camelot, tempo and energy, or None when detection cannot run.
+
+    ``tempo_window`` is the configured floor and ceiling; the run binds it from
+    ``analysis.tempo_floor`` and ``analysis.tempo_ceiling`` beside the
+    calibration, and a caller that passes nothing gets the shipped default.
 
     Energy is computed from the same decoded samples when ``calibration`` is a
     :class:`cratekit.analysis.energy.Calibration`, and is an honest absence
@@ -102,8 +272,11 @@ def analyse_file(path: Path, *, calibration: Any = None) -> dict[str, Any] | Non
         # atonal, a clean report over a file the tool could not read.
         return {"path": path, "terminal": TERMINAL_UNDECODABLE}
     try:
-        tempo = librosa.feature.tempo(y=y, sr=sr)
-        bpm = int(float(np.asarray(tempo).reshape(-1)[0]) + 0.5)
+        floor, ceiling = tempo_window
+        tempo = measure_tempo(y, sr, floor=floor, ceiling=ceiling)
+        if tempo is None:
+            return {"path": path, "terminal": TERMINAL_UNANALYSABLE}
+        rate = int(tempo + 0.5)
         y_harm = librosa.effects.harmonic(y, margin=4)
         chroma = librosa.feature.chroma_cqt(y=y_harm, sr=sr)
         profile = chroma.mean(axis=1)
@@ -133,7 +306,7 @@ def analyse_file(path: Path, *, calibration: Any = None) -> dict[str, Any] | Non
     return {
         "path": path,
         "camelot": camelot,
-        "rate": bpm,
+        "rate": rate,
         "energy": level,
         "energy_status": status,
     }
