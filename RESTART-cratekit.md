@@ -4,6 +4,37 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Last built: R-744, issue #232, `relay/232`, 2026-09-30, unattended.** The
+tempo a head names is chosen inside a named window, `analysis.tempo_floor`
+and `analysis.tempo_ceiling`, 80 to 160 by default, both ends included,
+refused when empty, and to a fraction of a tempogram bin: **the cause was
+not a setting**, it was the bin width, six beats near 128 at the measure
+rate and hop, which every off by one to three case in the ledger was. A
+parabola through the strongest bin and its neighbours, the vertex held to
+half a bin and inside the window, took exact agreement with rekordbox's own
+analysis from 39 to 194 of 299 and agreement within one beat from 106 to
+226; 51 remain at another metrical level, three to two or four to three,
+and that is the method's rate. The key stays as it was, 158 of 299 and 19
+of 22, because four templates over four chroma profiles beat it on neither
+sample (R-784). **Which rows measure rekordbox is the learning:** a whole
+number stored tempo is the source system's imported grid, only a fraction
+is rekordbox's own analysis, so the sample is those 1,325 rows and leans to
+unquantised material; the 22 intake rows are the clean sample. The run's
+answer carries the record under `head_agreement` with `applies_to_window`.
+`analysis/agreement.py` and `scripts/head_agreement.py` print the four
+buckets over a disposable copy and, with `--analyse N`, the detector's own
+rate. `locations.prefix_rules` is the one builder, two callers moved to it,
+eleven left (R-785). A half second file is still headed from noise (R-786).
+Nothing writes a grid, a tempo, a key or a sidecar. Two mutation tables, 19
+rows, 19 killed after the one zero's test was rewritten. Battery on the
+committed tree: ruff clean, **11,058 passed and 1 skipped** in 74 seconds,
+scan clean, `board.py closing --since main` exit 0. `board.py audit` reads
+two drift lines, #231 In review awaiting the runner's close and #232 In
+review, both the runner's to move. **Main's highest residual number is
+R-786 once this merges.** Not done: re-stamping the back catalogue's heads,
+which the brief leaves to a later `analyze restamp` decision now the rate
+is known.
+
 **Sitting 21, attended, 2026-09-30, no code.** The second favourites batch
 went to the tree with no hand edit: imported through desktop control,
 dragged into INBOX in one attempt (on an expanded folder the line below it
@@ -5454,6 +5485,13 @@ tree, which is the whole of what the entry now says.
     git status --porcelain                      # empty
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
+
+**Main's highest residual is R-786 once `relay/232` merges**, R-784 to R-786
+being R-744's, with R-744 closed in place, no duplicate heading and no
+heading moved. Its battery on the committed tree was ruff clean, **11,058
+passed and 1 skipped** in 74 seconds with 11,059 collected, scan clean. The
+83 new tests are `tests/test_analysis_tempo.py`, skipped where librosa is
+absent, and `tests/test_head_agreement.py`.
 
 **Main's highest residual is R-357 once `relay/85` merges**, R-355 to R-357 being
 U63's, with R-226's agent half closed in place, no duplicate heading and no
