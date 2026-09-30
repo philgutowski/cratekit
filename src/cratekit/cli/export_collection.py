@@ -34,9 +34,9 @@ EVERY LOCATION IS WRITTEN WHERE THE LIBRARY IS MOUNTED (R-773). The emitter is
 handed the library root and ``library.location_prefix_map``, and writes a row
 a rule places under the rule's target, which is what rekordbox's own export
 holds for a library on a renamed drive. A row under no rule is written as the
-database holds it, and the warning that counts those rows sends a person to
-doctor's ``library.paths_resolved``, which stays the one report of how the
-collection resolves.
+database holds it. The warning that counts those rows names the prefixes they
+record, and doctor's ``library.paths_resolved`` stays the one report of how
+the collection resolves, counting the same rows through the same walk.
 
 Layer: cli, beside the cutover verbs, which read the database the same way.
 """
@@ -234,6 +234,11 @@ def _read(cfg: config.Config) -> tuple[collection_export.Document, str | None]:
     return document, schema
 
 
+#: How many leading prefixes the warning over rows under no rule names. The
+#: count of the rest is always given.
+_NAMED_PREFIXES = 3
+
+
 def _warnings(omitted: collection_export.Omitted) -> list[dict[str, str]]:
     """One warning per kind of thing the database held and the file does not."""
     found: list[dict[str, str]] = []
@@ -322,16 +327,22 @@ def _warnings(omitted: collection_export.Omitted) -> list[dict[str, str]]:
             }
         )
     if omitted.unmapped_paths:
+        shown = omitted.unmapped_prefixes[:_NAMED_PREFIXES]
+        listed = ", ".join(f"{count} under {prefix}" for prefix, count in shown)
+        more = len(omitted.unmapped_prefixes) - len(shown)
+        if more > 0:
+            listed += f", and {more} other prefix{'es' if more > 1 else ''}"
         found.append(
             {
                 "code": "export-location-unmapped",
                 "message": (
                     f"{len(omitted.unmapped_paths)} track(s) record a path under "
                     f"neither the library root nor any library.location_prefix_map "
-                    f"rule, and their location is written as the database holds "
-                    f"it, which a verb reading this file may not find on this "
-                    f"machine; doctor's library.paths_resolved says which drives "
-                    f"they record: rows {names(omitted.unmapped_paths)}"
+                    f"rule ({listed}), and their location is written as the "
+                    f"database holds it, so a verb reading this file finds each "
+                    f"one only if it is at that path on this machine; doctor's "
+                    f"library.paths_resolved counts the same rows, which are rows "
+                    f"{names(omitted.unmapped_paths)}"
                 ),
             }
         )
@@ -374,8 +385,10 @@ def export_collection(ctx: "Context") -> Envelope:
             "export.locations",
             "locations",
             f"{document.remapped} location(s) written where a "
-            f"library.location_prefix_map rule places them, and "
-            f"{len(omitted.unmapped_paths)} under no rule written as the "
+            f"library.location_prefix_map rule places them, "
+            f"{len(omitted.left_to_rule)} left to a rule that points outside "
+            f"what a reader of this file resolves, and "
+            f"{len(omitted.unmapped_paths)} under no rule, both written as the "
             f"database holds them",
             status="ok" if not omitted.unmapped_paths else "info",
         ),
@@ -409,6 +422,7 @@ def export_collection(ctx: "Context") -> Envelope:
                 "memberships_omitted": omitted.dangling_members,
                 "tracks_without_a_file": len(omitted.not_file_paths),
                 "locations_remapped": document.remapped,
+                "locations_left_to_a_rule": len(omitted.left_to_rule),
                 "tracks_under_no_rule": len(omitted.unmapped_paths),
                 "rows_normalised": len(omitted.normalised_text),
             },

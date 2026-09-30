@@ -120,8 +120,9 @@ EXPECTED_FOLDERS = {
 ROOT_CHILDREN = (INTAKE, TREE, "Crates", outbound_fakes.FAVORITES)
 
 #: The drive a moved library's database was made on, as a folder name beside
-#: the library. Nothing is ever created there, which is the point: rekordbox
-#: keeps recording a path under a drive this machine no longer mounts (R-773).
+#: the library. Nothing is ever created there, which is the point, since
+#: rekordbox keeps recording a path under a drive this machine no longer
+#: mounts (R-773).
 BASE_DRIVE = "former-drive"
 
 #: The two ways a library's rows are recorded, as the ids of a parametrized
@@ -242,9 +243,23 @@ def _under_base(cfg: config.Config, path: Path) -> Path:
     return _base(cfg) / Path(path).relative_to(cfg.library.root)
 
 
+def _is_moved(cfg: config.Config) -> bool:
+    """Whether this library's own drive row names a base drive.
+
+    READ OFF THE DATABASE, never off the configuration. A moved library with no
+    rule recorded is still a moved library, and that one is sitting 19's.
+    """
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        (base,) = conn.execute("SELECT BaseDBDrive FROM djmdProperty").fetchone()
+    finally:
+        conn.close()
+    return bool(base)
+
+
 def _as_recorded(cfg: config.Config, path: Path) -> Path:
     """``path`` as this library's database records it, whichever layout it is."""
-    return _under_base(cfg, path) if cfg.library.location_prefix_map else Path(path)
+    return _under_base(cfg, path) if _is_moved(cfg) else Path(path)
 
 
 def _content(cfg: config.Config, rows) -> None:
@@ -869,7 +884,7 @@ def test_the_verb_declares_one_xml_no_database_surface_and_asks_nothing():
     assert entry.gates == ()
     assert entry.module_id is None, "a core workflow cannot wait on a module"
     assert "rekordbox.closed" in entry.doctor_checks
-    # R-773: the check that says how many rows no rule places.
+    # The check that says how many rows no rule places (R-773).
     assert "library.paths_resolved" in entry.doctor_checks
 
 
@@ -1553,7 +1568,7 @@ def test_a_library_recorded_where_it_is_mounted_has_nothing_to_place(machine):
 
 
 def test_with_no_rule_each_location_is_written_as_the_database_holds_it_and_counted(unruled):
-    """Never dropped, never guessed: the root is not swapped in on a hunch."""
+    """Never dropped and never guessed. The root is not swapped in on a hunch."""
     base = str(_base(unruled))
     exported, envelope = _drive_collection(unruled, "as-held.xml")
 
@@ -1573,13 +1588,16 @@ def test_with_no_rule_each_location_is_written_as_the_database_holds_it_and_coun
     assert warning["message"].startswith("4 track(s) record a path under neither")
     assert "'11', '12', '13', '31'" in warning["message"]
     assert "library.paths_resolved" in warning["message"]
+    # The prefix the rows record, two components deep, spelled from the path.
+    leading = "/" + "/".join(Path(base).parts[1:3])
+    assert f"rule (4 under {leading})" in warning["message"]
     (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "export.locations"]
     assert check["status"] == "info"
     assert "4 under no rule" in check["detail"]
 
 
 def test_the_export_and_doctor_count_the_same_rows_as_under_no_rule(unruled):
-    """Two surfaces, one survey: the number doctor reports is the number warned of.
+    """Two surfaces and one survey, so the number doctor reports is the number warned of.
 
     One row is added under the mounted root, so the two counts cannot agree by
     both being every row.
@@ -1596,7 +1614,7 @@ def test_the_export_and_doctor_count_the_same_rows_as_under_no_rule(unruled):
 
 
 def test_the_import_proof_is_withheld_on_a_moved_library_with_no_rule(unruled, silence):
-    """Sitting 19, reproduced: with nothing joining the two spellings, no proof.
+    """Sitting 19, reproduced. With nothing joining the two spellings, no proof.
 
     The landed file is under the mounted root and the imported row is recorded
     under the base drive. No rule says they are one place, so the export names
@@ -1614,7 +1632,7 @@ def test_the_import_proof_is_withheld_on_a_moved_library_with_no_rule(unruled, s
     assert code == int(ExitCode.PENDING_HUMAN), landed
     (path,) = sorted((_music(machine) / batch).glob("*.flac"))
     _content(
-        machine, [("9000", path.name, path.stem, 0, False, _under_base(machine, path.resolve()))]
+        machine, [("9000", path.name, path.stem, 0, False, _as_recorded(machine, path.resolve()))]
     )
     second, envelope = _drive_collection(machine, "after-import.xml")
     assert envelope["data"]["summary"]["tracks_under_no_rule"] == 5
@@ -1662,6 +1680,8 @@ def test_each_recorded_spelling_is_placed_or_left_by_the_one_resolver():
     }
     assert document.remapped == 3
     assert document.omitted.unmapped_paths == ("4",)
+    assert document.omitted.unmapped_prefixes == (("/formerly/Music", 1),)
+    assert document.omitted.left_to_rule == ()
     assert document.omitted.not_file_paths == ("6", "8")
 
 
@@ -1692,8 +1712,81 @@ def test_the_rules_are_walked_in_the_order_they_were_recorded():
     assert document.remapped == 2
 
 
+def _read_back(location: str, *, root: str, prefix_map) -> str | None:
+    """Where a verb taking the file resolves one written location, by the resolver."""
+    return locations.resolve_recorded_path(
+        locations.location_to_path(location), root=root, prefix_map=prefix_map
+    ).path
+
+
+def test_a_rule_onto_a_second_volume_is_left_to_the_reader_that_follows_it():
+    """Written there, the row would resolve under no rule. As recorded, it resolves.
+
+    THE READERS RESOLVE AN EXPORT'S LOCATION THROUGH THE SAME RULES, so the
+    target of a rule that is not under the library root reads back as a path
+    nothing maps, and a track on a second drive would lose the file it had.
+    """
+    onto_second = (locations.PrefixRule("/former", "/second"),)
+    document = _rendered(
+        [collection_export.TrackRow(track_id="1", location="/former/Music/a.flac")],
+        prefix_map=onto_second,
+    )
+
+    written = _rows(document)["1"]
+    assert written == "file://localhost/former/Music/a.flac"
+    assert _read_back(written, root="/library", prefix_map=onto_second) == "/second/Music/a.flac"
+    # What the rewritten spelling would have read back as, which is the reason.
+    assert (
+        _read_back("file://localhost/second/Music/a.flac", root="/library", prefix_map=onto_second)
+        is None
+    )
+    assert document.remapped == 0
+    assert document.omitted.left_to_rule == ("1",)
+    assert document.omitted.unmapped_paths == ()
+
+
+def test_a_rule_onto_a_second_volume_that_maps_onto_itself_places_the_row():
+    """The identity rule is how a folder outside the root is declared readable."""
+    rules = (
+        locations.PrefixRule("/former", "/second"),
+        locations.PrefixRule("/second", "/second"),
+    )
+    document = _rendered(
+        [collection_export.TrackRow(track_id="1", location="/former/Music/a.flac")],
+        prefix_map=rules,
+    )
+
+    written = _rows(document)["1"]
+    assert written == "file://localhost/second/Music/a.flac"
+    assert _read_back(written, root="/library", prefix_map=rules) == "/second/Music/a.flac"
+    assert document.remapped == 1
+    assert document.omitted.left_to_rule == ()
+
+
+def test_a_target_a_later_rule_moves_again_is_left_as_recorded():
+    """Written at the first target, the row would read back at the second."""
+    chained = (
+        locations.PrefixRule("/former", "/middle"),
+        locations.PrefixRule("/middle", "/library"),
+    )
+    document = _rendered(
+        [collection_export.TrackRow(track_id="1", location="/former/Music/a.flac")],
+        prefix_map=chained,
+    )
+
+    written = _rows(document)["1"]
+    assert written == "file://localhost/former/Music/a.flac"
+    assert _read_back(written, root="/library", prefix_map=chained) == "/middle/Music/a.flac"
+    assert document.omitted.left_to_rule == ("1",)
+
+
 def test_a_rule_whose_target_is_not_a_path_places_nothing():
-    """The configuration takes any text as a target. The file takes only a path."""
+    """The configuration takes any text as a target. The file takes only a path.
+
+    LEFT TO ITS RULE AND NOT COUNTED AS UNDER NO RULE, because a rule did match
+    and doctor's survey counts the row as mapped. Two surfaces naming one row
+    two ways is how a person is sent to a report that says nothing is wrong.
+    """
     document = _rendered(
         [collection_export.TrackRow(track_id="1", location="/former/Music/a.flac")],
         prefix_map=(locations.PrefixRule("/former", "Music"),),
@@ -1701,7 +1794,31 @@ def test_a_rule_whose_target_is_not_a_path_places_nothing():
 
     assert _rows(document) == {"1": "file://localhost/former/Music/a.flac"}
     assert document.remapped == 0
-    assert document.omitted.unmapped_paths == ("1",)
+    assert document.omitted.left_to_rule == ("1",)
+    assert document.omitted.unmapped_paths == ()
+
+
+def test_the_envelope_counts_a_row_left_to_its_rule(tmp_path, monkeypatch):
+    """The three counts through the shipped verb, on a rule onto a second volume."""
+    cfg = _machine(tmp_path, monkeypatch, moved=True, rule=False)
+    document = dict(cfg.to_toml_dict())
+    document["library"]["location_prefix_map"] = [
+        {"from": str(_base(cfg)), "to": str(tmp_path / "second-volume")}
+    ]
+    config.save(config.from_dict(document))
+    config.reset_cache()
+
+    exported, envelope = _drive_collection(cfg, "second-volume.xml")
+
+    assert _locations(exported)["12"] == f"file://localhost{_base(cfg)}/Music/Mid%20Track.flac"
+    summary = envelope["data"]["summary"]
+    assert summary["locations_left_to_a_rule"] == 4
+    assert summary["locations_remapped"] == 0
+    assert summary["tracks_under_no_rule"] == 0
+    assert "export-location-unmapped" not in {w["code"] for w in envelope["warnings"]}
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "export.locations"]
+    assert check["status"] == "ok"
+    assert "4 left to a rule" in check["detail"]
 
 
 def test_the_emitter_cannot_be_asked_for_a_document_without_saying_where_it_is_mounted():

@@ -34,7 +34,10 @@ resolver and the configured prefix rules on its way out, which is the rule
 every other reader of the collection already applies. A file copied straight
 from the rows named every track under a drive nothing mounts, and the import
 proof matched none of them. A path under no rule is written as the database
-holds it and counted, never dropped and never guessed at.
+holds it and counted, never dropped and never guessed at. So is a path whose
+rule points somewhere a reader of this file would not read back as itself,
+since the readers resolve a location through the same rules and the recorded
+spelling is the one they can follow.
 
 WHAT A REKORDBOX EXPORT CARRIES THAT THIS ONE DOES NOT is listed in the ledger
 entry, and the ones a person would miss are the cue points, the tempo elements
@@ -47,8 +50,10 @@ Layer: write. It names no verb and no taxonomy display name.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -195,6 +200,13 @@ class Omitted:
     #: Collection rows recording a file under neither the library root nor any
     #: prefix rule, written as the database holds them (R-773).
     unmapped_paths: tuple[str, ...] = ()
+    #: Where those rows are recorded, as each leading prefix and how many rows
+    #: record it, most rows first. A drive that has gone dark is a new line
+    #: here, where a bare count would hide it among rows that never resolve.
+    unmapped_prefixes: tuple[tuple[str, int], ...] = ()
+    #: Collection rows a prefix rule places somewhere a reader of this file
+    #: would not read back as itself, written as the database holds them.
+    left_to_rule: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -464,39 +476,71 @@ def is_located(recorded: str) -> bool:
     )
 
 
+class Placement(Enum):
+    """How one recorded location is written (R-773)."""
+
+    #: Under the library root, or naming no file on this machine. Copied.
+    AS_RECORDED = "as_recorded"
+    #: A rule places it, and the place reads back as itself. Rewritten.
+    PLACED = "placed"
+    #: A rule places it somewhere a reader would not read back. Copied.
+    LEFT_TO_ITS_RULE = "left_to_its_rule"
+    #: Under neither the root nor any rule. Copied, and counted.
+    UNDER_NO_RULE = "under_no_rule"
+
+
+@dataclass(frozen=True, slots=True)
+class Mounted:
+    """What is written for one recorded location, and why."""
+
+    location: str
+    placement: Placement
+    #: The leading prefix of a path under no rule, as the resolver names it.
+    prefix: str | None = None
+
+
 def mounted_location(
     recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]
-) -> tuple[str, locations.Resolution | None]:
+) -> Mounted:
     """What is written for one recorded location, and how it resolved (R-773).
 
     THE ONE DECODE AND RESOLVE STEP, NOT A SECOND ONE. ``trees.located`` is what
     doctor's survey and every routing pass read a row through, so the file and
-    the ``library.paths_resolved`` note cannot count two different things.
+    the ``library.paths_resolved`` note count the same rows as under no rule.
 
     ONLY A ROW A RULE PLACED IS REWRITTEN. A row under the library root is
     handed back as recorded, byte for byte, and so is a row under no rule,
-    which the caller counts: an export that swapped in the current root
+    which the caller counts. An export that swapped in the current root
     without being told to would be inventing a fact.
 
-    A RULE WHOSE TARGET IS NOT AN ABSOLUTE PATH PLACES NOTHING. The
-    configuration takes any text as a target, and a path rewritten under one
-    would be written as something that names no file. It is answered as under
-    no rule.
+    AND ONLY WHEN THE PLACE READS BACK AS ITSELF. The verbs that take this
+    file resolve each location through the same root and the same rules. A
+    path under the library root resolves to itself. A path a rule sends to a
+    second volume does not, unless a rule maps that volume onto itself, and
+    written there it would resolve under no rule at all, where the recorded
+    spelling resolves through its rule as it always did. So does the target of
+    one rule that a later rule moves again, and a target that is not an
+    absolute path, which the configuration accepts. Each of those is left to
+    its rule, written as the database holds it, which is also what rekordbox
+    writes for a drive other than its own.
 
-    None is the answer for what names no file on this machine: a streamed
-    track, a row with no path, a location naming another host.
+    A streamed track, a row with no path and a location naming another host
+    name no file on this machine and are handed back as recorded.
     """
     if not is_located(recorded):
-        return recorded, None
+        return Mounted(recorded, Placement.AS_RECORDED)
     try:
         _decoded, resolved = trees.located(recorded, root=root, prefix_map=prefix_map)
     except locations.LocationDecodeError:
-        return recorded, None
-    if resolved.resolution is locations.Resolution.REMAPPED:
-        if resolved.path is None or not resolved.path.startswith("/"):
-            return recorded, locations.Resolution.UNMAPPED
-        return resolved.path, locations.Resolution.REMAPPED
-    return recorded, resolved.resolution
+        return Mounted(recorded, Placement.AS_RECORDED)
+    if resolved.resolution is locations.Resolution.UNMAPPED:
+        return Mounted(recorded, Placement.UNDER_NO_RULE, prefix=resolved.prefix)
+    if resolved.resolution is not locations.Resolution.REMAPPED or resolved.path is None:
+        return Mounted(recorded, Placement.AS_RECORDED)
+    read_back = locations.resolve_recorded_path(resolved.path, root=root, prefix_map=prefix_map)
+    if read_back.path != resolved.path:
+        return Mounted(recorded, Placement.LEFT_TO_ITS_RULE)
+    return Mounted(resolved.path, Placement.PLACED)
 
 
 #: Every character an XML 1.0 document may not carry, with the tab and the two
@@ -754,17 +798,20 @@ def render(
     # emitter, so the line and the counts are read off one answer.
     placed: list[TrackRow] = []
     unmapped: list[str] = []
+    prefixes: Counter[str] = Counter()
+    left: list[str] = []
     remapped = 0
     for track in tracks:
-        location, resolution = mounted_location(
-            track.location, root=root, prefix_map=prefix_map
-        )
-        if resolution is locations.Resolution.REMAPPED:
+        mounted = mounted_location(track.location, root=root, prefix_map=prefix_map)
+        if mounted.placement is Placement.PLACED:
             remapped += 1
-            placed.append(replace(track, location=location))
+            placed.append(replace(track, location=mounted.location))
             continue
-        if resolution is locations.Resolution.UNMAPPED:
+        if mounted.placement is Placement.UNDER_NO_RULE:
             unmapped.append(track.track_id)
+            prefixes[mounted.prefix or "?"] += 1
+        elif mounted.placement is Placement.LEFT_TO_ITS_RULE:
+            left.append(track.track_id)
         placed.append(track)
 
     root_indent = " " * rbxml.indent_at(0)
@@ -801,6 +848,8 @@ def render(
             normalised_text=normalised,
             not_file_paths=unlocated,
             unmapped_paths=tuple(unmapped),
+            unmapped_prefixes=tuple(prefixes.most_common()),
+            left_to_rule=tuple(left),
         ),
         remapped=remapped,
     )
@@ -816,8 +865,10 @@ __all__ = [
     "UNREADABLE_ATTRIBUTE",
     "STAR_BYTES",
     "Document",
+    "Mounted",
     "NodeRow",
     "Omitted",
+    "Placement",
     "Provenance",
     "TrackRow",
     "clean_text",
