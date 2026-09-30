@@ -1,0 +1,71 @@
+{
+  "name": "r744-b",
+  "pass_kind": "light",
+  "branch": "relay/232",
+  "head": "42eded6",
+  "when": "2026-09-30 20:14 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11059,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "state_guarded": "/tmp/cratekit-232/state/config (0 entries); /tmp/cratekit-232/state/state (0 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/analysis/detect.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/analysis/detect.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "0ee51ba9d60d2596",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11059,
+    "baseline_collected": 11059,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "E7_no_prior",
+      "description": "the prior over metrical levels is dropped, so of two levels inside the window the stronger raw peak wins rather than the one nearer the centre",
+      "file": "src/cratekit/analysis/detect.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7a0ee49bf9492742",
+      "subset": [
+        "tests/test_analysis_tempo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_tempo.py::test_the_prior_prefers_the_level_nearer_the_centre_inside_the_window"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    score = np.where(inside, np.nan_to_num(strength * prior, nan=-np.inf), -np.inf)",
+      "new": "    score = np.where(inside, strength, -np.inf)"
+    }
+  ],
+  "dropped": []
+}

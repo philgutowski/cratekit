@@ -611,6 +611,88 @@ gone before any verb.
 **The favourites cycle has run end to end twice**, the second time with no
 hand edit and no hand step but the acknowledgment and the screen.
 
+## Sitting 22, 2026-09-30, unattended, the head against rekordbox's own analysis (R-744, issue #232)
+
+No rekordbox opened, no verb run on the live library. Every read was off a
+disposable copy of the database through `rb_writer.read_only_copy`, and the
+audio was read from the mounted library, nothing written beside it.
+
+**Which rows measure rekordbox.** 9,776 rows carry a head. The back
+catalogue's stored tempo is the grid the source system wrote at import,
+the same integer its head carries, so those rows agree with themselves:
+73.8% equal, 25.3% off by one to three, nothing measured. A stored tempo
+with a fraction was computed by rekordbox, since no tool that fed this
+library writes one. 1,361 rows are so, 1,345 on disk, 1,325 with a head.
+That sample leans to tracks with an unquantised pulse, classical and live
+recordings among them, and understates agreement on programmed music. The
+22 rows this product headed at sittings 16 to 21 and rekordbox then analysed
+are the only clean sample of the intake and are reported beside it.
+
+**The tempo, every 4th of the 1,325, 299 measured.** The detector was run
+over each file's stored tempogram, so every estimator below saw the same
+autocorrelation.
+
+| estimator | equal | within one | off one to three | half or double | other level |
+|---|---|---|---|---|---|
+| shipped before this unit, librosa's strongest bin, no window | 39 | 106 | 191 | 10 | 59 |
+| window 80 to 160, no prior, strongest bin | 40 | 108 | 180 | 1 | 78 |
+| window 80 to 160, no prior, interpolated | 171 | 204 | 55 | 1 | 72 |
+| **window 80 to 160, prior at 120 over one octave, interpolated** | **193** | **225** | **54** | **1** | **51** |
+| window 70 to 180, prior, interpolated | 188 | 217 | 51 | 9 | 51 |
+| window 85 to 170, prior, interpolated | 190 | 220 | 52 | 6 | 51 |
+| window 90 to 180, prior, interpolated | 176 | 207 | 56 | 15 | 52 |
+| the source system's heads on the same files, for reference | 265 | | 23 | 2 | 6 |
+
+The interpolation is the whole of the off by one to three bucket: a
+tempogram bin at this rate and hop is about six beats wide near 128. The
+window removes the octave cases. The prior is worth 22 exact agreements
+over a flat window. Eight prior widths and centres were tried; none beat
+the one librosa defaults to. The shipped estimator after the review's
+edge clamp reads **194, 226, 53, 1, 51**, one row moved. On the 22 intake
+files: **16 equal, 17 within one, 4 off by one to three, 2 other level**,
+against 15, 16 and 3 before.
+
+**The other level bucket is the method's.** 51 of 299, 17%, a pulse read
+at three to two or four to three of rekordbox's, 123 against 97.55, 117
+against 87.50, 93 against 140.09. No window resolves a ratio inside the
+window. It is recorded in the run's answer as the rate.
+
+**The key, the same 299 and the 22.** Four templates against four chroma
+profiles, scored offline on profiles stored per file.
+
+| chroma | template | 299 equal | fifth | relative | parallel | other | 22 equal |
+|---|---|---|---|---|---|---|---|
+| **harmonic mean, as shipped** | **Krumhansl and Kessler** | **158** | 43 | 18 | 22 | 58 | **19** |
+| harmonic mean | EDMA | 166 | 51 | 18 | 13 | 51 | 15 |
+| harmonic mean | Shaath | 168 | 41 | 18 | 25 | 47 | 16 |
+| harmonic mean | Temperley | 118 | 50 | 30 | 11 | 90 | 7 |
+| harmonic median | Krumhansl and Kessler | 137 | 49 | 15 | 37 | 61 | 15 |
+| raw CQT mean | Krumhansl and Kessler | 137 | 42 | 23 | 31 | 66 | 11 |
+| STFT mean | EDMA | 165 | 43 | 23 | 21 | 47 | 10 |
+
+Nothing beats the shipped detector on both samples, so it stays and the
+rate is R-784. rekordbox's key names in this library are Camelot in two
+paddings, `8A` and `08A`, and the comparison maps either padding and the
+classic names to one padded code.
+
+**How it was measured, since the first attempt was lost.** A
+`multiprocessing.Pool` over the files hung after three results: workers
+died in librosa's beat tracker, a numba segfault, and the pool waited on
+their tasks for ever. The measurement was rerun as eight sequential shard
+workers under a driver with a hard deadline that terminates them in
+`finally`, each appending a line per file so a cut off run resumes. The
+beat tracking refinement was dropped from the trial; the interpolation is
+the product path. Loading and the tempogram cost about a second a file,
+the harmonic separation for the key about twelve.
+
+**What ships.** `analysis.tempo_floor` and `analysis.tempo_ceiling`, 80 and
+160, both ends included, refused when empty. The interpolated estimator
+held inside the window. `analysis/agreement.py` and
+`scripts/head_agreement.py`, which print the four buckets over a
+disposable copy and, with `--analyse N`, the detector's own rate. The run's
+answer carries the record under `head_agreement` with `applies_to_window`.
+Nothing writes a grid, a tempo, an average tempo or a key anywhere.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
