@@ -30790,3 +30790,44 @@ stored path through the map and refuses when it does not come back.
 **Not on the board bar.** Reachability unmeasured; the input needs a map
 edited away from what setup wrote.
 
+## R-773. The collection export writes every Location under the base drive, so intake imported matches nothing it names
+
+**Found:** at sitting 19, 2026-09-29, attended. `docs/cutover.md` sitting 19
+is the measurement. `crate export collection` was written from the live
+database and handed to `intake imported` for the batch sitting 18 landed.
+It matched nothing and ended `PENDING_HUMAN`. A copy of the same file with
+the base drive's mount name replaced by the current one through `sed` proved
+the import, one track, and retired the intake file.
+
+**The mechanism.** `write/collection_export.py` reads `FolderPath` from
+`djmdContent` as the database holds it, and `_location` encodes a plain path
+unchanged, so every `Location` carries `djmdProperty.BaseDBDrive`, which on
+the author's library is the `BoatRx` rule's drive and not the mounted path.
+rekordbox's own export writes the current drive. `intake imported` digests
+each Location's decoded path through `routing_pass.track_id` and compares it
+with the landed file's path under the mounted root. `library.location_prefix_map`,
+the one rule that joins the two spellings and the rule `doctor` reports as
+recorded, is applied by neither side. R-772, filed by #224 the same
+evening, is the same two records seen from the native landing's duplicate
+check; this entry is the export writer's side of it.
+
+**On the board bar, (c):** the workflow `intake land` then `intake imported`
+cannot finish over the export this product writes, and #223 was landed on
+the claim that the verbs taking `--export` are driven against a file it
+wrote. Nine were, and `imported` was driven against a fixture whose two
+spellings agreed.
+
+**Two remedies, and the first is recommended.** The export applies the
+prefix map and writes the mounted path, since that is what a Fresh Export
+holds and every consumer of an export already reads that spelling. Or
+`imported` applies the map on the way in and the export stays a copy of the
+database. The first keeps one spelling in every export; the second leaves
+`adopt scan` and the routing verbs reading a file rekordbox would not have
+written.
+
+**Measured cost.** One batch, one track, one hand edit with `sed`. Every
+landing until it lands.
+
+**Closes when:** `intake imported` proves an import over a file
+`crate export collection` wrote, on a library whose `BaseDBDrive` differs
+from its mounted root, with no edit between the two verbs.
