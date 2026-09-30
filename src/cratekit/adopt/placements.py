@@ -88,23 +88,33 @@ def placements_from(
 
     held: dict[str, dict[str, set[str]]] = {}
     unnamed: dict[str, dict[str, set[str]]] = {}
+    doubled: dict[str, dict[str, set[str]]] = {}
     for bucket in declared.buckets:
         _kind, competing = routing.competing_subs(declared, bucket.id)
         for sub_id in sorted(competing):
-            named = by_display.get(destination(declared, bucket.id, sub_id), ())
+            named = list(by_display.get(destination(declared, bucket.id, sub_id), ()))
             under_the_name = {cid for node in named for cid in node.content_ids}
             under_another: set[str] = set()
             recorded = None if record is None else record.node(bucket.id, sub_id)
+            answering = list(named)
             if recorded is not None:
                 node = by_ids.get((recorded.folder_id, recorded.playlist_id))
                 if node is not None and node not in named:
                     under_another = set(node.content_ids) - under_the_name
+                    answering.append(node)
             for content_id in under_the_name | under_another:
                 held.setdefault(bucket.id, {}).setdefault(content_id, set()).add(sub_id)
             for content_id in under_another:
                 unnamed.setdefault(bucket.id, {}).setdefault(content_id, set()).add(sub_id)
+            # THE MULTIPLICITY THE WALK COUNTED, kept per sub (R-781). A pair
+            # two rows hold in one node is a double; a track in two nodes that
+            # both answer for one sub is two playlists and is not.
+            for content_id in {cid for node in answering for cid in node.doubled}:
+                doubled.setdefault(bucket.id, {}).setdefault(content_id, set()).add(sub_id)
 
-    return Placements(read=True, held=_frozen(held), unnamed=_frozen(unnamed))
+    return Placements(
+        read=True, held=_frozen(held), unnamed=_frozen(unnamed), doubled=_frozen(doubled)
+    )
 
 
 def _frozen(found: dict[str, dict[str, set[str]]]) -> dict[str, dict[str, tuple[str, ...]]]:

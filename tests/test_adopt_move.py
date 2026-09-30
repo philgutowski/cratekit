@@ -89,12 +89,26 @@ def _scanned(
     )
 
 
-def _moves(tracks, held: dict, *, unnamed: dict | None = None) -> adopt_move.MovePlan:
-    placements = adopt_plan.Placements(read=True, held=held, unnamed=unnamed or {})
-    plan = adopt_plan.build_adoption_plan(
-        tracks, DECLARED, tree=TREE_ID, placements=placements
+def _adoption(
+    tracks, held: dict, *, unnamed: dict | None = None, doubled: dict | None = None
+) -> adopt_plan.AdoptionPlan:
+    placements = adopt_plan.Placements(
+        read=True, held=held, unnamed=unnamed or {}, doubled=doubled or {}
     )
-    return adopt_move.build_move_plan(plan, DECLARED)
+    return adopt_plan.build_adoption_plan(tracks, DECLARED, tree=TREE_ID, placements=placements)
+
+
+def _moves(
+    tracks, held: dict, *, unnamed: dict | None = None, doubled: dict | None = None
+) -> adopt_move.MovePlan:
+    return adopt_move.build_move_plan(
+        _adoption(tracks, held, unnamed=unnamed, doubled=doubled), DECLARED
+    )
+
+
+def _left_counts(**nonzero: int) -> dict:
+    """The left counts as the plan reports them, every reason present."""
+    return {"total": sum(nonzero.values()), **{r: 0 for r in adopt_move.LEFT_REASONS}, **nonzero}
 
 
 def test_a_track_in_med_whose_file_reads_eight_is_added_to_high_and_leaves_med():
@@ -144,12 +158,7 @@ def test_a_track_whose_file_has_no_reading_is_left_and_listed():
     assert plan.moves == ()
     (left,) = plan.left
     assert (left.reason, left.holds, left.target) == (adopt_move.LEFT_NO_READING, (HIGH,), SINK)
-    assert plan.counts()["left"] == {
-        "total": 1,
-        adopt_move.LEFT_NO_READING: 1,
-        adopt_move.LEFT_NO_STYLE: 0,
-        adopt_move.LEFT_UNNAMED: 0,
-    }
+    assert plan.counts()["left"] == _left_counts(**{adopt_move.LEFT_NO_READING: 1})
 
 
 def test_a_track_in_the_no_reading_sub_whose_file_now_reads_is_moved_out_of_it():
@@ -353,6 +362,255 @@ def test_a_frozen_row_short_of_a_field_raises_rather_than_defaulting():
 
 
 # ---------------------------------------------------------------------------
+# R-780: the tree as it stands, in buckets adoption's entry does not claim
+# ---------------------------------------------------------------------------
+
+
+def _other_energy_bucket() -> taxonomy.Bucket:
+    """A second bucket split by energy, whose display routes to itself."""
+    first = _pure_energy_bucket().id
+    return next(
+        bucket
+        for bucket in DECLARED.buckets
+        if bucket.sub_by_source is None
+        and bucket.energy.enabled
+        and bucket.id != first
+        and adopt_scan.classify_genre(DECLARED, bucket.display)[1] == bucket.id
+    )
+
+
+def _no_genre(content_id: str, *, energy: int | None) -> adopt_scan.ScannedTrack:
+    """A track the census could not route: no genre, so no bucket of its own."""
+    return adopt_scan.ScannedTrack(
+        content_id=content_id,
+        recorded=f"/library/Music/{content_id}.flac",
+        path=f"/library/Music/{content_id}.flac",
+        readability=adopt_scan.Readability.READABLE,
+        disposition=adopt_scan.Disposition.NEEDS_GENRE,
+        genre="",
+        bucket="",
+        energy=energy,
+    )
+
+
+def test_a_double_in_a_bucket_the_genre_does_not_name_moves_on_the_reading():
+    """The shape read back off the author's library: the genre routes the
+    track to one bucket and it sits in two bands of another."""
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    held = {here: {"t": (MED, HIGH)}, there: {"t": (HIGH,)}}
+    adoption = _adoption([_scanned("t", there, energy=8)], held)
+    # NOT ON ADOPTION'S LIST, which is the whole of R-780.
+    assert adoption.held_elsewhere() == ()
+    assert [entry.bucket for entry in adoption.entries] == [there]
+
+    plan = adopt_move.build_move_plan(adoption, DECLARED)
+    (move,) = plan.moves
+    assert (move.bucket, move.target, move.add) == (here, HIGH, "")
+    assert (move.remove, move.holds) == ((MED,), tuple(sorted((MED, HIGH))))
+    assert (move.kind, move.decided_by, move.energy) == ("band", "energy", 8)
+    assert plan.left == ()
+    assert plan.counts()["memberships_added"] == 0
+
+
+def test_a_double_whose_reading_names_neither_is_left_where_the_genre_does_not_name_it():
+    """Nothing is ADDED in a bucket the genre does not name. Which bucket a
+    track belongs in is adoption's question, so the reading either picks one
+    of the subs held or the track is left and listed."""
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    plan = _moves([_scanned("t", there, energy=1)], {here: {"t": (MED, HIGH)}})
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.bucket, left.reason, left.target) == (here, adopt_move.LEFT_NAMES_NEITHER, LOW)
+    assert (left.holds, left.energy) == (tuple(sorted((MED, HIGH))), 1)
+    assert plan.counts()["left"] == _left_counts(**{adopt_move.LEFT_NAMES_NEITHER: 1})
+
+
+def test_a_track_with_no_genre_is_asked_in_every_bucket_it_doubles_in():
+    """The other shape read back: a blank genre, so no entry bucket at all."""
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    plan = _moves([_no_genre("t", energy=2)], {here: {"t": (LOW, MED)}, there: {"t": (MED, HIGH)}})
+    (move,) = plan.moves
+    assert (move.bucket, move.target, move.add, move.remove) == (here, LOW, "", (MED,))
+    (left,) = plan.left
+    assert (left.bucket, left.reason, left.target) == (there, adopt_move.LEFT_NAMES_NEITHER, LOW)
+
+
+def test_in_the_same_bucket_the_genre_names_the_reading_still_adds():
+    """R-758's rule in the entry's own bucket is untouched: a track in two
+    bands whose reading names a third is moved to the third, because adoption
+    itself would file it there."""
+    bucket = _pure_energy_bucket().id
+    plan = _moves([_scanned("t", bucket, energy=1)], {bucket: {"t": (MED, HIGH)}})
+    (move,) = plan.moves
+    assert (move.add, set(move.remove)) == (LOW, {MED, HIGH})
+    assert plan.left == ()
+
+
+def test_one_sub_in_a_bucket_the_genre_does_not_name_is_not_this_verbs():
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    plan = _moves([_scanned("t", there, energy=8)], {here: {"t": (MED,)}})
+    assert plan.moves == () and plan.left == ()
+    without_genre = _moves([_no_genre("t", energy=8)], {here: {"t": (MED,)}})
+    assert without_genre.moves == () and without_genre.left == ()
+
+
+def test_a_style_double_in_a_bucket_the_genre_does_not_name_is_out_of_scope():
+    here, style = _pure_energy_bucket().id, _style_bucket()
+    plan = _moves(
+        [_scanned("t", here, energy=8)],
+        {here: {"t": (HIGH,)}, style.id: {"t": (style.subs[0].id, style.subs[1].id)}},
+    )
+    assert plan.moves == () and plan.left == ()
+
+
+def test_a_double_with_no_reading_in_a_bucket_the_genre_does_not_name_is_left():
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    plan = _moves([_scanned("t", there, energy=None)], {here: {"t": (MED, HIGH)}})
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.bucket, left.reason, left.target) == (here, adopt_move.LEFT_NO_READING, SINK)
+
+
+def test_a_double_held_under_another_name_in_a_bucket_the_genre_does_not_name_is_left():
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    plan = _moves(
+        [_scanned("t", there, energy=8)],
+        {here: {"t": (MED, HIGH)}},
+        unnamed={here: {"t": (MED,)}},
+    )
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.reason, left.holds_unnamed) == (adopt_move.LEFT_UNNAMED, (MED,))
+
+
+def test_a_verdict_withheld_double_is_left_and_listed_under_its_own_reason():
+    from dataclasses import replace
+
+    bucket = _pure_energy_bucket().id
+    current = _adoption([_scanned("t", bucket, energy=8)], {bucket: {"t": (MED, HIGH)}})
+    (move,) = adopt_move.build_move_plan(current, DECLARED).moves
+    assert move.remove == (MED,)
+    (entry,) = current.entries
+    refused = replace(
+        current,
+        entries=(
+            replace(
+                entry,
+                disposition=adopt_scan.Disposition.WITHHELD,
+                withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
+            ),
+        ),
+    )
+    plan = adopt_move.build_move_plan(refused, DECLARED)
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.reason, left.bucket, left.holds) == (
+        adopt_move.LEFT_VERDICT, bucket, tuple(sorted((MED, HIGH)))
+    )
+
+
+@pytest.mark.parametrize("routes_here", [True, False], ids=["genre-names-it", "genre-elsewhere"])
+def test_a_sub_held_by_two_rows_is_listed_and_not_moved(routes_here):
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    genre_bucket = here if routes_here else there
+    plan = _moves(
+        [_scanned("t", genre_bucket, energy=2)],
+        {here: {"t": (LOW,)}},
+        doubled={here: {"t": (LOW,)}},
+    )
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.bucket, left.reason, left.holds, left.target) == (
+        here, adopt_move.LEFT_DOUBLED_ROWS, (LOW,), LOW
+    )
+    assert plan.counts()["left"] == _left_counts(**{adopt_move.LEFT_DOUBLED_ROWS: 1})
+
+
+def test_a_doubled_target_beside_a_stale_sub_is_a_move_and_the_double_is_listed_after():
+    bucket = _pure_energy_bucket().id
+    plan = _moves(
+        [_scanned("t", bucket, energy=2)],
+        {bucket: {"t": (LOW, MED)}},
+        doubled={bucket: {"t": (LOW,)}},
+    )
+    (move,) = plan.moves
+    assert (move.add, move.remove) == ("", (MED,))
+    assert plan.left == ()
+    after = _moves(
+        [_scanned("t", bucket, energy=2)], {bucket: {"t": (LOW,)}}, doubled={bucket: {"t": (LOW,)}}
+    )
+    assert after.moves == () and [left.reason for left in after.left] == [
+        adopt_move.LEFT_DOUBLED_ROWS
+    ]
+
+
+def test_a_doubled_row_in_a_sub_class_is_not_listed():
+    bucket = _pure_energy_bucket().id
+    plan = _moves(
+        [_scanned("t", bucket, energy=5)],
+        {bucket: {"t": (MED, DERIVED)}},
+        doubled={bucket: {"t": (DERIVED,)}},
+    )
+    assert plan.moves == () and plan.left == ()
+
+
+def test_the_digest_moves_when_a_double_appears_in_a_bucket_the_genre_does_not_name():
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    tracks = [_scanned("t", there, energy=8)]
+    alone = _moves(tracks, {there: {"t": (HIGH,)}})
+    doubled = _moves(tracks, {there: {"t": (HIGH,)}, here: {"t": (MED, HIGH)}})
+    left = _moves([_scanned("t", there, energy=1)], {there: {"t": (LOW,)}, here: {"t": (MED, HIGH)}})
+    assert len({alone.digest(), doubled.digest(), left.digest()}) == 3
+
+
+def test_the_reading_is_asked_of_the_one_resolver_in_either_bucket():
+    """No second rule for what a level means: in the bucket the genre names
+    the target is adoption's sub, elsewhere it is the same resolver's answer."""
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    (entry,) = _adoption([_scanned("t", there, energy=8)], {}).entries
+    assert adopt_move.reading_target(entry, there, DECLARED) == entry.sub == HIGH
+    assert adopt_move.reading_target(entry, here, DECLARED) == routing.energy_sub(
+        DECLARED, here, 8
+    ).id
+    assert adopt_move.reading_target(entry, "no-such-bucket", DECLARED) == ""
+    (blank,) = _adoption([_no_genre("t", energy=None)], {}).entries
+    assert adopt_move.reading_target(blank, here, DECLARED) == SINK
+
+
+def test_a_tree_path_move_is_checked_by_the_worker_in_the_bucket_it_names():
+    """The worker asked adoption's bucket and sub of every approved row, so a
+    move in a bucket the genre does not name would have been refused as
+    naming another place."""
+    here, there = _pure_energy_bucket().id, _other_energy_bucket().id
+    tracks = [_scanned("t", there, energy=8)]
+    start = _adoption(tracks, {here: {"t": (MED, HIGH)}, there: {"t": (HIGH,)}})
+    approved = adopt_move.build_move_plan(start, DECLARED).moves
+    assert [move.bucket for move in approved] == [here]
+
+    todo, gone = move_cli.remaining(approved, start, DECLARED)
+    assert (todo, gone) == (approved, ())
+
+    done = _adoption(tracks, {here: {"t": (HIGH,)}, there: {"t": (HIGH,)}})
+    assert move_cli.remaining(approved, done, DECLARED) == ((), ())
+
+    reading_moved = _adoption([_scanned("t", there, energy=2)], {here: {"t": (MED, HIGH)}})
+    with pytest.raises(Exception) as raised:
+        move_cli.remaining(approved, reading_moved, DECLARED)
+    assert raised.value.cause.reason == "decision-stale"
+    assert "another place" in raised.value.cause.detail["moved_under"]["t"]
+
+    genre_now_here = _adoption([_scanned("t", here, energy=1)], {here: {"t": (MED, HIGH)}})
+    with pytest.raises(Exception) as raised:
+        move_cli.remaining(approved, genre_now_here, DECLARED)
+    assert raised.value.cause.reason == "decision-stale"
+
+    left_bucket = _adoption(tracks, {there: {"t": (HIGH,)}})
+    with pytest.raises(Exception) as raised:
+        move_cli.remaining(approved, left_bucket, DECLARED)
+    assert "holds no sub" in raised.value.cause.detail["moved_under"]["t"]
+
+
+# ---------------------------------------------------------------------------
 # A placed library with real tags
 # ---------------------------------------------------------------------------
 
@@ -367,8 +625,44 @@ _SEEDED = (
     ("m-sink-now-reads", "5", (SINK,)),
 )
 
-_MOVED = {"m-med-reads-high", "m-both-reads-high", "m-vox-and-med", "m-sink-now-reads", "m-style"}
-_LEFT = {"m-no-reading"}
+#: R-780's shapes, none of them on adoption's list: a track whose genre routes
+#: to ANOTHER energy bucket, or to none, sitting in two bands of the first.
+#: Row: track, energy tag, where its genre routes ("other", "none"), the subs
+#: it holds in the first bucket, the sub it holds in the other bucket or None.
+_SEEDED_ELSEWHERE = (
+    ("m-genre-elsewhere-reads-high", "8", "other", (MED, HIGH), HIGH),
+    ("m-genre-elsewhere-reads-low", "1", "other", (MED, HIGH), None),
+    ("m-no-genre", "2", "none", (LOW, MED), None),
+)
+
+#: One pair held by two active rows (R-781), reading naming that very sub.
+_TWICE = "m-twice"
+
+_MOVED = {
+    "m-med-reads-high",
+    "m-both-reads-high",
+    "m-vox-and-med",
+    "m-sink-now-reads",
+    "m-style",
+    "m-genre-elsewhere-reads-high",
+    "m-no-genre",
+}
+_LEFT = {"m-no-reading", "m-genre-elsewhere-reads-low", _TWICE}
+#: Of the moves, the ones adoption's own plan withholds over a held place.
+_WITHHELD_BY_ADOPTION = {"m-med-reads-high", "m-vox-and-med", "m-sink-now-reads", "m-style"}
+
+
+def _other_bucket() -> taxonomy.Bucket:
+    """A second energy bucket the fixture's other genre routes to."""
+    first = _energy_bucket().id
+    return next(
+        bucket
+        for bucket in DECLARED.buckets
+        if bucket.sub_by_source is None
+        and bucket.energy.enabled
+        and bucket.id != first
+        and adopt_scan.classify_genre(DECLARED, bucket.display)[1] == bucket.id
+    )
 
 
 @pytest.fixture
@@ -376,7 +670,7 @@ def moved(machine, silence):  # noqa: F811
     """A cut over library whose tree files tracks where their files do not read."""
     from cratekit.core import tags
 
-    energy, style = _energy_bucket(), _style_bucket()
+    energy, style, other = _energy_bucket(), _style_bucket(), _other_bucket()
     first, second = style.subs[0], style.subs[1]
     style_genre = next(g for g, sub in style.sub_by_source.map.items() if sub == second.id)
     tracks = [
@@ -384,12 +678,18 @@ def moved(machine, silence):  # noqa: F811
         for content_id, _tag, _held in _SEEDED
     ]
     tracks.append(adopt_fixtures.Track("m-style", "m-style.flac", style_genre))
+    for content_id, _tag, routes, _held, _elsewhere in _SEEDED_ELSEWHERE:
+        genre = other.display if routes == "other" else ""
+        tracks.append(adopt_fixtures.Track(content_id, f"{content_id}.flac", genre))
+    tracks.append(adopt_fixtures.Track(_TWICE, f"{_TWICE}.flac", energy.display))
     adopt_fixtures.build(machine, tuple(tracks))
     collection.reset_cache()
 
     music = Path(machine.library.root) / "Music"
     readings = {content_id: tag for content_id, tag, _held in _SEEDED}
     readings["m-style"] = "8"
+    readings.update({row[0]: row[1] for row in _SEEDED_ELSEWHERE})
+    readings[_TWICE] = "5"
     for content_id, tag in readings.items():
         path = music / f"{content_id}.flac"
         shutil.copyfile(silence, path)
@@ -400,6 +700,11 @@ def moved(machine, silence):  # noqa: F811
         (energy.id, sub, content_id) for content_id, _tag, held in _SEEDED for sub in held
     ]
     seeded.append((style.id, first.id, "m-style"))
+    for content_id, _tag, _routes, held, elsewhere in _SEEDED_ELSEWHERE:
+        seeded.extend((energy.id, sub, content_id) for sub in held)
+        if elsewhere is not None:
+            seeded.append((other.id, elsewhere, content_id))
+    seeded.append((energy.id, MED, _TWICE))
     handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
     try:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
@@ -412,6 +717,20 @@ def moved(machine, silence):  # noqa: F811
         root_id = str(root.ID)
     finally:
         rb_writer.close_db(handle)
+    # THE SECOND ROW OF ONE PAIR, as rekordbox made them (R-781). The additive
+    # writer will not write a pair twice, so it is inserted as a row.
+    conn = sqlite3.connect(Path(machine.library.db_path))
+    try:
+        conn.execute(
+            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
+            "rb_local_deleted, created_at, updated_at) "
+            "SELECT 'twice', PlaylistID, ContentID, 99, 0, created_at, updated_at "
+            "FROM djmdSongPlaylist WHERE ContentID = ?",
+            (_TWICE,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     tree_registry.record_cutover(
         machine,
         TREE_ID,
@@ -487,17 +806,18 @@ def test_the_gate_shows_every_move_with_what_it_adds_removes_and_reads(moved):
     items = {item["content_id"]: item for item in shown["items"]}
     assert set(items) == _MOVED
     assert shown["counts"] == {
-        "moves": 5,
-        "band": 4,
+        "moves": 7,
+        "band": 6,
         "style": 1,
         "memberships_added": 4,
-        "memberships_removed": 5,
-        "left": {
-            "total": 1,
-            adopt_move.LEFT_NO_READING: 1,
-            adopt_move.LEFT_NO_STYLE: 0,
-            adopt_move.LEFT_UNNAMED: 0,
-        },
+        "memberships_removed": 7,
+        "left": _left_counts(
+            **{
+                adopt_move.LEFT_NO_READING: 1,
+                adopt_move.LEFT_NAMES_NEITHER: 1,
+                adopt_move.LEFT_DOUBLED_ROWS: 1,
+            }
+        ),
     }
     assert shown["placements"] == "read"
 
@@ -511,9 +831,29 @@ def test_the_gate_shows_every_move_with_what_it_adds_removes_and_reads(moved):
     assert (items["m-style"]["decided_by"], items["m-style"]["kind"]) == ("genre", "style")
     assert items["m-style"]["remove"] == [style.subs[0].id]
     assert items["m-style"]["add"] == style.subs[1].id
+    # R-780: the two shapes off the author's library, shown like every other row.
+    elsewhere = items["m-genre-elsewhere-reads-high"]
+    assert (elsewhere["bucket"], elsewhere["add"], elsewhere["remove"]) == (
+        _energy_bucket().id, "", [MED]
+    )
+    assert (elsewhere["holds"], elsewhere["energy"], elsewhere["genre"]) == (
+        sorted((MED, HIGH)), 8, _other_bucket().display
+    )
+    no_genre = items["m-no-genre"]
+    assert (no_genre["bucket"], no_genre["add"], no_genre["remove"], no_genre["genre"]) == (
+        _energy_bucket().id, "", [MED], ""
+    )
 
-    (left,) = shown["left"]
-    assert (left["content_id"], left["reason"]) == ("m-no-reading", adopt_move.LEFT_NO_READING)
+    left = {row["content_id"]: row for row in shown["left"]}
+    assert set(left) == _LEFT
+    assert left["m-no-reading"]["reason"] == adopt_move.LEFT_NO_READING
+    neither = left["m-genre-elsewhere-reads-low"]
+    assert (neither["reason"], neither["bucket"], neither["target"], neither["holds"]) == (
+        adopt_move.LEFT_NAMES_NEITHER, _energy_bucket().id, LOW, sorted((MED, HIGH))
+    )
+    assert (left[_TWICE]["reason"], left[_TWICE]["holds"], left[_TWICE]["target"]) == (
+        adopt_move.LEFT_DOUBLED_ROWS, [MED], MED
+    )
     assert shown["digest"] == move_cli.current_plan(moved, DECLARED).digest()
 
 
@@ -579,14 +919,22 @@ def test_an_approved_move_adds_the_new_sub_and_removes_the_old(moved):
     assert after["m-vox-and-med"] == {_place(DERIVED), _place(HIGH)}
     assert after["m-sink-now-reads"] == {_place(MED)}
     assert after["m-style"] == {_place(style.subs[1].id, style)}
+    # R-780: the stale band goes in the bucket the genre does not name, and
+    # the place the genre does name is not touched.
+    assert after["m-genre-elsewhere-reads-high"] == {_place(HIGH), _place(HIGH, _other_bucket())}
+    assert after["m-no-genre"] == {_place(LOW)}
     # Not planned, and left where they are.
-    for content_id in ("m-candy-only", "m-no-reading", "m-same"):
+    for content_id in (
+        "m-candy-only", "m-no-reading", "m-same", "m-genre-elsewhere-reads-low", _TWICE
+    ):
         assert after[content_id] == before[content_id], content_id
         assert content_id not in removed, content_id
+    # Both rows of the doubled pair are still live.
+    assert len([row for row in _rows(moved) if row[0] == _TWICE and not row[3]]) == 2
 
     report = artifacts.committed(moved, job_id)[-1]
-    assert (report["added"], report["already_present"]) == (4, 1)
-    assert (report["removed"], report["already_absent"]) == (5, 0)
+    assert (report["added"], report["already_present"]) == (4, 3)
+    assert (report["removed"], report["already_absent"]) == (7, 0)
     assert set(report["moved"]) == _MOVED
     assert report["in_both"] == report["untouched"] == report["neither"] == []
     assert report["interrupted"] is False
@@ -604,8 +952,10 @@ def test_the_removal_is_a_soft_delete_and_the_row_is_still_there(moved):
         "m-vox-and-med": {_place(MED)},
         "m-sink-now-reads": {_place(SINK)},
         "m-style": {_place(_style_bucket().subs[0].id, _style_bucket())},
+        "m-genre-elsewhere-reads-high": {_place(MED)},
+        "m-no-genre": {_place(MED)},
     }
-    # Five rows marked, four rows added, none deleted.
+    # Seven rows marked, four rows added, none deleted.
     assert len(_rows(moved)) == rows_before + 4
 
 
@@ -651,17 +1001,59 @@ def test_no_content_row_and_no_grid_column_is_written(moved):
     assert content() == before
 
 
+#: The columns and tables a move must never touch, named one by one so a
+#: difference is reported against the column and not against a whole row.
+_GUARDED_CONTENT_COLUMNS = (
+    "BPM", "Rating", "KeyID", "Analysed", "AnalysisDataPath", "AnalysisUpdated", "CueUpdated"
+)
+_GUARDED_TABLES = ("djmdCue", "contentCue", "hotCueBanklistCue")
+
+
+def test_no_tempo_grid_cue_or_rating_value_differs_column_by_column(moved):
+    """R-780's brief asks for it by column. A whole row comparison would say
+    only that something differed; this says which column, on which track."""
+
+    def read(sql: str):
+        conn = sqlite3.connect(Path(moved.library.db_path))
+        try:
+            return conn.execute(sql).fetchall()
+        finally:
+            conn.close()
+
+    tables = {row[0] for row in read("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert set(_GUARDED_TABLES) <= tables, sorted(tables)
+    columns = {
+        name: read(f"SELECT ID, {name} FROM djmdContent ORDER BY ID")
+        for name in _GUARDED_CONTENT_COLUMNS
+    }
+    cues = {name: read(f"SELECT * FROM {name} ORDER BY ID") for name in _GUARDED_TABLES}
+    assert all(columns.values()), "the fixture holds rows to compare"
+
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+
+    for name, before in columns.items():
+        assert read(f"SELECT ID, {name} FROM djmdContent ORDER BY ID") == before, name
+    for name, before in cues.items():
+        assert read(f"SELECT * FROM {name} ORDER BY ID") == before, name
+
+
 def test_after_the_move_adoption_withholds_none_of_the_moved_tracks(moved):
     withheld = {e.content_id for e in apply_cli.current_plan(moved, DECLARED).held_elsewhere()}
-    assert _MOVED - {"m-both-reads-high"} <= withheld
+    assert withheld == _WITHHELD_BY_ADOPTION | {"m-no-reading"}
+    # R-780: the two the tree path moves were never on adoption's list.
+    assert {"m-genre-elsewhere-reads-high", "m-no-genre"}.isdisjoint(withheld)
 
     _job_id, code, resumed = _approve_and_run()
     assert code == int(ExitCode.OK), resumed
     collection.reset_cache()
 
     plan = apply_cli.current_plan(moved, DECLARED)
-    assert {e.content_id for e in plan.held_elsewhere()} == _LEFT
-    assert _MOVED <= {entry.content_id for entry in plan.applicable()}
+    assert {e.content_id for e in plan.held_elsewhere()} == {"m-no-reading"}
+    applicable = {entry.content_id for entry in plan.applicable()}
+    assert _MOVED - {"m-no-genre"} <= applicable
+    # A track with no genre is adoption's open question, not a placed track.
+    assert "m-no-genre" not in applicable
 
 
 def test_a_second_approved_run_plans_nothing_and_writes_nothing(moved):
@@ -673,7 +1065,7 @@ def test_a_second_approved_run_plans_nothing_and_writes_nothing(moved):
     shown = _shown(VERB)
     assert shown["items"] == []
     assert shown["counts"]["moves"] == 0
-    assert [row["content_id"] for row in shown["left"]] == sorted(_LEFT)
+    assert {row["content_id"] for row in shown["left"]} == _LEFT
 
     code, refused = drive(VERB)
     run_id = refused["run_id"]
@@ -765,9 +1157,11 @@ def test_a_failure_after_the_add_leaves_the_track_in_both_and_a_resume_finishes(
     assert finished["m-both-reads-high"] == {_place(HIGH)}
     assert finished["m-vox-and-med"] == {_place(DERIVED), _place(HIGH)}
     assert finished["m-sink-now-reads"] == {_place(MED)}
+    assert finished["m-genre-elsewhere-reads-high"] == {_place(HIGH), _place(HIGH, _other_bucket())}
+    assert finished["m-no-genre"] == {_place(LOW)}
     report = artifacts.committed(moved, job_id)[-1]
     assert set(report["moved"]) == _MOVED and report["in_both"] == []
-    assert (report["added"], report["already_present"], report["removed"]) == (0, 5, 5)
+    assert (report["added"], report["already_present"], report["removed"]) == (0, 7, 7)
     assert resumed["data"]["progress"]["move"]["moved"] == sorted(_MOVED)
 
 
@@ -789,7 +1183,7 @@ def test_a_removal_that_did_not_take_fails_the_job_though_nothing_raised(
     assert item.cause.reason == "adopt-entries-failed" and item.cause.retryable is True
     assert set(item.cause.detail["in_both"]) == _MOVED
     report = artifacts.committed(moved, job_id)[-1]
-    assert (report["interrupted"], report["removed"], report["already_absent"]) == (False, 0, 5)
+    assert (report["interrupted"], report["removed"], report["already_absent"]) == (False, 0, 7)
 
 
 def test_a_failure_in_the_additions_writes_nothing_at_all(moved, monkeypatch):
@@ -809,11 +1203,17 @@ def test_a_failure_in_the_additions_writes_nothing_at_all(moved, monkeypatch):
 
 
 def _mark_playlist_removed(cfg, sub_id: str) -> None:
+    """Mark the first energy bucket's playlist for ``sub_id`` removed.
+
+    BY FOLDER AS WELL AS BY NAME, since the other bucket's band of the same
+    name is a different playlist and is left live."""
+    folder, playlist = _place(sub_id)
     conn = sqlite3.connect(Path(cfg.library.db_path))
     try:
         changed = conn.execute(
-            "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE Name = ? AND Attribute = 0",
-            (_place(sub_id)[1],),
+            "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE Name = ? AND Attribute = 0 "
+            "AND ParentID IN (SELECT ID FROM djmdPlaylist WHERE Name = ?)",
+            (playlist, folder),
         ).rowcount
         conn.commit()
     finally:
@@ -1451,7 +1851,7 @@ def test_the_move_takes_one_capture_and_records_both_commits(moved):
     (record,) = [r for r in session.records(moved) if r.workflow == trees.MOVE_WORKFLOW]
     assert record.state is session.SessionState.CLOSED
     assert record.snapshot_path
-    assert (record.change.created, record.change.updated) == (4, 5)
+    assert (record.change.created, record.change.updated) == (4, 7)
     assert record.sources == {TREE_ID: str(session.SourceState.COMMITTED)}
 
 

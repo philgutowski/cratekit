@@ -4,10 +4,12 @@ WHY THIS IS A VERB OF ITS OWN (R-758). ``route resort`` exists and is additive,
 "the old membership stays and is named", and giving it a removing mode was the
 other choice. It was not taken, for two reasons. A gate is declared per verb
 and every declared gate has to fire, so an approval asked in one mode only is a
-gate the registry cannot state. And what is moved is adoption's own list: the
-entries ``adopt apply`` withholds over a place the track already holds are
-what this verb plans from, with the reading adoption's census took off the
-file. So it sits beside ``adopt apply`` and is switched by the same module.
+gate the registry cannot state. And what is moved is decided by the reading
+adoption's census took off the file, over adoption's own plan: the entries
+``adopt apply`` withholds over a place the track already holds, the ones it
+finds already placed beside a stale sub, and, since R-780, every band bucket
+the tree holds a track in twice whether or not its genre names that bucket.
+So it sits beside ``adopt apply`` and is switched by the same module.
 
 THIS IS THE FIRST VERB THAT REMOVES A MEMBERSHIP, and it is treated as the
 cutover was: plan, gate, snapshot, read back.
@@ -36,7 +38,6 @@ from typing import Any, Mapping, Sequence
 from cratekit.adopt import apply_cli, artifacts, placements, shell
 from cratekit.adopt import move as move_engine
 from cratekit.adopt import plan as plan_engine
-from cratekit.adopt.scan import Disposition
 from cratekit.cli.output import Envelope
 from cratekit.core import (
     active_taxonomy,
@@ -350,10 +351,17 @@ def remaining(
     plan as it stands would leave it or would not move it, it holds a
     competing sub that was neither its target nor one it was leaving, or it
     was approved as already in its target and is not there now. What the plan
-    would do now is asked of :func:`cratekit.adopt.move.standing`, the body
-    the plan was built from. Nothing is narrowed to fit. The approval
-    covers a track arriving at its target and leaving the subs it was shown
-    leaving, in either order, and nothing else.
+    would do now is asked of :func:`cratekit.adopt.move.standing_in`, the body
+    the plan was built from, for the bucket the move names, which since R-780
+    need not be the bucket the track's genre names. Nothing is narrowed to
+    fit. The approval covers a track arriving at its target and leaving the
+    subs it was shown leaving, in either order, and nothing else.
+
+    A TRACK ALREADY IN ITS TARGET AND NOWHERE ELSE IS DONE, whatever its
+    disposition, once its reading is proven to still name that target above.
+    The first version asked for ``route`` here as well, which only an entry
+    claiming the bucket can carry, and a tree path move is over a bucket no
+    entry claims.
 
     WHAT COMPETES IS ASKED AGAIN, of the taxonomy as it is now, so a sub a
     taxonomy edit turned into a sub class since the approval is not removed
@@ -370,7 +378,9 @@ def remaining(
         if entry is None:
             gone.append(move.content_id)
             continue
-        if (entry.bucket, entry.sub) != (move.bucket, move.target):
+        # THE READING, ASKED THE WAY THE PLAN ASKED IT (R-780): adoption's sub
+        # in the bucket its entry claims, the resolver's answer in any other.
+        if move_engine.reading_target(entry, move.bucket, declared) != move.target:
             stale[move.content_id] = "its reading names another place"
             continue
         _kind, competing = routing.competing_subs(declared, move.bucket)
@@ -378,13 +388,15 @@ def remaining(
             stale[move.content_id] = "a sub it names no longer competes"
             continue
         # THE PLAN'S OWN RULE, ASKED OF THE LIBRARY AS IT STANDS.
-        now = move_engine.standing(entry, current.placements, declared, tree=current.tree)
+        now = move_engine.standing_in(
+            entry, move.bucket, current.placements, declared, tree=current.tree
+        )
         if isinstance(now, move_engine.Left):
             stale[move.content_id] = f"the plan as it stands leaves it: {now.reason}"
             continue
         held = set(current.placements.holds(move.bucket, move.content_id)) & competing
         if now is None:
-            if held == {move.target} and entry.disposition is Disposition.ROUTE:
+            if held == {move.target}:
                 continue
             stale[move.content_id] = (
                 "it holds no sub of its bucket any more"

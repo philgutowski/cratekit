@@ -117,11 +117,18 @@ class Placements:
     recorded. The writer finds a playlist by its declared name, so for these
     it would make a second playlist beside the renamed one and file the track
     in both. A sub a track holds under both names is not in here.
+
+    ``doubled`` is the part of ``held`` a track holds through MORE THAN ONE
+    active row in one playlist (R-781). rekordbox made such rows; no verb here
+    writes a pair twice. ``held`` is a set of subs and cannot say it, and the
+    move plan lists what it cannot reach by name, so the multiplicity the tree
+    walk counts is carried here rather than lost in the set.
     """
 
     read: bool = False
     held: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
     unnamed: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
+    doubled: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
 
     def holds(self, bucket: str, content_id: str) -> tuple[str, ...]:
         """The subs of ``bucket`` this track sits in, or none."""
@@ -130,6 +137,10 @@ class Placements:
     def holds_unnamed(self, bucket: str, content_id: str) -> tuple[str, ...]:
         """The subs of ``bucket`` this track holds under another name only."""
         return tuple(self.unnamed.get(bucket, {}).get(content_id, ()))
+
+    def holds_doubled(self, bucket: str, content_id: str) -> tuple[str, ...]:
+        """The subs of ``bucket`` this track holds through two or more rows."""
+        return tuple(self.doubled.get(bucket, {}).get(content_id, ()))
 
     @property
     def state(self) -> str:

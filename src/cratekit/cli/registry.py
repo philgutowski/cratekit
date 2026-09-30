@@ -1812,7 +1812,8 @@ ENTRIES: tuple[Entry, ...] = (
     # so in its summary, and a gate is declared per verb: an approval asked in
     # a removing mode only is a gate this table cannot state and conformance 3
     # cannot hold to firing. It sits in this group because what it moves is
-    # the list ``adopt.apply`` withholds, read with the census that verb reads.
+    # decided over ``adopt.apply``'s plan, read with the census that verb
+    # reads, and since R-780 over every band bucket the tree doubles a track in.
     Entry(
         name="adopt.move",
         summary="move each track from the energy or style sub it holds to the one "
