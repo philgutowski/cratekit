@@ -1,43 +1,5 @@
-name = "r757-c"
+name = "r757-c2"
 pass_kind = "light"
-
-[[rows]]
-id = "S1_resume_drops_the_full_flag"
-description = "backup_argv: never emit --full, so a resumed full job's command line is a fast one"
-file = "src/cratekit/backup/cli.py"
-surface = "user"
-tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
-old = '''    if payload.get(FULL):
-        argv.append("--full")'''
-new = '''    if False:
-        argv.append("--full")'''
-
-[[rows]]
-id = "S2_payload_freezes_fast"
-description = "frozen_payload: freeze full as False whatever was typed"
-file = "src/cratekit/backup/cli.py"
-surface = "user"
-tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
-old = '''    return {DRY_RUN: bool(dry_run), FULL: bool(full)}'''
-new = '''    return {DRY_RUN: bool(dry_run), FULL: False}'''
-
-[[rows]]
-id = "S3_work_body_plans_fast"
-description = "perform_backup: plan in the fast mode whatever the payload froze"
-file = "src/cratekit/backup/cli.py"
-surface = "user"
-tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
-old = '''            full=bool(payload.get(FULL)),'''
-new = '''            full=False,'''
-
-[[rows]]
-id = "S4_rehearsal_says_it_sent"
-description = "comparison_warning: say sent over a rehearsal, the review's fix"
-file = "src/cratekit/backup/cli.py"
-surface = "user"
-tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
-old = '''        if recorded.get("dry_run")'''
-new = '''        if False'''
 
 [[rows]]
 id = "S5_unread_number_printed_as_zero"

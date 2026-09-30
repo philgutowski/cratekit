@@ -1,0 +1,41 @@
+name = "r757-b1"
+pass_kind = "light"
+
+[[rows]]
+id = "E10_fast_run_records_a_full_comparison"
+description = "run_backup: record a full comparison for either mode, so doctor says one ran after every fast backup"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''                    and comparison["mode"] == COMPARISON_FULL'''
+new = '''                    and comparison["mode"] in (COMPARISON_FULL, COMPARISON_FAST)'''
+
+[[rows]]
+id = "E11_full_run_records_nothing"
+description = "run_backup: never record a full comparison, so doctor asks for one for ever"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''                    and comparison["mode"] == COMPARISON_FULL'''
+new = '''                    and False'''
+
+[[rows]]
+id = "E12_plain_line_dropped"
+description = "_said: drop a line that is not a logged object, the review's fix"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''        if not isinstance(entry, dict):
+            lines.append(line)'''
+new = '''        if not isinstance(entry, dict):
+            pass'''
+
+[[rows]]
+id = "E13_runner_times_nothing"
+description = "subprocess_runner: report no elapsed time"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''        elapsed=time.monotonic() - started,'''
+new = '''        elapsed=None,'''
+
