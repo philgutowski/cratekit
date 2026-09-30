@@ -1093,6 +1093,11 @@ def comparison_report(command: Command, result: CommandResult) -> dict[str, obje
     totals were not found would otherwise answer "sent 0 files", which is the
     sentence a person reads as nothing having changed.
 
+    ``checked`` IS rclone's OWN COUNT AND ITS OWN MEANING: the files it found
+    on both sides and compared. A file that is only in the library is sent
+    without being counted there, so a first backup checks none and sends all,
+    and the two numbers together are what the run looked at.
+
     ``seconds`` IS THE WHOLE MIRROR COMMAND, measured around it. rclone compares
     and transfers at once, so the comparison has no separate clock; on a run
     that sent nothing, and on a rehearsal, the two are the same number.
@@ -1109,7 +1114,7 @@ def comparison_report(command: Command, result: CommandResult) -> dict[str, obje
     return {
         "mode": comparison_mode(command),
         "seconds": result.elapsed,
-        "compared": _count(stats, "checks"),
+        "checked": _count(stats, "checks"),
         "sent": _count(stats, "transfers"),
         "sent_bytes": _count(stats, "bytes"),
         "transfer_seconds": _count(stats, "transferTime"),
@@ -1126,18 +1131,23 @@ def _said(stderr: str) -> str:
     """What a failed command said, as sentences when it logged JSON.
 
     The mirror logs JSON so its totals can be read, and the tail of a JSON log
-    is the totals object rather than the reason. The errors are rendered and the
-    totals dropped. A command that logged plain text is returned as it was.
+    is the totals object rather than the reason. LINE BY LINE: a logged object
+    is rendered as its message, the totals are dropped, and a line that is not
+    an object is kept as it was written, because a program that dies outside
+    its own logger says why in plain text after a page of JSON.
     """
-    entries = _logged(stderr)
-    if not entries:
-        return stderr.strip()
-    lines = [
-        str(entry.get("msg", "")).strip()
-        for entry in entries
-        if "stats" not in entry and str(entry.get("msg", "")).strip()
-    ]
-    return "\n".join(lines) if lines else stderr.strip()
+    lines: list[str] = []
+    for line in stderr.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            entry = None
+        if not isinstance(entry, dict):
+            lines.append(line)
+        elif "stats" not in entry:
+            lines.append(str(entry.get("msg", "")))
+    said = "\n".join(piece.strip() for piece in lines if piece.strip())
+    return said or stderr.strip()
 
 
 def dry_run_argv(command: Command) -> tuple[str, ...]:

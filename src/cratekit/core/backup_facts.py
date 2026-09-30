@@ -179,12 +179,23 @@ def read_facts(cfg: config.Config) -> dict[Portion, BackupFact]:
     return _read(cfg)[0]
 
 
-def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], BackupFact | None]:
-    """The file, read once: every portion's fact, and the last full comparison.
+#: What :func:`_read` hands back for the full comparison when the file does not
+#: carry the key at all, which is a different answer from carrying it as null.
+_ABSENT = object()
 
-    ONE READER FOR BOTH, so the file is either understood or refused as a whole.
-    Two readers would let a file the portions reader refuses answer a question
-    about the full comparison, over a document nothing vouched for.
+
+def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], object]:
+    """The file, read once: every portion's fact, and the full comparison AS HELD.
+
+    ONE READER OF THE FILE, so a document the portions reader refuses cannot
+    answer a question about the full comparison.
+
+    THE FULL COMPARISON IS RETURNED UNPARSED, and that is deliberate. It feeds
+    one informational line, and the portions feed the age a destructive session
+    reads and the publish at the end of a transfer. Parsed here, a damaged
+    entry under that one key would refuse every reader of the file, and a
+    backup would fail after its transfer over a date nothing depends on.
+    :func:`full_comparison_age` parses it and is the only reader it can refuse.
 
     THE PORTIONS, as :func:`read_facts` has always returned them:
 
@@ -202,7 +213,7 @@ def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], BackupFact | N
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
-        return {}, None
+        return {}, _ABSENT
     except OSError as exc:
         # TWO CONDITIONS, TWO SENTENCES, TWO ACTS. A permission is not a
         # corruption, and it does not establish that the file is there either: an
@@ -270,15 +281,34 @@ def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], BackupFact | N
             continue
         facts[Portion(name)] = _fact(Portion(name), entry, named=name, path=path)
 
-    if FULL_COMPARISON_KEY not in data:
-        # WRITTEN BY A BUILD THAT HAD ONE MODE. Every build that does not write
-        # this key lists the remote folder by folder, so the files fact it left
-        # IS the last full comparison. Answering "never" here would tell a
-        # person whose every backup so far was a full one that none ever ran.
-        return facts, facts.get(Portion.FILES)
-    held = data[FULL_COMPARISON_KEY]
+    return facts, data.get(FULL_COMPARISON_KEY, _ABSENT)
+
+
+def _as_held(fact: BackupFact | None) -> dict | None:
+    """One fact in the shape the file holds it under the full comparison key."""
+    if fact is None:
+        return None
+    return {
+        "completed_at": fact.completed_at.isoformat(),
+        "destination": fact.destination,
+    }
+
+
+def _full_comparison(
+    cfg: config.Config, facts: dict[Portion, BackupFact], held: object
+) -> BackupFact | None:
+    """The last full comparison, parsed, or a refusal naming what cannot be read.
+
+    AN ABSENT KEY IS A FILE FROM A BUILD THAT HAD ONE MODE. Every build that
+    does not write this key lists the remote folder by folder, so the files
+    fact it left IS the last full comparison. Answering "never" there would
+    tell a person whose every backup so far was a full one that none ever ran.
+    """
+    if held is _ABSENT:
+        return facts.get(Portion.FILES)
     if held is None:
-        return facts, None
+        return None
+    path = path_for(cfg)
     if not isinstance(held, dict):
         raise BackupFactsUnreadable(
             f"{path} holds something other than an object or null under "
@@ -286,7 +316,7 @@ def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], BackupFact | N
             path=path,
             remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
-    return facts, _fact(Portion.FILES, held, named=FULL_COMPARISON_KEY, path=path)
+    return _fact(Portion.FILES, held, named=FULL_COMPARISON_KEY, path=path)
 
 
 def _fact(portion: Portion, entry: dict, *, named: str, path: Path) -> BackupFact:
@@ -344,7 +374,8 @@ def full_comparison_age(cfg: config.Config, *, now: datetime | None = None) -> P
     an age of the FILES portion's comparison, so that is the portion it names.
     """
     moment = now or datetime.now(timezone.utc)
-    return _age_of(Portion.FILES, _read(cfg)[1], moment)
+    facts, held = _read(cfg)
+    return _age_of(Portion.FILES, _full_comparison(cfg, facts, held), moment)
 
 
 def ages(cfg: config.Config, *, now: datetime | None = None) -> tuple[PortionAge, ...]:
@@ -406,26 +437,27 @@ def record(
             "a different instant to every reader, and two installations of one "
             "library legitimately sit in different zones"
         )
-    read, compared = _read(cfg)
+    read, held = _read(cfg)
     facts = dict(read)
+    if held is _ABSENT:
+        # BEFORE THE NEW FACT REPLACES THE OLD ONE, because what an earlier
+        # build's file implies is the files fact it wrote, not this one.
+        held = _as_held(read.get(Portion.FILES))
     facts[portion] = BackupFact(
         portion=portion, completed_at=completed_at, destination=destination
     )
     if full_comparison:
-        compared = facts[portion]
+        held = _as_held(facts[portion])
     payload = {
         "schema_version": SCHEMA_VERSION,
         # ALWAYS WRITTEN, null included. Its absence is how a file from a build
         # with one mode is recognised, so a build with two must never leave it
         # out, or its own fast run would be read as a full one.
-        FULL_COMPARISON_KEY: (
-            None
-            if compared is None
-            else {
-                "completed_at": compared.completed_at.isoformat(),
-                "destination": compared.destination,
-            }
-        ),
+        #
+        # CARRIED THROUGH AS IT WAS HELD when this record is not a full
+        # comparison, damaged or not. Replacing an entry nobody could read
+        # with null would turn "cannot be read" into "never ran".
+        FULL_COMPARISON_KEY: held,
         "portions": {
             fact.portion.value: {
                 "completed_at": fact.completed_at.isoformat(),

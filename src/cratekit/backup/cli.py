@@ -220,6 +220,14 @@ def comparison_warning(outcomes) -> tuple[dict[str, str], ...]:
     A NUMBER THAT WAS NOT READ IS SAID TO BE UNREAD. The engine reports None
     for a total rclone did not give, and printing that as zero would tell a
     person nothing was sent.
+
+    A MODE THIS BUILD DOES NOT KNOW SAYS NOTHING, for the same reason. The
+    sentence names the mode and offers the other one, and both halves would be
+    invented over a record that carries neither word.
+
+    A REHEARSAL IS SAID AS ONE. rclone counts what a dry run WOULD send, and
+    "sent" over a run that copied nothing contradicts the rehearsal warning
+    printed beside it. The flag is read from the same recorded outcome.
     """
     recorded = (outcomes or {}).get(str(backup_facts.Portion.FILES))
     if not isinstance(recorded, dict):
@@ -230,6 +238,9 @@ def comparison_warning(outcomes) -> tuple[dict[str, str], ...]:
             found = row["comparison"]
     if found is None:
         return ()
+    mode = found.get("mode")
+    if mode not in (backup.COMPARISON_FAST, backup.COMPARISON_FULL):
+        return ()
 
     def said(key: str, unit: str) -> str:
         value = found.get(key)
@@ -237,17 +248,25 @@ def comparison_warning(outcomes) -> tuple[dict[str, str], ...]:
             return f"an unread number of {unit}"
         return f"{value:.0f} {unit}"
 
-    other = "full" if found.get("mode") != backup.COMPARISON_FULL else "fast"
+    sent = (
+        f"would have sent {said('sent', 'files')} and sent none"
+        if recorded.get("dry_run")
+        else f"sent {said('sent', 'files')}"
+    )
+    other = (
+        "The full mode is: crate backup run --full"
+        if mode == backup.COMPARISON_FAST
+        else "The fast mode is: crate backup run"
+    )
     return (
         {
             "code": COMPARISON,
             "message": (
-                f"the file comparison ran in the {found.get('mode')} mode and the "
-                f"mirror took {said('seconds', 'seconds')}, comparing "
-                f"{said('compared', 'files')} and sending {said('sent', 'files')}. "
+                f"the file comparison ran in the {mode} mode and the mirror took "
+                f"{said('seconds', 'seconds')}. It checked "
+                f"{said('checked', 'files')} that were on both sides and {sent}. "
                 f"Both modes compare every file by size and modification time. "
-                f"The {other} mode is: crate backup run"
-                + (" --full" if other == "full" else "")
+                f"{other}"
             ),
         },
     )
@@ -596,8 +615,16 @@ def _open_twin(store, *, handler_key: str, dry_run: bool, cfg: config.Config):
     return None
 
 
-def _already_queued(job, frozen: config.Config | None) -> dict[str, str]:
+def _already_queued(
+    job, frozen: config.Config | None, *, asked_full: bool | None = None
+) -> dict[str, str]:
     """The one warning a reported twin carries, in the JOB's terms.
+
+    WHEN THE ASK AND THE JOB DIFFER IN MODE, THE SENTENCE SAYS SO (R-757). A
+    person who asked for the full comparison and is handed an open fast job
+    would otherwise resume it, watch a backup complete, and find doctor still
+    asking for a full one. The job is still reported and nothing is filed,
+    because the two write to one mirror.
 
     The destinations named are the frozen ones, because a twin can match on the
     archive root alone while its mirror differs from the one on disk today, and
@@ -611,6 +638,16 @@ def _already_queued(job, frozen: config.Config | None) -> dict[str, str]:
         else f"it mirrors to {frozen.backup.dest} and archives under "
         f"{frozen.backup.archive_root}"
     )
+    if asked_full is not None and asked_full != _is_full(job):
+        held, asked = (
+            (backup.COMPARISON_FAST, backup.COMPARISON_FULL)
+            if asked_full
+            else (backup.COMPARISON_FULL, backup.COMPARISON_FAST)
+        )
+        where += (
+            f". It will run the {held} comparison and this ask was for the "
+            f"{asked} one, so cancel it first if that is the one wanted"
+        )
     return {
         "code": ALREADY_QUEUED,
         "message": (
@@ -777,7 +814,7 @@ def backup_library(ctx) -> Envelope:
             return ctx.envelope(
                 data=_reported(store, twin),
                 warnings=(
-                    _already_queued(twin, frozen),
+                    _already_queued(twin, frozen, asked_full=payload[FULL]),
                     *map(dict, backup.absent_analysis_share(described)),
                     *map(dict, backup.snapshot_identity_warning(described)),
                     # THE TWIN'S OWN, not this ask's. A rehearsal and a real run

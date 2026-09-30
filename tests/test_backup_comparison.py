@@ -247,12 +247,16 @@ def test_nothing_changed_sends_nothing_and_says_so(cfg, real_rclone, payload, tm
     _seed(cfg)
     first = _mirror(payload, cfg, now=MOMENT)
     assert first["comparison"]["sent"] == 3, first
+    assert first["comparison"]["checked"] == 0, (
+        "a file that is only in the library is sent without being checked, "
+        f"which is what the word in the report has to mean: {first}"
+    )
 
     second = _mirror(payload, cfg, now=MOMENT + timedelta(hours=1))
 
     said = second["comparison"]
     assert said["sent"] == 0, said
-    assert said["compared"] == 3, (
+    assert said["checked"] == 3, (
         "a run that compared nothing also sends nothing, so the count of what "
         f"was compared is what makes a zero mean nothing changed: {said}"
     )
@@ -329,7 +333,7 @@ def test_the_two_modes_agree_on_what_to_send_for_the_same_fixture(
         row = _mirror(payload, one, now=later)
         assert row["comparison"]["mode"] == name, row
         counts = {
-            key: row["comparison"][key] for key in ("compared", "sent", "sent_bytes")
+            key: row["comparison"][key] for key in ("checked", "sent", "sent_bytes")
         }
         ended[name] = (
             counts,
@@ -406,7 +410,7 @@ def test_totals_that_could_not_be_read_are_none_and_never_zero(cfg, real_rclone)
 
     assert outcome.ran
     said = dict(outcome.comparison)
-    assert said["sent"] is None and said["compared"] is None, said
+    assert said["sent"] is None and said["checked"] is None, said
     assert said["seconds"] == 12.5 and said["mode"] == "fast", said
 
     untimed = _run_files(cfg, _answering(_totals(checks=4, transfers=1), elapsed=None))
@@ -420,7 +424,7 @@ def test_the_last_totals_logged_are_the_ones_reported(cfg, real_rclone):
     )
     outcome = _run_files(cfg, _answering(logged))
 
-    assert outcome.comparison["compared"] == 40 and outcome.comparison["sent"] == 6
+    assert outcome.comparison["checked"] == 40 and outcome.comparison["sent"] == 6
 
 
 def test_a_failed_mirror_says_why_in_words_and_how_far_it_got(cfg, real_rclone):
@@ -440,6 +444,16 @@ def test_a_failed_mirror_says_why_in_words_and_how_far_it_got(cfg, real_rclone):
 
     plain = _run_files(cfg, _answering("connection refused", returncode=5))
     assert plain.detail.endswith("connection refused"), plain.detail
+
+    mixed = _run_files(
+        cfg,
+        _answering(logged + "\npanic: the program died outside its logger", returncode=2),
+    )
+    assert "the remote went away" in mixed.detail, mixed.detail
+    assert mixed.detail.endswith("panic: the program died outside its logger"), (
+        "a plain line after a page of JSON is the reason the run died, and it "
+        f"was dropped: {mixed.detail}"
+    )
 
 
 def test_a_portion_with_no_mirror_carries_no_comparison(cfg, real_rclone):
@@ -550,7 +564,11 @@ def test_a_build_with_two_modes_always_writes_the_key(cfg):
     assert _full_age(cfg).state is backup_facts.AgeState.NEVER_RECORDED
 
 
-def test_a_full_comparison_entry_that_cannot_be_read_refuses(cfg):
+def test_a_damaged_full_comparison_entry_refuses_its_own_reader_and_no_other(cfg):
+    """The entry feeds one informational line. The portions feed the age a
+    destructive session reads and the publish at the end of a transfer, so a
+    damaged entry must not fail a backup whose files already travelled.
+    """
     path = backup_facts.path_for(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
     for held in ("yesterday", {"completed_at": "2026-08-29T12:00:00"}, {"completed_at": 7}):
@@ -558,15 +576,42 @@ def test_a_full_comparison_entry_that_cannot_be_read_refuses(cfg):
             json.dumps(
                 {
                     "schema_version": 1,
-                    "portions": {},
+                    "portions": {
+                        "files": {
+                            "completed_at": MOMENT.isoformat(),
+                            "destination": "remote:mirror",
+                        }
+                    },
                     backup_facts.FULL_COMPARISON_KEY: held,
                 }
             )
         )
         with pytest.raises(backup_facts.BackupFactsUnreadable):
             _full_age(cfg)
-        with pytest.raises(backup_facts.BackupFactsUnreadable):
-            backup_facts.read_facts(cfg)
+        assert _finding(cfg, now=MOMENT).status is doctor.Status.FAIL
+        assert backup_facts.read_facts(cfg)[backup_facts.Portion.FILES].completed_at == MOMENT
+        (files, _) = backup_facts.ages(cfg, now=MOMENT)
+        assert files.usable and files.age == timedelta(0), files
+
+        backup_facts.record(
+            cfg,
+            backup_facts.Portion.DATABASE,
+            completed_at=MOMENT,
+            destination="remote:database",
+        )
+        assert json.loads(path.read_text())[backup_facts.FULL_COMPARISON_KEY] == held, (
+            "a record that was not a full comparison replaced an entry nobody "
+            "could read, so cannot be read became never ran"
+        )
+
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=MOMENT,
+        destination="remote:mirror",
+        full_comparison=True,
+    )
+    assert _full_age(cfg).completed_at == MOMENT
 
 
 def _probes(now: datetime) -> doctor.Probes:
@@ -600,6 +645,23 @@ def test_doctor_says_how_long_ago_a_full_comparison_last_ran(cfg):
     assert "--full" not in day_before.detail
     due = _finding(cfg, now=MOMENT + timedelta(days=doctor.FULL_COMPARISON_DUE_DAYS))
     assert due.status is doctor.Status.INFO and "crate backup run --full" in due.detail
+
+
+def test_a_record_a_few_minutes_ahead_is_zero_days_old_and_not_minus_one(cfg):
+    """Inside the tolerance a record is a known age, and its days are negative."""
+    ahead = MOMENT + timedelta(minutes=10)
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=ahead,
+        destination="somewhere",
+        full_comparison=True,
+    )
+    report = doctor.run(cfg, probes=_probes(MOMENT))
+    for key in ("backup.full_comparison", "backup.age.files"):
+        (found,) = [f for f in report.findings if f.key == key]
+        assert found.status is doctor.Status.INFO, found
+        assert " 0 days ago" in found.detail and "-1" not in found.detail, found
 
 
 def test_doctor_refuses_a_full_comparison_recorded_ahead_of_now(cfg):
@@ -682,8 +744,45 @@ def test_the_resumed_verb_says_what_the_comparison_did(cfg, real_rclone):
     assert said["mode"] == "fast" and said["sent"] == 3 and said["seconds"] > 0, said
 
     (warning,) = [w for w in envelope["warnings"] if w["code"] == backup_cli.COMPARISON]
-    assert "fast mode" in warning["message"] and "sending 3 files" in warning["message"]
+    assert "fast mode" in warning["message"] and " sent 3 files" in warning["message"]
+    assert "checked 0 files" in warning["message"], warning
     assert warning["message"].endswith("crate backup run --full"), warning
+
+
+def test_a_resumed_rehearsal_never_says_that_it_sent(cfg, real_rclone, tmp_path):
+    _seed(cfg)
+    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation one")
+    _, queued = _drive(["backup", "run", "--dry-run"])
+    code, envelope = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), envelope
+
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == backup_cli.COMPARISON]
+    assert "would have sent 3 files and sent none" in warning["message"], warning
+    assert _held(_folder(tmp_path, cfg.backup.dest)) == {}
+
+
+def test_a_second_ask_in_the_other_mode_is_told_the_open_job_differs(cfg):
+    """Both directions, and the same mode says nothing about modes."""
+    _, first = _drive(["backup", "run"])
+    code, second = _drive(["backup", "run", "--full"])
+    assert code == int(ExitCode.OK), second
+    assert second["data"]["job_id"] == first["data"]["job_id"], "a second job was filed"
+    (said,) = [w for w in second["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED]
+    assert "will run the fast comparison" in said["message"], said
+    assert "this ask was for the full one" in said["message"], said
+
+    _, same = _drive(["backup", "run"])
+    (said,) = [w for w in same["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED]
+    assert "comparison" not in said["message"], said
+
+    with jobs.open_store() as store:
+        jobs.cancel(store, first["data"]["job_id"])
+    _, full = _drive(["backup", "run", "--full"])
+    assert full["data"]["job_id"] != first["data"]["job_id"], full
+    _, fast = _drive(["backup", "run"])
+    (said,) = [w for w in fast["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED]
+    assert "will run the full comparison" in said["message"], said
+    assert "this ask was for the fast one" in said["message"], said
 
 
 def test_the_sentence_never_prints_an_unread_number_as_zero():
@@ -691,11 +790,17 @@ def test_the_sentence_never_prints_an_unread_number_as_zero():
         return {"files": {"portions": [{"portion": "files", "comparison": comparison}]}}
 
     (unread,) = backup_cli.comparison_warning(
-        outcomes({"mode": "full", "seconds": None, "compared": None, "sent": None})
+        outcomes({"mode": "full", "seconds": None, "checked": None, "sent": None})
     )
-    assert "an unread number of files" in unread["message"], unread
+    assert unread["message"].count("an unread number of files") == 2, unread
+    assert "an unread number of seconds" in unread["message"], unread
     assert " 0 " not in unread["message"], unread
     assert unread["message"].endswith("crate backup run"), unread
+
+    for unknown in (None, "quick", 7):
+        assert backup_cli.comparison_warning(outcomes({"mode": unknown, "sent": 1})) == (), (
+            f"a mode of {unknown!r} was named in a sentence and the other one offered"
+        )
 
     assert backup_cli.comparison_warning(None) == ()
     assert backup_cli.comparison_warning({"database": {"portions": []}}) == ()

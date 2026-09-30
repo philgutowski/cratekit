@@ -86,7 +86,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from importlib import metadata
 from pathlib import Path
@@ -1856,6 +1856,26 @@ def _check_adapter(inputs: _Inputs) -> Finding:
     )
 
 
+def _whole_days(age: timedelta | None) -> int:
+    """An age in whole days, never below zero.
+
+    A record from a clock a few minutes ahead is inside the tolerance and is a
+    known age, and ``timedelta.days`` of minus ten minutes is minus one.
+    """
+    return max(age.days, 0) if age is not None else 0
+
+
+def _unreadable_facts(key: str, title: str, exc) -> Finding:
+    """The one finding every check reading the backup fact file gives for that."""
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.FAIL,
+        detail=str(exc),
+        remedy=Remedy(str(exc.remedy)),
+    )
+
+
 def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
     portion = backup_facts.PORTIONS[key.split(".")[-1]]
     title = f"backup age, {portion} portion"
@@ -1864,13 +1884,7 @@ def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
     try:
         ages = backup_facts.ages(inputs.cfg, now=inputs.probes.now)
     except backup_facts.BackupFactsUnreadable as exc:
-        return Finding(
-            key=key,
-            title=title,
-            status=Status.FAIL,
-            detail=str(exc),
-            remedy=Remedy(str(exc.remedy)),
-        )
+        return _unreadable_facts(key, title, exc)
     answer = next(entry for entry in ages if entry.portion is portion)
     if answer.state is backup_facts.AgeState.NEVER_RECORDED:
         return Finding(
@@ -1895,7 +1909,7 @@ def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
             ),
             remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
-    days = answer.age.days if answer.age is not None else 0
+    days = _whole_days(answer.age)
     return Finding(
         key=key,
         title=title,
@@ -1924,13 +1938,7 @@ def _check_full_comparison(inputs: _Inputs) -> Finding:
     try:
         answer = backup_facts.full_comparison_age(inputs.cfg, now=inputs.probes.now)
     except backup_facts.BackupFactsUnreadable as exc:
-        return Finding(
-            key=key,
-            title=title,
-            status=Status.FAIL,
-            detail=str(exc),
-            remedy=Remedy(str(exc.remedy)),
-        )
+        return _unreadable_facts(key, title, exc)
     run_one = "Run one with: crate backup run --full"
     if answer.state is backup_facts.AgeState.NEVER_RECORDED:
         return Finding(
@@ -1954,7 +1962,7 @@ def _check_full_comparison(inputs: _Inputs) -> Finding:
             ),
             remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
-    days = answer.age.days if answer.age is not None else 0
+    days = _whole_days(answer.age)
     due = f". {run_one}" if days >= FULL_COMPARISON_DUE_DAYS else ""
     return Finding(
         key=key,
