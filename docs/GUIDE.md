@@ -684,6 +684,7 @@ the same gate with nothing recorded and refuses again. Gates you will meet:
 | `export.playlist.confirm` | export | `export playlist` |
 | `delete.review.confirm` | trash | `delete review` |
 | `adopt.apply.approve` | approve | `adopt apply` |
+| `adopt.move.approve` | approve | `adopt move` |
 | `restore.run.confirm` | restore | `restore run` |
 | `session.ack.backup` | acknowledged | `session ack` |
 | `write.cloudsync.unreadable` | proceed | any verb that writes |

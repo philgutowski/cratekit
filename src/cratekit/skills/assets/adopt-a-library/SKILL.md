@@ -177,6 +177,33 @@ destination together with the track, so a taxonomy edit that moves a track
 produces a new entry that comes back as work, while everything that did not move
 keeps its identifier and stays skipped.
 
+## Moving a track the plan withheld
+
+The apply withholds a track that already sits in one energy or style sub while
+its own file reads another, lists it, and moves nothing. A third verb acts on
+that list. It adds the track to the sub its file names and then removes it from
+the one it held, and it is the only verb in the product that removes a
+membership.
+
+```bash
+crate adopt move
+crate run decide RUN-ID adopt.move.approve approve --actor operator
+crate --run RUN-ID adopt move
+```
+
+It reads the backup acknowledgment before it asks, so acknowledge a backup
+first. The gate lists every move with what it adds, what it removes and the
+reading that decides it, and lists beside them every track it leaves where it
+is: a file with no reading, a genre that names no style, and a sub held through
+a playlist that was renamed. A sub class such as the vocal sub is never moved
+out of.
+
+The additions are committed before any removal is attempted. A run that stops
+between the two leaves a track in both subs and never in neither, says which
+tracks, and finishes on a resume. The removal marks the row the way rekordbox
+marks a removed row and deletes nothing, and the snapshot taken before the
+first write restores all of it.
+
 ## Reading a result of zero
 
 The collection reader has not landed in this build. The census the apply rebuilds
