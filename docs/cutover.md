@@ -588,6 +588,23 @@ naming the rows under no rule by prefix. The installed copy needs the new
 build before the sitting. Record the outcome here, since the issue's closing
 condition names this file.
 
+**Owed by R-770, built on `relay/230`, 2026-09-30, and it rides on R-746's
+own sitting.** R-746 owes a cutover of the intake tree on a disposable copy
+with `library.state_dirname` redirected. On that same copy, before anything
+live: put one tagged file in the music folder, run `crate intake file` on it
+with no export, approve `intake.file.native` with `crate run decide`, then
+open rekordbox on the copy and read whether the row is there under INBOX in a
+playlist named for the file, plays, and analyses on request. Also on the
+copy: `crate intake file` with `--export`, which should be refused by name
+with `fix-command-line` and no `report-defect`. Live only after R-746's own
+three files, on one file, approved by the session only if the live digest
+equals the copy's. Record the outcome here.
+
+**Known before that sitting, R-777.** After a native landing `sync mark` has
+no intake file to read, so a playlists pass landed on a cut over intake tree
+stays unmarked. Do not cut the live intake tree over while a playlists pass
+is waiting to be marked.
+
 Owed by the author: a genre on the INBOX rows that carry none.
 
 Also owed, unchanged: a second `sync labels` for the 20 labels the rate limit
