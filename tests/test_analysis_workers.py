@@ -334,7 +334,10 @@ def test_a_worker_process_with_nothing_bound_binds_the_shipped_defaults(cfg, mon
     assert light.bound()
     assert vocals.loader_bound()
     assert light._DETECT.func is detect.analyse_file
-    assert light._DETECT.keywords == {"calibration": None}
+    assert light._DETECT.keywords == {
+        "calibration": None,
+        "tempo_window": (cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling),
+    }
 
 
 def test_a_failed_tag_write_fails_the_item_and_leaves_the_name_alone(
@@ -549,7 +552,10 @@ def test_the_light_pass_passes_a_detector_terminal_through_by_name():
 
 def test_the_default_detector_is_rebound_with_a_fresh_calibration_per_item(cfg):
     analysis_cli._bind_defaults(cfg)
-    assert light._DETECT.keywords == {"calibration": None}
+    assert light._DETECT.keywords == {
+        "calibration": None,
+        "tempo_window": (cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling),
+    }
     energy.save_calibration(cfg, calibration_over())
     analysis_cli._bind_defaults(cfg)
     assert light._DETECT.keywords["calibration"] == energy.load_calibration(cfg)
@@ -1609,12 +1615,13 @@ def test_a_decodable_file_the_analyser_raises_on_is_its_own_terminal_not_keyless
     reported as atonal."""
     import types
 
-    def tempo(**kwargs):
+    def onset_strength(**kwargs):
         raise ValueError("too short")
 
     fake = types.SimpleNamespace(
         load=lambda p, sr, mono: (np.ones(64, dtype=np.float32), sr),
-        feature=types.SimpleNamespace(tempo=tempo),
+        onset=types.SimpleNamespace(onset_strength=onset_strength),
+        feature=types.SimpleNamespace(),
         effects=types.SimpleNamespace(),
     )
     monkeypatch.setitem(sys.modules, "librosa", fake)
