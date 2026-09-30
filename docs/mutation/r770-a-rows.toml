@@ -1,0 +1,81 @@
+name = "r770-a"
+pass_kind = "light"
+
+# The switch and the splice's own refusal, `intake/ingest.py` and the
+# landing's pre-move check: each new guard alone, each layer of the refusal
+# alone, and one of the splice's existing guards as the fixed sample.
+
+[[rows]]
+id = "A1_switch_reads_the_other_mode"
+description = "IntakeMedium.native: answer native for a tree on the bridge and bridge for a native one"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
+old = '''        return self.registry.is_database_native(self.declared.intake.id)'''
+new = '''        return self.registry.is_on_the_bridge(self.declared.intake.id)'''
+
+[[rows]]
+id = "A2_unreachable_root_is_read_anyway"
+description = "intake_medium: read the taxonomy and the registry of a library root that is not there"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land.py"]
+old = '''    if not Path(cfg.library.root).is_dir():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A3_assertion_refuses_nothing"
+description = "assert_intake_on_the_bridge: return for every tree, so a splice at a native tree reaches the emitter guard and its report-defect"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''    if not IntakeMedium(declared=declared, registry=registry).native:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "A4_refusal_asks_for_a_defect_report"
+description = "assert_intake_on_the_bridge: give the refusal the remedy the finding was about"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''        remedy=Remedy.FIX_COMMAND_LINE,'''
+new = '''        remedy=Remedy.REPORT_DEFECT,'''
+
+[[rows]]
+id = "A5_tree_built_without_the_refusal"
+description = "bridge_intake_tree: build the tree without asking first, the layer the landing's pre-move check rests on alone"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''    assert_intake_on_the_bridge(declared, registry)
+    return rbxml.intake_tree(declared, registry)'''
+new = '''    return rbxml.intake_tree(declared, registry)'''
+
+[[rows]]
+id = "A6_splice_asks_only_after_the_export"
+description = "place_files: drop the refusal made before the export is looked for, leaving the one made where the tree is built"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''    if declared is not None and registry is not None:
+        assert_intake_on_the_bridge(declared, registry)'''
+new = '''    if declared is not None and registry is not None:
+        pass'''
+
+[[rows]]
+id = "A7_pre_move_check_builds_the_tree_itself"
+description = "landing._check_export: build the intake tree the way it was built before this unit, straight from the write layer"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''    tree = ingest.bridge_intake_tree(checked.declared, checked.registry)'''
+new = '''    tree = rbxml.intake_tree(checked.declared, checked.registry)'''
+
+[[rows]]
+id = "S1_stub_listing_spliced"
+description = "SAMPLE, an existing guard: place_files splices into a U22 stub listing as if it were a Fresh Export"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/test_landing.py", "tests/test_intake_imported.py"]
+old = '''    if collection_xml.is_stub_listing(bytes(content)):'''
+new = '''    if False:'''
