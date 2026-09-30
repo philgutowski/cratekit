@@ -476,7 +476,7 @@ def is_located(recorded: str) -> bool:
     )
 
 
-class Placement(Enum):
+class Mounting(Enum):
     """How one recorded location is written (R-773)."""
 
     #: Under the library root, or naming no file on this machine. Copied.
@@ -494,7 +494,7 @@ class Mounted:
     """What is written for one recorded location, and why."""
 
     location: str
-    placement: Placement
+    mounting: Mounting
     #: The leading prefix of a path under no rule, as the resolver names it.
     prefix: str | None = None
 
@@ -532,17 +532,17 @@ def mounted_location(
     try:
         _decoded, resolved = trees.located(recorded, root=root, prefix_map=prefix_map)
     except locations.LocationDecodeError:
-        return Mounted(recorded, Placement.AS_RECORDED)
+        return Mounted(recorded, Mounting.AS_RECORDED)
     if resolved.resolution is locations.Resolution.UNMAPPED:
-        return Mounted(recorded, Placement.UNDER_NO_RULE, prefix=resolved.prefix)
+        return Mounted(recorded, Mounting.UNDER_NO_RULE, prefix=resolved.prefix)
     if resolved.resolution is locations.Resolution.REMAPPED and resolved.path is not None:
         read_back = locations.resolve_recorded_path(
             resolved.path, root=root, prefix_map=prefix_map
         )
         if read_back.path == resolved.path:
-            return Mounted(resolved.path, Placement.PLACED)
-        return Mounted(recorded, Placement.LEFT_TO_ITS_RULE)
-    return Mounted(recorded, Placement.AS_RECORDED)
+            return Mounted(resolved.path, Mounting.PLACED)
+        return Mounted(recorded, Mounting.LEFT_TO_ITS_RULE)
+    return Mounted(recorded, Mounting.AS_RECORDED)
 
 
 #: Every character an XML 1.0 document may not carry, with the tab and the two
@@ -805,14 +805,14 @@ def render(
     remapped = 0
     for track in tracks:
         mounted = mounted_location(track.location, root=root, prefix_map=prefix_map)
-        if mounted.placement is Placement.PLACED:
+        if mounted.mounting is Mounting.PLACED:
             remapped += 1
             placed.append(replace(track, location=mounted.location))
             continue
-        if mounted.placement is Placement.UNDER_NO_RULE:
+        if mounted.mounting is Mounting.UNDER_NO_RULE:
             unmapped.append(track.track_id)
             prefixes[mounted.prefix or "?"] += 1
-        elif mounted.placement is Placement.LEFT_TO_ITS_RULE:
+        elif mounted.mounting is Mounting.LEFT_TO_ITS_RULE:
             left.append(track.track_id)
         placed.append(track)
 
@@ -868,9 +868,9 @@ __all__ = [
     "STAR_BYTES",
     "Document",
     "Mounted",
+    "Mounting",
     "NodeRow",
     "Omitted",
-    "Placement",
     "Provenance",
     "TrackRow",
     "clean_text",
