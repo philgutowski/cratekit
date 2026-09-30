@@ -2,8 +2,7 @@ name = "r770-c"
 pass_kind = "light"
 
 # The second half of the file verb's native path, the engine's new refusal,
-# the registry entry, and one of the native landing's existing guards as the
-# fixed sample.
+# the registry entry, and the composite the first table's sample zero owes.
 
 [[rows]]
 id = "C1_unplaceable_file_reaches_the_gate"
@@ -80,15 +79,13 @@ new = '''                prompt="Add this file to the collection?",
                 explicit=False,'''
 
 [[rows]]
-id = "S2_landing_takes_an_export_on_a_native_tree"
-description = "SAMPLE, an existing guard: _land_native does not refuse --export"
-file = "src/cratekit/intake/land_cli.py"
+id = "S1_composite_the_splice_takes_a_stub"
+description = "COMPOSITE for r770-a's S1, which was a zero: collection_xml.splice_tracks does not refuse a U22 stub listing, with place_files' own refusal left in place. The driver pairs only inside one batch, so the pairing is recorded in r770-notes.md"
+file = "src/cratekit/intake/collection_xml.py"
 surface = "user"
-tests = ["tests/test_intake_land_native.py"]
-old = '''    if ctx.args.export is not None:
-        raise refuse('''
-new = '''    if False:
-        raise refuse('''
+tests = ["tests/intake/test_pipeline.py", "tests/test_landing.py", "tests/test_intake_imported.py", "tests/intake/test_collection_xml.py"]
+old = '''    if is_stub_listing(raw):'''
+new = '''    if False:'''
 
 [[dropped]]
 id = "D1_refusal_steps_reworded"
@@ -114,3 +111,8 @@ reason = "ranked below the cap: a hint with no write behind it, held by four ass
 id = "D5_third_sample"
 description = "SAMPLE: native.apply_rows refuses a plan made against another root"
 reason = "ranked below the cap: measured by the table the native landing was built with, and this unit does not touch it"
+
+[[dropped]]
+id = "D6_second_sample"
+description = "SAMPLE: _land_native does not refuse --export on a native tree"
+reason = "gave its place to the composite r770-a's zero owed, so the three tables stay at 25 rows; tests/test_intake_land_native.py holds it by name"
