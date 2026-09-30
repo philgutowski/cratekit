@@ -43,6 +43,13 @@ refuse is asked of a copy BEFORE the first move, for the reason the export is.
 A label the disk then refuses is a warning over an intake file that stays,
 because by then every landed file has a routing intent that names it.
 
+TWO MEDIA SINCE R-746, CHOSEN BY THE INTAKE TREE'S MODE. On a library whose
+intake tree is on the xml bridge, :func:`apply` moves the files and splices
+them into an export, as above. On a library whose intake tree has cut over,
+:func:`apply_native` moves the same files the same way and then adds them to
+the collection through the guarded database writer, :mod:`cratekit.intake.native`,
+with no intake file and no import to wait on. The verb chooses.
+
 Layer: modules.
 """
 
@@ -55,13 +62,13 @@ import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from cratekit.acquire import listdoc, match, match_cli
 from cratekit.core import active_taxonomy, config, jobs, tags, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.naming import AUDIO_EXTS, NameTemplate
-from cratekit.intake import collection_xml, ingest
+from cratekit.intake import collection_xml, ingest, native
 from cratekit.intake.ingest import PlacedTrack
 from cratekit.write import rbxml, trees
 
@@ -852,6 +859,60 @@ def _reason_for(exc: OSError) -> str:
     return "intake-list-unusable"
 
 
+def _move(
+    plan: Plan,
+    target: Path,
+    movable: list[Path],
+    refused: list[Refused],
+    *,
+    nothing_after: str,
+) -> list[Moved]:
+    """Rename every movable file into ``target``, or refuse with the moves named.
+
+    THE ONE MOVE LOOP FOR BOTH MEDIA. The xml landing and the native landing
+    move the same files the same way and differ only in what they do next, and
+    ``nothing_after`` is the clause that names that: what a refusal here says
+    was not done. A batch folder this call made and put nothing in is taken
+    back. A file whose target is occupied is refused alone, asked again at the
+    move because a file of that name can arrive between the pass above and the
+    rename, and ``os.replace`` would take its place without a word (R-432).
+    """
+    made = not target.exists()
+    target.mkdir(parents=True, exist_ok=True)
+    moved: list[Moved] = []
+    for item in movable:
+        final = target / item.name
+        occupied = _occupied(item, final)
+        if occupied is not None:
+            refused.append(occupied)
+            continue
+        try:
+            os.replace(item, final)
+        except OSError as exc:
+            if made and not moved:
+                _remove_if_empty(target)
+            raise refuse(
+                _reason_for(exc),
+                f"{item.name} could not be moved to {final} ({exc.strerror or exc}); "
+                f"{nothing_after} and {_moved_sentence(moved)}",
+                origin=_ORIGIN,
+                detail=_moved_detail(moved, refused),
+            ) from exc
+        moved.append(Moved(source=item, target=final))
+
+    if not moved:
+        if made:
+            _remove_if_empty(target)
+        raise refuse(
+            "intake-list-unusable",
+            f"no file in {plan.folder} could land, so nothing was moved and "
+            f"{nothing_after}: " + "; ".join(entry.sentence for entry in refused),
+            origin=_ORIGIN,
+            detail=_moved_detail(moved, refused),
+        )
+    return moved
+
+
 def apply(
     plan: Plan,
     *,
@@ -915,44 +976,7 @@ def apply(
             detail=_moved_detail([], refused),
         )
 
-    made = not target.exists()
-    target.mkdir(parents=True, exist_ok=True)
-    moved: list[Moved] = []
-    for item in movable:
-        final = target / item.name
-        # Asked again at the move, not only in the pass above. Between the
-        # two a file of that name can arrive, and os.replace would take its
-        # place without a word. The window after THIS check is closed by the
-        # caller holding ``batch_lock``, not here (R-432).
-        occupied = _occupied(item, final)
-        if occupied is not None:
-            refused.append(occupied)
-            continue
-        try:
-            os.replace(item, final)
-        except OSError as exc:
-            if made and not moved:
-                _remove_if_empty(target)
-            raise refuse(
-                _reason_for(exc),
-                f"{item.name} could not be moved to {final} ({exc.strerror or exc}); "
-                f"no intake file was written and {_moved_sentence(moved)}",
-                origin=_ORIGIN,
-                detail=_moved_detail(moved, refused),
-            ) from exc
-        moved.append(Moved(source=item, target=final))
-
-    if not moved:
-        if made:
-            _remove_if_empty(target)
-        raise refuse(
-            "intake-list-unusable",
-            f"no file in {plan.folder} could land, so nothing was moved and no "
-            f"intake file was written: "
-            + "; ".join(entry.sentence for entry in refused),
-            origin=_ORIGIN,
-            detail=_moved_detail(moved, refused),
-        )
+    moved = _move(plan, target, movable, refused, nothing_after="no intake file was written")
 
     try:
         placed = ingest.place_files(
@@ -987,3 +1011,132 @@ def apply(
         labelled=tuple(labelled),
         unlabelled=tuple(unlabelled),
     )
+
+
+# ---------------------------------------------------------------------------
+# The native medium (R-746): the files move, then the collection gains them
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class LandedNative:
+    """A batch that reached the library and the collection, with no intake file."""
+
+    moved: tuple[Moved, ...]
+    refused: tuple[Refused, ...]
+    collection: native.NativeLanded
+
+
+def preflight_native(plan: Plan, *, cfg: config.Config) -> None:
+    """Every check the native apply makes before its first move, in its order.
+
+    The library half of :func:`preflight` and none of the export half: there is
+    no export and no intake file on this medium. Asked before the gate by the
+    verb and again by :func:`apply_native` before the moves, from one place, for
+    the reason :func:`preflight` gives.
+    """
+    _check_batch(plan.batch)
+    _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))
+
+
+def apply_native(
+    plan: Plan,
+    *,
+    cfg: config.Config,
+    db: Any,
+    rows: native.NativePlan,
+) -> LandedNative:
+    """Move the planned files into the library, then add them to the collection.
+
+    THE ORDER IS THE SAME CONTRACT AS THE XML LANDING: move first, then write
+    the rows over the moved paths, because a row stamped from staging dies the
+    moment staging is cleaned. ``rows`` is the plan the person approved, made
+    over the targets these moves produce, and the engine refuses a target it
+    was not planned for rather than inventing a row.
+
+    A FAILURE AFTER THE MOVES LEAVES THE FILES WHERE THEY ARE, in the library
+    and owned, and the refusal names them and says no row was added. The
+    database itself is all or nothing: every row and membership is pending on
+    one handle until one guarded commit, so the second of three files failing
+    leaves the collection exactly as it was. Nothing on this medium leaves an
+    intake file behind, because nothing writes one.
+
+    A FILE THE MOVE REFUSED IS NOT ADDED. A target that was occupied at the move
+    is refused alone, as it is on the bridge, and its planned row is dropped
+    before the engine runs, so the collection gains rows only for files this
+    call put where the rows say they are.
+    """
+    items = _list(plan.folder) if plan.folder.is_dir() else ()
+    if items != plan.items or _digest(items) != plan.digest:
+        raise refuse(
+            "decision-stale",
+            f"{plan.folder} changed after it was planned, so nothing was moved",
+            origin=_ORIGIN,
+            detail={"folder": str(plan.folder)},
+        )
+    preflight_native(plan, cfg=cfg)
+    target = target_dir(cfg, plan.batch)
+    planned = {str(row.target): row for row in rows.rows}
+    unplanned = [item.name for item in plan.items if str(target / item.name) not in planned]
+    if unplanned:
+        raise refuse(
+            "decision-stale",
+            f"{len(unplanned)} file(s) in {plan.folder} have no planned row "
+            f"({', '.join(unplanned)}), so nothing was moved",
+            origin=_ORIGIN,
+            detail={"folder": str(plan.folder), "unplanned": unplanned},
+        )
+
+    refused: list[Refused] = []
+    movable: list[Path] = []
+    for item in plan.items:
+        blocked = _occupied(item, target / item.name)
+        if blocked is not None:
+            refused.append(blocked)
+        else:
+            movable.append(item)
+    if not movable:
+        raise refuse(
+            "intake-list-unusable",
+            f"no file in {plan.folder} could land, so nothing was moved and no "
+            f"row was added: " + "; ".join(entry.sentence for entry in refused),
+            origin=_ORIGIN,
+            detail=_moved_detail([], refused),
+        )
+    moved = _move(plan, target, movable, refused, nothing_after="no row was added")
+
+    landed_targets = {str(item.target) for item in moved}
+    kept = replace_rows(rows, tuple(row for row in rows.rows if str(row.target) in landed_targets))
+    try:
+        collection = native.apply_rows(cfg, db, kept, analysis_roots=[Path(cfg.library.root)])
+    except Exception as exc:
+        # EVERY FAILURE PAST THE MOVES SAYS WHAT IT LEAVES, a binding error as
+        # much as a refusal: the files are in the library and the database is
+        # as it was, and a person reading the refusal has to be told both. A
+        # cause this product raised keeps its reason and remedy; anything else
+        # is reported as the defect it is, with the same sentence.
+        inner = exc.cause if isinstance(exc, CratekitError) else None
+        raise refuse(
+            inner.reason if inner is not None else "internal-error",
+            f"the collection could not be written ({inner.message if inner else exc}); "
+            f"no row was added and {_moved_sentence(moved)}",
+            remedy=inner.remediation.remedy if inner is not None else None,
+            steps=inner.remediation.steps if inner is not None else (),
+            origin=_ORIGIN,
+            detail={**_moved_detail(moved, refused), **(dict(inner.detail) if inner else {})},
+            inner=inner,
+        ) from exc
+    return LandedNative(moved=tuple(moved), refused=tuple(refused), collection=collection)
+
+
+def replace_rows(rows: native.NativePlan, kept: tuple[native.RowPlan, ...]) -> native.NativePlan:
+    """The plan over only the rows whose files this call moved.
+
+    THE DIGEST IS KEPT, deliberately. It is the digest the person approved, and
+    the rows dropped here are the ones the move refused and reported by name,
+    so the plan the engine writes is the approved plan minus what could not
+    land, not a new plan nobody saw.
+    """
+    from dataclasses import replace as _replace
+
+    return _replace(rows, rows=kept)

@@ -52,7 +52,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Callable
 
-from cratekit.core import active_taxonomy, config, session, snapshot, taxonomy
+from cratekit.core import config, session, snapshot
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 
@@ -695,7 +695,6 @@ def record_cutover(
             f"underneath this registry cannot be detected"
         )
     assert_rebuildable(tree_id, source)
-    assert_not_intake(tree_id, active_taxonomy.load(cfg))
     with config._exclusive_lock(lock_path(cfg)):
         current = read(cfg)
         standing = current.record(tree_id)
@@ -1214,31 +1213,6 @@ def refuse_database_write(tree_id: str, registry: Registry) -> None:
         )
 
 
-def assert_not_intake(tree_id: str, declared: taxonomy.Taxonomy) -> None:
-    """Refuse a cutover of the intake tree. It stays on the XML bridge (R16).
-
-    Rebuildability is the wrong question here. The intake tree can be
-    described by the taxonomy, so a caller could pass TAXONOMY and pass
-    :func:`assert_rebuildable`. The intake folder is still the XML bridge
-    for new files, and flipping it would make the next splice refuse the
-    one tree that is supposed to keep accepting imports.
-
-    ``declared`` is the library's active taxonomy (R-685), because the intake
-    folder a person renamed in their own declaration is the one this protects.
-    """
-    if tree_id == declared.intake.id:
-        raise TreeModeRefused(
-            f"the tree {tree_id!r} is this library's intake folder, so it "
-            f"stays on the XML bridge; new-track intake still arrives as an "
-            f"import and flipping it would refuse the splice that lands those "
-            f"rows",
-            tree_id=tree_id,
-            mode=Mode.XML,
-            attempted=Mode.DATABASE,
-            remedy=Remedy.COMPLETE_PENDING_ACTION,
-        )
-
-
 def assert_rebuildable(tree_id: str, source: DerivationSource | None) -> None:
     """Refuse a cutover for a tree whose membership nothing could rebuild (R39).
 
@@ -1343,7 +1317,6 @@ __all__ = [
     "PENDING_XML_SUFFIXES",
     "anchored_root",
     "assert_cutover_ready",
-    "assert_not_intake",
     "assert_rebuildable",
     "assert_revertible",
     "cutover_precheck",

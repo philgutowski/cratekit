@@ -1910,6 +1910,16 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
 #: fires is a gate the suite can hold a verb to.
 UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
     {
+        "intake.land.native": (
+            "asked only on a library whose intake tree is recorded database "
+            "native, and the conformance fixture's intake tree is on the xml "
+            "bridge, where the same verb asks intake.land.confirm instead. One "
+            "drive reaches one medium, and the medium is the tree's mode, not an "
+            "argument, so no argument list reaches both. The native gate, its "
+            "explicit two act answer and its refusals are driven in "
+            "tests/test_intake_land_native.py on a library whose intake tree has "
+            "cut over."
+        ),
         "write.cloudsync.unreadable": (
             "raised by the guarded writer only when rekordbox's Cloud Library "
             "Sync state cannot be READ, which is a property of the machine "

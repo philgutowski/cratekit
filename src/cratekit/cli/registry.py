@@ -2116,9 +2116,19 @@ ENTRIES: tuple[Entry, ...] = (
         #: database open. With ``--manifest`` the same XML also gains the label
         #: tree (U77): it is the intake file this run just made that is read
         #: and replaced, never the export, so the write surface is unchanged.
-        writes=frozenset({"xml", "files"}),
+        #: AND THE COLLECTION, SINCE R-746. On a library whose intake tree is
+        #: database native the same files, once moved, become content rows and
+        #: one batch playlist under the adopted intake root through the guarded
+        #: writer, behind the explicit gate below. The intake tree's mode
+        #: chooses, the way the routing verbs choose.
+        writes=frozenset({"xml", "files", "db_tree"}),
         destructive=True,
-        doctor_checks=("library.mounted",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="intake.land.confirm",
@@ -2126,6 +2136,17 @@ ENTRIES: tuple[Entry, ...] = (
                 prompt="Move these files into the library and write the intake file?",
                 digest_source="plan",
             ),
+            # R-746. Content rows in the collection are a new kind of write,
+            # answered by a separate recorded act and never inline (R34), and
+            # the plan it binds to names every row with every column it sets.
+            GateSpec(
+                name="intake.land.native",
+                options=("apply", "abort"),
+                prompt="Move these files into the library and add them to the collection?",
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     # ── The deferred mark (U82) ─────────────────────────────────────────────

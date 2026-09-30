@@ -181,7 +181,10 @@ def derivation_source(
     routing tree is the one tree the declared taxonomy reproduces from what is
     on disk. The catalogue tree is declared and is NOT reproducible, so it is
     named with its real source and ``assert_rebuildable`` refuses it. The intake
-    tree is refused by ``assert_not_intake`` before its source is ever read.
+    tree cuts over on the same answer as the routing tree since R-746: its
+    batches are one folder of playlists the taxonomy declares, and once it is
+    native the landing adds rows to the collection through the database and
+    no splice is owed the bridge.
 
     A TREE THE TAXONOMY DOES NOT DECLARE IS REFUSED rather than called curated.
     An identifier nobody declared is far more often a misspelling than a
@@ -328,7 +331,6 @@ def cutover(ctx: "Context") -> Envelope:
     export = Path(ctx.args.export).expanduser().resolve()
 
     source = derivation_source(declared, tree_id)
-    tree_registry.assert_not_intake(tree_id, declared)
     tree_registry.assert_rebuildable(tree_id, source)
 
     standing = tree_registry.read(cfg).record(tree_id)
