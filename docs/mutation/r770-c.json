@@ -1,0 +1,189 @@
+{
+  "name": "r770-c",
+  "pass_kind": "light",
+  "branch": "relay/230",
+  "head": "f06e960",
+  "when": "2026-09-30 14:12 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10949,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "state_guarded": "~/Library/Application Support/cratekit (84202 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/file_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/file_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "528fb0db139596b5",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10949,
+    "baseline_collected": 10949,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_unplaceable_file_reaches_the_gate",
+      "description": "_file_native: do not ask whether a declared sub would take the file",
+      "file": "src/cratekit/intake/file_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c520e6abeddcbe96",
+      "subset": [
+        "tests/test_intake_writers_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_writers_native.py::test_a_file_no_declared_sub_would_take_is_refused_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ingest.decide_placement(meta, declared) is None:",
+      "new": "    if False:"
+    },
+    {
+      "id": "C2_untyped_suffix_reaches_the_gate",
+      "description": "_file_native: do not refuse a suffix the database has no file type for",
+      "file": "src/cratekit/intake/file_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bd4986f00ad09251",
+      "subset": [
+        "tests/test_intake_writers_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_writers_native.py::test_a_suffix_the_database_has_no_type_for_is_refused_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if native.file_type_of(target) is None:",
+      "new": "    if False:"
+    },
+    {
+      "id": "C3_failure_past_the_gate_loses_its_reason",
+      "description": "write: report every failure past the gate as internal-error, whatever refused",
+      "file": "src/cratekit/intake/file_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b94b5291c1592deb",
+      "subset": [
+        "tests/test_intake_writers_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_writers_native.py::test_a_refusal_past_the_gate_keeps_its_reason_and_remedy"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                inner.reason if inner is not None else \"internal-error\",",
+      "new": "                \"internal-error\","
+    },
+    {
+      "id": "C4_failure_past_the_gate_loses_its_remedy",
+      "description": "write: drop the inner refusal's remedy, so the reason's default answers",
+      "file": "src/cratekit/intake/file_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "be2ddf95de789fcf",
+      "subset": [
+        "tests/test_intake_writers_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_writers_native.py::test_a_refusal_past_the_gate_keeps_its_reason_and_remedy"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                remedy=inner.remediation.remedy if inner is not None else None,",
+      "new": "                remedy=None,"
+    },
+    {
+      "id": "C5_playlist_named_for_the_whole_file_name",
+      "description": "_file_native: name the batch playlist with the suffix on, a nearby name",
+      "file": "src/cratekit/intake/file_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "797abe2364d17d9c",
+      "subset": [
+        "tests/test_intake_writers_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_writers_native.py::test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row",
+        "tests/test_intake_writers_native.py::test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root",
+        "tests/test_intake_writers_native.py::test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            batch=path.stem,",
+      "new": "            batch=path.name,"
+    }
+  ],
+  "dropped": []
+}
