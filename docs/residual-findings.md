@@ -30831,3 +30831,127 @@ landing until it lands.
 **Closes when:** `intake imported` proves an import over a file
 `crate export collection` wrote, on a library whose `BaseDBDrive` differs
 from its mounted root, with no edit between the two verbs.
+
+**Closed 2026-09-30 on `relay/229`, issue #229, fixed in the code, with the
+proof on the author's library still owed.** The first remedy was taken.
+`collection_export.render` takes the library root and the prefix rules as
+required arguments and resolves each recorded location through
+`trees.located`, the decode and resolve step doctor's survey reads a row
+through. A row a rule places is written under the rule's target through the
+one encoder. `intake imported` is unchanged.
+
+**What the closing condition was met on.** A fixture whose rows and whose
+`djmdProperty` row name a base drive nothing mounts, with the one rule
+`from` that drive `to = "{library.root}"`, which is the shape of the rule
+the author's configuration holds, read from the installed configuration and
+not from the database. `intake land`, the import simulated by the rows it
+adds recorded under the base drive, `crate export collection`, `intake
+imported`: proven, two tracks, the export's bytes equal before and after the
+proof. With no rule recorded the same sequence ends `PENDING_HUMAN`, which
+is sitting 19 reproduced. **Not run on the author's library.** That needs a
+landing, an import and rekordbox, which an unattended run does not open.
+`docs/cutover.md` holds it for the next attended sitting.
+
+**Three things the brief did not say, decided by the build.**
+
+- **A rule is followed only where its target reads back as itself.** The
+  verbs that take an export resolve each location through the same root and
+  rules. A path under the root resolves to itself. A path a rule sends to a
+  second volume does not, and written there it resolves under no rule, where
+  the recorded spelling had resolved through the rule. The review drove this:
+  the playlist export read no ISRC for such a row. So a row is rewritten only
+  when resolving the rewritten path gives the same path, and is otherwise
+  left to its rule, written as the database holds it, and counted in
+  `locations_left_to_a_rule`. That is also what rekordbox writes for a drive
+  other than its own.
+- **The count of rows under no rule is the survey's.** The warning
+  `export-location-unmapped` names the count, up to three leading prefixes
+  and the first five rows, and says doctor counts the same rows. A test holds
+  the export's count equal to `metadata_cli.resolution_totals` on one
+  database. No doctor check was added, and `export.collection` now declares
+  `library.paths_resolved`.
+- **With no rule recorded the file is still written.** The review asked for
+  a refusal, or for the database's own drive pair as a fallback. The brief
+  asks for the row written as held and counted, and the resolver's own rule
+  is that a root swapped in without being told to is an invented fact.
+  R-772 stays the record of the two spellings disagreeing.
+
+**The review and the tables.** The built in review raised nine findings.
+Five were applied, two were not and say why in the commit, two are R-774 and
+R-775 below, and R-776 is what the second of the five left open.
+`docs/mutation/r773-notes.md`: 26 rows, 26 killed, one over the cap, the
+author's. One learning is filed under `docs/solutions/integration-issues/`.
+
+---
+
+## R-774. The rows under no rule include rows no rule could ever place, so the export's warning is never quiet on a real library
+
+**Found:** on `relay/229`, 2026-09-30, by the built in review.
+`Resolution.UNMAPPED` is every absolute path under neither the root nor a
+rule, whether or not the file is there. On the author's library that is the
+streamed rows rekordbox records as `/v4/catalog/tracks/<id>/`, which open
+with a slash and so reach the resolver as paths, the demo tracks, and rows
+imported from a downloads folder whose file is exactly where the row says.
+`crate export collection` warns over all of them on every run and reports
+`export.locations` as `info`, as doctor's `library.paths_resolved` does. The
+streamed rows are also written as file locations, which they were before
+this unit, and are counted in `tracks_under_no_rule` and not in
+`tracks_without_a_file`.
+
+**Measured cost.** Not measured on the live library by this unit. Sitting
+notes record 167 of 9,937 rows under no rule after the rule was typed, and
+`write/naming_cli.py` records 137 streamed rows of that shape. A drive that
+goes dark later shows as a new prefix in the warning, which is why the
+prefixes are named, and the count alone would hide it.
+
+**Closes when:** the survey tells a row whose recorded file exists, and a
+row that names a provider's catalogue, apart from a row on a drive nothing
+mounts, in one place that doctor and the export both read.
+
+**Not on the board bar.** The warning is true as worded and nothing is lost.
+
+---
+
+## R-775. The prefix rules are built from the configuration in thirteen places
+
+**Found:** on `relay/229`, 2026-09-30, by the built in review. The list
+`locations.PrefixRule(source, target) for source, target in
+cfg.resolved_prefix_map()` is written out in `write/trees.py`,
+`write/rebuild.py`, `write/routing_pass.py`, `write/routing_cli.py` twice,
+`write/naming_cli.py`, `write/metadata_cli.py`, `intake/native.py` twice,
+`adopt/collection.py`, `modules/outbound/source.py`, `deletion/run.py` with
+the volume identity, and now `cli/export_collection.py`. Counted by grep on
+the branch. The export's count agrees with doctor's only while both build
+the rules the same way, and a test holds the two counts equal on one
+fixture.
+
+**Measured cost.** None today. One more copy to miss when a rule gains a
+field.
+
+**Closes when:** one function in `core` builds the rules and every caller
+reads it.
+
+**Not on the board bar.** Maintainer facing.
+
+---
+
+## R-776. A prefix rule whose target is not an absolute path is accepted, and nothing names it
+
+**Found:** on `relay/229`, 2026-09-30, by the built in review and then
+driven. `library.location_prefix_map[n].to` is validated as a string that
+is not empty and carries no unknown token. A target such as `Music` loads.
+`resolve_recorded_path` answers a row under that rule `REMAPPED` with a path
+that does not open with a slash, doctor's survey counts the row as mapped,
+and every reader then finds no file at it. The export leaves such a row to
+its rule and counts it in `locations_left_to_a_rule`, beside the rows a rule
+sends to a second volume, and neither surface says the rule itself is wrong.
+
+**Measured cost.** Reachability unmeasured. The input needs a rule typed by
+hand, since setup writes the target from the drive pair or as the root
+token. One emitter test drives the export's half.
+
+**Closes when:** configuration validation refuses a target that is neither
+an absolute path nor one opening with the root token, or doctor reports a
+rule whose target no reader can follow.
+
+**Not on the board bar.** Reachability unmeasured.

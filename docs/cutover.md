@@ -575,8 +575,18 @@ owed next: the four decisions of 2026-09-29 evening (the MONKYMAN row
 removed in rekordbox, the lossy Satisfy accepted, the two version match
 review items resolved and downloaded), then #227's `adopt move` rehearsed
 on a copy and run live if the digest matches, then `intake imported` driven
-again once R-773 lands. Stop the feeder first: rekordbox and a Relay build
-do not share the machine (R-759).
+again now that R-773 is built. Stop the feeder first: rekordbox and a Relay
+build do not share the machine (R-759).
+
+**Owed by R-773, built on `relay/229`, 2026-09-30, and it is that unit's own
+verification.** On this library, after the next landing and its import, run
+`crate export collection` and hand the file to `intake imported` with no
+edit between the two verbs. Expected: the run proven, the intake file
+retired, `locations_remapped` in the export's summary near the count of rows
+recorded under the base drive, and the warning `export-location-unmapped`
+naming the rows under no rule by prefix. The installed copy needs the new
+build before the sitting. Record the outcome here, since the issue's closing
+condition names this file.
 
 Owed by the author: a genre on the INBOX rows that carry none.
 
