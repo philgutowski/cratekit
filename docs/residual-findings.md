@@ -1602,6 +1602,19 @@ space, and neither was driven. Not this unit's to fix, per the owner line above,
 and recorded so the next flake of this shape is read as a second measurement
 rather than a first.
 
+**A possible further measurement, `relay/230`, 2026-09-30, not confirmed as
+this.** `tests/test_restore.py::test_round2_three_attempts_stage_their_logs_side_by_side`
+failed once in a full parallel run, 1 failed and 10,944 passed, on a run
+that took 111 seconds against the usual 80, with `session
+2026-09-30T13:54:56Z-da4e recorded no capture, so there is nothing to
+restore it from`. The test opens a completed session and three recovery
+sessions inside one loop. It passed three times alone, once in its own file,
+and in each of the twelve other full runs that branch had made when this
+was written, the driver's nine among them. The message is what a recovery session taking
+the completed session's identifier would produce. The identifiers were not
+captured, so that is a reading and not a measurement, and the branch does
+not touch restore or sessions.
+
 **What must NOT close it.** Narrowing the capture stamp to 16 bits for symmetry.
 The stamp's width is load bearing for a reason written down beside it, and
 symmetry achieved by taking the argued side down to the unargued one is the wrong
@@ -30742,6 +30755,76 @@ cycle, cannot finish on a library whose intake tree has cut over, and the
 refusal says something false about whose defect it is. The issue is owed
 after the merge that carries this entry.
 
+**Closed 2026-09-30 on `relay/230`, issue #230, fixed in the code, with the
+drive on a cut over copy still owed.**
+
+**The list above was read, and driven it is shorter.** Two callers reach
+`rbxml.insert_intake_playlist` in `src`, `ingest.place_files` and the
+landing's pre-move check, and one verb besides the landing drives them,
+`intake file`. `sync favorites` hearts on the account and writes nothing to
+the library. `sync all` queues each source under that source's own key.
+`sync labels` offers releases to the review queue. None of them splices, and
+each is now driven on a native fixture and on a bridge fixture with the same
+outcome and the intake tree left alone. The suffixes `pending_intake_xml`
+walks name files this product once wrote or still checks for, not verbs.
+
+**What was built.**
+
+- **One switch.** `ingest.intake_medium` reads the active taxonomy and the
+  tree registry and answers whether the intake tree is native. `intake land`
+  and `intake file` both call it, and under `intake` no other module reads a
+  tree's mode.
+- **The splice refuses in its own words.** `ingest.bridge_intake_tree` is the
+  one place that builds the tree a splice is handed, and it refuses a native
+  one first: `tree-unconverged`, remedy `fix-command-line`, naming `intake
+  land` and `intake file`. `place_files` asks the same refusal before it
+  looks for the export. The write layer names no verb, so this could not sit
+  beside the emitter guard, whose `report-defect` stays for a writer that
+  reaches it by mistake.
+- **`intake file` takes the native path.** On a native intake tree it refuses
+  `--export` by name, a file under staging, a file outside the library, a
+  file no declared sub would take and a suffix the database has no type for,
+  all before the database is opened. Then it plans one content row and one
+  batch playlist under the adopted root through `native.plan_rows`, reads the
+  backup acknowledgment, asks the explicit gate `intake.file.native`, and
+  writes through `native.apply_rows`, which is unchanged. No tempo, grid, key
+  or analysis row is written, read from SQL column by column after the
+  commit.
+- **One order for both verbs.** `land_cli.ask_then_write` holds it: database
+  opened with write intent, plan, acknowledgment, gate, write, close.
+- **`intake missing --run`** no longer tells a person to pass `--export` to
+  the landing. The hint holds on both media and reads neither.
+
+**Four things the brief did not say, decided by the build.**
+
+- **On the native medium the file has to be in the library.** The bridge
+  takes a file anywhere, since a Location is text. A row is matched against
+  the collection by resolving its path under the library root, and the
+  review drove what that meant: a file outside the root was planned as an
+  add, written, and planned as an add again on the next run. The verb
+  refuses such a file, and the engine now refuses a target the matcher could
+  not resolve instead of reading unresolved as absent.
+- **The row is spelled under the root as configured**, not as resolved, the
+  way the native landing spells its targets.
+- **The native playlist is the file's stem.** The bridge names a batch
+  playlist after its intake file, suffix and all. The native landing already
+  names its playlist by the bare batch, so the file verb follows the medium.
+  The playlist is found or made by name under the root, so a file whose stem
+  is the name of a batch already there joins it, as a second landing under
+  one batch name does.
+- **The plan only path reads the medium first**, on the bridge too, so a
+  taxonomy or a registry nobody can read refuses `intake file` where it used
+  to show a plan.
+
+**The review and the tables.** The built in review raised ten findings.
+Eight were applied, each with a test. Two are R-777 and R-778 below.
+`docs/mutation/r770-notes.md`: 25 rows, 24 killed, one zero on a sample
+guard with its composite, the author's. R-779 is that zero. One learning is
+filed under `docs/solutions/workflow-issues/`.
+
+**Not run on a cut over library.** No library's intake tree has cut over
+yet. `docs/cutover.md` holds the drive for the next attended sitting.
+
 ---
 
 ## R-771. A manifest is refused on a native intake tree, so label filing has no native path
@@ -30955,3 +31038,78 @@ an absolute path nor one opening with the root token, or doctor reports a
 rule whose target no reader can follow.
 
 **Not on the board bar.** Reachability unmeasured.
+
+---
+
+## R-777. sync mark reads an intake file a native landing never writes, so a sync pass cannot be marked once the intake tree cuts over
+
+**Found:** on `relay/230`, 2026-09-30, while measuring what R-770's list
+actually named, and raised again by the built in review. `sync mark` takes
+`--xml`, required, and reads two things off that file: the pass's name, from
+the file's own name, and the set of landed locations. A landing on a native
+intake tree writes no intake file, so after `crate tree cutover inbox` there
+is nothing to hand the verb. The account playlists a pass finished are never
+prefixed, and the next pass offers them again.
+
+**Measured cost.** Read off `mark_cli.build_mark`, whose `--xml` is required,
+and off the native landing, whose suite holds that no intake file is
+written. Not driven end to end. No library's intake tree has cut over, so
+nobody has met it.
+
+**What a fix looks like.** The verb needs the pass's name and nothing else
+from the file on a native tree: a landed track is in the music folder by
+then, and the verb already counts a track the library holds as finished. So
+a `--name` for the pass, taken on a native intake tree through
+`ingest.intake_medium`, with `--xml` kept for the bridge.
+
+**Closes when:** a sync pass landed on a native intake tree is marked, and a
+test drives it, or `sync mark` refuses on a native tree in its own words and
+says what to do instead.
+
+**On the board bar, 2026-09-30.** A workflow a DJ needs, marking a playlists
+pass, cannot finish on a library whose intake tree has cut over, (c). The
+guide and `CONCEPTS.md` say so. The issue is owed after the merge that
+carries this entry.
+
+---
+
+## R-778. Planning one row reads the file's tags three times and indexes the whole collection
+
+**Found:** on `relay/230`, 2026-09-30, by the built in review. `intake file`
+on a native tree reads artist and title in `normalize.from_audio_file`,
+every tag again in `ingest.read_meta` for the placement check, and every tag
+a third time inside `native.plan_rows`, which then walks every active row of
+the collection through `index_active_rows` to match one path. The explicit
+gate makes each write two invocations, so all of it runs twice.
+
+**Measured cost.** Not timed on a library of the author's size. The landing
+pays the same index once per invocation for a whole batch, and
+`native._taken_since_the_plan` already matches by a candidate query over the
+file name.
+
+**Closes when:** the plan for one file matches against candidate rows and
+takes the meta its caller already read, or a timing on the author's library
+shows the cost is not worth the change.
+
+**Not on the board bar.** Nothing is wrong in what is written.
+
+---
+
+## R-779. place_files refuses a stub listing and kills nothing, since splice_tracks refuses it one call later
+
+**Found:** on `relay/230`, 2026-09-30, by the mutation table, on the fixed
+sample row and not on the unit's own diff. `ingest.place_files` refuses a
+U22 stub listing with `intake-export-is-stub` before it splices.
+`collection_xml.splice_tracks` refuses the same file with the same reason.
+Removing the first kills 0 of 10,949. Removing the second, with the first in
+place, kills 2 of 108.
+
+**Measured cost.** None to a person: the stub is refused. The outer refusal
+is a copy no test tells from the inner one, so a change to either sentence
+or either condition can drift unseen.
+
+**Closes when:** one of the two is removed, or a test reaches
+`place_files`' own refusal by a path that does not pass through
+`splice_tracks`.
+
+**Not on the board bar.** The path is guarded.

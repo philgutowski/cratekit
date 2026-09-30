@@ -1,0 +1,202 @@
+{
+  "name": "r770-d",
+  "pass_kind": "light",
+  "branch": "relay/230",
+  "head": "e1239d2",
+  "when": "2026-09-30 14:17 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10949,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "state_guarded": "~/Library/Application Support/cratekit (84202 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/file_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/file_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "528fb0db139596b5",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10949,
+    "baseline_collected": 10949,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C6_digest_without_the_collection_plan",
+      "description": "_native_payload: take the digest over the verb's own plan alone, so a changed row is not a changed plan",
+      "file": "src/cratekit/intake/file_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9d04dc22018dd4d1",
+      "subset": [
+        "tests/test_intake_writers_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_writers_native.py::test_an_answer_is_stale_once_the_file_itself_changed_under_the_same_tags"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    identity = {\"kind\": \"file\", \"file\": plan[\"digest\"], \"collection\": rows.digest}",
+      "new": "    identity = {\"kind\": \"file\", \"file\": plan[\"digest\"]}"
+    },
+    {
+      "id": "C7_unresolved_target_planned_as_an_add",
+      "description": "native.plan_rows: read a target the matcher could not resolve as a file the collection does not hold",
+      "file": "src/cratekit/intake/native.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "02ef6960843acc77",
+      "subset": [
+        "tests/test_intake_writers_native.py",
+        "tests/test_intake_land_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_writers_native.py::test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_add"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if match.outcome is trees.MatchOutcome.UNRESOLVED:",
+      "new": "        if False:"
+    },
+    {
+      "id": "C8_native_gate_answered_inline",
+      "description": "registry: declare intake.file.native as an ordinary gate, answerable on the run that found it",
+      "file": "src/cratekit/cli/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a777664e7da39020",
+      "subset": [
+        "tests/test_intake_writers_native.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 706,
+      "baseline_collected": 706,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_writers_native.py::test_a_binding_failure_past_the_gate_says_what_it_leaves",
+        "tests/test_intake_writers_native.py::test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row",
+        "tests/test_intake_writers_native.py::test_a_file_named_through_a_link_is_stored_under_the_configured_root",
+        "tests/test_intake_writers_native.py::test_a_refusal_past_the_gate_keeps_its_reason_and_remedy",
+        "tests/test_intake_writers_native.py::test_after_the_write_no_analysis_value_is_on_the_new_row_column_by_column",
+        "tests/test_intake_writers_native.py::test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root",
+        "tests/test_intake_writers_native.py::test_the_native_gate_takes_no_inline_answer",
+        "tests/test_intake_writers_native.py::test_the_row_carries_the_librarys_own_device"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                prompt=\"Add this file to the collection?\",\n                explicit=True,",
+      "new": "                prompt=\"Add this file to the collection?\",\n                explicit=False,"
+    },
+    {
+      "id": "S1_composite_the_splice_takes_a_stub",
+      "description": "COMPOSITE for r770-a's S1, which was a zero: collection_xml.splice_tracks does not refuse a U22 stub listing, with place_files' own refusal left in place. The driver pairs only inside one batch, so the pairing is recorded in r770-notes.md",
+      "file": "src/cratekit/intake/collection_xml.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fd6a23fc9b599be4",
+      "subset": [
+        "tests/intake/test_pipeline.py",
+        "tests/test_landing.py",
+        "tests/test_intake_imported.py",
+        "tests/intake/test_collection_xml.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 108,
+      "baseline_collected": 108,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_collection_xml.py::test_a_u22_stub_listing_is_not_a_splice_target",
+        "tests/test_landing.py::test_a_stub_export_is_refused_before_any_move"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if is_stub_listing(raw):",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_refusal_steps_reworded",
+      "description": "assert_intake_on_the_bridge: reword the step that names crate intake land",
+      "reason": "ranked below the cap: a message row on the refusal A4 already measures by its remedy, and the step's words are asserted by the same helper"
+    },
+    {
+      "id": "D2_export_refusal_loses_its_remedy",
+      "description": "_file_native: drop fix-command-line from the refusal of --export",
+      "reason": "ranked below the cap: same refusal as B6, which removes it whole"
+    },
+    {
+      "id": "D3_digest_without_the_verbs_own_plan",
+      "description": "_native_payload: take the digest over the collection plan alone",
+      "reason": "ranked below the cap: the other half of C6, with its own test, an answer going stale when the artist changes; the half that covers what is written is the one measured"
+    },
+    {
+      "id": "D4_missing_hint_reworded",
+      "description": "intake missing: put --export back in front of the landing the hint names",
+      "reason": "ranked below the cap: a hint with no write behind it, held by four assertions in tests/test_intake_missing.py"
+    },
+    {
+      "id": "D5_third_sample",
+      "description": "SAMPLE: native.apply_rows refuses a plan made against another root",
+      "reason": "ranked below the cap: measured by the table the native landing was built with, and this unit does not touch it"
+    },
+    {
+      "id": "D6_second_sample",
+      "description": "SAMPLE: _land_native does not refuse --export on a native tree",
+      "reason": "gave its place to the composite r770-a's zero owed, so the three tables stay at 25 rows; tests/test_intake_land_native.py holds it by name"
+    }
+  ]
+}

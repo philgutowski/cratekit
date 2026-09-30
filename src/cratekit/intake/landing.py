@@ -425,6 +425,12 @@ def _check_export(
     asked of the same copy, after the intake playlist is in it, which is the
     document the writer will actually be handed.
     """
+    # BEFORE THE EXPORT IS LOOKED FOR (R-770). A caller that arrives here on a
+    # native intake tree did not read the switch, or read it before a cutover
+    # was recorded, and the splice's own refusal names the landing that takes
+    # that medium, where the emitter guard below would ask for a defect report
+    # over a cutover the person chose.
+    tree = ingest.bridge_intake_tree(checked.declared, checked.registry)
     if not export.is_file():
         raise refuse(
             "library-export-unusable",
@@ -435,7 +441,6 @@ def _check_export(
     trial = bytearray(export.read_bytes())
     collection_xml.splice_tracks(trial, [])
     registry = checked.registry
-    tree = rbxml.intake_tree(checked.declared, registry)
     error = rbxml.insert_intake_playlist(trial, destination.stem, [], tree=tree)
     if error:
         raise refuse(

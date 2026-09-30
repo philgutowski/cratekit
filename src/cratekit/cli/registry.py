@@ -1071,15 +1071,42 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="intake.file",
         summary="ingest one audio file already on disk",
-        module="cratekit.intake.cli",
+        module="cratekit.intake.file_cli",
         builder="build_file",
         handler_key="intake.file",
         feature_rows=(4,),
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        writes=frozenset({"xml", "files"}),
+        #: AND THE COLLECTION, SINCE R-770. On a library whose intake tree is
+        #: database native the file becomes one content row and one batch
+        #: playlist under the adopted intake root, through the engine the
+        #: landing uses and behind the explicit gate below. The intake tree's
+        #: mode chooses, through the switch the landing reads. On the bridge
+        #: the write is the intake file it always was.
+        writes=frozenset({"xml", "files", "db_tree"}),
         destructive=True,
-        doctor_checks=("library.mounted",),
+        #: The database checks hold for the native medium only, and doctor
+        #: already requires all three, for the reason the landing's entry gives.
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
+        gates=(
+            # R-770. One content row is the same new kind of write the native
+            # landing makes, so it is answered the same way: by a separate
+            # recorded act, never inline (R34), over a plan naming every
+            # column the row sets.
+            GateSpec(
+                name="intake.file.native",
+                options=("apply", "abort"),
+                prompt="Add this file to the collection?",
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
     ),
     Entry(
         name="tag.folder",

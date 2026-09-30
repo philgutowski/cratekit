@@ -1,0 +1,80 @@
+name = "r770-b"
+pass_kind = "light"
+
+# The shared order and the landing shell, `intake/land_cli.py`, then the first
+# half of the file verb's native path, `intake/file_cli.py`: what refuses
+# before the database is opened.
+
+[[rows]]
+id = "B1_landing_never_takes_the_native_path"
+description = "intake_land: ignore the switch, so a native intake tree is landed through the bridge"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''    if medium.native:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B2_gate_asked_before_the_acknowledgment"
+description = "ask_then_write: ask the gate without reading the backup acknowledgment first, on both verbs"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
+old = '''        session.assert_backup_acknowledged(cfg)
+'''
+new = ""
+
+[[rows]]
+id = "B3_an_abort_writes"
+description = "ask_then_write: write whatever the answer was"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
+old = '''        if option != "apply":'''
+new = '''        if option == "never":'''
+
+[[rows]]
+id = "B4_warns_of_analysis_when_nothing_joined"
+description = "awaiting_analysis: warn that rows await analysis when no row was added"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
+old = '''    if not collection.added:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B5_file_verb_never_takes_the_native_path"
+description = "intake_file: ignore the switch, which is the verb as it was before this unit"
+file = "src/cratekit/intake/file_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''    if medium.native:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B6_export_taken_on_a_native_tree"
+description = "_file_native: do not refuse --export, so an export named on a native tree is silently ignored"
+file = "src/cratekit/intake/file_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''    if ctx.args.export is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B7_staging_not_asked_first"
+description = "_file_native: drop the staging refusal, so a staged file is told it is outside the library"
+file = "src/cratekit/intake/file_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''    ingest.assert_not_staging(path, cfg)
+'''
+new = ""
+
+[[rows]]
+id = "B8_target_spelled_as_resolved"
+description = "_in_the_library: answer the resolved path, so a file outside the library is not refused and a linked root is spelled through"
+file = "src/cratekit/intake/file_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''        return root / path.resolve().relative_to(root.resolve())'''
+new = '''        return path.resolve()'''

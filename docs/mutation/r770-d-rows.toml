@@ -1,0 +1,74 @@
+name = "r770-d"
+pass_kind = "light"
+
+# The digest, the engine's new refusal, the gate declaration, and the composite
+# the first table's sample zero owes. The rows considered and not run, for all
+# four tables, are logged here.
+
+[[rows]]
+id = "C6_digest_without_the_collection_plan"
+description = "_native_payload: take the digest over the verb's own plan alone, so a changed row is not a changed plan"
+file = "src/cratekit/intake/file_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''    identity = {"kind": "file", "file": plan["digest"], "collection": rows.digest}'''
+new = '''    identity = {"kind": "file", "file": plan["digest"]}'''
+
+[[rows]]
+id = "C7_unresolved_target_planned_as_an_add"
+description = "native.plan_rows: read a target the matcher could not resolve as a file the collection does not hold"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
+old = '''        if match.outcome is trees.MatchOutcome.UNRESOLVED:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C8_native_gate_answered_inline"
+description = "registry: declare intake.file.native as an ordinary gate, answerable on the run that found it"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_cli_contract.py"]
+old = '''                prompt="Add this file to the collection?",
+                explicit=True,'''
+new = '''                prompt="Add this file to the collection?",
+                explicit=False,'''
+
+[[rows]]
+id = "S1_composite_the_splice_takes_a_stub"
+description = "COMPOSITE for r770-a's S1, which was a zero: collection_xml.splice_tracks does not refuse a U22 stub listing, with place_files' own refusal left in place. The driver pairs only inside one batch, so the pairing is recorded in r770-notes.md"
+file = "src/cratekit/intake/collection_xml.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/test_landing.py", "tests/test_intake_imported.py", "tests/intake/test_collection_xml.py"]
+old = '''    if is_stub_listing(raw):'''
+new = '''    if False:'''
+
+[[dropped]]
+id = "D1_refusal_steps_reworded"
+description = "assert_intake_on_the_bridge: reword the step that names crate intake land"
+reason = "ranked below the cap: a message row on the refusal A4 already measures by its remedy, and the step's words are asserted by the same helper"
+
+[[dropped]]
+id = "D2_export_refusal_loses_its_remedy"
+description = "_file_native: drop fix-command-line from the refusal of --export"
+reason = "ranked below the cap: same refusal as B6, which removes it whole"
+
+[[dropped]]
+id = "D3_digest_without_the_verbs_own_plan"
+description = "_native_payload: take the digest over the collection plan alone"
+reason = "ranked below the cap: the other half of C6, with its own test, an answer going stale when the artist changes; the half that covers what is written is the one measured"
+
+[[dropped]]
+id = "D4_missing_hint_reworded"
+description = "intake missing: put --export back in front of the landing the hint names"
+reason = "ranked below the cap: a hint with no write behind it, held by four assertions in tests/test_intake_missing.py"
+
+[[dropped]]
+id = "D5_third_sample"
+description = "SAMPLE: native.apply_rows refuses a plan made against another root"
+reason = "ranked below the cap: measured by the table the native landing was built with, and this unit does not touch it"
+
+[[dropped]]
+id = "D6_second_sample"
+description = "SAMPLE: _land_native does not refuse --export on a native tree"
+reason = "gave its place to the composite r770-a's zero owed, so the three tables stay at 25 rows; tests/test_intake_land_native.py holds it by name"

@@ -168,7 +168,15 @@ crate match run /path/to/tracklist.txt
 - `intake file` shows a plan by default. It writes only when you also pass
   `--export` with the collection export to splice the track into. It then ends
   waiting on you the way `intake land` does, naming the file to import, and is
-  settled the same way, with `crate intake imported`.
+  settled the same way, with `crate intake imported`. Once your intake tree
+  has cut over to the database it takes no export and refuses one: it plans
+  one collection row for the file where it sits and one playlist under your
+  INBOX folder, named for the file, and asks
+  `intake.file.native`, which is answered by a separate `crate run decide`.
+  The file is not moved, nothing about the audio is written, and the row
+  awaits an analysis you ask rekordbox for, as a native landing's rows do. On
+  that path the file has to be inside your library, since a row for a file
+  outside it could not be matched against the collection again.
 - `intake set` takes a recording on this machine, or the web address of a mix.
   An address is fetched with `yt-dlp` into a scratch folder outside the
   library, identified, and removed again, because a mix is input and not
@@ -277,8 +285,9 @@ playlists share is listed once, and the list's manifest names both playlists.
 A job still running refuses the whole run. A job that failed or was cancelled
 is named and refuses the run too, unless you pass `--skip-failed`, which lists
 the rest and reports what it left out as a failing line. The output names the
-`--name` to give `intake land`, beside the `--export` it always needs, so the
-landed batch carries the run's name.
+`--name` to give `intake land`, and says that the landing takes `--export`
+while your intake tree is on the xml bridge and no export once it is database
+native, so the landed batch carries the run's name on either.
 
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
@@ -391,6 +400,12 @@ changed since the plan is skipped, and a playlist already carrying the prefix is
 never prefixed twice. If a rename fails part way, the run names the playlists it
 had already renamed, and running it again picks up the rest. A rename is a
 change to your account that this tool does not undo.
+
+**Once your intake tree is database native this step has nothing to read.** A
+native landing writes no importable file, and `sync mark` finds its pass by
+that file's name, so after a cutover the playlists of a pass stay unmarked and
+are offered again on the next one. That is a known gap, recorded in
+`docs/residual-findings.md`, and not something a flag works around.
 
 `name apply`, `intake land` and `route inbox` each build a plan and stop at a
 gate before they write. Run once to read the plan, then answer the gate. See
@@ -708,6 +723,7 @@ the same gate with nothing recorded and refuses again. Gates you will meet:
 | `name.apply.confirm` | apply | `name apply` |
 | `intake.land.confirm` | apply | `intake land`, intake tree on the xml bridge |
 | `intake.land.native` | apply | `intake land`, intake tree database native; explicit, `crate run decide` only |
+| `intake.file.native` | apply | `intake file`, intake tree database native; explicit, `crate run decide` only |
 | `tag.retag.confirm` | apply | `tag retag` |
 | `sync.favorites.confirm` | sync | `sync favorites` |
 | `sync.all.favorites.confirm` | sync | `sync all` |

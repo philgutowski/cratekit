@@ -109,6 +109,12 @@ crate intake file /path/to/one-track.aiff
 crate intake file /path/to/one-track.aiff --export /path/to/fresh-export.xml
 ```
 
+Once the intake tree has cut over to the database there is no export to splice
+and the second form is refused by name. The first form then plans one collection
+row for the file and one playlist under the intake folder, and stops at the
+explicit gate `intake.file.native`, which takes a separate `crate run decide`
+with an actor. Nothing about the audio is written on either path.
+
 The export comes from rekordbox's File menu, or, with rekordbox closed, from a
 copy of the database:
 

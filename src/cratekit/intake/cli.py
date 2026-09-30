@@ -1,12 +1,12 @@
-"""The four ``intake.*`` verbs: set, identify, playlist, file. And their worker.
+"""Three ``intake.*`` verbs: set, identify, playlist. And their worker.
 
 Builders take unannotated parameters on purpose. ``entry`` is a registry
 Entry, and naming that type here would be this layer importing the one
 above it.
 
 Long work is queued. Identification-only runs inline because it is the
-spend gate plus a tracklist, not a download. A file already on disk is a
-plan, not a job: there is no remote work.
+spend gate plus a tracklist, not a download. ``intake file``, the fourth verb
+here until it gained a second medium, is :mod:`cratekit.intake.file_cli`.
 
 **THE ITEMS ARE THE TRACKS, AND THEY ARE KNOWN AT THE QUEUE.** Until U57 both
 queued verbs froze a source string and queued a job with no items, which is
@@ -53,7 +53,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import artifacts, binaries, binary_refusal, config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.intake import fetch, ingest, normalize, pipeline, recognize
+from cratekit.intake import fetch, normalize, pipeline, recognize
 from cratekit.label import catalogue
 from cratekit.label import cli as label_cli
 
@@ -212,17 +212,6 @@ def build_playlist(parser, entry) -> None:
         help="continue the playlist job already queued under this identifier",
     )
     parser.set_defaults(_handler=intake_playlist)
-
-
-def build_file(parser, entry) -> None:
-    parser.add_argument("source", help="audio file already on this machine")
-    parser.add_argument(
-        "--export",
-        default=None,
-        metavar="XML",
-        help="Fresh Export to splice into; required to write",
-    )
-    parser.set_defaults(_handler=intake_file)
 
 
 def set_argv(job) -> list[str]:
@@ -1203,40 +1192,6 @@ def intake_playlist(ctx) -> Envelope:
 
 
 # ---------------------------------------------------------------------------
-# intake.file
-# ---------------------------------------------------------------------------
-
-
-def intake_file(ctx) -> Envelope:
-    cfg = _load()
-    path = Path(ctx.args.source)
-    rows = normalize.from_audio_file(path)
-    items = [{"path": str(path), "artist": row.artist, "title": row.title} for row in rows]
-    plan = _plan(items, kind="file")
-    export = ctx.args.export
-    if not export:
-        return ctx.envelope(data=plan, outcome=Outcome.OK)
-    destination = path.with_name(path.stem + "_inboxed.xml")
-    result = pipeline.ingest_file(
-        path,
-        cfg=cfg,
-        export=Path(export),
-        destination=destination,
-    )
-    plan["items"][0]["destination"] = str(destination)
-    # THE SAME ENDING A LANDING HAS, because it is the same ``place_files``
-    # (R-501). This used to answer OK over an intake file nobody had imported
-    # and a session nothing would close. The action is the one persisted on the
-    # intake session, read back so the two cannot differ.
-    return ctx.envelope(
-        data=plan,
-        outcome=Outcome.PENDING,
-        code=ExitCode.PENDING_HUMAN,
-        pending=ingest.persisted_pending(cfg, result.placed),
-    )
-
-
-# ---------------------------------------------------------------------------
 # The worker
 # ---------------------------------------------------------------------------
 
@@ -1373,14 +1328,12 @@ __all__ = [
     "TRACKS",
     "UNREACHED",
     "SetRecording",
-    "build_file",
     "build_identify",
     "build_playlist",
     "build_set",
     "frozen",
     "frozen_rows",
     "handle",
-    "intake_file",
     "intake_identify",
     "intake_playlist",
     "intake_set",
