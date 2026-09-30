@@ -1,0 +1,259 @@
+{
+  "name": "r780-b",
+  "pass_kind": "light",
+  "branch": "relay/231",
+  "head": "3b4f7df",
+  "when": "2026-09-30 18:36 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 10976,
+  "baseline_exit": 0,
+  "pytest_runs": 9,
+  "state_guarded": "/tmp/r780-watch.ORCz/config (0 entries); /tmp/r780-watch.ORCz/state (0 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/adopt/move_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/adopt/move_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a222d05954b7a38a",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 10976,
+    "baseline_collected": 10976,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_reading_not_rechecked",
+      "description": "the worker does not ask whether the reading still names the approved target, so a track retagged since the approval is moved to a sub its file no longer names",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "686d4defc0763984",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_reading_that_changed_after_the_approval_is_a_stale_decision",
+        "tests/test_adopt_move.py::test_a_tree_path_move_is_checked_by_the_worker_in_the_bucket_it_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if move_engine.reading_target(entry, move.bucket, declared) != move.target:\n            stale[move.content_id] = \"its reading names another place\"\n            continue\n",
+      "new": ""
+    },
+    {
+      "id": "B2_worker_asks_the_entry_bucket",
+      "description": "the worker asks the plan's rule of the entry's own bucket rather than the bucket the move names, so every tree path move is refused as one the plan does not make",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fbfa738cc604a7f6",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 17,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_failure_after_the_add_leaves_the_track_in_both_and_a_resume_finishes",
+        "tests/test_adopt_move.py::test_a_moved_track_can_be_moved_back_and_gets_a_live_row",
+        "tests/test_adopt_move.py::test_a_refusal_at_the_second_commit_keeps_its_own_cause_and_the_job_says_in_both",
+        "tests/test_adopt_move.py::test_a_removal_that_did_not_take_fails_the_job_though_nothing_raised",
+        "tests/test_adopt_move.py::test_a_removed_row_changes_its_marker_and_its_stamp_and_nothing_else",
+        "tests/test_adopt_move.py::test_a_second_approved_run_plans_nothing_and_writes_nothing",
+        "tests/test_adopt_move.py::test_a_track_filed_somewhere_nobody_was_shown_is_a_stale_decision",
+        "tests/test_adopt_move.py::test_a_tree_path_move_is_checked_by_the_worker_in_the_bucket_it_names",
+        "tests/test_adopt_move.py::test_a_verdict_on_another_bucket_keeps_the_tree_path_out_of_its_folder",
+        "tests/test_adopt_move.py::test_after_the_move_adoption_withholds_none_of_the_moved_tracks",
+        "tests/test_adopt_move.py::test_an_addition_never_lands_in_a_playlist_rekordbox_removed",
+        "tests/test_adopt_move.py::test_an_approved_move_adds_the_new_sub_and_removes_the_old",
+        "tests/test_adopt_move.py::test_no_content_row_and_no_grid_column_is_written",
+        "tests/test_adopt_move.py::test_no_tempo_grid_cue_or_rating_value_differs_column_by_column",
+        "tests/test_adopt_move.py::test_the_move_takes_one_capture_and_records_both_commits",
+        "tests/test_adopt_move.py::test_the_removal_is_a_soft_delete_and_the_row_is_still_there",
+        "tests/test_adopt_move.py::test_the_summary_a_person_reads_names_every_ending"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        now = move_engine.standing_in(\n            entry, move.bucket, current.placements, declared, tree=current.tree, refused=refused\n        )",
+      "new": "        now = move_engine.standing(entry, current.placements, declared, tree=current.tree)"
+    },
+    {
+      "id": "B3_renamed_target_reads_as_done",
+      "description": "a track whose one place is its target through a renamed playlist reads as finished, which nobody was shown",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "097c3dfe19d3c8fb",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_target_held_only_under_another_name_is_not_done"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if held == {move.target} and not unnamed & held:\n                continue",
+      "new": "            if held == {move.target}:\n                continue"
+    },
+    {
+      "id": "B4_gone_named_once_per_move",
+      "description": "a track gone from the collection is named once per move it carried, so the report lists it twice",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c4f4be4ba4ef64e0",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_one_track_carries_a_move_in_each_bucket_it_doubles_in"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return tuple(todo), tuple(sorted(gone))",
+      "new": "    return tuple(todo), tuple(\n        sorted(move.content_id for move in approved if move.content_id in gone)\n    )"
+    },
+    {
+      "id": "B5_verdicts_not_handed_to_the_worker",
+      "description": "the worker asks the plan's rule with no refused bucket, so a move approved before a verdict landed is performed into the refused folder",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cd2ab57d30f44905",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_verdict_on_another_bucket_keeps_the_tree_path_out_of_its_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    refused = move_engine.refused_buckets(current.entries)",
+      "new": "    refused = frozenset()"
+    },
+    {
+      "id": "B6_sample_a_sub_nobody_was_shown_is_removed",
+      "description": "R-758's own guard, the fixed sample: a track filed in a further sub since the approval has that sub removed as well",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0f400a7537e13eae",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 110,
+      "baseline_collected": 110,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_track_filed_somewhere_nobody_was_shown_is_a_stale_decision"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if set(now.remove) - set(move.remove):\n            stale[move.content_id] = \"it holds a sub nobody was shown\"\n            continue\n",
+      "new": ""
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B7_read_back_lists_twice",
+      "description": "the read back names a track once per move rather than once per list",
+      "reason": "ranked below the cap: the lists are sets by construction and there is no nearby text that reintroduces a duplicate without rewriting the function; the driven test asserts the once per track shape"
+    },
+    {
+      "id": "B8_count_messages",
+      "description": "the two refusal messages say moves where they count tracks",
+      "reason": "ranked below the cap: wording, asserted by no test, maintainer facing"
+    },
+    {
+      "id": "A13_no_reading_reason_in_tree_path",
+      "description": "a double whose file has no reading is left under names-neither rather than no-reading",
+      "reason": "ranked below the cap: the track is left either way; only the reason's name moves"
+    },
+    {
+      "id": "A14_doubled_listing_in_style_buckets",
+      "description": "a pair held twice in a style sub is listed",
+      "reason": "ranked below the cap: style subs are out of the brief's scope and the listing is withheld there on purpose"
+    },
+    {
+      "id": "A15_declared_order_of_buckets_asked",
+      "description": "the buckets are asked in placement order rather than declared order, moving the digest between two plans over one tree",
+      "reason": "ranked below the cap: the placement reader itself walks declared order, so both orders agree on every tree it produces"
+    }
+  ]
+}
