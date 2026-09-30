@@ -1119,15 +1119,25 @@ never empty. The addition is committed before the removal is attempted. The
 removal is a soft delete of the membership row, rekordbox's own marker set
 and the row kept, and it is the only removal the guarded writer admits.
 
+Since R-780 a move is planned over every band bucket the tree holds a track
+in twice or more, not only the bucket its genre names. In a bucket the genre
+does not name, or when the track has no genre, the move only removes: the
+reading picks one of the subs held and the rest go, or names none of them and
+the track is Left. Adding a sub in such a bucket is adoption's decision.
+
 *Avoid:* reading it as a move between buckets or as `route resort`, which is
 additive. A move stays inside one bucket. A track with no reading is not
 moved, it is Left.
 
 ### Left
 A track the move plan found holding a stale competing sub and did not move,
-with the reason: `no-reading`, `genre-names-no-style` or
-`held-under-another-name`. It is listed on the move's gate in full and covered
-by its digest.
+with the reason: `no-reading`, `genre-names-no-style`,
+`held-under-another-name`, `reading-names-neither-held` for a double in a
+bucket the genre does not name, `withheld-by-verdict`, or
+`one-sub-held-by-two-rows` for a band sub rekordbox holds twice (R-781),
+which is listed beside whatever else is said of the track, except a move, and
+is not moved. It is listed on the move's gate in full and covered by its
+digest.
 
 *Avoid:* reading it as Held back or Withheld. Those are a provider's and a
 plan's. This one is the move's own.

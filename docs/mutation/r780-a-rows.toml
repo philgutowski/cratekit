@@ -1,0 +1,144 @@
+name = "r780-a"
+pass_kind = "light"
+
+# R-780, first batch: the plan's own guards, in `adopt/move.py` and
+# `adopt/placements.py`. The second batch is the worker's, `r780-b-rows.toml`.
+
+[[rows]]
+id = "A1_tree_buckets_not_asked"
+description = "the plan asks only the bucket the entry claims, so a double in a bucket the genre does not name is never seen, which is R-780 as filed"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''        held = set(placements.holds(bucket.id, entry.content_id)) & subs
+        if len(held) >= 2 or (set(placements.holds_doubled(bucket.id, entry.content_id)) & subs):
+            asked.append(bucket.id)
+'''
+new = '''        continue
+'''
+
+[[rows]]
+id = "A2_tree_path_adds_a_sub"
+description = "in a bucket the genre does not name, a reading naming none of the held subs plans a move that adds that sub and removes the rest, filing the track by a rule adoption does not use"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    elif target not in held:
+        reason = LEFT_NAMES_NEITHER
+'''
+new = ''''''
+
+[[rows]]
+id = "A3_verdict_ignored_in_tree_path"
+description = "a keep-separate verdict on the bucket asked is ignored, so a removal is planned inside a folder a person refused"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    elif bucket in refused:
+        reason = LEFT_VERDICT
+'''
+new = ''''''
+
+[[rows]]
+id = "A4_excluded_track_moved"
+description = "a track whose file the census could not read is moved on the reading its row happens to carry"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    elif entry.disposition is Disposition.EXCLUDED or entry.energy is None or not target:'''
+new = '''    elif entry.energy is None or not target:'''
+
+[[rows]]
+id = "A5_style_doubles_decided"
+description = "the tree path decides in style buckets too, by the genre's resolver answer, which the brief puts out of scope; the one predicate the selection, the decision and the doubled listing share"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    return kind is routing.Competing.BAND
+'''
+new = '''    return True
+'''
+
+[[rows]]
+id = "A6_every_entry_claims_its_bucket"
+description = "a verdict withheld entry claims its bucket, so it goes to the R-758 path, which returns nothing for it, and the double is neither moved nor listed"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    if entry.disposition is Disposition.ROUTE:
+        return True
+    return entry.disposition is Disposition.WITHHELD and entry.held_elsewhere'''
+new = '''    return True'''
+
+[[rows]]
+id = "A7_doubled_rows_not_carried"
+description = "the placement reader drops the multiplicity the tree walk counted, so a pair held by two rows is never listed"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''            for content_id in {cid for node in answering for cid in node.doubled}:'''
+new = '''            for content_id in ():'''
+
+[[rows]]
+id = "A8_double_listed_beside_a_move"
+description = "a doubled target is listed as left beside the move that keeps it, so one track reads as both moved and left in one bucket"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''                if isinstance(found, Move):
+                    moves.append(found)
+                    continue
+'''
+new = '''                if isinstance(found, Move):
+                    moves.append(found)
+'''
+
+[[rows]]
+id = "A9_refused_buckets_empty"
+description = "no bucket is ever read as refused, so a verdict is honoured nowhere in the tree path"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    return frozenset(
+        entry.bucket for entry in entries if entry.withheld_by == WITHHELD_BY_VERDICT
+    )'''
+new = '''    return frozenset()'''
+
+[[rows]]
+id = "A10_one_held_sub_asked_in_tree_path"
+description = "the tree path plans over a track holding one sub of a bucket its genre does not name, deciding where a track belongs, which is adoption's question"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    held = tuple(sorted(set(placements.holds(bucket, entry.content_id)) & competing))
+    if len(held) < 2:
+        return None
+    unnamed = _unnamed(placements, entry, bucket, held)'''
+new = '''    held = tuple(sorted(set(placements.holds(bucket, entry.content_id)) & competing))
+    if not held:
+        return None
+    unnamed = _unnamed(placements, entry, bucket, held)'''
+
+[[rows]]
+id = "A11_tree_reading_from_entry_sub"
+description = "the tree path takes adoption's sub as the reading in every bucket, so a track with no entry sub has no target and a double is left rather than moved"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    if claims(entry, bucket):
+        return entry.sub
+    try:'''
+new = '''    if entry.sub:
+        return entry.sub
+    try:'''
+
+[[rows]]
+id = "A12_unnamed_not_left_in_tree_path"
+description = "a double held through a renamed playlist in a bucket the genre does not name is planned for a removal the writer cannot make"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py"]
+old = '''    if unnamed:
+        reason = LEFT_UNNAMED
+    elif bucket in refused:'''
+new = '''    if bucket in refused:'''

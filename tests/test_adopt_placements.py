@@ -351,7 +351,9 @@ def test_a_track_the_plan_withheld_is_not_a_stranger_in_its_own_folder():
 # ── a tree already read becomes the value the plan takes ───────────────────
 
 
-def _node(bucket: str, sub: str, *content_ids: str, ids=("f1", "p1"), names=None) -> rebuild.TreeNode:
+def _node(
+    bucket: str, sub: str, *content_ids: str, ids=("f1", "p1"), names=None, doubled=()
+) -> rebuild.TreeNode:
     folder, playlist = names or destination(DECLARED, bucket, sub)
     return rebuild.TreeNode(
         folder_id=ids[0],
@@ -359,6 +361,7 @@ def _node(bucket: str, sub: str, *content_ids: str, ids=("f1", "p1"), names=None
         playlist_id=ids[1],
         playlist_display=playlist,
         content_ids=frozenset(content_ids),
+        doubled=frozenset(doubled),
     )
 
 
@@ -457,6 +460,56 @@ def test_a_track_in_two_bands_holds_both():
     ]
     found = adopt_placements.placements_from(DECLARED, nodes, None)
     assert found.holds(bucket, "t") == tuple(sorted((MED, HIGH)))
+    assert found.holds_doubled(bucket, "t") == ()
+
+
+def test_a_pair_held_by_two_rows_is_held_once_and_doubled():
+    """R-781's shape, carried rather than lost in the set (R-780 lists it)."""
+    bucket = _energy_bucket().id
+    found = adopt_placements.placements_from(
+        DECLARED, [_node(bucket, MED, "t", "u", doubled=("t",))], None
+    )
+    assert (found.holds(bucket, "t"), found.holds_doubled(bucket, "t")) == ((MED,), (MED,))
+    assert (found.holds(bucket, "u"), found.holds_doubled(bucket, "u")) == ((MED,), ())
+    assert found.holds_doubled(bucket, "absent") == ()
+
+
+def test_two_nodes_answering_for_one_sub_are_two_playlists_and_not_a_double():
+    bucket = _energy_bucket().id
+    nodes = [
+        _node(bucket, MED, "t", ids=("f1", "p1")),
+        _node(bucket, MED, "t", ids=("f2", "p2")),
+    ]
+    found = adopt_placements.placements_from(DECLARED, nodes, None)
+    assert (found.holds(bucket, "t"), found.holds_doubled(bucket, "t")) == ((MED,), ())
+
+
+def test_a_double_in_a_renamed_recorded_node_is_still_a_double():
+    bucket = _energy_bucket().id
+    record = convergence.TreeConvergence(
+        tree_id=TREE_ID,
+        nodes=(
+            convergence.DestinationNode(
+                bucket=bucket, sub=MED, folder_id="f1", playlist_id="p1"
+            ),
+        ),
+    )
+    renamed = _node(bucket, MED, "t", names=("Renamed folder", "Renamed list"), doubled=("t",))
+    found = adopt_placements.placements_from(DECLARED, [renamed], record)
+    assert found.holds_doubled(bucket, "t") == (MED,)
+
+
+def test_a_double_in_a_playlist_that_is_not_a_place_is_not_carried():
+    bucket = _energy_bucket()
+    hand_made = _node(
+        bucket.id, MED, "t", ids=("f1", "p9"), names=(bucket.display, "My picks"), doubled=("t",)
+    )
+    sub_class = [
+        _node(bucket.id, entry.id, "t", ids=("f1", f"p-{entry.id}"), doubled=("t",))
+        for entry in DECLARED.sub_classes
+    ]
+    found = adopt_placements.placements_from(DECLARED, [hand_made, *sub_class], None)
+    assert found.held == {} and found.doubled == {}
 
 
 # ── a place the writer cannot see, and a screen the digest covers ──────────

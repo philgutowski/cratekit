@@ -4,10 +4,12 @@ WHY THIS IS A VERB OF ITS OWN (R-758). ``route resort`` exists and is additive,
 "the old membership stays and is named", and giving it a removing mode was the
 other choice. It was not taken, for two reasons. A gate is declared per verb
 and every declared gate has to fire, so an approval asked in one mode only is a
-gate the registry cannot state. And what is moved is adoption's own list: the
-entries ``adopt apply`` withholds over a place the track already holds are
-what this verb plans from, with the reading adoption's census took off the
-file. So it sits beside ``adopt apply`` and is switched by the same module.
+gate the registry cannot state. And what is moved is decided by the reading
+adoption's census took off the file, over adoption's own plan: the entries
+``adopt apply`` withholds over a place the track already holds, the ones it
+finds already placed beside a stale sub, and, since R-780, every band bucket
+the tree holds a track in twice whether or not its genre names that bucket.
+So it sits beside ``adopt apply`` and is switched by the same module.
 
 THIS IS THE FIRST VERB THAT REMOVES A MEMBERSHIP, and it is treated as the
 cutover was: plan, gate, snapshot, read back.
@@ -36,7 +38,6 @@ from typing import Any, Mapping, Sequence
 from cratekit.adopt import apply_cli, artifacts, placements, shell
 from cratekit.adopt import move as move_engine
 from cratekit.adopt import plan as plan_engine
-from cratekit.adopt.scan import Disposition
 from cratekit.cli.output import Envelope
 from cratekit.core import (
     active_taxonomy,
@@ -190,8 +191,8 @@ def move_adoption(ctx) -> Envelope:
                     "code": NOTHING_TO_MOVE,
                     "message": (
                         f"no track sits in a sub its own reading does not name, "
-                        f"and {len(plan.left)} are left where they are for want "
-                        f"of a reading or a name, so there is nothing to queue"
+                        f"and {len(plan.left)} are left where they are, each "
+                        f"listed with its reason, so there is nothing to queue"
                     ),
                 },
             ),
@@ -325,7 +326,7 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
 def _stale(approved: Sequence[move_engine.Move], detail: Mapping[str, Any]) -> CratekitError:
     return refuse(
         "decision-stale",
-        f"the library has changed under {len(detail)} of the {len(approved)} "
+        f"the library has changed under {len(detail)} track(s) of the {len(approved)} "
         f"approved move(s), so what this job would perform is not what anybody "
         f"agreed to, and nothing was written: {', '.join(sorted(detail))}",
         steps=("run `crate adopt move` again and approve the plan as it is now",),
@@ -350,27 +351,39 @@ def remaining(
     plan as it stands would leave it or would not move it, it holds a
     competing sub that was neither its target nor one it was leaving, or it
     was approved as already in its target and is not there now. What the plan
-    would do now is asked of :func:`cratekit.adopt.move.standing`, the body
-    the plan was built from. Nothing is narrowed to fit. The approval
-    covers a track arriving at its target and leaving the subs it was shown
-    leaving, in either order, and nothing else.
+    would do now is asked of :func:`cratekit.adopt.move.standing_in`, the body
+    the plan was built from, for the bucket the move names, which since R-780
+    need not be the bucket the track's genre names. Nothing is narrowed to
+    fit. The approval covers a track arriving at its target and leaving the
+    subs it was shown leaving, in either order, and nothing else.
+
+    A TRACK ALREADY IN ITS TARGET AND NOWHERE ELSE IS DONE, whatever its
+    disposition, once its reading is proven to still name that target above.
+    The first version asked for ``route`` here as well, which only an entry
+    claiming the bucket can carry, and a tree path move is over a bucket no
+    entry claims.
 
     WHAT COMPETES IS ASKED AGAIN, of the taxonomy as it is now, so a sub a
     taxonomy edit turned into a sub class since the approval is not removed
     from.
     """
     entries = {entry.content_id: entry for entry in current.entries}
+    refused = move_engine.refused_buckets(current.entries)
     todo: list[move_engine.Move] = []
-    gone: list[str] = []
+    gone: set[str] = set()
     stale: dict[str, str] = {}
     if not current.placements.read:
         raise _stale(approved, {move.content_id: "the tree could not be read" for move in approved})
     for move in approved:
         entry = entries.get(move.content_id)
         if entry is None:
-            gone.append(move.content_id)
+            # ONCE PER TRACK, since a track may carry a move in each of two
+            # buckets and is gone from the collection only once.
+            gone.add(move.content_id)
             continue
-        if (entry.bucket, entry.sub) != (move.bucket, move.target):
+        # THE READING, ASKED THE WAY THE PLAN ASKED IT (R-780): adoption's sub
+        # in the bucket its entry claims, the resolver's answer in any other.
+        if move_engine.reading_target(entry, move.bucket, declared) != move.target:
             stale[move.content_id] = "its reading names another place"
             continue
         _kind, competing = routing.competing_subs(declared, move.bucket)
@@ -378,13 +391,23 @@ def remaining(
             stale[move.content_id] = "a sub it names no longer competes"
             continue
         # THE PLAN'S OWN RULE, ASKED OF THE LIBRARY AS IT STANDS.
-        now = move_engine.standing(entry, current.placements, declared, tree=current.tree)
+        now = move_engine.standing_in(
+            entry, move.bucket, current.placements, declared, tree=current.tree, refused=refused
+        )
         if isinstance(now, move_engine.Left):
             stale[move.content_id] = f"the plan as it stands leaves it: {now.reason}"
             continue
         held = set(current.placements.holds(move.bucket, move.content_id)) & competing
         if now is None:
-            if held == {move.target} and entry.disposition is Disposition.ROUTE:
+            unnamed = set(current.placements.holds_unnamed(move.bucket, move.content_id))
+            if held == {move.target} and not unnamed & held:
+                continue
+            if held == {move.target}:
+                # Its one place is a playlist the writer cannot see, which
+                # nobody was shown. The first check asked for a routed entry
+                # here and refused this shape by accident; it is refused on
+                # purpose now.
+                stale[move.content_id] = "it holds its target under another name only"
                 continue
             stale[move.content_id] = (
                 "it holds no sub of its bucket any more"
@@ -416,6 +439,10 @@ def remaining(
     if stale:
         raise _stale(approved, stale)
     return tuple(todo), tuple(sorted(gone))
+
+
+def _summary_of(found: dict[str, set[str]]) -> dict[str, list[str]]:
+    return {name: sorted(ids) for name, ids in found.items()}
 
 
 def membership_moves(
@@ -461,10 +488,15 @@ def read_back(
     ``untouched`` does not hold its target. ``neither`` holds no competing sub
     at all, which no path here can produce and is listed so that it would be
     seen.
+
+    EACH LIST NAMES A TRACK ONCE. Since R-780 a track may carry a move in each
+    of two buckets, and each move is read back in its own bucket, so a track
+    whose two moves ended differently is in two lists, and one whose two
+    ended the same is in that list once.
     """
     held_now = placements.read_placements(cfg, declared)
-    found: dict[str, list[str]] = {
-        "moved": [], "in_both": [], "untouched": [], "neither": [], "gone": sorted(gone)
+    found: dict[str, set[str]] = {
+        "moved": set(), "in_both": set(), "untouched": set(), "neither": set(), "gone": set(gone)
     }
     for move in approved:
         if move.content_id in found["gone"]:
@@ -472,14 +504,14 @@ def read_back(
         _kind, competing = routing.competing_subs(declared, move.bucket)
         held = set(held_now.holds(move.bucket, move.content_id)) & competing
         if not held:
-            found["neither"].append(move.content_id)
+            found["neither"].add(move.content_id)
         elif move.target not in held:
-            found["untouched"].append(move.content_id)
+            found["untouched"].add(move.content_id)
         elif held == {move.target}:
-            found["moved"].append(move.content_id)
+            found["moved"].add(move.content_id)
         else:
-            found["in_both"].append(move.content_id)
-    return {name: sorted(ids) for name, ids in found.items()}
+            found["in_both"].add(move.content_id)
+    return _summary_of(found)
 
 
 def handle(job, item, cfg) -> jobs.Produced:
@@ -563,8 +595,8 @@ def handle(job, item, cfg) -> jobs.Produced:
             jobs.commit_artifact(produced.staged, produced.final)
         raise refuse(
             "adopt-entries-failed",
-            f"{len(unfinished)} of {len(approved)} approved move(s) did not "
-            f"finish. {len(found['in_both'])} track(s) sit in the sub they were "
+            f"{len(unfinished)} track(s) of {len(approved)} approved move(s) did "
+            f"not finish. {len(found['in_both'])} track(s) sit in the sub they were "
             f"moved to and in the one they were leaving, "
             f"{len(found['untouched'])} are where they were, and "
             f"{len(found['neither'])} are in neither: "
