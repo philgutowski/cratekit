@@ -423,6 +423,19 @@ def refused_buckets(entries: Sequence[PlanEntry]) -> frozenset[str]:
     )
 
 
+def tree_path_decides(kind: routing.Competing) -> bool:
+    """Whether the tree path decides in a bucket whose competing subs are ``kind``.
+
+    BAND BUCKETS ONLY, in one place. Style subs are decided by genre, and a
+    genre that does not name the bucket has nothing to say about which of its
+    styles is right, so a style double in such a bucket is out of this verb's
+    scope and its pairs held twice are not listed either. The selection of
+    buckets, the decision, and the doubled listing all ask this one predicate,
+    so there is one guard and not three copies of it.
+    """
+    return kind is routing.Competing.BAND
+
+
 def _standing_in_tree(
     entry: PlanEntry,
     bucket: str,
@@ -434,11 +447,10 @@ def _standing_in_tree(
 ) -> Move | Left | None:
     """What one track comes to in a band bucket adoption's entry does not claim.
 
-    BAND SUBS ONLY, and only where the track holds two or more of them.
-    Style subs are decided by genre, and a genre that does not name the bucket
-    has nothing to say about which of its styles is right. A track in one sub
-    of a bucket its genre does not name is not this verb's either: whether it
-    belongs there at all is adoption's question.
+    ONLY WHERE THE TRACK HOLDS TWO OR MORE COMPETING SUBS, and only in a
+    bucket :func:`tree_path_decides` admits. A track in one sub of a bucket
+    its genre does not name is not this verb's: whether it belongs there at
+    all is adoption's question.
 
     NOTHING IS ADDED HERE. The reading picks one of the subs the track holds
     and the rest are removed, or it names none of them and the track is left,
@@ -451,7 +463,7 @@ def _standing_in_tree(
     on was never taken off the file.
     """
     kind, competing = routing.competing_subs(declared, bucket)
-    if kind is not routing.Competing.BAND:
+    if not tree_path_decides(kind):
         return None
     held = tuple(sorted(set(placements.holds(bucket, entry.content_id)) & competing))
     if len(held) < 2:
@@ -516,7 +528,7 @@ def buckets_asked(
             asked.append(bucket.id)
             continue
         kind, subs = competing[bucket.id]
-        if kind is not routing.Competing.BAND:
+        if not tree_path_decides(kind):
             continue
         held = set(placements.holds(bucket.id, entry.content_id)) & subs
         if len(held) >= 2 or (set(placements.holds_doubled(bucket.id, entry.content_id)) & subs):
@@ -585,7 +597,7 @@ def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan
                     continue
                 if isinstance(found, Left):
                     left.append(found)
-                if competing[bucket][0] is routing.Competing.BAND:
+                if tree_path_decides(competing[bucket][0]):
                     doubled = _doubled_rows(
                         entry, bucket, plan.placements, declared, competing[bucket][1]
                     )
@@ -662,4 +674,5 @@ __all__ = [
     "standing",
     "standing_in",
     "to_json",
+    "tree_path_decides",
 ]

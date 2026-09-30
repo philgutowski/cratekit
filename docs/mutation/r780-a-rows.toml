@@ -49,39 +49,15 @@ old = '''    elif entry.disposition is Disposition.EXCLUDED or entry.energy is N
 new = '''    elif entry.energy is None or not target:'''
 
 [[rows]]
-id = "A5_style_buckets_asked"
-description = "the plan asks style buckets of the tree path as well, one of two layers keeping style doubles out of scope"
+id = "A5_style_doubles_decided"
+description = "the tree path decides in style buckets too, by the genre's resolver answer, which the brief puts out of scope; the one predicate the selection, the decision and the doubled listing share"
 file = "src/cratekit/adopt/move.py"
 surface = "user"
 tests = ["tests/test_adopt_move.py"]
-old = '''        kind, subs = competing[bucket.id]
-        if kind is not routing.Competing.BAND:
-            continue
-        held = set(placements.holds(bucket.id, entry.content_id)) & subs'''
-new = '''        kind, subs = competing[bucket.id]
-        held = set(placements.holds(bucket.id, entry.content_id)) & subs'''
-
-[[rows]]
-id = "A5_composite_style_doubles_decided"
-description = "both layers gone: the tree path decides a style double by the genre's resolver answer, which is the guard A5 is one layer of"
-file = "src/cratekit/adopt/move.py"
-surface = "user"
-pairs_with = "A5_style_buckets_asked"
-tests = ["tests/test_adopt_move.py"]
-old = '''    kind, competing = routing.competing_subs(declared, bucket)
-    if kind is not routing.Competing.BAND:
-        return None
-    held = tuple(sorted(set(placements.holds(bucket, entry.content_id)) & competing))
-    if len(held) < 2:
-        return None
-    unnamed = _unnamed(placements, entry, bucket, held)
-    target = reading_target(entry, bucket, declared)'''
-new = '''    kind, competing = routing.competing_subs(declared, bucket)
-    held = tuple(sorted(set(placements.holds(bucket, entry.content_id)) & competing))
-    if len(held) < 2:
-        return None
-    unnamed = _unnamed(placements, entry, bucket, held)
-    target = reading_target(entry, bucket, declared)'''
+old = '''    return kind is routing.Competing.BAND
+'''
+new = '''    return True
+'''
 
 [[rows]]
 id = "A6_every_entry_claims_its_bucket"
