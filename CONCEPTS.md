@@ -1149,9 +1149,27 @@ its style subs. A sub class, manual or derived, is never one: it sits beside
 a track's band and not instead of it. `routing.competing_subs` is the one
 answer, from taxonomy identifiers.
 
+Since R-797 a bucket's former places compete as well, see Former place.
+
 *Avoid:* deciding it from a playlist's name. A bucket may label its bands
 differently and a person may rename a playlist, and neither changes which
 subs compete.
+
+### Former place
+Since R-797, the playlist a bucket's tracks were filed in before the bucket had
+a folder of its own, declared on that bucket as `[[bucket.formerly]]`. R&B was a
+style sub of the non electronic folder and became a top level folder split by
+energy, and its former place is the old `Soul / R&B` playlist. It is one of the
+competing subs of the bucket that declares it and of no other, so adoption
+withholds a track still sitting there and `crate adopt move` adds the band and
+then leaves the playlist. It is only ever left. No resolver answers with one,
+`destination` refuses one, and the loader refuses one that names a sub its
+folder still holds.
+
+*Avoid:* reading it as a sub of the folder it sits in. That folder's bucket no
+longer declares it, and a track there holds nothing in that bucket. Also avoid
+reading it as the outbound ledger's `formerly`, which is the display paths a
+remote playlist moved from.
 
 ### Held elsewhere
 An adoption plan entry withheld because its track already holds a competing
@@ -1179,9 +1197,13 @@ does not name, or when the track has no genre, the move only removes: the
 reading picks one of the subs held and the rest go, or names none of them and
 the track is Left. Adding a sub in such a bucket is adoption's decision.
 
+Since R-797 a move may leave a Former place, which sits in another bucket's
+folder. That is still one bucket's move: the band added and the place left
+are both competing subs of the bucket that declares the former place.
+
 *Avoid:* reading it as a move between buckets or as `route resort`, which is
-additive. A move stays inside one bucket. A track with no reading is not
-moved, it is Left.
+additive. A move stays inside one bucket's competing subs. A track with no
+reading is not moved, it is Left.
 
 ### Left
 A track the move plan found holding a stale competing sub and did not move,
@@ -1190,7 +1212,9 @@ with the reason: `no-reading`, `genre-names-no-style`,
 bucket the genre does not name, `withheld-by-verdict`, or
 `one-sub-held-by-two-rows` for a band sub rekordbox holds twice (R-781),
 which is listed beside whatever else is said of the track, except a move, and
-is not moved. It is listed on the move's gate in full and covered by its
+is not moved, or `former-place-not-named-by-genre` for a track sitting only in
+a Former place whose genre does not send it to the bucket that took the place
+over (R-797). It is listed on the move's gate in full and covered by its
 digest.
 
 *Avoid:* reading it as Held back or Withheld. Those are a provider's and a

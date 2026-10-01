@@ -44,6 +44,14 @@ holding one sub through two rows (R-781) is listed so that the doubles the
 verb cannot reach are named, though nothing here removes a row of a pair the
 reading names.
 
+A FORMER PLACE IS LEFT THROUGH THE SAME RULE (R-797). A bucket promoted to a
+folder of its own declares the playlist its tracks sat in before, and that
+playlist is one of its competing subs. So a track there whose reading names a
+band is a move like any other, the band added and the old playlist left, across
+two folders. Nothing is ever moved INTO a former place. A track sitting only in
+one, in a bucket its entry does not claim, is listed and not moved, so the old
+playlist is never read as empty while it still holds tracks.
+
 Layer: modules. It performs no input. Everything it reads is handed in.
 """
 
@@ -75,6 +83,11 @@ LEFT_VERDICT = "withheld-by-verdict"
 #: (R-781). Listed so the double is named; no row of it is removed.
 LEFT_DOUBLED_ROWS = "one-sub-held-by-two-rows"
 
+#: The track sits only in a former place of a bucket its genre does not name
+#: (R-797). A person filed it there by hand or its genre has changed since, and
+#: nothing its file says sends it to the bucket that took the place over.
+LEFT_FORMER = "former-place-not-named-by-genre"
+
 #: Every reason, in the order a report lists them.
 LEFT_REASONS: tuple[str, ...] = (
     LEFT_NO_READING,
@@ -83,6 +96,7 @@ LEFT_REASONS: tuple[str, ...] = (
     LEFT_NAMES_NEITHER,
     LEFT_VERDICT,
     LEFT_DOUBLED_ROWS,
+    LEFT_FORMER,
 )
 
 #: What decided a move, as the gate names it.
@@ -303,6 +317,11 @@ def standing(
     kind, competing = routing.competing_subs(declared, entry.bucket)
     if entry.sub not in competing:
         return None
+    # A FORMER PLACE IS NEVER A TARGET (R-797). No resolver answers with one,
+    # so this is an entry somebody built by hand, and a move made on it would
+    # file a track into a playlist the taxonomy stopped declaring.
+    if routing.former_place(declared, entry.bucket, entry.sub) is not None:
+        return None
     held = tuple(sorted(set(placements.holds(entry.bucket, entry.content_id)) & competing))
     stale = tuple(sub for sub in held if sub != entry.sub)
     if not stale:
@@ -450,7 +469,9 @@ def _standing_in_tree(
     ONLY WHERE THE TRACK HOLDS TWO OR MORE COMPETING SUBS, and only in a
     bucket :func:`tree_path_decides` admits. A track in one sub of a bucket
     its genre does not name is not this verb's: whether it belongs there at
-    all is adoption's question.
+    all is adoption's question. THE ONE EXCEPTION IS A FORMER PLACE (R-797):
+    a track holding nothing here but one is listed, whatever the kind, and is
+    still not moved.
 
     NOTHING IS ADDED HERE. The reading picks one of the subs the track holds
     and the rest are removed, or it names none of them and the track is left,
@@ -463,9 +484,11 @@ def _standing_in_tree(
     on was never taken off the file.
     """
     kind, competing = routing.competing_subs(declared, bucket)
+    held = tuple(sorted(set(placements.holds(bucket, entry.content_id)) & competing))
+    if in_former_place_only(declared, bucket, held):
+        return _left_in_former_place(entry, bucket, kind, placements, declared, held, refused)
     if not tree_path_decides(kind):
         return None
-    held = tuple(sorted(set(placements.holds(bucket, entry.content_id)) & competing))
     if len(held) < 2:
         return None
     unnamed = _unnamed(placements, entry, bucket, held)
@@ -483,6 +506,51 @@ def _standing_in_tree(
     if reason:
         return _left(entry, bucket, kind, reason, target, held, unnamed)
     return _move(entry, bucket, kind, target, held, tree=tree)
+
+
+def in_former_place_only(
+    declared: taxonomy.Taxonomy, bucket: str, held: Sequence[str]
+) -> bool:
+    """Whether everything a track holds in ``bucket`` is a former place of it.
+
+    ONE PREDICATE for the buckets the plan asks about and for what it finds
+    there, so a track the first selects is a track the second lists.
+    """
+    former = {place.id for place in declared.bucket(bucket).formerly}
+    return bool(held) and set(held) <= former
+
+
+def _left_in_former_place(
+    entry: PlanEntry,
+    bucket: str,
+    kind: routing.Competing,
+    placements: Placements,
+    declared: taxonomy.Taxonomy,
+    held: tuple[str, ...],
+    refused: frozenset[str],
+) -> Left:
+    """The listing for a track in a former place its entry does not claim (R-797).
+
+    LISTED, NEVER MOVED. The entry does not claim the bucket, so no reading
+    adoption took sends the track to it, and a move would be filing the track
+    by a rule adoption does not use. The row is what stops the old playlist
+    being read as empty: the gate names every track still in it and why.
+
+    THE REASON IS THE MOST SPECIFIC ONE THAT IS TRUE. A playlist renamed since
+    it was recorded, a folder a person's verdict refused, a file the census
+    could not read although its genre names this bucket, and last a genre that
+    names another bucket or none.
+    """
+    unnamed = _unnamed(placements, entry, bucket, held)
+    if unnamed:
+        reason = LEFT_UNNAMED
+    elif bucket in refused:
+        reason = LEFT_VERDICT
+    elif routing.resolve_bucket(declared, entry.genre).bucket_id == bucket:
+        reason = LEFT_NO_READING
+    else:
+        reason = LEFT_FORMER
+    return _left(entry, bucket, kind, reason, "", held, unnamed)
 
 
 def standing_in(
@@ -517,9 +585,10 @@ def buckets_asked(
 ) -> tuple[str, ...]:
     """Every bucket the plan asks about one track, in the taxonomy's order.
 
-    The bucket adoption's entry claims, and every band bucket the tree holds
+    The bucket adoption's entry claims, every band bucket the tree holds
     the track in twice or more, whether through two subs or through two rows
-    of one. Declared order, so two plans over one tree list the same rows in
+    of one, and every bucket the track holds nothing in but a former place
+    (R-797). Declared order, so two plans over one tree list the same rows in
     the same order and digest the same.
     """
     asked: list[str] = []
@@ -528,9 +597,14 @@ def buckets_asked(
             asked.append(bucket.id)
             continue
         kind, subs = competing[bucket.id]
+        held = set(placements.holds(bucket.id, entry.content_id)) & subs
+        if in_former_place_only(declared, bucket.id, sorted(held)):
+            # WHATEVER THE KIND (R-797). A track still in a former place is
+            # listed in a bucket split by style as well as one split by energy.
+            asked.append(bucket.id)
+            continue
         if not tree_path_decides(kind):
             continue
-        held = set(placements.holds(bucket.id, entry.content_id)) & subs
         if len(held) >= 2 or (set(placements.holds_doubled(bucket.id, entry.content_id)) & subs):
             asked.append(bucket.id)
     return tuple(asked)
@@ -651,6 +725,7 @@ __all__ = [
     "DECIDED_BY_ENERGY",
     "DECIDED_BY_GENRE",
     "LEFT_DOUBLED_ROWS",
+    "LEFT_FORMER",
     "LEFT_NAMES_NEITHER",
     "LEFT_NO_READING",
     "LEFT_NO_STYLE",
@@ -666,6 +741,7 @@ __all__ = [
     "claims",
     "document_digest",
     "from_rows",
+    "in_former_place_only",
     "left_row",
     "move_id_for",
     "move_row",

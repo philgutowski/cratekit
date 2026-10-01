@@ -47,6 +47,40 @@ from cratekit.write import rebuild
 from cratekit.write.routing_pass import destination
 
 
+def named_place(declared: taxonomy.Taxonomy, bucket_id: str, sub_id: str) -> tuple[str, str]:
+    """The folder and playlist names one competing sub of a bucket answers to.
+
+    A FORMER PLACE RESOLVES HERE AND NOT IN ``destination`` (R-797). That
+    function is the one every writer that FILES a track asks, and it refuses an
+    identifier no routing rule can return. A former place is such an
+    identifier on purpose: it is read, and it is left, and nothing is ever
+    filed into it. So the two callers that read or leave a place ask this, and
+    a caller about to add a membership keeps asking ``destination`` and is
+    refused. The folder is the declared bucket's own name as it is now, so a
+    folder renamed in the taxonomy is still found.
+    """
+    former = routing.former_place(declared, bucket_id, sub_id)
+    if former is None:
+        return destination(declared, bucket_id, sub_id)
+    return declared.bucket(former.bucket).display, former.display
+
+
+def recorded_under(
+    declared: taxonomy.Taxonomy, bucket_id: str, sub_id: str
+) -> tuple[str, str]:
+    """The bucket and sub identifiers a previous write recorded this place's node under.
+
+    A former place was written while it was a sub of the bucket whose folder
+    holds it, so its node is recorded under that bucket and that sub, and
+    asking for it under the bucket that now declares it would find nothing
+    and read a renamed playlist as absent.
+    """
+    former = routing.former_place(declared, bucket_id, sub_id)
+    if former is None:
+        return bucket_id, sub_id
+    return former.bucket, former.sub
+
+
 def placements_from(
     declared: taxonomy.Taxonomy,
     nodes: Sequence[rebuild.TreeNode],
@@ -75,6 +109,11 @@ def placements_from(
     taxonomy declares no bucket for: none of them is read, because none of
     them can compete.
 
+    A FORMER PLACE IS READ UNDER THE BUCKET THAT DECLARES IT (R-797), and it
+    sits in another bucket's folder. A track in it holds that competing sub of
+    the declaring bucket, found by the old folder's name and the old
+    playlist's, or by the node recorded while the playlist was still a sub.
+
     A PLAYLIST REKORDBOX REMOVED IS NOT A PLACE EITHER (R-758). It shows no
     track, and the move finds the playlists it removes from among the live
     ones, so a sub held only through a removed playlist would be planned for a
@@ -92,10 +131,14 @@ def placements_from(
     for bucket in declared.buckets:
         _kind, competing = routing.competing_subs(declared, bucket.id)
         for sub_id in sorted(competing):
-            named = list(by_display.get(destination(declared, bucket.id, sub_id), ()))
+            named = list(by_display.get(named_place(declared, bucket.id, sub_id), ()))
             under_the_name = {cid for node in named for cid in node.content_ids}
             under_another: set[str] = set()
-            recorded = None if record is None else record.node(bucket.id, sub_id)
+            recorded = (
+                None
+                if record is None
+                else record.node(*recorded_under(declared, bucket.id, sub_id))
+            )
             answering = list(named)
             if recorded is not None:
                 node = by_ids.get((recorded.folder_id, recorded.playlist_id))
@@ -163,6 +206,8 @@ def read_placements(cfg: config.Config, declared: taxonomy.Taxonomy) -> Placemen
 
 
 __all__ = [
+    "named_place",
     "placements_from",
     "read_placements",
+    "recorded_under",
 ]
