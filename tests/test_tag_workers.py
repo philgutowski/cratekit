@@ -1040,6 +1040,31 @@ def test_one_unread_file_beside_a_parse_break_is_counted_and_the_defect_is_said(
     assert tag_cli.SOURCE_BLOCKED not in warnings
 
 
+def test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked(
+    cfg, folder, silence, monkeypatch
+):
+    """A fallback never asked was blocked on zero of zero searches, which is not
+    a refusal. Bought by row C5 of ``r791-b``, a zero: without the guard this
+    sweep, the commonest clean one, warned that both fallbacks refused it."""
+    place(folder, silence, "a")
+    assert tags.write_tags(folder / "a.flac", {"artist": "Somebody"})
+    matched = searchers.Fetched(
+        text=beatport_page([beatport_track("Somebody", "a", SPECIFIC)]), status=200
+    )
+    bound(monkeypatch, _catalogues({"a": {searchers.BEATPORT: matched}}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["tagged"] == 1
+    assert tagging["answers"][searchers.BANDCAMP][searchers.NOT_ASKED] == 1
+    codes = [warning["code"] for warning in resumed["warnings"]]
+    assert tag_cli.SOURCE_BLOCKED not in codes
+    assert tag_cli.SOURCES_UNREAD not in codes
+
+
 def test_three_real_misses_are_no_hit_and_carry_no_unread_warning(
     cfg, folder, silence, monkeypatch
 ):
