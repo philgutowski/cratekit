@@ -4,7 +4,53 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last built: R-797, issue #237, `relay/237`, 2026-10-01, unattended.**
+**Last built: R-798, issue #238, `relay/238`, 2026-10-01, unattended.**
+The label genre gate judges a release by KIND when a sweep is about to file
+it. The taxonomy's `[label_gate]` gained `default_kind`, dance, and
+`[[label_gate.published]]` rules naming the kind each of the general
+catalogue's words is, all 27 measured top level words claimed.
+`routing.kind_verdict` passes a release on one word of its label's kind,
+holds it on a known word of another kind and none of its own, and judges
+nothing else. A label's kind is on its registry entry,
+`crate label registry set NAME --kind KIND`, `any` passes everything and
+`default` clears it. The sweep asks R-796's lookup by the ISRCs of the
+release's tracks, three at most, after the tombstone, the queue,
+verification and ownership, through one remembered reader the ownership
+question shares, `catalogue.ReleaseTracks`, which also holds the one outage
+rule. A held release is a row in the review database's new `held_offers`
+table, additive, schema version unchanged: not an item, not a tombstone. It
+takes a place in the offer window, is judged again on every sweep from the
+words it recorded, and is dropped when it no longer holds. A filed release
+carries `genre_gate`, `genre_gate_note`, `genre_gate_answer` and
+`published_genres`. `crate label held` is new: it lists what is held with
+the reason, per label, says when the catalogue was unread on every release a
+sweep asked about, and `return RELEASE_ID` files one or marks one already in
+review. `review list --group-by` rows gained `held`. `label approved` judges
+kind on the same words, reads the registry before the provider, does not
+ask about a release the library holds in full, and keeps the share rule
+unchanged. Nothing tries to get past a refusal, and an unreadable catalogue
+is given up on after three releases in a row. The decisions are KTD41 to
+KTD63 in the Planning Contract of
+`docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`, and
+`docs/solutions/workflow-issues/a-record-that-withholds-a-candidate-needs-an-exit-on-every-branch-of-the-walk-that-skips-it.md`
+is what to read before giving a walk another state that outlives it. The
+built in review ran twice, ten findings each time: eighteen changed the
+code, R-809 and R-810 filed from it, R-811 to R-814 from the decisions.
+Mutation tables `r798-a` to `r798-c`, 25 rows, 25 killed, and `r798-d`,
+three rows after the second round moved a measured line. Battery on the
+committed tree, run twice: ruff clean, **11,511 passed and 1 skipped** in 79
+and 88 seconds, scan clean, `board.py closing --since main` exit 0. **Main's highest
+residual number is R-814 once this merges.** **This card did not touch the
+live library, the provider or the live catalogue.** Owed to an attended
+sitting, in the order R-798's ledger entry gives: the build in use is this
+one, the active taxonomy copy takes `default_kind` and the published rules
+after a dated backup, any label that is not a dance label is marked, then a
+sweep over the labels of sitting 25 files none of the 36 and counts them
+held, recorded in `docs/cutover.md`. Until the copy is edited the gate
+judges nothing there and every release is filed as before. This plan's
+three cards are built.
+
+**Built before it: R-797, issue #237, `relay/237`, 2026-10-01, unattended.**
 R&B is a top level bucket in the shipped taxonomy, `rnb`, split by the
 shared energy bands, holding the four source strings the old
 `NonElectronic / Soul / R&B` sub held. The old playlist is declared as its

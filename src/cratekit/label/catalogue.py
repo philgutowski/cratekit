@@ -44,7 +44,7 @@ from urllib.parse import urlsplit
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
 from cratekit.acquire.provider_session import ProviderUnavailable
 from cratekit.core import config, secrets
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import registry
 
@@ -183,6 +183,81 @@ class ReleaseUnresolvable(LookupError):
     ``LookupError``, which ``KeyError`` and ``IndexError`` also are, so a client
     that failed to parse a payload is not reported as a release that is gone.
     """
+
+
+#: How many reads of release tracks IN A ROW may fail before
+#: :class:`ReleaseTracks` stops asking the provider. Three, on the reasoning the
+#: sweep's and the approval's own bounds give: one is a bad release, two a
+#: coincidence, and each has already spent a full retry ladder.
+READS_FAILED_IN_A_ROW = 3
+
+
+class ReleasesUnasked(RuntimeError):
+    """A release whose tracks were NOT ASKED FOR, because the provider is failing.
+
+    Raised by :class:`ReleaseTracks` and never by the provider. It is not a
+    failed read and not a release that is gone: nobody asked, so a caller says
+    exactly that.
+    """
+
+
+class ReleaseTracks:
+    """One sweep item's reads of release tracks, each release read once (R-798).
+
+    Two questions read the same rows, whether the library owns the release and
+    what the general catalogue publishes for it, and each read is two provider
+    calls on a full retry ladder. The worker hands this to both, so the second
+    asker gets the first one's answer.
+
+    A FAILURE IS REMEMBERED TOO, and raised again as it was, a release that is
+    gone included. The second asker would otherwise climb the ladder a second
+    time for a release the provider just failed on. A ``CratekitError`` is not
+    remembered: it stops the item, so nobody asks twice.
+
+    THE OUTAGE RULE LIVES HERE, ONCE. After :data:`READS_FAILED_IN_A_ROW` reads
+    in a row the provider could not answer, a release not yet read raises
+    :class:`ReleasesUnasked` and the provider is not called. Each asker
+    counting for itself was the first draft, and the review drove it wrong: an
+    asker that is only sometimes asked never sees the successes between two
+    failures, so it counted three failures in a row that were not. A release
+    that is gone is the provider answering, and ends a run of failures.
+
+    FOR ONE ITEM AND NO LONGER. The worker builds one per label, so neither a
+    remembered failure nor the outage outlives the sweep that met it.
+    """
+
+    def __init__(self, catalogue: "Catalogue") -> None:
+        self.catalogue = catalogue
+        self._read: dict[str, tuple[tuple[Any, ...], int | None] | Exception] = {}
+        self._failed_in_a_row = 0
+
+    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
+        held = self._read.get(release_id)
+        if isinstance(held, Exception):
+            raise held
+        if held is not None:
+            return held
+        if self._failed_in_a_row >= READS_FAILED_IN_A_ROW:
+            raise ReleasesUnasked(
+                f"the provider failed {READS_FAILED_IN_A_ROW} releases in a row, so "
+                f"the rest were not asked for"
+            )
+        try:
+            rows, year = self.catalogue.release_tracks(release_id)
+        except CratekitError:
+            raise
+        except ReleaseUnresolvable as exc:
+            self._failed_in_a_row = 0
+            self._read[release_id] = exc
+            raise
+        except Exception as exc:
+            self._failed_in_a_row += 1
+            self._read[release_id] = exc
+            raise
+        self._failed_in_a_row = 0
+        answer = (tuple(rows), year)
+        self._read[release_id] = answer
+        return answer
 
 
 class HeartsShortfall(Exception):
@@ -487,7 +562,10 @@ __all__ = [
     "Catalogue",
     "HeartsShortfall",
     "PlaylistReferenceInvalid",
+    "READS_FAILED_IN_A_ROW",
+    "ReleaseTracks",
     "ReleaseUnresolvable",
+    "ReleasesUnasked",
     "TRACK_SEARCH_PAGE",
     "Unread",
     "bound",

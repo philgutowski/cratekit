@@ -1,0 +1,88 @@
+name = "r798-a"
+pass_kind = "light"
+
+[[rows]]
+id = "K1_the_first_rule_that_matches_wins"
+description = "published_kind: read the published rules last first, so a word two rules could claim is given the later one's kind"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''    for rule in taxonomy.label_gate.published:'''
+new = '''    for rule in reversed(taxonomy.label_gate.published):'''
+
+[[rows]]
+id = "K2_one_word_of_the_labels_kind_passes"
+description = "kind_verdict: pass only when every known word is the label's kind, so a crossover album listing a dance word beside a pop one is held"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''    if any(found == judged_as for _word, found in placed):'''
+new = '''    if placed and all(found == judged_as for _word, found in placed):'''
+
+[[rows]]
+id = "K3_a_hold_needs_a_known_word"
+description = "kind_verdict: hold a release on words no rule knows, so absence of a verdict becomes a hold"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''    if placed:
+        others = ", ".join(dict.fromkeys(found for _word, found in placed))'''
+new = '''    if words:
+        others = ", ".join(dict.fromkeys(found for _word, found in placed))'''
+
+[[rows]]
+id = "K4_a_label_of_any_kind_passes"
+description = "kind_settled: stop passing a label followed for any kind, so it is judged as a kind no rule names"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''    if judged_as == ANY_KIND:
+        return KindJudgment('''
+new = '''    if False:
+        return KindJudgment('''
+
+[[rows]]
+id = "K5_a_kind_nothing_names_is_not_judged"
+description = "kind_settled: judge a label marked with a kind the taxonomy does not name, so every release of it with a known word is held"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''    if judged_as not in gate.kinds:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "K6_the_default_kind_is_one_a_rule_names"
+description = "_build_gate: accept a default kind no published rule names, so every label left at the default is never judged"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''    if published and default_kind != ANY_KIND and default_kind not in kinds:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "K7_a_needle_is_folded_when_loaded"
+description = "_needles: keep a needle as it was typed, so one with a capital never matches a word that is matched lowercase"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''    return tuple(one.strip().lower() for one in raw), True'''
+new = '''    return tuple(one.strip() for one in raw), True'''
+
+[[rows]]
+id = "K8_a_kind_is_one_word"
+description = "_build_published: accept a rule naming a kind in a shape the registry refuses, so the taxonomy declares a kind no label can be given"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''        if not KIND_NAME.fullmatch(kind):'''
+new = '''        if False:'''
+
+[[dropped]]
+id = "K9_no_published_rules_judges_nothing"
+description = "kind_settled: drop the branch for a taxonomy with no published rule"
+reason = "ranked below the cap: with it gone the next branch still answers not judged, so the cost is the sentence and not the verdict, and test_a_copy_written_before_the_gate_had_published_rules_loads_and_judges_nothing names the sentence"
+
+[[dropped]]
+id = "K10_any_is_not_the_kind_of_a_word"
+description = "_build_published: accept a rule naming the reserved kind any"
+reason = "ranked below the cap: the same guard family as K8, which is measured, and test_a_published_rule_naming_the_reserved_kind_is_refused names it"

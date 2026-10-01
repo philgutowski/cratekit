@@ -909,6 +909,10 @@ bucket = "nu_disco_indie_dance"
 # output, i.e. genuinely out of place for that label rather than merely absent
 # from our taxonomy.
 out_of_place_share = 0.10
+# What a followed label is taken to be when its registry entry names no kind.
+# One of the kinds the published rules at the end of this section name, or
+# "any". Set a label's own with: crate label registry set NAME --kind KIND
+default_kind = "dance"
 
 # Keep-exceptions first: each contains a term a family rule below would catch.
 [[label_gate.rule]]
@@ -963,3 +967,90 @@ family = "hip_hop_rnb"
 [[label_gate.rule]]
 equals = ["trap"]
 family = "hip_hop_rnb"
+
+
+# The same gate asked about KIND, over a GENERAL catalogue's words (R-798).
+#
+# The rules above read the record shops' vocabulary and ask about a share. These
+# read the words a general catalogue publishes for a release's album and say
+# what kind of music each word is. A sweep holds back a release when the
+# catalogue's words for it are all another kind than its label is followed as:
+# one word of the label's kind passes the release, a word no rule knows neither
+# passes nor holds it, and a release with no known word is filed for review as
+# not judged.
+#
+# In order, first match wins. `kind` is an opaque name: the kinds a label can be
+# marked with are exactly the ones named here, plus "any", which passes
+# everything and is reserved.
+#
+# MEASURED on 2026-10-01: the catalogue's 27 top level words, every one of which
+# a rule below claims. Pop, Rap/Hip Hop, Reggaeton, Rock, Dance, R&B,
+# Alternative, Christian, Electro, Folk, Reggae, Jazz, Country, Salsa,
+# Traditional Mexicano, Classical, Films/Games, Metal, Soul & Funk, African
+# Music, Asian Music, Blues, Brazilian Music, Cumbia, Indian Music, Kids, Latin
+# Music. NOT MEASURED: the words it lists below that level. The other needles
+# are written from its published genre names, and a word none of them claims is
+# simply not judged, so add a rule when a sweep names one.
+
+# An exception first: it contains a word the dance rule would claim.
+[[label_gate.published]]
+any_of = ["dancehall"]
+kind = "reggae"
+
+[[label_gate.published]]
+any_of = ["dance", "electro", "techno", "house", "trance", "dubstep", "disco"]
+kind = "dance"
+
+[[label_gate.published]]
+any_of = ["hip hop", "hip-hop"]
+kind = "hip_hop"
+
+# Before jazz, whose "blues" would claim the long spelling of R&B.
+[[label_gate.published]]
+any_of = ["r&b", "soul", "rhythm & blues", "rhythm and blues"]
+kind = "rnb"
+
+[[label_gate.published]]
+any_of = ["christian", "gospel"]
+kind = "christian"
+
+# Before reggae and pop: Reggaeton holds the first word and Latin Pop the second.
+[[label_gate.published]]
+any_of = ["reggaeton", "salsa", "cumbia", "mexican", "latin", "brazil"]
+kind = "latin"
+
+[[label_gate.published]]
+any_of = ["reggae"]
+kind = "reggae"
+
+[[label_gate.published]]
+any_of = ["pop"]
+kind = "pop"
+
+[[label_gate.published]]
+any_of = ["rock", "alternative", "metal"]
+kind = "rock"
+
+[[label_gate.published]]
+any_of = ["jazz", "blues"]
+kind = "jazz"
+
+[[label_gate.published]]
+any_of = ["folk", "country"]
+kind = "folk_country"
+
+[[label_gate.published]]
+any_of = ["classical"]
+kind = "classical"
+
+[[label_gate.published]]
+any_of = ["african", "asian", "indian"]
+kind = "world"
+
+[[label_gate.published]]
+any_of = ["films/games", "soundtrack"]
+kind = "soundtrack"
+
+[[label_gate.published]]
+equals = ["kids"]
+kind = "kids"

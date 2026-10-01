@@ -793,6 +793,32 @@ _SCHEMA = (
         PRIMARY KEY (queue, run_id, group_key)
     )
     """,
+    # WHAT A PRODUCER WITHHELD FROM A QUEUE, AND WHY (R-798). A label sweep's
+    # genre gate holds back a release that is not the kind of music its label is
+    # followed for. A hold is not an item: it is never listed for a decision and
+    # never decided. It is not a suppression either: nothing here keeps a
+    # release out for good, and a person can return one to the queue. The row
+    # carries what would have been filed, so returning it needs no producer.
+    # ADDITIVE, on the reasoning ``offer_rounds`` gives, so ``SCHEMA_VERSION``
+    # does not move.
+    """
+    CREATE TABLE IF NOT EXISTS held_offers (
+        queue      TEXT NOT NULL,
+        item_id    TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        identity   TEXT NOT NULL,
+        payload    TEXT NOT NULL,
+        group_key  TEXT NOT NULL,
+        group_name TEXT NOT NULL,
+        reason     TEXT NOT NULL,
+        detail     TEXT NOT NULL,
+        state      TEXT NOT NULL,
+        run_id     TEXT NOT NULL,
+        created    TEXT NOT NULL,
+        updated    TEXT NOT NULL,
+        PRIMARY KEY (queue, item_id)
+    )
+    """,
 )
 
 
@@ -1375,6 +1401,12 @@ def grouped(
     ``beyond`` is the recorded count of releases a round never examined: for a
     label, its latest round's; for a run, the sum over the labels it swept.
     None where nothing was recorded, which is not the same answer as zero.
+
+    ``held`` is how many candidates of the group a producer is withholding from
+    the queue now (R-798): for a label, its holds in force; for a run, the ones
+    that run first held. A group with holds and no items still gets its row,
+    because a label whose every listed release was held is exactly the label a
+    person needs to see.
     """
     declared = _assert_declared_queue(queue)
     fields = GROUPINGS.get(declared, {}).get(by)
@@ -1416,13 +1448,20 @@ def grouped(
             break
         cursor = page.next_cursor
     recorded = rounds(store, queue=declared)
+    withheld = holds(store, queue=declared)
+    held: dict[Any, int] = {}
     if by == "label":
         latest: dict[Any, Round] = {}
         for found in recorded:
             latest[found.group] = found
             names.setdefault(found.group, found.name)
+        for one in withheld:
+            key = one.group or None
+            held[key] = held.get(key, 0) + 1
+            names.setdefault(key, one.name)
         keys = sorted(
-            set(counts) | set(latest), key=lambda k: (names.get(k) or str(k or "")).casefold()
+            set(counts) | set(latest) | set(held),
+            key=lambda k: (names.get(k) or str(k or "")).casefold(),
         )
         return [
             {
@@ -1431,6 +1470,7 @@ def grouped(
                 "items": counts.get(key, 0),
                 "beyond": latest[key].beyond if key in latest else None,
                 "swept": latest[key].run_id if key in latest else None,
+                "held": held.get(key, 0),
             }
             for key in keys
         ]
@@ -1438,13 +1478,20 @@ def grouped(
     for found in recorded:
         beyond_per_run[found.run_id] = beyond_per_run.get(found.run_id, 0) + found.beyond
         labels_per_run.setdefault(found.run_id, set()).add(found.group)
+    for one in withheld:
+        key = one.run_id or None
+        held[key] = held.get(key, 0) + 1
+        if one.group:
+            labels_per_run.setdefault(key, set()).add(one.group)
     keys = list(counts) + [key for key in beyond_per_run if key not in counts]
+    keys += [key for key in held if key not in keys]
     return [
         {
             "run": key,
             "items": counts.get(key, 0),
             "labels": len(labels_per_run.get(key, set())),
             "beyond": beyond_per_run.get(key),
+            "held": held.get(key, 0),
         }
         for key in keys
     ]
@@ -1467,6 +1514,231 @@ def rounds(store: ReviewStore, *, queue: str) -> tuple[Round, ...]:
         )
         for row in rows
     )
+
+
+# ---------------------------------------------------------------------------
+# Held offers: what a producer withheld from a queue, and can be returned
+# ---------------------------------------------------------------------------
+
+#: A hold in force. The producer judges it again on every round that reaches it.
+HOLD_HELD = "held"
+#: A hold a person returned to the queue. Kept, so nothing holds it a second time.
+HOLD_RETURNED = "returned"
+HOLD_STATES: tuple[str, ...] = (HOLD_HELD, HOLD_RETURNED)
+
+
+@dataclass(frozen=True, slots=True)
+class Hold:
+    """One candidate a producer withheld from a queue, with what it would have filed.
+
+    ``item_id`` is the identifier the candidate would carry as an item, so a
+    hold and the item it becomes are addressed by one value. ``reason`` is the
+    sentence a person reads and ``detail`` is what the producer judged on, kept
+    so it can judge again without asking anybody.
+    """
+
+    queue: str
+    item_id: str
+    kind: str
+    identity: dict[str, Any]
+    payload: dict[str, Any]
+    group: str
+    name: str
+    reason: str
+    detail: dict[str, Any]
+    state: str
+    run_id: str
+    created: str
+    updated: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "queue": self.queue,
+            "item_id": self.item_id,
+            "kind": self.kind,
+            "identity": dict(self.identity),
+            "payload": dict(self.payload),
+            "group": self.group,
+            "name": self.name,
+            "reason": self.reason,
+            "detail": dict(self.detail),
+            "state": self.state,
+            "run": self.run_id,
+            "created": self.created,
+            "updated": self.updated,
+        }
+
+
+def _hold_of(row: sqlite3.Row) -> Hold:
+    def decoded(text: str) -> dict[str, Any]:
+        # A COLUMN THIS BUILD CANNOT READ IS AN EMPTY MAP, NEVER A CRASH. The
+        # row still names the release and says it is held, which is what a
+        # listing needs, and a producer that finds no recorded words judges
+        # nothing from it rather than releasing the hold.
+        try:
+            found = json.loads(text)
+        except ValueError:
+            return {}
+        return found if isinstance(found, dict) else {}
+
+    return Hold(
+        queue=row["queue"],
+        item_id=row["item_id"],
+        kind=row["kind"],
+        identity=decoded(row["identity"]),
+        payload=decoded(row["payload"]),
+        group=row["group_key"],
+        name=row["group_name"],
+        reason=row["reason"],
+        detail=decoded(row["detail"]),
+        state=row["state"],
+        run_id=row["run_id"],
+        created=row["created"],
+        updated=row["updated"],
+    )
+
+
+def _held_row(store: ReviewStore, queue: str, item_id: str) -> sqlite3.Row | None:
+    return store.conn.execute(
+        "SELECT * FROM held_offers WHERE queue = ? AND item_id = ?", (queue, item_id)
+    ).fetchone()
+
+
+def hold(
+    store: ReviewStore,
+    *,
+    queue: str,
+    kind: str,
+    identity: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    group: str,
+    name: str,
+    reason: str,
+    detail: Mapping[str, Any],
+    run_id: str,
+    returned: bool = False,
+) -> Hold:
+    """Withhold one candidate from ``queue``, or refresh the hold already there.
+
+    ``returned`` RECORDS A PERSON'S ANSWER WHERE NO HOLD EXISTS YET: the row is
+    made already returned, in one write, for a candidate that is in the queue
+    and that a later judgment must not hold. It changes nothing about a row
+    that is already there.
+
+    A HOLD A PERSON RETURNED IS NEVER HELD AGAIN. Its row is handed back as it
+    stands, state and all, so the producer that asked can see its hold did not
+    take. Returning is the person overruling the producer, and a later round
+    that overruled them back would undo an answer nobody asked it to revisit.
+
+    THE FIRST ROUND STAYS THE HOLDING ROUND. A refresh rewrites what the
+    producer knows now, the payload, the reason and what it judged on, and
+    keeps the run and the time the hold was first made, so a count of what one
+    round held does not move when a later round looks at the same release.
+    """
+    declared = _assert_declared_queue(queue)
+    item_id = item_id_for(declared, kind, identity)
+    now = timestamp()
+    encoded = (
+        canonical_json(normalize_identity(identity)),
+        json.dumps(dict(payload), sort_keys=True),
+        reason,
+        json.dumps(dict(detail), sort_keys=True),
+    )
+    with store.immediate() as conn:
+        row = _held_row(store, declared, item_id)
+        if row is None:
+            conn.execute(
+                "INSERT INTO held_offers (queue, item_id, kind, identity, payload, "
+                "group_key, group_name, reason, detail, state, run_id, created, updated) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    declared,
+                    item_id,
+                    normalize_kind(kind),
+                    encoded[0],
+                    encoded[1],
+                    group,
+                    name,
+                    encoded[2],
+                    encoded[3],
+                    HOLD_RETURNED if returned else HOLD_HELD,
+                    run_id,
+                    now,
+                    now,
+                ),
+            )
+        elif row["state"] == HOLD_HELD:
+            conn.execute(
+                "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
+                "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
+                (encoded[1], group, name, encoded[2], encoded[3], now, declared, item_id),
+            )
+    return _hold_of(_held_row(store, declared, item_id))
+
+
+def find_hold(store: ReviewStore, *, queue: str, item_id: str) -> Hold | None:
+    """The hold on ``item_id`` in any state, or None when nothing ever held it."""
+    row = _held_row(store, _assert_declared_queue(queue), item_id)
+    return _hold_of(row) if row is not None else None
+
+
+def holds(
+    store: ReviewStore,
+    *,
+    queue: str,
+    states: Sequence[str] = (HOLD_HELD,),
+    group: str | None = None,
+) -> tuple[Hold, ...]:
+    """Every hold on ``queue`` in one of ``states``, oldest first.
+
+    ``group`` narrows it to one group's, a label's for the label-release queue.
+    """
+    wanted = tuple(states)
+    marks = ", ".join("?" for _ in wanted)
+    narrowed = " AND group_key = ?" if group is not None else ""
+    rows = store.conn.execute(
+        f"SELECT * FROM held_offers WHERE queue = ? AND state IN ({marks}){narrowed} "
+        f"ORDER BY created, item_id",
+        (_assert_declared_queue(queue), *wanted, *((group,) if group is not None else ())),
+    ).fetchall()
+    return tuple(_hold_of(row) for row in rows)
+
+
+def release_hold(store: ReviewStore, *, queue: str, item_id: str) -> bool:
+    """Drop a hold IN FORCE, because its producer filed the candidate after all.
+
+    True when a row was dropped. A returned hold is kept: it is the record that
+    a person overruled the producer, and the only thing that stops a later
+    round, or a later verb reading the same judgment, from holding it again.
+    """
+    with store.immediate() as conn:
+        dropped = conn.execute(
+            "DELETE FROM held_offers WHERE queue = ? AND item_id = ? AND state = ?",
+            (_assert_declared_queue(queue), item_id, HOLD_HELD),
+        )
+        return dropped.rowcount > 0
+
+
+def return_hold(store: ReviewStore, *, queue: str, item_id: str) -> Hold | None:
+    """Mark a hold returned by a person, and hand it back, or None for no such hold.
+
+    THE MARK ONLY. Filing the candidate is the caller's, through :func:`offer`
+    and the producer's own key, and it comes FIRST: a hold marked returned whose
+    item was never filed would be a release nothing holds and nothing offers.
+    A hold already returned is handed back unchanged, so a second ask is the
+    same answer.
+    """
+    declared = _assert_declared_queue(queue)
+    with store.immediate() as conn:
+        row = _held_row(store, declared, item_id)
+        if row is None:
+            return None
+        if row["state"] != HOLD_RETURNED:
+            conn.execute(
+                "UPDATE held_offers SET state = ?, updated = ? WHERE queue = ? AND item_id = ?",
+                (HOLD_RETURNED, timestamp(), declared, item_id),
+            )
+    return _hold_of(_held_row(store, declared, item_id))
 
 
 def identity_of(store: ReviewStore, item_id: str) -> dict[str, Any] | None:
@@ -2490,6 +2762,10 @@ __all__ = [
     "SURFACES",
     "Suppression",
     "DecisionStore",
+    "HOLD_HELD",
+    "HOLD_RETURNED",
+    "HOLD_STATES",
+    "Hold",
     "ImportResult",
     "Item",
     "Option",
@@ -2509,7 +2785,10 @@ __all__ = [
     "suppression_id_for",
     "export_document",
     "find",
+    "find_hold",
     "get",
+    "hold",
+    "holds",
     "identity_of",
     "import_document",
     "item_id_for",
@@ -2521,7 +2800,9 @@ __all__ = [
     "open_store",
     "queue_path",
     "record_round",
+    "release_hold",
     "resolve",
+    "return_hold",
     "resolve_where",
     "rounds",
     "grouped",

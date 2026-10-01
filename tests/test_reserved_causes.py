@@ -5906,7 +5906,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # reason `adopt/move.py` lists a track as left where it is, beside the
     # six it had. The new report verb refuses on config-unusable, which the
     # tree already carried, and the move's new refusal is decision-stale.
-    assert (len(literals), len(literals - set(causes))) == (548, 362), (
+    # Re-pinned on the residual finding "The label genre gate has no genre to
+    # judge, so a sweep offers and downloads music the label was never followed
+    # for", 2026-10-01: 548 to 549 distinct, non-keys 362 to 363. ONE joined
+    # and nothing left, checked against `main`'s own `src` by git grep, and it
+    # is not a key. not-judged is the value `core/routing.py` gives the
+    # verdict of a release the gate's kind rule could not judge, which a filed
+    # release's payload carries. The two new verbs refuse on
+    # label-name-invalid, review-item-unknown and review-selection-invalid,
+    # all three of which the tree already carried.
+    assert (len(literals), len(literals - set(causes))) == (549, 363), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6014,7 +6023,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refusal at every opener and the lock wait spell the slug from one line.
     # It holds no in-range integer: 429, 120, 900 and 6 are a status, a wait,
     # a cooldown and a count, none near a code.
-    assert (len(without), len(with_own), len(both)) == (11, 25, 13), (
+    #
+    # Re-pinned on the residual finding "The label genre gate has no genre to
+    # judge, so a sweep offers and downloads music the label was never followed
+    # for", 2026-10-01: with-own 25 to 26, the other two halves unchanged.
+    # Named from this derivation's own output: `core/routing.py` joined through
+    # its `KindVerdict` enum, whose member not-judged is the verdict of a
+    # release the gate's kind rule could not judge, declared in the file that
+    # gives it. It names no cause declared elsewhere, so THE WITHOUT-OWN HALF
+    # IS STILL 11, and the integer half did not move.
+    assert (len(without), len(with_own), len(both)) == (11, 26, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -6545,7 +6563,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # no cause, and adopt/move.py, adopt/move_cli.py and adopt/placements.py
     # were holders or held none before and are unchanged in that. Measured by
     # this pair moving by one on the holders side and by nothing on the other.
-    assert (len(literal_holders), len(literal_both)) == (113, 26), (
+    # Re-pinned on the residual finding "The label genre gate has no genre to
+    # judge, so a sweep offers and downloads music the label was never followed
+    # for", 2026-10-01: holders move 113 to 114, and the also-holds-an-integer
+    # half is UNCHANGED at 26. ONE module joined and none left, and it is a new
+    # file. label/held_cli.py, the shell of the verb that lists and returns
+    # held releases, refuses with review-item-unknown and
+    # review-selection-invalid and holds no integer. label/gate.py holds no
+    # cause, and label/cli.py, label/registry.py, label/approved_cli.py and
+    # core/review.py were holders before and are unchanged in that. Measured by
+    # this pair moving by one on the holders side and by nothing on the other.
+    assert (len(literal_holders), len(literal_both)) == (114, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
