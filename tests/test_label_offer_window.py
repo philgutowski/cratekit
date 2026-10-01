@@ -536,3 +536,27 @@ def test_a_later_sweep_asks_the_provider_nothing_about_releases_it_already_holds
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     sweep_once()
     assert fake.verified == ["r2027"]
+
+
+def test_a_run_over_two_labels_counts_what_both_left_beyond(installed, monkeypatch):
+    """One ``sync labels`` job is one run with one item per label, so a run's
+    row sums every label's count rather than reporting whichever came last.
+    """
+    register()
+    code, envelope = drive(["label", "registry", "add", "Kompakt"])
+    assert code == int(ExitCode.OK), envelope
+    fake = FakeCatalogue(
+        artists={
+            SLUG: FakePagedArtist(catalogue_of(50)),
+            "kompakt": FakePagedArtist(
+                [FakeRelease(f"k{n}", year=str(2000 + n)) for n in range(15)]
+            ),
+        }
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    sweep_once()
+    (row,) = grouped("run")
+    assert row["items"] == 20
+    assert row["labels"] == 2
+    assert row["beyond"] == 45
+    assert {r["label"]: r["beyond"] for r in grouped("label")} == {SLUG: 40, "kompakt": 5}
