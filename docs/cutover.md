@@ -777,3 +777,9 @@ Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and
 that `crate review list --queue label-release --group-by label` counts the
 rest as `beyond`.
+
+Owed for R-791, issue #235: run `crate tag folder` over a folder of new
+files on the author's library, and record here what each fallback answered
+as the job summary's `answers` counts it, whether `tag-folder-source-blocked`
+named either fallback, and how many files came back `sources-unread` rather
+than `no-hit`.

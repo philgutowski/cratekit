@@ -31554,6 +31554,50 @@ author makes, not by this unit.
 
 ## R-791. Bandcamp's bot challenge reads as a miss and Traxsource's as unreachable, and a Beatport miss hides both behind a clean no-hit
 
+**Closed 2026-10-01 on `relay/235`, issue #235, in the code, the attended
+run owed.** The searcher's answers gain `blocked`, given by the two
+fallbacks for a 403, a 429 that outlasted the backoff, a page titled as
+Cloudflare's interstitial, its block page or Bandcamp's "Client Challenge",
+or a body carrying Cloudflare's challenge script. Nothing tries to get past
+one. Beatport is read exactly as before. The fetch seam carries the HTTP
+status so a block is told from an outage. A Bandcamp listing whose track
+page is blocked or unreachable answers that rather than a miss, a blocked
+one ends the walk over listings, and a 404 or 410 there is a dead listing
+and passed over as before.
+
+A decline is a hit with no genre carrying all three answers, `not-asked`
+for a source after a match. It is `no-hit` only when every source asked
+answered miss. One miss beside an unread source is the new skip reason
+`sources-unread`, naming the unread sources, and the file stays askable. A
+search no source answered still raises `catalogue-unreachable`, whose
+steps now say which fallbacks were blocked. Each item artifact records
+`answers`, every source's answer, genre and note, and `unread`, a map of
+the unread sources to their answer. The job summary counts files by answer
+per source, zero filled, and two warnings join it:
+`tag-folder-sources-unread`, naming what went unread per source and saying
+a parse break is a defect a rerun will not move, and
+`tag-folder-source-blocked`, naming a catalogue blocked on every file it
+was sent.
+
+The built in review raised ten findings. Eight changed the code, one of
+them only in part: the challenge check gained Cloudflare's measured body
+marker and the ellipsis title, and the rest of that finding, a page in a
+wording nothing here knows, is R-795. A challenge from Beatport is R-794.
+The tenth is a choice and not a defect: `crate tag retag` reads only the
+genre off a hit, so a file whose
+fallbacks were blocked is offered for review as a catalogue that gave no
+answer. That verb deliberately asks one question for a refusal and a
+decline, and its behaviour here did not change.
+
+Mutation tables `r791-a` to `r791-c`, 25 rows, 24 killed on the first
+pass. The one zero, C5, a blocked warning for a fallback never asked,
+bought a test and was killed when measured again. Measured with the leak
+watch on, after waiting out two real analysis jobs that tripped it.
+
+Owed to an attended sitting: a `crate tag folder` run on the author's
+library whose artifacts and summary carry each fallback's real answer,
+recorded in `docs/cutover.md`.
+
 **Found:** at sitting 24, 2026-10-01, while the author asked why 62 of 66
 synced files came back from `crate tag folder` with no genre. A subagent
 read the six tag jobs' artifacts: Traxsource and Bandcamp produced 0 matches
@@ -31627,3 +31671,40 @@ else writing to the installation state, R3 included, and the notes say so.
 
 **Not on the board bar.** Maintainer facing, a measurement's condition.
 
+## R-794. A Cloudflare challenge from Beatport reads as a parse break and tells the person to report a defect
+
+**Found:** on `relay/235`, 2026-10-01, by the built in review of R-791.
+R-791 recognises a challenge on the two fallbacks only, because its brief
+held Beatport's read unchanged. Beatport's search page is parsed for its
+`__NEXT_DATA__` payload, and a page without one is PARSE_BREAK. A 200
+interstitial from Beatport would therefore be a parse break, and when the
+fallbacks are blocked as well, `_decide` raises `catalogue-parse-broken`,
+not retryable, with steps telling the person to report a parser defect.
+
+**Measured cost.** None today. Beatport answered with results throughout the
+2026-10-01 sitting, the only measurement there is, so the reachability is
+unmeasured: no Beatport challenge has been driven or seen.
+
+**Closes when:** a Beatport page recognised as a challenge or block answers
+`blocked` rather than PARSE_BREAK, with a test over the measured page shape
+once one exists.
+
+**Not on the board bar.** Its input has not been observed from Beatport.
+
+## R-795. A fallback challenge page in a wording nothing here knows still reads as a miss
+
+**Found:** on `relay/235`, 2026-10-01, by the built in review of R-791. The
+two fallbacks recognise a challenge by status, by three page titles and by
+Cloudflare's challenge script in the body. A 200 page outside those, a new
+title from Bandcamp's own challenge or another vendor's, carries no result
+rows and reads as MISS, because neither parser looks for a positive marker
+of a real search page. An absent row is still read as an empty result set.
+
+**Measured cost.** None measured. The two pages measured on 2026-10-01 are
+both recognised. A third shape has not been seen.
+
+**Closes when:** each fallback parser requires a marker that only a real
+search page carries before it may answer MISS, taken from a live capture,
+so an unrecognised page is a parse break rather than an absence.
+
+**Not on the board bar.** Its input has not been observed.

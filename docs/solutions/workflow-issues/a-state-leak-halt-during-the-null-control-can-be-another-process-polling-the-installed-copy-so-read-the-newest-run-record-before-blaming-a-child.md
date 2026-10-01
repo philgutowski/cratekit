@@ -101,3 +101,25 @@ is a decision for an attended session, not an unattended one. Record the
 table as unmeasured in its notes file, commit the rows so a later session
 can run them as they are, and say so in the ledger.
 
+
+## When the job is a bounded one, wait it out
+
+On `relay/235`, 2026-10-01, the halt was a `crate analyze run` over the
+download folder, 186 items, not the whole library. That one can be waited
+for, and waiting is the unattended move that keeps the watch on:
+
+- Size it read only. The queue is `jobs/queue.db` under the real state, table
+  `job_items`, and `select state, count(*) from job_items where job_id = ...
+  group by state` opened with `mode=ro` gives done and pending. The rate
+  over a few minutes says whether it ends inside the session.
+- Expect a follow on. The acquisition tail runs `analyze run`, then `analyze
+  restamp`, then more, each a new job id, so one job ending is not the
+  machine going quiet. Wait until no installed `crate` process has run for a
+  minute or more, then start the driver.
+- Watch for the process with a pattern that cannot match itself. A poll loop
+  whose command line holds `bin/crate ` sees its own shell forever. Use
+  `pgrep -f 'bin/cr[a]te '`, or build the string in the script.
+
+All three tables then ran with no halt. The ninety second quiet window held
+for the whole run, which is luck as much as method: a job started mid table
+would halt it again, and the rerun is the same wait.

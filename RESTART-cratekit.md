@@ -10,23 +10,29 @@ synced rows, rehearsed on a copy and run live on an equal digest
 the 66 carry no genre and wait in INBOX**, which is the genre owed by the
 author. Nothing filed.
 
-**Last built: R-790, issue #234, `relay/234`, 2026-10-01, unattended.**
-A label sweep keeps an offer window of each label's newest releases in
-review, `labels.offer_per_sweep`, ten by default, or a label's own
-`crate label registry set <label> --offer N`, bounded by its track limit.
-A release already in the queue holds its place and is not filed or verified
-again, so a later sweep files only what is new, and no watermark is read.
-What the window never reached is counted per label and per run in the review
-store's new `offer_rounds` table. Each filed item carries `sweep_run`, read
-with `crate review list --queue label-release --group-by label` or
-`--group-by run`. Nothing accepts a release, and the 2,832 pending are
-untouched. The review's two code findings were fixed: a dead verifier is
-caught by re-verifying one held release, and a round is recorded only after
-the refusals pass. Mutation tables `r790-a` to `r790-d`, 25 rows, 23 killed,
-two zeros that each bought a test, **measured with the driver's leak watch
-off while two real jobs wrote to the installation state, which is R-793**.
-Battery on the committed tree: ruff clean, **11,097 passed and 1 skipped** in 78 seconds, scan clean, `board.py closing --since main` exit 0.
-**Main's highest residual number is R-793 once this merges.** Owed to an
+**Last built: R-791, issue #235, `relay/235`, 2026-10-01, unattended.**
+`crate tag folder` no longer reports a file `no-hit` when a fallback could
+not be read. Traxsource and Bandcamp answer `blocked` for a 403, a spent
+429 or a recognised challenge page, and nothing tries to get past one.
+Beatport is read as before. A miss beside an unread source is the new skip
+reason `sources-unread`, and the file stays askable. Every item artifact
+carries `answers`, all three catalogues' answers, and `unread`. The job
+summary counts files by answer per source and warns with
+`tag-folder-sources-unread` and `tag-folder-source-blocked`. The review's
+ten findings: eight changed the code, R-794 and R-795 filed, the correction
+verb left as it deliberately is. Mutation tables `r791-a` to `r791-c`, 25
+rows, 24 killed, the one zero bought a test and was killed on a second
+measure, with the leak watch on after two real analysis jobs were waited
+out. Battery on the committed tree is in the commit that carries this
+paragraph. **Main's highest residual number is R-795 once this merges.**
+Owed to an attended sitting: a `crate tag folder` run on the author's
+library reading each fallback's real answer, recorded in
+`docs/cutover.md`.
+
+**Built before it: R-790, issue #234, `relay/234`, 2026-10-01.** A label
+sweep keeps an offer window of each label's newest releases in review,
+`labels.offer_per_sweep`, ten by default. Mutation tables `r790-a` to
+`r790-d` were measured with the leak watch off, which is R-793. Owed to an
 attended sitting: a first sweep of a newly followed label on the author's
 library, recorded in `docs/cutover.md`.
 
