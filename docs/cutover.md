@@ -739,6 +739,21 @@ Line 8 needs a real player, line 9 a spare drive. A genre on the INBOX
 rows without one is a judgment the tagger could not make from a provider
 and the session did not make by ear.
 
+## Sitting 24, 2026-10-01, attended, adopt apply for the synced batch
+
+A fresh acknowledgment minted by the author at 09:09Z, valid twelve hours.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `adopt scan` then `adopt apply`, the rehearsal | on a copy, state redirected | Route 7,794, **needs-genre 2,121 (up 62)**, withheld 4, digest `22984f3e4523493f`. Applied: 4 memberships added, 19,381 to 19,385. | measured |
+| `adopt apply`, live | approved by the session on an equal digest | Read back equal to the copy: 19,385 memberships, 572 playlists, every BPM unchanged, integrity ok. | live |
+
+**Only 4 of the 66 synced rows reached a bucket.** The other 62 carry no
+genre, since the tagger found none for them (live recordings and a catalogue
+the provider does not tag), and adoption routes from the genre on the
+database row, so they wait in INBOX. This is the genre owed by the author on
+the INBOX rows, now 62 larger.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the

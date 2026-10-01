@@ -4,6 +4,12 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Sitting 24, attended, 2026-10-01, no code.** `adopt apply` for the 66
+synced rows, rehearsed on a copy and run live on an equal digest
+`22984f3e4523493f`: 4 memberships added, 19,385, every BPM unchanged. **62 of
+the 66 carry no genre and wait in INBOX**, which is the genre owed by the
+author. Nothing filed. **Main's highest residual number is R-789.**
+
 **Last built: R-787, issue #233, `relay/233`, 2026-09-30, unattended.**
 `crate doctor` reads a native inbox record as ok. The trees a cutover may
 record are one value, `tree_registry.cutover_trees`, the routing tree and
