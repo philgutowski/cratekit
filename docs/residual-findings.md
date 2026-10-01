@@ -31486,3 +31486,35 @@ the intake tree as one a rebuild cannot reproduce.
 
 **Not on the board bar yet.** The reachability is unmeasured. It earns an
 issue once a driven rebuild shows rows written or a false report.
+
+## R-790. A label sweep offers each label's newest 400 releases, so a first sweep fills review with back catalogue
+
+**Found:** at sitting 24, 2026-10-01, when the author asked which label
+releases were waiting. 2,832 label releases were pending across 32 labels:
+Anjunadeep 420, This Never Happened 340, Metanoia Music 297, Amselcom 252,
+and down. They were filed on four days, 98 on 2026-09-17, 1,701 on
+09-24, 932 on 09-30 and 101 on 10-01, each identity once. Matched against
+the library by title with its version and by artist, 34 were already owned
+and were rejected by the session at the author's word.
+
+**The mechanism.** `label/sweep.py` lists a label's catalogue, newest first,
+and offers the newest `registry.effective_limit` releases that are neither
+owned nor tombstoned. The default is `DEFAULT_TRACK_LIMIT = 400`. A release
+already in the queue is not offered again, so the first sweep of a label is
+what fills it: up to 400 releases, most of them back catalogue. No date
+floor is applied, deliberately, by KTD11 and
+`docs/solutions/workflow-issues/a-watermark-as-date-floor-rebuilds-the-silent-empty-run.md`,
+and this entry does not ask for one.
+
+**Measured cost.** The person asked to decide new releases is handed 2,832,
+and reads them as new since the last sync, which they are not.
+
+**On the board bar, (b) and (c):** the review a DJ must answer before any
+label download is too large to answer, so the label workflow cannot finish,
+and nothing in the queue says which releases are new and which are
+back catalogue.
+
+**Closes when:** a label's first sweep offers a small, configured number of
+its newest releases, later sweeps offer what is new, the queue shows which
+sweep filed each item, and the existing 2,832 are handled by a decision the
+author makes, not by this unit.
