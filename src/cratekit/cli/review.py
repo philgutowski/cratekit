@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any, Mapping, Sequence
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
 from cratekit.core import config, review
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, and a cycle if imported for real
     from cratekit.cli import Context
@@ -216,19 +216,32 @@ def build_list(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     parser.add_argument(
         "--limit",
         type=int,
-        default=review.DEFAULT_PAGE,
-        help="how many items this page holds; at least one",
+        default=None,
+        help=f"how many items this page holds; at least one, {review.DEFAULT_PAGE} if omitted",
     )
     parser.add_argument(
         "--after",
         type=int,
         help="continue after this ordinal, which is the last one the previous page showed",
     )
+    parser.add_argument(
+        "--group-by",
+        dest="group_by",
+        choices=sorted({name for kinds in review.GROUPINGS.values() for name in kinds}),
+        default=None,
+        help=(
+            "one row per label, or per sweep run that filed the items, with how "
+            "much each left unoffered; counts the whole selection, not a page"
+        ),
+    )
     parser.set_defaults(_handler=list_items)
 
 
 def list_items(ctx: "Context") -> Envelope:
     cfg = config.load()
+    group_by = getattr(ctx.args, "group_by", None)
+    if group_by is not None:
+        return _list_grouped(ctx, cfg, group_by)
     with review.open_store(cfg) as store:
         page = review.list_items(
             store,
@@ -236,13 +249,55 @@ def list_items(ctx: "Context") -> Envelope:
             kinds=tuple(ctx.args.kind) or None,
             include_resolved=ctx.args.all,
             include_suppressed=ctx.args.suppressed,
-            limit=ctx.args.limit,
+            # NONE IS THE PAGE DEFAULT HERE, never "every item": the parser
+            # leaves it unset so ``--group-by`` can tell a typed limit apart.
+            limit=ctx.args.limit if ctx.args.limit is not None else review.DEFAULT_PAGE,
             after=ctx.args.after,
         )
         data = _payload(
             store, queue=ctx.args.queue, items=[_summary(item) for item in page.items]
         )
     return ctx.envelope(data=data, outcome=Outcome.OK if page.items else Outcome.NO_OP)
+
+
+def _list_grouped(ctx: "Context", cfg: config.Config, group_by: str) -> Envelope:
+    """``review list --group-by``: the same ``review_set/1``, one row per group.
+
+    THE SURFACE DOES NOT CHANGE. ``items`` is an array of rows in every
+    version of the schema, and a grouping row is a row; a fourth field would
+    be a schema bump for every consumer of every review set.
+
+    A QUEUE IS REQUIRED, and ``--after`` and ``--limit`` are refused, because
+    a grouping is a count over a whole selection and neither a page of one nor
+    a mixture of queues whose groups mean different things. A page flag
+    silently ignored would read as a count of the page.
+    """
+    if not ctx.args.queue or ctx.args.after is not None or ctx.args.limit is not None:
+        raise refuse(
+            "review-selection-invalid",
+            "--group-by counts one queue's whole selection by group, so it needs "
+            "--queue, and --after and --limit would page a count that has no pages",
+            steps=("pass --queue label-release with --group-by, and drop --after and --limit",),
+            scope=Scope.RUN,
+            origin=("cli.review",),
+            detail={
+                "group_by": group_by,
+                "queue": ctx.args.queue,
+                "after": ctx.args.after,
+                "limit": ctx.args.limit,
+            },
+        )
+    with review.open_store(cfg) as store:
+        rows = review.grouped(
+            store,
+            queue=ctx.args.queue,
+            by=group_by,
+            kinds=tuple(ctx.args.kind) or None,
+            include_resolved=ctx.args.all,
+            include_suppressed=ctx.args.suppressed,
+        )
+        data = _payload(store, queue=ctx.args.queue, items=rows)
+    return ctx.envelope(data=data, outcome=Outcome.OK if rows else Outcome.NO_OP)
 
 
 # ---------------------------------------------------------------------------

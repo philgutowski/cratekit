@@ -14,6 +14,7 @@ R-135 is what happens when those two answers share a shape.
 from __future__ import annotations
 
 from collections.abc import Callable, Container, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -63,6 +64,22 @@ class LabelListing:
     #: The parts of the catalogue the crawl could not read. Non empty means
     #: ``listed`` is a count of part of the label, not of all of it (R-261).
     unread: tuple[Unread, ...] = ()
+    #: Releases ALREADY IN THE REVIEW QUEUE that took a place in the offer
+    #: window and were not filed again (R-790).
+    held: int = 0
+    #: Releases the crawl listed and the sweep never examined because the
+    #: window was full. NOT a count of unowned releases: nothing past the window
+    #: was verified, tombstone checked or asked about ownership, because each of
+    #: those questions costs a provider call. It is the most the label could
+    #: still offer, and the number a person raises the window against.
+    beyond: int = 0
+    #: ``held`` when the sweep confirmed nothing new and the one held release
+    #: it then re-verified did not confirm either, else zero. The worker's
+    #: "confirmed none of what it read" refusal counts these with ``dropped``,
+    #: because before R-790 every held release was verified again and a dead
+    #: endpoint dropped them too; without this, a label with anything in the
+    #: queue would report "nothing new" over a verifier that answers nothing.
+    held_unconfirmed: int = 0
 
 
 def _year_of(release: Any) -> str:
@@ -406,6 +423,26 @@ class OwnedReleases:
         )
 
 
+class QueuedReleases:
+    """The release identities the label-release queue already holds, in any state.
+
+    R-790. A release with an item is a release somebody was already offered:
+    open, accepted, declined or superseded, the sweep never files it again,
+    and :func:`list_for_label` counts it toward the offer window instead. Asked
+    one identity at a time against the open store, because the window stops the
+    walk long before a label's catalogue runs out.
+    """
+
+    def __init__(self, store: review.ReviewStore) -> None:
+        self.store = store
+
+    def __contains__(self, identity: object) -> bool:
+        if not isinstance(identity, str) or not identity:
+            return False
+        item_id = review.item_id_for(Queue.LABEL_RELEASE, KIND, {"release_id": identity})
+        return review.find(self.store, item_id) is not None
+
+
 def list_for_label(
     cfg: config.Config,
     entry: registry.LabelEntry,
@@ -414,6 +451,7 @@ def list_for_label(
     verify: Callable[[str, Any], Mapping[str, Any]],
     last_pulled: str | None = None,
     owned: Container[str] | None = None,
+    offered: Container[str] | None = None,
     limit: int | None = None,
 ) -> LabelListing:
     """Crawl, verify, drop unconfirmed, report tombstones. Ignore ``last_pulled``.
@@ -423,13 +461,29 @@ def list_for_label(
 
     A listing that could not be READ raises ``run.LookupFailure`` rather than
     returning an empty :class:`LabelListing`. See :func:`_crawl_or_refuse`.
+
+    THE OFFER IS A WINDOW OVER THE NEWEST RELEASES, AND NEVER A DATE (R-790,
+    KTD11). ``limit``, or the label's :func:`registry.effective_offer`, is how
+    many places the window has. A release already in the queue, ``offered``,
+    takes a place and is not filed again, EVEN ONCE IT IS OWNED, because a
+    release accepted and downloaded must not hand its place to the next slice
+    of back catalogue; a release filed now takes a place; a release owned
+    without ever being offered, or tombstoned, takes none. So a first sweep
+    files the window, and a later one files only what has appeared above the
+    releases it already holds, whatever any watermark says. What the window
+    never reached is counted in ``beyond`` rather than dropped.
     """
     del last_pulled
     claimed = entry.match or entry.name
     listed, unread = _crawl_or_refuse(entry, artist)
     listed.sort(key=_year_of, reverse=True)
     owned_ids: Container[str] = owned if owned is not None else frozenset()
-    cap = limit if limit is not None else registry.effective_limit(entry)
+    offered_ids: Container[str] = offered if offered is not None else frozenset()
+    cap = (
+        limit
+        if limit is not None
+        else registry.effective_offer(entry, cfg.labels.offer_per_sweep)
+    )
 
     candidates: list[run.Candidate] = []
     dropped: list[Dropped] = []
@@ -455,10 +509,25 @@ def list_for_label(
     # outcomes the worker's "confirmed none" refusal counts are exactly the ones
     # it counted before. An owned release does not count toward the cap, which
     # is what drops owned before newest N rather than after it (R-137).
+    #
+    # A RELEASE ALREADY IN THE QUEUE IS ASKED BEFORE VERIFICATION, because it
+    # was verified when it was filed and the answer is local. It takes a place
+    # in the window, which is what keeps a later sweep from filing the next
+    # slice of back catalogue every time (R-790).
+    held = 0
+    first_held: Any = None
+    examined = 0
     for release in listed:
+        if held + len(candidates) >= cap:
+            break
+        examined += 1
         identity = str(getattr(release, "id", "") or "")
         if tombstoned(release):
             suppressed.append(_candidate(entry, release))
+            continue
+        if identity in offered_ids:
+            held += 1
+            first_held = first_held if first_held is not None else release
             continue
         verdict = label_verify.verify_release(claimed, release, search=verify)
         status = str(verdict.get("verdict") or "unconfirmed")
@@ -474,15 +543,33 @@ def list_for_label(
         if identity in owned_ids:
             continue
         candidates.append(_candidate(entry, release))
-        if len(candidates) >= cap:
-            break
+    # ONE HELD RELEASE IS RE-VERIFIED, AND ONLY WHEN THE SWEEP CONFIRMED NOTHING
+    # IT ASKED ABOUT. It was confirmed when it was filed, so it is the one
+    # release whose answer is known: confirmed again means the endpoint is up
+    # and what failed really is unconfirmed, and unconfirmed means nothing this
+    # sweep asked could have been confirmed. One provider call, on the path
+    # where the worker is deciding whether to refuse.
+    held_unconfirmed = 0
+    if first_held is not None and dropped and not candidates:
+        canary = label_verify.verify_release(claimed, first_held, search=verify)
+        if str(canary.get("verdict") or "unconfirmed") != "confirmed":
+            held_unconfirmed = held
     return LabelListing(
         candidates=tuple(candidates),
         dropped=tuple(dropped),
         suppressed=tuple(suppressed),
         listed=len(listed),
         unread=unread,
+        held=held,
+        beyond=len(listed) - examined,
+        held_unconfirmed=held_unconfirmed,
     )
+
+
+#: The payload field naming the sweep run that filed a label release (R-790).
+#: Spelled once, in the review module, because ``review list --group-by run``
+#: reads the same field.
+SWEEP_RUN = review.RUN_FIELD
 
 
 def offer_release(
@@ -490,9 +577,24 @@ def offer_release(
     candidate: run.Candidate,
     *,
     handler_key: str = HANDLER_KEY,
+    run_id: str | None = None,
 ) -> review.Item:
+    """File one release, recording ``run_id`` as the sweep that filed it.
+
+    THE FIRST RUN STAYS THE FILING RUN. ``review.offer`` rewrites an open
+    item's payload on a re-offer, so an item already in the queue keeps the run
+    it carries rather than taking the later one's, which would make an old
+    release read as new in a grouping by run.
+    """
     payload = dict(candidate.payload or {})
     payload.setdefault("identity", candidate.identity)
+    if run_id:
+        existing = review.find(
+            store,
+            review.item_id_for(Queue.LABEL_RELEASE, KIND, {"release_id": candidate.identity}),
+        )
+        held_run = existing.payload.get(SWEEP_RUN) if existing is not None else None
+        payload[SWEEP_RUN] = held_run or run_id
     return review.offer(
         store,
         queue=Queue.LABEL_RELEASE,
@@ -586,6 +688,14 @@ class LabelSource:
         #: because a crawl that skipped a listing is not a crawl of the label
         #: (R-261, R-393).
         self.unread: tuple[Unread, ...] = ()
+        #: EVERY LABEL THE LAST PASS LISTED, with its listing, rebuilt per pass
+        #: on the rule ``dropped`` states. The worker records each label's
+        #: ``beyond`` from here, since the increment's result carries only
+        #: identities (R-790).
+        self.listings: tuple[tuple[registry.LabelEntry, LabelListing], ...] = ()
+        #: HELD RELEASES THE LAST PASS COULD NOT CONFIRM AGAIN, summed over its
+        #: labels. See :attr:`LabelListing.held_unconfirmed`.
+        self.held_unconfirmed = 0
 
     def _artist_for(self, entry: registry.LabelEntry) -> Any:
         """The provider artist object for one favourite label, or a refusal.
@@ -733,24 +843,49 @@ class LabelSource:
         found: list[run.Candidate] = []
         discarded: list[Dropped] = []
         unread: list[Unread] = []
+        listings: list[tuple[registry.LabelEntry, LabelListing]] = []
         read = 0
-        for entry in self.registry.labels.values():
-            listing = list_for_label(
-                self.cfg,
-                entry,
-                artist=self._artist_for(entry),
-                verify=verify,
-                owned=self.owned,
-            )
-            found.extend(listing.candidates)
-            discarded.extend(listing.dropped)
-            unread.extend(listing.unread)
-            read += listing.listed
+        with self._queue() as store:
+            offered = QueuedReleases(store) if store is not None else None
+            for entry in self.registry.labels.values():
+                listing = list_for_label(
+                    self.cfg,
+                    entry,
+                    artist=self._artist_for(entry),
+                    verify=verify,
+                    owned=self.owned,
+                    offered=offered,
+                )
+                found.extend(listing.candidates)
+                discarded.extend(listing.dropped)
+                unread.extend(listing.unread)
+                listings.append((entry, listing))
+                read += listing.listed
         self.dropped = tuple(discarded)
         self.unread = tuple(unread)
+        self.listings = tuple(listings)
+        self.held_unconfirmed = sum(listing.held_unconfirmed for _, listing in listings)
         self.read = read
         found.sort(key=lambda item: item.recency, reverse=True)
         return found[:n] if n >= 0 else found
+
+    @contextmanager
+    def _queue(self) -> Iterator[review.ReviewStore | None]:
+        """The open store when the worker handed one, else one for this pass.
+
+        None over an empty registry, for the reason the verifier is resolved
+        lazily in :meth:`list_recent`: a source with no label to list has no
+        queue to ask, and opening one would create a review database for a
+        pass that never needed it.
+        """
+        if self.store is not None:
+            yield self.store
+            return
+        if not self.registry.labels:
+            yield None
+            return
+        with review.open_store(self.cfg) as own:
+            yield own
 
     def process(
         self,
@@ -759,10 +894,10 @@ class LabelSource:
         run_id: str,
         store: review.ReviewStore | None = None,
     ) -> None:
-        del artifacts, run_id
+        del artifacts
         opened = store if store is not None else self.store
         if opened is not None:
-            offer_release(opened, candidate)
+            offer_release(opened, candidate, run_id=run_id)
             return
         with review.open_store(self.cfg) as own:
-            offer_release(own, candidate)
+            offer_release(own, candidate, run_id=run_id)

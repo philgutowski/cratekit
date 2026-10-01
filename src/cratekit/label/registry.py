@@ -12,7 +12,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from cratekit.core import config
@@ -127,6 +127,17 @@ def check_track_limit(limit: int) -> int:
     return limit
 
 
+def check_offer(offer: int) -> int:
+    """An offer of one or more, or a refusal. Zero would read as the default."""
+    if isinstance(offer, bool) or not isinstance(offer, int) or offer < 1:
+        raise _field_invalid(
+            f"a label's offer must be a whole number of one or more, not {offer!r}",
+            "pass --offer with a positive number",
+            {"offer": offer},
+        )
+    return offer
+
+
 def _checked_seeds(seed_artists: Sequence[str]) -> tuple[str, ...]:
     return tuple(check_seed(seed) for seed in seed_artists)
 
@@ -153,6 +164,19 @@ def effective_limit(entry: LabelEntry, default: int = DEFAULT_TRACK_LIMIT) -> in
     return default
 
 
+def effective_offer(entry: LabelEntry, default: int) -> int:
+    """How many places one sweep of this label fills in review (R-790).
+
+    The entry's own ``offer`` when it set one, else ``default``, which the
+    caller takes from ``labels.offer_per_sweep`` in the configuration. Bounded
+    by :func:`effective_limit`, because the increment slices to that number
+    after the listing, and a window wider than the slice would file fewer than
+    it reported and drop the rest without counting them.
+    """
+    offer = entry.offer if entry.offer is not None and entry.offer > 0 else default
+    return min(offer, effective_limit(entry))
+
+
 @dataclass(frozen=True, slots=True)
 class LabelEntry:
     """One followed label. ``label_id`` is the identity; ``name`` is display.
@@ -167,6 +191,9 @@ class LabelEntry:
     match: str | None = None
     seed_artists: tuple[str, ...] = ()
     track_limit: int | None = None
+    #: This label's own window of releases per sweep, or None for the
+    #: configuration's ``labels.offer_per_sweep``. See :func:`effective_offer`.
+    offer: int | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -175,6 +202,7 @@ class LabelEntry:
             "match": self.match,
             "seed_artists": list(self.seed_artists),
             "track_limit": self.track_limit,
+            "offer": self.offer,
         }
 
 
@@ -236,6 +264,7 @@ def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
         match=str(match) if match else None,
         seed_artists=seed_list,
         track_limit=_coerce_int(raw.get("track_limit")),
+        offer=_coerce_int(raw.get("offer")),
     )
 
 
@@ -295,13 +324,7 @@ def migrate(held: Registry) -> tuple[Registry, dict[str, str]]:
             labels[old] = entry
             continue
         taken.add(new)
-        labels[new] = LabelEntry(
-            label_id=new,
-            name=entry.name,
-            match=entry.match,
-            seed_artists=entry.seed_artists,
-            track_limit=entry.track_limit,
-        )
+        labels[new] = replace(entry, label_id=new)
         moved[old] = new
     if not moved:
         return held, moved
@@ -442,6 +465,7 @@ class RegistryStore:
         match: str | None = None,
         seed_artists: tuple[str, ...] | list[str] = (),
         track_limit: int | None = None,
+        offer: int | None = None,
     ) -> str:
         """Add or update by identifier. Re-adding keeps the same ``label_id``.
 
@@ -452,6 +476,8 @@ class RegistryStore:
         seeds = _checked_seeds(seed_artists)
         if track_limit is not None:
             check_track_limit(track_limit)
+        if offer is not None:
+            check_offer(offer)
         written: list[str] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -477,6 +503,7 @@ class RegistryStore:
                 track_limit=track_limit if track_limit is not None else (
                     existing.track_limit if existing else None
                 ),
+                offer=offer if offer is not None else (existing.offer if existing else None),
             )
 
         self.update(mutate)
@@ -540,6 +567,7 @@ class RegistryStore:
         match: str | None = None,
         seed_artists: Sequence[str] | None = None,
         track_limit: int | None = None,
+        offer: int | None = None,
     ) -> LabelEntry:
         """Change the given fields of a held entry and keep every other one.
 
@@ -552,6 +580,8 @@ class RegistryStore:
         seeds = _checked_seeds(seed_artists) if seed_artists is not None else None
         if track_limit is not None:
             check_track_limit(track_limit)
+        if offer is not None:
+            check_offer(offer)
         edited: list[LabelEntry] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -565,12 +595,12 @@ class RegistryStore:
                     origin=("label.registry",),
                     detail={"name": name_or_id},
                 )
-            entry = LabelEntry(
-                label_id=existing.label_id,
-                name=existing.name,
+            entry = replace(
+                existing,
                 match=match if match is not None else existing.match,
                 seed_artists=seeds if seeds is not None else existing.seed_artists,
                 track_limit=track_limit if track_limit is not None else existing.track_limit,
+                offer=offer if offer is not None else existing.offer,
             )
             current[existing.label_id] = entry
             edited.append(entry)
@@ -592,13 +622,7 @@ class RegistryStore:
                     origin=("label.registry",),
                     detail={"label_id": label_id},
                 )
-            current[label_id] = LabelEntry(
-                label_id=existing.label_id,
-                name=new_name,
-                match=existing.match,
-                seed_artists=existing.seed_artists,
-                track_limit=existing.track_limit,
-            )
+            current[label_id] = replace(existing, name=new_name)
 
         return self.update(mutate).by_id(label_id)
 

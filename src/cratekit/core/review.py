@@ -776,6 +776,23 @@ _SCHEMA = (
     """,
     "CREATE INDEX IF NOT EXISTS review_open ON review_items (queue, verdict, ordinal)",
     "CREATE UNIQUE INDEX IF NOT EXISTS review_order ON review_items (ordinal)",
+    # WHAT A PRODUCER'S ROUND LEFT UNOFFERED, per group (R-790). A label sweep
+    # offers a window of a label's newest releases and counts the rest here, so
+    # a person can see there is more and raise the window for that label. It is
+    # not an item and is never decided. ADDITIVE, SO ``SCHEMA_VERSION`` DOES NOT
+    # MOVE: a build that predates the table never reads it, and a version bump
+    # would refuse every existing queue over a table that changes no verdict.
+    """
+    CREATE TABLE IF NOT EXISTS offer_rounds (
+        queue      TEXT NOT NULL,
+        run_id     TEXT NOT NULL,
+        group_key  TEXT NOT NULL,
+        group_name TEXT NOT NULL,
+        beyond     INTEGER NOT NULL,
+        created    TEXT NOT NULL,
+        PRIMARY KEY (queue, run_id, group_key)
+    )
+    """,
 )
 
 
@@ -1278,6 +1295,178 @@ def offer(
                     (encoded_identity, encoded_payload, encoded_options, handler_key, now, item_id),
                 )
     return get(store, item_id)
+
+
+@dataclass(frozen=True, slots=True)
+class Round:
+    """How much one producer's round left unoffered in one group (R-790)."""
+
+    queue: str
+    run_id: str
+    group: str
+    name: str
+    beyond: int
+    created: str
+
+
+def record_round(
+    store: ReviewStore,
+    *,
+    queue: str,
+    run_id: str,
+    group: str,
+    name: str,
+    beyond: int,
+) -> Round:
+    """Record what a round left beyond its offer, replacing that run's earlier answer.
+
+    REPLACED, NOT ADDED. A resumed item runs its round again under the same run
+    id, and its second answer is a count of the same catalogue, so summing the
+    two would report the back catalogue twice.
+    """
+    declared = _assert_declared_queue(queue)
+    now = timestamp()
+    with store.immediate() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO offer_rounds "
+            "(queue, run_id, group_key, group_name, beyond, created) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (declared, run_id, group, name, int(beyond), now),
+        )
+    return Round(
+        queue=declared, run_id=run_id, group=group, name=name, beyond=int(beyond), created=now
+    )
+
+
+#: The payload field a producer stamps with the run that filed an item (R-790).
+#: The label sweep is the one producer that does; an item filed before it did,
+#: or by another producer, carries none and groups as an unrecorded run.
+RUN_FIELD = "sweep_run"
+
+#: What ``review list --group-by`` can group each queue by: the payload field
+#: holding a group's key, and the one holding its display name, if any.
+GROUPINGS: Mapping[str, Mapping[str, tuple[str, str | None]]] = {
+    "label-release": {"label": ("label_id", "label_name"), "run": (RUN_FIELD, None)},
+}
+
+#: The kinds a grouping counts when the caller names none. The label-release
+#: queue also holds the label NAMES harvest files, ``harvested-label``, which
+#: carry neither a label identifier nor a run and would collapse into one
+#: nameless group beside the releases a person is counting.
+GROUPED_KINDS: Mapping[str, tuple[str, ...]] = {"label-release": ("label-release",)}
+
+
+def grouped(
+    store: ReviewStore,
+    *,
+    queue: str,
+    by: str,
+    kinds: Sequence[str] | None = None,
+    include_resolved: bool = False,
+    include_suppressed: bool = False,
+) -> list[dict[str, Any]]:
+    """One row per group of ``queue``, counting the items the same filters list.
+
+    READS THE WHOLE SELECTION, a page at a time, because a count per group
+    over one page would be a count of the page. Rows also come from recorded
+    rounds, so a label whose window is full of decided items still shows how
+    much of its catalogue it never offered.
+
+    ``beyond`` is the recorded count of releases a round never examined: for a
+    label, its latest round's; for a run, the sum over the labels it swept.
+    None where nothing was recorded, which is not the same answer as zero.
+    """
+    declared = _assert_declared_queue(queue)
+    fields = GROUPINGS.get(declared, {}).get(by)
+    if fields is None:
+        raise refuse(
+            "review-selection-invalid",
+            f"the {declared} queue cannot be grouped by {by!r}; it groups by "
+            f"{', '.join(sorted(GROUPINGS.get(declared, {}))) or 'nothing'}",
+            steps=("group the label-release queue by label or by run",),
+            scope=Scope.RUN,
+            origin=("review",),
+            detail={"queue": declared, "group_by": by},
+        )
+    key_field, name_field = fields
+    kinds = kinds or GROUPED_KINDS.get(declared)
+    counts: dict[Any, int] = {}
+    names: dict[Any, str] = {}
+    labels_per_run: dict[Any, set[str]] = {}
+    label_key = GROUPINGS[declared].get("label", (None, None))[0]
+    cursor: int | None = None
+    while True:
+        page = list_items(
+            store,
+            queue=declared,
+            kinds=kinds,
+            include_resolved=include_resolved,
+            include_suppressed=include_suppressed,
+            limit=DEFAULT_PAGE,
+            after=cursor,
+        )
+        for item in page.items:
+            key = item.payload.get(key_field) or None
+            counts[key] = counts.get(key, 0) + 1
+            if name_field and item.payload.get(name_field):
+                names.setdefault(key, str(item.payload[name_field]))
+            if by == "run" and label_key and item.payload.get(label_key):
+                labels_per_run.setdefault(key, set()).add(str(item.payload[label_key]))
+        if page.next_cursor is None:
+            break
+        cursor = page.next_cursor
+    recorded = rounds(store, queue=declared)
+    if by == "label":
+        latest: dict[Any, Round] = {}
+        for found in recorded:
+            latest[found.group] = found
+            names.setdefault(found.group, found.name)
+        keys = sorted(
+            set(counts) | set(latest), key=lambda k: (names.get(k) or str(k or "")).casefold()
+        )
+        return [
+            {
+                "label": key,
+                "label_name": names.get(key, ""),
+                "items": counts.get(key, 0),
+                "beyond": latest[key].beyond if key in latest else None,
+                "swept": latest[key].run_id if key in latest else None,
+            }
+            for key in keys
+        ]
+    beyond_per_run: dict[Any, int] = {}
+    for found in recorded:
+        beyond_per_run[found.run_id] = beyond_per_run.get(found.run_id, 0) + found.beyond
+        labels_per_run.setdefault(found.run_id, set()).add(found.group)
+    keys = list(counts) + [key for key in beyond_per_run if key not in counts]
+    return [
+        {
+            "run": key,
+            "items": counts.get(key, 0),
+            "labels": len(labels_per_run.get(key, set())),
+            "beyond": beyond_per_run.get(key),
+        }
+        for key in keys
+    ]
+
+
+def rounds(store: ReviewStore, *, queue: str) -> tuple[Round, ...]:
+    """Every recorded round for ``queue``, oldest first."""
+    rows = store.conn.execute(
+        "SELECT * FROM offer_rounds WHERE queue = ? ORDER BY created, run_id, group_key",
+        (_assert_declared_queue(queue),),
+    ).fetchall()
+    return tuple(
+        Round(
+            queue=row["queue"],
+            run_id=row["run_id"],
+            group=row["group_key"],
+            name=row["group_name"],
+            beyond=int(row["beyond"]),
+            created=row["created"],
+        )
+        for row in rows
+    )
 
 
 def identity_of(store: ReviewStore, item_id: str) -> dict[str, Any] | None:
@@ -2308,6 +2497,7 @@ __all__ = [
     "Predicate",
     "Queue",
     "ReviewStore",
+    "Round",
     "Surface",
     "PERSON_VERDICTS",
     "Verdict",
@@ -2330,8 +2520,14 @@ __all__ = [
     "offer",
     "open_store",
     "queue_path",
+    "record_round",
     "resolve",
     "resolve_where",
+    "rounds",
+    "grouped",
+    "GROUPINGS",
+    "GROUPED_KINDS",
+    "RUN_FIELD",
     "store_dir",
     "unresolved_cause",
 ]

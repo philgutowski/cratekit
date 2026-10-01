@@ -1030,8 +1030,15 @@ def test_the_roster_crawls_the_label_page_and_every_seed_through_the_listing(cfg
     seed = ProviderArtist("Quiet Act", [], [shared, Release("s1", copyright="2024 Harbour Lights")])
     client = use_client(monkeypatch, FakeClient(artists=[label_page, seed]))
     record_session()
+    # THE OFFER IS RAISED WITH THE LIMIT. This test is about the crawl reading
+    # every page, and the default window of ten (R-790) would stop the walk
+    # long before the hundred and fifty releases it checks are reached.
     entry = labels.LabelEntry(
-        label_id="harbour", name="Harbour Lights", seed_artists=("Quiet Act",), track_limit=500
+        label_id="harbour",
+        name="Harbour Lights",
+        seed_artists=("Quiet Act",),
+        track_limit=500,
+        offer=500,
     )
     source = sweep.LabelSource(
         config.load(),

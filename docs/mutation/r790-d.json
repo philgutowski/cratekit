@@ -1,0 +1,203 @@
+{
+  "name": "r790-d",
+  "pass_kind": "light",
+  "branch": "relay/234",
+  "head": "5c2d8f4",
+  "when": "2026-10-01 10:50 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11097,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "state_guarded": "/tmp/r790-mutate-aiE9/config (0 entries); /tmp/r790-mutate-aiE9/state (0 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/review.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/review.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "59f3be5f3b186315",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11097,
+    "baseline_collected": 11097,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "R1_grouping_kinds",
+      "description": "grouped: count every kind in the queue, harvested label names included",
+      "file": "src/cratekit/core/review.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d8fad7868371b51a",
+      "subset": [
+        "tests/test_label_offer_window.py",
+        "tests/test_review_queue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 196,
+      "baseline_collected": 196,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_offer_window.py::test_a_harvested_label_name_is_not_counted_as_a_label_release"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    kinds = kinds or GROUPED_KINDS.get(declared)",
+      "new": "    kinds = kinds"
+    },
+    {
+      "id": "R2_label_beyond",
+      "description": "grouped by label: report no recorded beyond",
+      "file": "src/cratekit/core/review.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "848e942f379d60c2",
+      "subset": [
+        "tests/test_label_offer_window.py",
+        "tests/test_review_queue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 196,
+      "baseline_collected": 196,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_offer_window.py::test_a_first_sweep_files_the_default_ten_and_counts_the_other_forty",
+        "tests/test_label_offer_window.py::test_a_label_whose_offer_is_raised_to_thirty_files_thirty",
+        "tests/test_label_offer_window.py::test_a_second_sweep_files_only_the_new_release_and_refiles_nothing",
+        "tests/test_label_offer_window.py::test_a_track_limit_below_the_offer_bounds_it_and_the_rest_is_still_counted",
+        "tests/test_label_offer_window.py::test_the_configured_offer_is_the_default_for_every_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"beyond\": latest[key].beyond if key in latest else None,",
+      "new": "                \"beyond\": None,"
+    },
+    {
+      "id": "R3_run_beyond_summed",
+      "description": "grouped by run: keep the last label's beyond instead of the sum over the run's labels",
+      "file": "src/cratekit/core/review.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6fd4f92e4b1d5a84",
+      "subset": [
+        "tests/test_label_offer_window.py",
+        "tests/test_review_queue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 11097,
+      "baseline_collected": 11097,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        beyond_per_run[found.run_id] = beyond_per_run.get(found.run_id, 0) + found.beyond",
+      "new": "        beyond_per_run[found.run_id] = found.beyond"
+    },
+    {
+      "id": "S9_queue_is_asked_again",
+      "description": "QueuedReleases: answer that no release is in the queue, measured again after the test S9's zero bought in r790-b",
+      "file": "src/cratekit/label/sweep.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4caf2d675d297463",
+      "subset": [
+        "tests/test_label_offer_window.py",
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py",
+        "tests/test_label_registry_verbs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 189,
+      "baseline_collected": 189,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_offer_window.py::test_a_later_sweep_asks_the_provider_nothing_about_releases_it_already_holds"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return review.find(self.store, item_id) is not None",
+      "new": "        return False"
+    },
+    {
+      "id": "V1_group_page_refusal",
+      "description": "_list_grouped: accept --after and --limit and ignore them",
+      "file": "src/cratekit/cli/review.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "82e9a9279736d99e",
+      "subset": [
+        "tests/test_label_offer_window.py",
+        "tests/test_review_queue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 196,
+      "baseline_collected": 196,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_offer_window.py::test_a_page_limit_with_a_grouping_refuses_rather_than_being_ignored",
+        "tests/test_label_offer_window.py::test_grouping_needs_a_queue_and_has_no_pages"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not ctx.args.queue or ctx.args.after is not None or ctx.args.limit is not None:",
+      "new": "    if not ctx.args.queue:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "R4_round_replaced",
+      "description": "record_round: INSERT OR IGNORE instead of REPLACE, so a resumed run keeps its first count",
+      "reason": "ranked below the cap: maintainer facing, a resumed item's second count is of the same catalogue, and the slot went to re-measuring S9's user facing zero"
+    }
+  ]
+}

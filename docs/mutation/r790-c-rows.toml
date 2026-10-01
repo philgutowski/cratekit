@@ -1,0 +1,71 @@
+name = "r790-c"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_offer_bounded_by_limit"
+description = "effective_offer: stop bounding the window by the track limit, so the increment slices what the listing reported"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''    return min(offer, effective_limit(entry))'''
+new = '''    return offer'''
+
+[[rows]]
+id = "G2_entry_overrides"
+description = "effective_offer: ignore a label's own offer"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''    offer = entry.offer if entry.offer is not None and entry.offer > 0 else default'''
+new = '''    offer = default'''
+
+[[rows]]
+id = "G3_offer_floor"
+description = "check_offer: accept zero at the store"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''    if isinstance(offer, bool) or not isinstance(offer, int) or offer < 1:'''
+new = '''    if isinstance(offer, bool) or not isinstance(offer, int) or offer < 0:'''
+
+[[rows]]
+id = "G4_offer_read_back"
+description = "_entry_from: read every stored offer as unset"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''        offer=_coerce_int(raw.get("offer")),'''
+new = '''        offer=None,'''
+
+[[rows]]
+id = "G5_rename_keeps_offer"
+description = "rename: rebuild the entry field by field without the offer, the shape every copy had before"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''            current[label_id] = replace(existing, name=new_name)'''
+new = '''            current[label_id] = LabelEntry(
+                label_id=existing.label_id,
+                name=new_name,
+                match=existing.match,
+                seed_artists=existing.seed_artists,
+                track_limit=existing.track_limit,
+            )'''
+
+[[rows]]
+id = "C1_config_floor"
+description = "_validate_labels: accept zero"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_config.py"]
+old = '''        not isinstance(offer, int) or isinstance(offer, bool) or offer < 1'''
+new = '''        not isinstance(offer, int) or isinstance(offer, bool) or offer < 0'''
+
+[[rows]]
+id = "C2_config_built"
+description = "from_dict: ignore the labels section and always take the default"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_config.py"]
+old = '''        labels=_build(LabelsConfig, data.get("labels") or {}),'''
+new = '''        labels=LabelsConfig(),'''
