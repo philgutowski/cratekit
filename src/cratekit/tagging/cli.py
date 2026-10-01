@@ -38,7 +38,7 @@ from cratekit.cli.output import Envelope
 from cratekit.core import active_taxonomy, art, config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.tagging import artifacts, searchers, shell
+from cratekit.tagging import artifacts, published, searchers, shell
 
 # THE ENGINE IS ALIASED because this module already defines ``tag_folder`` and
 # that function is the VERB, while :mod:`cratekit.tagging.tag` defines a
@@ -67,6 +67,18 @@ SOURCES_UNREAD = "tag-folder-sources-unread"
 #: above because the next move differs: a whole catalogue contributed nothing to
 #: the run, which a person needs to know before they trust any decline in it.
 SOURCE_BLOCKED = "tag-folder-source-blocked"
+
+#: The warning that names the general catalogue when it could not be read on
+#: any file it was asked about, blocked, unreachable or unparsable (R-796). One
+#: code for all three because the consequence is one: no file in the run got a
+#: published genre, and every decline in it was made without that catalogue.
+PUBLISHED_UNREAD = "tag-folder-published-unread"
+
+#: The warning that counts the files the general catalogue could not be asked
+#: about because they carry no ISRC (R-796). Apart from the unread count
+#: because another run will not move it: the file needs its ISRC, or a genre by
+#: hand.
+NO_ISRC = "tag-folder-no-isrc"
 
 
 def _load() -> config.Config:
@@ -159,10 +171,22 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     "Bandcamp matched none of 66" are two different lines rather than one silence
     (R-791). A report committed before the answers were recorded counts under
     none of them, for the art repair's reason.
+
+    THE GENERAL CATALOGUE IS COUNTED BESIDE THE THREE, over its own answers
+    (R-796). Its set is the record shops' and ``no-isrc``, the one answer only a
+    catalogue asked by ISRC can give, so the three do not gain a count that can
+    never be anything but zero.
+
+    ``tagged_by`` COUNTS THE FILES WRITTEN PER SOURCE, zero filled, so how many
+    genres the general catalogue supplied is a number in the summary rather
+    than a subtraction. A file tagged by a searcher that names no source, or by
+    one this build does not declare, is in ``tagged`` and in none of these.
     """
     skipped = dict.fromkeys(tag_engine.SKIP_REASONS, 0)
     answer_values = (*(answer.value for answer in searchers.Answer), searchers.NOT_ASKED)
     answers = {source: dict.fromkeys(answer_values, 0) for source in searchers.SOURCES}
+    answers[published.SOURCE] = dict.fromkeys(published.ANSWERS, 0)
+    tagged_by = dict.fromkeys(answers, 0)
     art_repair = dict.fromkeys(art.REPAIR_STATUSES, 0)
     art_fetch = dict.fromkeys(tag_engine.ART_FETCH_STATUSES, 0)
     unresolved: dict[str, int] = {}
@@ -175,6 +199,9 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
             skipped[reason] += 1
         elif report.get("genre_written"):
             tagged += 1
+            wrote = str(report.get("source") or "")
+            if wrote in tagged_by:
+                tagged_by[wrote] += 1
             if report.get("off_taxonomy") and source_genre:
                 off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1
         if reason == tag_engine.UNMAPPED_GENRE and source_genre:
@@ -194,6 +221,7 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
                 counted[word] += 1
     return {
         "tagged": tagged,
+        "tagged_by": tagged_by,
         "skipped": skipped,
         "unresolved": unresolved,
         "off_taxonomy": off_taxonomy,
@@ -259,7 +287,11 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
                 ),
             }
         )
-    for source, counted in answers.items():
+    # THE THREE RECORD SHOPS ONLY. The general catalogue has a warning of its
+    # own, over every unread answer rather than only this one, and naming it
+    # here as well would say one fact twice in two wordings.
+    for source in searchers.SOURCES:
+        counted = answers.get(source) or {}
         asked = sum(count for word, count in counted.items() if word != searchers.NOT_ASKED)
         if asked and counted.get(searchers.Answer.BLOCKED.value, 0) == asked:
             warnings.append(
@@ -281,6 +313,69 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
 def _files(count: int) -> str:
     """``1 file was`` or ``N files were``, the head of a sentence about files."""
     return "1 file was" if count == 1 else f"{count} files were"
+
+
+def _published_warnings(summary: dict) -> tuple[dict[str, str], ...]:
+    """Say when the general catalogue gave the run nothing, and count the no ISRC files.
+
+    UNREAD ON EVERY FILE IT WAS ASKED ABOUT, and at least one, is named. Asked
+    means it answered something about the track or failed to: a match, a miss,
+    or one of the three unread answers. ``not-asked`` and ``no-isrc`` are files
+    it was never sent, so a run where Beatport settled most of the folder cannot
+    hide a catalogue that was refused on the rest. One warning for a block, an
+    outage and a parse break, with the count of each, because the person's first
+    question is the same for all three: did the run have this catalogue at all.
+
+    THE NO ISRC COUNT IS ITS OWN WARNING, whatever skip reason those files
+    carry. On a machine whose fallbacks are blocked every such file is
+    ``sources-unread``, which promises that another run asks again, and for
+    these files another run asks the general catalogue nothing.
+    """
+    counted = (summary.get("answers") or {}).get(published.SOURCE) or {}
+    warnings: list[dict[str, str]] = []
+    unread = {word: counted.get(word, 0) for word in published.UNREAD}
+    answered = sum(
+        counted.get(word, 0)
+        for word in (searchers.Answer.MATCHED.value, searchers.Answer.MISS.value)
+    )
+    failed = sum(unread.values())
+    if failed and not answered:
+        seen = "; ".join(f"{word} on {count}" for word, count in unread.items() if count)
+        warnings.append(
+            {
+                "code": PUBLISHED_UNREAD,
+                "message": (
+                    f"{published.SOURCE}, the general catalogue asked by ISRC, "
+                    f"could not be read on any of the {failed} files it was asked "
+                    f"about ({seen}), so no file in this run got a published genre "
+                    f"from it and every decline here was made without it. This "
+                    f"tool does not try to get past a block or a rate limit; run "
+                    f"the folder again once the catalogue answers this machine"
+                    + (
+                        ". A parse break is a defect in this software that "
+                        "another run will not move; report it"
+                        if unread.get(searchers.Answer.PARSE_BREAK.value)
+                        else ""
+                    )
+                ),
+            }
+        )
+    bare = counted.get(tag_engine.NO_ISRC, 0)
+    if bare:
+        warnings.append(
+            {
+                "code": NO_ISRC,
+                "message": (
+                    f"{_files(bare)} not asked about at {published.SOURCE} because "
+                    f"the file carries no ISRC, or a value that does not read as "
+                    f"one, and that catalogue is asked by ISRC and never by a "
+                    f"search. They are not reported as tracks no catalogue "
+                    f"carries, and another run will not change it; each file's "
+                    f"record says what its tag held"
+                ),
+            }
+        )
+    return tuple(warnings)
 
 
 def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:
@@ -443,7 +538,8 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
             data=shell.reported(store, job, {"tagging": summary}),
             warnings=tuple(warnings)
             + _off_taxonomy_warning(summary)
-            + _unread_warnings(summary),
+            + _unread_warnings(summary)
+            + _published_warnings(summary),
         )
 
 
@@ -475,6 +571,10 @@ def handle(job, item, cfg) -> jobs.Produced:
     of them answered at all, so this item fails, the rest of the folder is
     unaffected, and a retry redoes exactly the one that failed.
 
+    THE GENERAL CATALOGUE'S SEAM IS LOOKED UP THE SAME WAY (R-796), off
+    :mod:`cratekit.tagging.published` at call time, and the engine decides when
+    it is consulted. This worker only hands it over.
+
     THE CONFIGURATION IS THE FROZEN ONE AND IS NOT LOADED HERE. KTD9 closes the
     recorded resume bug where a queued run re-resolved its configuration; a
     handler that loaded one is that defect wearing a new hat.
@@ -493,10 +593,12 @@ def handle(job, item, cfg) -> jobs.Produced:
             origin=("tagging", "cli"),
             detail={"item": item.item_id, "folder": str(folder)},
         )
+    declared = active_taxonomy.load(cfg)
     result = tag_engine.tag_one(
         path,
-        searcher=searchers.for_taxonomy(active_taxonomy.load(cfg)),
+        searcher=searchers.for_taxonomy(declared),
         fetch_image=searchers.for_images(),
+        published=published.for_taxonomy(declared),
     )
     return artifacts.produced(
         cfg,

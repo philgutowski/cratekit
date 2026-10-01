@@ -41,7 +41,7 @@ from cratekit.cli import handlers, output, registry
 from cratekit.core import art, config, jobs, review, routing, tags
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.tagging import artifacts, retag, retag_cli, searchers, shell, tag
+from cratekit.tagging import artifacts, published, retag, retag_cli, searchers, shell, tag
 from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import SearchHit
 from tests._containers import synth_container
@@ -50,6 +50,14 @@ from tests.test_catalogue_searcher import _beatport_page as beatport_page
 from tests.test_catalogue_searcher import _beatport_track as beatport_track
 from tests.test_config import valid_data
 from tests.test_handlers import _drive_calls
+from tests.test_published_genre import (
+    ISRC,
+    RATE_LIMITED,
+    deezer_album,
+    deezer_fetch,
+    deezer_track,
+)
+from tests.test_published_genre import UNKNOWN as DEEZER_UNKNOWN
 
 # THE FIXTURE BUILDERS ARE IMPORTED RATHER THAN COPIED. ``place`` is one opinion
 # about what a real audio file carrying a genre is, and ``answering`` is one
@@ -543,7 +551,26 @@ def bound(monkeypatch, searcher):
     fake in, and without one every case below would touch the network.
     """
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared=None: searcher)
+    # THE GENERAL CATALOGUE IS BOUND TOO, to a lookup that fails the test on any
+    # request (R-796). The worker hands every searched file to it, and a file
+    # carrying an ISRC would otherwise be asked about on the real network. A
+    # test that wants an answer calls :func:`general` after this.
+    general(monkeypatch, None)
     return searcher
+
+
+def general(monkeypatch, track, album=None, seen: list[str] | None = None):
+    """Bind the general catalogue's lookup where the worker's seam reads it.
+
+    ``published.for_taxonomy`` is built over ``published.for_lookup`` at call
+    time, so replacing the lookup is the whole substitution, and the rules of
+    when the catalogue is asked stay the shipped ones.
+    """
+    lookup = published.genre_lookup(
+        fetch=deezer_fetch(track, album, seen), sleep=lambda _seconds: None
+    )
+    monkeypatch.setattr(published, "for_lookup", lambda: lookup)
+    return lookup
 
 
 def raising_on(searcher, title: str):
@@ -757,6 +784,7 @@ def test_the_skip_reason_reaches_the_report_and_not_only_the_artifact(
         tag.NO_HIT,
         tag.UNMAPPED_GENRE,
         tag.SOURCES_UNREAD,
+        tag.NO_ISRC,
     }, (
         "a summary listing only the reasons it saw cannot tell 'none of those "
         "here' from 'this build does not count them'"
@@ -899,6 +927,26 @@ BANDCAMP_CHALLENGE = searchers.Fetched(
     text="<html><head><title>Client Challenge</title></head></html>", status=200
 )
 
+#: The two states of the three record shops the general catalogue's cases are
+#: driven in: every one answering MISS, and the state measured on the author's
+#: machine, Beatport answering MISS and both fallbacks refusing.
+ALL_MISSED = {
+    searchers.BEATPORT: EMPTY_BEATPORT,
+    searchers.TRAXSOURCE: EMPTY_TRAXSOURCE,
+    searchers.BANDCAMP: EMPTY_BANDCAMP,
+}
+REFUSED_FALLBACKS = {
+    searchers.BEATPORT: EMPTY_BEATPORT,
+    searchers.TRAXSOURCE: TRAXSOURCE_403,
+    searchers.BANDCAMP: BANDCAMP_CHALLENGE,
+}
+
+
+def _fetched(answer) -> searchers.Fetched:
+    return answer if isinstance(answer, searchers.Fetched) else searchers.Fetched(
+        text=answer, status=200
+    )
+
 
 def test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_as_no_hit(
     cfg, folder, silence, monkeypatch
@@ -929,6 +977,9 @@ def test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_a
             (searchers.BEATPORT, "miss"),
             (searchers.TRAXSOURCE, "blocked"),
             (searchers.BANDCAMP, "blocked"),
+            # The fixture files carry no ISRC, so the general catalogue was
+            # never asked about them and the record says why (R-796).
+            (published.DEEZER, tag.NO_ISRC),
         ]
         assert report["unread"] == {
             searchers.TRAXSOURCE: "blocked",
@@ -991,6 +1042,7 @@ def test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_war
     assert reports["a.flac"]["genre_written"] == SPECIFIC
     assert [said["answer"] for said in reports["a.flac"]["answers"]] == [
         "matched",
+        searchers.NOT_ASKED,
         searchers.NOT_ASKED,
         searchers.NOT_ASKED,
     ]
@@ -1065,16 +1117,15 @@ def test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked(
     assert tag_cli.SOURCES_UNREAD not in codes
 
 
-def test_three_real_misses_are_no_hit_and_carry_no_unread_warning(
+def test_four_real_misses_are_no_hit_and_carry_no_unread_warning(
     cfg, folder, silence, monkeypatch
 ):
+    """Every catalogue asked, the general one included, and none knows the
+    track. That is the absence ``no-hit`` means, and no warning qualifies it."""
     place(folder, silence, "a")
-    missed = {
-        searchers.BEATPORT: EMPTY_BEATPORT,
-        searchers.TRAXSOURCE: EMPTY_TRAXSOURCE,
-        searchers.BANDCAMP: EMPTY_BANDCAMP,
-    }
-    bound(monkeypatch, _catalogues({"a": missed}))
+    assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
+    bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
+    general(monkeypatch, DEEZER_UNKNOWN)
 
     drive(["tag", "folder", str(folder)])
     job = tag_job()
@@ -1082,11 +1133,222 @@ def test_three_real_misses_are_no_hit_and_carry_no_unread_warning(
 
     (report,) = artifacts.committed(cfg, job.job_id)
     assert report["skipped"] == tag.NO_HIT
-    assert [said["answer"] for said in report["answers"]] == ["miss"] * 3
+    assert [said["answer"] for said in report["answers"]] == ["miss"] * 4
     assert report["unread"] == {}
     codes = [warning["code"] for warning in resumed["warnings"]]
     assert tag_cli.SOURCES_UNREAD not in codes
     assert tag_cli.SOURCE_BLOCKED not in codes
+    assert tag_cli.PUBLISHED_UNREAD not in codes
+    assert tag_cli.NO_ISRC not in codes
+
+
+# ---------------------------------------------------------------------------
+# R-796: the general catalogue, through the verb
+# ---------------------------------------------------------------------------
+
+
+def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
+    cfg, folder, silence, monkeypatch
+):
+    """AE1 end to end, in the state measured on the author's machine: Beatport
+    misses, both fallbacks refuse, and the general catalogue knows the album."""
+    place(folder, silence, "a")
+    assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
+    bound(monkeypatch, _catalogues({"a": REFUSED_FALLBACKS}))
+    seen: list[str] = []
+    general(monkeypatch, deezer_track(), deezer_album(["Rock"]), seen)
+    expected = routing.suggest_tag(TAXONOMY, "Rock").tag
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    assert tags.read_genre_from_file(folder / "a.flac") == expected
+    (report,) = artifacts.committed(cfg, job.job_id)
+    assert report["genre_written"] == expected
+    assert report["skipped"] is None
+    assert (report["source"], report["source_genre"]) == (published.DEEZER, "Rock")
+    assert report["off_taxonomy"] is False
+    assert [(said["source"], said["answer"]) for said in report["answers"]] == [
+        (searchers.BEATPORT, "miss"),
+        (searchers.TRAXSOURCE, "blocked"),
+        (searchers.BANDCAMP, "blocked"),
+        (published.DEEZER, "matched"),
+    ]
+    assert report["answers"][-1]["source_genre"] == "Rock"
+    assert len(seen) == 2
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["tagged"] == 1
+    assert tagging["tagged_by"] == {
+        searchers.BEATPORT: 0,
+        searchers.TRAXSOURCE: 0,
+        searchers.BANDCAMP: 0,
+        published.DEEZER: 1,
+    }
+    assert tagging["answers"][published.DEEZER]["matched"] == 1
+    assert set(tagging["answers"][published.DEEZER]) == set(published.ANSWERS), "zero filled"
+    assert tag.NO_ISRC not in tagging["answers"][searchers.BEATPORT], (
+        "a record shop is never asked by ISRC, so it carries no count for one"
+    )
+    codes = [warning["code"] for warning in resumed["warnings"]]
+    assert tag_cli.OFF_TAXONOMY not in codes
+    assert tag_cli.PUBLISHED_UNREAD not in codes
+    assert tag_cli.NO_ISRC not in codes
+
+
+def test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary(
+    cfg, folder, silence, monkeypatch
+):
+    """A 429 on every file the catalogue was asked about. No file got a
+    published genre, and the surface a person reads says which catalogue and
+    how many, once, and does not also file it under the record shops' warning."""
+    for name in ("a", "b", "c"):
+        place(folder, silence, name)
+    for name in ("a", "b"):
+        assert tags.write_tags(folder / f"{name}.flac", {"isrc": ISRC})
+    assert tags.write_tags(folder / "c.flac", {"artist": "Somebody"})
+    matched = searchers.Fetched(
+        text=beatport_page([beatport_track("Somebody", "c", SPECIFIC)]), status=200
+    )
+    bound(
+        monkeypatch,
+        _catalogues({"a": ALL_MISSED, "b": ALL_MISSED, "c": {searchers.BEATPORT: matched}}),
+    )
+    general(monkeypatch, RATE_LIMITED)
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    for name in ("a.flac", "b.flac"):
+        assert reports[name]["skipped"] == tag.SOURCES_UNREAD
+        assert reports[name]["unread"] == {published.DEEZER: "blocked"}
+        assert tags.read_genre_from_file(folder / name) is None
+    assert reports["c.flac"]["answers"][-1]["answer"] == searchers.NOT_ASKED
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["answers"][published.DEEZER]["blocked"] == 2
+    assert tagging["answers"][published.DEEZER][searchers.NOT_ASKED] == 1
+    assert tagging["tagged_by"][published.DEEZER] == 0
+
+    assert tag_cli.PUBLISHED_UNREAD == "tag-folder-published-unread"
+    named = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.PUBLISHED_UNREAD]
+    assert len(named) == 1
+    assert named[0].startswith(f"{published.DEEZER}, the general catalogue asked by ISRC")
+    assert "any of the 2 files it was asked about (blocked on 2)" in named[0]
+    assert "does not try to get past" in named[0]
+    assert "parse break" not in named[0]
+    blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
+    assert blocked == [], "the general catalogue has its own warning and is named once"
+    unread = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCES_UNREAD]
+    assert len(unread) == 1 and f"{published.DEEZER} blocked on 2" in unread[0]
+
+
+def test_a_general_catalogue_that_answered_one_file_is_not_named_as_unread(
+    cfg, folder, silence, monkeypatch
+):
+    """Unread on one file and a miss on the other is a catalogue the run had."""
+    for name in ("a", "b"):
+        place(folder, silence, name)
+        assert tags.write_tags(folder / f"{name}.flac", {"isrc": ISRC})
+    bound(monkeypatch, _catalogues({"a": ALL_MISSED, "b": ALL_MISSED}))
+    answers = iter([DEEZER_UNKNOWN, searchers.Fetched(note="transport failure: down")])
+    lookup = published.genre_lookup(
+        fetch=lambda _url: _fetched(next(answers)), sleep=lambda _seconds: None
+    )
+    monkeypatch.setattr(published, "for_lookup", lambda: lookup)
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["answers"][published.DEEZER]["miss"] == 1
+    assert tagging["answers"][published.DEEZER]["unreachable"] == 1
+    codes = [warning["code"] for warning in resumed["warnings"]]
+    assert tag_cli.PUBLISHED_UNREAD not in codes
+
+
+def test_a_parse_break_at_the_general_catalogue_says_a_rerun_will_not_move_it(
+    cfg, folder, silence, monkeypatch
+):
+    place(folder, silence, "a")
+    assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
+    bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
+    general(monkeypatch, "<html>not what this reader knows</html>")
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    (named,) = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.PUBLISHED_UNREAD]
+    assert "(parse-break on 1)" in named
+    assert "A parse break is a defect in this software" in named
+
+
+def test_files_with_no_isrc_are_counted_and_warned_about_whatever_their_skip_reason(
+    cfg, folder, silence, monkeypatch
+):
+    """AE4 at the surface a person reads. One file's fallbacks were blocked, so
+    it is ``sources-unread``; the other's all answered, so it is ``no-isrc``.
+    Both were never asked about at the general catalogue, and the warning
+    counts both."""
+    for name in ("a", "b"):
+        place(folder, silence, name)
+    bound(monkeypatch, _catalogues({"a": REFUSED_FALLBACKS, "b": ALL_MISSED}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert reports["a.flac"]["skipped"] == tag.SOURCES_UNREAD
+    assert reports["b.flac"]["skipped"] == tag.NO_ISRC
+    for report in reports.values():
+        assert report["answers"][-1]["answer"] == tag.NO_ISRC
+        assert report["answers"][-1]["note"] == "no ISRC was given"
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["skipped"][tag.NO_ISRC] == 1
+    assert tagging["skipped"][tag.NO_HIT] == 0
+    assert tagging["answers"][published.DEEZER][tag.NO_ISRC] == 2
+
+    assert tag_cli.NO_ISRC == "tag-folder-no-isrc"
+    (bare,) = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.NO_ISRC]
+    assert bare.startswith("2 files were not asked about at deezer")
+    assert "not reported as tracks no catalogue carries" in bare
+    codes = [warning["code"] for warning in resumed["warnings"]]
+    assert tag_cli.PUBLISHED_UNREAD not in codes, "a catalogue never asked was not unread"
+
+
+def test_a_published_word_with_no_folder_is_listed_as_unresolved(
+    cfg, folder, silence, monkeypatch
+):
+    """R3 at the report. The catalogue's own word is the one a person would add
+    an alias for, so it is the string the summary names."""
+    place(folder, silence, "a")
+    assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
+    bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
+    general(monkeypatch, deezer_track(), deezer_album(["Films/Games"]))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    (report,) = artifacts.committed(cfg, job.job_id)
+    assert report["skipped"] == tag.UNMAPPED_GENRE
+    assert report["genre_written"] is None
+    assert (report["source"], report["source_genre"]) == (published.DEEZER, "Films/Games")
+    assert tags.read_genre_from_file(folder / "a.flac") is None
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["unresolved"] == {"Films/Games": 1}
+    assert tagging["off_taxonomy"] == {}
+    assert tagging["tagged"] == 0
 
 
 def test_a_sweep_with_nothing_off_taxonomy_carries_no_such_warning(
