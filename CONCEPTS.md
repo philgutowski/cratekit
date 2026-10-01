@@ -172,8 +172,9 @@ miss. A usable answer from a record shop is never replaced, and an unread
 Beatport is never pre-empted, because a genre is written once.
 
 A **published genre** is the catalogue's own word for the track's ALBUM. It is
-written only when it maps to a folder: the resolver answers with a bucket and
-the name is not one the taxonomy lists as too coarse. An album with several
+written only when it maps to a folder: the resolver answers with a bucket, or
+the word is a bucket's own name, and the name is not one the taxonomy lists as
+too coarse. An album with several
 genres uses the first that maps. Anything else is a decline that records what
 was answered. A written one carries no inferred mark, since nothing was
 inferred, and is never off taxonomy.

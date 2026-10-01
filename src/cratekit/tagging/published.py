@@ -56,6 +56,12 @@ answers errors inside a 200, so the status says nothing, and reading an unknown
 error as "no such track" would report a catalogue that changed its rules as a
 library of tracks nobody carries.
 
+AN ANSWER THAT IS NOT JSON IS UNREACHABLE, NOT A PARSE BREAK. This is an API,
+and a body that is not JSON at all did not come from it: a captive portal, a
+proxy or a block page in a wording nothing here knows. A parse break tells a
+person to report a defect in this software, so it is claimed only on positive
+evidence, JSON that parsed and is not the shape this reader knows.
+
 THE ANSWER IS CHECKED AGAINST THE QUESTION. The track that comes back carries
 its own ISRC, and one that names a different recording, or none, is not read as
 this track's genre. The album identifier becomes a URL, so it is an integer or
@@ -219,7 +225,10 @@ def _read(url: str, *, fetch: Fetch, pacer: Pacer) -> dict[str, Any] | Published
     try:
         payload = json.loads(page.text or "")
     except ValueError:
-        payload = None
+        return _said(
+            Answer.UNREACHABLE,
+            "the answer was not JSON, so it did not come from the catalogue's API",
+        )
     if not isinstance(payload, dict):
         return _said(
             Answer.PARSE_BREAK, "the catalogue's answer is not the JSON object this reader knows"
@@ -313,28 +322,50 @@ def _ask(
     )
 
 
-#: What separates two values in one ISRC field. An ID3 text frame holding two
-#: values reads back joined by a null, and people type the rest.
-_ISRC_SEPARATORS = re.compile(r"[\x00;,/|]")
+#: An ISRC as it can sit inside a longer value: twelve characters, hyphens
+#: allowed at its three joints, and nothing alphanumeric on either side, so a
+#: thirteen character catalogue number is not read as an ISRC with a tail.
+_ISRC_WITHIN = re.compile(
+    r"(?<![A-Za-z0-9])[A-Za-z]{2}-?[A-Za-z0-9]{3}-?[0-9]{2}-?[0-9]{5}(?![A-Za-z0-9])"
+)
 
 
 def _first_isrc(value: object) -> str:
     """The folded ISRC a value holds, the first when it holds several, or empty.
 
     The whole value is tried first, through the one fold the rest of the product
-    matches ISRCs with. A field carrying two is read as its first that reads as
-    an ISRC, because driven on 2026-10-01 an ID3 frame written with two values
-    came back as one string joined by a null, which folds to nothing, and the
-    file would have been reported as carrying no ISRC while it carried two.
+    matches ISRCs with. Then the first ISRC found inside it, because driven on
+    2026-10-01 an ID3 frame written with two values came back as one string
+    joined by a null, which folds to nothing, and the file would have been
+    reported as carrying no ISRC while it carried two. Whatever separates them,
+    a null, a space or a label somebody typed in front, is not this function's
+    to list.
     """
     whole = isrc_token(value)
     if whole:
         return whole
-    for part in _ISRC_SEPARATORS.split(str(value or "")):
-        token = isrc_token(part)
+    for found in _ISRC_WITHIN.finditer(str(value or "")):
+        token = isrc_token(found.group(0))
         if token:
             return token
     return ""
+
+
+def _no_isrc(value: object) -> Published | None:
+    """The ``no-isrc`` answer for a value that holds no ISRC, or None when it does.
+
+    One place builds it, for the lookup and for the tagger's seam, which says
+    it before anything else is weighed so the count of such files does not
+    depend on what the record shops answered.
+    """
+    if _first_isrc(value):
+        return None
+    given = str(value or "").strip()
+    return Published(
+        SOURCE,
+        NO_ISRC,
+        note=f"{given!r} does not read as an ISRC" if given else "no ISRC was given",
+    )
 
 
 def genre_lookup(
@@ -369,14 +400,10 @@ def genre_lookup(
     refusals: list[Published] = []
 
     def lookup(isrc: object) -> Published:
+        bare = _no_isrc(isrc)
+        if bare is not None:
+            return bare
         token = _first_isrc(isrc)
-        if not token:
-            given = str(isrc or "").strip()
-            return Published(
-                SOURCE,
-                NO_ISRC,
-                note=f"{given!r} does not read as an ISRC" if given else "no ISRC was given",
-            )
         if refusals:
             return _said(
                 Answer.BLOCKED,
@@ -401,10 +428,17 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
 
     The catalogue's word and the taxonomy's tag for it, or None when no word of
     the album's maps anywhere. "Maps to a folder" is the shipped resolver
-    answering with a BUCKET, not declining, and not a name the taxonomy lists as
-    too coarse to be a final tag. So the resolver's pass through tier and a rule
+    answering with a BUCKET, or with a word that is a bucket's own name, not
+    declining, and not a name the taxonomy lists as too coarse to be a final
+    tag. So the resolver's pass through of a word nothing declares and a rule
     that declares a tag with no bucket are both passed over: each would put a
     word on the file that no folder holds.
+
+    A BUCKET'S OWN NAME IS A FOLDER EVEN WITH NO ALIAS NAMING IT. The resolver
+    answers such a word with no bucket identifier, because its alias table has
+    no row for it, and routing still files it exactly, by display. Asking only
+    for a bucket identifier declined a word whose folder exists, which the
+    review drove.
 
     IN THE CATALOGUE'S ORDER, because that order is the only ranking it
     publishes, and a chooser that preferred the narrowest or the rarest word
@@ -418,7 +452,9 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
     for word in genres:
         suggestion = routing.suggest_tag(declared, word)
         tag = suggestion.tag
-        if suggestion.declined or suggestion.bucket_id is None or not tag:
+        if suggestion.declined or not tag:
+            continue
+        if suggestion.bucket_id is None and declared.bucket_for_display(tag) is None:
             continue
         if declared.is_too_coarse_as_source(tag):
             continue
@@ -444,6 +480,9 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
     * a hit that already has a genre, and a file that needs none (an ISRC of
       None), are recorded ``not-asked``. That is R4: a usable answer from a
       record shop is never replaced;
+    * a file whose ISRC tag holds no ISRC is recorded ``no-isrc``, before
+      Beatport's answer is weighed, so every such file is counted whatever the
+      record shops did;
     * a hit whose Beatport answer is not a match or a miss is recorded
       ``not-asked`` with the reason, and the file stays as the searcher left it;
     * otherwise the catalogue is asked. A genre that maps to a folder becomes
@@ -463,8 +502,14 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
     still in the file's record and in the warning that names a catalogue
     refused throughout.
 
-    THE PICTURE STAYS THE RECORD SHOP'S. When this catalogue supplies the genre
-    for a hit whose picture a shop's row named, ``art_source`` says whose it is.
+    A MATCH THAT PUBLISHES NO GENRE CHANGES NOTHING BUT THE RECORD. The hit's
+    source stays what the searcher left, since a catalogue that supplied no
+    word is not where anything on the file came from.
+
+    THE PICTURE STAYS THE RECORD SHOP'S. When this catalogue becomes the hit's
+    source, ``art_source`` names the shop whose row matched, or is empty when
+    none did, so the report about the picture is never written about a
+    catalogue that is not asked for one.
     """
     ask = genre_lookup() if lookup is None else lookup
 
@@ -477,6 +522,9 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
 
         if hit.genre or isrc is None:
             return recorded(SourceAnswer(SOURCE, searchers.NOT_ASKED))
+        bare = _no_isrc(isrc)
+        if bare is not None:
+            return recorded(SourceAnswer(SOURCE, bare.answer, note=bare.note))
         first = next((said for said in hit.answers if said.source == searchers.BEATPORT), None)
         if first is None or first.answer not in _BEATPORT_ANSWERED:
             return recorded(
@@ -499,18 +547,18 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
         picked = choose(declared, said.genres)
         word = picked[0] if picked else (said.genres[0] if said.genres else "")
         entry = SourceAnswer(SOURCE, said.answer, source_genre=word, note=note)
-        if picked is None and hit.source_genre:
+        if picked is None and (hit.source_genre or not word):
             return recorded(entry)
         # THIS CATALOGUE BECOMES THE HIT'S SOURCE, for a genre to write or for a
-        # declined word of its own. A picture already on the hit came off a
-        # record shop's row and keeps that shop's name.
+        # declined word of its own. The picture question stays with the record
+        # shop whose row matched, or with nobody when none did.
         return recorded(
             entry,
             genre=picked[1] if picked else None,
             source=SOURCE,
             source_genre=word,
             off_taxonomy=False,
-            art_source=(hit.art_source or hit.source) if hit.art_url else "",
+            art_source=hit.source if hit.art_source is None else hit.art_source,
         )
 
     return decide

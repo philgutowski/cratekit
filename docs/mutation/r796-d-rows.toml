@@ -1,0 +1,38 @@
+name = "r796-d"
+pass_kind = "light"
+
+[[rows]]
+id = "L9_first_isrc_of_several_again"
+description = "re-measure of r796-a L9 after the second review round rewrote the line: _first_isrc never looks inside a value, so two ISRCs in one field read as no ISRC"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''    for found in _ISRC_WITHIN.finditer(str(value or "")):'''
+new = '''    for found in ():'''
+
+[[rows]]
+id = "O1_a_word_with_no_folder_is_passed_over_again"
+description = "re-measure of r796-b O1 after the second review round rewrote the line: choose accepts a word with no bucket and no bucket of that name, so the pass through tier's word is written"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        if suggestion.bucket_id is None and declared.bucket_for_display(tag) is None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "O7_a_decline_keeps_the_shops_word_again"
+description = "re-measure of r796-b O7 after the second review round rewrote the line: a declined answer always takes over the file's source, over Beatport's word and when it published no word at all"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        if picked is None and (hit.source_genre or not word):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "O8_a_tagged_file_is_not_asked_about_again"
+description = "re-measure of r796-b O8 after the second review round rewrote the line: tag_one hands the seam the ISRC of every file, one that already has a genre included"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        wanted = not existing and not hit.genre'''
+new = '''        wanted = True'''

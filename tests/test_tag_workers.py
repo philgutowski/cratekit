@@ -1313,7 +1313,7 @@ def test_a_parse_break_at_the_general_catalogue_says_a_rerun_will_not_move_it(
     place(folder, silence, "a")
     assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
-    general(monkeypatch, "<html>not what this reader knows</html>")
+    general(monkeypatch, '["a JSON answer in a shape this reader does not know"]')
 
     drive(["tag", "folder", str(folder)])
     job = tag_job()

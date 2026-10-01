@@ -31737,17 +31737,29 @@ Two tag aliases joined the shipped template, `rap/hip hop` and
 `soul & funk`. **The library's active copy needs the same two lines before
 the owed run**, or those two words are declined there.
 
-The built in review raised ten findings. Six changed the code: the refusal
-memory, an album's genres read once per run, a field of several ISRCs read
-as its first, the warning for a catalogue unread on some files, the parse
-break sentence said once, and the album cover, which the first build read
-and this one does not. Four are recorded: R-799, R-800, R-801, and one that
-is a choice, a track the catalogue knows with no genre published reads
-`no-hit`, which `CONCEPTS.md` now says. R-802 came from the hunt after the
-fixes.
+The built in review ran twice, ten findings each time, which is both fix
+rounds. The first round changed the code for six: the refusal memory, an
+album's genres read once per run, a field of several ISRCs read as its
+first, the warning for a catalogue unread on some files, the parse break
+sentence said once, and the album cover, which the first build read and
+this one does not. Four are recorded: R-799, R-800, R-801, and one that is a
+choice, a track the catalogue knows with no genre published reads `no-hit`,
+which `CONCEPTS.md` now says. R-802 came from the hunt after the fixes.
 
-Mutation tables `r796-a` to `r796-c`, 25 rows, 25 killed, the author's and
-not independent.
+The second round changed the code for eight: a word that is a bucket's own
+name counts as a folder, a file with no ISRC is recorded as that before
+Beatport's answer is weighed, a match with no genre no longer becomes the
+file's source, the report about a picture is never written about the
+general catalogue, an answer that is not JSON is `unreachable`, an ISRC is
+found anywhere in its field, the ISRC tag is not opened for a file a record
+shop settled, and an autouse fixture keeps every test off the live
+catalogue. Two are recorded: R-803, and the pacing cost, which joined R-800.
+
+Mutation tables `r796-a` to `r796-c`, 25 rows, 25 killed, and `r796-d`, the
+four rows whose guarded line the second round moved, measured again and
+killed. The author's and not independent. The guards the second round
+added are past the cap and unmeasured, each named with its test in
+`docs/mutation/r796-notes.md`.
 
 Not measured from Deezer: its quota error, a 429, a 403 and a challenge
 page. Their handling follows its published error table and R-791's rules,
@@ -31872,14 +31884,21 @@ asked about again by every later sweep, two paced requests each. The state
 file `genre_lookup_cache` is declared in `core/config.py` for third party
 catalogue lookups keyed by track, and nothing reads or writes it.
 
+Within a run, a miss, a match with no genre and an album the catalogue does
+not list are not remembered either. And every touch sleeps the searchers'
+full interval, one to one and a half seconds, whatever time has passed
+since the last one, although the lookup is now one per process and could
+sleep only the remainder.
+
 **Measured cost.** By construction and not timed: two requests and two to
 three seconds a file a sweep. Over the 111 untagged tracks of sitting 25
-that is under six minutes a rerun. No correctness cost.
+that is under six minutes a rerun, and a 600 file sweep of non dance music
+sleeps about 25 minutes. No correctness cost.
 
 **Closes when:** answers are kept across runs under a stated rule for when
 a miss, a decline and a match are asked again, or the declared state file
-is removed. R-798 asks the same lookup once a release and should decide
-this with its pacing.
+is removed, and the lookup paces from its last touch. R-798 asks the same
+lookup once a release and should decide this with its pacing.
 
 **Not on the board bar.** Time, and no false report.
 
@@ -31921,3 +31940,34 @@ first value that reads as one, in one place both callers use, with a test
 over a real ID3 container.
 
 **Not on the board bar.** Its input has not been observed.
+
+## R-803. One refusal from the general catalogue ends its part in the whole run
+
+**Found:** on `relay/236`, 2026-10-01, by the second built in review of
+R-796. The lookup remembers its first `blocked` answer and asks nothing
+more for the life of the process, with no expiry. That was chosen on the
+conservative reading of the brief, nothing tries to get past a rate limit,
+after the first review found a sweep re-asking and backing off on every
+file. Its cost is the other direction: Deezer's published limit is 50
+requests in 5 seconds, so a single quota answer, which a shared address is
+enough to cause, leaves every later file in the run unasked.
+
+**Measured cost.** None measured: no quota answer, 429 or block has been
+seen from Deezer, and this tool paces itself at about one request a second.
+By construction, a refusal on file 3 of 600 leaves 597 files recorded
+`blocked`, said by `tag-folder-published-unread`, and askable by running
+the folder again. Nothing is written wrongly. The memory is per process,
+so the next run asks again only because each run is a new process.
+
+**Options.** (a) Leave it, the strictest reading. (b) A cool off: after a
+refusal ask nothing for a stated time, then one request, and remember
+again if it is refused. Waiting out a limit's own window is what a rate
+limit asks for, and the fallbacks already re-ask on every file. (c) Scope
+the memory to the job rather than the process. (d) Remember a 403 or a
+challenge for the run and a quota answer for its window.
+
+**Closes when:** the author chooses, with a real refusal from the catalogue
+measured if one has been seen by then.
+
+**Not on the board bar.** Nothing false is reported and the files stay
+askable.

@@ -236,6 +236,34 @@ def _no_real_mix_download():
 
 
 @pytest.fixture(autouse=True)
+def _no_live_general_catalogue():
+    """Refuse the general catalogue's live lookup in every test, structurally.
+
+    R-796 bound a second network source into the tagging worker. Its lookup is
+    one per process, held on ``published._shared`` and read at call time, so a
+    test that binds only the searcher and tags a file carrying an ISRC would
+    otherwise ask the real catalogue, with real sleeps, with the battery
+    green. The shared lookup is replaced with one whose fetch fails the test,
+    and dropped again afterwards so a refusal one test's lookup remembered
+    does not answer the next test. A file with no ISRC still gets its honest
+    ``no-isrc``, because that answer makes no request. A test that wants an
+    answer replaces ``published.for_lookup`` itself.
+    """
+    from cratekit.tagging import published
+
+    def refused(url):
+        raise AssertionError(
+            f"a test reached the live general catalogue, {url}; set "
+            f"published.for_lookup to a lookup over a fake fetch"
+        )
+
+    guarded = published.genre_lookup(fetch=refused, sleep=lambda _seconds: None)
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(published, "_shared", [guarded])
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _block_real_library_paths(request, tmp_path_factory):
     """Point the library root at a temp directory and disarm the mount check.
 

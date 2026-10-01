@@ -128,11 +128,12 @@ class SearchHit:
     worked out here, because the only place that can tell it apart from a
     declared tag with no bucket is the tier that answered (R-650).
 
-    ``art_source`` names the catalogue ``art_url`` came off when that is not
-    ``source``. The general catalogue can supply the genre for a file whose
-    picture a record shop's row already named (R-796), and a report saying the
-    picture came from the genre's source would then be false. Empty means the
-    two are one catalogue.
+    ``art_source`` names the catalogue whose row the picture question belongs
+    to when that is not ``source``. None, the default, means the two are one
+    catalogue. The general catalogue supplies a genre and is never asked for a
+    picture (R-796), so a hit it became the source of carries the record shop
+    whose row matched, or the empty string when no shop's did, and the report
+    about the picture is then written about the shops and not about it.
 
     ``answers`` is every catalogue's answer, so the item's record can say what
     each one said rather than only the disposition they added up to. ``unread``
@@ -152,7 +153,7 @@ class SearchHit:
     off_taxonomy: bool = False
     answers: tuple[SourceAnswer, ...] = ()
     unread: tuple[str, ...] = ()
-    art_source: str = ""
+    art_source: str | None = None
 
 
 #: Why a file was passed over. ``HAS_GENRE`` is the fill-if-empty policy this
@@ -344,15 +345,30 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
     def result(status: str, detail: str = "") -> dict[str, str]:
         return {"art_fetch": status, "art_fetch_detail": detail}
 
-    if hit is None or (not hit.art_url and not hit.source):
-        # A DECLINE: no catalogue matched, so none named a picture. Which kind of
-        # decline it was decides the sentence, never whether there is one.
+    # WHOSE ROW THE PICTURE QUESTION BELONGS TO. The hit's source, unless the hit
+    # says otherwise: a genre from the general catalogue leaves the picture with
+    # the record shop that matched, or with nobody.
+    pictured_by = "" if hit is None else (
+        hit.source if hit.art_source is None else hit.art_source
+    )
+    if hit is None or (not hit.art_url and not pictured_by):
+        # A DECLINE: no catalogue that names pictures matched, so none named
+        # one. Which kind of decline it was decides the sentence, never whether
+        # there is one.
         unread = hit.unread if hit is not None else ()
         named = f"{', '.join(unread)} could not be read and no other catalogue" if unread else (
             "no catalogue"
         )
+        if hit is not None and hit.source:
+            # THE GENRE'S SOURCE IS NOT A PICTURE'S. Saying no catalogue carried
+            # the track would be false of the one that just answered about it.
+            return result(
+                ART_UNAVAILABLE,
+                f"{named} that is asked for pictures carried the track, so no "
+                f"picture was named; {hit.source} answered about the genre and is "
+                f"not asked for one",
+            )
         return result(ART_UNAVAILABLE, f"{named} carried the track, so no picture was named")
-    pictured_by = hit.art_source or hit.source
     if not hit.art_url:
         return result(
             ART_UNAVAILABLE, f"{pictured_by or 'the catalogue'} named no picture for the track"
@@ -462,10 +478,13 @@ def tag_one(
         }
         return TagResult(path=path, genre_written=None, skipped=HAS_GENRE, **repaired, **unread)
     if published is not None and hit is not None:
-        # THE ISRC TAG IS READ ONLY FOR A FILE THAT NEEDS A GENRE. None tells the
-        # seam nothing is to be asked, which is a different fact from a tag that
-        # is there and empty.
-        hit = published(hit, None if existing else (tags.read_tag(path, "isrc") or ""))
+        # THE ISRC TAG IS READ ONLY FOR A FILE THE SEAM COULD BE ASKED ABOUT, one
+        # that needs a genre and whose searcher gave none. None tells the seam
+        # nothing is to be asked, which is a different fact from a tag that is
+        # there and empty, and it spares the open on every file a record shop
+        # already settled.
+        wanted = not existing and not hit.genre
+        hit = published(hit, (tags.read_tag(path, "isrc") or "") if wanted else None)
     written: str | None = None
     off_taxonomy = False
     if existing:
