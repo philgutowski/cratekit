@@ -64,7 +64,22 @@ review. A release whose genre is not known,
 because its rows report none or report more than one, is listed with a failing
 line saying the gate could not judge it: absence of a genre is not evidence of
 a bad fit, and it is not evidence of a good one either. No shipped catalogue
-reports a genre today, so in the shipped build every release takes that path.
+reports a genre today, so in the shipped build that share rule judges nothing.
+
+THE SAME GATE ALSO JUDGES KIND, WITH THE GENERAL CATALOGUE'S WORDS. R-798. The
+share rule above cannot hold a release of music the label was never followed
+for when that music is most of what was accepted, and it has no genre to read.
+So each release read is first judged the way the sweep judges it,
+:func:`cratekit.core.routing.kind_verdict` over what a general catalogue
+publishes for its tracks: the words the sweep recorded on the item when it
+filed it, else the lookup, asked with the ISRCs of the rows this verb already
+read, so no provider call is added. A release of another kind than its label
+is followed as is HELD, named with the words and the kind, and neither listed
+nor offered. A release a person returned to review after a hold is passed
+without being judged. A release the catalogue has no word for is listed, and
+it joins the failing ``ungated`` line only when the share rule did not judge
+it either. This is what judges a release filed before the sweep had a gate, or
+filed unjudged because the catalogue could not be read that day.
 
 Not a confirm gate and not destructive: it writes two new files and the
 emitter refuses rather than replaces. Nothing here composes
@@ -90,6 +105,9 @@ from cratekit.core.review import Queue
 from cratekit.intake.missing_cli import LISTS_DIR
 from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
+from cratekit.label import gate as genre_gate
+from cratekit.label import registry as labels
+from cratekit.tagging import published, searchers
 
 #: What the provenance sidecar says a listed row came from. ``intake land``
 #: reads exactly this word to find the rows it files under the labels tree.
@@ -154,6 +172,11 @@ class _Release:
     title: str
     label_id: str | None
     label_name: str | None
+    #: The general catalogue's words the sweep recorded when it filed the item,
+    #: or None when it recorded none. The kind gate judges on these (R-798).
+    genres: tuple[str, ...] | None = None
+    #: Whether a person returned this release to review after the gate held it.
+    returned: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +208,9 @@ class _Read:
     unreadable: tuple[str, ...]
     genre: str | None = None
     ungated: str | None = None
+    #: The provider's rows as it returned them, which is where the kind gate
+    #: reads the ISRCs it asks the general catalogue with.
+    rows: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +233,23 @@ class _Held:
             "of_family": self.of_family,
             "classified": self.classified,
             "share": self.share,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class _OutOfKind:
+    """One release held because it is not the kind of music its label is followed for."""
+
+    release: _Release
+    judged: genre_gate.Judged
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "release_id": self.release.release_id,
+            "item_id": self.release.item_id,
+            "genres": list(self.judged.genres),
+            "kind": self.judged.kind,
+            "reason": self.judged.reason,
         }
 
 
@@ -297,6 +340,53 @@ def _gated(
     return held, unjudged
 
 
+def _judged_by_kind(
+    declared: taxonomy.Taxonomy,
+    read: list[tuple[_Release, _Read]],
+    followed: labels.Registry,
+) -> tuple[dict[str, _OutOfKind], dict[str, str]]:
+    """Every read release held as another kind of music, and every one not judged.
+
+    Both keyed by review item. ONE RELEASE AT A TIME, unlike the share rule:
+    kind is a fact about a release and the label it is on, not about the set
+    accepted beside it, so a release unread this run changes nothing here.
+
+    THE WORDS THE SWEEP RECORDED ARE USED WHEN THERE ARE ANY, so a release is
+    judged at acceptance on what it was judged on when it was filed and the
+    catalogue is not asked twice. The lookup is asked otherwise, with the rows
+    this verb already read, and it is looked up at call time, only when a
+    release needs it.
+
+    A RELEASE A PERSON RETURNED IS NOT JUDGED AND NOT REPORTED AS UNJUDGED.
+    Their answer is the judgment.
+
+    A LABEL THE REGISTRY NO LONGER HOLDS IS THE DEFAULT KIND, which is what it
+    would be judged as were it followed with no kind set.
+    """
+    held: dict[str, _OutOfKind] = {}
+    unjudged: dict[str, str] = {}
+    for release, outcome in read:
+        if release.returned:
+            continue
+        entry = followed.by_id(release.label_id) if release.label_id else None
+        kind = entry.kind if entry is not None else None
+        if release.genres is not None:
+            words = genre_gate.Words(release.genres, searchers.Answer.MATCHED.value)
+        elif routing.kind_settled(declared, kind) is not None:
+            # NOT THIS MODULE'S ``NOT_ASKED``, which is a release the PROVIDER
+            # was not asked for. The two words are spelled alike and mean
+            # different catalogues.
+            words = genre_gate.Words((), searchers.NOT_ASKED)
+        else:
+            words = genre_gate.published_words(outcome.rows, published.for_lookup())
+        judged = genre_gate.judge_words(declared, kind, words)
+        if judged.held:
+            held[release.item_id] = _OutOfKind(release, judged)
+        elif judged.verdict is routing.KindVerdict.NOT_JUDGED:
+            unjudged[release.item_id] = judged.reason
+    return held, unjudged
+
+
 def _release_of(items: review.ReviewStore, item: review.Item) -> _Release:
     """The release an accepted item names, from its IDENTITY before its payload.
 
@@ -308,12 +398,22 @@ def _release_of(items: review.ReviewStore, item: review.Item) -> _Release:
     """
     identity = review.identity_of(items, item.item_id) or {}
     release_id = _text(identity.get("release_id")) or _text(item.payload.get("identity")) or ""
+    # RETURNED BY EITHER RECORD. The hold is the record of a return, and the
+    # payload carries the same word, which is what survives a queue exported
+    # to another machine. Believing either is the safe direction: a returned
+    # release held a second time is music a person asked for and never gets.
+    standing = review.find_hold(items, queue=str(Queue.LABEL_RELEASE), item_id=item.item_id)
+    returned = (
+        standing is not None and standing.state == review.HOLD_RETURNED
+    ) or item.payload.get(genre_gate.GATE_FIELD) == genre_gate.RETURNED
     return _Release(
         item_id=item.item_id,
         release_id=release_id,
         title=_text(item.payload.get("title")) or "",
         label_id=_text(item.payload.get("label_id")),
         label_name=_text(item.payload.get("label_name")),
+        genres=genre_gate.recorded_genres(item.payload, genre_gate.GENRES_FIELD),
+        returned=returned,
     )
 
 
@@ -381,7 +481,7 @@ def _tracks_or_failure(found: catalogue.Catalogue, release: _Release) -> _Read |
         except match.UnreadableList as exc:
             unreadable.append(str(exc))
     genre, ungated = _genre_of(tuple(rows))
-    return _Read(tuple(wanted), year, tuple(unreadable), genre, ungated)
+    return _Read(tuple(wanted), year, tuple(unreadable), genre, ungated, tuple(rows))
 
 
 def _out_dir(ctx, cfg) -> Path:
@@ -458,9 +558,17 @@ def _failure_check(failed: _Failed) -> dict[str, Any]:
     return _check(f"release.{release.release_id or release.item_id}", "fail", detail)
 
 
-def _held_check(held: _Held) -> dict[str, Any]:
-    """One line per held release, carrying the numbers it was held on."""
+def _held_check(held: _Held | _OutOfKind) -> dict[str, Any]:
+    """One line per held release, carrying what it was held on."""
     release = held.release
+    if isinstance(held, _OutOfKind):
+        return _check(
+            f"held.{release.release_id or release.item_id}",
+            "info",
+            f"{_named(release)} is HELD by the genre gate and none of it is in the "
+            f"list: {held.judged.reason}; to list it anyway, mark its label with the "
+            f"kind it is, or any, with: crate label registry set LABEL --kind KIND",
+        )
     label = release.label_name or release.label_id or "no named label"
     detail = (
         f"{_named(release)} is HELD by the genre gate and none of it is in the list: "
@@ -541,11 +649,18 @@ def label_approved(ctx) -> Envelope:
     # THE GATE BEFORE ANY RESOLUTION, so a held release is never offered for
     # review and never listed, and every release it judges is judged against
     # the same set.
-    held, unjudged = _gated(declared, answered, failures)
+    by_share, unjudged = _gated(declared, answered, failures)
+    # KIND AS WELL, and a release of another kind is held whatever its share
+    # (R-798). A release is UNJUDGED only when neither rule judged it, and the
+    # line says what each was missing.
+    by_kind, kind_unjudged = _judged_by_kind(
+        declared, answered, labels.RegistryStore().load()
+    )
+    held: dict[str, _Held | _OutOfKind] = {**by_share, **by_kind}
     ungated = [
-        (release, unjudged[release.item_id])
+        (release, f"{unjudged[release.item_id]}, and {kind_unjudged[release.item_id]}")
         for release, _outcome in answered
-        if release.item_id in unjudged
+        if release.item_id in unjudged and release.item_id in kind_unjudged
     ]
     for release, outcome in answered:
         if release.item_id in held:
